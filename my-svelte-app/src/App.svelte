@@ -7,11 +7,17 @@
   import Counter from "./lib/Counter.svelte";
   import "./i18n";
   import { _, locale } from "svelte-i18n";
+  import languageIcon from "./assets/language-solid.svg";
 
   let showDialog = false;
   let secretKey = "";
   let errorMessage = "";
   let hasStoredKey = false;
+
+  // 言語切替用
+  function toggleLang() {
+    locale.set($locale === "ja" ? "en" : "ja");
+  }
 
   function validateSecretKey(key: string): boolean {
     return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
@@ -84,10 +90,10 @@
 
 {#if $locale}
 <main>
-  <select bind:value={$locale} style="position:fixed;top:20px;left:20px;z-index:11;">
-    <option value="ja">日本語</option>
-    <option value="en">English</option>
-  </select>
+  <!-- 言語切替ボタン（トグル） -->
+  <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
+    <img src={languageIcon} alt="Language" class="lang-icon" />
+  </button>
   <button class="login-btn" on:click={showLoginDialog}>
     {hasStoredKey ? $_('logged_in') : $_('login')}
   </button>
@@ -249,5 +255,37 @@
   }
   .read-the-docs {
     color: #888;
+  }
+
+  .lang-btn {
+    position: fixed;
+    top: 20px;
+    left: 20px;
+    z-index: 12;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    padding: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px #0001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, box-shadow 0.1s, transform 0.1s;
+  }
+  .lang-btn:hover {
+    background: #f0f0f0;
+  }
+  .lang-btn:active {
+    background: #e0e0e0;
+    box-shadow: 0 1px 2px #0002;
+    transform: scale(0.94);
+  }
+  .lang-icon {
+    width: 24px;
+    height: 24px;
+    display: block;
   }
 </style>
