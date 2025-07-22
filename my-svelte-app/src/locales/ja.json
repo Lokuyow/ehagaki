@@ -1,0 +1,10 @@
+{
+    "login": "ログイン",
+    "logged_in": "ログイン済み",
+    "input_secret": "秘密鍵を入力",
+    "input_nostr_secret": "Nostrの秘密鍵を入力してください",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "invalid_key": "無効な秘密鍵形式です。nsec形式を入力してください。",
+    "error_saving": "保存中にエラーが発生しました。"
+}

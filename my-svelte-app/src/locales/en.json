@@ -1,0 +1,10 @@
+{
+    "login": "Login",
+    "logged_in": "Logged in",
+    "input_secret": "Enter Secret Key",
+    "input_nostr_secret": "Please enter your Nostr secret key",
+    "save": "Save",
+    "cancel": "Cancel",
+    "invalid_key": "Invalid secret key format. Please enter nsec format.",
+    "error_saving": "An error occurred while saving."
+}

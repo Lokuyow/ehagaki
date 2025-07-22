@@ -5,50 +5,55 @@
   import svelteLogo from "./assets/svelte.svg";
   import viteLogo from "/vite.svg";
   import Counter from "./lib/Counter.svelte";
+  import "./i18n";
+  import { _, locale } from "svelte-i18n";
 
-  // 秘密鍵関連の状態変数
   let showDialog = false;
   let secretKey = "";
   let errorMessage = "";
   let hasStoredKey = false;
 
-  // 秘密鍵のバリデーション
   function validateSecretKey(key: string): boolean {
-    // nsec形式（bech32エンコード）のみ許可
     return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
   }
 
-  // 秘密鍵を保存
   function saveSecretKey() {
     if (!validateSecretKey(secretKey)) {
-      errorMessage = "無効な秘密鍵形式です。nsec形式を入力してください。";
+      errorMessage = "invalid_key";
       return;
     }
-    
     try {
       localStorage.setItem("nostr-secret-key", secretKey);
       hasStoredKey = true;
       showDialog = false;
       errorMessage = "";
     } catch (error) {
-      errorMessage = "保存中にエラーが発生しました。";
+      errorMessage = "error_saving";
       console.error("保存エラー:", error);
     }
   }
 
-  // ログインダイアログを表示
   function showLoginDialog() {
     showDialog = true;
   }
 
-  // ダイアログを閉じる
   function closeDialog() {
     showDialog = false;
     errorMessage = "";
   }
 
+  // ロケール変更時にローカルストレージへ保存
+  $: if ($locale) {
+    localStorage.setItem("locale", $locale);
+  }
+
   onMount(() => {
-    // ローカルストレージに秘密鍵があるかチェック
+    // ローカルストレージに保存されたロケールがあればそれをセット
+    const storedLocale = localStorage.getItem("locale");
+    if (storedLocale && storedLocale !== $locale) {
+      locale.set(storedLocale);
+    }
+
     const storedKey = localStorage.getItem("nostr-secret-key");
     hasStoredKey = !!storedKey;
 
@@ -61,7 +66,6 @@
     const rxReq = createRxForwardReq();
 
     const subscription = rxNostr.use(rxReq).subscribe((packet) => {
-      // これがあなたのアプリケーションです！
       console.log(packet);
     });
 
@@ -71,7 +75,6 @@
       subscription.unsubscribe();
     }, 10 * 1000);
 
-    // クリーンアップ
     return () => {
       subscription.unsubscribe();
       clearTimeout(timer);
@@ -79,16 +82,21 @@
   });
 </script>
 
+{#if $locale}
 <main>
+  <select bind:value={$locale} style="position:fixed;top:20px;left:20px;z-index:11;">
+    <option value="ja">日本語</option>
+    <option value="en">English</option>
+  </select>
   <button class="login-btn" on:click={showLoginDialog}>
-    {hasStoredKey ? 'ログイン済み' : 'Login'}
+    {hasStoredKey ? $_('logged_in') : $_('login')}
   </button>
 
   {#if showDialog}
     <div class="dialog-overlay">
       <div class="dialog">
-        <h2>秘密鍵を入力</h2>
-        <p>Nostrの秘密鍵を入力してください</p>
+        <h2>{$_('input_secret')}</h2>
+        <p>{$_('input_nostr_secret')}</p>
         <input
           type="password"
           bind:value={secretKey}
@@ -96,11 +104,11 @@
           class="secret-input"
         />
         {#if errorMessage}
-          <p class="error-message">{errorMessage}</p>
+          <p class="error-message">{$_(errorMessage)}</p>
         {/if}
         <div class="dialog-buttons">
-          <button on:click={closeDialog} class="cancel-btn">キャンセル</button>
-          <button on:click={saveSecretKey} class="save-btn">保存</button>
+          <button on:click={closeDialog} class="cancel-btn">{$_('cancel')}</button>
+          <button on:click={saveSecretKey} class="save-btn">{$_('save')}</button>
         </div>
       </div>
     </div>
@@ -130,6 +138,7 @@
 
   <p class="read-the-docs">Click on the Vite and Svelte logos to learn more</p>
 </main>
+{/if}
 
 <style>
   .login-btn {
