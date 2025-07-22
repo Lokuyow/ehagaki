@@ -2,9 +2,6 @@
   import { onMount } from "svelte";
   import { createRxNostr, createRxForwardReq } from "rx-nostr";
   import { verifier } from "@rx-nostr/crypto";
-  import svelteLogo from "./assets/svelte.svg";
-  import viteLogo from "/vite.svg";
-  import Counter from "./lib/Counter.svelte";
   import "./i18n";
   import { _, locale } from "svelte-i18n";
   import languageIcon from "./assets/language-solid.svg";
@@ -89,61 +86,46 @@
 </script>
 
 {#if $locale}
-<main>
-  <!-- 言語切替ボタン（トグル） -->
-  <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
-    <img src={languageIcon} alt="Language" class="lang-icon" />
-  </button>
-  <button class="login-btn" on:click={showLoginDialog}>
-    {hasStoredKey ? $_('logged_in') : $_('login')}
-  </button>
+  <main>
+    <!-- 言語切替ボタン（トグル） -->
+    <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
+      <img src={languageIcon} alt="Language" class="lang-icon" />
+    </button>
+    <button class="login-btn" on:click={showLoginDialog}>
+      {hasStoredKey ? $_("logged_in") : $_("login")}
+    </button>
 
-  {#if showDialog}
-    <div class="dialog-overlay">
-      <div class="dialog">
-        <h2>{$_('input_secret')}</h2>
-        <p>{$_('input_nostr_secret')}</p>
-        <input
-          type="password"
-          bind:value={secretKey}
-          placeholder="nsec1~"
-          class="secret-input"
-        />
-        {#if errorMessage}
-          <p class="error-message">{$_(errorMessage)}</p>
-        {/if}
-        <div class="dialog-buttons">
-          <button on:click={closeDialog} class="cancel-btn">{$_('cancel')}</button>
-          <button on:click={saveSecretKey} class="save-btn">{$_('save')}</button>
+    {#if showDialog}
+      <div class="dialog-overlay">
+        <div class="dialog">
+          <h2>{$_("input_secret")}</h2>
+          <p>{$_("input_nostr_secret")}</p>
+          <input
+            type="password"
+            bind:value={secretKey}
+            placeholder="nsec1~"
+            class="secret-input"
+          />
+          {#if errorMessage}
+            <p class="error-message">{$_(errorMessage)}</p>
+          {/if}
+          <div class="dialog-buttons">
+            <button on:click={closeDialog} class="cancel-btn"
+              >{$_("cancel")}</button
+            >
+            <button on:click={saveSecretKey} class="save-btn"
+              >{$_("save")}</button
+            >
+          </div>
         </div>
       </div>
-    </div>
-  {/if}
+    {/if}
 
-  <div>
-    <a href="https://vite.dev" target="_blank" rel="noreferrer">
-      <img src={viteLogo} class="logo" alt="Vite Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank" rel="noreferrer">
-      <img src={svelteLogo} class="logo svelte" alt="Svelte Logo" />
-    </a>
-  </div>
-  <h1>Vite + Svelte</h1>
+    <!-- サイトタイトル -->
+    <h1 class="site-title">eHagaki</h1>
 
-  <div class="card">
-    <Counter />
-  </div>
-
-  <p>
-    Check out <a
-      href="https://github.com/sveltejs/kit#readme"
-      target="_blank"
-      rel="noreferrer">SvelteKit</a
-    >, the official Svelte app framework powered by Vite!
-  </p>
-
-  <p class="read-the-docs">Click on the Vite and Svelte logos to learn more</p>
-</main>
+    <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
+  </main>
 {/if}
 
 <style>
@@ -165,7 +147,7 @@
   .login-btn:hover {
     background: #535bf2;
   }
-  
+
   /* ダイアログのスタイル */
   .dialog-overlay {
     position: fixed;
@@ -179,7 +161,7 @@
     align-items: center;
     z-index: 100;
   }
-  
+
   .dialog {
     background-color: white;
     color: #222;
@@ -189,7 +171,7 @@
     width: 90%;
     max-width: 500px;
   }
-  
+
   .secret-input {
     width: 100%;
     padding: 0.8rem;
@@ -198,14 +180,14 @@
     border-radius: 4px;
     font-size: 1rem;
   }
-  
+
   .dialog-buttons {
     display: flex;
     justify-content: flex-end;
     gap: 1rem;
     margin-top: 1.5rem;
   }
-  
+
   .cancel-btn {
     padding: 0.6rem 1.2rem;
     border: 1px solid #ccc;
@@ -218,7 +200,7 @@
   .cancel-btn:hover {
     background-color: #e0e0e0;
   }
-  
+
   .save-btn {
     padding: 0.6rem 1.2rem;
     background-color: #646cff;
@@ -227,36 +209,20 @@
     border-radius: 4px;
     cursor: pointer;
   }
-  
+
   .save-btn:hover {
     background-color: #535bf2;
   }
-  
+
   .error-message {
     color: #d32f2f;
     font-size: 0.9rem;
     margin-top: 0.5rem;
   }
-  
+
   main {
     position: relative;
   }
-  .logo {
-    height: 6em;
-    padding: 1.5em;
-    will-change: filter;
-    transition: filter 300ms;
-  }
-  .logo:hover {
-    filter: drop-shadow(0 0 2em #646cffaa);
-  }
-  .logo.svelte:hover {
-    filter: drop-shadow(0 0 2em #ff3e00aa);
-  }
-  .read-the-docs {
-    color: #888;
-  }
-
   .lang-btn {
     position: fixed;
     top: 20px;
@@ -273,7 +239,10 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: background 0.2s, box-shadow 0.1s, transform 0.1s;
+    transition:
+      background 0.2s,
+      box-shadow 0.1s,
+      transform 0.1s;
   }
   .lang-btn:hover {
     background: #f0f0f0;
@@ -287,5 +256,14 @@
     width: 24px;
     height: 24px;
     display: block;
+  }
+
+  .site-title {
+    text-align: center;
+    font-size: 2.5rem;
+    margin: 2.5rem 0 1.5rem 0;
+    font-weight: bold;
+    letter-spacing: 0.08em;
+    color: #646cff;
   }
 </style>
