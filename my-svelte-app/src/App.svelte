@@ -7,15 +7,20 @@
   import languageIcon from "./assets/language-solid.svg";
   import { getPublicKey, nip19 } from "nostr-tools";
 
+  // UI状態管理
   let showDialog = false;
-  let secretKey = "";
   let errorMessage = "";
+
+  // 認証関連
+  let secretKey = "";
   let hasStoredKey = false;
+
+  // ユーザー公開鍵情報
   let publicKeyHex = "";
   let publicKeyNpub = "";
   let publicKeyNprofile = "";
 
-  // rxNostrインスタンス
+  // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
   
   // ブートストラップリレーの定義（一箇所に集約）
@@ -31,26 +36,47 @@
     locale.set($locale === "ja" ? "en" : "ja");
   }
 
+  // 公開鍵データの型定義
+  interface PublicKeyData {
+    hex: string;
+    npub: string;
+    nprofile: string;
+  }
+
   // 鍵関連の処理をオブジェクトにまとめる
   const keyManager = {
-    validate(key: string): boolean {
+    /**
+     * 秘密鍵がnsec形式として有効かチェックする
+     */
+    isValidNsec(key: string): boolean {
       return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
     },
 
-    derivePublicKey(nsec: string): { hex: string; npub: string; nprofile: string } {
+    /**
+     * nsec形式の秘密鍵から公開鍵情報を導出する
+     */
+    derivePublicKey(nsec: string): PublicKeyData {
       try {
         const { type, data } = nip19.decode(nsec);
-        if (type !== "nsec") return { hex: "", npub: "", nprofile: "" };
+        if (type !== "nsec") {
+          console.warn("無効なnsec形式です");
+          return { hex: "", npub: "", nprofile: "" };
+        }
+        
         const hex = getPublicKey(data as Uint8Array);
         const npub = nip19.npubEncode(hex);
         const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
         return { hex, npub, nprofile };
       } catch (e) {
+        console.error("公開鍵の導出に失敗:", e);
         return { hex: "", npub: "", nprofile: "" };
       }
     },
 
-    save(key: string): boolean {
+    /**
+     * 秘密鍵をローカルストレージに保存する
+     */
+    saveToStorage(key: string): boolean {
       try {
         localStorage.setItem("nostr-secret-key", key);
         return true;
@@ -60,7 +86,10 @@
       }
     },
 
-    load(): string | null {
+    /**
+     * ローカルストレージから秘密鍵を読み込む
+     */
+    loadFromStorage(): string | null {
       return localStorage.getItem("nostr-secret-key");
     }
   };
@@ -214,7 +243,7 @@
   }
 
   async function saveSecretKey() {
-    if (!keyManager.validate(secretKey)) {
+    if (!keyManager.isValidNsec(secretKey)) {
       errorMessage = "invalid_key";
       publicKeyHex = "";
       publicKeyNpub = "";
@@ -222,7 +251,7 @@
       return;
     }
     
-    const success = keyManager.save(secretKey);
+    const success = keyManager.saveToStorage(secretKey);
     if (success) {
       hasStoredKey = true;
       showDialog = false;
@@ -244,7 +273,7 @@
     }
   }
 
-  $: if (secretKey && keyManager.validate(secretKey)) {
+  $: if (secretKey && keyManager.isValidNsec(secretKey)) {
     const { hex, npub, nprofile } = keyManager.derivePublicKey(secretKey);
     publicKeyHex = hex;
     publicKeyNpub = npub;
@@ -277,11 +306,11 @@
     }
 
     // 秘密鍵の取得と検証
-    const storedKey = keyManager.load();
+    const storedKey = keyManager.loadFromStorage();
     hasStoredKey = !!storedKey;
 
     // 公開鍵の取得とNostr初期化
-    if (storedKey && keyManager.validate(storedKey)) {
+    if (storedKey && keyManager.isValidNsec(storedKey)) {
       const { hex } = keyManager.derivePublicKey(storedKey);
       publicKeyHex = hex;
       await initializeNostr(hex);
