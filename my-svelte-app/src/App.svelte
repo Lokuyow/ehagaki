@@ -5,11 +5,15 @@
   import "./i18n";
   import { _, locale } from "svelte-i18n";
   import languageIcon from "./assets/language-solid.svg";
+  import { getPublicKey, nip19 } from "nostr-tools";
 
   let showDialog = false;
   let secretKey = "";
   let errorMessage = "";
   let hasStoredKey = false;
+  let publicKeyHex = "";
+  let publicKeyNpub = "";
+  let publicKeyNprofile = "";
 
   // 言語切替用
   function toggleLang() {
@@ -20,9 +24,25 @@
     return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
   }
 
+  function derivePublicKeyFromSecret(nsec: string): { hex: string; npub: string; nprofile: string } {
+    try {
+      const { type, data } = nip19.decode(nsec);
+      if (type !== "nsec") return { hex: "", npub: "", nprofile: "" };
+      const hex = getPublicKey(data as Uint8Array);
+      const npub = nip19.npubEncode(hex);
+      const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
+      return { hex, npub, nprofile };
+    } catch (e) {
+      return { hex: "", npub: "", nprofile: "" };
+    }
+  }
+
   function saveSecretKey() {
     if (!validateSecretKey(secretKey)) {
       errorMessage = "invalid_key";
+      publicKeyHex = "";
+      publicKeyNpub = "";
+      publicKeyNprofile = "";
       return;
     }
     try {
@@ -30,10 +50,28 @@
       hasStoredKey = true;
       showDialog = false;
       errorMessage = "";
+      const { hex, npub, nprofile } = derivePublicKeyFromSecret(secretKey);
+      publicKeyHex = hex;
+      publicKeyNpub = npub;
+      publicKeyNprofile = nprofile;
     } catch (error) {
       errorMessage = "error_saving";
+      publicKeyHex = "";
+      publicKeyNpub = "";
+      publicKeyNprofile = "";
       console.error("保存エラー:", error);
     }
+  }
+
+  $: if (secretKey && validateSecretKey(secretKey)) {
+    const { hex, npub, nprofile } = derivePublicKeyFromSecret(secretKey);
+    publicKeyHex = hex;
+    publicKeyNpub = npub;
+    publicKeyNprofile = nprofile;
+  } else {
+    publicKeyHex = "";
+    publicKeyNpub = "";
+    publicKeyNprofile = "";
   }
 
   function showLoginDialog() {
@@ -64,6 +102,7 @@
     rxNostr.setDefaultRelays([
       "wss://purplepag.es/",
       "wss://directory.yabu.me/",
+      "wss://indexer.coracle.social",
       "wss://user.kindpag.es/",
     ]);
     const rxReq = createRxForwardReq();
@@ -72,7 +111,7 @@
       console.log(packet);
     });
 
-    rxReq.emit({ kinds: [1] });
+    rxReq.emit({ kinds: [10002] });
 
     const timer = setTimeout(() => {
       subscription.unsubscribe();
@@ -106,6 +145,16 @@
             placeholder="nsec1~"
             class="secret-input"
           />
+          {#if publicKeyNpub}
+            <p>
+              公開鍵(npub): <span style="word-break:break-all">{publicKeyNpub}</span>
+            </p>
+          {/if}
+          {#if publicKeyNprofile}
+            <p>
+              公開鍵(nprofile): <span style="word-break:break-all">{publicKeyNprofile}</span>
+            </p>
+          {/if}
           {#if errorMessage}
             <p class="error-message">{$_(errorMessage)}</p>
           {/if}
