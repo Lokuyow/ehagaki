@@ -395,8 +395,6 @@
     white-space: pre-wrap;
     word-break: break-word;
     color: #222;
-    min-height: 1.5em;
-    position: relative;
   }
   .preview-placeholder {
     color: #bbb;
