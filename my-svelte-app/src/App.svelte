@@ -20,6 +20,19 @@
   let publicKeyNpub = "";
   let publicKeyNprofile = "";
 
+  // プロフィール情報
+  interface ProfileData {
+    name: string;
+    picture: string;
+  }
+
+  let profileData: ProfileData = {
+    name: "",
+    picture: ""
+  };
+  
+  let profileLoaded = false;
+
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
   
@@ -91,6 +104,68 @@
      */
     loadFromStorage(): string | null {
       return localStorage.getItem("nostr-secret-key");
+    }
+  };
+
+  // プロフィール管理関連のロジックをオブジェクトにまとめる
+  const profileManager = {
+    saveToLocalStorage(pubkeyHex: string, profile: ProfileData): void {
+      try {
+        localStorage.setItem(`nostr-profile-${pubkeyHex}`, JSON.stringify(profile));
+        console.log("プロフィール情報をローカルストレージに保存:", pubkeyHex);
+      } catch (e) {
+        console.error("プロフィール情報の保存に失敗:", e);
+      }
+    },
+
+    getFromLocalStorage(pubkeyHex: string): ProfileData | null {
+      try {
+        const profile = localStorage.getItem(`nostr-profile-${pubkeyHex}`);
+        return profile ? JSON.parse(profile) : null;
+      } catch (e) {
+        console.error("プロフィール情報の取得に失敗:", e);
+        return null;
+      }
+    },
+
+    async fetchProfileData(pubkeyHex: string): Promise<ProfileData | null> {
+      // まずローカルストレージをチェック
+      const cachedProfile = this.getFromLocalStorage(pubkeyHex);
+      if (cachedProfile) {
+        console.log("ローカルストレージからプロフィール情報を取得:", cachedProfile);
+        return cachedProfile;
+      }
+      
+      return new Promise((resolve) => {
+        const rxReq = createRxForwardReq();
+        
+        const subscription = rxNostr.use(rxReq).subscribe((packet) => {
+          if (packet.event?.kind === 0 && packet.event.pubkey === pubkeyHex) {
+            try {
+              // kind 0のcontentはJSONなのでパース
+              const content = JSON.parse(packet.event.content);
+              const profile: ProfileData = {
+                name: content.name || "",
+                picture: content.picture || ""
+              };
+              
+              console.log("Kind 0からプロフィール情報を取得:", profile);
+              this.saveToLocalStorage(pubkeyHex, profile);
+              subscription.unsubscribe();
+              resolve(profile);
+            } catch (e) {
+              console.error("Kind 0のパースエラー:", e);
+            }
+          }
+        });
+
+        rxReq.emit({ authors: [pubkeyHex], kinds: [0] });
+
+        setTimeout(() => {
+          subscription.unsubscribe();
+          resolve(null);
+        }, 5000);
+      });
     }
   };
 
@@ -236,6 +311,13 @@
         relayManager.setBootstrapRelays();
         await relayManager.fetchUserRelays(pubkeyHex);
       }
+      
+      // プロフィール情報の取得
+      const profile = await profileManager.fetchProfileData(pubkeyHex);
+      if (profile) {
+        profileData = profile;
+        profileLoaded = true;
+      }
     } else {
       // 秘密鍵がない場合はブートストラップリレーを設定
       relayManager.setBootstrapRelays();
@@ -261,9 +343,14 @@
       publicKeyNpub = npub;
       publicKeyNprofile = nprofile;
 
-      // ログイン成功後、ユーザーのリレーリストを取得
+      // ログイン成功後、ユーザーのリレーリストとプロフィールを取得
       if (publicKeyHex) {
         await relayManager.fetchUserRelays(publicKeyHex);
+        const profile = await profileManager.fetchProfileData(publicKeyHex);
+        if (profile) {
+          profileData = profile;
+          profileLoaded = true;
+        }
       }
     } else {
       errorMessage = "error_saving";
@@ -326,9 +413,22 @@
     <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
       <img src={languageIcon} alt="Language" class="lang-icon" />
     </button>
-    <button class="login-btn" on:click={showLoginDialog}>
-      {hasStoredKey ? $_("logged_in") : $_("login")}
-    </button>
+    
+    <!-- ログインボタンまたはプロフィール表示 -->
+    {#if hasStoredKey && profileLoaded && profileData.picture}
+      <div class="profile-display">
+        <img 
+          src={profileData.picture} 
+          alt={profileData.name || "User"} 
+          class="profile-picture" 
+        />
+        <span class="profile-name">{profileData.name || "User"}</span>
+      </div>
+    {:else}
+      <button class="login-btn" on:click={showLoginDialog}>
+        {hasStoredKey ? $_("logged_in") : $_("login")}
+      </button>
+    {/if}
 
     {#if showDialog}
       <div class="dialog-overlay">
@@ -395,6 +495,38 @@
   }
   .login-btn:hover {
     background: #535bf2;
+  }
+
+  /* プロフィール表示のスタイル */
+  .profile-display {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 20px;
+    padding: 5px 12px 5px 5px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+  
+  .profile-picture {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+  
+  .profile-name {
+    font-size: 0.9em;
+    font-weight: 500;
+    color: #333;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* ダイアログのスタイル */
