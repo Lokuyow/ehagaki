@@ -15,6 +15,9 @@
   let publicKeyNpub = "";
   let publicKeyNprofile = "";
 
+  // rxNostrインスタンスをグローバルに保持
+  let rxNostr: ReturnType<typeof createRxNostr>;
+
   // 言語切替用
   function toggleLang() {
     locale.set($locale === "ja" ? "en" : "ja");
@@ -24,7 +27,11 @@
     return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
   }
 
-  function derivePublicKeyFromSecret(nsec: string): { hex: string; npub: string; nprofile: string } {
+  function derivePublicKeyFromSecret(nsec: string): {
+    hex: string;
+    npub: string;
+    nprofile: string;
+  } {
     try {
       const { type, data } = nip19.decode(nsec);
       if (type !== "nsec") return { hex: "", npub: "", nprofile: "" };
@@ -37,7 +44,107 @@
     }
   }
 
-  function saveSecretKey() {
+  // ユーザーのリレーリストを取得する関数
+  async function fetchUserRelays(pubkeyHex: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      // まずkind 10002からリレーリストを取得
+      const rxReq10002 = createRxForwardReq();
+      let found10002 = false;
+
+      const subscription10002 = rxNostr.use(rxReq10002).subscribe((packet) => {
+        if (
+          packet.event &&
+          packet.event.kind === 10002 &&
+          packet.event.pubkey === pubkeyHex
+        ) {
+          found10002 = true;
+          try {
+            // kind 10002からリレーと読み書き権限を取得
+            const relayConfigs: { [url: string]: { read: boolean; write: boolean } } = {};
+            
+            packet.event.tags
+              .filter((tag) => tag.length >= 2 && tag[0] === "r")
+              .forEach((tag) => {
+                const url = tag[1];
+                let read = true;  // デフォルトは読み書き両方許可
+                let write = true;
+                
+                // 明示的に指定されている場合
+                if (tag.length > 2) {
+                  // ["r", "wss://...", "read"] または ["r", "wss://...", "write"]
+                  if (tag.length === 3) {
+                    if (tag[2] === "read") {
+                      write = false;
+                    } else if (tag[2] === "write") {
+                      read = false;
+                    }
+                  }
+                  // ["r", "wss://...", "read", "write"] の形式も処理
+                  else {
+                    read = tag.includes("read");
+                    write = tag.includes("write");
+                  }
+                }
+                
+                relayConfigs[url] = { read, write };
+              });
+            
+            if (Object.keys(relayConfigs).length > 0) {
+              rxNostr.setDefaultRelays(relayConfigs);
+              console.log("Kind 10002からリレーを設定:", relayConfigs);
+              subscription10002.unsubscribe();
+              resolve(true);
+            }
+          } catch (e) {
+            console.error("Kind 10002のパースエラー:", e);
+          }
+        }
+      });
+
+      // kind 10002のイベントをリクエスト
+      rxReq10002.emit({ authors: [pubkeyHex], kinds: [10002] });
+
+      // 一定時間待機後、kind 10002が見つからなければkind 3を試す
+      setTimeout(() => {
+        subscription10002.unsubscribe();
+
+        if (!found10002) {
+          const rxReq3 = createRxForwardReq();
+
+          const subscription3 = rxNostr.use(rxReq3).subscribe((packet) => {
+            if (
+              packet.event &&
+              packet.event.kind === 3 &&
+              packet.event.pubkey === pubkeyHex
+            ) {
+              try {
+                const content = JSON.parse(packet.event.content);
+                if (content.relays && Array.isArray(content.relays)) {
+                  rxNostr.setDefaultRelays(content.relays);
+                  console.log("Kind 3からリレーを設定:", content.relays);
+                  subscription3.unsubscribe();
+                  resolve(true);
+                }
+              } catch (e) {
+                console.error("Kind 3のパースエラー:", e);
+              }
+            }
+          });
+
+          // kind 3のイベントをリクエスト
+          rxReq3.emit({ authors: [pubkeyHex], kinds: [3] });
+
+          // 一定時間後にサブスクリプションを解除
+          setTimeout(() => {
+            subscription3.unsubscribe();
+            resolve(false);
+          }, 5000);
+        }
+      }, 5000);
+    });
+  }
+
+  async function saveSecretKey() {
     if (!validateSecretKey(secretKey)) {
       errorMessage = "invalid_key";
       publicKeyHex = "";
@@ -54,6 +161,11 @@
       publicKeyHex = hex;
       publicKeyNpub = npub;
       publicKeyNprofile = nprofile;
+
+      // ログイン成功後、ユーザーのリレーリストを取得
+      if (publicKeyHex) {
+        await fetchUserRelays(publicKeyHex);
+      }
     } catch (error) {
       errorMessage = "error_saving";
       publicKeyHex = "";
@@ -98,29 +210,26 @@
     const storedKey = localStorage.getItem("nostr-secret-key");
     hasStoredKey = !!storedKey;
 
-    const rxNostr = createRxNostr({ verifier });
+    // rxNostrインスタンスを初期化し、ブートストラップリレーを設定
+    rxNostr = createRxNostr({ verifier });
     rxNostr.setDefaultRelays([
       "wss://purplepag.es/",
       "wss://directory.yabu.me/",
       "wss://indexer.coracle.social",
       "wss://user.kindpag.es/",
     ]);
-    const rxReq = createRxForwardReq();
 
-    const subscription = rxNostr.use(rxReq).subscribe((packet) => {
-      console.log(packet);
-    });
+    // ストアされた鍵がある場合は公開鍵を取得し、リレーリストを読み込む
+    (async () => {
+      if (storedKey && validateSecretKey(storedKey)) {
+        const { hex } = derivePublicKeyFromSecret(storedKey);
+        publicKeyHex = hex;
 
-    rxReq.emit({ kinds: [10002] });
-
-    const timer = setTimeout(() => {
-      subscription.unsubscribe();
-    }, 10 * 1000);
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timer);
-    };
+        if (publicKeyHex) {
+          await fetchUserRelays(publicKeyHex);
+        }
+      }
+    })();
   });
 </script>
 
@@ -147,12 +256,16 @@
           />
           {#if publicKeyNpub}
             <p>
-              公開鍵(npub): <span style="word-break:break-all">{publicKeyNpub}</span>
+              公開鍵(npub): <span style="word-break:break-all"
+                >{publicKeyNpub}</span
+              >
             </p>
           {/if}
           {#if publicKeyNprofile}
             <p>
-              公開鍵(nprofile): <span style="word-break:break-all">{publicKeyNprofile}</span>
+              公開鍵(nprofile): <span style="word-break:break-all"
+                >{publicKeyNprofile}</span
+              >
             </p>
           {/if}
           {#if errorMessage}
