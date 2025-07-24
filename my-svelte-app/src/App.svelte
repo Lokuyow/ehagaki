@@ -6,6 +6,8 @@
   import { _, locale } from "svelte-i18n";
   import languageIcon from "./assets/language-solid.svg";
   import { getPublicKey, nip19 } from "nostr-tools";
+  import { ProfileManager, type ProfileData } from "./lib/profileManager";
+  import ProfileComponent from "./components/ProfileComponent.svelte";
 
   // UI状態管理
   let showDialog = false;
@@ -21,11 +23,6 @@
   let publicKeyNprofile = "";
 
   // プロフィール情報
-  interface ProfileData {
-    name: string;
-    picture: string;
-  }
-
   let profileData: ProfileData = {
     name: "",
     picture: ""
@@ -35,6 +32,9 @@
 
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
+  
+  // プロフィールマネージャーインスタンス
+  let profileManager: ProfileManager;
   
   // ブートストラップリレーの定義（一箇所に集約）
   const BOOTSTRAP_RELAYS = [
@@ -104,68 +104,6 @@
      */
     loadFromStorage(): string | null {
       return localStorage.getItem("nostr-secret-key");
-    }
-  };
-
-  // プロフィール管理関連のロジックをオブジェクトにまとめる
-  const profileManager = {
-    saveToLocalStorage(pubkeyHex: string, profile: ProfileData): void {
-      try {
-        localStorage.setItem(`nostr-profile-${pubkeyHex}`, JSON.stringify(profile));
-        console.log("プロフィール情報をローカルストレージに保存:", pubkeyHex);
-      } catch (e) {
-        console.error("プロフィール情報の保存に失敗:", e);
-      }
-    },
-
-    getFromLocalStorage(pubkeyHex: string): ProfileData | null {
-      try {
-        const profile = localStorage.getItem(`nostr-profile-${pubkeyHex}`);
-        return profile ? JSON.parse(profile) : null;
-      } catch (e) {
-        console.error("プロフィール情報の取得に失敗:", e);
-        return null;
-      }
-    },
-
-    async fetchProfileData(pubkeyHex: string): Promise<ProfileData | null> {
-      // まずローカルストレージをチェック
-      const cachedProfile = this.getFromLocalStorage(pubkeyHex);
-      if (cachedProfile) {
-        console.log("ローカルストレージからプロフィール情報を取得:", cachedProfile);
-        return cachedProfile;
-      }
-      
-      return new Promise((resolve) => {
-        const rxReq = createRxForwardReq();
-        
-        const subscription = rxNostr.use(rxReq).subscribe((packet) => {
-          if (packet.event?.kind === 0 && packet.event.pubkey === pubkeyHex) {
-            try {
-              // kind 0のcontentはJSONなのでパース
-              const content = JSON.parse(packet.event.content);
-              const profile: ProfileData = {
-                name: content.name || "",
-                picture: content.picture || ""
-              };
-              
-              console.log("Kind 0からプロフィール情報を取得:", profile);
-              this.saveToLocalStorage(pubkeyHex, profile);
-              subscription.unsubscribe();
-              resolve(profile);
-            } catch (e) {
-              console.error("Kind 0のパースエラー:", e);
-            }
-          }
-        });
-
-        rxReq.emit({ authors: [pubkeyHex], kinds: [0] });
-
-        setTimeout(() => {
-          subscription.unsubscribe();
-          resolve(null);
-        }, 5000);
-      });
     }
   };
 
@@ -297,6 +235,8 @@
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
+    // プロフィールマネージャーの初期化
+    profileManager = new ProfileManager(rxNostr);
     
     if (pubkeyHex) {
       // ローカルストレージからリレーリストを取得
@@ -415,20 +355,12 @@
     </button>
     
     <!-- ログインボタンまたはプロフィール表示 -->
-    {#if hasStoredKey && profileLoaded && profileData.picture}
-      <div class="profile-display">
-        <img 
-          src={profileData.picture} 
-          alt={profileData.name || "User"} 
-          class="profile-picture" 
-        />
-        <span class="profile-name">{profileData.name || "User"}</span>
-      </div>
-    {:else}
-      <button class="login-btn" on:click={showLoginDialog}>
-        {hasStoredKey ? $_("logged_in") : $_("login")}
-      </button>
-    {/if}
+    <ProfileComponent 
+      {profileData} 
+      {profileLoaded} 
+      {hasStoredKey} 
+      {showLoginDialog} 
+    />
 
     {#if showDialog}
       <div class="dialog-overlay">
@@ -478,56 +410,8 @@
 {/if}
 
 <style>
-  .login-btn {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    padding: 0.5em 1.2em;
-    font-size: 1em;
-    border: none;
-    border-radius: 4px;
-    background: #646cff;
-    color: #fff;
-    cursor: pointer;
-    z-index: 10;
-    box-shadow: 0 2px 8px #0001;
-    transition: background 0.2s;
-  }
-  .login-btn:hover {
-    background: #535bf2;
-  }
-
-  /* プロフィール表示のスタイル */
-  .profile-display {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    z-index: 10;
-    background: rgba(255, 255, 255, 0.8);
-    border-radius: 20px;
-    padding: 5px 12px 5px 5px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-  
-  .profile-picture {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    object-fit: cover;
-  }
-  
-  .profile-name {
-    font-size: 0.9em;
-    font-weight: 500;
-    color: #333;
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  /* プロフィール表示関連のスタイルはProfileComponentに移動したため削除 */
+  /* .login-btn, .profile-display, .profile-picture, .profile-name のスタイル定義を削除 */
 
   /* ダイアログのスタイル */
   .dialog-overlay {
