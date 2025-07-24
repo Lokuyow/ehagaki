@@ -8,7 +8,7 @@
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import { keyManager } from "./lib/keyManager";
-  import { RelayManager, BOOTSTRAP_RELAYS } from "./lib/relayManager";
+  import { RelayManager } from "./lib/relayManager";
 
   // UI状態管理
   let showDialog = false;
