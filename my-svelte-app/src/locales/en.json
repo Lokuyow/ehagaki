@@ -14,5 +14,7 @@
     "posting": "Posting",
     "post": "Post",
     "enter_your_text": "Enter your text here...",
-    "preview": "Preview"
+    "preview": "Preview",
+    "warning": "Warning",
+    "secret_key_detected": "Your post contains a secret key (nsec1~). Are you sure you want to post?"
 }

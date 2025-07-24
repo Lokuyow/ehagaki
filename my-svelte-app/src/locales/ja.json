@@ -14,5 +14,7 @@
     "posting": "投稿中",
     "post": "投稿",
     "enter_your_text": "ここにテキストを入力してください...",
-    "preview": "プレビュー"
+    "preview": "プレビュー",
+    "warning": "警告",
+    "secret_key_detected": "投稿内容に秘密鍵（nsec1~）が含まれています。本当に投稿しますか？"
 }

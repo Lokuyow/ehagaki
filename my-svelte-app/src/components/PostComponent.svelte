@@ -18,8 +18,19 @@
   
   const dispatch = createEventDispatcher();
   
+  // 警告ダイアログ表示用
+  let showWarningDialog = false;
+  let pendingPostContent = "";
+
   // 投稿送信処理
   async function submitPost() {
+    // nsec1~が含まれているかチェック
+    if (/nsec1[0-9a-zA-Z]+/.test(postContent)) {
+      pendingPostContent = postContent;
+      showWarningDialog = true;
+      return;
+    }
+    
     // PostManagerインスタンスをここで生成
     const postManager = new PostManager(rxNostr);
     const success = await postManager.submitPost(postContent, postStatus);
@@ -47,6 +58,38 @@
         };
       }, 3000);
     }
+  }
+
+  // ダイアログで「投稿」を選択した場合
+  async function confirmPostSecretKey() {
+    showWarningDialog = false;
+    postContent = pendingPostContent;
+    pendingPostContent = "";
+    // nsec1~が含まれていても投稿処理を実行
+    const postManager = new PostManager(rxNostr);
+    const success = await postManager.submitPost(postContent, postStatus);
+    if (success) {
+      postStatus = {
+        ...postStatus,
+        success: true,
+        message: "post_success"
+      };
+      postContent = "";
+      dispatch('postsuccess');
+      setTimeout(() => {
+        postStatus = {
+          ...postStatus,
+          success: false,
+          message: ""
+        };
+      }, 3000);
+    }
+  }
+
+  // ダイアログで「キャンセル」を選択した場合
+  function cancelPostSecretKey() {
+    showWarningDialog = false;
+    pendingPostContent = "";
   }
 
   // 投稿内容が変更された場合のみエラー状態をリセット
@@ -105,6 +148,21 @@
     </button>
   </div>
 </div>
+
+{#if showWarningDialog}
+  <div class="dialog-backdrop">
+    <div class="dialog">
+      <div class="dialog-title">{$_("warning")}</div>
+      <div class="dialog-message">
+        {$_("secret_key_detected")}
+      </div>
+      <div class="dialog-actions">
+        <button class="dialog-cancel" on:click={cancelPostSecretKey}>{$_("cancel")}</button>
+        <button class="dialog-confirm" on:click={confirmPostSecretKey}>{$_("post")}</button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   .post-container {
@@ -198,5 +256,63 @@
   .post-button:disabled {
     background-color: #9ad4f9;
     cursor: not-allowed;
+  }
+
+  /* ダイアログスタイル */
+  .dialog-backdrop {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #0006;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+  }
+  .dialog {
+    background: #fff;
+    border-radius: 8px;
+    padding: 24px 20px;
+    box-shadow: 0 2px 16px #0002;
+    min-width: 300px;
+    max-width: 90vw;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .dialog-title {
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #c62828;
+  }
+  .dialog-message {
+    color: #333;
+    font-size: 1rem;
+  }
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+  .dialog-cancel {
+    background: #eee;
+    color: #333;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  .dialog-confirm {
+    background: #1da1f2;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 6px 16px;
+    cursor: pointer;
+  }
+  .dialog-cancel:hover {
+    background: #ddd;
+  }
+  .dialog-confirm:hover {
+    background: #1a91da;
   }
 </style>
