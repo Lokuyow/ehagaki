@@ -165,11 +165,12 @@
         const subscription = rxNostr.use(rxReq).subscribe((packet) => {
           if (packet.event?.kind === 3 && packet.event.pubkey === pubkeyHex) {
             try {
-              const content = JSON.parse(packet.event.content);
-              if (content.relays && Array.isArray(content.relays)) {
-                rxNostr.setDefaultRelays(content.relays);
-                console.log("Kind 3からリレーを設定:", content.relays);
-                this.saveToLocalStorage(pubkeyHex, content.relays);
+              // contentはJSON文字列なので、まずパース
+              const relayObj = JSON.parse(packet.event.content);
+              if (relayObj && typeof relayObj === "object" && !Array.isArray(relayObj)) {
+                rxNostr.setDefaultRelays(relayObj);
+                console.log("Kind 3からリレーを設定:", relayObj);
+                this.saveToLocalStorage(pubkeyHex, relayObj);
                 subscription.unsubscribe();
                 resolve(true);
               }
