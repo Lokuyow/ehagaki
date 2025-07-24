@@ -5,9 +5,9 @@
   import "./i18n";
   import { _, locale } from "svelte-i18n";
   import languageIcon from "./assets/language-solid.svg";
-  import { getPublicKey, nip19 } from "nostr-tools";
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
+  import { keyManager } from "./lib/keyManager";
 
   // UI状態管理
   let showDialog = false;
@@ -25,17 +25,17 @@
   // プロフィール情報
   let profileData: ProfileData = {
     name: "",
-    picture: ""
+    picture: "",
   };
-  
+
   let profileLoaded = false;
 
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
-  
+
   // プロフィールマネージャーインスタンス
   let profileManager: ProfileManager;
-  
+
   // ブートストラップリレーの定義（一箇所に集約）
   const BOOTSTRAP_RELAYS = [
     "wss://purplepag.es/",
@@ -49,69 +49,14 @@
     locale.set($locale === "ja" ? "en" : "ja");
   }
 
-  // 公開鍵データの型定義
-  interface PublicKeyData {
-    hex: string;
-    npub: string;
-    nprofile: string;
-  }
-
-  // 鍵関連の処理をオブジェクトにまとめる
-  const keyManager = {
-    /**
-     * 秘密鍵がnsec形式として有効かチェックする
-     */
-    isValidNsec(key: string): boolean {
-      return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
-    },
-
-    /**
-     * nsec形式の秘密鍵から公開鍵情報を導出する
-     */
-    derivePublicKey(nsec: string): PublicKeyData {
-      try {
-        const { type, data } = nip19.decode(nsec);
-        if (type !== "nsec") {
-          console.warn("無効なnsec形式です");
-          return { hex: "", npub: "", nprofile: "" };
-        }
-        
-        const hex = getPublicKey(data as Uint8Array);
-        const npub = nip19.npubEncode(hex);
-        const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
-        return { hex, npub, nprofile };
-      } catch (e) {
-        console.error("公開鍵の導出に失敗:", e);
-        return { hex: "", npub: "", nprofile: "" };
-      }
-    },
-
-    /**
-     * 秘密鍵をローカルストレージに保存する
-     */
-    saveToStorage(key: string): boolean {
-      try {
-        localStorage.setItem("nostr-secret-key", key);
-        return true;
-      } catch (e) {
-        console.error("鍵の保存に失敗:", e);
-        return false;
-      }
-    },
-
-    /**
-     * ローカルストレージから秘密鍵を読み込む
-     */
-    loadFromStorage(): string | null {
-      return localStorage.getItem("nostr-secret-key");
-    }
-  };
-
   // リレー管理関連のロジックをオブジェクトにまとめる
   const relayManager = {
     saveToLocalStorage(pubkeyHex: string, relays: any): void {
       try {
-        localStorage.setItem(`nostr-relays-${pubkeyHex}`, JSON.stringify(relays));
+        localStorage.setItem(
+          `nostr-relays-${pubkeyHex}`,
+          JSON.stringify(relays),
+        );
         console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
       } catch (e) {
         console.error("リレーリストの保存に失敗:", e);
@@ -138,7 +83,7 @@
       // まずkind 10002からリレーリストを取得を試みる
       const foundKind10002 = await this.tryFetchKind10002(pubkeyHex);
       if (foundKind10002) return true;
-      
+
       // kind 10002が見つからなければkind 3を試す
       return await this.tryFetchKind3(pubkeyHex);
     },
@@ -150,19 +95,24 @@
         let found = false;
 
         const subscription = rxNostr.use(rxReq).subscribe((packet) => {
-          if (packet.event?.kind === 10002 && packet.event.pubkey === pubkeyHex) {
+          if (
+            packet.event?.kind === 10002 &&
+            packet.event.pubkey === pubkeyHex
+          ) {
             found = true;
             try {
               // リレーと読み書き権限を取得
-              const relayConfigs: { [url: string]: { read: boolean; write: boolean } } = {};
-              
+              const relayConfigs: {
+                [url: string]: { read: boolean; write: boolean };
+              } = {};
+
               packet.event.tags
                 .filter((tag) => tag.length >= 2 && tag[0] === "r")
                 .forEach((tag) => {
                   const url = tag[1];
-                  let read = true;  // デフォルトは読み書き両方許可
+                  let read = true; // デフォルトは読み書き両方許可
                   let write = true;
-                  
+
                   // 明示的に指定されている場合
                   if (tag.length > 2) {
                     if (tag.length === 3) {
@@ -173,10 +123,10 @@
                       write = tag.includes("write");
                     }
                   }
-                  
+
                   relayConfigs[url] = { read, write };
                 });
-              
+
               if (Object.keys(relayConfigs).length > 0) {
                 rxNostr.setDefaultRelays(relayConfigs);
                 console.log("Kind 10002からリレーを設定:", relayConfigs);
@@ -209,7 +159,11 @@
             try {
               // contentはJSON文字列なので、まずパース
               const relayObj = JSON.parse(packet.event.content);
-              if (relayObj && typeof relayObj === "object" && !Array.isArray(relayObj)) {
+              if (
+                relayObj &&
+                typeof relayObj === "object" &&
+                !Array.isArray(relayObj)
+              ) {
                 rxNostr.setDefaultRelays(relayObj);
                 console.log("Kind 3からリレーを設定:", relayObj);
                 this.saveToLocalStorage(pubkeyHex, relayObj);
@@ -229,7 +183,7 @@
           resolve(false);
         }, 5000);
       });
-    }
+    },
   };
 
   // Nostr関連の初期化処理
@@ -237,11 +191,11 @@
     rxNostr = createRxNostr({ verifier });
     // プロフィールマネージャーの初期化
     profileManager = new ProfileManager(rxNostr);
-    
+
     if (pubkeyHex) {
       // ローカルストレージからリレーリストを取得
       const savedRelays = relayManager.getFromLocalStorage(pubkeyHex);
-      
+
       if (savedRelays) {
         // 保存済みのリレーリストがあればそれを使用
         rxNostr.setDefaultRelays(savedRelays);
@@ -251,7 +205,7 @@
         relayManager.setBootstrapRelays();
         await relayManager.fetchUserRelays(pubkeyHex);
       }
-      
+
       // プロフィール情報の取得
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
@@ -272,7 +226,7 @@
       publicKeyNprofile = "";
       return;
     }
-    
+
     const success = keyManager.saveToStorage(secretKey);
     if (success) {
       hasStoredKey = true;
@@ -353,13 +307,13 @@
     <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
       <img src={languageIcon} alt="Language" class="lang-icon" />
     </button>
-    
+
     <!-- ログインボタンまたはプロフィール表示 -->
-    <ProfileComponent 
-      {profileData} 
-      {profileLoaded} 
-      {hasStoredKey} 
-      {showLoginDialog} 
+    <ProfileComponent
+      {profileData}
+      {profileLoaded}
+      {hasStoredKey}
+      {showLoginDialog}
     />
 
     {#if showDialog}
@@ -410,9 +364,6 @@
 {/if}
 
 <style>
-  /* プロフィール表示関連のスタイルはProfileComponentに移動したため削除 */
-  /* .login-btn, .profile-display, .profile-picture, .profile-name のスタイル定義を削除 */
-
   /* ダイアログのスタイル */
   .dialog-overlay {
     position: fixed;
