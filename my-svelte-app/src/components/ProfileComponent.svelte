@@ -25,9 +25,6 @@
 
 <style>
   .login-btn {
-    position: fixed;
-    top: 20px;
-    right: 20px;
     padding: 0.5em 1.2em;
     font-size: 1em;
     border: none;
@@ -45,9 +42,6 @@
 
   /* プロフィール表示のスタイル */
   .profile-display {
-    position: fixed;
-    top: 20px;
-    right: 20px;
     display: flex;
     align-items: center;
     gap: 10px;

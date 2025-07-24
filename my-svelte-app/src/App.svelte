@@ -237,18 +237,18 @@
 
 {#if $locale}
   <main>
-    <!-- 言語切替ボタン（トグル） -->
-    <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
-      <img src={languageIcon} alt="Language" class="lang-icon" />
-    </button>
-
-    <!-- ログインボタンまたはプロフィール表示 -->
-    <ProfileComponent
-      {profileData}
-      {profileLoaded}
-      {hasStoredKey}
-      {showLoginDialog}
-    />
+    <!-- ヘッダー領域 -->
+    <div class="header">
+      <button class="lang-btn" on:click={toggleLang} aria-label="Change language">
+        <img src={languageIcon} alt="Language" class="lang-icon" />
+      </button>
+      <ProfileComponent
+        {profileData}
+        {profileLoaded}
+        {hasStoredKey}
+        {showLoginDialog}
+      />
+    </div>
 
     {#if showDialog}
       <LoginDialog
@@ -261,49 +261,51 @@
       />
     {/if}
 
-    <!-- 投稿入力エリア -->
-    <div class="post-container">
-      <div class="post-preview">
-        <div class="preview-content">
-          {postContent}
+    <!-- メインコンテンツ -->
+    <div class="main-content">
+      <!-- 投稿入力エリア -->
+      <div class="post-container">
+        <div class="post-preview">
+          <div class="preview-content">
+            {postContent}
+          </div>
+        </div>
+
+        <textarea
+          class="post-input"
+          bind:value={postContent}
+          placeholder={$_("enter_your_text")}
+          rows="5"
+          disabled={postStatus.sending}
+        ></textarea>
+
+        <div class="post-actions">
+          {#if postStatus.error}
+            <div class="post-status error">
+              {$_(postStatus.message)}
+            </div>
+          {/if}
+          
+          {#if postStatus.success}
+            <div class="post-status success">
+              {$_(postStatus.message)}
+            </div>
+          {/if}
+          
+          <button
+            class="post-button"
+            disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
+            on:click={submitPost}
+          >
+            {#if postStatus.sending}
+              {$_("posting")}...
+            {:else}
+              {$_("post")}
+            {/if}
+          </button>
         </div>
       </div>
-
-      <textarea
-        class="post-input"
-        bind:value={postContent}
-        placeholder={$_("enter_your_text")}
-        rows="5"
-        disabled={postStatus.sending}
-      ></textarea>
-
-      <div class="post-actions">
-        {#if postStatus.error}
-          <div class="post-status error">
-            {$_(postStatus.message)}
-          </div>
-        {/if}
-        
-        {#if postStatus.success}
-          <div class="post-status success">
-            {$_(postStatus.message)}
-          </div>
-        {/if}
-        
-        <button
-          class="post-button"
-          disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
-          on:click={submitPost}
-        >
-          {#if postStatus.sending}
-            {$_("posting")}...
-          {:else}
-            {$_("post")}
-          {/if}
-        </button>
-      </div>
     </div>
-
     <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
   </main>
 {/if}
@@ -312,11 +314,19 @@
   main {
     position: relative;
   }
+  .header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 16px 8px 0 8px;
+    box-sizing: border-box;
+    background: transparent;
+  }
   .lang-btn {
-    position: fixed;
-    top: 20px;
-    left: 20px;
-    z-index: 12;
+    position: static;
+    /* 位置をheader内に */
     background: #fff;
     border: 1px solid #ccc;
     border-radius: 50%;
@@ -346,13 +356,20 @@
     height: 24px;
     display: block;
   }
+  .main-content {
+    margin-top: 24px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
 
   /* 投稿エリアのスタイル */
   .post-container {
     max-width: 600px;
     width: 100%;
     margin: 20px auto;
-    padding: 0 15px;
+    /* padding: 0 15px; */
     display: flex;
     flex-direction: column;
     align-items: center;
