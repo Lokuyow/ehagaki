@@ -44,6 +44,29 @@
     }
   }
 
+  // リレーリストをローカルストレージに保存する関数
+  function saveRelaysToLocalStorage(pubkeyHex: string, relays: any) {
+    try {
+      localStorage.setItem(`nostr-relays-${pubkeyHex}`, JSON.stringify(relays));
+      console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
+    } catch (e) {
+      console.error("リレーリストの保存に失敗:", e);
+    }
+  }
+
+  // ローカルストレージからリレーリストを取得する関数
+  function getRelaysFromLocalStorage(pubkeyHex: string): any {
+    try {
+      const relays = localStorage.getItem(`nostr-relays-${pubkeyHex}`);
+      if (relays) {
+        return JSON.parse(relays);
+      }
+    } catch (e) {
+      console.error("リレーリストの取得に失敗:", e);
+    }
+    return null;
+  }
+
   // ユーザーのリレーリストを取得する関数
   async function fetchUserRelays(pubkeyHex: string): Promise<boolean> {
     return new Promise((resolve) => {
@@ -92,6 +115,8 @@
             if (Object.keys(relayConfigs).length > 0) {
               rxNostr.setDefaultRelays(relayConfigs);
               console.log("Kind 10002からリレーを設定:", relayConfigs);
+              // リレーリストをローカルストレージに保存
+              saveRelaysToLocalStorage(pubkeyHex, relayConfigs);
               subscription10002.unsubscribe();
               resolve(true);
             }
@@ -122,6 +147,8 @@
                 if (content.relays && Array.isArray(content.relays)) {
                   rxNostr.setDefaultRelays(content.relays);
                   console.log("Kind 3からリレーを設定:", content.relays);
+                  // リレーリストをローカルストレージに保存
+                  saveRelaysToLocalStorage(pubkeyHex, content.relays);
                   subscription3.unsubscribe();
                   resolve(true);
                 }
@@ -210,14 +237,8 @@
     const storedKey = localStorage.getItem("nostr-secret-key");
     hasStoredKey = !!storedKey;
 
-    // rxNostrインスタンスを初期化し、ブートストラップリレーを設定
+    // rxNostrインスタンスを初期化
     rxNostr = createRxNostr({ verifier });
-    rxNostr.setDefaultRelays([
-      "wss://purplepag.es/",
-      "wss://directory.yabu.me/",
-      "wss://indexer.coracle.social",
-      "wss://user.kindpag.es/",
-    ]);
 
     // ストアされた鍵がある場合は公開鍵を取得し、リレーリストを読み込む
     (async () => {
@@ -226,8 +247,32 @@
         publicKeyHex = hex;
 
         if (publicKeyHex) {
-          await fetchUserRelays(publicKeyHex);
+          // ローカルストレージからリレーリストを取得
+          const savedRelays = getRelaysFromLocalStorage(publicKeyHex);
+          
+          if (savedRelays) {
+            // 保存済みのリレーリストがあればそれを使用
+            rxNostr.setDefaultRelays(savedRelays);
+            console.log("ローカルストレージのリレーリストを使用:", savedRelays);
+          } else {
+            // なければブートストラップリレーを設定してからユーザーのリレーを取得
+            rxNostr.setDefaultRelays([
+              "wss://purplepag.es/",
+              "wss://directory.yabu.me/",
+              "wss://indexer.coracle.social",
+              "wss://user.kindpag.es/",
+            ]);
+            await fetchUserRelays(publicKeyHex);
+          }
         }
+      } else {
+        // 秘密鍵がない場合はブートストラップリレーを設定
+        rxNostr.setDefaultRelays([
+          "wss://purplepag.es/",
+          "wss://directory.yabu.me/",
+          "wss://indexer.coracle.social",
+          "wss://user.kindpag.es/",
+        ]);
       }
     })();
   });
