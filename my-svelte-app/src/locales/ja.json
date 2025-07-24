@@ -6,5 +6,13 @@
     "save": "保存",
     "cancel": "キャンセル",
     "invalid_key": "無効な秘密鍵形式です。nsec形式を入力してください。",
-    "error_saving": "保存中にエラーが発生しました。"
+    "error_saving": "保存中にエラーが発生しました。",
+    "key_not_found": "秘密鍵が見つかりません。",
+    "login_required": "投稿にはログインが必要です。",
+    "post_success": "投稿が完了しました！",
+    "post_error": "投稿に失敗しました。",
+    "posting": "投稿中",
+    "post": "投稿",
+    "enter_your_text": "ここにテキストを入力してください...",
+    "preview": "プレビュー"
 }

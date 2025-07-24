@@ -267,7 +267,11 @@
       <div class="post-container">
         <div class="post-preview">
           <div class="preview-content">
-            {postContent}
+            {#if postContent.trim()}
+              {postContent}
+            {:else}
+              <span class="preview-placeholder">{$_("preview")}</span>
+            {/if}
           </div>
         </div>
 
@@ -391,6 +395,14 @@
     white-space: pre-wrap;
     word-break: break-word;
     color: #222;
+    min-height: 1.5em;
+    position: relative;
+  }
+  .preview-placeholder {
+    color: #bbb;
+    font-style: italic;
+    user-select: none;
+    pointer-events: none;
   }
 
   .post-input {

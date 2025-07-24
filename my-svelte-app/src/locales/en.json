@@ -6,5 +6,13 @@
     "save": "Save",
     "cancel": "Cancel",
     "invalid_key": "Invalid secret key format. Please enter nsec format.",
-    "error_saving": "An error occurred while saving."
+    "error_saving": "An error occurred while saving.",
+    "key_not_found": "Secret key not found.",
+    "login_required": "Login is required to post.",
+    "post_success": "Posted successfully!",
+    "post_error": "Failed to post.",
+    "posting": "Posting",
+    "post": "Post",
+    "enter_your_text": "Enter your text here...",
+    "preview": "Preview"
 }
