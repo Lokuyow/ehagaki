@@ -189,9 +189,6 @@
       />
     {/if}
 
-    <!-- サイトタイトル -->
-    <h1 class="site-title">eHagaki</h1>
-
     <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
   </main>
 {/if}
@@ -233,14 +230,5 @@
     width: 24px;
     height: 24px;
     display: block;
-  }
-
-  .site-title {
-    text-align: center;
-    font-size: 2.5rem;
-    margin: 2.5rem 0 1.5rem 0;
-    font-weight: bold;
-    letter-spacing: 0.08em;
-    color: #646cff;
   }
 </style>
