@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createRxNostr } from "rx-nostr";
-  import { verifier, seckeySigner } from "@rx-nostr/crypto"; // seckeySigner を追加
+  import { verifier } from "@rx-nostr/crypto"; 
   import "./i18n";
   import { _, locale } from "svelte-i18n";
   import languageIcon from "./assets/language-solid.svg";
@@ -10,7 +10,7 @@
   import LoginDialog from "./components/LoginDialog.svelte";
   import { keyManager } from "./lib/keyManager";
   import { RelayManager } from "./lib/relayManager";
-  import { firstValueFrom } from "rxjs"; // 追加
+  import PostComponent from "./components/PostComponent.svelte"; // 追加
 
   // UI状態管理
   let showDialog = false;
@@ -41,16 +41,6 @@
 
   // リレーマネージャーインスタンス
   let relayManager: RelayManager;
-
-  // 投稿機能のための状態変数
-  let postContent = "";
-  let showPreview = true;
-  let postStatus = {
-    sending: false,
-    success: false,
-    error: false,
-    message: ""
-  };
 
   // 言語切替用
   function toggleLang() {
@@ -147,67 +137,6 @@
     errorMessage = "";
   }
 
-  // 投稿送信処理
-  async function submitPost() {
-    if (!postContent.trim()) return;
-    
-    // 認証済みか確認
-    if (!hasStoredKey) {
-      postStatus.error = true;
-      postStatus.message = "login_required";
-      return;
-    }
-    
-    try {
-      postStatus.sending = true;
-      postStatus.success = false;
-      postStatus.error = false;
-      
-      // 秘密鍵を取得
-      const storedKey = keyManager.loadFromStorage();
-      
-      if (!storedKey) {
-        postStatus.error = true;
-        postStatus.message = "key_not_found";
-        return;
-      }
-      
-      // 秘密鍵でsignerを作成
-      const signer = seckeySigner(storedKey);
-      
-      // kind=1のテキスト投稿を作成
-      const event = {
-        kind: 1,
-        content: postContent,
-        tags: [] // 必要に応じてタグを追加可能
-      };
-      
-      // 秘密鍵で署名してイベントを送信
-      await firstValueFrom(rxNostr.send(event, { signer }));
-      
-      // 送信成功
-      postStatus.success = true;
-      postStatus.message = "post_success";
-      
-      // 投稿内容をクリア
-      postContent = "";
-      
-      // 成功メッセージをリセット（3秒後）
-      setTimeout(() => {
-        postStatus.success = false;
-        postStatus.message = "";
-      }, 3000);
-      
-    } catch (err) {
-      // 送信エラー
-      postStatus.error = true;
-      postStatus.message = "post_error";
-      console.error("投稿エラー:", err);
-    } finally {
-      postStatus.sending = false;
-    }
-  }
-
   // ロケール変更時にローカルストレージへ保存
   $: if ($locale) {
     localStorage.setItem("locale", $locale);
@@ -263,52 +192,14 @@
 
     <!-- メインコンテンツ -->
     <div class="main-content">
-      <!-- 投稿入力エリア -->
-      <div class="post-container">
-        <div class="post-preview">
-          <div class="preview-content">
-            {#if postContent.trim()}
-              {postContent}
-            {:else}
-              <span class="preview-placeholder">{$_("preview")}</span>
-            {/if}
-          </div>
-        </div>
-
-        <textarea
-          class="post-input"
-          bind:value={postContent}
-          placeholder={$_("enter_your_text")}
-          rows="5"
-          disabled={postStatus.sending}
-        ></textarea>
-
-        <div class="post-actions">
-          {#if postStatus.error}
-            <div class="post-status error">
-              {$_(postStatus.message)}
-            </div>
-          {/if}
-          
-          {#if postStatus.success}
-            <div class="post-status success">
-              {$_(postStatus.message)}
-            </div>
-          {/if}
-          
-          <button
-            class="post-button"
-            disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
-            on:click={submitPost}
-          >
-            {#if postStatus.sending}
-              {$_("posting")}...
-            {:else}
-              {$_("post")}
-            {/if}
-          </button>
-        </div>
-      </div>
+      <!-- 投稿コンポーネントを使用 -->
+      <PostComponent
+        {rxNostr}
+        {hasStoredKey}
+        on:postsuccess={() => {
+          // 必要に応じて投稿成功時の処理を追加
+        }}
+      />
     </div>
     <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
   </main>
@@ -366,99 +257,5 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-  }
-
-  /* 投稿エリアのスタイル */
-  .post-container {
-    max-width: 600px;
-    width: 100%;
-    margin: 20px auto;
-    /* padding: 0 15px; */
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .post-preview {
-    margin-bottom: 10px;
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background: #f9f9f9;
-    width: 100%;
-    max-width: 600px;
-    min-width: 300px;
-    box-sizing: border-box;
-  }
-
-  .preview-content {
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #222;
-  }
-  .preview-placeholder {
-    color: #bbb;
-    font-style: italic;
-    user-select: none;
-    pointer-events: none;
-  }
-
-  .post-input {
-    width: 100%;
-    max-width: 600px;
-    min-width: 300px;
-    min-height: 120px;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 8px;
-    resize: vertical;
-    font-family: inherit;
-    font-size: 1rem;
-    margin-bottom: 10px;
-    box-sizing: border-box;
-  }
-
-  .post-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    width: 100%;
-  }
-
-  .post-status {
-    padding: 5px 10px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-  }
-
-  .post-status.error {
-    background-color: #ffebee;
-    color: #c62828;
-  }
-
-  .post-status.success {
-    background-color: #e8f5e9;
-    color: #2e7d32;
-  }
-
-  .post-button {
-    padding: 8px 20px;
-    background-color: #1da1f2;
-    color: white;
-    border: none;
-    border-radius: 20px;
-    font-weight: bold;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    min-width: 100px;
-  }
-
-  .post-button:hover:not(:disabled) {
-    background-color: #1a91da;
-  }
-
-  .post-button:disabled {
-    background-color: #9ad4f9;
-    cursor: not-allowed;
   }
 </style>

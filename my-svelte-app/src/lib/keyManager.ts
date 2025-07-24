@@ -52,5 +52,12 @@ export const keyManager = {
    */
   loadFromStorage(): string | null {
     return localStorage.getItem("nostr-secret-key");
+  },
+
+  /**
+   * キーがストレージに存在するか確認する
+   */
+  hasStoredKey(): boolean {
+    return !!this.loadFromStorage();
   }
 };
