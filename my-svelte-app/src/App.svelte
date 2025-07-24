@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { createRxNostr, createRxForwardReq } from "rx-nostr";
+  import { createRxNostr } from "rx-nostr";
   import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
   import { _, locale } from "svelte-i18n";
@@ -8,6 +8,7 @@
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import { keyManager } from "./lib/keyManager";
+  import { RelayManager, BOOTSTRAP_RELAYS } from "./lib/relayManager";
 
   // UI状態管理
   let showDialog = false;
@@ -36,161 +37,21 @@
   // プロフィールマネージャーインスタンス
   let profileManager: ProfileManager;
 
-  // ブートストラップリレーの定義（一箇所に集約）
-  const BOOTSTRAP_RELAYS = [
-    "wss://purplepag.es/",
-    "wss://directory.yabu.me/",
-    "wss://indexer.coracle.social",
-    "wss://user.kindpag.es/",
-  ];
+  // リレーマネージャーインスタンス
+  let relayManager: RelayManager;
 
   // 言語切替用
   function toggleLang() {
     locale.set($locale === "ja" ? "en" : "ja");
   }
 
-  // リレー管理関連のロジックをオブジェクトにまとめる
-  const relayManager = {
-    saveToLocalStorage(pubkeyHex: string, relays: any): void {
-      try {
-        localStorage.setItem(
-          `nostr-relays-${pubkeyHex}`,
-          JSON.stringify(relays),
-        );
-        console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
-      } catch (e) {
-        console.error("リレーリストの保存に失敗:", e);
-      }
-    },
-
-    getFromLocalStorage(pubkeyHex: string): any {
-      try {
-        const relays = localStorage.getItem(`nostr-relays-${pubkeyHex}`);
-        return relays ? JSON.parse(relays) : null;
-      } catch (e) {
-        console.error("リレーリストの取得に失敗:", e);
-        return null;
-      }
-    },
-
-    // ブートストラップリレーを設定
-    setBootstrapRelays(): void {
-      rxNostr.setDefaultRelays(BOOTSTRAP_RELAYS);
-    },
-
-    // ユーザーのリレーリストを取得する関数（簡潔化）
-    async fetchUserRelays(pubkeyHex: string): Promise<boolean> {
-      // まずkind 10002からリレーリストを取得を試みる
-      const foundKind10002 = await this.tryFetchKind10002(pubkeyHex);
-      if (foundKind10002) return true;
-
-      // kind 10002が見つからなければkind 3を試す
-      return await this.tryFetchKind3(pubkeyHex);
-    },
-
-    // Kind 10002からのリレー取得を試みる
-    async tryFetchKind10002(pubkeyHex: string): Promise<boolean> {
-      return new Promise((resolve) => {
-        const rxReq = createRxForwardReq();
-        let found = false;
-
-        const subscription = rxNostr.use(rxReq).subscribe((packet) => {
-          if (
-            packet.event?.kind === 10002 &&
-            packet.event.pubkey === pubkeyHex
-          ) {
-            found = true;
-            try {
-              // リレーと読み書き権限を取得
-              const relayConfigs: {
-                [url: string]: { read: boolean; write: boolean };
-              } = {};
-
-              packet.event.tags
-                .filter((tag) => tag.length >= 2 && tag[0] === "r")
-                .forEach((tag) => {
-                  const url = tag[1];
-                  let read = true; // デフォルトは読み書き両方許可
-                  let write = true;
-
-                  // 明示的に指定されている場合
-                  if (tag.length > 2) {
-                    if (tag.length === 3) {
-                      if (tag[2] === "read") write = false;
-                      else if (tag[2] === "write") read = false;
-                    } else {
-                      read = tag.includes("read");
-                      write = tag.includes("write");
-                    }
-                  }
-
-                  relayConfigs[url] = { read, write };
-                });
-
-              if (Object.keys(relayConfigs).length > 0) {
-                rxNostr.setDefaultRelays(relayConfigs);
-                console.log("Kind 10002からリレーを設定:", relayConfigs);
-                this.saveToLocalStorage(pubkeyHex, relayConfigs);
-                subscription.unsubscribe();
-                resolve(true);
-              }
-            } catch (e) {
-              console.error("Kind 10002のパースエラー:", e);
-            }
-          }
-        });
-
-        rxReq.emit({ authors: [pubkeyHex], kinds: [10002] });
-
-        setTimeout(() => {
-          subscription.unsubscribe();
-          resolve(false);
-        }, 5000);
-      });
-    },
-
-    // Kind 3からのリレー取得を試みる
-    async tryFetchKind3(pubkeyHex: string): Promise<boolean> {
-      return new Promise((resolve) => {
-        const rxReq = createRxForwardReq();
-
-        const subscription = rxNostr.use(rxReq).subscribe((packet) => {
-          if (packet.event?.kind === 3 && packet.event.pubkey === pubkeyHex) {
-            try {
-              // contentはJSON文字列なので、まずパース
-              const relayObj = JSON.parse(packet.event.content);
-              if (
-                relayObj &&
-                typeof relayObj === "object" &&
-                !Array.isArray(relayObj)
-              ) {
-                rxNostr.setDefaultRelays(relayObj);
-                console.log("Kind 3からリレーを設定:", relayObj);
-                this.saveToLocalStorage(pubkeyHex, relayObj);
-                subscription.unsubscribe();
-                resolve(true);
-              }
-            } catch (e) {
-              console.error("Kind 3のパースエラー:", e);
-            }
-          }
-        });
-
-        rxReq.emit({ authors: [pubkeyHex], kinds: [3] });
-
-        setTimeout(() => {
-          subscription.unsubscribe();
-          resolve(false);
-        }, 5000);
-      });
-    },
-  };
-
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
     // プロフィールマネージャーの初期化
     profileManager = new ProfileManager(rxNostr);
+    // リレーマネージャーの初期化
+    relayManager = new RelayManager(rxNostr);
 
     if (pubkeyHex) {
       // ローカルストレージからリレーリストを取得
