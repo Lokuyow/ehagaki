@@ -1,7 +1,8 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import { _ } from 'svelte-i18n';
+  import { _, locale } from 'svelte-i18n';
   import { FileUploadManager } from '../lib/fileUploadManager';
+  import { onMount } from 'svelte';
 
   // イベントディスパッチャー
   const dispatch = createEventDispatcher<{
@@ -16,6 +17,53 @@
   let inputElement: HTMLInputElement;
   let dragOver = false;
   let debugInfo = ""; // デバッグ情報を保持
+
+  // アップロード先候補
+  const uploadEndpoints = [
+    { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
+    { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
+    { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
+    { label: "nostr.build", url: "https://nostr.build/api/v2/nip96/upload" }
+  ];
+
+  function getDefaultEndpoint(loc: string | null | undefined) {
+    if (loc === "ja") return "https://yabu.me/api/v2/media";
+    return "https://nostrcheck.me/api/v2/media";
+  }
+
+  // 初期値をローカルストレージから即時取得
+  // 初期化処理を関数として抽出
+  function initializeEndpoint() {
+    // ローカルストレージから直接取得
+    const saved = localStorage.getItem("uploadEndpoint");
+    console.log("ローカルストレージから読込:", saved);
+    
+    if (saved && uploadEndpoints.some(ep => ep.url === saved)) {
+      return saved;
+    }
+    // デフォルト値を返す
+    const defaultEp = getDefaultEndpoint($locale);
+    console.log("デフォルト値を使用:", defaultEp);
+    return defaultEp;
+  }
+
+  // 初期化関数を呼び出して値をセット
+  let selectedEndpoint: string = initializeEndpoint();
+  
+  onMount(() => {
+    // 初期化時にローカルストレージに保存（デフォルト値の場合）
+    if (!localStorage.getItem("uploadEndpoint")) {
+      localStorage.setItem("uploadEndpoint", selectedEndpoint);
+      console.log("初期値を保存:", selectedEndpoint);
+    }
+    
+    // アップロード先が変更されたときのイベントリスナー
+    window.addEventListener("storage", (event) => {
+      if (event.key === "uploadEndpoint" && event.newValue) {
+        selectedEndpoint = event.newValue;
+      }
+    });
+  });
 
   // ファイル選択ダイアログを開く
   function openFileDialog() {
@@ -65,11 +113,16 @@
     }
     
     try {
-      debugInfo = `ファイル名: ${selectedFile.name}, サイズ: ${selectedFile.size} bytes`;
+      // ローカルストレージから最新の値を取得
+      const endpoint = localStorage.getItem("uploadEndpoint") || selectedEndpoint;
+      console.log('アップロード先:', endpoint);
+      
+      debugInfo = `ファイル名: ${selectedFile.name}, サイズ: ${selectedFile.size} bytes\nアップロード先: ${endpoint}`;
       isUploading = true;
       errorMessage = "";
-      
-      const result = await FileUploadManager.uploadFile(selectedFile);
+
+      // 明示的にエンドポイントを渡す
+      const result = await FileUploadManager.uploadFile(selectedFile, endpoint);
       
       if (result.success && result.url) {
         debugInfo += `\n成功: ${result.url}`;
@@ -94,6 +147,23 @@
       isUploading = false;
     }
   }
+  
+  // 選択変更時の処理を明示的に追加
+  function handleEndpointChange(event: Event) {
+    const selected = (event.target as HTMLSelectElement).value;
+    selectedEndpoint = selected;
+    localStorage.setItem("uploadEndpoint", selected);
+    console.log("アップロード先を変更:", selected);
+  }
+  
+  // 選択が変更されたら保存して更新
+  $: if (selectedEndpoint) {
+    localStorage.setItem("uploadEndpoint", selectedEndpoint);
+    // デバッグ情報更新
+    if (file) {
+      debugInfo = `ファイル名: ${file.name}, サイズ: ${file.size} bytes\nアップロード先: ${selectedEndpoint}`;
+    }
+  }
 </script>
 
 <div 
@@ -104,6 +174,22 @@
   on:drop={handleDrop}
   role="region"
 >
+  <!-- アップロード先選択 -->
+  <div class="endpoint-select">
+    <label for="endpoint">{$_('upload_destination') || 'アップロード先'}:</label>
+    <select
+      id="endpoint"
+      bind:value={selectedEndpoint}
+      on:change={handleEndpointChange}
+      disabled={isUploading}
+      aria-label="アップロード先"
+    >
+      {#each uploadEndpoints as ep}
+        <option value={ep.url}>{ep.label}</option>
+      {/each}
+    </select>
+  </div>
+
   <input 
     type="file"
     accept="image/*"
@@ -219,6 +305,25 @@
   .debug-info pre {
     margin: 0;
     white-space: pre-wrap;
+  }
+  
+  .endpoint-select {
+    margin-bottom: 10px;
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: flex-start;
+  }
+  .endpoint-select label {
+    font-size: 0.95rem;
+    color: #333;
+  }
+  .endpoint-select select {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
   }
   
   @keyframes spin {

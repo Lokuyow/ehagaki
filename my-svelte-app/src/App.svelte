@@ -5,6 +5,7 @@
   import "./i18n";
   import { _, locale } from "svelte-i18n";
   import languageIcon from "./assets/language-solid.svg";
+  import settingsIcon from "./assets/gear-solid-full.svg"; // 設定アイコンを追加（SVGファイルを用意してください）
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
@@ -137,6 +138,57 @@
     errorMessage = "";
   }
 
+  // 設定ダイアログ状態
+  let showSettings = false;
+
+  // アップロード先候補
+  const uploadEndpoints = [
+    { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
+    { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
+    { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
+    { label: "nostr.build", url: "https://nostr.build/api/v2/nip96/upload" }
+  ];
+
+  function getDefaultEndpoint(loc: string | null | undefined) {
+    if (loc === "ja") return "https://yabu.me/api/v2/media";
+    return "https://nostrcheck.me/api/v2/media";
+  }
+
+  let selectedEndpoint: string;
+
+  onMount(() => {
+    // ブラウザの言語設定から初期アップロードエンドポイントを設定
+    const storedLocale = localStorage.getItem("locale");
+    const browserLocale = navigator.language;
+    const effectiveLocale = storedLocale || (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
+    
+    // ローカルストレージからエンドポイントを取得
+    const saved = localStorage.getItem("uploadEndpoint");
+    if (saved && uploadEndpoints.some(ep => ep.url === saved)) {
+      selectedEndpoint = saved;
+    } else {
+      // 言語設定に基づいて適切なエンドポイントを設定
+      selectedEndpoint = getDefaultEndpoint(effectiveLocale);
+    }
+  });
+
+  $: if ($locale) {
+    const saved = localStorage.getItem("uploadEndpoint");
+    if (!saved) {
+      selectedEndpoint = getDefaultEndpoint($locale);
+    }
+  }
+  $: if (selectedEndpoint) {
+    localStorage.setItem("uploadEndpoint", selectedEndpoint);
+  }
+
+  function openSettings() {
+    showSettings = true;
+  }
+  function closeSettings() {
+    showSettings = false;
+  }
+
   // ロケール変更時にローカルストレージへ保存
   $: if ($locale) {
     localStorage.setItem("locale", $locale);
@@ -177,6 +229,10 @@
         {hasStoredKey}
         {showLoginDialog}
       />
+      <!-- 設定ボタン -->
+      <button class="settings-btn" on:click={openSettings} aria-label="設定">
+        <img src={settingsIcon} alt="Settings" class="settings-icon" />
+      </button>
     </div>
 
     {#if showDialog}
@@ -188,6 +244,35 @@
         onClose={closeDialog}
         onSave={saveSecretKey}
       />
+    {/if}
+
+    <!-- 設定ダイアログ -->
+    {#if showSettings}
+      <button
+        type="button"
+        class="modal-backdrop"
+        aria-label="設定ダイアログを閉じる"
+        on:click={closeSettings}
+        tabindex="0"
+      ></button>
+      <div class="modal-dialog" role="dialog" aria-modal="true">
+        <div class="modal-header">
+          <span>アップロード先設定</span>
+          <button class="modal-close" on:click={closeSettings} aria-label="閉じる">&times;</button>
+        </div>
+        <div class="modal-body">
+          <label for="endpoint-select">アップロード先:</label>
+          <select
+            id="endpoint-select"
+            bind:value={selectedEndpoint}
+            style="margin-left: 8px;"
+          >
+            {#each uploadEndpoints as ep}
+              <option value={ep.url}>{ep.label}</option>
+            {/each}
+          </select>
+        </div>
+      </div>
     {/if}
 
     <!-- メインコンテンツ -->
@@ -251,11 +336,89 @@
     height: 24px;
     display: block;
   }
+  .settings-btn {
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    padding: 6px;
+    cursor: pointer;
+    box-shadow: 0 2px 8px #0001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, box-shadow 0.1s, transform 0.1s;
+  }
+  .settings-btn:hover {
+    background: #f0f0f0;
+  }
+  .settings-btn:active {
+    background: #e0e0e0;
+    box-shadow: 0 1px 2px #0002;
+    transform: scale(0.94);
+  }
+  .settings-icon {
+    width: 24px;
+    height: 24px;
+    display: block;
+  }
   .main-content {
     margin-top: 24px;
     width: 100%;
     display: flex;
     flex-direction: column;
     align-items: center;
+  }
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: #0006;
+    z-index: 1000;
+  }
+  .modal-dialog {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    z-index: 1001;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 24px #0002;
+    transform: translate(-50%, -50%);
+    min-width: 320px;
+    max-width: 90vw;
+    padding: 0;
+    animation: fadeIn 0.2s;
+    color: #222; /* 追加: 文字色を明示 */
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #222; /* 追加: 文字色を明示 */
+  }
+  .modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #888;
+    padding: 0 4px;
+    line-height: 1;
+  }
+  .modal-body {
+    padding: 16px;
+    font-size: 1rem;
+    display: flex;
+    align-items: center;
+    color: #222; /* 追加: 文字色を明示 */
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translate(-50%, -46%);}
+    to { opacity: 1; transform: translate(-50%, -50%);}
   }
 </style>

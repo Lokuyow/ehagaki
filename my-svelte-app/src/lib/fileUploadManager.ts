@@ -10,8 +10,8 @@ export interface FileUploadResponse {
 
 // ファイルアップロードマネージャークラス
 export class FileUploadManager {
-  // 修正: 正しいAPIエンドポイントを使用
-  private static readonly NOSTRCHECK_API_URL = "https://nostrcheck.me/api/v2/media";
+  // デフォルトAPIエンドポイント
+  private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
   
   // NIP-98形式の認証イベントを作成
   private static async createAuthEvent(url: string, method: string): Promise<any> {
@@ -37,14 +37,27 @@ export class FileUploadManager {
   }
   
   // ファイルをアップロード
-  public static async uploadFile(file: File): Promise<FileUploadResponse> {
+  public static async uploadFile(
+    file: File,
+    apiUrl: string = FileUploadManager.DEFAULT_API_URL
+  ): Promise<FileUploadResponse> {
     try {
       if (!file) {
         return { success: false, error: "No file selected" };
       }
       
+      // ローカルストレージから直接取得して優先的に使用
+      const savedEndpoint = localStorage.getItem("uploadEndpoint");
+      const finalUrl = savedEndpoint || apiUrl || FileUploadManager.DEFAULT_API_URL;
+      
+      console.log('Upload process:', {
+        savedInStorage: savedEndpoint,
+        passedUrl: apiUrl,
+        usingUrl: finalUrl
+      });
+      
       const authEvent = await this.createAuthEvent(
-        this.NOSTRCHECK_API_URL, 
+        finalUrl, 
         "POST"
       );
       
@@ -56,9 +69,9 @@ export class FileUploadManager {
       // uploadtypeをmediaに設定（NIP-96準拠）
       formData.append('uploadtype', 'media');
       
-      console.log('Uploading file to:', this.NOSTRCHECK_API_URL);
+      console.log('Uploading file to:', finalUrl);
       
-      const response = await fetch(this.NOSTRCHECK_API_URL, {
+      const response = await fetch(finalUrl, {
         method: 'POST',
         headers: {
           'Authorization': authHeader
