@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@rx-nostr/crypto": "^0.0.0",
+    "browser-image-compression": "^2.0.2",
     "nostr-tools": "^2.15.1",
     "rx-nostr": "^3.6.1",
     "svelte-i18n": "^4.0.1"
