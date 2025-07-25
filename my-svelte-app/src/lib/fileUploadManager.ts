@@ -65,7 +65,7 @@ export class FileUploadManager {
           const compressed = await imageCompression(file, {
             maxWidthOrHeight: 1024,
             fileType: "image/webp",
-            initialQuality: 1.0, // 品質100
+            initialQuality: 0.80, // 品質80
             useWebWorker: true,
           });
           // ファイル名をwebp拡張子に変更
