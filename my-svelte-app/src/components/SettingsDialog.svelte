@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { locale } from "svelte-i18n";
+    import { locale, _ } from "svelte-i18n"; // ← 追加
 
     export let show = false;
     export let onClose: () => void;
@@ -63,13 +63,13 @@
     ></button>
     <div class="modal-dialog" role="dialog" aria-modal="true">
         <div class="modal-header">
-            <span>アップロード先設定</span>
+            <span>{$_('upload_destination_settings') || 'アップロード先設定'}</span>
             <button class="modal-close" on:click={onClose} aria-label="閉じる"
                 >&times;</button
             >
         </div>
         <div class="modal-body">
-            <label for="endpoint-select">アップロード先:</label>
+            <label for="endpoint-select">{$_('upload_destination') || 'アップロード先'}:</label>
             <select
                 id="endpoint-select"
                 bind:value={selectedEndpoint}

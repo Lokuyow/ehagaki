@@ -23,5 +23,7 @@
   "uploading": "アップロード中",
   "upload_image": "画像をアップロード",
   "upload_failed": "アップロードに失敗しました",
-  "only_images_allowed": "画像ファイルのみアップロード可能です"
+  "only_images_allowed": "画像ファイルのみアップロード可能です",
+  "upload_destination_settings": "アップロード先設定",
+  "upload_destination": "アップロード先"
 }
