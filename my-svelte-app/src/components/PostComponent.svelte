@@ -3,6 +3,7 @@
   import type { PostStatus } from '../lib/postManager';
   import { PostManager } from '../lib/postManager';
   import { FileUploadManager } from '../lib/fileUploadManager';
+  import imageIcon from '../assets/image-solid-full.svg';
   
   export let rxNostr: any;
   export let hasStoredKey: boolean;
@@ -27,6 +28,7 @@
   let isUploading = false;
   let uploadErrorMessage = "";
   let dragOver = false;
+  let fileInput: HTMLInputElement;
 
   // 画像URLを投稿内容に挿入
   function insertImageUrl(imageUrl: string) {
@@ -60,46 +62,22 @@
     }
   }
 
-  // ファイルアップロード処理
-  async function uploadFile(file: File) {
-    if (!file) return;
-    
-    // 画像ファイルかどうかをチェック
-    if (!file.type.startsWith('image/')) {
-      uploadErrorMessage = $_('only_images_allowed');
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 3000);
-      return;
-    }
-    
-    try {
-      isUploading = true;
-      uploadErrorMessage = "";
-      
-      const result = await FileUploadManager.uploadFile(file);
-      
-      if (result.success && result.url) {
-        // 成功したらURLを挿入
-        insertImageUrl(result.url);
-      } else {
-        uploadErrorMessage = result.error || $_('upload_failed');
-        setTimeout(() => {
-          uploadErrorMessage = "";
-        }, 3000);
-      }
-    } catch (error) {
-      console.error("Upload error:", error);
-      uploadErrorMessage = error instanceof Error ? error.message : String(error);
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 3000);
-    } finally {
-      isUploading = false;
+  // ファイル選択ダイアログを開く
+  function openFileDialog() {
+    if (fileInput) {
+      fileInput.click();
     }
   }
 
-  // ドラッグアンドドロップイベント
+  // ファイルが選択された時
+  async function handleFileSelect(event: Event) {
+    const target = event.target as HTMLInputElement;
+    if (target.files && target.files[0]) {
+      await uploadFile(target.files[0]);
+    }
+  }
+
+  // ドラッグ＆ドロップイベント
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
     dragOver = true;
@@ -118,18 +96,49 @@
     }
   }
 
-  // ファイル選択ダイアログを開く
-  function openFileDialog() {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*';
-    fileInput.onchange = (e) => {
-      const target = e.target as HTMLInputElement;
-      if (target.files && target.files[0]) {
-        uploadFile(target.files[0]);
+  // ファイルアップロード処理
+  async function uploadFile(file: File) {
+    if (!file) return;
+    
+    // 画像ファイルかどうかをチェック
+    if (!file.type.startsWith('image/')) {
+      uploadErrorMessage = $_('only_images_allowed');
+      setTimeout(() => {
+        uploadErrorMessage = "";
+      }, 3000);
+      return;
+    }
+    
+    try {
+      isUploading = true;
+      uploadErrorMessage = "";
+      
+      // ローカルストレージから設定されたエンドポイントを取得
+      const endpoint = localStorage.getItem("uploadEndpoint") || "";
+      const result = await FileUploadManager.uploadFile(file, endpoint);
+      
+      if (result.success && result.url) {
+        // 成功したらURLを挿入
+        insertImageUrl(result.url);
+        // 入力をリセット
+        if (fileInput) {
+          fileInput.value = '';
+        }
+      } else {
+        uploadErrorMessage = result.error || $_('upload_failed');
+        setTimeout(() => {
+          uploadErrorMessage = "";
+        }, 3000);
       }
-    };
-    fileInput.click();
+    } catch (error) {
+      console.error("Upload error:", error);
+      uploadErrorMessage = error instanceof Error ? error.message : String(error);
+      setTimeout(() => {
+        uploadErrorMessage = "";
+      }, 3000);
+    } finally {
+      isUploading = false;
+    }
   }
 
   // 投稿送信処理
@@ -252,7 +261,7 @@
     </div>
   </div>
 
-  <!-- テキストエリアにドラッグアンドドロップ機能を追加 -->
+  <!-- テキストエリア -->
   <div class="textarea-container" class:drag-over={dragOver}>
     <textarea
       class="post-input"
@@ -271,28 +280,21 @@
       </div>
     {/if}
   </div>
-
+  
+  <!-- ファイル入力（非表示） -->
+  <input 
+    type="file"
+    accept="image/*"
+    on:change={handleFileSelect}
+    bind:this={fileInput}
+    style="display: none;"
+  />
+  
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>
   {/if}
 
   <div class="post-actions">
-    <div class="action-buttons">
-      <button 
-        class="upload-button" 
-        on:click={openFileDialog}
-        disabled={!hasStoredKey || postStatus.sending || isUploading}
-        title={$_("upload_image")}
-        aria-label={$_("upload_image")}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-          <circle cx="8.5" cy="8.5" r="1.5"></circle>
-          <polyline points="21 15 16 10 5 21"></polyline>
-        </svg>
-      </button>
-    </div>
-    
     {#if postStatus.error}
       <div class="post-status error">
         {$_(postStatus.message)}
@@ -305,17 +307,28 @@
       </div>
     {/if}
     
-    <button
-      class="post-button"
-      disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
-      on:click={submitPost}
-    >
-      {#if postStatus.sending}
-        {$_("posting")}...
-      {:else}
-        {$_("post")}
-      {/if}
-    </button>
+    <div class="buttons-container">
+      <button
+        class="image-button"
+        disabled={!hasStoredKey || postStatus.sending || isUploading}
+        on:click={openFileDialog}
+        title={$_("upload_image")}
+      >
+        <img src={imageIcon} alt={$_("upload_image")} />
+      </button>
+      
+      <button
+        class="post-button"
+        disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
+        on:click={submitPost}
+      >
+        {#if postStatus.sending}
+          {$_("posting")}...
+        {:else}
+          {$_("post")}
+        {/if}
+      </button>
+    </div>
   </div>
 </div>
 
@@ -376,9 +389,10 @@
     border-radius: 8px;
     transition: border-color 0.2s;
   }
-
+  
   .drag-over {
     border: 2px dashed #1da1f2;
+    background-color: rgba(29, 161, 242, 0.05);
   }
 
   .post-input {
@@ -400,7 +414,7 @@
     outline: none;
     border-color: #1da1f2;
   }
-
+  
   .upload-overlay {
     position: absolute;
     top: 0;
@@ -416,6 +430,21 @@
     z-index: 5;
   }
 
+  .loading-indicator {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(29, 161, 242, 0.3);
+    border-radius: 50%;
+    border-top-color: #1da1f2;
+    animation: spin 1s ease-in-out infinite;
+    margin-bottom: 8px;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
   .post-actions {
     display: flex;
     justify-content: space-between;
@@ -423,12 +452,13 @@
     width: 100%;
   }
   
-  .action-buttons {
+  .buttons-container {
     display: flex;
-    gap: 8px;
+    gap: 10px;
+    align-items: center;
   }
   
-  .upload-button {
+  .image-button {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -441,13 +471,26 @@
     transition: background-color 0.2s;
   }
   
-  .upload-button:hover:not(:disabled) {
+  .image-button img {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .image-button:hover:not(:disabled) {
     background-color: #e0e0e0;
   }
   
-  .upload-button:disabled {
+  .image-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+  
+  .upload-error {
+    color: #c62828;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    width: 100%;
+    text-align: left;
   }
 
   .post-status {
@@ -464,29 +507,6 @@
   .post-status.success {
     background-color: #e8f5e9;
     color: #2e7d32;
-  }
-  
-  .upload-error {
-    color: #c62828;
-    font-size: 0.9rem;
-    margin-bottom: 10px;
-    width: 100%;
-    text-align: left;
-  }
-
-  .loading-indicator {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(29, 161, 242, 0.3);
-    border-radius: 50%;
-    border-top-color: #1da1f2;
-    animation: spin 1s ease-in-out infinite;
-    margin-bottom: 8px;
-  }
-  
-  @keyframes spin {
-    to { transform: rotate(360deg); }
   }
 
   .post-button {
