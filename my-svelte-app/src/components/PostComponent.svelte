@@ -30,6 +30,13 @@
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
+  // 画像サイズ比較表示用
+  let originalImageSize = 0;
+  let compressedImageSize = 0;
+  let originalImageType = "";
+  let compressedImageType = "";
+  let imageSizeInfoVisible = false;
+
   // 画像URLを投稿内容に挿入
   function insertImageUrl(imageUrl: string) {
     // カーソル位置にURLを挿入
@@ -99,7 +106,7 @@
   // ファイルアップロード処理
   async function uploadFile(file: File) {
     if (!file) return;
-    
+
     // 画像ファイルかどうかをチェック
     if (!file.type.startsWith('image/')) {
       uploadErrorMessage = $_('only_images_allowed');
@@ -108,15 +115,53 @@
       }, 3000);
       return;
     }
-    
+
     try {
       isUploading = true;
       uploadErrorMessage = "";
-      
+
+      // サイズ情報初期化
+      originalImageSize = file.size;
+      originalImageType = file.type;
+      compressedImageSize = 0;
+      compressedImageType = "";
+      imageSizeInfoVisible = false;
+
       // ローカルストレージから設定されたエンドポイントを取得
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
-      const result = await FileUploadManager.uploadFile(file, endpoint);
-      
+      // FileUploadManager.uploadFileの返り値にsize情報を追加するため、ここで直接圧縮処理を呼び出す
+      // 既存のuploadFileを一部ここで再現
+      let uploadFile = file;
+      let wasCompressed = false;
+      if (file.type.startsWith("image/")) {
+        try {
+          // browser-image-compressionを直接importして使う
+          // @ts-ignore
+          const imageCompression = (await import("browser-image-compression")).default;
+          const compressed = await imageCompression(file, {
+            maxWidthOrHeight: 1024,
+            fileType: "image/webp",
+            initialQuality: 1.0,
+            useWebWorker: true,
+          });
+          uploadFile = new File(
+            [compressed],
+            file.name.replace(/\.[^.]+$/, "") + ".webp",
+            { type: "image/webp" }
+          );
+          wasCompressed = true;
+        } catch (imgErr) {
+          // 圧縮失敗時は元ファイルをそのまま使う
+          uploadFile = file;
+        }
+      }
+      compressedImageSize = uploadFile.size;
+      compressedImageType = uploadFile.type;
+      imageSizeInfoVisible = true;
+
+      // FileUploadManager.uploadFileを使ってアップロード
+      const result = await FileUploadManager.uploadFile(uploadFile, endpoint);
+
       if (result.success && result.url) {
         // 成功したらURLを挿入
         insertImageUrl(result.url);
@@ -292,6 +337,16 @@
   
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>
+  {/if}
+
+  <!-- 画像サイズ比較表示 -->
+  {#if imageSizeInfoVisible}
+    <div class="image-size-info">
+      <span>
+        データ量: {Math.round(originalImageSize/1024)}KB → {Math.round(compressedImageSize/1024)}KB
+        （{originalImageSize > 0 ? Math.round((compressedImageSize/originalImageSize)*100) : 0}%）
+      </span>
+    </div>
   {/if}
 
   <div class="post-actions">
@@ -596,5 +651,17 @@
     border-radius: 6px;
     box-shadow: 0 1px 4px #0001;
     background: #fff;
+  }
+
+  .image-size-info {
+    width: 100%;
+    text-align: right;
+    font-size: 0.88rem;
+    color: #2e7d32;
+    margin-bottom: 2px;
+    margin-top: -4px;
+    opacity: 0.8;
+    user-select: none;
+    letter-spacing: 0.01em;
   }
 </style>
