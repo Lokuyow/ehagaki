@@ -4,7 +4,6 @@
   import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
   import { _, locale } from "svelte-i18n";
-  import languageIcon from "./assets/language-solid.svg";
   import settingsIcon from "./assets/gear-solid-full.svg";
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
@@ -43,11 +42,6 @@
 
   // リレーマネージャーインスタンス
   let relayManager: RelayManager;
-
-  // 言語切替用
-  function toggleLang() {
-    locale.set($locale === "ja" ? "en" : "ja");
-  }
 
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
@@ -180,13 +174,6 @@
   <main>
     <!-- ヘッダー領域 -->
     <div class="header">
-      <button
-        class="lang-btn"
-        on:click={toggleLang}
-        aria-label="Change language"
-      >
-        <img src={languageIcon} alt="Language" class="lang-icon" />
-      </button>
       <ProfileComponent
         {profileData}
         {profileLoaded}
@@ -241,38 +228,6 @@
     padding: 16px 8px 0 8px;
     box-sizing: border-box;
     background: transparent;
-  }
-  .lang-btn {
-    position: static;
-    /* 位置をheader内に */
-    background: #fff;
-    border: 1px solid #ccc;
-    border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    padding: 6px;
-    cursor: pointer;
-    box-shadow: 0 2px 8px #0001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition:
-      background 0.2s,
-      box-shadow 0.1s,
-      transform 0.1s;
-  }
-  .lang-btn:hover {
-    background: #f0f0f0;
-  }
-  .lang-btn:active {
-    background: #e0e0e0;
-    box-shadow: 0 1px 2px #0002;
-    transform: scale(0.94);
-  }
-  .lang-icon {
-    width: 24px;
-    height: 24px;
-    display: block;
   }
   .settings-btn {
     background: #fff;

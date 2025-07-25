@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { locale, _ } from "svelte-i18n"; // ← 追加
+    import { locale, _ } from "svelte-i18n";
+    import languageIcon from "../assets/language-solid.svg";
 
     export let show = false;
     export let onClose: () => void;
@@ -51,6 +52,11 @@
     $: if (selectedEndpoint) {
         localStorage.setItem("uploadEndpoint", selectedEndpoint);
     }
+
+    // 言語切替用関数を追加
+    function toggleLanguage() {
+        locale.set($locale === "ja" ? "en" : "ja");
+    }
 </script>
 
 {#if show}
@@ -63,22 +69,42 @@
     ></button>
     <div class="modal-dialog" role="dialog" aria-modal="true">
         <div class="modal-header">
-            <span>{$_('upload_destination_settings') || 'アップロード先設定'}</span>
+            <span>{$_("settings") || "設定"}</span>
             <button class="modal-close" on:click={onClose} aria-label="閉じる"
                 >&times;</button
             >
         </div>
         <div class="modal-body">
-            <label for="endpoint-select">{$_('upload_destination') || 'アップロード先'}:</label>
-            <select
-                id="endpoint-select"
-                bind:value={selectedEndpoint}
-                style="margin-left: 8px;"
-            >
-                {#each uploadEndpoints as ep}
-                    <option value={ep.url}>{ep.label}</option>
-                {/each}
-            </select>
+            <!-- 言語設定セクション -->
+            <div class="setting-section">
+                <span class="setting-label">
+                    Language
+                    <img
+                        src={languageIcon}
+                        alt="Language"
+                        class="lang-icon-label"
+                    />
+                </span>
+                <div class="setting-control">
+                    <button class="lang-btn" on:click={toggleLanguage}>
+                        <span>{$locale === "ja" ? "日本語" : "English"}</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- アップロード先設定セクション -->
+            <div class="setting-section">
+                <span class="setting-label"
+                    >{$_("upload_destination") || "アップロード先"}</span
+                >
+                <div class="setting-control">
+                    <select id="endpoint-select" bind:value={selectedEndpoint}>
+                        {#each uploadEndpoints as ep}
+                            <option value={ep.url}>{ep.label}</option>
+                        {/each}
+                    </select>
+                </div>
+            </div>
         </div>
     </div>
 {/if}
@@ -127,9 +153,53 @@
     .modal-body {
         padding: 16px;
         font-size: 1rem;
+        color: #222;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+    .setting-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .setting-label {
+        font-weight: 500;
         display: flex;
         align-items: center;
-        color: #222;
+        gap: 6px;
+    }
+    .lang-icon-label {
+        width: 32px;
+        height: 32px;
+        vertical-align: middle;
+    }
+    .setting-control {
+        display: flex;
+        align-items: center;
+    }
+    .lang-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #3b3b3b;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 6px 12px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .lang-btn:hover {
+        background: #797979;
+    }
+    select {
+        padding: 6px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+        min-width: 200px;
+    }
+    #endpoint-select {
+        font-size: 1rem;
     }
     @keyframes fadeIn {
         from {

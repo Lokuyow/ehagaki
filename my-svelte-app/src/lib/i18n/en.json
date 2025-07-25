@@ -24,6 +24,7 @@
   "upload_image": "Upload Image",
   "upload_failed": "Upload failed",
   "only_images_allowed": "Only image files are allowed",
-  "upload_destination_settings": "Upload destination settings",
-  "upload_destination": "Upload destination"
+  "upload_destination_settings": "Upload Destination Settings",
+  "upload_destination": "Upload Destination",
+  "settings": "Settings"
 }
