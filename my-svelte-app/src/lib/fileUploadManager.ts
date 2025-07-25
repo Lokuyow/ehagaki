@@ -1,5 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
+// 追加: 画像圧縮ライブラリ
+import imageCompression from "browser-image-compression";
 
 // ファイルアップロードの応答型
 export interface FileUploadResponse {
@@ -45,6 +47,28 @@ export class FileUploadManager {
       if (!file) {
         return { success: false, error: "No file selected" };
       }
+
+      // 画像ファイルの場合はwebp変換＋リサイズ
+      let uploadFile = file;
+      if (file.type.startsWith("image/")) {
+        try {
+          const compressed = await imageCompression(file, {
+            maxWidthOrHeight: 1024,
+            fileType: "image/webp",
+            initialQuality: 1.0, // 品質100
+            useWebWorker: true,
+          });
+          // ファイル名をwebp拡張子に変更
+          uploadFile = new File(
+            [compressed],
+            file.name.replace(/\.[^.]+$/, "") + ".webp",
+            { type: "image/webp" }
+          );
+        } catch (imgErr) {
+          console.error("Image compression error:", imgErr);
+          return { success: false, error: "Image compression failed" };
+        }
+      }
       
       // ローカルストレージから直接取得して優先的に使用
       const savedEndpoint = localStorage.getItem("uploadEndpoint");
@@ -65,7 +89,7 @@ export class FileUploadManager {
       const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
       
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
       // uploadtypeをmediaに設定（NIP-96準拠）
       formData.append('uploadtype', 'media');
       
