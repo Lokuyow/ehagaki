@@ -174,16 +174,15 @@
   <main>
     <!-- ヘッダー領域 -->
     <div class="header">
-      <!-- 設定ボタンを先頭に移動 -->
-      <button class="settings-btn" on:click={openSettings} aria-label="設定">
-        <img src={settingsIcon} alt="Settings" class="settings-icon" />
-      </button>
       <ProfileComponent
         {profileData}
         {profileLoaded}
         {hasStoredKey}
         {showLoginDialog}
       />
+      <button class="settings-btn" on:click={openSettings} aria-label="設定">
+        <img src={settingsIcon} alt="Settings" class="settings-icon" />
+      </button>
     </div>
 
     {#if showDialog}
