@@ -210,6 +210,28 @@
       message: ""
     };
   }
+
+  // 画像URLの正規表現
+  const imageUrlRegex = /(https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|webp|svg))/gi;
+
+  // プレビュー用: postContentを画像とテキストに分割して表示するための関数
+  function parseContentWithImages(content: string) {
+    const parts: Array<{ type: 'image' | 'text', value: string }> = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    imageUrlRegex.lastIndex = 0;
+    while ((match = imageUrlRegex.exec(content)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', value: content.slice(lastIndex, match.index) });
+      }
+      parts.push({ type: 'image', value: match[0] });
+      lastIndex = imageUrlRegex.lastIndex;
+    }
+    if (lastIndex < content.length) {
+      parts.push({ type: 'text', value: content.slice(lastIndex) });
+    }
+    return parts;
+  }
 </script>
 
 <!-- 投稿入力エリア -->
@@ -217,7 +239,13 @@
   <div class="post-preview">
     <div class="preview-content">
       {#if postContent.trim()}
-        {postContent}
+        {#each parseContentWithImages(postContent) as part}
+          {#if part.type === 'image'}
+            <img src={part.value} alt="" class="preview-image" />
+          {:else}
+            {@html part.value.replace(/\n/g, '<br>')}
+          {/if}
+        {/each}
       {:else}
         <span class="preview-placeholder">{$_("preview")}</span>
       {/if}
@@ -538,5 +566,15 @@
   }
   .dialog-confirm:hover {
     background: #1a91da;
+  }
+
+  .preview-image {
+    max-width: 100%;
+    max-height: 240px;
+    display: block;
+    margin: 8px 0;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px #0001;
+    background: #fff;
   }
 </style>
