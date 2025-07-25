@@ -8,6 +8,11 @@ export interface FileUploadResponse {
   success: boolean;
   url?: string;
   error?: string;
+  originalSize?: number;     // 追加: 元のファイルサイズ
+  compressedSize?: number;   // 追加: 圧縮後のファイルサイズ
+  originalType?: string;     // 追加: 元のファイル種類
+  compressedType?: string;   // 追加: 圧縮後のファイル種類
+  wasCompressed?: boolean;   // 追加: 圧縮されたかどうか
 }
 
 // ファイルアップロードマネージャークラス
@@ -48,6 +53,11 @@ export class FileUploadManager {
         return { success: false, error: "No file selected" };
       }
 
+      // 元のファイル情報を記録
+      const originalSize = file.size;
+      const originalType = file.type;
+      let wasCompressed = false;
+      
       // 画像ファイルの場合はwebp変換＋リサイズ
       let uploadFile = file;
       if (file.type.startsWith("image/")) {
@@ -64,11 +74,17 @@ export class FileUploadManager {
             file.name.replace(/\.[^.]+$/, "") + ".webp",
             { type: "image/webp" }
           );
+          wasCompressed = true;
         } catch (imgErr) {
           console.error("Image compression error:", imgErr);
-          return { success: false, error: "Image compression failed" };
+          // 圧縮失敗時は元ファイルをそのまま使う
+          uploadFile = file;
         }
       }
+      
+      // 圧縮後のファイル情報
+      const compressedSize = uploadFile.size;
+      const compressedType = uploadFile.type;
       
       // ローカルストレージから直接取得して優先的に使用
       const savedEndpoint = localStorage.getItem("uploadEndpoint");
@@ -110,7 +126,12 @@ export class FileUploadManager {
         console.error('Upload error response:', errorText);
         return { 
           success: false, 
-          error: `Upload failed: ${response.status} ${errorText}` 
+          error: `Upload failed: ${response.status} ${errorText}`,
+          originalSize,
+          compressedSize,
+          originalType,
+          compressedType,
+          wasCompressed 
         };
       }
       
@@ -123,14 +144,24 @@ export class FileUploadManager {
         if (urlTag && urlTag[1]) {
           return {
             success: true,
-            url: urlTag[1]
+            url: urlTag[1],
+            originalSize,
+            compressedSize,
+            originalType,
+            compressedType,
+            wasCompressed
           };
         }
       }
       
       return {
         success: false,
-        error: data.message || 'Could not extract URL from response'
+        error: data.message || 'Could not extract URL from response',
+        originalSize,
+        compressedSize,
+        originalType,
+        compressedType,
+        wasCompressed
       };
     } catch (error) {
       console.error("File upload error:", error);

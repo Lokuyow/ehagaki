@@ -129,38 +129,16 @@
 
       // ローカルストレージから設定されたエンドポイントを取得
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
-      // FileUploadManager.uploadFileの返り値にsize情報を追加するため、ここで直接圧縮処理を呼び出す
-      // 既存のuploadFileを一部ここで再現
-      let uploadFile = file;
-      let wasCompressed = false;
-      if (file.type.startsWith("image/")) {
-        try {
-          // browser-image-compressionを直接importして使う
-          // @ts-ignore
-          const imageCompression = (await import("browser-image-compression")).default;
-          const compressed = await imageCompression(file, {
-            maxWidthOrHeight: 1024,
-            fileType: "image/webp",
-            initialQuality: 1.0,
-            useWebWorker: true,
-          });
-          uploadFile = new File(
-            [compressed],
-            file.name.replace(/\.[^.]+$/, "") + ".webp",
-            { type: "image/webp" }
-          );
-          wasCompressed = true;
-        } catch (imgErr) {
-          // 圧縮失敗時は元ファイルをそのまま使う
-          uploadFile = file;
-        }
-      }
-      compressedImageSize = uploadFile.size;
-      compressedImageType = uploadFile.type;
-      imageSizeInfoVisible = true;
-
+      
       // FileUploadManager.uploadFileを使ってアップロード
-      const result = await FileUploadManager.uploadFile(uploadFile, endpoint);
+      const result = await FileUploadManager.uploadFile(file, endpoint);
+      
+      // 圧縮情報を取得して表示
+      if (result.originalSize) originalImageSize = result.originalSize;
+      if (result.compressedSize) compressedImageSize = result.compressedSize;
+      if (result.originalType) originalImageType = result.originalType;
+      if (result.compressedType) compressedImageType = result.compressedType;
+      imageSizeInfoVisible = result.wasCompressed || false;
 
       if (result.success && result.url) {
         // 成功したらURLを挿入
