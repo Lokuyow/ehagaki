@@ -264,6 +264,44 @@
     }
     return parts;
   }
+
+  // 画像遅延表示用
+  import { onDestroy } from 'svelte';
+    
+  // 遅延表示用の状態
+  let delayedImages: Record<string, boolean> = {};
+  let delayedTimeouts: Record<string, any> = {};
+
+  // postContentが変わるたびにdelayedImagesを初期化
+  $: {
+    const parts = parseContentWithImages(postContent);
+    // 画像URLごとに遅延状態を管理
+    for (const part of parts) {
+      if (part.type === 'image' && !delayedImages[part.value]) {
+        delayedImages[part.value] = false;
+        // 1秒後に表示
+        if (delayedTimeouts[part.value]) clearTimeout(delayedTimeouts[part.value]);
+        delayedTimeouts[part.value] = setTimeout(() => {
+          delayedImages = { ...delayedImages, [part.value]: true };
+        }, 1000);
+      }
+    }
+    // 不要なタイムアウトをクリア
+    for (const key in delayedImages) {
+      if (!parts.some(p => p.type === 'image' && p.value === key)) {
+        if (delayedTimeouts[key]) clearTimeout(delayedTimeouts[key]);
+        delete delayedImages[key];
+        delete delayedTimeouts[key];
+      }
+    }
+  }
+
+  // コンポーネント破棄時にタイマーをクリア
+  onDestroy(() => {
+    for (const key in delayedTimeouts) {
+      clearTimeout(delayedTimeouts[key]);
+    }
+  });
 </script>
 
 <!-- 投稿入力エリア -->
@@ -273,7 +311,11 @@
       {#if postContent.trim()}
         {#each parseContentWithImages(postContent) as part}
           {#if part.type === 'image'}
-            <img src={part.value} alt="" class="preview-image" />
+            {#if delayedImages[part.value]}
+              <img src={part.value} alt="" class="preview-image" />
+            {:else}
+              <span class="preview-image-placeholder"></span>
+            {/if}
           {:else}
             {@html part.value.replace(/\n/g, '<br>')}
           {/if}
@@ -629,6 +671,16 @@
     border-radius: 6px;
     box-shadow: 0 1px 4px #0001;
     background: #fff;
+  }
+
+  .preview-image-placeholder {
+    display: inline-block;
+    width: 100%;
+    height: 120px;
+    background: #f3f3f3;
+    border-radius: 6px;
+    margin: 8px 0;
+    box-shadow: 0 1px 4px #0001;
   }
 
   .image-size-info {
