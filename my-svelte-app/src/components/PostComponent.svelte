@@ -426,7 +426,7 @@
   .post-container {
     max-width: 600px;
     width: 100%;
-    margin: 20px auto;
+    margin: 6px auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -445,6 +445,7 @@
   }
 
   .preview-content {
+    font-size: 0.9rem;
     white-space: pre-wrap;
     word-break: break-word;
     color: #222;
@@ -474,13 +475,13 @@
     width: 100%;
     max-width: 600px;
     min-width: 300px;
-    min-height: 120px;
+    min-height: 260px;
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 8px;
     resize: vertical;
     font-family: inherit;
-    font-size: 1rem;
+    font-size: 1.2rem;
     box-sizing: border-box;
     transition: border-color 0.2s;
   }

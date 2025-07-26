@@ -224,7 +224,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 24px;
-    padding: 16px 8px 0 8px;
+    padding: 8px 8px 0 8px;
     box-sizing: border-box;
     background: transparent;
   }
@@ -259,7 +259,7 @@
     display: block;
   }
   .main-content {
-    margin-top: 24px;
+    margin-top: 10px;
     width: 100%;
     display: flex;
     flex-direction: column;
