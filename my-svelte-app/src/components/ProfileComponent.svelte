@@ -19,12 +19,16 @@
     tabindex="0"
   >
     <img
-      src={profileData?.picture ? profileData.picture : defaultIcon}
-      alt={profileData?.name || profileData?.npub || "User"}
+      src={profileData?.picture && profileData.picture !== "" ? profileData.picture : defaultIcon}
+      alt={profileData?.name
+        ? profileData.name
+        : profileData?.npub
+          ? profileData.npub
+          : "User"}
       class="profile-picture"
     />
     <span class="profile-name">
-      {profileData?.name
+      {profileData?.name && profileData.name !== ""
         ? profileData.name
         : profileData?.npub
           ? profileData.npub

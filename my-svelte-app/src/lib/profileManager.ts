@@ -40,7 +40,7 @@ export class ProfileManager {
     const cachedProfile = this.getFromLocalStorage(pubkeyHex);
     if (cachedProfile) {
       // npubがなければ付与
-      if (!cachedProfile.name) {
+      if (!cachedProfile.npub) {
         cachedProfile.npub = toNpub(pubkeyHex);
       }
       if (!cachedProfile.picture) {
@@ -51,9 +51,11 @@ export class ProfileManager {
     
     return new Promise((resolve) => {
       const rxReq = createRxForwardReq();
-      
+      let found = false;
+
       const subscription = this.rxNostr.use(rxReq).subscribe((packet) => {
         if (packet.event?.kind === 0 && packet.event.pubkey === pubkeyHex) {
+          found = true;
           try {
             // kind 0のcontentはJSONなのでパース
             const content = JSON.parse(packet.event.content);
@@ -77,8 +79,16 @@ export class ProfileManager {
 
       setTimeout(() => {
         subscription.unsubscribe();
-        resolve(null);
-      }, 5000);
+        if (!found) {
+          // kind0が見つからなかった場合
+          const profile: ProfileData = {
+            name: "",
+            picture: "",
+            npub: toNpub(pubkeyHex)
+          };
+          resolve(profile);
+        }
+      }, 3000);
     });
   }
 }
