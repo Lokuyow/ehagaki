@@ -11,11 +11,13 @@
   import { keyManager } from "./lib/keyManager";
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
-  import SettingsDialog from "./components/SettingsDialog.svelte"; // 新しいコンポーネントをインポート
+  import SettingsDialog from "./components/SettingsDialog.svelte";
+  import LogoutDialog from "./components/LogoutDialog.svelte"; // 追加
 
   // UI状態管理
   let showDialog = false;
   let errorMessage = "";
+  let showLogoutDialog = false; // 追加
 
   // 認証関連
   let secretKey = "";
@@ -133,6 +135,37 @@
     errorMessage = "";
   }
 
+  // ログアウトダイアログの表示・非表示制御
+  function openLogoutDialog() {
+    showLogoutDialog = true;
+  }
+
+  function closeLogoutDialog() {
+    showLogoutDialog = false;
+  }
+
+  // ログアウト処理
+  function logout() {
+    // localeとuploadEndpoint以外のlocalStorageを削除
+    const localeValue = localStorage.getItem("locale");
+    const uploadEndpointValue = localStorage.getItem("uploadEndpoint");
+    localStorage.clear();
+    if (localeValue !== null) localStorage.setItem("locale", localeValue);
+    if (uploadEndpointValue !== null) localStorage.setItem("uploadEndpoint", uploadEndpointValue);
+
+    // 状態をリセット
+    hasStoredKey = false;
+    secretKey = "";
+    publicKeyHex = "";
+    publicKeyNpub = "";
+    publicKeyNprofile = "";
+    profileData = { name: "", picture: "" };
+    profileLoaded = false;
+
+    // ダイアログを閉じる
+    showLogoutDialog = false;
+  }
+
   // 設定ダイアログ状態
   let showSettings = false;
 
@@ -179,6 +212,7 @@
         {profileLoaded}
         {hasStoredKey}
         {showLoginDialog}
+        showLogoutDialog={openLogoutDialog}
       />
       <button class="settings-btn" on:click={openSettings} aria-label="設定">
         <img src={settingsIcon} alt="Settings" class="settings-icon" />
@@ -193,6 +227,15 @@
         {errorMessage}
         onClose={closeDialog}
         onSave={saveSecretKey}
+      />
+    {/if}
+
+    <!-- ログアウトダイアログ -->
+    {#if showLogoutDialog}
+      <LogoutDialog
+        show={showLogoutDialog}
+        onClose={closeLogoutDialog}
+        onLogout={logout}
       />
     {/if}
 

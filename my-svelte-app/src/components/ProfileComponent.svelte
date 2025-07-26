@@ -6,10 +6,11 @@
   export let profileLoaded = false;
   export let hasStoredKey = false;
   export let showLoginDialog: () => void;
+  export let showLogoutDialog: () => void;
 </script>
 
 {#if hasStoredKey && profileLoaded && profileData?.picture}
-  <div class="profile-display">
+  <div class="profile-display" on:click={showLogoutDialog} on:keydown={(e) => e.key === 'Enter' && showLogoutDialog()} role="button" tabindex="0">
     <img 
       src={profileData.picture} 
       alt={profileData.name || "User"} 
@@ -50,6 +51,12 @@
     border-radius: 20px;
     padding: 5px 12px 5px 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: background-color 0.2s;
+  }
+  
+  .profile-display:hover {
+    background: rgba(240, 240, 240, 0.9);
   }
   
   .profile-picture {
