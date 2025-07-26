@@ -55,6 +55,9 @@
     }
 
     .dialog {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         background-color: white;
         color: #222;
         padding: 2rem;
