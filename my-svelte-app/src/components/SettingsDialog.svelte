@@ -181,13 +181,17 @@
     .lang-btn {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 8px;
         background: #3b3b3b;
         border: 1px solid #ddd;
         border-radius: 4px;
-        padding: 6px 12px;
+        padding: 0;
         cursor: pointer;
         transition: background 0.2s;
+        width: 100px;
+        height: 42px;
+
     }
     .lang-btn:hover {
         background: #797979;
@@ -197,6 +201,7 @@
         border-radius: 4px;
         border: 1px solid #ddd;
         min-width: 200px;
+        height: 42px;
     }
     #endpoint-select {
         font-size: 1rem;
