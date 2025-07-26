@@ -3,8 +3,18 @@ import { createRxForwardReq } from "rx-nostr";
 export const BOOTSTRAP_RELAYS = [
     "wss://purplepag.es/",
     "wss://directory.yabu.me/",
-    "wss://indexer.coracle.social",
+    "wss://indexer.coracle.social/",
     "wss://user.kindpag.es/",
+];
+
+const FALLBACK_RELAYS = [
+    "wss://relay.nostr.band/",
+    "wss://nos.lol/",
+    "wss://relay.damus.io/",
+    "wss://relay-jp.nostr.wirednet.jp/",
+    "wss://yabu.me/",
+    "wss://r.kojira.io/",
+    "wss://nrelay-jp.c-stellar.net/",
 ];
 
 export class RelayManager {
@@ -37,21 +47,39 @@ export class RelayManager {
     }
 
     setBootstrapRelays(): void {
-        this.rxNostr.setDefaultRelays(BOOTSTRAP_RELAYS);
+        // setDefaultRelaysの代わりにTemporary RelaysでREQ購読
+        this.rxNostr.use(
+            createRxForwardReq(),
+            {
+                on: {
+                    relays: BOOTSTRAP_RELAYS,
+                },
+            }
+        ).subscribe(); // 購読開始（必要に応じてunsubscribe管理）
     }
 
     async fetchUserRelays(pubkeyHex: string): Promise<boolean> {
-        const foundKind10002 = await this.tryFetchKind10002(pubkeyHex);
+        const foundKind10002 = await this.tryFetchKind10002(pubkeyHex, BOOTSTRAP_RELAYS);
         if (foundKind10002) return true;
-        return await this.tryFetchKind3(pubkeyHex);
+        const foundKind3 = await this.tryFetchKind3(pubkeyHex, BOOTSTRAP_RELAYS);
+        if (foundKind3) return true;
+
+        // どちらも取得できなかった場合、フォールバックリレーを設定
+        this.rxNostr.setDefaultRelays(FALLBACK_RELAYS);
+        console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
+        this.saveToLocalStorage(pubkeyHex, FALLBACK_RELAYS);
+        return false;
     }
 
-    async tryFetchKind10002(pubkeyHex: string): Promise<boolean> {
+    async tryFetchKind10002(pubkeyHex: string, relays: string[]): Promise<boolean> {
         return new Promise((resolve) => {
             const rxReq = createRxForwardReq();
             let found = false;
 
-            const subscription = this.rxNostr.use(rxReq).subscribe((packet: any) => {
+            const subscription = this.rxNostr.use(
+                rxReq,
+                { on: { relays } }
+            ).subscribe((packet: any) => {
                 if (
                     packet.event?.kind === 10002 &&
                     packet.event.pubkey === pubkeyHex
@@ -98,15 +126,18 @@ export class RelayManager {
             setTimeout(() => {
                 subscription.unsubscribe();
                 resolve(false);
-            }, 5000);
+            }, 3000);
         });
     }
 
-    async tryFetchKind3(pubkeyHex: string): Promise<boolean> {
+    async tryFetchKind3(pubkeyHex: string, relays: string[]): Promise<boolean> {
         return new Promise((resolve) => {
             const rxReq = createRxForwardReq();
 
-            const subscription = this.rxNostr.use(rxReq).subscribe((packet: any) => {
+            const subscription = this.rxNostr.use(
+                rxReq,
+                { on: { relays } }
+            ).subscribe((packet: any) => {
                 if (packet.event?.kind === 3 && packet.event.pubkey === pubkeyHex) {
                     try {
                         const relayObj = JSON.parse(packet.event.content);
@@ -132,7 +163,7 @@ export class RelayManager {
             setTimeout(() => {
                 subscription.unsubscribe();
                 resolve(false);
-            }, 5000);
+            }, 3000);
         });
     }
 }
