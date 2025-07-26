@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { _ } from 'svelte-i18n';
-  import type { ProfileData } from '../lib/profileManager';
-  
+  import { _ } from "svelte-i18n";
+  import type { ProfileData } from "../lib/profileManager";
+  import defaultIcon from "../assets/circle-user-solid-full.svg";
+
   export let profileData: ProfileData | null = null;
   export let profileLoaded = false;
   export let hasStoredKey = false;
@@ -9,14 +10,26 @@
   export let showLogoutDialog: () => void;
 </script>
 
-{#if hasStoredKey && profileLoaded && profileData?.picture}
-  <div class="profile-display" on:click={showLogoutDialog} on:keydown={(e) => e.key === 'Enter' && showLogoutDialog()} role="button" tabindex="0">
-    <img 
-      src={profileData.picture} 
-      alt={profileData.name || "User"} 
-      class="profile-picture" 
+{#if hasStoredKey && profileLoaded}
+  <div
+    class="profile-display"
+    on:click={showLogoutDialog}
+    on:keydown={(e) => e.key === "Enter" && showLogoutDialog()}
+    role="button"
+    tabindex="0"
+  >
+    <img
+      src={profileData?.picture ? profileData.picture : defaultIcon}
+      alt={profileData?.name || profileData?.npub || "User"}
+      class="profile-picture"
     />
-    <span class="profile-name">{profileData.name || "User"}</span>
+    <span class="profile-name">
+      {profileData?.name
+        ? profileData.name
+        : profileData?.npub
+          ? profileData.npub
+          : "User"}
+    </span>
   </div>
 {:else}
   <button class="login-btn" on:click={showLoginDialog}>
@@ -45,32 +58,32 @@
   .profile-display {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 4px;
     z-index: 10;
-    background: rgba(255, 255, 255, 0.8);
+    background: #f0f0f0;
     border-radius: 20px;
     padding: 5px 12px 5px 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     cursor: pointer;
     transition: background-color 0.2s;
   }
-  
+
   .profile-display:hover {
     background: rgba(240, 240, 240, 0.9);
   }
-  
+
   .profile-picture {
     width: 32px;
     height: 32px;
     border-radius: 50%;
     object-fit: cover;
   }
-  
+
   .profile-name {
     font-size: 0.9em;
     font-weight: 500;
     color: #333;
-    max-width: 150px;
+    max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

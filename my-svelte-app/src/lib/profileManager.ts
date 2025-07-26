@@ -4,6 +4,13 @@ import { createRxForwardReq } from 'rx-nostr';
 export interface ProfileData {
   name: string;
   picture: string;
+  npub?: string; // 追加
+}
+
+// npub変換関数（簡易実装。実際はbech32変換が必要）
+function toNpub(pubkeyHex: string): string {
+  // 本来はbech32変換が必要ですが、ここでは簡易的に
+  return `npub1${pubkeyHex.slice(0, 10)}...`;
 }
 
 export class ProfileManager {
@@ -32,7 +39,13 @@ export class ProfileManager {
     // まずローカルストレージをチェック
     const cachedProfile = this.getFromLocalStorage(pubkeyHex);
     if (cachedProfile) {
-      console.log("ローカルストレージからプロフィール情報を取得:", cachedProfile);
+      // npubがなければ付与
+      if (!cachedProfile.name) {
+        cachedProfile.npub = toNpub(pubkeyHex);
+      }
+      if (!cachedProfile.picture) {
+        cachedProfile.picture = "";
+      }
       return cachedProfile;
     }
     
@@ -46,7 +59,8 @@ export class ProfileManager {
             const content = JSON.parse(packet.event.content);
             const profile: ProfileData = {
               name: content.name || "",
-              picture: content.picture || ""
+              picture: content.picture || "",
+              npub: !content.name ? toNpub(pubkeyHex) : undefined
             };
             
             console.log("Kind 0からプロフィール情報を取得:", profile);
