@@ -9,6 +9,8 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
+      srcDir: 'public',
+      filename: 'sw.js',
       manifest: {
         name: 'eHagaki',
         short_name: 'eHagaki',
@@ -25,7 +27,20 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png'
           }
-        ]
+        ],
+        share_target: {
+          action: '/upload',
+          method: 'POST',
+          enctype: 'multipart/form-data',
+          params: {
+            files: [
+              {
+                name: 'image',
+                accept: ['image/*']
+              }
+            ]
+          }
+        }
       }
     })
   ]
