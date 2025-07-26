@@ -45,15 +45,17 @@
             class="secret-input"
         />
         {#if publicKeyNpub}
-            <p>
+            <p class="pubkey-label">
                 {$_("public_key_npub")}:
-                <span style="word-break:break-all">{publicKeyNpub}</span>
+                <br>
+                <span class="pubkey-value" style="word-break:break-all">{publicKeyNpub}</span>
             </p>
         {/if}
         {#if publicKeyNprofile}
-            <p>
+            <p class="profilekey-label">
                 {$_("public_key_nprofile")}:
-                <span style="word-break:break-all">{publicKeyNprofile}</span>
+                <br>
+                <span class="profilekey-value" style="word-break:break-all">{publicKeyNprofile}</span>
             </p>
         {/if}
         {#if errorMessage}
@@ -83,9 +85,12 @@
     }
 
     .dialog {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
         background-color: white;
         color: #222;
-        padding: 2rem;
+        padding: 16px;
         border-radius: 8px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
         width: 90%;
@@ -138,5 +143,16 @@
         color: #d32f2f;
         font-size: 0.9rem;
         margin-top: 0.5rem;
+    }
+
+    .pubkey-label,
+    .profilekey-label {
+        font-size: 0.92rem;
+        margin-bottom: 0.2rem;
+    }
+    .pubkey-value,
+    .profilekey-value {
+        font-size: 0.85rem;
+        color: #444;
     }
 </style>
