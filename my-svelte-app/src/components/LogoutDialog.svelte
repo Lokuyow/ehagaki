@@ -1,79 +1,99 @@
 <script lang="ts">
-  import { _ } from "svelte-i18n";
-  
-  export let show = false;
-  export let onClose: () => void;
-  export let onLogout: () => void;
+    import { _ } from "svelte-i18n";
+
+    export let show = false;
+    export let onClose: () => void;
+    export let onLogout: () => void;
 </script>
 
 {#if show}
-  <div class="dialog-overlay">
-    <div class="dialog">
-      <h2>{$_("logout_confirmation")}</h2>
-      <p>{$_("logout_warning")}</p>
-      
-      <div class="dialog-buttons">
-        <button on:click={onClose} class="cancel-btn">{$_("cancel")}</button>
-        <button on:click={onLogout} class="logout-btn">{$_("logout")}</button>
-      </div>
+    <div
+        class="dialog-overlay"
+        role="presentation"
+        on:click={onClose}
+        on:keydown={(e) => {
+            if (e.key === "Enter" || e.key === " ") onClose();
+        }}
+    >
+        <div
+            class="dialog"
+            role="dialog"
+            aria-modal="true"
+            tabindex="0"
+            on:click|stopPropagation
+            on:keydown={(e) => {
+                /* Prevent propagation for keyboard events as well */
+            }}
+        >
+            <h2>{$_("logout_confirmation")}</h2>
+            <p>{$_("logout_warning")}</p>
+
+            <div class="dialog-buttons">
+                <button on:click={onClose} class="cancel-btn"
+                    >{$_("cancel")}</button
+                >
+                <button on:click={onLogout} class="logout-btn"
+                    >{$_("logout")}</button
+                >
+            </div>
+        </div>
     </div>
-  </div>
 {/if}
 
 <style>
-  .dialog-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 100;
-  }
+    .dialog-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 100;
+    }
 
-  .dialog {
-    background-color: white;
-    color: #222;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-    width: 90%;
-    max-width: 500px;
-  }
+    .dialog {
+        background-color: white;
+        color: #222;
+        padding: 2rem;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        width: 90%;
+        max-width: 500px;
+    }
 
-  .dialog-buttons {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1.5rem;
-  }
+    .dialog-buttons {
+        display: flex;
+        justify-content: flex-end;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
 
-  .cancel-btn {
-    padding: 0.6rem 1.2rem;
-    border: 1px solid #ccc;
-    background-color: #f5f5f5;
-    color: #333;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-  .cancel-btn:hover {
-    background-color: #e0e0e0;
-  }
+    .cancel-btn {
+        padding: 0.6rem 1.2rem;
+        border: 1px solid #ccc;
+        background-color: #f5f5f5;
+        color: #333;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .cancel-btn:hover {
+        background-color: #e0e0e0;
+    }
 
-  .logout-btn {
-    padding: 0.6rem 1.2rem;
-    background-color: #d32f2f;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-  }
+    .logout-btn {
+        padding: 0.6rem 1.2rem;
+        background-color: #d32f2f;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
 
-  .logout-btn:hover {
-    background-color: #b71c1c;
-  }
+    .logout-btn:hover {
+        background-color: #b71c1c;
+    }
 </style>
