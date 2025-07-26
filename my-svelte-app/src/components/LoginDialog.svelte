@@ -16,8 +16,26 @@
     }
 </script>
 
-<div class="dialog-overlay">
-    <div class="dialog">
+<div
+    class="dialog-overlay"
+    role="button"
+    tabindex="0"
+    aria-label="Close dialog"
+    on:click={handleClose}
+    on:keydown={(e) => {
+        if (e.key === "Enter" || e.key === " ") handleClose();
+    }}
+>
+    <div
+        class="dialog"
+        role="dialog"
+        aria-modal="true"
+        on:click|stopPropagation
+        tabindex="0"
+        on:keydown={(e) => {
+            if (e.key === "Escape") handleClose();
+        }}
+    >
         <h2>{$_("input_secret")}</h2>
         <p>{$_("input_nostr_secret")}</p>
         <input
@@ -28,16 +46,14 @@
         />
         {#if publicKeyNpub}
             <p>
-                {$_("public_key_npub")}: <span style="word-break:break-all"
-                    >{publicKeyNpub}</span
-                >
+                {$_("public_key_npub")}:
+                <span style="word-break:break-all">{publicKeyNpub}</span>
             </p>
         {/if}
         {#if publicKeyNprofile}
             <p>
-                {$_("public_key_nprofile")}: <span style="word-break:break-all"
-                    >{publicKeyNprofile}</span
-                >
+                {$_("public_key_nprofile")}:
+                <span style="word-break:break-all">{publicKeyNprofile}</span>
             </p>
         {/if}
         {#if errorMessage}
