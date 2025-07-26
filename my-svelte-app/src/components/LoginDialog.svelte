@@ -28,14 +28,14 @@
         />
         {#if publicKeyNpub}
             <p>
-                公開鍵(npub): <span style="word-break:break-all"
+                {$_("public_key_npub")}: <span style="word-break:break-all"
                     >{publicKeyNpub}</span
                 >
             </p>
         {/if}
         {#if publicKeyNprofile}
             <p>
-                公開鍵(nprofile): <span style="word-break:break-all"
+                {$_("public_key_nprofile")}: <span style="word-break:break-all"
                     >{publicKeyNprofile}</span
                 >
             </p>
