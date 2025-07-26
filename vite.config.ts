@@ -9,18 +9,18 @@ export default defineConfig({
         VitePWA({
             registerType: 'autoUpdate',
             manifest: {
-                name: 'My Svelte App',
-                short_name: 'SvelteApp',
-                description: 'Svelte PWA Example',
-                theme_color: '#ffffff',
+                name: 'eHagaki',
+                short_name: 'eHagaki',
+                description: '軽量なポストオンリー型Nostrクライアントで、デバイス上で画像を圧縮することにより高速かつデータ効率に優れたアップロードを実現します。',
+                theme_color: '#699f43ff',
                 icons: [
                     {
-                        src: 'pwa-192x192.png',
+                        src: '/src/assets/hagaki_2mai.png',
                         sizes: '192x192',
                         type: 'image/png'
                     },
                     {
-                        src: 'pwa-512x512.png',
+                        src: '/src/assets/hagaki_2mai.png',
                         sizes: '512x512',
                         type: 'image/png'
                     }
