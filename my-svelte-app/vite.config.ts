@@ -9,9 +9,7 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
-      // srcDir と filename を修正
-      srcDir: 'src/public',
-      filename: 'sw.js',
+      // srcDir/filenameの指定を削除
       // カスタムSWを使用するため、injectManifestに戻す
       strategies: 'injectManifest',
       // サービスワーカーのスコープを明示的に設定
@@ -23,12 +21,12 @@ export default defineConfig({
         theme_color: '#699f43ff',
         icons: [
           {
-            src: '/ehagaki/assets/hagaki_2mai.png',
+            src: '/ehagaki/hagaki_2mai.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/ehagaki/assets/hagaki_2mai.png',
+            src: '/ehagaki/hagaki_2mai.png',
             sizes: '512x512',
             type: 'image/png'
           }
@@ -50,9 +48,10 @@ export default defineConfig({
       },
       // injectManifest 設定
       injectManifest: {
-        injectionPoint: undefined,
+        swSrc: 'public/sw.js', // サービスワーカーのエントリポイントを明示
+        swDest: 'dist/sw.js',
         rollupFormat: 'iife',
-        swDest: 'dist/sw.js'
+        injectionPoint: undefined
       },
       // 共有ターゲット機能のサポート
     })
