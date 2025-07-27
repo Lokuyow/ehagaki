@@ -171,7 +171,6 @@ export class FileUploadManager {
       };
     }
   }
-  
   /**
    * サービスワーカーに保存されている共有画像を取得
    * @returns 共有された画像ファイルとメタデータ、またはnull
@@ -294,3 +293,9 @@ export class FileUploadManager {
     return urlParams.has('shared') && urlParams.get('shared') === 'true';
   }
 }
+
+// getSharedImageFromServiceWorker: 別名エクスポート用（クラスのstaticメソッドを直接呼び出す）
+export async function getSharedImageFromServiceWorker(): Promise<{image: File, metadata: any} | null> {
+  return await FileUploadManager.getSharedImageFromServiceWorker();
+}
+

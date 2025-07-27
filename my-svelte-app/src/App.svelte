@@ -13,8 +13,8 @@
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte"; // 追加
-  import { FileUploadManager } from "./lib/fileUploadManager";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
+  import { ShareHandler } from "./lib/shareHandler"; // 追加
 
   // UI状態管理
   let showDialog = false;
@@ -48,9 +48,8 @@
   // リレーマネージャーインスタンス
   let relayManager: RelayManager;
 
-  // 共有画像処理のための変数
-  let sharedImage: File | null = null;
-  let processingSharedImage = false;
+  // 共有ハンドラーインスタンス
+  let shareHandler: ShareHandler;
 
   // Service Worker関連
   let waitingSw: ServiceWorker | null = null;
@@ -230,50 +229,14 @@
       await initializeNostr();
     }
 
-    // Service Workerのメッセージを受け取るリスナーを設定
+    // ShareHandlerの初期化
+    shareHandler = new ShareHandler();
+
+    // 共有画像の確認と処理
+    await shareHandler.checkForSharedImageOnLaunch();
+
+    // Service Worker更新検知
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("message", async (event) => {
-        console.log("メッセージを受信:", event.data);
-        if (event.data && event.data.image) {
-          // Service Workerから画像を受信
-          sharedImage = event.data.image;
-          if (sharedImage) {
-            await handleSharedImage(sharedImage);
-          }
-        }
-      });
-
-      // URLパラメータで共有から開かれたか確認
-      if (FileUploadManager.checkIfOpenedFromShare()) {
-        console.log("共有から開かれました、画像データを取得中...");
-        processingSharedImage = true;
-
-        // Service Workerからキャッシュされた画像を取得
-        const sharedImageData =
-          await FileUploadManager.getSharedImageFromServiceWorker();
-        if (sharedImageData && sharedImageData.image) {
-          console.log(
-            "共有された画像を取得しました:",
-            sharedImageData.metadata,
-          );
-          sharedImage = sharedImageData.image;
-          // null チェックを追加
-          if (sharedImage) {
-            await handleSharedImage(sharedImage);
-          }
-        } else {
-          console.log("共有された画像が見つかりませんでした");
-        }
-
-        processingSharedImage = false;
-
-        // URLからクエリパラメータを削除
-        const url = new URL(window.location.href);
-        url.search = "";
-        window.history.replaceState({}, document.title, url.toString());
-      }
-
-      // Service Worker更新検知
       navigator.serviceWorker.addEventListener("controllerchange", () => {
         // コントローラーが切り替わったらリロード
         location.reload();
@@ -299,49 +262,6 @@
       });
     }
   });
-
-  // 共有された画像を処理する関数
-  async function handleSharedImage(image: File) {
-    try {
-      console.log("共有画像を処理しています:", image.name);
-
-      // ここで画像アップロード処理を実行
-      // 例: フォーム入力の自動化や、アップロード関数の呼び出し
-      // 実際の実装はアプリの構造に依存するため、適切に修正してください
-
-      // タイトル入力フィールドにフォーカス
-      setTimeout(() => {
-        const titleInput = document.getElementById("post-title");
-        if (titleInput) {
-          titleInput.focus();
-        }
-      }, 500);
-
-      // ファイル選択UIに画像をセット
-      const fileInput = document.querySelector(
-        'input[type="file"]',
-      ) as HTMLInputElement;
-      if (fileInput) {
-        // ファイル選択要素に画像をセット
-        const dataTransfer = new DataTransfer();
-        dataTransfer.items.add(image);
-        fileInput.files = dataTransfer.files;
-
-        // change イベントを発火させる
-        const event = new Event("change", { bubbles: true });
-        fileInput.dispatchEvent(event);
-      }
-
-      // または、直接アップロード関数を呼び出す例:
-      // const result = await FileUploadManager.uploadFile(image);
-      // if (result.success) {
-      //   console.log('共有画像のアップロードに成功:', result.url);
-      //   // UIを更新...
-      // }
-    } catch (error) {
-      console.error("共有画像の処理中にエラーが発生しました:", error);
-    }
-  }
 </script>
 
 {#if $locale}
@@ -396,7 +316,7 @@
     </div>
     <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
 
-    {#if processingSharedImage}
+    {#if shareHandler && shareHandler.isProcessing()}
       <div class="loading-overlay">
         <p>共有された画像を処理しています...</p>
       </div>
