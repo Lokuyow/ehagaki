@@ -9,8 +9,13 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
-      srcDir: 'public',
+      // srcDir と filename を修正
+      srcDir: 'src/public',
       filename: 'sw.js',
+      // カスタムSWを使用するため、injectManifestに戻す
+      strategies: 'injectManifest',
+      // サービスワーカーのスコープを明示的に設定
+      scope: '/ehagaki/',
       manifest: {
         name: 'eHagaki',
         short_name: 'eHagaki',
@@ -18,18 +23,19 @@ export default defineConfig({
         theme_color: '#699f43ff',
         icons: [
           {
-            src: '/src/assets/hagaki_2mai.png',
+            src: '/ehagaki/assets/hagaki_2mai.png',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/src/assets/hagaki_2mai.png',
+            src: '/ehagaki/assets/hagaki_2mai.png',
             sizes: '512x512',
             type: 'image/png'
           }
         ],
         share_target: {
-          action: '/upload',
+          // GitHub Pages用に相対パスに変更
+          action: 'upload',
           method: 'POST',
           enctype: 'multipart/form-data',
           params: {
@@ -41,7 +47,14 @@ export default defineConfig({
             ]
           }
         }
-      }
+      },
+      // injectManifest 設定
+      injectManifest: {
+        injectionPoint: undefined,
+        rollupFormat: 'iife',
+        swDest: 'dist/sw.js'
+      },
+      // 共有ターゲット機能のサポート
     })
   ]
 });

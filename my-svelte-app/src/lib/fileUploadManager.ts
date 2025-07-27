@@ -171,4 +171,126 @@ export class FileUploadManager {
       };
     }
   }
+  
+  /**
+   * サービスワーカーに保存されている共有画像を取得
+   * @returns 共有された画像ファイルとメタデータ、またはnull
+   */
+  public static async getSharedImageFromServiceWorker(): Promise<{image: File, metadata: any} | null> {
+    // サービスワーカーがアクティブか確認
+    if (!('serviceWorker' in navigator)) {
+      console.log('Service Workerがサポートされていません');
+      return null;
+    }
+    
+    // コントローラーがなければ登録を待つ
+    if (!navigator.serviceWorker.controller) {
+      console.log('Service Workerコントローラーがありません、登録を待ちます');
+      try {
+        await new Promise<void>((resolve) => {
+          const timeout = setTimeout(() => resolve(), 3000);
+          
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            clearTimeout(timeout);
+            resolve();
+          }, { once: true });
+        });
+      } catch (e) {
+        console.error('Service Worker登録待機エラー:', e);
+      }
+    }
+    
+    if (!navigator.serviceWorker.controller) {
+      console.log('Service Workerコントローラーが取得できませんでした');
+      return null;
+    }
+    
+    try {
+      // 両方の方法を試す
+    
+      // 1. MessageChannelを使用する方法
+      const messageChannelPromise = (async () => {
+        const messageChannel = new MessageChannel();
+        
+        const promise = new Promise<{image: File, metadata: any} | null>((resolve) => {
+          messageChannel.port1.onmessage = (event) => {
+            if (event.data && event.data.image) {
+              resolve({
+                image: event.data.image,
+                metadata: event.data.metadata || {}
+              });
+            } else {
+              resolve(null);
+            }
+          };
+        });
+        
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage(
+            { action: 'getSharedImage' },
+            [messageChannel.port2]
+          );
+        } else {
+          // コントローラーがnullの場合はnullを返す
+          return null;
+        }
+        
+        return promise;
+      })();
+    
+      // 2. 通常のメッセージイベントリスナーを使用する方法
+      const eventListenerPromise = (async () => {
+        const promise = new Promise<{image: File, metadata: any} | null>((resolve) => {
+          const handler = (event: MessageEvent) => {
+            navigator.serviceWorker.removeEventListener('message', handler);
+            if (event.data && event.data.image) {
+              resolve({
+                image: event.data.image,
+                metadata: event.data.metadata
+              });
+            } else {
+              resolve(null);
+            }
+          };
+          
+          navigator.serviceWorker.addEventListener('message', handler, { once: true });
+        });
+        
+        if (navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage' });
+        } else {
+          // コントローラーがnullの場合は何もしない
+          return null;
+        }
+        
+        return promise;
+      })();
+      
+      // タイムアウト設定
+      const timeoutPromise = new Promise<null>((resolve) => {
+        setTimeout(() => resolve(null), 5000);
+      });
+      
+      // どれか一つが結果を返すのを待つ
+      const result = await Promise.race([
+        messageChannelPromise,
+        eventListenerPromise,
+        timeoutPromise
+      ]);
+      
+      return result;
+    } catch (error) {
+      console.error('共有画像の取得中にエラーが発生しました:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * URLパラメータから共有フラグを確認
+   * @returns 共有からの起動かどうか
+   */
+  public static checkIfOpenedFromShare(): boolean {
+    const urlParams = new URLSearchParams(window.location.search);
+    return urlParams.has('shared') && urlParams.get('shared') === 'true';
+  }
 }
