@@ -47,6 +47,14 @@
     if (event.detail && event.detail.file) {
       // 受信した共有画像を自動的にアップロード処理
       uploadFile(event.detail.file);
+      
+      // デバッグ情報を表示
+      console.log('PostComponent: 共有画像アップロード処理開始', {
+        name: event.detail.file.name,
+        size: `${Math.round(event.detail.file.size / 1024)}KB`,
+        type: event.detail.file.type,
+        metadata: event.detail.metadata
+      });
     }
   }
   
@@ -54,6 +62,12 @@
   onMount(() => {
     console.log('PostComponent: shared-image-receivedイベントリスナーを登録します');
     window.addEventListener('shared-image-received', handleSharedImage as EventListener);
+    
+    // URLに共有フラグがある場合、明示的にメッセージを表示
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('shared') && urlParams.get('shared') === 'true') {
+      console.log('PostComponent: 共有URLパラメータを検出しました。画像データの受信準備完了');
+    }
   });
   
   // コンポーネント破棄時にイベントリスナーを削除

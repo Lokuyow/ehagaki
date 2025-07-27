@@ -100,38 +100,64 @@ export class ShareHandler {
     const urlParams = new URLSearchParams(window.location.search);
     const wasShared = urlParams.has('shared') && urlParams.get('shared') === 'true';
     
+    console.log('ShareHandler: URLパラメータ確認', { wasShared, search: window.location.search });
+    
     if (wasShared) {
       console.log('ShareHandler: 共有から起動されました');
       this.isProcessingSharedImage = true;
       
       try {
-        // サービスワーカーから共有画像を取得 (複数の方法を試行)
-        const sharedImageData = await this.getSharedImageFromServiceWorker();
-        
-        if (sharedImageData && sharedImageData.image) {
-          console.log('ShareHandler: サービスワーカーから画像を取得しました', 
-            sharedImageData.image.name,
-            `${Math.round(sharedImageData.image.size / 1024)}KB`
-          );
-          
-          this.sharedImageFile = sharedImageData.image;
-          this.sharedImageMetadata = sharedImageData.metadata;
-          
-          // カスタムイベントとして発火
-          const sharedImageEvent = new CustomEvent('shared-image-received', {
-            detail: {
-              file: this.sharedImageFile,
-              metadata: this.sharedImageMetadata
-            }
-          });
-          
-          window.dispatchEvent(sharedImageEvent);
-          console.log('ShareHandler: shared-image-receivedイベントを発行しました');
-          return this.sharedImageFile;
-        } else {
-          console.log('ShareHandler: 共有画像が見つかりませんでした');
-          return null;
+        // IndexedDBから共有フラグを確認
+        try {
+          const hasSharedFlag = await this.checkSharedFlagInIndexedDB();
+          console.log('ShareHandler: IndexedDBの共有フラグ:', hasSharedFlag);
+        } catch (dbErr) {
+          console.error('ShareHandler: IndexedDB確認エラー:', dbErr);
         }
+        
+        // サービスワーカーへの複数回の要求を試みる
+        let attempts = 0;
+        const maxAttempts = 5;
+        
+        while (attempts < maxAttempts) {
+          console.log(`ShareHandler: 画像データ取得試行 ${attempts + 1}/${maxAttempts}`);
+          
+          // サービスワーカーから共有画像を取得 (複数の方法を試行)
+          const sharedImageData = await this.getSharedImageFromServiceWorker();
+          
+          if (sharedImageData && sharedImageData.image) {
+            console.log('ShareHandler: サービスワーカーから画像を取得しました', 
+              sharedImageData.image.name,
+              `${Math.round(sharedImageData.image.size / 1024)}KB`
+            );
+            
+            this.sharedImageFile = sharedImageData.image;
+            this.sharedImageMetadata = sharedImageData.metadata;
+            
+            // カスタムイベントとして発火
+            const sharedImageEvent = new CustomEvent('shared-image-received', {
+              detail: {
+                file: this.sharedImageFile,
+                metadata: this.sharedImageMetadata
+              }
+            });
+            
+            window.dispatchEvent(sharedImageEvent);
+            console.log('ShareHandler: shared-image-receivedイベントを発行しました');
+            return this.sharedImageFile;
+          } 
+          
+          attempts++;
+          
+          if (attempts < maxAttempts) {
+            // 少し待機してから再試行
+            console.log('ShareHandler: 画像データ取得を再試行します...');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+        
+        console.log('ShareHandler: 共有画像が見つかりませんでした');
+        return null;
       } catch (error) {
         console.error('ShareHandler: 共有画像取得エラー', error);
         return null;
@@ -142,6 +168,75 @@ export class ShareHandler {
       console.log('ShareHandler: 共有からの起動ではありません');
       return null;
     }
+  }
+
+  /**
+   * IndexedDBから共有フラグを確認
+   */
+  private async checkSharedFlagInIndexedDB(): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      try {
+        const request = indexedDB.open('eHagakiSharedData', 1);
+        
+        request.onupgradeneeded = (event) => {
+          if (!event.target) {
+            reject(new Error('IndexedDB event.target is null'));
+            return;
+          }
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains('flags')) {
+            db.createObjectStore('flags', { keyPath: 'id' });
+          }
+        };
+        
+        request.onerror = (event) => {
+          reject(new Error('IndexedDB open failed'));
+        };
+        
+        request.onsuccess = (event) => {
+          try {
+            if (!event.target) {
+              reject(new Error('IndexedDB onsuccess event.target is null'));
+              return;
+            }
+            const db = (event.target as IDBOpenDBRequest).result;
+            const transaction = db.transaction(['flags'], 'readonly');
+            const store = transaction.objectStore('flags');
+            
+            const getRequest = store.get('sharedImage');
+            
+            getRequest.onsuccess = () => {
+              const flag = getRequest.result;
+              if (flag && flag.value === true) {
+                // フラグが存在し、trueならば共有されている
+                console.log('SharedHandler: IndexedDBから共有フラグを確認しました', flag);
+                
+                // フラグを削除（一度だけ使用）
+                try {
+                  const deleteTransaction = db.transaction(['flags'], 'readwrite');
+                  const deleteStore = deleteTransaction.objectStore('flags');
+                  deleteStore.delete('sharedImage');
+                } catch (e) {
+                  console.error('SharedHandler: フラグ削除エラー', e);
+                }
+                
+                resolve(true);
+              } else {
+                resolve(false);
+              }
+            };
+            
+            getRequest.onerror = (e) => {
+              reject(new Error('Failed to get shared flag'));
+            };
+          } catch (err) {
+            reject(err);
+          }
+        };
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   /**

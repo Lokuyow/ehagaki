@@ -53,6 +53,7 @@
 
   // 共有画像処理状態
   let processingSharedImage = false;
+  let sharedImageReceived = false;
 
   // Service Worker関連
   let waitingSw: ServiceWorker | null = null;
@@ -238,16 +239,24 @@
     // 共有画像の確認と処理
     processingSharedImage = true;
     try {
+      console.log('共有画像の確認を開始します');
       const sharedImageResult = await shareHandler.checkForSharedImageOnLaunch();
       if (sharedImageResult) {
-        console.log("共有画像を検出しました:", sharedImageResult.name);
+        console.log("共有画像を検出しました:", sharedImageResult.name, 
+          `サイズ: ${Math.round(sharedImageResult.size / 1024)}KB`,
+          `タイプ: ${sharedImageResult.type}`
+        );
+        sharedImageReceived = true;
       } else {
         console.log("共有画像はありませんでした");
       }
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
     } finally {
-      processingSharedImage = false;
+      // 少し待機してから処理中表示を消す（UX向上）
+      setTimeout(() => {
+        processingSharedImage = false;
+      }, 1000);
     }
 
     // Service Worker更新検知
@@ -359,6 +368,13 @@
       </div>
     {/if}
 
+    <!-- 共有画像受信通知 -->
+    {#if sharedImageReceived && !processingSharedImage}
+      <div class="shared-image-notification">
+        <p>{$_("shared_image_received")}</p>
+      </div>
+    {/if}
+
     <!-- SW更新モーダル（コンポーネント化） -->
     <SwUpdateModal
       show={showSwUpdateModal}
@@ -452,5 +468,24 @@
     z-index: 2000;
     padding: 6px 10px;
     touch-action: auto;
+  }
+  .shared-image-notification {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: #4caf50;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    z-index: 900;
+    animation: fadeOut 5s forwards;
+  }
+
+  @keyframes fadeOut {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; visibility: hidden; }
   }
 </style>

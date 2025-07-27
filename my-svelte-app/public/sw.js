@@ -51,6 +51,15 @@ self.addEventListener('fetch', (event) => {
                         }
                     };
                     
+                    // セッションストレージに共有フラグをセット (代替方法)
+                    try {
+                        // indexedDBに共有フラグを保存
+                        await saveSharedFlag();
+                        log('IndexedDBに共有フラグを保存しました');
+                    } catch (dbErr) {
+                        error('IndexedDB保存エラー:', dbErr);
+                    }
+                    
                     // アクティブなクライアントを探してフォーカス
                     const clients = await self.clients.matchAll({
                         type: 'window',
@@ -104,10 +113,11 @@ self.addEventListener('fetch', (event) => {
                                 }
                             }, 2000);
                             
-                            return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                            // 正しいパラメータを保持したままリダイレクト
+                            return Response.redirect(new URL('/ehagaki/?shared=true', self.location.origin).href, 303);
                         } catch (msgErr) {
                             error('メッセージ送信エラー:', msgErr);
-                            return Response.redirect(new URL('/ehagaki/?error=messaging', self.location.origin).href, 303);
+                            return Response.redirect(new URL('/ehagaki/?shared=true&error=messaging', self.location.origin).href, 303);
                         }
                     } else {
                         // クライアントが開かれていない場合、新しいウィンドウを開く
@@ -115,32 +125,87 @@ self.addEventListener('fetch', (event) => {
                         
                         try {
                             // 新しいウィンドウを開いて、URLにクエリパラメータを付与
-                            const windowClient = await self.clients.openWindow(
-                                new URL('/ehagaki/?shared=true', self.location.origin).href
-                            );
+                            const newWindowUrl = new URL('/ehagaki/?shared=true', self.location.origin).href;
+                            log('新規ウィンドウを開きます:', newWindowUrl);
+                            
+                            const windowClient = await self.clients.openWindow(newWindowUrl);
                             
                             if (windowClient) {
                                 log('新しいウィンドウを開きました');
-                                return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                                // リダイレクトせず、直接返す
+                                return new Response('', {
+                                    status: 200,
+                                    headers: {
+                                        'Content-Type': 'text/plain'
+                                    }
+                                });
                             } else {
                                 error('新しいウィンドウを開けませんでした');
-                                return Response.redirect(new URL('/ehagaki/?error=window', self.location.origin).href, 303);
+                                return Response.redirect(new URL('/ehagaki/?shared=true&error=window', self.location.origin).href, 303);
                             }
                         } catch (windowErr) {
                             error('ウィンドウオープンエラー:', windowErr);
-                            return Response.redirect(new URL('/ehagaki/?error=openWindow', self.location.origin).href, 303);
+                            return Response.redirect(new URL('/ehagaki/?shared=true&error=openWindow', self.location.origin).href, 303);
                         }
                     }
                 } catch (err) {
                     error('画像処理エラー:', err);
                     // エラー時も適切にリダイレクト
-                    return Response.redirect(new URL('/ehagaki/?error=processing', self.location.origin).href, 303);
+                    return Response.redirect(new URL('/ehagaki/?shared=true&error=processing', self.location.origin).href, 303);
                 }
             })()
         );
         return;
     }
 });
+
+// IndexedDBに共有フラグを保存する関数
+async function saveSharedFlag() {
+    return new Promise((resolve, reject) => {
+        try {
+            const request = indexedDB.open('eHagakiSharedData', 1);
+            
+            request.onupgradeneeded = (event) => {
+                const db = event.target.result;
+                if (!db.objectStoreNames.contains('flags')) {
+                    db.createObjectStore('flags', { keyPath: 'id' });
+                }
+            };
+            
+            request.onerror = (event) => {
+                reject(new Error('IndexedDB open failed'));
+            };
+            
+            request.onsuccess = (event) => {
+                try {
+                    const db = event.target.result;
+                    const transaction = db.transaction(['flags'], 'readwrite');
+                    const store = transaction.objectStore('flags');
+                    
+                    const sharedFlag = {
+                        id: 'sharedImage',
+                        timestamp: Date.now(),
+                        value: true
+                    };
+                    
+                    const storeRequest = store.put(sharedFlag);
+                    
+                    storeRequest.onsuccess = () => {
+                        resolve();
+                    };
+                    
+                    storeRequest.onerror = (e) => {
+                        reject(new Error('Failed to store shared flag'));
+                    };
+                } catch (err) {
+                    reject(err);
+                }
+            };
+        } catch (err) {
+            reject(err);
+        }
+    });
+}
 
 // サービスワーカーのインストールイベントを処理
 self.addEventListener('install', (event) => {
