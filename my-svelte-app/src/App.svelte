@@ -51,6 +51,9 @@
   // 共有ハンドラーインスタンス
   let shareHandler: ShareHandler;
 
+  // 共有画像処理状態
+  let processingSharedImage = false;
+
   // Service Worker関連
   let waitingSw: ServiceWorker | null = null;
 
@@ -229,11 +232,23 @@
       await initializeNostr();
     }
 
-    // ShareHandlerの初期化
+    // ShareHandlerの初期化と共有画像の処理
     shareHandler = new ShareHandler();
-
+    
     // 共有画像の確認と処理
-    await shareHandler.checkForSharedImageOnLaunch();
+    processingSharedImage = true;
+    try {
+      const sharedImageResult = await shareHandler.checkForSharedImageOnLaunch();
+      if (sharedImageResult) {
+        console.log("共有画像を検出しました:", sharedImageResult.name);
+      } else {
+        console.log("共有画像はありませんでした");
+      }
+    } catch (error) {
+      console.error("共有画像の処理中にエラーが発生しました:", error);
+    } finally {
+      processingSharedImage = false;
+    }
 
     // Service Worker更新検知
     if ("serviceWorker" in navigator) {
@@ -261,6 +276,28 @@
         });
       });
     }
+  });
+
+  // デバッグメッセージ用
+  let debugMessages: string[] = [];
+
+  // 画面に表示するconsole.log/console.errorをフック
+  function addDebugMessage(msg: string) {
+    debugMessages = [...debugMessages, msg].slice(-10); // 最新10件のみ表示
+  }
+
+  // window.consoleをフック
+  onMount(() => {
+    const origLog = console.log;
+    const origError = console.error;
+    console.log = (...args) => {
+      origLog(...args);
+      addDebugMessage('[LOG] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+    };
+    console.error = (...args) => {
+      origError(...args);
+      addDebugMessage('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+    };
   });
 </script>
 
@@ -316,9 +353,9 @@
     </div>
     <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
 
-    {#if shareHandler && shareHandler.isProcessing()}
+    {#if processingSharedImage}
       <div class="loading-overlay">
-        <p>共有された画像を処理しています...</p>
+        <p>{$_("processing_shared_image")}</p>
       </div>
     {/if}
 
@@ -328,6 +365,13 @@
       onReload={reloadForSwUpdate}
       onCancel={cancelSwUpdateModal}
     />
+
+    <!-- デバッグメッセージ表示領域 -->
+    <div class="debug-messages">
+      {#each debugMessages as msg}
+        <div>{msg}</div>
+      {/each}
+    </div>
   </main>
 {/if}
 
@@ -394,5 +438,19 @@
     align-items: center;
     justify-content: center;
     z-index: 1000;
+  }
+  .debug-messages {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: #222c;
+    color: #fff;
+    font-size: 0.85rem;
+    max-height: 120px;
+    overflow-y: auto;
+    z-index: 2000;
+    padding: 6px 10px;
+    touch-action: auto;
   }
 </style>

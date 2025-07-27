@@ -69,7 +69,8 @@ self.addEventListener('fetch', (event) => {
                             // データを送信 - 即時送信
                             client.postMessage({
                                 type: 'SHARED_IMAGE',
-                                data: sharedImageCache
+                                data: sharedImageCache,
+                                timestamp: Date.now()
                             });
                             log('クライアントに画像データを送信しました');
                             
@@ -78,7 +79,9 @@ self.addEventListener('fetch', (event) => {
                                 try {
                                     client.postMessage({
                                         type: 'SHARED_IMAGE',
-                                        data: sharedImageCache
+                                        data: sharedImageCache,
+                                        timestamp: Date.now(),
+                                        retry: 1
                                     });
                                     log('画像データ再送信（1回目）');
                                 } catch (e) {
@@ -91,7 +94,9 @@ self.addEventListener('fetch', (event) => {
                                 try {
                                     client.postMessage({
                                         type: 'SHARED_IMAGE',
-                                        data: sharedImageCache
+                                        data: sharedImageCache,
+                                        timestamp: Date.now(),
+                                        retry: 2
                                     });
                                     log('画像データ再送信（2回目）');
                                 } catch (e) {
@@ -151,7 +156,8 @@ self.addEventListener('activate', (event) => {
 
 // クライアントからの要求に応じて、キャッシュした画像データを送信
 self.addEventListener('message', (event) => {
-    log('メッセージ受信:', event.data);
+    const client = event.source;
+    log('メッセージ受信:', event.data?.action, 'from client:', client?.id);
 
     // SW更新用メッセージ
     if (event.data && event.data.type === 'SKIP_WAITING') {
@@ -163,25 +169,30 @@ self.addEventListener('message', (event) => {
     // クライアントが共有データを要求
     if (event.data && event.data.action === 'getSharedImage') {
         log('クライアントに共有画像データを送信');
+        const requestId = event.data.requestId || null;
         
         if (sharedImageCache) {
             // MessageChannelを使用している場合
             if (event.ports && event.ports[0]) {
                 event.ports[0].postMessage({
                     type: 'SHARED_IMAGE',
-                    data: sharedImageCache
+                    data: sharedImageCache,
+                    requestId: requestId,
+                    timestamp: Date.now()
                 });
                 log('MessageChannelでデータを送信');
-            } else {
+            } else if (client) {
                 // 通常のメッセージ応答
-                event.source.postMessage({
+                client.postMessage({
                     type: 'SHARED_IMAGE',
-                    data: sharedImageCache
+                    data: sharedImageCache,
+                    requestId: requestId,
+                    timestamp: Date.now()
                 });
                 log('通常の応答でデータを送信');
             }
             
-            log('送信したデータ:', sharedImageCache.metadata);
+            log('送信したデータ:', sharedImageCache.image?.name, sharedImageCache.metadata);
             
             // 送信後もキャッシュを保持（複数回の取得に対応）
             // 30秒後に削除（時間を延長）
@@ -191,10 +202,18 @@ self.addEventListener('message', (event) => {
             }, 30000);
         } else {
             log('共有画像キャッシュがありません');
+            const responseMessage = { 
+                type: 'SHARED_IMAGE', 
+                data: null,
+                requestId: requestId,
+                error: 'No shared image available',
+                timestamp: Date.now()
+            };
+            
             if (event.ports && event.ports[0]) {
-                event.ports[0].postMessage({ type: 'SHARED_IMAGE', data: null });
-            } else if (event.source) {
-                event.source.postMessage({ type: 'SHARED_IMAGE', data: null });
+                event.ports[0].postMessage(responseMessage);
+            } else if (client) {
+                client.postMessage(responseMessage);
             }
         }
     }

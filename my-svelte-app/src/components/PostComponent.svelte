@@ -42,7 +42,7 @@
 
   // 共有画像を処理するハンドラー
   function handleSharedImage(event: CustomEvent) {
-    console.log('PostComponent: 共有画像を受信しました', event.detail);
+    console.log('PostComponent: 共有画像を受信しました', event.detail?.file?.name);
     
     if (event.detail && event.detail.file) {
       // 受信した共有画像を自動的にアップロード処理
@@ -52,11 +52,13 @@
   
   // コンポーネントマウント時にイベントリスナーを追加
   onMount(() => {
+    console.log('PostComponent: shared-image-receivedイベントリスナーを登録します');
     window.addEventListener('shared-image-received', handleSharedImage as EventListener);
   });
   
   // コンポーネント破棄時にイベントリスナーを削除
   onDestroy(() => {
+    console.log('PostComponent: shared-image-receivedイベントリスナーを削除します');
     window.removeEventListener('shared-image-received', handleSharedImage as EventListener);
     
     // 他のリソース解放
