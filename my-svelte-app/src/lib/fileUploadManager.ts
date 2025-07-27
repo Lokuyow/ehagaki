@@ -187,7 +187,7 @@ export class FileUploadManager {
       console.log('Service Workerコントローラーがありません、登録を待ちます');
       try {
         await new Promise<void>((resolve) => {
-          const timeout = setTimeout(() => resolve(), 3000);
+          const timeout = setTimeout(() => resolve(), 5000); // タイムアウト時間を延長
           
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             clearTimeout(timeout);
@@ -213,15 +213,19 @@ export class FileUploadManager {
         
         const promise = new Promise<{image: File, metadata: any} | null>((resolve) => {
           messageChannel.port1.onmessage = (event) => {
-            if (event.data && event.data.image) {
+            console.log('MessageChannel: 応答を受信', event.data);
+            if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
               resolve({
-                image: event.data.image,
-                metadata: event.data.metadata || {}
+                image: event.data.data.image,
+                metadata: event.data.data.metadata || {}
               });
             } else {
               resolve(null);
             }
           };
+          
+          // タイムアウト設定
+          setTimeout(() => resolve(null), 3000);
         });
         
         if (navigator.serviceWorker.controller) {
@@ -230,7 +234,6 @@ export class FileUploadManager {
             [messageChannel.port2]
           );
         } else {
-          // コントローラーがnullの場合はnullを返す
           return null;
         }
         
@@ -241,24 +244,31 @@ export class FileUploadManager {
       const eventListenerPromise = (async () => {
         const promise = new Promise<{image: File, metadata: any} | null>((resolve) => {
           const handler = (event: MessageEvent) => {
+            console.log('EventListener: 応答を受信', event.data);
             navigator.serviceWorker.removeEventListener('message', handler);
-            if (event.data && event.data.image) {
+            
+            if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
               resolve({
-                image: event.data.image,
-                metadata: event.data.metadata
+                image: event.data.data.image,
+                metadata: event.data.data.metadata || {}
               });
             } else {
               resolve(null);
             }
           };
           
-          navigator.serviceWorker.addEventListener('message', handler, { once: true });
+          navigator.serviceWorker.addEventListener('message', handler);
+          
+          // タイムアウト設定
+          setTimeout(() => {
+            navigator.serviceWorker.removeEventListener('message', handler);
+            resolve(null);
+          }, 3000);
         });
         
         if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage' });
         } else {
-          // コントローラーがnullの場合は何もしない
           return null;
         }
         
@@ -277,6 +287,7 @@ export class FileUploadManager {
         timeoutPromise
       ]);
       
+      console.log('共有画像取得結果:', result ? '成功' : '失敗');
       return result;
     } catch (error) {
       console.error('共有画像の取得中にエラーが発生しました:', error);

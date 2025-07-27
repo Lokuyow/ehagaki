@@ -63,48 +63,73 @@ self.addEventListener('fetch', (event) => {
                         log('既存のクライアントにフォーカス:', client.id);
                         
                         try {
-                            // データを送信
-                            client.postMessage(sharedImageCache);
+                            // フォーカスしてからデータを送信
+                            await client.focus();
+                            
+                            // データを送信 - 即時送信
+                            client.postMessage({
+                                type: 'SHARED_IMAGE',
+                                data: sharedImageCache
+                            });
                             log('クライアントに画像データを送信しました');
                             
-                            // 複数回送信を試みる
+                            // 複数回送信を試みる (信頼性向上)
                             setTimeout(() => {
                                 try {
-                                    client.postMessage(sharedImageCache);
+                                    client.postMessage({
+                                        type: 'SHARED_IMAGE',
+                                        data: sharedImageCache
+                                    });
                                     log('画像データ再送信（1回目）');
                                 } catch (e) {
                                     error('再送信エラー:', e);
                                 }
                             }, 1000);
+                            
+                            // さらに時間をおいて再送信
+                            setTimeout(() => {
+                                try {
+                                    client.postMessage({
+                                        type: 'SHARED_IMAGE',
+                                        data: sharedImageCache
+                                    });
+                                    log('画像データ再送信（2回目）');
+                                } catch (e) {
+                                    error('再送信エラー:', e);
+                                }
+                            }, 2000);
+                            
+                            return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
                         } catch (msgErr) {
                             error('メッセージ送信エラー:', msgErr);
+                            return Response.redirect(new URL('/ehagaki/?error=messaging', self.location.origin).href, 303);
                         }
-                        
-                        // クライアントにフォーカス
-                        await client.focus();
-                        return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
                     } else {
                         // クライアントが開かれていない場合、新しいウィンドウを開く
                         log('クライアントがないので新規ウィンドウを開きます');
                         
-                        // 新しいウィンドウを開いて、URLにクエリパラメータを付与
-                        const windowClient = await self.clients.openWindow(
-                            new URL('/ehagaki/?shared=true', self.location.origin).href
-                        );
-                        
-                        if (windowClient) {
-                            return new Response('', {
-                                status: 303,
-                                headers: { 'Location': new URL('/ehagaki/', self.location.origin).href }
-                            });
-                        } else {
-                            return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                        try {
+                            // 新しいウィンドウを開いて、URLにクエリパラメータを付与
+                            const windowClient = await self.clients.openWindow(
+                                new URL('/ehagaki/?shared=true', self.location.origin).href
+                            );
+                            
+                            if (windowClient) {
+                                log('新しいウィンドウを開きました');
+                                return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                            } else {
+                                error('新しいウィンドウを開けませんでした');
+                                return Response.redirect(new URL('/ehagaki/?error=window', self.location.origin).href, 303);
+                            }
+                        } catch (windowErr) {
+                            error('ウィンドウオープンエラー:', windowErr);
+                            return Response.redirect(new URL('/ehagaki/?error=openWindow', self.location.origin).href, 303);
                         }
                     }
                 } catch (err) {
                     error('画像処理エラー:', err);
                     // エラー時も適切にリダイレクト
-                    return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                    return Response.redirect(new URL('/ehagaki/?error=processing', self.location.origin).href, 303);
                 }
             })()
         );
@@ -142,28 +167,34 @@ self.addEventListener('message', (event) => {
         if (sharedImageCache) {
             // MessageChannelを使用している場合
             if (event.ports && event.ports[0]) {
-                event.ports[0].postMessage(sharedImageCache);
+                event.ports[0].postMessage({
+                    type: 'SHARED_IMAGE',
+                    data: sharedImageCache
+                });
                 log('MessageChannelでデータを送信');
             } else {
                 // 通常のメッセージ応答
-                event.source.postMessage(sharedImageCache);
+                event.source.postMessage({
+                    type: 'SHARED_IMAGE',
+                    data: sharedImageCache
+                });
                 log('通常の応答でデータを送信');
             }
             
             log('送信したデータ:', sharedImageCache.metadata);
             
             // 送信後もキャッシュを保持（複数回の取得に対応）
-            // 10秒後に削除
+            // 30秒後に削除（時間を延長）
             setTimeout(() => {
                 sharedImageCache = null;
                 log('共有画像キャッシュをクリアしました');
-            }, 10000);
+            }, 30000);
         } else {
             log('共有画像キャッシュがありません');
             if (event.ports && event.ports[0]) {
-                event.ports[0].postMessage(null);
+                event.ports[0].postMessage({ type: 'SHARED_IMAGE', data: null });
             } else if (event.source) {
-                event.source.postMessage({ error: 'No shared image available' });
+                event.source.postMessage({ type: 'SHARED_IMAGE', data: null });
             }
         }
     }

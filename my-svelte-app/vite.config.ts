@@ -34,8 +34,8 @@ export default defineConfig({
           }
         ],
         share_target: {
-          // GitHub Pages用に相対パスに変更
-          action: 'upload',
+          // GitHub Pages用に絶対パスに変更
+          action: '/ehagaki/upload',
           method: 'POST',
           enctype: 'multipart/form-data',
           params: {

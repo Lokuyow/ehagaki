@@ -37,6 +37,34 @@
   let compressedImageType = "";
   let imageSizeInfoVisible = false;
 
+  // 共有画像の処理リスナー
+  import { onMount } from 'svelte';
+
+  // 共有画像を処理するハンドラー
+  function handleSharedImage(event: CustomEvent) {
+    console.log('PostComponent: 共有画像を受信しました', event.detail);
+    
+    if (event.detail && event.detail.file) {
+      // 受信した共有画像を自動的にアップロード処理
+      uploadFile(event.detail.file);
+    }
+  }
+  
+  // コンポーネントマウント時にイベントリスナーを追加
+  onMount(() => {
+    window.addEventListener('shared-image-received', handleSharedImage as EventListener);
+  });
+  
+  // コンポーネント破棄時にイベントリスナーを削除
+  onDestroy(() => {
+    window.removeEventListener('shared-image-received', handleSharedImage as EventListener);
+    
+    // 他のリソース解放
+    for (const key in delayedTimeouts) {
+      clearTimeout(delayedTimeouts[key]);
+    }
+  });
+
   // 画像URLを投稿内容に挿入
   function insertImageUrl(imageUrl: string) {
     // カーソル位置にURLを挿入
