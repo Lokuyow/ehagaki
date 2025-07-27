@@ -14,11 +14,13 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte"; // 追加
   import { FileUploadManager } from "./lib/fileUploadManager";
+  import SwUpdateModal from "./components/SwUpdateModal.svelte";
 
   // UI状態管理
   let showDialog = false;
   let errorMessage = "";
   let showLogoutDialog = false; // 追加
+  let showSwUpdateModal = false;
 
   // 認証関連
   let secretKey = "";
@@ -49,6 +51,9 @@
   // 共有画像処理のための変数
   let sharedImage: File | null = null;
   let processingSharedImage = false;
+
+  // Service Worker関連
+  let waitingSw: ServiceWorker | null = null;
 
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
@@ -187,6 +192,24 @@
     localStorage.setItem("locale", $locale);
   }
 
+  function handleSwUpdate(sw: ServiceWorker) {
+    showSwUpdateModal = true;
+    waitingSw = sw;
+  }
+
+  function reloadForSwUpdate() {
+    if (waitingSw) {
+      waitingSw.postMessage({ type: "SKIP_WAITING" });
+    }
+    showSwUpdateModal = false;
+    location.reload();
+  }
+
+  function cancelSwUpdateModal() {
+    showSwUpdateModal = false;
+    waitingSw = null;
+  }
+
   onMount(async () => {
     // ローカルストレージに保存されたロケールがあればそれをセット
     const storedLocale = localStorage.getItem("locale");
@@ -249,6 +272,31 @@
         url.search = "";
         window.history.replaceState({}, document.title, url.toString());
       }
+
+      // Service Worker更新検知
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        // コントローラーが切り替わったらリロード
+        location.reload();
+      });
+
+      navigator.serviceWorker.ready.then((reg) => {
+        if (reg && reg.waiting) {
+          handleSwUpdate(reg.waiting);
+        }
+        reg.addEventListener("updatefound", () => {
+          const newSw = reg.installing;
+          if (newSw) {
+            newSw.addEventListener("statechange", () => {
+              if (
+                newSw.state === "installed" &&
+                navigator.serviceWorker.controller
+              ) {
+                handleSwUpdate(newSw);
+              }
+            });
+          }
+        });
+      });
     }
   });
 
@@ -260,7 +308,7 @@
       // ここで画像アップロード処理を実行
       // 例: フォーム入力の自動化や、アップロード関数の呼び出し
       // 実際の実装はアプリの構造に依存するため、適切に修正してください
-      
+
       // タイトル入力フィールドにフォーカス
       setTimeout(() => {
         const titleInput = document.getElementById("post-title");
@@ -268,7 +316,7 @@
           titleInput.focus();
         }
       }, 500);
-      
+
       // ファイル選択UIに画像をセット
       const fileInput = document.querySelector(
         'input[type="file"]',
@@ -353,6 +401,13 @@
         <p>共有された画像を処理しています...</p>
       </div>
     {/if}
+
+    <!-- SW更新モーダル（コンポーネント化） -->
+    <SwUpdateModal
+      show={showSwUpdateModal}
+      onReload={reloadForSwUpdate}
+      onCancel={cancelSwUpdateModal}
+    />
   </main>
 {/if}
 

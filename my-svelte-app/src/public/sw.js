@@ -127,7 +127,14 @@ self.addEventListener('activate', (event) => {
 // クライアントからの要求に応じて、キャッシュした画像データを送信
 self.addEventListener('message', (event) => {
     log('メッセージ受信:', event.data);
-    
+
+    // SW更新用メッセージ
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        log('SKIP_WAITINGを受信、skipWaiting実行');
+        self.skipWaiting();
+        return;
+    }
+
     // クライアントが共有データを要求
     if (event.data && event.data.action === 'getSharedImage') {
         log('クライアントに共有画像データを送信');
