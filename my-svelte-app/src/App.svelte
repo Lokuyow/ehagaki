@@ -269,38 +269,6 @@
       });
     }
   });
-
-  // デバッグメッセージ用
-  let debugMessages: string[] = [];
-
-  // 画面に表示するconsole.log/console.errorをフック
-  function addDebugMessage(msg: string) {
-    debugMessages = [...debugMessages, msg].slice(-10); // 最新10件のみ表示
-  }
-
-  // window.consoleをフック
-  onMount(() => {
-    const origLog = console.log;
-    const origError = console.error;
-    console.log = (...args) => {
-      origLog(...args);
-      addDebugMessage(
-        "[LOG] " +
-          args
-            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
-            .join(" "),
-      );
-    };
-    console.error = (...args) => {
-      origError(...args);
-      addDebugMessage(
-        "[ERROR] " +
-          args
-            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
-            .join(" "),
-      );
-    };
-  });
 </script>
 
 {#if $locale}
@@ -374,13 +342,6 @@
       onReload={reloadForSwUpdate}
       onCancel={cancelSwUpdateModal}
     />
-
-    <!-- デバッグメッセージ表示領域 -->
-    <div class="debug-messages">
-      {#each debugMessages as msg}
-        <div>{msg}</div>
-      {/each}
-    </div>
   </main>
 {/if}
 
@@ -447,20 +408,6 @@
     align-items: center;
     justify-content: center;
     z-index: 1000;
-  }
-  .debug-messages {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: #222c;
-    color: #fff;
-    font-size: 0.85rem;
-    max-height: 120px;
-    overflow-y: auto;
-    z-index: 2000;
-    padding: 6px 10px;
-    touch-action: auto;
   }
   .shared-image-notification {
     position: fixed;
