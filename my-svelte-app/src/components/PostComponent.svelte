@@ -3,6 +3,7 @@
   import type { PostStatus } from "../lib/postManager";
   import { PostManager } from "../lib/postManager";
   import { FileUploadManager } from "../lib/fileUploadManager";
+  import { getShareHandler } from "../lib/shareHandler";
   import imageIcon from "../assets/image-solid-full.svg";
   import { onMount, onDestroy } from "svelte";
 
@@ -42,11 +43,11 @@
   let delayedImages: Record<string, boolean> = {};
   let delayedTimeouts: Record<string, any> = {};
 
-  // 共有画像の処理リスナー
+  // ShareHandlerインスタンス（シングルトン）
+  const shareHandler = getShareHandler();
 
-  // 共有画像を処理するハンドラー
+  // 共有画像を処理するハンドラー（簡素化）
   function handleSharedImage(event: Event) {
-    // detailを安全に取得
     const detail = (event as CustomEvent)?.detail;
     console.log("PostComponent: 共有画像を受信しました", detail?.file?.name);
 

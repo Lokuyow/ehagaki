@@ -12,14 +12,14 @@
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
-  import LogoutDialog from "./components/LogoutDialog.svelte"; // 追加
+  import LogoutDialog from "./components/LogoutDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
-  import { ShareHandler } from "./lib/shareHandler"; // 型もインポート
+  import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
 
   // UI状態管理
   let showDialog = false;
   let errorMessage = "";
-  let showLogoutDialog = false; // 追加
+  let showLogoutDialog = false;
   let showSwUpdateModal = false;
 
   // 認証関連
@@ -48,9 +48,6 @@
   // リレーマネージャーインスタンス
   let relayManager: RelayManager;
 
-  // 共有ハンドラーインスタンス
-  let shareHandler: ShareHandler;
-
   // 共有画像処理状態
   let processingSharedImage = false;
   let sharedImageReceived = false;
@@ -61,33 +58,26 @@
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
-    // プロフィールマネージャーの初期化
     profileManager = new ProfileManager(rxNostr);
-    // リレーマネージャーの初期化
     relayManager = new RelayManager(rxNostr);
 
     if (pubkeyHex) {
-      // ローカルストレージからリレーリストを取得
       const savedRelays = relayManager.getFromLocalStorage(pubkeyHex);
 
       if (savedRelays) {
-        // 保存済みのリレーリストがあればそれを使用
         rxNostr.setDefaultRelays(savedRelays);
         console.log("ローカルストレージのリレーリストを使用:", savedRelays);
       } else {
-        // なければブートストラップリレーを設定してからユーザーのリレーを取得
         relayManager.setBootstrapRelays();
         await relayManager.fetchUserRelays(pubkeyHex);
       }
 
-      // プロフィール情報の取得
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
         profileData = profile;
         profileLoaded = true;
       }
     } else {
-      // 秘密鍵がない場合はブートストラップリレーを設定
       relayManager.setBootstrapRelays();
     }
   }
@@ -111,7 +101,6 @@
       publicKeyNpub = npub;
       publicKeyNprofile = nprofile;
 
-      // ログイン成功後、ユーザーのリレーリストとプロフィールを取得
       if (publicKeyHex) {
         await relayManager.fetchUserRelays(publicKeyHex);
         const profile = await profileManager.fetchProfileData(publicKeyHex);
@@ -148,7 +137,6 @@
     errorMessage = "";
   }
 
-  // ログアウトダイアログの表示・非表示制御
   function openLogoutDialog() {
     showLogoutDialog = true;
   }
@@ -157,9 +145,7 @@
     showLogoutDialog = false;
   }
 
-  // ログアウト処理
   function logout() {
-    // localeとuploadEndpoint以外のlocalStorageを削除
     const localeValue = localStorage.getItem("locale");
     const uploadEndpointValue = localStorage.getItem("uploadEndpoint");
     localStorage.clear();
@@ -167,7 +153,6 @@
     if (uploadEndpointValue !== null)
       localStorage.setItem("uploadEndpoint", uploadEndpointValue);
 
-    // 状態をリセット
     hasStoredKey = false;
     secretKey = "";
     publicKeyHex = "";
@@ -176,11 +161,9 @@
     profileData = { name: "", picture: "" };
     profileLoaded = false;
 
-    // ダイアログを閉じる
     showLogoutDialog = false;
   }
 
-  // 設定ダイアログ状態
   let showSettings = false;
 
   function openSettings() {
@@ -190,7 +173,6 @@
     showSettings = false;
   }
 
-  // ロケール変更時にローカルストレージへ保存
   $: if ($locale) {
     localStorage.setItem("locale", $locale);
   }
@@ -214,17 +196,14 @@
   }
 
   onMount(async () => {
-    // ローカルストレージに保存されたロケールがあればそれをセット
     const storedLocale = localStorage.getItem("locale");
     if (storedLocale && storedLocale !== $locale) {
       locale.set(storedLocale);
     }
 
-    // 秘密鍵の取得と検証
     const storedKey = keyManager.loadFromStorage();
     hasStoredKey = !!storedKey;
 
-    // 公開鍵の取得とNostr初期化
     if (storedKey && keyManager.isValidNsec(storedKey)) {
       const { hex } = keyManager.derivePublicKey(storedKey);
       publicKeyHex = hex;
@@ -233,16 +212,15 @@
       await initializeNostr();
     }
 
-    // ShareHandlerの初期化と共有画像の処理
-    shareHandler = new ShareHandler();
-
-    // 共有画像の確認と処理
+    // ShareHandlerのシングルトンを取得して共有画像を処理（簡素化）
     try {
       console.log("共有画像の確認を開始します");
       processingSharedImage = true;
+
+      const shareHandler = getShareHandler();
       const sharedImageData = await shareHandler.checkForSharedImageOnLaunch();
 
-      if (sharedImageData) {
+      if (sharedImageData && sharedImageData.image) {
         console.log(
           "共有画像を検出しました:",
           sharedImageData.image.name,
@@ -251,7 +229,6 @@
         );
         sharedImageReceived = true;
 
-        // 通知を5秒後に非表示
         setTimeout(() => {
           sharedImageReceived = false;
         }, 5000);
@@ -261,7 +238,6 @@
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
     } finally {
-      // 少し遅延させて処理中表示を消す（UX向上のため）
       setTimeout(() => {
         processingSharedImage = false;
       }, 500);
@@ -270,7 +246,6 @@
     // Service Worker更新検知
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
-        // コントローラーが切り替わったらリロード
         location.reload();
       });
 

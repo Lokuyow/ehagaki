@@ -1,6 +1,5 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
-// 追加: 画像圧縮ライブラリ
 import imageCompression from "browser-image-compression";
 
 // ファイルアップロードの応答型
@@ -8,19 +7,23 @@ export interface FileUploadResponse {
   success: boolean;
   url?: string;
   error?: string;
-  originalSize?: number;     // 追加: 元のファイルサイズ
-  compressedSize?: number;   // 追加: 圧縮後のファイルサイズ
-  originalType?: string;     // 追加: 元のファイル種類
-  compressedType?: string;   // 追加: 圧縮後のファイル種類
-  wasCompressed?: boolean;   // 追加: 圧縮されたかどうか
+  originalSize?: number;
+  compressedSize?: number;
+  originalType?: string;
+  compressedType?: string;
+  wasCompressed?: boolean;
 }
 
-// ファイルアップロードマネージャークラス
+/**
+ * ファイルアップロード専用マネージャークラス
+ * 責務: ファイルの圧縮・アップロード処理のみ
+ */
 export class FileUploadManager {
-  // デフォルトAPIエンドポイント
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
 
-  // NIP-98形式の認証イベントを作成
+  /**
+   * NIP-98形式の認証イベントを作成
+   */
   private static async createAuthEvent(url: string, method: string): Promise<any> {
     const storedKey = keyManager.loadFromStorage();
     if (!storedKey) {
@@ -43,7 +46,9 @@ export class FileUploadManager {
     return signedEvent;
   }
 
-  // ファイルをアップロード
+  /**
+   * ファイルをアップロード
+   */
   public static async uploadFile(
     file: File,
     apiUrl: string = FileUploadManager.DEFAULT_API_URL
@@ -65,10 +70,9 @@ export class FileUploadManager {
           const compressed = await imageCompression(file, {
             maxWidthOrHeight: 1024,
             fileType: "image/webp",
-            initialQuality: 0.80, // 品質80
+            initialQuality: 0.80,
             useWebWorker: true,
           });
-          // ファイル名をwebp拡張子に変更
           uploadFile = new File(
             [compressed],
             file.name.replace(/\.[^.]+$/, "") + ".webp",
@@ -77,12 +81,10 @@ export class FileUploadManager {
           wasCompressed = true;
         } catch (imgErr) {
           console.error("Image compression error:", imgErr);
-          // 圧縮失敗時は元ファイルをそのまま使う
           uploadFile = file;
         }
       }
 
-      // 圧縮後のファイル情報
       const compressedSize = uploadFile.size;
       const compressedType = uploadFile.type;
 
@@ -96,17 +98,11 @@ export class FileUploadManager {
         usingUrl: finalUrl
       });
 
-      const authEvent = await this.createAuthEvent(
-        finalUrl,
-        "POST"
-      );
-
-      // Base64エンコード
+      const authEvent = await this.createAuthEvent(finalUrl, "POST");
       const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
 
       const formData = new FormData();
       formData.append('file', uploadFile);
-      // uploadtypeをmediaに設定（NIP-96準拠）
       formData.append('uploadtype', 'media');
 
       console.log('Uploading file to:', finalUrl);
