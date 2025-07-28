@@ -32,6 +32,5 @@
   "logout_warning": "本当にログアウトしますか？",
   "logout": "ログアウト",
   "shared_image_received": "共有画像を受信してアップロードしました",
-  "processing_shared_image": "共有画像を処理しています...",
-  "sw_update_available": "新しいバージョンが利用可能です。自動的にリロードします…"
+  "processing_shared_image": "共有画像を処理しています..."
 }

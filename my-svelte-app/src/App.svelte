@@ -176,8 +176,8 @@
     localStorage.setItem("locale", $locale);
   }
 
-  // SW更新通知メッセージ（i18n対応）
-  $: swUpdateMessage = $_("sw_update_available") ?? "新しいバージョンが利用可能です。自動的にリロードします…";
+  // SW更新通知メッセージ
+  let swUpdateMessage = "Update available! Reloading...";
 
   function handleSwUpdate(sw: ServiceWorker) {
     showSwUpdateModal = true;
@@ -337,8 +337,12 @@
       </div>
     {/if}
 
-    <!-- SW更新モーダル（Popover API対応・i18nメッセージ渡し） -->
-    <SwUpdateModal show={showSwUpdateModal} onReload={() => {}} message={swUpdateMessage} />
+    <!-- SW更新モーダル（Popover API対応） -->
+    <SwUpdateModal
+      show={showSwUpdateModal}
+      onReload={() => {}}
+      message={swUpdateMessage}
+    />
   </main>
 {/if}
 
