@@ -25,6 +25,7 @@
   "input_secret": "Enter Secret Key",
   "input_nostr_secret": "Please enter your Nostr secret key (nsec1…)",
   "save": "Save",
+  "clear": "Clear",
   "public_key_npub": "Public Key (npub)",
   "public_key_nprofile": "Public Key (nprofile)",
   "logout_confirmation": "Logout Confirmation",

@@ -38,6 +38,9 @@
     function handleSave() {
         onSave?.();
     }
+    function handleClear() {
+        secretKey = "";
+    }
 </script>
 
 <div
@@ -95,6 +98,9 @@
             <button on:click={handleClose} class="cancel-btn"
                 >{$_("cancel")}</button
             >
+            <button on:click={handleClear} class="clear-btn"
+                >{$_("clear")}</button
+            >
             <button on:click={handleSave} class="save-btn">{$_("save")}</button>
         </div>
     </div>
@@ -129,7 +135,7 @@
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
-        gap: 1rem;
+        gap: 6px;
         margin-top: 1.5rem;
         width: 100%;
     }
@@ -147,6 +153,21 @@
     }
     .cancel-btn:hover {
         background-color: #e0e0e0;
+    }
+
+    .clear-btn {
+        padding: 0.6rem 1.2rem;
+        border: 1px solid #ccc;
+        background-color: #fffbe6;
+        color: #333;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: background 0.2s;
+        width: 100%;
+        height: 60px;
+    }
+    .clear-btn:hover {
+        background-color: #ffe9b3;
     }
 
     .save-btn {
