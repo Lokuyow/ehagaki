@@ -30,5 +30,7 @@
   "public_key_nprofile": "Public Key (nprofile)",
   "logout_confirmation": "Logout Confirmation",
   "logout_warning": "Are you sure you want to logout?",
-  "logout": "Logout"
+  "logout": "Logout",
+  "shared_image_received": "Shared image received and uploaded",
+  "processing_shared_image": "Processing shared image..."
 }

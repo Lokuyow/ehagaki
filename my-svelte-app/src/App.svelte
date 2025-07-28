@@ -237,26 +237,30 @@
     shareHandler = new ShareHandler();
     
     // 共有画像の確認と処理
-    processingSharedImage = true;
     try {
       console.log('共有画像の確認を開始します');
       const sharedImageResult = await shareHandler.checkForSharedImageOnLaunch();
       if (sharedImageResult) {
+        processingSharedImage = true;
         console.log("共有画像を検出しました:", sharedImageResult.name, 
           `サイズ: ${Math.round(sharedImageResult.size / 1024)}KB`,
           `タイプ: ${sharedImageResult.type}`
         );
         sharedImageReceived = true;
       } else {
+        processingSharedImage = false;
         console.log("共有画像はありませんでした");
       }
     } catch (error) {
+      processingSharedImage = false;
       console.error("共有画像の処理中にエラーが発生しました:", error);
     } finally {
-      // 少し待機してから処理中表示を消す（UX向上）
-      setTimeout(() => {
-        processingSharedImage = false;
-      }, 1000);
+      // 共有画像が検出された場合のみ少し待機してから処理中表示を消す
+      if (processingSharedImage) {
+        setTimeout(() => {
+          processingSharedImage = false;
+        }, 1000);
+      }
     }
 
     // Service Worker更新検知

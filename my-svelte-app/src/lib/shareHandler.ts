@@ -1,4 +1,3 @@
-import { FileUploadManager } from './fileUploadManager';
 
 /**
  * 外部アプリからの共有画像を処理するハンドラークラス
@@ -21,11 +20,11 @@ export class ShareHandler {
     if ('serviceWorker' in navigator) {
       // グローバルなメッセージリスナー
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
-      
+
       // コントローラーの変更を監視
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         console.log('ShareHandler: ServiceWorkerコントローラーが変更されました、リスナーを再設定します');
-        
+
         // 少し待機してから新しいコントローラーにリスナーを設定
         setTimeout(() => {
           if (navigator.serviceWorker.controller) {
@@ -33,7 +32,7 @@ export class ShareHandler {
           }
         }, 1000);
       });
-      
+
       console.log('ShareHandler: サービスワーカーのメッセージリスナーを設定しました');
     } else {
       console.warn('ShareHandler: サービスワーカーがサポートされていません');
@@ -64,10 +63,10 @@ export class ShareHandler {
               metadata: this.sharedImageMetadata
             }
           });
-          
+
           window.dispatchEvent(sharedImageEvent);
           console.log('ShareHandler: shared-image-receivedイベントを発行しました');
-          
+
           // MessageChannelでの応答待ちがあれば解決
           const requestId = event.data.requestId;
           if (requestId && this.messageChannelPromiseResolvers.has(requestId)) {
@@ -95,17 +94,17 @@ export class ShareHandler {
    */
   public async checkForSharedImageOnLaunch(): Promise<File | null> {
     console.log('ShareHandler: 起動時の共有画像チェック');
-    
+
     // URLパラメータで共有から起動されたかチェック
     const urlParams = new URLSearchParams(window.location.search);
     const wasShared = urlParams.has('shared') && urlParams.get('shared') === 'true';
-    
+
     console.log('ShareHandler: URLパラメータ確認', { wasShared, search: window.location.search });
-    
+
     if (wasShared) {
       console.log('ShareHandler: 共有から起動されました');
       this.isProcessingSharedImage = true;
-      
+
       try {
         // IndexedDBから共有フラグを確認
         try {
@@ -114,26 +113,26 @@ export class ShareHandler {
         } catch (dbErr) {
           console.error('ShareHandler: IndexedDB確認エラー:', dbErr);
         }
-        
+
         // サービスワーカーへの複数回の要求を試みる
         let attempts = 0;
         const maxAttempts = 5;
-        
+
         while (attempts < maxAttempts) {
           console.log(`ShareHandler: 画像データ取得試行 ${attempts + 1}/${maxAttempts}`);
-          
+
           // サービスワーカーから共有画像を取得 (複数の方法を試行)
           const sharedImageData = await this.getSharedImageFromServiceWorker();
-          
+
           if (sharedImageData && sharedImageData.image) {
-            console.log('ShareHandler: サービスワーカーから画像を取得しました', 
+            console.log('ShareHandler: サービスワーカーから画像を取得しました',
               sharedImageData.image.name,
               `${Math.round(sharedImageData.image.size / 1024)}KB`
             );
-            
+
             this.sharedImageFile = sharedImageData.image;
             this.sharedImageMetadata = sharedImageData.metadata;
-            
+
             // カスタムイベントとして発火
             const sharedImageEvent = new CustomEvent('shared-image-received', {
               detail: {
@@ -141,21 +140,21 @@ export class ShareHandler {
                 metadata: this.sharedImageMetadata
               }
             });
-            
+
             window.dispatchEvent(sharedImageEvent);
             console.log('ShareHandler: shared-image-receivedイベントを発行しました');
             return this.sharedImageFile;
-          } 
-          
+          }
+
           attempts++;
-          
+
           if (attempts < maxAttempts) {
             // 少し待機してから再試行
             console.log('ShareHandler: 画像データ取得を再試行します...');
             await new Promise(resolve => setTimeout(resolve, 1000));
           }
         }
-        
+
         console.log('ShareHandler: 共有画像が見つかりませんでした');
         return null;
       } catch (error) {
@@ -177,7 +176,7 @@ export class ShareHandler {
     return new Promise((resolve, reject) => {
       try {
         const request = indexedDB.open('eHagakiSharedData', 1);
-        
+
         request.onupgradeneeded = (event) => {
           if (!event.target) {
             reject(new Error('IndexedDB event.target is null'));
@@ -188,11 +187,11 @@ export class ShareHandler {
             db.createObjectStore('flags', { keyPath: 'id' });
           }
         };
-        
+
         request.onerror = (event) => {
           reject(new Error('IndexedDB open failed'));
         };
-        
+
         request.onsuccess = (event) => {
           try {
             if (!event.target) {
@@ -202,15 +201,15 @@ export class ShareHandler {
             const db = (event.target as IDBOpenDBRequest).result;
             const transaction = db.transaction(['flags'], 'readonly');
             const store = transaction.objectStore('flags');
-            
+
             const getRequest = store.get('sharedImage');
-            
+
             getRequest.onsuccess = () => {
               const flag = getRequest.result;
               if (flag && flag.value === true) {
                 // フラグが存在し、trueならば共有されている
                 console.log('SharedHandler: IndexedDBから共有フラグを確認しました', flag);
-                
+
                 // フラグを削除（一度だけ使用）
                 try {
                   const deleteTransaction = db.transaction(['flags'], 'readwrite');
@@ -219,13 +218,13 @@ export class ShareHandler {
                 } catch (e) {
                   console.error('SharedHandler: フラグ削除エラー', e);
                 }
-                
+
                 resolve(true);
               } else {
                 resolve(false);
               }
             };
-            
+
             getRequest.onerror = (e) => {
               reject(new Error('Failed to get shared flag'));
             };
@@ -242,7 +241,7 @@ export class ShareHandler {
   /**
    * サービスワーカーから共有画像を取得する (複数の方法を試行)
    */
-  private async getSharedImageFromServiceWorker(): Promise<{image: File, metadata: any} | null> {
+  private async getSharedImageFromServiceWorker(): Promise<{ image: File, metadata: any } | null> {
     if (!('serviceWorker' in navigator)) {
       console.warn('ShareHandler: ServiceWorkerがサポートされていません');
       return null;
@@ -264,7 +263,7 @@ export class ShareHandler {
     }
 
     console.log('ShareHandler: 共有画像の取得を試みます');
-    
+
     try {
       // 方法1: MessageChannel APIを使用
       const messageChannelResult = await this.getSharedImageViaMessageChannel();
@@ -272,14 +271,14 @@ export class ShareHandler {
         console.log('ShareHandler: MessageChannelで共有画像を取得しました');
         return messageChannelResult;
       }
-      
+
       // 方法2: 通常のメッセージングを使用
       const standardMessagingResult = await this.getSharedImageViaStandardMessaging();
       if (standardMessagingResult) {
         console.log('ShareHandler: 通常のメッセージングで共有画像を取得しました');
         return standardMessagingResult;
       }
-      
+
       // どちらの方法も失敗した場合
       console.log('ShareHandler: すべての方法で共有画像の取得に失敗しました');
       return null;
@@ -306,7 +305,7 @@ export class ShareHandler {
       const controllerChangeListener = () => {
         clearTimeout(timeoutId);
         navigator.serviceWorker.removeEventListener('controllerchange', controllerChangeListener);
-        
+
         // controllerchangeイベント後、コントローラーが設定されるまで少し待機
         setTimeout(() => {
           if (navigator.serviceWorker.controller) {
@@ -324,8 +323,8 @@ export class ShareHandler {
   /**
    * MessageChannel APIを使用して共有画像を取得
    */
-  private async getSharedImageViaMessageChannel(): Promise<{image: File, metadata: any} | null> {
-    return new Promise<{image: File, metadata: any} | null>((resolve, reject) => {
+  private async getSharedImageViaMessageChannel(): Promise<{ image: File, metadata: any } | null> {
+    return new Promise<{ image: File, metadata: any } | null>((resolve, reject) => {
       try {
         if (!navigator.serviceWorker.controller) {
           resolve(null);
@@ -334,7 +333,7 @@ export class ShareHandler {
 
         const messageChannel = new MessageChannel();
         const requestId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         // タイムアウト設定
         const timeoutId = setTimeout(() => {
           this.messageChannelPromiseResolvers.delete(requestId);
@@ -344,7 +343,7 @@ export class ShareHandler {
         // メッセージチャネルの応答ハンドラー
         messageChannel.port1.onmessage = (event) => {
           clearTimeout(timeoutId);
-          
+
           if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
             resolve({
               image: event.data.data.image,
@@ -357,16 +356,16 @@ export class ShareHandler {
 
         // リクエストをServiceWorkerに送信
         navigator.serviceWorker.controller.postMessage(
-          { 
+          {
             action: 'getSharedImage',
-            requestId: requestId 
+            requestId: requestId
           },
           [messageChannel.port2]
         );
-        
+
         // プロミスレゾルバーを登録 (グローバルメッセージイベントでも解決できるように)
         this.messageChannelPromiseResolvers.set(requestId, resolve);
-        
+
       } catch (error) {
         console.error('ShareHandler: MessageChannelでの共有画像取得中にエラー', error);
         resolve(null);
@@ -377,8 +376,8 @@ export class ShareHandler {
   /**
    * 通常のメッセージングを使用して共有画像を取得
    */
-  private async getSharedImageViaStandardMessaging(): Promise<{image: File, metadata: any} | null> {
-    return new Promise<{image: File, metadata: any} | null>((resolve, reject) => {
+  private async getSharedImageViaStandardMessaging(): Promise<{ image: File, metadata: any } | null> {
+    return new Promise<{ image: File, metadata: any } | null>((resolve, reject) => {
       try {
         if (!navigator.serviceWorker.controller) {
           resolve(null);
@@ -386,7 +385,7 @@ export class ShareHandler {
         }
 
         const requestId = `std-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        
+
         // タイムアウト設定
         const timeoutId = setTimeout(() => {
           this.messageChannelPromiseResolvers.delete(requestId);
@@ -405,7 +404,7 @@ export class ShareHandler {
           action: 'getSharedImage',
           requestId: requestId
         });
-        
+
       } catch (error) {
         console.error('ShareHandler: 標準メッセージングでの共有画像取得中にエラー', error);
         resolve(null);
@@ -432,6 +431,6 @@ export class ShareHandler {
  * SharedImageData型の定義
  */
 export interface SharedImageData {
-    image: File;
-    metadata?: any;
+  image: File;
+  metadata?: any;
 }
