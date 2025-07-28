@@ -6,6 +6,10 @@ const error = (...args) => console.error('[ServiceWorker]', ...args);
 // 画像データをキャッシュするためのインメモリストア
 let sharedImageCache = null;
 
+// キャッシュバージョン管理用定数
+const PRECACHE_VERSION = 'v0.1.0';
+const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
+
 // VitePWAによるWorkbox注入（CDNインポートを削除）
 // importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
 
@@ -14,7 +18,7 @@ const precacheManifest = self.__WB_MANIFEST;
 
 // プリキャッシュの設定（シンプルに）
 if (precacheManifest && precacheManifest.length > 0) {
-    const CACHE_NAME = 'precache-v1';
+    const CACHE_NAME = PRECACHE_NAME;
 
     // インストール時にプリキャッシュ
     self.addEventListener('install', (event) => {
@@ -166,7 +170,7 @@ self.addEventListener('fetch', (event) => {
             // Cache First戦略を実装（自サイトのみ）
             event.respondWith((async () => {
                 try {
-                    const cache = await caches.open('precache-v1');
+                    const cache = await caches.open(PRECACHE_NAME);
                     const cachedResponse = await cache.match(event.request);
 
                     if (cachedResponse) {
@@ -246,7 +250,24 @@ self.addEventListener('install', (event) => {
 // サービスワーカーのアクティベートイベントを処理
 self.addEventListener('activate', (event) => {
     log('アクティブになりました - スコープ:', self.registration.scope);
-    event.waitUntil(self.clients.claim());
+    event.waitUntil(
+        (async () => {
+            // 有効なキャッシュ名
+            const validCaches = [PRECACHE_NAME];
+            // すべてのキャッシュ名を取得
+            const cacheNames = await caches.keys();
+            // 有効なキャッシュ以外を削除
+            await Promise.all(
+                cacheNames.map(name => {
+                    if (!validCaches.includes(name)) {
+                        log('不要なキャッシュを削除:', name);
+                        return caches.delete(name);
+                    }
+                })
+            );
+            await self.clients.claim();
+        })()
+    );
 });
 
 // クライアントからの要求に応じて、キャッシュした画像データを送信
