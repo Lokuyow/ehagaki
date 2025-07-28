@@ -19,16 +19,16 @@ export interface FileUploadResponse {
 export class FileUploadManager {
   // デフォルトAPIエンドポイント
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
-  
+
   // NIP-98形式の認証イベントを作成
   private static async createAuthEvent(url: string, method: string): Promise<any> {
     const storedKey = keyManager.loadFromStorage();
     if (!storedKey) {
       throw new Error('No stored key found');
     }
-    
+
     const signer = seckeySigner(storedKey);
-    
+
     const event = {
       kind: 27235,
       created_at: Math.floor(Date.now() / 1000),
@@ -38,11 +38,11 @@ export class FileUploadManager {
         ["method", method]
       ]
     };
-    
+
     const signedEvent = await signer.signEvent(event);
     return signedEvent;
   }
-  
+
   // ファイルをアップロード
   public static async uploadFile(
     file: File,
@@ -57,7 +57,7 @@ export class FileUploadManager {
       const originalSize = file.size;
       const originalType = file.type;
       let wasCompressed = false;
-      
+
       // 画像ファイルの場合はwebp変換＋リサイズ
       let uploadFile = file;
       if (file.type.startsWith("image/")) {
@@ -81,36 +81,36 @@ export class FileUploadManager {
           uploadFile = file;
         }
       }
-      
+
       // 圧縮後のファイル情報
       const compressedSize = uploadFile.size;
       const compressedType = uploadFile.type;
-      
+
       // ローカルストレージから直接取得して優先的に使用
       const savedEndpoint = localStorage.getItem("uploadEndpoint");
       const finalUrl = savedEndpoint || apiUrl || FileUploadManager.DEFAULT_API_URL;
-      
+
       console.log('Upload process:', {
         savedInStorage: savedEndpoint,
         passedUrl: apiUrl,
         usingUrl: finalUrl
       });
-      
+
       const authEvent = await this.createAuthEvent(
-        finalUrl, 
+        finalUrl,
         "POST"
       );
-      
+
       // Base64エンコード
       const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
-      
+
       const formData = new FormData();
       formData.append('file', uploadFile);
       // uploadtypeをmediaに設定（NIP-96準拠）
       formData.append('uploadtype', 'media');
-      
+
       console.log('Uploading file to:', finalUrl);
-      
+
       const response = await fetch(finalUrl, {
         method: 'POST',
         headers: {
@@ -118,26 +118,26 @@ export class FileUploadManager {
         },
         body: formData
       });
-      
+
       console.log('Upload response status:', response.status);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Upload error response:', errorText);
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: `Upload failed: ${response.status} ${errorText}`,
           originalSize,
           compressedSize,
           originalType,
           compressedType,
-          wasCompressed 
+          wasCompressed
         };
       }
-      
+
       const data = await response.json();
       console.log('Upload response data:', data);
-      
+
       // NIP-96レスポンスからURLを取得
       if (data.status === 'success' && data.nip94_event?.tags) {
         const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === 'url');
@@ -153,7 +153,7 @@ export class FileUploadManager {
           };
         }
       }
-      
+
       return {
         success: false,
         error: data.message || 'Could not extract URL from response',
@@ -175,20 +175,20 @@ export class FileUploadManager {
    * サービスワーカーに保存されている共有画像を取得
    * @returns 共有された画像ファイルとメタデータ、またはnull
    */
-  public static async getSharedImageFromServiceWorker(): Promise<{image: File, metadata: any} | null> {
+  public static async getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
     // サービスワーカーがアクティブか確認
     if (!('serviceWorker' in navigator)) {
       console.log('Service Workerがサポートされていません');
       return null;
     }
-    
+
     // コントローラーがなければ登録を待つ
     if (!navigator.serviceWorker.controller) {
       console.log('Service Workerコントローラーがありません、登録を待ちます');
       try {
         await new Promise<void>((resolve) => {
           const timeout = setTimeout(() => resolve(), 5000); // タイムアウト時間を延長
-          
+
           navigator.serviceWorker.addEventListener('controllerchange', () => {
             clearTimeout(timeout);
             resolve();
@@ -198,20 +198,20 @@ export class FileUploadManager {
         console.error('Service Worker登録待機エラー:', e);
       }
     }
-    
+
     if (!navigator.serviceWorker.controller) {
       console.log('Service Workerコントローラーが取得できませんでした');
       return null;
     }
-    
+
     try {
       // 両方の方法を試す
-    
+
       // 1. MessageChannelを使用する方法
       const messageChannelPromise = (async () => {
         const messageChannel = new MessageChannel();
-        
-        const promise = new Promise<{image: File, metadata: any} | null>((resolve) => {
+
+        const promise = new Promise<{ image: File; metadata: any } | null>((resolve) => {
           messageChannel.port1.onmessage = (event) => {
             console.log('MessageChannel: 応答を受信', event.data);
             if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
@@ -223,11 +223,11 @@ export class FileUploadManager {
               resolve(null);
             }
           };
-          
+
           // タイムアウト設定
           setTimeout(() => resolve(null), 3000);
         });
-        
+
         if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage(
             { action: 'getSharedImage' },
@@ -236,17 +236,17 @@ export class FileUploadManager {
         } else {
           return null;
         }
-        
+
         return promise;
       })();
-    
+
       // 2. 通常のメッセージイベントリスナーを使用する方法
       const eventListenerPromise = (async () => {
-        const promise = new Promise<{image: File, metadata: any} | null>((resolve) => {
+        const promise = new Promise<{ image: File; metadata: any } | null>((resolve) => {
           const handler = (event: MessageEvent) => {
             console.log('EventListener: 応答を受信', event.data);
             navigator.serviceWorker.removeEventListener('message', handler);
-            
+
             if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
               resolve({
                 image: event.data.data.image,
@@ -256,37 +256,37 @@ export class FileUploadManager {
               resolve(null);
             }
           };
-          
+
           navigator.serviceWorker.addEventListener('message', handler);
-          
+
           // タイムアウト設定
           setTimeout(() => {
             navigator.serviceWorker.removeEventListener('message', handler);
             resolve(null);
           }, 3000);
         });
-        
+
         if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage' });
         } else {
           return null;
         }
-        
+
         return promise;
       })();
-      
+
       // タイムアウト設定
       const timeoutPromise = new Promise<null>((resolve) => {
         setTimeout(() => resolve(null), 5000);
       });
-      
+
       // どれか一つが結果を返すのを待つ
       const result = await Promise.race([
         messageChannelPromise,
         eventListenerPromise,
         timeoutPromise
       ]);
-      
+
       console.log('共有画像取得結果:', result ? '成功' : '失敗');
       return result;
     } catch (error) {
@@ -294,7 +294,7 @@ export class FileUploadManager {
       return null;
     }
   }
-  
+
   /**
    * URLパラメータから共有フラグを確認
    * @returns 共有からの起動かどうか
@@ -306,7 +306,7 @@ export class FileUploadManager {
 }
 
 // getSharedImageFromServiceWorker: 別名エクスポート用（クラスのstaticメソッドを直接呼び出す）
-export async function getSharedImageFromServiceWorker(): Promise<{image: File, metadata: any} | null> {
+export async function getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
   return await FileUploadManager.getSharedImageFromServiceWorker();
 }
 

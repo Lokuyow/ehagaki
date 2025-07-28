@@ -10,36 +10,36 @@ let sharedImageCache = null;
 self.addEventListener('fetch', (event) => {
     const fetchEvent = event;
     const url = new URL(fetchEvent.request.url);
-    
+
     log('リクエスト受信:', fetchEvent.request.method, url.pathname);
 
     // GitHub Pagesでの相対パスに対応
-    const isUploadRequest = 
-        fetchEvent.request.method === 'POST' && 
+    const isUploadRequest =
+        fetchEvent.request.method === 'POST' &&
         (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
-    
+
     if (isUploadRequest) {
         log('画像アップロードリクエストを受信しました', url.pathname);
-        
+
         fetchEvent.respondWith(
             (async () => {
                 try {
                     log('フォームデータを処理中...');
                     const formData = await fetchEvent.request.formData();
                     const image = formData.get('image');
-                    
+
                     // 画像データの存在確認
                     if (!image) {
                         error('画像データがありません');
                         return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
                     }
-                    
-                    log('画像を受信しました:', 
-                        image.name, 
-                        `タイプ: ${image.type}`, 
+
+                    log('画像を受信しました:',
+                        image.name,
+                        `タイプ: ${image.type}`,
                         `サイズ: ${Math.round(image.size / 1024)}KB`
                     );
-                    
+
                     // 画像データをキャッシュに保存
                     sharedImageCache = {
                         image,
@@ -50,8 +50,7 @@ self.addEventListener('fetch', (event) => {
                             timestamp: new Date().toISOString()
                         }
                     };
-                    
-                    // セッションストレージに共有フラグをセット (代替方法)
+
                     try {
                         // indexedDBに共有フラグを保存
                         await saveSharedFlag();
@@ -59,61 +58,45 @@ self.addEventListener('fetch', (event) => {
                     } catch (dbErr) {
                         error('IndexedDB保存エラー:', dbErr);
                     }
-                    
+
                     // アクティブなクライアントを探してフォーカス
                     const clients = await self.clients.matchAll({
                         type: 'window',
                         includeUncontrolled: true
                     });
-                    
+
                     if (clients.length > 0) {
                         // すでに開いているクライアントを選択
                         const client = clients[0];
                         log('既存のクライアントにフォーカス:', client.id);
-                        
+
                         try {
                             // フォーカスしてからデータを送信
                             await client.focus();
-                            
-                            // データを送信 - 即時送信
-                            client.postMessage({
-                                type: 'SHARED_IMAGE',
-                                data: sharedImageCache,
-                                timestamp: Date.now()
-                            });
-                            log('クライアントに画像データを送信しました');
-                            
-                            // 複数回送信を試みる (信頼性向上)
-                            setTimeout(() => {
+
+                            // メッセージを送信する関数
+                            const sendMessage = (retry = 0) => {
                                 try {
                                     client.postMessage({
                                         type: 'SHARED_IMAGE',
                                         data: sharedImageCache,
                                         timestamp: Date.now(),
-                                        retry: 1
+                                        retry
                                     });
-                                    log('画像データ再送信（1回目）');
+                                    log(`画像データ${retry > 0 ? '再' : ''}送信 (${retry}回目)`);
                                 } catch (e) {
-                                    error('再送信エラー:', e);
+                                    error('メッセージ送信エラー:', e);
                                 }
-                            }, 1000);
-                            
-                            // さらに時間をおいて再送信
-                            setTimeout(() => {
-                                try {
-                                    client.postMessage({
-                                        type: 'SHARED_IMAGE',
-                                        data: sharedImageCache,
-                                        timestamp: Date.now(),
-                                        retry: 2
-                                    });
-                                    log('画像データ再送信（2回目）');
-                                } catch (e) {
-                                    error('再送信エラー:', e);
-                                }
-                            }, 2000);
-                            
-                            // 正しいパラメータを保持したままリダイレクト
+                            };
+
+                            // 即時送信
+                            sendMessage();
+
+                            // 信頼性向上のため、遅延して再送信
+                            setTimeout(() => sendMessage(1), 1000);
+                            setTimeout(() => sendMessage(2), 2000);
+
+                            // リダイレクト
                             return Response.redirect(new URL('/ehagaki/?shared=true', self.location.origin).href, 303);
                         } catch (msgErr) {
                             error('メッセージ送信エラー:', msgErr);
@@ -122,14 +105,14 @@ self.addEventListener('fetch', (event) => {
                     } else {
                         // クライアントが開かれていない場合、新しいウィンドウを開く
                         log('クライアントがないので新規ウィンドウを開きます');
-                        
+
                         try {
                             // 新しいウィンドウを開いて、URLにクエリパラメータを付与
                             const newWindowUrl = new URL('/ehagaki/?shared=true', self.location.origin).href;
                             log('新規ウィンドウを開きます:', newWindowUrl);
-                            
+
                             const windowClient = await self.clients.openWindow(newWindowUrl);
-                            
+
                             if (windowClient) {
                                 log('新しいウィンドウを開きました');
                                 // リダイレクトせず、直接返す
@@ -164,39 +147,32 @@ async function saveSharedFlag() {
     return new Promise((resolve, reject) => {
         try {
             const request = indexedDB.open('eHagakiSharedData', 1);
-            
+
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
                 if (!db.objectStoreNames.contains('flags')) {
                     db.createObjectStore('flags', { keyPath: 'id' });
                 }
             };
-            
-            request.onerror = (event) => {
-                reject(new Error('IndexedDB open failed'));
-            };
-            
+
+            request.onerror = () => reject(new Error('IndexedDB open failed'));
+
             request.onsuccess = (event) => {
                 try {
                     const db = event.target.result;
                     const transaction = db.transaction(['flags'], 'readwrite');
                     const store = transaction.objectStore('flags');
-                    
+
                     const sharedFlag = {
                         id: 'sharedImage',
                         timestamp: Date.now(),
                         value: true
                     };
-                    
+
                     const storeRequest = store.put(sharedFlag);
-                    
-                    storeRequest.onsuccess = () => {
-                        resolve();
-                    };
-                    
-                    storeRequest.onerror = (e) => {
-                        reject(new Error('Failed to store shared flag'));
-                    };
+
+                    storeRequest.onsuccess = () => resolve();
+                    storeRequest.onerror = () => reject(new Error('Failed to store shared flag'));
                 } catch (err) {
                     reject(err);
                 }
@@ -233,53 +209,38 @@ self.addEventListener('message', (event) => {
 
     // クライアントが共有データを要求
     if (event.data && event.data.action === 'getSharedImage') {
-        log('クライアントに共有画像データを送信');
+        log('クライアントに共有画像データのリクエストを受信');
         const requestId = event.data.requestId || null;
-        
+
+        // 応答データを準備
+        const responseMessage = {
+            type: 'SHARED_IMAGE',
+            data: sharedImageCache,
+            requestId: requestId,
+            timestamp: Date.now()
+        };
+
+        // 応答の送信方法を決定
+        if (event.ports && event.ports[0]) {
+            // MessageChannelが使用されている場合
+            event.ports[0].postMessage(responseMessage);
+            log('MessageChannelでデータを送信');
+        } else if (client) {
+            // 通常のメッセージ応答
+            client.postMessage(responseMessage);
+            log('通常の応答でデータを送信');
+        }
+
         if (sharedImageCache) {
-            // MessageChannelを使用している場合
-            if (event.ports && event.ports[0]) {
-                event.ports[0].postMessage({
-                    type: 'SHARED_IMAGE',
-                    data: sharedImageCache,
-                    requestId: requestId,
-                    timestamp: Date.now()
-                });
-                log('MessageChannelでデータを送信');
-            } else if (client) {
-                // 通常のメッセージ応答
-                client.postMessage({
-                    type: 'SHARED_IMAGE',
-                    data: sharedImageCache,
-                    requestId: requestId,
-                    timestamp: Date.now()
-                });
-                log('通常の応答でデータを送信');
-            }
-            
             log('送信したデータ:', sharedImageCache.image?.name, sharedImageCache.metadata);
-            
-            // 送信後もキャッシュを保持（複数回の取得に対応）
-            // 30秒後に削除（時間を延長）
+
+            // 送信後も30秒間はキャッシュを保持（複数回の取得に対応）
             setTimeout(() => {
                 sharedImageCache = null;
                 log('共有画像キャッシュをクリアしました');
             }, 30000);
         } else {
             log('共有画像キャッシュがありません');
-            const responseMessage = { 
-                type: 'SHARED_IMAGE', 
-                data: null,
-                requestId: requestId,
-                error: 'No shared image available',
-                timestamp: Date.now()
-            };
-            
-            if (event.ports && event.ports[0]) {
-                event.ports[0].postMessage(responseMessage);
-            } else if (client) {
-                client.postMessage(responseMessage);
-            }
         }
     }
 });

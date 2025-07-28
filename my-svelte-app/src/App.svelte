@@ -14,7 +14,7 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte"; // 追加
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
-  import { ShareHandler } from "./lib/shareHandler"; // 追加
+  import { ShareHandler } from "./lib/shareHandler"; // 型もインポート
 
   // UI状態管理
   let showDialog = false;
@@ -235,32 +235,36 @@
 
     // ShareHandlerの初期化と共有画像の処理
     shareHandler = new ShareHandler();
-    
+
     // 共有画像の確認と処理
     try {
-      console.log('共有画像の確認を開始します');
-      const sharedImageResult = await shareHandler.checkForSharedImageOnLaunch();
-      if (sharedImageResult) {
-        processingSharedImage = true;
-        console.log("共有画像を検出しました:", sharedImageResult.name, 
-          `サイズ: ${Math.round(sharedImageResult.size / 1024)}KB`,
-          `タイプ: ${sharedImageResult.type}`
+      console.log("共有画像の確認を開始します");
+      processingSharedImage = true;
+      const sharedImageData = await shareHandler.checkForSharedImageOnLaunch();
+
+      if (sharedImageData) {
+        console.log(
+          "共有画像を検出しました:",
+          sharedImageData.image.name,
+          `サイズ: ${Math.round(sharedImageData.image.size / 1024)}KB`,
+          `タイプ: ${sharedImageData.image.type}`,
         );
         sharedImageReceived = true;
+
+        // 通知を5秒後に非表示
+        setTimeout(() => {
+          sharedImageReceived = false;
+        }, 5000);
       } else {
-        processingSharedImage = false;
         console.log("共有画像はありませんでした");
       }
     } catch (error) {
-      processingSharedImage = false;
       console.error("共有画像の処理中にエラーが発生しました:", error);
     } finally {
-      // 共有画像が検出された場合のみ少し待機してから処理中表示を消す
-      if (processingSharedImage) {
-        setTimeout(() => {
-          processingSharedImage = false;
-        }, 1000);
-      }
+      // 少し遅延させて処理中表示を消す（UX向上のため）
+      setTimeout(() => {
+        processingSharedImage = false;
+      }, 500);
     }
 
     // Service Worker更新検知
@@ -305,11 +309,21 @@
     const origError = console.error;
     console.log = (...args) => {
       origLog(...args);
-      addDebugMessage('[LOG] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+      addDebugMessage(
+        "[LOG] " +
+          args
+            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
+            .join(" "),
+      );
     };
     console.error = (...args) => {
       origError(...args);
-      addDebugMessage('[ERROR] ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+      addDebugMessage(
+        "[ERROR] " +
+          args
+            .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
+            .join(" "),
+      );
     };
   });
 </script>
@@ -482,14 +496,21 @@
     color: white;
     padding: 10px 20px;
     border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
     z-index: 900;
     animation: fadeOut 5s forwards;
   }
 
   @keyframes fadeOut {
-    0% { opacity: 1; }
-    70% { opacity: 1; }
-    100% { opacity: 0; visibility: hidden; }
+    0% {
+      opacity: 1;
+    }
+    70% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+      visibility: hidden;
+    }
   }
 </style>

@@ -1,22 +1,23 @@
 <script lang="ts">
-  import { _ } from 'svelte-i18n';
-  import type { PostStatus } from '../lib/postManager';
-  import { PostManager } from '../lib/postManager';
-  import { FileUploadManager } from '../lib/fileUploadManager';
-  import imageIcon from '../assets/image-solid-full.svg';
-  
+  import { _ } from "svelte-i18n";
+  import type { PostStatus } from "../lib/postManager";
+  import { PostManager } from "../lib/postManager";
+  import { FileUploadManager } from "../lib/fileUploadManager";
+  import imageIcon from "../assets/image-solid-full.svg";
+  import { onMount, onDestroy } from "svelte";
+
   export let rxNostr: any;
   export let hasStoredKey: boolean;
-  
+
   // 投稿機能のための状態変数
   let postContent = "";
   let postStatus: PostStatus = {
     sending: false,
     success: false,
     error: false,
-    message: ""
+    message: "",
   };
-  
+
   // 親から受け取るコールバック
   export let onPostSuccess: (() => void) | undefined;
 
@@ -37,45 +38,54 @@
   let compressedImageType = "";
   let imageSizeInfoVisible = false;
 
+  // 遅延表示用の状態
+  let delayedImages: Record<string, boolean> = {};
+  let delayedTimeouts: Record<string, any> = {};
+
   // 共有画像の処理リスナー
-  import { onMount } from 'svelte';
 
   // 共有画像を処理するハンドラー
-  function handleSharedImage(event: CustomEvent) {
-    console.log('PostComponent: 共有画像を受信しました', event.detail?.file?.name);
-    
-    if (event.detail && event.detail.file) {
+  function handleSharedImage(event: Event) {
+    // detailを安全に取得
+    const detail = (event as CustomEvent)?.detail;
+    console.log("PostComponent: 共有画像を受信しました", detail?.file?.name);
+
+    if (detail && detail.file) {
       // 受信した共有画像を自動的にアップロード処理
-      uploadFile(event.detail.file);
-      
+      uploadFile(detail.file);
+
       // デバッグ情報を表示
-      console.log('PostComponent: 共有画像アップロード処理開始', {
-        name: event.detail.file.name,
-        size: `${Math.round(event.detail.file.size / 1024)}KB`,
-        type: event.detail.file.type,
-        metadata: event.detail.metadata
+      console.log("PostComponent: 共有画像アップロード処理開始", {
+        name: detail.file.name,
+        size: `${Math.round(detail.file.size / 1024)}KB`,
+        type: detail.file.type,
+        metadata: detail.metadata,
       });
     }
   }
-  
+
   // コンポーネントマウント時にイベントリスナーを追加
   onMount(() => {
-    console.log('PostComponent: shared-image-receivedイベントリスナーを登録します');
-    window.addEventListener('shared-image-received', handleSharedImage as EventListener);
-    
-    // URLに共有フラグがある場合、明示的にメッセージを表示
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('shared') && urlParams.get('shared') === 'true') {
-      console.log('PostComponent: 共有URLパラメータを検出しました。画像データの受信準備完了');
-    }
+    console.log(
+      "PostComponent: shared-image-receivedイベントリスナーを登録します",
+    );
+    window.addEventListener(
+      "shared-image-received",
+      handleSharedImage as EventListener,
+    );
   });
-  
+
   // コンポーネント破棄時にイベントリスナーを削除
   onDestroy(() => {
-    console.log('PostComponent: shared-image-receivedイベントリスナーを削除します');
-    window.removeEventListener('shared-image-received', handleSharedImage as EventListener);
-    
-    // 他のリソース解放
+    console.log(
+      "PostComponent: shared-image-receivedイベントリスナーを削除します",
+    );
+    window.removeEventListener(
+      "shared-image-received",
+      handleSharedImage as EventListener,
+    );
+
+    // タイマーをクリア
     for (const key in delayedTimeouts) {
       clearTimeout(delayedTimeouts[key]);
     }
@@ -84,32 +94,41 @@
   // 画像URLを投稿内容に挿入
   function insertImageUrl(imageUrl: string) {
     // カーソル位置にURLを挿入
-    const textArea = document.querySelector('.post-input') as HTMLTextAreaElement;
+    const textArea = document.querySelector(
+      ".post-input",
+    ) as HTMLTextAreaElement;
     if (textArea) {
       const startPos = textArea.selectionStart || 0;
       const endPos = textArea.selectionEnd || 0;
-      
+
       const beforeText = postContent.substring(0, startPos);
       const afterText = postContent.substring(endPos);
-      
+
       // URLの前後に改行を入れる（必要に応じて調整）
-      const newText = beforeText + 
-                      (beforeText.endsWith('\n') || beforeText === '' ? '' : '\n') + 
-                      imageUrl + 
-                      (afterText.startsWith('\n') || afterText === '' ? '' : '\n') + 
-                      afterText;
-      
+      const newText =
+        beforeText +
+        (beforeText.endsWith("\n") || beforeText === "" ? "" : "\n") +
+        imageUrl +
+        (afterText.startsWith("\n") || afterText === "" ? "" : "\n") +
+        afterText;
+
       postContent = newText;
-      
+
       // テキストエリアにフォーカスを戻す
       setTimeout(() => {
         textArea.focus();
-        const newCursorPos = startPos + imageUrl.length + (beforeText.endsWith('\n') || beforeText === '' ? 0 : 1);
+        const newCursorPos =
+          startPos +
+          imageUrl.length +
+          (beforeText.endsWith("\n") || beforeText === "" ? 0 : 1);
         textArea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     } else {
       // テキストエリアが見つからない場合は末尾に追加
-      postContent += (postContent.endsWith('\n') || postContent === '' ? '' : '\n') + imageUrl + '\n';
+      postContent +=
+        (postContent.endsWith("\n") || postContent === "" ? "" : "\n") +
+        imageUrl +
+        "\n";
     }
   }
 
@@ -141,7 +160,7 @@
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragOver = false;
-    
+
     if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
       await uploadFile(event.dataTransfer.files[0]);
     }
@@ -152,8 +171,8 @@
     if (!file) return;
 
     // 画像ファイルかどうかをチェック
-    if (!file.type.startsWith('image/')) {
-      uploadErrorMessage = $_('only_images_allowed');
+    if (!file.type.startsWith("image/")) {
+      uploadErrorMessage = $_("only_images_allowed");
       setTimeout(() => {
         uploadErrorMessage = "";
       }, 3000);
@@ -173,10 +192,10 @@
 
       // ローカルストレージから設定されたエンドポイントを取得
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
-      
+
       // FileUploadManager.uploadFileを使ってアップロード
       const result = await FileUploadManager.uploadFile(file, endpoint);
-      
+
       // 圧縮情報を取得して表示
       if (result.originalSize) originalImageSize = result.originalSize;
       if (result.compressedSize) compressedImageSize = result.compressedSize;
@@ -189,17 +208,18 @@
         insertImageUrl(result.url);
         // 入力をリセット
         if (fileInput) {
-          fileInput.value = '';
+          fileInput.value = "";
         }
       } else {
-        uploadErrorMessage = result.error || $_('upload_failed');
+        uploadErrorMessage = result.error || $_("upload_failed");
         setTimeout(() => {
           uploadErrorMessage = "";
         }, 3000);
       }
     } catch (error) {
       console.error("Upload error:", error);
-      uploadErrorMessage = error instanceof Error ? error.message : String(error);
+      uploadErrorMessage =
+        error instanceof Error ? error.message : String(error);
       setTimeout(() => {
         uploadErrorMessage = "";
       }, 3000);
@@ -216,19 +236,19 @@
       showWarningDialog = true;
       return;
     }
-    
+
     // PostManagerインスタンスをここで生成
     const postManager = new PostManager(rxNostr);
     const success = await postManager.submitPost(postContent, postStatus);
-    
+
     if (success) {
       // Svelteのリアクティビティを強制更新するため、オブジェクトを再代入
       postStatus = {
         ...postStatus,
         success: true,
-        message: "post_success"
+        message: "post_success",
       };
-      
+
       // 投稿内容をクリア
       postContent = "";
 
@@ -240,7 +260,7 @@
         postStatus = {
           ...postStatus,
           success: false,
-          message: ""
+          message: "",
         };
       }, 3000);
     }
@@ -258,7 +278,7 @@
       postStatus = {
         ...postStatus,
         success: true,
-        message: "post_success"
+        message: "post_success",
       };
       postContent = "";
       if (onPostSuccess) onPostSuccess();
@@ -266,7 +286,7 @@
         postStatus = {
           ...postStatus,
           success: false,
-          message: ""
+          message: "",
         };
       }, 3000);
     }
@@ -283,7 +303,7 @@
     postStatus = {
       ...postStatus,
       error: false,
-      message: ""
+      message: "",
     };
   }
 
@@ -292,39 +312,38 @@
 
   // プレビュー用: postContentを画像とテキストに分割して表示するための関数
   function parseContentWithImages(content: string) {
-    const parts: Array<{ type: 'image' | 'text', value: string }> = [];
+    const parts: Array<{ type: "image" | "text"; value: string }> = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
     imageUrlRegex.lastIndex = 0;
     while ((match = imageUrlRegex.exec(content)) !== null) {
       if (match.index > lastIndex) {
-        parts.push({ type: 'text', value: content.slice(lastIndex, match.index) });
+        parts.push({
+          type: "text",
+          value: content.slice(lastIndex, match.index),
+        });
       }
-      parts.push({ type: 'image', value: match[0] });
+      parts.push({ type: "image", value: match[0] });
       lastIndex = imageUrlRegex.lastIndex;
     }
     if (lastIndex < content.length) {
-      parts.push({ type: 'text', value: content.slice(lastIndex) });
+      parts.push({ type: "text", value: content.slice(lastIndex) });
     }
     return parts;
   }
 
   // 画像遅延表示用
-  import { onDestroy } from 'svelte';
-    
-  // 遅延表示用の状態
-  let delayedImages: Record<string, boolean> = {};
-  let delayedTimeouts: Record<string, any> = {};
 
   // postContentが変わるたびにdelayedImagesを初期化
   $: {
     const parts = parseContentWithImages(postContent);
     // 画像URLごとに遅延状態を管理
     for (const part of parts) {
-      if (part.type === 'image' && !delayedImages[part.value]) {
+      if (part.type === "image" && !delayedImages[part.value]) {
         delayedImages[part.value] = false;
         // 1秒後に表示
-        if (delayedTimeouts[part.value]) clearTimeout(delayedTimeouts[part.value]);
+        if (delayedTimeouts[part.value])
+          clearTimeout(delayedTimeouts[part.value]);
         delayedTimeouts[part.value] = setTimeout(() => {
           delayedImages = { ...delayedImages, [part.value]: true };
         }, 1000);
@@ -332,7 +351,7 @@
     }
     // 不要なタイムアウトをクリア
     for (const key in delayedImages) {
-      if (!parts.some(p => p.type === 'image' && p.value === key)) {
+      if (!parts.some((p) => p.type === "image" && p.value === key)) {
         if (delayedTimeouts[key]) clearTimeout(delayedTimeouts[key]);
         delete delayedImages[key];
         delete delayedTimeouts[key];
@@ -354,14 +373,14 @@
     <div class="preview-content">
       {#if postContent.trim()}
         {#each parseContentWithImages(postContent) as part}
-          {#if part.type === 'image'}
+          {#if part.type === "image"}
             {#if delayedImages[part.value]}
               <img src={part.value} alt="" class="preview-image" />
             {:else}
               <span class="preview-image-placeholder"></span>
             {/if}
           {:else}
-            {@html part.value.replace(/\n/g, '<br>')}
+            {@html part.value.replace(/\n/g, "<br>")}
           {/if}
         {/each}
       {:else}
@@ -389,16 +408,16 @@
       </div>
     {/if}
   </div>
-  
+
   <!-- ファイル入力（非表示） -->
-  <input 
+  <input
     type="file"
     accept="image/*"
     on:change={handleFileSelect}
     bind:this={fileInput}
     style="display: none;"
   />
-  
+
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>
   {/if}
@@ -407,8 +426,11 @@
   {#if imageSizeInfoVisible}
     <div class="image-size-info">
       <span>
-        データ量: {Math.round(originalImageSize/1024)}KB → {Math.round(compressedImageSize/1024)}KB
-        （{originalImageSize > 0 ? Math.round((compressedImageSize/originalImageSize)*100) : 0}%）
+        データ量: {Math.round(originalImageSize / 1024)}KB → {Math.round(
+          compressedImageSize / 1024,
+        )}KB （{originalImageSize > 0
+          ? Math.round((compressedImageSize / originalImageSize) * 100)
+          : 0}%）
       </span>
     </div>
   {/if}
@@ -419,13 +441,13 @@
         {$_(postStatus.message)}
       </div>
     {/if}
-    
+
     {#if postStatus.success}
       <div class="post-status success">
         {$_(postStatus.message)}
       </div>
     {/if}
-    
+
     <div class="buttons-container">
       <button
         class="image-button"
@@ -435,7 +457,7 @@
       >
         <img src={imageIcon} alt={$_("upload_image")} />
       </button>
-      
+
       <button
         class="post-button"
         disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
@@ -459,8 +481,12 @@
         {$_("secret_key_detected")}
       </div>
       <div class="dialog-actions">
-        <button class="dialog-cancel" on:click={cancelPostSecretKey}>{$_("cancel")}</button>
-        <button class="dialog-confirm" on:click={confirmPostSecretKey}>{$_("post")}</button>
+        <button class="dialog-cancel" on:click={cancelPostSecretKey}
+          >{$_("cancel")}</button
+        >
+        <button class="dialog-confirm" on:click={confirmPostSecretKey}
+          >{$_("post")}</button
+        >
       </div>
     </div>
   </div>
@@ -494,7 +520,7 @@
     word-break: break-word;
     color: #222;
   }
-  
+
   .preview-placeholder {
     color: #bbb;
     font-style: italic;
@@ -509,7 +535,7 @@
     border-radius: 8px;
     transition: border-color 0.2s;
   }
-  
+
   .drag-over {
     border: 2px dashed #1da1f2;
     background-color: rgba(29, 161, 242, 0.05);
@@ -534,7 +560,7 @@
     outline: none;
     border-color: #1da1f2;
   }
-  
+
   .upload-overlay {
     position: absolute;
     top: 0;
@@ -560,9 +586,11 @@
     animation: spin 1s ease-in-out infinite;
     margin-bottom: 8px;
   }
-  
+
   @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+      transform: rotate(360deg);
+    }
   }
 
   .post-actions {
@@ -571,13 +599,13 @@
     align-items: center;
     width: 100%;
   }
-  
+
   .buttons-container {
     display: flex;
     gap: 10px;
     align-items: center;
   }
-  
+
   .image-button {
     display: flex;
     align-items: center;
@@ -590,21 +618,21 @@
     cursor: pointer;
     transition: background-color 0.2s;
   }
-  
+
   .image-button img {
     width: 24px;
     height: 24px;
   }
-  
+
   .image-button:hover:not(:disabled) {
     background-color: #e0e0e0;
   }
-  
+
   .image-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
   }
-  
+
   .upload-error {
     color: #c62828;
     font-size: 0.9rem;
@@ -653,7 +681,10 @@
   /* ダイアログスタイル */
   .dialog-backdrop {
     position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     background: #0006;
     display: flex;
     align-items: center;
