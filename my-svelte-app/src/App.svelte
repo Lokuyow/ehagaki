@@ -7,7 +7,7 @@
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
-  import { keyManager } from "./lib/keyManager";
+  import { keyManager, PublicKeyState } from "./lib/keyManager";
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
@@ -25,10 +25,15 @@
   let secretKey = "";
   let hasStoredKey = false;
 
-  // ユーザー公開鍵情報
-  let publicKeyHex = "";
-  let publicKeyNpub = "";
-  let publicKeyNprofile = "";
+  // 公開鍵状態管理（統一・リアクティブ）
+  const publicKeyState = new PublicKeyState();
+  $: publicKeyState.setNsec(secretKey);
+
+  // 公開鍵ストアをサブスクライブ
+  let isValidKey = false;
+  let currentHexKey = "";
+  publicKeyState.isValid.subscribe((valid) => (isValidKey = valid));
+  publicKeyState.hex.subscribe((hex) => (currentHexKey = hex));
 
   // プロフィール情報
   let profileData: ProfileData = {
@@ -82,11 +87,8 @@
   }
 
   async function saveSecretKey() {
-    if (!keyManager.isValidNsec(secretKey)) {
+    if (!isValidKey) {
       errorMessage = "";
-      publicKeyHex = "";
-      publicKeyNpub = "";
-      publicKeyNprofile = "";
       return;
     }
 
@@ -95,14 +97,10 @@
       hasStoredKey = true;
       showDialog = false;
       errorMessage = "";
-      const { hex, npub, nprofile } = keyManager.derivePublicKey(secretKey);
-      publicKeyHex = hex;
-      publicKeyNpub = npub;
-      publicKeyNprofile = nprofile;
 
-      if (publicKeyHex) {
-        await relayManager.fetchUserRelays(publicKeyHex);
-        const profile = await profileManager.fetchProfileData(publicKeyHex);
+      if (currentHexKey) {
+        await relayManager.fetchUserRelays(currentHexKey);
+        const profile = await profileManager.fetchProfileData(currentHexKey);
         if (profile) {
           profileData = profile;
           profileLoaded = true;
@@ -110,21 +108,8 @@
       }
     } else {
       errorMessage = "error_saving";
-      publicKeyHex = "";
-      publicKeyNpub = "";
-      publicKeyNprofile = "";
+      publicKeyState.clear();
     }
-  }
-
-  $: if (secretKey && keyManager.isValidNsec(secretKey)) {
-    const { hex, npub, nprofile } = keyManager.derivePublicKey(secretKey);
-    publicKeyHex = hex;
-    publicKeyNpub = npub;
-    publicKeyNprofile = nprofile;
-  } else if (secretKey) {
-    publicKeyHex = "";
-    publicKeyNpub = "";
-    publicKeyNprofile = "";
   }
 
   function showLoginDialog() {
@@ -154,9 +139,7 @@
 
     hasStoredKey = false;
     secretKey = "";
-    publicKeyHex = "";
-    publicKeyNpub = "";
-    publicKeyNprofile = "";
+    publicKeyState.clear();
     profileData = { name: "", picture: "" };
     profileLoaded = false;
 
@@ -201,10 +184,17 @@
     const storedKey = keyManager.loadFromStorage();
     hasStoredKey = !!storedKey;
 
-    if (storedKey && keyManager.isValidNsec(storedKey)) {
-      const { hex } = keyManager.derivePublicKey(storedKey);
-      publicKeyHex = hex;
-      await initializeNostr(hex);
+    if (storedKey) {
+      publicKeyState.setNsec(storedKey);
+
+      // ストアの値が更新されるまで少し待つ
+      setTimeout(async () => {
+        if (currentHexKey) {
+          await initializeNostr(currentHexKey);
+        } else {
+          await initializeNostr();
+        }
+      }, 10);
     } else {
       await initializeNostr();
     }

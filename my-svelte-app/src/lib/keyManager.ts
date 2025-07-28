@@ -1,9 +1,79 @@
 import { getPublicKey, nip19 } from "nostr-tools";
+import { writable, derived, type Readable } from "svelte/store";
 
 export interface PublicKeyData {
   hex: string;
   npub: string;
   nprofile: string;
+}
+
+// 公開鍵状態を管理するクラス（リアクティブ対応）
+export class PublicKeyState {
+  private _nsecStore = writable<string>("");
+  private _dataStore = writable<PublicKeyData>({ hex: "", npub: "", nprofile: "" });
+  private _isValidStore = writable<boolean>(false);
+
+  // リーダブルストアとして公開
+  readonly nsec: Readable<string> = { subscribe: this._nsecStore.subscribe };
+  readonly data: Readable<PublicKeyData> = { subscribe: this._dataStore.subscribe };
+  readonly isValid: Readable<boolean> = { subscribe: this._isValidStore.subscribe };
+
+  // 派生ストア
+  readonly hex = derived(this._dataStore, ($data) => $data.hex);
+  readonly npub = derived(this._dataStore, ($data) => $data.npub);
+  readonly nprofile = derived(this._dataStore, ($data) => $data.nprofile);
+
+  constructor() {
+    // nsecの変更を監視して自動的に公開鍵を更新
+    this._nsecStore.subscribe((nsec) => {
+      this.updateFromNsec(nsec);
+    });
+  }
+
+  // nsecを設定（リアクティブに更新される）
+  setNsec(nsec: string): void {
+    this._nsecStore.set(nsec || "");
+  }
+
+  private updateFromNsec(nsec: string): void {
+    if (!nsec) {
+      this._dataStore.set({ hex: "", npub: "", nprofile: "" });
+      this._isValidStore.set(false);
+      return;
+    }
+
+    if (!keyManager.isValidNsec(nsec)) {
+      this._dataStore.set({ hex: "", npub: "", nprofile: "" });
+      this._isValidStore.set(false);
+      return;
+    }
+
+    const derivedData = keyManager.derivePublicKey(nsec);
+    if (derivedData.hex) {
+      this._dataStore.set(derivedData);
+      this._isValidStore.set(true);
+    } else {
+      this._dataStore.set({ hex: "", npub: "", nprofile: "" });
+      this._isValidStore.set(false);
+    }
+  }
+
+  clear(): void {
+    this._nsecStore.set("");
+  }
+
+  // 現在の値を同期的に取得（コンポーネント外での使用用）
+  get currentIsValid(): boolean {
+    let value = false;
+    this.isValid.subscribe(val => value = val)();
+    return value;
+  }
+
+  get currentHex(): string {
+    let value = "";
+    this.hex.subscribe(val => value = val)();
+    return value;
+  }
 }
 
 export const keyManager = {

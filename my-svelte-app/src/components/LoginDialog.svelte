@@ -1,32 +1,35 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { keyManager } from "../lib/keyManager";
+    import { PublicKeyState } from "../lib/keyManager";
 
     export let secretKey: string;
     export let errorMessage: string = "";
     export let onClose: () => void;
     export let onSave: () => void;
 
-    // 公開鍵情報の状態
-    let publicKeyNpub: string = "";
-    let publicKeyNprofile: string = "";
+    // 公開鍵状態管理（リアクティブ）
+    const publicKeyState = new PublicKeyState();
 
-    // 入力監視
-    $: {
-        if (secretKey && keyManager.isValidNsec(secretKey)) {
-            const pub = keyManager.derivePublicKey(secretKey);
-            publicKeyNpub = pub.npub;
-            publicKeyNprofile = pub.nprofile;
-            errorMessage = "";
-        } else if (secretKey) {
-            publicKeyNpub = "";
-            publicKeyNprofile = "";
-            errorMessage = "invalid_secret";
-        } else {
-            publicKeyNpub = "";
-            publicKeyNprofile = "";
-            errorMessage = "";
-        }
+    // 入力を動的に監視してリアクティブに更新
+    $: if (secretKey !== undefined) {
+        publicKeyState.setNsec(secretKey);
+    }
+
+    // 公開鍵状態をサブスクライブして状態を取得
+    $: isValid = false;
+    $: npubValue = "";
+    $: nprofileValue = "";
+
+    // 各ストアをサブスクライブ
+    $: publicKeyState.isValid.subscribe((val) => (isValid = val));
+    $: publicKeyState.npub.subscribe((val) => (npubValue = val));
+    $: publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
+
+    // エラーメッセージの動的更新
+    $: if (secretKey) {
+        errorMessage = isValid ? "" : "invalid_secret";
+    } else {
+        errorMessage = "";
     }
 
     function handleClose() {
@@ -67,21 +70,21 @@
             id="secretKey"
             name="secretKey"
         />
-        {#if publicKeyNpub}
+        {#if npubValue}
             <p class="pubkey-label">
                 {$_("public_key_npub")}:
                 <br />
                 <span class="pubkey-value" style="word-break:break-all"
-                    >{publicKeyNpub}</span
+                    >{npubValue}</span
                 >
             </p>
         {/if}
-        {#if publicKeyNprofile}
+        {#if nprofileValue}
             <p class="profilekey-label">
                 {$_("public_key_nprofile")}:
                 <br />
                 <span class="profilekey-value" style="word-break:break-all"
-                    >{publicKeyNprofile}</span
+                    >{nprofileValue}</span
                 >
             </p>
         {/if}
@@ -123,16 +126,6 @@
         width: 90%;
         max-width: 500px;
     }
-
-    .secret-input {
-        width: 100%;
-        padding: 0.8rem;
-        margin: 1rem 0;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        font-size: 1rem;
-    }
-
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
@@ -182,5 +175,16 @@
     .profilekey-value {
         font-size: 0.85rem;
         color: #444;
+    }
+
+    .secret-input {
+        font-family: monospace;
+        font-size: 1rem;
+        padding: 0.6rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        width: 100%;
+        box-sizing: border-box;
+        margin-top: 0.5rem;
     }
 </style>
