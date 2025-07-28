@@ -347,8 +347,6 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    /* フッター分の下部余白を追加 */
-    padding-bottom: 60px;
   }
   .footer-bar {
     width: 100%;

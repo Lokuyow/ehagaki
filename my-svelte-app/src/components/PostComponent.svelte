@@ -433,6 +433,8 @@
   <!-- テキストエリア -->
   <div class="textarea-container" class:drag-over={dragOver}>
     <textarea
+      id="post-input"
+      name="postContent"
       class="post-input"
       bind:value={postContent}
       placeholder={$_("enter_your_text")}
@@ -515,6 +517,8 @@
     width: 100%;
     max-width: 600px;
     min-width: 300px;
+    max-height: 300px;
+    overflow: auto; /* ← 追加: スクロールバー表示 */
   }
 
   .preview-content {
@@ -534,7 +538,6 @@
   .textarea-container {
     position: relative;
     width: 100%;
-    margin-bottom: 10px;
     border-radius: 8px;
     transition: border-color 0.2s;
   }
@@ -548,6 +551,7 @@
     width: 100%;
     max-width: 600px;
     min-width: 300px;
+    max-height: 300px;
     min-height: 260px;
     padding: 10px;
     border: 1px solid #ccc;
