@@ -215,12 +215,12 @@
     // ShareHandlerのシングルトンを取得して共有画像を処理（簡素化）
     try {
       console.log("共有画像の確認を開始します");
-      processingSharedImage = true;
 
       const shareHandler = getShareHandler();
       const sharedImageData = await shareHandler.checkForSharedImageOnLaunch();
 
       if (sharedImageData && sharedImageData.image) {
+        processingSharedImage = true; // 画像検出時のみtrueに
         console.log(
           "共有画像を検出しました:",
           sharedImageData.image.name,
