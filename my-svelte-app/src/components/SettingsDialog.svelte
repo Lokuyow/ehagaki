@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { locale, _ } from "svelte-i18n";
-    import languageIcon from "../assets/language-solid.svg";
 
     export let show = false;
     export let onClose: () => void;
@@ -80,7 +79,7 @@
                 <span class="setting-label">
                     Language
                     <img
-                        src={languageIcon}
+                        src="/ehagaki/icons/language-solid.svg"
                         alt="Language"
                         class="lang-icon-label"
                     />
@@ -191,7 +190,6 @@
         transition: background 0.2s;
         width: 100px;
         height: 42px;
-
     }
     .lang-btn:hover {
         background: #797979;

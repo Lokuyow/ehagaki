@@ -4,7 +4,6 @@
   import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
   import { _, locale } from "svelte-i18n";
-  import settingsIcon from "./assets/gear-solid-full.svg";
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
@@ -283,7 +282,11 @@
         showLogoutDialog={openLogoutDialog}
       />
       <button class="settings-btn" on:click={openSettings} aria-label="設定">
-        <img src={settingsIcon} alt="Settings" class="settings-icon" />
+        <img
+          src="/ehagaki/icons/gear-solid-full.svg"
+          alt="Settings"
+          class="settings-icon"
+        />
       </button>
     </div>
 

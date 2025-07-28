@@ -4,7 +4,6 @@
   import { PostManager } from "../lib/postManager";
   import { FileUploadManager } from "../lib/fileUploadManager";
   import { getShareHandler } from "../lib/shareHandler";
-  import imageIcon from "../assets/image-solid-full.svg";
   import { onMount, onDestroy } from "svelte";
 
   export let rxNostr: any;
@@ -456,7 +455,10 @@
         on:click={openFileDialog}
         title={$_("upload_image")}
       >
-        <img src={imageIcon} alt={$_("upload_image")} />
+        <img
+          src="/ehagaki/icons/image-solid-full.svg"
+          alt={$_("upload_image")}
+        />
       </button>
 
       <button

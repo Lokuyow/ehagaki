@@ -6,139 +6,193 @@ const error = (...args) => console.error('[ServiceWorker]', ...args);
 // 画像データをキャッシュするためのインメモリストア
 let sharedImageCache = null;
 
-// すべてのfetchイベントをリッスン
+// VitePWAによるWorkbox注入（CDNインポートを削除）
+// importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
+
+// VitePWAがここにマニフェストを注入
+const precacheManifest = self.__WB_MANIFEST;
+
+// プリキャッシュの設定（シンプルに）
+if (precacheManifest && precacheManifest.length > 0) {
+    const CACHE_NAME = 'precache-v1';
+
+    // インストール時にプリキャッシュ
+    self.addEventListener('install', (event) => {
+        log('インストールされました - プリキャッシュ開始');
+        event.waitUntil(
+            (async () => {
+                try {
+                    const cache = await caches.open(CACHE_NAME);
+                    const urls = precacheManifest.map(entry => entry.url);
+                    await cache.addAll(urls);
+                    log('プリキャッシュ完了:', urls);
+                } catch (err) {
+                    error('プリキャッシュ失敗:', err);
+                }
+                await self.skipWaiting();
+            })()
+        );
+    });
+}
+
+// fetch時のCache First戦略
 self.addEventListener('fetch', (event) => {
-    const fetchEvent = event;
-    const url = new URL(fetchEvent.request.url);
+    const url = new URL(event.request.url);
 
-    log('リクエスト受信:', fetchEvent.request.method, url.pathname);
-
-    // GitHub Pagesでの相対パスに対応
-    const isUploadRequest =
-        fetchEvent.request.method === 'POST' &&
+    // アップロードリクエストの処理
+    const isUploadRequest = event.request.method === 'POST' &&
         (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
 
     if (isUploadRequest) {
-        log('画像アップロードリクエストを受信しました', url.pathname);
+        event.respondWith((async () => {
+            log('画像アップロードリクエストをWorkboxで処理します', event.request.url);
+            try {
+                log('フォームデータを処理中...');
+                const formData = await event.request.formData();
+                const image = formData.get('image');
 
-        fetchEvent.respondWith(
-            (async () => {
-                try {
-                    log('フォームデータを処理中...');
-                    const formData = await fetchEvent.request.formData();
-                    const image = formData.get('image');
+                // 画像データの存在確認
+                if (!image) {
+                    error('画像データがありません');
+                    return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                }
 
-                    // 画像データの存在確認
-                    if (!image) {
-                        error('画像データがありません');
-                        return Response.redirect(new URL('/ehagaki/', self.location.origin).href, 303);
+                log('画像を受信しました:',
+                    image.name,
+                    `タイプ: ${image.type}`,
+                    `サイズ: ${Math.round(image.size / 1024)}KB`
+                );
+
+                // 画像データをキャッシュに保存
+                sharedImageCache = {
+                    image,
+                    metadata: {
+                        name: image.name,
+                        type: image.type,
+                        size: image.size,
+                        timestamp: new Date().toISOString()
                     }
+                };
 
-                    log('画像を受信しました:',
-                        image.name,
-                        `タイプ: ${image.type}`,
-                        `サイズ: ${Math.round(image.size / 1024)}KB`
-                    );
+                try {
+                    // indexedDBに共有フラグを保存
+                    await saveSharedFlag();
+                    log('IndexedDBに共有フラグを保存しました');
+                } catch (dbErr) {
+                    error('IndexedDB保存エラー:', dbErr);
+                }
 
-                    // 画像データをキャッシュに保存
-                    sharedImageCache = {
-                        image,
-                        metadata: {
-                            name: image.name,
-                            type: image.type,
-                            size: image.size,
-                            timestamp: new Date().toISOString()
-                        }
-                    };
+                // アクティブなクライアントを探してフォーカス
+                const clients = await self.clients.matchAll({
+                    type: 'window',
+                    includeUncontrolled: true
+                });
+
+                if (clients.length > 0) {
+                    // すでに開いているクライアントを選択
+                    const client = clients[0];
+                    log('既存のクライアントにフォーカス:', client.id);
 
                     try {
-                        // indexedDBに共有フラグを保存
-                        await saveSharedFlag();
-                        log('IndexedDBに共有フラグを保存しました');
-                    } catch (dbErr) {
-                        error('IndexedDB保存エラー:', dbErr);
-                    }
+                        // フォーカスしてからデータを送信
+                        await client.focus();
 
-                    // アクティブなクライアントを探してフォーカス
-                    const clients = await self.clients.matchAll({
-                        type: 'window',
-                        includeUncontrolled: true
-                    });
-
-                    if (clients.length > 0) {
-                        // すでに開いているクライアントを選択
-                        const client = clients[0];
-                        log('既存のクライアントにフォーカス:', client.id);
-
-                        try {
-                            // フォーカスしてからデータを送信
-                            await client.focus();
-
-                            // メッセージを送信する関数
-                            const sendMessage = (retry = 0) => {
-                                try {
-                                    client.postMessage({
-                                        type: 'SHARED_IMAGE',
-                                        data: sharedImageCache,
-                                        timestamp: Date.now(),
-                                        retry
-                                    });
-                                    log(`画像データ${retry > 0 ? '再' : ''}送信 (${retry}回目)`);
-                                } catch (e) {
-                                    error('メッセージ送信エラー:', e);
-                                }
-                            };
-
-                            // 即時送信
-                            sendMessage();
-
-                            // 信頼性向上のため、遅延して再送信
-                            setTimeout(() => sendMessage(1), 1000);
-                            setTimeout(() => sendMessage(2), 2000);
-
-                            // リダイレクト
-                            return Response.redirect(new URL('/ehagaki/?shared=true', self.location.origin).href, 303);
-                        } catch (msgErr) {
-                            error('メッセージ送信エラー:', msgErr);
-                            return Response.redirect(new URL('/ehagaki/?shared=true&error=messaging', self.location.origin).href, 303);
-                        }
-                    } else {
-                        // クライアントが開かれていない場合、新しいウィンドウを開く
-                        log('クライアントがないので新規ウィンドウを開きます');
-
-                        try {
-                            // 新しいウィンドウを開いて、URLにクエリパラメータを付与
-                            const newWindowUrl = new URL('/ehagaki/?shared=true', self.location.origin).href;
-                            log('新規ウィンドウを開きます:', newWindowUrl);
-
-                            const windowClient = await self.clients.openWindow(newWindowUrl);
-
-                            if (windowClient) {
-                                log('新しいウィンドウを開きました');
-                                // リダイレクトせず、直接返す
-                                return new Response('', {
-                                    status: 200,
-                                    headers: {
-                                        'Content-Type': 'text/plain'
-                                    }
+                        // メッセージを送信する関数
+                        const sendMessage = (retry = 0) => {
+                            try {
+                                client.postMessage({
+                                    type: 'SHARED_IMAGE',
+                                    data: sharedImageCache,
+                                    timestamp: Date.now(),
+                                    retry
                                 });
-                            } else {
-                                error('新しいウィンドウを開けませんでした');
-                                return Response.redirect(new URL('/ehagaki/?shared=true&error=window', self.location.origin).href, 303);
+                                log(`画像データ${retry > 0 ? '再' : ''}送信 (${retry}回目)`);
+                            } catch (e) {
+                                error('メッセージ送信エラー:', e);
                             }
-                        } catch (windowErr) {
-                            error('ウィンドウオープンエラー:', windowErr);
-                            return Response.redirect(new URL('/ehagaki/?shared=true&error=openWindow', self.location.origin).href, 303);
-                        }
+                        };
+
+                        // 即時送信
+                        sendMessage();
+
+                        // 信頼性向上のため、遅延して再送信
+                        setTimeout(() => sendMessage(1), 1000);
+                        setTimeout(() => sendMessage(2), 2000);
+
+                        // リダイレクト
+                        return Response.redirect(new URL('/ehagaki/?shared=true', self.location.origin).href, 303);
+                    } catch (msgErr) {
+                        error('メッセージ送信エラー:', msgErr);
+                        return Response.redirect(new URL('/ehagaki/?shared=true&error=messaging', self.location.origin).href, 303);
                     }
-                } catch (err) {
-                    error('画像処理エラー:', err);
-                    // エラー時も適切にリダイレクト
-                    return Response.redirect(new URL('/ehagaki/?shared=true&error=processing', self.location.origin).href, 303);
+                } else {
+                    // クライアントが開かれていない場合、新しいウィンドウを開く
+                    log('クライアントがないので新規ウィンドウを開きます');
+
+                    try {
+                        // 新しいウィンドウを開いて、URLにクエリパラメータを付与
+                        const newWindowUrl = new URL('/ehagaki/?shared=true', self.location.origin).href;
+                        log('新規ウィンドウを開きます:', newWindowUrl);
+
+                        const windowClient = await self.clients.openWindow(newWindowUrl);
+
+                        if (windowClient) {
+                            log('新しいウィンドウを開きました');
+                            // リダイレクトせず、直接返す
+                            return new Response('', {
+                                status: 200,
+                                headers: {
+                                    'Content-Type': 'text/plain'
+                                }
+                            });
+                        } else {
+                            error('新しいウィンドウを開けませんでした');
+                            return Response.redirect(new URL('/ehagaki/?shared=true&error=window', self.location.origin).href, 303);
+                        }
+                    } catch (windowErr) {
+                        error('ウィンドウオープンエラー:', windowErr);
+                        return Response.redirect(new URL('/ehagaki/?shared=true&error=openWindow', self.location.origin).href, 303);
+                    }
                 }
-            })()
-        );
-        return;
+            } catch (err) {
+                error('画像処理エラー:', err);
+                // エラー時も適切にリダイレクト
+                return Response.redirect(new URL('/ehagaki/?shared=true&error=processing', self.location.origin).href, 303);
+            }
+        })());
+    } else {
+        // オリジン判定を追加
+        if (url.origin === self.location.origin) {
+            // Cache First戦略を実装（自サイトのみ）
+            event.respondWith((async () => {
+                try {
+                    const cache = await caches.open('precache-v1');
+                    const cachedResponse = await cache.match(event.request);
+
+                    if (cachedResponse) {
+                        log('キャッシュからレスポンス:', event.request.url);
+                        return cachedResponse;
+                    }
+
+                    log('ネットワークからフェッチ:', event.request.url);
+                    const networkResponse = await fetch(event.request);
+
+                    if (networkResponse.ok && event.request.method === 'GET') {
+                        const responseToCache = networkResponse.clone();
+                        await cache.put(event.request, responseToCache);
+                        log('ネットワーク応答をキャッシュに保存:', event.request.url);
+                    }
+
+                    return networkResponse;
+                } catch (error) {
+                    error('フェッチエラー:', event.request.url, error);
+                    return new Response('Not Found', { status: 404 });
+                }
+            })());
+        } else {
+            // 外部リソースはキャッシュせず、ネットワークから直接取得
+            event.respondWith(fetch(event.request));
+        }
     }
 });
 

@@ -9,10 +9,7 @@ export default defineConfig({
     svelte(),
     VitePWA({
       registerType: 'autoUpdate',
-      // srcDir/filenameの指定を削除
-      // カスタムSWを使用するため、injectManifestに戻す
       strategies: 'injectManifest',
-      // サービスワーカーのスコープを明示的に設定
       scope: '/ehagaki/',
       manifest: {
         name: 'eHagaki',
@@ -32,7 +29,6 @@ export default defineConfig({
           }
         ],
         share_target: {
-          // GitHub Pages用に絶対パスに変更
           action: '/ehagaki/upload',
           method: 'POST',
           enctype: 'multipart/form-data',
@@ -46,14 +42,18 @@ export default defineConfig({
           }
         }
       },
-      // injectManifest 設定
       injectManifest: {
-        swSrc: 'public/sw.js', // サービスワーカーのエントリポイントを明示
+        swSrc: 'public/sw.js',
         swDest: 'dist/sw.js',
         rollupFormat: 'iife',
-        injectionPoint: undefined
-      },
-      // 共有ターゲット機能のサポート
+        injectionPoint: 'self.__WB_MANIFEST',
+        globPatterns: [
+          '**/*.{js,css,html}',
+          'assets/**/*.{js,css,png,jpg,jpeg,svg,gif,webp,ico}',
+          '*.{png,jpg,jpeg,svg,gif,webp,ico}', // publicフォルダ直下のファイル
+          'icons/**/*.{png,jpg,jpeg,svg,gif,webp,ico}' // ← 追加: public/icons配下
+        ]
+      }
     })
   ]
 });

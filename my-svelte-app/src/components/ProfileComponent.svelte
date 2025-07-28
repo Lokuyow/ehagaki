@@ -1,7 +1,6 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
   import type { ProfileData } from "../lib/profileManager";
-  import defaultIcon from "../assets/circle-user-solid-full.svg";
 
   export let profileData: ProfileData | null = null;
   export let profileLoaded = false;
@@ -19,7 +18,9 @@
     tabindex="0"
   >
     <img
-      src={profileData?.picture && profileData.picture !== "" ? profileData.picture : defaultIcon}
+      src={profileData?.picture && profileData.picture !== ""
+        ? profileData.picture
+        : "/ehagaki/icons/circle-user-solid-full.svg"}
       alt={profileData?.name
         ? profileData.name
         : profileData?.npub
