@@ -176,22 +176,20 @@
     localStorage.setItem("locale", $locale);
   }
 
+  // SW更新通知メッセージ（i18n対応）
+  $: swUpdateMessage = $_("sw_update_available") ?? "新しいバージョンが利用可能です。自動的にリロードします…";
+
   function handleSwUpdate(sw: ServiceWorker) {
     showSwUpdateModal = true;
     waitingSw = sw;
-  }
-
-  function reloadForSwUpdate() {
-    if (waitingSw) {
-      waitingSw.postMessage({ type: "SKIP_WAITING" });
-    }
-    showSwUpdateModal = false;
-    location.reload();
-  }
-
-  function cancelSwUpdateModal() {
-    showSwUpdateModal = false;
-    waitingSw = null;
+    // 2秒後にskipWaitingしてリロード
+    setTimeout(() => {
+      if (waitingSw) {
+        waitingSw.postMessage({ type: "SKIP_WAITING" });
+      }
+      showSwUpdateModal = false;
+      location.reload();
+    }, 2000);
   }
 
   onMount(async () => {
@@ -339,12 +337,8 @@
       </div>
     {/if}
 
-    <!-- SW更新モーダル（コンポーネント化） -->
-    <SwUpdateModal
-      show={showSwUpdateModal}
-      onReload={reloadForSwUpdate}
-      onCancel={cancelSwUpdateModal}
-    />
+    <!-- SW更新モーダル（Popover API対応・i18nメッセージ渡し） -->
+    <SwUpdateModal show={showSwUpdateModal} onReload={() => {}} message={swUpdateMessage} />
   </main>
 {/if}
 

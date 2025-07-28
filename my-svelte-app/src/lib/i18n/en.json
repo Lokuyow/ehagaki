@@ -32,5 +32,6 @@
   "logout_warning": "Are you sure you want to logout?",
   "logout": "Logout",
   "shared_image_received": "Shared image received and uploaded",
-  "processing_shared_image": "Processing shared image..."
+  "processing_shared_image": "Processing shared image...",
+  "sw_update_available": "A new version is available. Reloading automatically…"
 }
