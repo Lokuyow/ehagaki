@@ -65,7 +65,7 @@
         <input
             type="password"
             bind:value={secretKey}
-            placeholder="nsec1~"
+            placeholder="nsec1…"
             class="secret-input"
             id="secretKey"
             name="secretKey"
@@ -131,6 +131,7 @@
         justify-content: flex-end;
         gap: 1rem;
         margin-top: 1.5rem;
+        width: 100%;
     }
 
     .cancel-btn {
@@ -141,6 +142,8 @@
         border-radius: 4px;
         cursor: pointer;
         transition: background 0.2s;
+        width: 100%;
+        height: 60px;
     }
     .cancel-btn:hover {
         background-color: #e0e0e0;
@@ -153,6 +156,8 @@
         border: none;
         border-radius: 4px;
         cursor: pointer;
+        width: 100%;
+        height: 60px;
     }
 
     .save-btn:hover {
@@ -160,8 +165,8 @@
     }
 
     .error-message {
+        font-size: 1rem;
         color: #d32f2f;
-        font-size: 0.9rem;
         margin-top: 0.5rem;
     }
 
@@ -184,6 +189,7 @@
         border: 1px solid #ccc;
         border-radius: 4px;
         width: 100%;
+        height: 60px;
         box-sizing: border-box;
         margin-top: 0.5rem;
     }

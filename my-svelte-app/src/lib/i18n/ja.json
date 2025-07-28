@@ -23,7 +23,7 @@
   "upload_destination": "アップロード先",
   "settings": "設定",
   "input_secret": "秘密鍵の入力",
-  "input_nostr_secret": "Nostrの秘密鍵(nsec1...)を入力してください",
+  "input_nostr_secret": "Nostrの秘密鍵(nsec1…)を入力してください",
   "save": "保存",
   "public_key_npub": "公開鍵(npub)",
   "public_key_nprofile": "公開鍵(nprofile)",
