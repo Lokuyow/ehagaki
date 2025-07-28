@@ -260,23 +260,18 @@
 
 {#if $locale}
   <main>
-    <!-- ヘッダー領域 -->
-    <div class="header">
-      <ProfileComponent
-        {profileData}
-        {profileLoaded}
+    <!-- 投稿ボタン・画像アップロードボタンを最上部に配置 -->
+    <div class="main-content">
+      <PostComponent
+        {rxNostr}
         {hasStoredKey}
-        {showLoginDialog}
-        showLogoutDialog={openLogoutDialog}
+        onPostSuccess={() => {
+          // 必要に応じて投稿成功時の処理を追加
+        }}
       />
-      <button class="settings-btn" on:click={openSettings} aria-label="設定">
-        <img
-          src="/ehagaki/icons/gear-solid-full.svg"
-          alt="Settings"
-          class="settings-icon"
-        />
-      </button>
     </div>
+
+    <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
 
     {#if showDialog}
       <LoginDialog
@@ -299,19 +294,6 @@
     <!-- 設定ダイアログ -->
     <SettingsDialog show={showSettings} onClose={closeSettings} />
 
-    <!-- メインコンテンツ -->
-    <div class="main-content">
-      <!-- 投稿コンポーネントを使用 -->
-      <PostComponent
-        {rxNostr}
-        {hasStoredKey}
-        onPostSuccess={() => {
-          // 必要に応じて投稿成功時の処理を追加
-        }}
-      />
-    </div>
-    <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
-
     {#if processingSharedImage}
       <div class="loading-overlay">
         <p>{$_("processing_shared_image")}</p>
@@ -331,22 +313,59 @@
       onReload={() => {}}
       message={swUpdateMessage}
     />
+
+    <!-- ヘッダー領域を最下部に配置 -->
+    <div class="footer-bar">
+      <ProfileComponent
+        {profileData}
+        {profileLoaded}
+        {hasStoredKey}
+        {showLoginDialog}
+        showLogoutDialog={openLogoutDialog}
+      />
+      <button class="settings-btn" on:click={openSettings} aria-label="設定">
+        <img
+          src="/ehagaki/icons/gear-solid-full.svg"
+          alt="Settings"
+          class="settings-icon"
+        />
+      </button>
+    </div>
   </main>
 {/if}
 
 <style>
   main {
     position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
   }
-  .header {
+  .main-content {
+    margin-top: 10px;
     width: 100%;
-    height: 51px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    /* フッター分の下部余白を追加 */
+    padding-bottom: 60px;
+  }
+  .footer-bar {
+    width: 100%;
+    height: 57px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 24px;
     padding: 6px 6px 0 6px;
-    background: transparent;
+    background: #fff;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    box-shadow: 0 -2px 8px #0001;
+    z-index: 100;
+    padding-bottom: 6px;
   }
   .settings-btn {
     background: #fff;
@@ -378,13 +397,6 @@
     height: 24px;
     display: block;
   }
-  .main-content {
-    margin-top: 10px;
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
   .loading-overlay {
     position: fixed;
     top: 0;
@@ -400,7 +412,7 @@
   }
   .shared-image-notification {
     position: fixed;
-    bottom: 20px;
+    bottom: 80px; /* フッターの高さ分上に */
     left: 50%;
     transform: translateX(-50%);
     background-color: #4caf50;

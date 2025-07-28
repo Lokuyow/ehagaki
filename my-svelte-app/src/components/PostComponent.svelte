@@ -369,6 +369,47 @@
 
 <!-- 投稿入力エリア -->
 <div class="post-container">
+  <!-- 投稿ボタン・画像アップロードボタンを最上部に移動 -->
+  <div class="post-actions">
+    {#if postStatus.error}
+      <div class="post-status error">
+        {$_(postStatus.message)}
+      </div>
+    {/if}
+
+    {#if postStatus.success}
+      <div class="post-status success">
+        {$_(postStatus.message)}
+      </div>
+    {/if}
+
+    <div class="buttons-container">
+      <button
+        class="image-button"
+        disabled={!hasStoredKey || postStatus.sending || isUploading}
+        on:click={openFileDialog}
+        title={$_("upload_image")}
+      >
+        <img
+          src="/ehagaki/icons/image-solid-full.svg"
+          alt={$_("upload_image")}
+        />
+      </button>
+
+      <button
+        class="post-button"
+        disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
+        on:click={submitPost}
+      >
+        {#if postStatus.sending}
+          {$_("posting")}...
+        {:else}
+          {$_("post")}
+        {/if}
+      </button>
+    </div>
+  </div>
+
   <div class="post-preview">
     <div class="preview-content">
       {#if postContent.trim()}
@@ -434,46 +475,6 @@
       </span>
     </div>
   {/if}
-
-  <div class="post-actions">
-    {#if postStatus.error}
-      <div class="post-status error">
-        {$_(postStatus.message)}
-      </div>
-    {/if}
-
-    {#if postStatus.success}
-      <div class="post-status success">
-        {$_(postStatus.message)}
-      </div>
-    {/if}
-
-    <div class="buttons-container">
-      <button
-        class="image-button"
-        disabled={!hasStoredKey || postStatus.sending || isUploading}
-        on:click={openFileDialog}
-        title={$_("upload_image")}
-      >
-        <img
-          src="/ehagaki/icons/image-solid-full.svg"
-          alt={$_("upload_image")}
-        />
-      </button>
-
-      <button
-        class="post-button"
-        disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
-        on:click={submitPost}
-      >
-        {#if postStatus.sending}
-          {$_("posting")}...
-        {:else}
-          {$_("post")}
-        {/if}
-      </button>
-    </div>
-  </div>
 </div>
 
 {#if showWarningDialog}
@@ -499,7 +500,7 @@
   .post-container {
     max-width: 600px;
     width: 100%;
-    margin: 6px auto;
+    margin: 0 auto;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -596,23 +597,26 @@
 
   .post-actions {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
     align-items: center;
     width: 100%;
+    height: 60px;
+    margin-bottom: 10px;
   }
 
   .buttons-container {
     display: flex;
     gap: 10px;
     align-items: center;
+    height: 100%;
   }
 
   .image-button {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 60px;
+    height: 60px;
     border-radius: 50%;
     border: 1px solid #ccc;
     background-color: #fff;
@@ -621,8 +625,8 @@
   }
 
   .image-button img {
-    width: 24px;
-    height: 24px;
+    width: 32px;
+    height: 32px;
   }
 
   .image-button:hover:not(:disabled) {
@@ -663,11 +667,13 @@
     background-color: #1da1f2;
     color: white;
     border: none;
-    border-radius: 20px;
+    border-radius: 30px;
     font-weight: bold;
     cursor: pointer;
     transition: background-color 0.2s;
+    width: 120px;
     min-width: 100px;
+    height: 100%;
   }
 
   .post-button:hover:not(:disabled) {
