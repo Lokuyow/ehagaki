@@ -13,6 +13,11 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+* {
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
 a {
   font-weight: 500;
   color: #646cff;

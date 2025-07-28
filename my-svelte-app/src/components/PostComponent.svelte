@@ -514,7 +514,6 @@
     width: 100%;
     max-width: 600px;
     min-width: 300px;
-    box-sizing: border-box;
   }
 
   .preview-content {
@@ -555,7 +554,6 @@
     resize: vertical;
     font-family: inherit;
     font-size: 1.2rem;
-    box-sizing: border-box;
     transition: border-color 0.2s;
   }
 

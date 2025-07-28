@@ -44,8 +44,10 @@
 
 <style>
   .login-btn {
+    width: 110px;
+    height: 100%;
     padding: 0.5em 1.2em;
-    font-size: 1em;
+    font-size: 1rem;
     border: none;
     border-radius: 4px;
     background: #646cff;

@@ -340,20 +340,20 @@
   }
   .header {
     width: 100%;
+    height: 51px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 24px;
-    padding: 8px 8px 0 8px;
-    box-sizing: border-box;
+    padding: 6px 6px 0 6px;
     background: transparent;
   }
   .settings-btn {
     background: #fff;
     border: 1px solid #ccc;
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
+    width: 45px;
+    height: 45px;
     padding: 6px;
     cursor: pointer;
     box-shadow: 0 2px 8px #0001;
