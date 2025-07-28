@@ -83,7 +83,7 @@
 
   async function saveSecretKey() {
     if (!keyManager.isValidNsec(secretKey)) {
-      errorMessage = "invalid_key";
+      errorMessage = "";
       publicKeyHex = "";
       publicKeyNpub = "";
       publicKeyNprofile = "";
@@ -291,8 +291,6 @@
     {#if showDialog}
       <LoginDialog
         bind:secretKey
-        {publicKeyNpub}
-        {publicKeyNprofile}
         {errorMessage}
         onClose={closeDialog}
         onSave={saveSecretKey}

@@ -65,7 +65,8 @@
     align-items: center;
     gap: 4px;
     z-index: 10;
-    background: #f0f0f0;
+    background: #fff;
+    border: 1px solid #ccc;
     border-radius: 20px;
     padding: 5px 12px 5px 5px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);

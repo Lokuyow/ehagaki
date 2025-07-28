@@ -5,7 +5,6 @@
   "login": "ログイン",
   "cancel": "キャンセル",
   "close": "閉じる",
-  "invalid_key": "無効な秘密鍵です",
   "error_saving": "鍵の保存中にエラーが発生しました",
   "secret_key_detected": "投稿内容に秘密鍵が含まれているようです。本当に投稿しますか？",
   "warning": "警告",
@@ -32,5 +31,6 @@
   "logout_warning": "本当にログアウトしますか？",
   "logout": "ログアウト",
   "shared_image_received": "共有画像を受信してアップロードしました",
-  "processing_shared_image": "共有画像を処理しています..."
+  "processing_shared_image": "共有画像を処理しています...",
+  "invalid_secret": "無効な秘密鍵です"
 }

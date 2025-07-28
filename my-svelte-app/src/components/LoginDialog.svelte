@@ -1,12 +1,33 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { keyManager } from "../lib/keyManager";
 
     export let secretKey: string;
-    export let publicKeyNpub: string = "";
-    export let publicKeyNprofile: string = "";
     export let errorMessage: string = "";
     export let onClose: () => void;
     export let onSave: () => void;
+
+    // 公開鍵情報の状態
+    let publicKeyNpub: string = "";
+    let publicKeyNprofile: string = "";
+
+    // 入力監視
+    $: {
+        if (secretKey && keyManager.isValidNsec(secretKey)) {
+            const pub = keyManager.derivePublicKey(secretKey);
+            publicKeyNpub = pub.npub;
+            publicKeyNprofile = pub.nprofile;
+            errorMessage = "";
+        } else if (secretKey) {
+            publicKeyNpub = "";
+            publicKeyNprofile = "";
+            errorMessage = "invalid_secret";
+        } else {
+            publicKeyNpub = "";
+            publicKeyNprofile = "";
+            errorMessage = "";
+        }
+    }
 
     function handleClose() {
         onClose?.();
@@ -43,19 +64,25 @@
             bind:value={secretKey}
             placeholder="nsec1~"
             class="secret-input"
+            id="secretKey"
+            name="secretKey"
         />
         {#if publicKeyNpub}
             <p class="pubkey-label">
                 {$_("public_key_npub")}:
-                <br>
-                <span class="pubkey-value" style="word-break:break-all">{publicKeyNpub}</span>
+                <br />
+                <span class="pubkey-value" style="word-break:break-all"
+                    >{publicKeyNpub}</span
+                >
             </p>
         {/if}
         {#if publicKeyNprofile}
             <p class="profilekey-label">
                 {$_("public_key_nprofile")}:
-                <br>
-                <span class="profilekey-value" style="word-break:break-all">{publicKeyNprofile}</span>
+                <br />
+                <span class="profilekey-value" style="word-break:break-all"
+                    >{publicKeyNprofile}</span
+                >
             </p>
         {/if}
         {#if errorMessage}
@@ -147,6 +174,7 @@
 
     .pubkey-label,
     .profilekey-label {
+        align-self: flex-start;
         font-size: 0.92rem;
         margin-bottom: 0.2rem;
     }

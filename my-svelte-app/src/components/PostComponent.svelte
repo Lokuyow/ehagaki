@@ -506,7 +506,7 @@
   }
 
   .post-preview {
-    margin-bottom: 10px;
+    margin-bottom: 6px;
     padding: 15px;
     border: 1px solid #ddd;
     border-radius: 8px;
@@ -616,8 +616,8 @@
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    border: none;
-    background-color: #f0f0f0;
+    border: 1px solid #ccc;
+    background-color: #fff;
     cursor: pointer;
     transition: background-color 0.2s;
   }
