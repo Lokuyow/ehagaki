@@ -10,9 +10,6 @@ let sharedImageCache = null;
 const PRECACHE_VERSION = 'v0.1.0';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 
-// VitePWAによるWorkbox注入（CDNインポートを削除）
-// importScripts('https://storage.googleapis.com/workbox-cdn/releases/6.5.4/workbox-sw.js');
-
 // VitePWAがここにマニフェストを注入
 const precacheManifest = self.__WB_MANIFEST;
 
