@@ -4,10 +4,13 @@
   import { PostManager } from "../lib/postManager";
   import { FileUploadManager } from "../lib/fileUploadManager";
   import { getShareHandler } from "../lib/shareHandler";
+  import { ImagePreviewManager } from "../lib/imagePreviewUtils";
   import { onMount, onDestroy } from "svelte";
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
+  export let onPostSuccess: (() => void) | undefined;
+  export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
 
   // 投稿機能のための状態変数
   let postContent = "";
@@ -17,10 +20,6 @@
     error: false,
     message: "",
   };
-
-  // 親から受け取るコールバック
-  export let onPostSuccess: (() => void) | undefined;
-  export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
 
   // 警告ダイアログ表示用
   let showWarningDialog = false;
@@ -41,10 +40,11 @@
 
   // 遅延表示用の状態
   let delayedImages: Record<string, boolean> = {};
-  let delayedTimeouts: Record<string, any> = {};
 
-  // ShareHandlerインスタンス（シングルトン）
+  // マネージャーインスタンス
+  const postManager = new PostManager(rxNostr);
   const shareHandler = getShareHandler();
+  const imagePreviewManager = new ImagePreviewManager();
 
   // 共有画像を処理するハンドラー（簡素化）
   function handleSharedImage(event: Event) {
@@ -87,8 +87,10 @@
     );
 
     // タイマーをクリア
-    for (const key in delayedTimeouts) {
-      clearTimeout(delayedTimeouts[key]);
+    for (const key in delayedImages) {
+      if (delayedImages[key]) {
+        delayedImages[key] = false;
+      }
     }
   });
 
@@ -233,42 +235,44 @@
     }
   }
 
-  // 投稿送信処理
+  // 投稿送信処理（リファクタリング）
   async function submitPost() {
-    // nsec1~が含まれているかチェック
-    if (/nsec1[0-9a-zA-Z]+/.test(postContent)) {
+    if (postManager.containsSecretKey(postContent)) {
       pendingPostContent = postContent;
       showWarningDialog = true;
       return;
     }
 
-    // PostManagerインスタンスをここで生成
-    const postManager = new PostManager(rxNostr);
+    await executePost();
+  }
+
+  // 実際の投稿処理
+  async function executePost() {
     const success = await postManager.submitPost(postContent, postStatus);
 
     if (success) {
-      // Svelteのリアクティビティを強制更新するため、オブジェクトを再代入
+      handlePostSuccess();
+    }
+  }
+
+  // 投稿成功時の処理
+  function handlePostSuccess() {
+    postStatus = {
+      ...postStatus,
+      success: true,
+      message: "post_success",
+    };
+
+    postContent = "";
+    if (onPostSuccess) onPostSuccess();
+
+    setTimeout(() => {
       postStatus = {
         ...postStatus,
-        success: true,
-        message: "post_success",
+        success: false,
+        message: "",
       };
-
-      // 投稿内容をクリア
-      postContent = "";
-
-      // 親コンポーネントに投稿成功を通知
-      if (onPostSuccess) onPostSuccess();
-
-      // 成功メッセージを3秒後に消す
-      setTimeout(() => {
-        postStatus = {
-          ...postStatus,
-          success: false,
-          message: "",
-        };
-      }, 3000);
-    }
+    }, 3000);
   }
 
   // ダイアログで「投稿」を選択した場合
@@ -276,25 +280,7 @@
     showWarningDialog = false;
     postContent = pendingPostContent;
     pendingPostContent = "";
-    // nsec1~が含まれていても投稿処理を実行
-    const postManager = new PostManager(rxNostr);
-    const success = await postManager.submitPost(postContent, postStatus);
-    if (success) {
-      postStatus = {
-        ...postStatus,
-        success: true,
-        message: "post_success",
-      };
-      postContent = "";
-      if (onPostSuccess) onPostSuccess();
-      setTimeout(() => {
-        postStatus = {
-          ...postStatus,
-          success: false,
-          message: "",
-        };
-      }, 3000);
-    }
+    await executePost();
   }
 
   // ダイアログで「キャンセル」を選択した場合
@@ -312,63 +298,26 @@
     };
   }
 
-  // 画像URLの正規表現
-  const imageUrlRegex = /(https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|webp|svg))/gi;
+  // プレビュー用: postContentを画像とテキストに分割
+  $: contentParts = imagePreviewManager.parseContentWithImages(postContent);
 
-  // プレビュー用: postContentを画像とテキストに分割して表示するための関数
-  function parseContentWithImages(content: string) {
-    const parts: Array<{ type: "image" | "text"; value: string }> = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    imageUrlRegex.lastIndex = 0;
-    while ((match = imageUrlRegex.exec(content)) !== null) {
-      if (match.index > lastIndex) {
-        parts.push({
-          type: "text",
-          value: content.slice(lastIndex, match.index),
-        });
-      }
-      parts.push({ type: "image", value: match[0] });
-      lastIndex = imageUrlRegex.lastIndex;
-    }
-    if (lastIndex < content.length) {
-      parts.push({ type: "text", value: content.slice(lastIndex) });
-    }
-    return parts;
-  }
-
-  // 画像遅延表示用
-
-  // postContentが変わるたびにdelayedImagesを初期化
+  // 画像遅延表示の管理
   $: {
-    const parts = parseContentWithImages(postContent);
-    // 画像URLごとに遅延状態を管理
-    for (const part of parts) {
-      if (part.type === "image" && !delayedImages[part.value]) {
-        delayedImages[part.value] = false;
-        // 1秒後に表示
-        if (delayedTimeouts[part.value])
-          clearTimeout(delayedTimeouts[part.value]);
-        delayedTimeouts[part.value] = setTimeout(() => {
-          delayedImages = { ...delayedImages, [part.value]: true };
-        }, 1000);
-      }
-    }
-    // 不要なタイムアウトをクリア
-    for (const key in delayedImages) {
-      if (!parts.some((p) => p.type === "image" && p.value === key)) {
-        if (delayedTimeouts[key]) clearTimeout(delayedTimeouts[key]);
-        delete delayedImages[key];
-        delete delayedTimeouts[key];
-      }
-    }
+    imagePreviewManager.manageDelayedImages(contentParts, (updated) => {
+      delayedImages = updated;
+    });
   }
 
-  // コンポーネント破棄時にタイマーをクリア
+  // コンポーネント破棄時にクリーンアップ
   onDestroy(() => {
-    for (const key in delayedTimeouts) {
-      clearTimeout(delayedTimeouts[key]);
-    }
+    console.log(
+      "PostComponent: shared-image-receivedイベントリスナーを削除します",
+    );
+    window.removeEventListener(
+      "shared-image-received",
+      handleSharedImage as EventListener,
+    );
+    imagePreviewManager.cleanup();
   });
 </script>
 
@@ -418,7 +367,7 @@
   <div class="post-preview">
     <div class="preview-content">
       {#if postContent.trim()}
-        {#each parseContentWithImages(postContent) as part}
+        {#each contentParts as part}
           {#if part.type === "image"}
             {#if delayedImages[part.value]}
               <img src={part.value} alt="" class="preview-image" />
