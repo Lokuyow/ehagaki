@@ -384,7 +384,7 @@
     background: #535bf2;
   }
   .login-btn.btn-pill {
-    border-radius: 30px; /* 完全に丸くする */
+    border-radius: 30px;
   }
   .settings-btn {
     background: #fff;

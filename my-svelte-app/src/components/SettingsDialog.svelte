@@ -69,8 +69,10 @@
     <div class="modal-dialog" role="dialog" aria-modal="true">
         <div class="modal-header">
             <span>{$_("settings") || "設定"}</span>
-            <button class="modal-close btn-round" on:click={onClose} aria-label="閉じる"
-                >&times;</button
+            <button
+                class="modal-close btn-round"
+                on:click={onClose}
+                aria-label="閉じる">&times;</button
             >
         </div>
         <div class="modal-body">
@@ -85,7 +87,7 @@
                     />
                 </span>
                 <div class="setting-control">
-                    <button class="lang-btn btn-pill" on:click={toggleLanguage}>
+                    <button class="lang-btn btn" on:click={toggleLanguage}>
                         <span>{$locale === "ja" ? "日本語" : "English"}</span>
                     </button>
                 </div>
@@ -143,7 +145,7 @@
     .modal-close {
         background: none;
         border: none;
-        font-size: 1.5rem;
+        font-size: 2rem;
         cursor: pointer;
         color: #888;
         padding: 0 4px;
@@ -160,7 +162,7 @@
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 4px;
     }
     .setting-label {
         font-weight: 500;
@@ -176,31 +178,22 @@
     .setting-control {
         display: flex;
         align-items: center;
+        height: 50px;
     }
     .lang-btn {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
         background: #3b3b3b;
         border: 1px solid #ddd;
-        cursor: pointer;
-        transition: background 0.2s;
-        width: 100px;
-        height: 42px;
+        width: 120px;
     }
     .lang-btn:hover {
         background: #797979;
-    }
-    .btn-pill {
-        border-radius: 9999px;
     }
     select {
         padding: 6px;
         border-radius: 4px;
         border: 1px solid #ddd;
         min-width: 200px;
-        height: 42px;
+        height: 50px;
     }
     #endpoint-select {
         font-size: 1rem;

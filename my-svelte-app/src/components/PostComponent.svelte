@@ -650,6 +650,7 @@
 
   .post-button.btn-pill {
     background-color: #1da1f2;
+    font-size: 1.1rem;
     font-weight: bold;
     width: 120px;
   }
