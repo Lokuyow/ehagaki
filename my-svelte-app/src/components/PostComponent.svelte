@@ -506,10 +506,10 @@
     display: flex;
     flex-direction: column;
     align-items: center;
+    gap: 8px;
   }
 
   .post-preview {
-    margin-bottom: 6px;
     padding: 15px;
     border: 1px solid #ddd;
     border-radius: 8px;
@@ -518,7 +518,7 @@
     max-width: 600px;
     min-width: 300px;
     max-height: 300px;
-    overflow: auto; /* ← 追加: スクロールバー表示 */
+    overflow: auto;
   }
 
   .preview-content {
@@ -605,7 +605,6 @@
     align-items: center;
     width: 100%;
     height: 50px;
-    margin-bottom: 10px;
   }
 
   .buttons-container {
