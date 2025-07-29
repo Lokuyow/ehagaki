@@ -20,6 +20,7 @@
 
   // 親から受け取るコールバック
   export let onPostSuccess: (() => void) | undefined;
+  export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
 
   // 警告ダイアログ表示用
   let showWarningDialog = false;
@@ -181,6 +182,8 @@
 
     try {
       isUploading = true;
+      // 親コンポーネントにアップロード状態を通知
+      if (onUploadStatusChange) onUploadStatusChange(true);
       uploadErrorMessage = "";
 
       // サイズ情報初期化
@@ -225,6 +228,8 @@
       }, 3000);
     } finally {
       isUploading = false;
+      // 親コンポーネントにアップロード状態を通知
+      if (onUploadStatusChange) onUploadStatusChange(false);
     }
   }
 
@@ -439,17 +444,11 @@
       bind:value={postContent}
       placeholder={$_("enter_your_text")}
       rows="5"
-      disabled={postStatus.sending || isUploading}
+      disabled={postStatus.sending}
       on:dragover={handleDragOver}
       on:dragleave={handleDragLeave}
       on:drop={handleDrop}
     ></textarea>
-    {#if isUploading}
-      <div class="upload-overlay">
-        <span class="loading-indicator"></span>
-        <span>{$_("uploading")}...</span>
-      </div>
-    {/if}
   </div>
 
   <!-- ファイル入力（非表示） -->
@@ -565,38 +564,6 @@
   .post-input:focus {
     outline: none;
     border-color: #1da1f2;
-  }
-
-  .upload-overlay {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(255, 255, 255, 0.8);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border-radius: 8px;
-    z-index: 5;
-  }
-
-  .loading-indicator {
-    display: inline-block;
-    width: 20px;
-    height: 20px;
-    border: 3px solid rgba(29, 161, 242, 0.3);
-    border-radius: 50%;
-    border-top-color: #1da1f2;
-    animation: spin 1s ease-in-out infinite;
-    margin-bottom: 8px;
-  }
-
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
 
   .post-actions {

@@ -55,6 +55,7 @@
   // 共有画像処理状態
   let processingSharedImage = false;
   let sharedImageReceived = false;
+  let isUploading = false;
 
   // Service Worker関連
   let waitingSw: ServiceWorker | null = null;
@@ -256,6 +257,10 @@
       });
     }
   });
+
+  function handleUploadStatusChange(uploading: boolean) {
+    isUploading = uploading;
+  }
 </script>
 
 {#if $locale}
@@ -268,6 +273,7 @@
         onPostSuccess={() => {
           // 必要に応じて投稿成功時の処理を追加
         }}
+        onUploadStatusChange={handleUploadStatusChange}
       />
     </div>
 
@@ -328,6 +334,17 @@
           {hasStoredKey ? $_("logged_in") : $_("login")}
         </button>
       {/if}
+      
+      <!-- アップロード状態を中央に表示 -->
+      <div class="footer-center">
+        {#if isUploading}
+          <div class="upload-status">
+            <span class="loading-indicator"></span>
+            <span>{$_("uploading")}...</span>
+          </div>
+        {/if}
+      </div>
+      
       <button
         class="settings-btn btn-round"
         on:click={openSettings}
@@ -371,6 +388,33 @@
     bottom: 0;
     box-shadow: 0 -2px 8px #0001;
     z-index: 100;
+  }
+  .footer-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+  .upload-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #1da1f2;
+    font-size: 0.8rem;
+  }
+  .loading-indicator {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(29, 161, 242, 0.3);
+    border-radius: 50%;
+    border-top-color: #1da1f2;
+    animation: spin 1s ease-in-out infinite;
+  }
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
   }
   .login-btn {
     width: 110px;
