@@ -22,10 +22,19 @@ a {
   font-weight: 500;
   color: #646cff;
   text-decoration: inherit;
+  -webkit-tap-highlight-color: transparent;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+
+  &:active {
+    opacity: 1;
+  }
 }
 
-a:hover {
-  color: #535bf2;
+@media (min-width: 601px) {
+  a:hover {
+    color: #535bf2;
+  }
 }
 
 body {
@@ -72,7 +81,8 @@ h1 {
   align-items: center;
   justify-content: center;
   height: 100%;
-  border-radius: 50px; /* 完全に丸い角 */
+  border-radius: 50px;
+  /* 完全に丸い角 */
   border: 1px solid transparent;
   padding: 6px 16px;
   font-size: 1rem;

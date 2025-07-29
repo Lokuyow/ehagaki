@@ -107,6 +107,22 @@
                 </div>
             </div>
         </div>
+        <!-- GitHub リンク追加 -->
+        <div class="settings-footer">
+            <a
+                href="https://github.com/Lokuyow/ehagaki"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub Repository"
+                class="github-link"
+            >
+                <img
+                    src="/ehagaki/icons/github-mark.svg"
+                    alt="GitHub"
+                    class="github-icon"
+                />
+            </a>
+        </div>
     </div>
 {/if}
 
@@ -197,6 +213,24 @@
     }
     #endpoint-select {
         font-size: 1rem;
+    }
+    .settings-footer {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        padding: 8px 16px 12px 16px;
+        border-top: 1px solid #eee;
+        margin-top: 8px;
+    }
+    .github-link {
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+    }
+    .github-icon {
+        width: 38px;
+        height: 38px;
+        display: block;
     }
     @keyframes fadeIn {
         from {
