@@ -1,5 +1,5 @@
-// 画像URLの正規表現
-const IMAGE_URL_REGEX = /(https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|webp|svg))/gi;
+// 画像URLの正規表現 - 前後に区切り文字がある場合のみマッチ
+const IMAGE_URL_REGEX = /(?:^|[\s\n])(https?:\/\/[^\s]+?\.(?:png|jpe?g|gif|webp|svg))(?=[\s\n]|$)/gi;
 
 export interface ContentPart {
     type: "image" | "text";
@@ -18,13 +18,23 @@ export class ImagePreviewManager {
 
         IMAGE_URL_REGEX.lastIndex = 0;
         while ((match = IMAGE_URL_REGEX.exec(content)) !== null) {
+            const fullMatch = match[0];
+            const imageUrl = match[1]; // キャプチャグループからURL部分を取得
+            const beforeUrl = fullMatch.substring(0, fullMatch.indexOf(imageUrl));
+            
             if (match.index > lastIndex) {
                 parts.push({
                     type: "text",
                     value: content.slice(lastIndex, match.index),
                 });
             }
-            parts.push({ type: "image", value: match[0] });
+            
+            // 前の区切り文字があればテキストとして追加
+            if (beforeUrl) {
+                parts.push({ type: "text", value: beforeUrl });
+            }
+            
+            parts.push({ type: "image", value: imageUrl });
             lastIndex = IMAGE_URL_REGEX.lastIndex;
         }
 
