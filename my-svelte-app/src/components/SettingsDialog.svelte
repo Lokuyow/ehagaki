@@ -69,7 +69,7 @@
     <div class="modal-dialog" role="dialog" aria-modal="true">
         <div class="modal-header">
             <span>{$_("settings") || "設定"}</span>
-            <button class="modal-close" on:click={onClose} aria-label="閉じる"
+            <button class="modal-close btn-round" on:click={onClose} aria-label="閉じる"
                 >&times;</button
             >
         </div>
@@ -85,7 +85,7 @@
                     />
                 </span>
                 <div class="setting-control">
-                    <button class="lang-btn" on:click={toggleLanguage}>
+                    <button class="lang-btn btn-pill" on:click={toggleLanguage}>
                         <span>{$locale === "ja" ? "日本語" : "English"}</span>
                     </button>
                 </div>
@@ -184,8 +184,6 @@
         gap: 8px;
         background: #3b3b3b;
         border: 1px solid #ddd;
-        border-radius: 4px;
-        padding: 0;
         cursor: pointer;
         transition: background 0.2s;
         width: 100px;
@@ -193,6 +191,9 @@
     }
     .lang-btn:hover {
         background: #797979;
+    }
+    .btn-pill {
+        border-radius: 9999px;
     }
     select {
         padding: 6px;

@@ -41,25 +41,94 @@ h1 {
   padding: 2em;
 }
 
-button {
-  border-radius: 8px;
+/* 共通ボタンスタイル */
+
+/* 角にアールをつけただけのボタン（ダイアログ内のボタン等） */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  border-radius: 4px; /* 角にアールをつけただけ */
   border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
+  padding: 6px;
+  font-size: 1rem;
   font-weight: 500;
   font-family: inherit;
   background-color: #1a1a1a;
+  color: #fff;
   cursor: pointer;
-  transition: border-color 0.25s;
+  transition: border-color 0.25s, background 0.2s;
+  outline: none;
+  text-decoration: none;
+  user-select: none;
+  gap: 8px;
 }
 
-button:hover {
+/* 角が完全に丸くなった角丸四角形ボタン */
+.btn-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  border-radius: 50px; /* 完全に丸い角 */
+  border: 1px solid transparent;
+  padding: 6px 16px;
+  font-size: 1rem;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a;
+  color: #fff;
+  cursor: pointer;
+  transition: border-color 0.25s, background 0.2s;
+  outline: none;
+  text-decoration: none;
+  user-select: none;
+  gap: 8px;
+}
+
+.btn:hover,
+.btn-pill:hover {
   border-color: #646cff;
+  background-color: #535bf2;
 }
 
-button:focus,
-button:focus-visible {
+.btn:focus,
+.btn:focus-visible,
+.btn-pill:focus,
+.btn-pill:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* 丸ボタン（アイコンボタン等） */
+.btn-round {
+  border-radius: 50%;
+  padding: 0;
+  width: 50px;
+  height: 50px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  border: 1px solid #ccc;
+  color: #222;
+  cursor: pointer;
+  transition: background 0.2s, box-shadow 0.1s, transform 0.1s;
+
+  & img {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+.btn-round:hover {
+  background: #f0f0f0;
+}
+
+.btn-round:active {
+  background: #e0e0e0;
+  box-shadow: 0 1px 2px #0002;
+  transform: scale(0.96);
 }
 
 @media (prefers-color-scheme: light) {

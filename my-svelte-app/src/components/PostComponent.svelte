@@ -385,7 +385,7 @@
 
     <div class="buttons-container">
       <button
-        class="image-button"
+        class="image-button btn-round"
         disabled={!hasStoredKey || postStatus.sending || isUploading}
         on:click={openFileDialog}
         title={$_("upload_image")}
@@ -397,7 +397,7 @@
       </button>
 
       <button
-        class="post-button"
+        class="post-button btn-pill"
         disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
         on:click={submitPost}
       >
@@ -604,7 +604,7 @@
     justify-content: flex-end;
     align-items: center;
     width: 100%;
-    height: 60px;
+    height: 50px;
     margin-bottom: 10px;
   }
 
@@ -613,24 +613,6 @@
     gap: 10px;
     align-items: center;
     height: 100%;
-  }
-
-  .image-button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    border: 1px solid #ccc;
-    background-color: #fff;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  }
-
-  .image-button img {
-    width: 32px;
-    height: 32px;
   }
 
   .image-button:hover:not(:disabled) {
@@ -666,18 +648,10 @@
     color: #2e7d32;
   }
 
-  .post-button {
-    padding: 8px 20px;
+  .post-button.btn-pill {
     background-color: #1da1f2;
-    color: white;
-    border: none;
-    border-radius: 30px;
     font-weight: bold;
-    cursor: pointer;
-    transition: background-color 0.2s;
     width: 120px;
-    min-width: 100px;
-    height: 100%;
   }
 
   .post-button:hover:not(:disabled) {

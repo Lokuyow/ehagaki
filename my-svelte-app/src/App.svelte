@@ -316,14 +316,23 @@
 
     <!-- ヘッダー領域を最下部に配置 -->
     <div class="footer-bar">
-      <ProfileComponent
-        {profileData}
-        {profileLoaded}
-        {hasStoredKey}
-        {showLoginDialog}
-        showLogoutDialog={openLogoutDialog}
-      />
-      <button class="settings-btn" on:click={openSettings} aria-label="設定">
+      {#if hasStoredKey && profileLoaded}
+        <ProfileComponent
+          {profileData}
+          {profileLoaded}
+          {hasStoredKey}
+          showLogoutDialog={openLogoutDialog}
+        />
+      {:else}
+        <button class="login-btn btn-pill" on:click={showLoginDialog}>
+          {hasStoredKey ? $_("logged_in") : $_("login")}
+        </button>
+      {/if}
+      <button
+        class="settings-btn btn-round"
+        on:click={openSettings}
+        aria-label="設定"
+      >
         <img
           src="/ehagaki/icons/gear-solid-full.svg"
           alt="Settings"
@@ -350,12 +359,12 @@
   }
   .footer-bar {
     width: 100%;
-    height: 57px;
+    height: 66px;
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 24px;
-    padding: 6px 6px 0 6px;
+    padding: 8px;
     background: #fff;
     position: fixed;
     left: 0;
@@ -363,24 +372,24 @@
     bottom: 0;
     box-shadow: 0 -2px 8px #0001;
     z-index: 100;
-    padding-bottom: 6px;
+  }
+  .login-btn {
+    width: 110px;
+    border: none;
+    background: #646cff;
+    z-index: 10;
+    box-shadow: 0 2px 8px #0001;
+  }
+  .login-btn:hover {
+    background: #535bf2;
+  }
+  .login-btn.btn-pill {
+    border-radius: 30px; /* 完全に丸くする */
   }
   .settings-btn {
     background: #fff;
     border: 1px solid #ccc;
-    border-radius: 50%;
-    width: 45px;
-    height: 45px;
-    padding: 6px;
-    cursor: pointer;
     box-shadow: 0 2px 8px #0001;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition:
-      background 0.2s,
-      box-shadow 0.1s,
-      transform 0.1s;
   }
   .settings-btn:hover {
     background: #f0f0f0;
@@ -389,11 +398,6 @@
     background: #e0e0e0;
     box-shadow: 0 1px 2px #0002;
     transform: scale(0.94);
-  }
-  .settings-icon {
-    width: 24px;
-    height: 24px;
-    display: block;
   }
   .loading-overlay {
     position: fixed;

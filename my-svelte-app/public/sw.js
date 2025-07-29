@@ -7,7 +7,7 @@ const error = (...args) => console.error('[ServiceWorker]', ...args);
 let sharedImageCache = null;
 
 // キャッシュバージョン管理用定数
-const PRECACHE_VERSION = 'v0.1.5';
+const PRECACHE_VERSION = 'v0.1.6';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 
 // VitePWAがここにマニフェストを注入

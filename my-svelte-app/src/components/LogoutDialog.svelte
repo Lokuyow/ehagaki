@@ -29,10 +29,10 @@
             <p>{$_("logout_warning")}</p>
 
             <div class="dialog-buttons">
-                <button on:click={onClose} class="cancel-btn"
+                <button on:click={onClose} class="cancel-btn btn"
                     >{$_("cancel")}</button
                 >
-                <button on:click={onLogout} class="logout-btn"
+                <button on:click={onLogout} class="logout-btn btn"
                     >{$_("logout")}</button
                 >
             </div>
@@ -72,28 +72,25 @@
         justify-content: flex-end;
         gap: 1rem;
         margin-top: 1.5rem;
+        width: 100%;
+        height: 50px;
     }
 
     .cancel-btn {
-        padding: 0.6rem 1.2rem;
         border: 1px solid #ccc;
         background-color: #f5f5f5;
         color: #333;
-        border-radius: 4px;
-        cursor: pointer;
-        transition: background 0.2s;
+        width: 100%;
     }
     .cancel-btn:hover {
         background-color: #e0e0e0;
     }
 
     .logout-btn {
-        padding: 0.6rem 1.2rem;
         background-color: #d32f2f;
         color: white;
         border: none;
-        border-radius: 4px;
-        cursor: pointer;
+        width: 100%;
     }
 
     .logout-btn:hover {
