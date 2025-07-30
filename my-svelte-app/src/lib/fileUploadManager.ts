@@ -12,11 +12,14 @@ export interface FileUploadResponse {
   originalType?: string;
   compressedType?: string;
   wasCompressed?: boolean;
+  // 新しいプロパティ: サイズ比較情報
+  compressionRatio?: number;
+  sizeReduction?: string;
 }
 
 /**
  * ファイルアップロード専用マネージャークラス
- * 責務: ファイルの圧縮・アップロード処理のみ
+ * 責務: ファイルの圧縮・アップロード処理、共有画像処理
  */
 export class FileUploadManager {
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
@@ -88,6 +91,10 @@ export class FileUploadManager {
       const compressedSize = uploadFile.size;
       const compressedType = uploadFile.type;
 
+      // サイズ比較情報を計算
+      const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
+      const sizeReduction = `${Math.round(originalSize / 1024)}KB → ${Math.round(compressedSize / 1024)}KB`;
+
       // ローカルストレージから直接取得して優先的に使用
       const savedEndpoint = localStorage.getItem("uploadEndpoint");
       const finalUrl = savedEndpoint || apiUrl || FileUploadManager.DEFAULT_API_URL;
@@ -127,7 +134,9 @@ export class FileUploadManager {
           compressedSize,
           originalType,
           compressedType,
-          wasCompressed
+          wasCompressed,
+          compressionRatio,
+          sizeReduction
         };
       }
 
@@ -145,7 +154,9 @@ export class FileUploadManager {
             compressedSize,
             originalType,
             compressedType,
-            wasCompressed
+            wasCompressed,
+            compressionRatio,
+            sizeReduction
           };
         }
       }
@@ -157,7 +168,9 @@ export class FileUploadManager {
         compressedSize,
         originalType,
         compressedType,
-        wasCompressed
+        wasCompressed,
+        compressionRatio,
+        sizeReduction
       };
     } catch (error) {
       console.error("File upload error:", error);
@@ -167,6 +180,7 @@ export class FileUploadManager {
       };
     }
   }
+
   /**
    * サービスワーカーに保存されている共有画像を取得
    * @returns 共有された画像ファイルとメタデータ、またはnull
@@ -298,6 +312,35 @@ export class FileUploadManager {
   public static checkIfOpenedFromShare(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.has('shared') && urlParams.get('shared') === 'true';
+  }
+
+  /**
+   * ファイルタイプの検証
+   */
+  public static validateImageFile(file: File): { isValid: boolean; errorMessage?: string } {
+    if (!file.type.startsWith("image/")) {
+      return { isValid: false, errorMessage: "only_images_allowed" };
+    }
+    return { isValid: true };
+  }
+
+  /**
+   * 共有画像の処理とアップロードを統合した便利メソッド
+   */
+  public static async processSharedImage(): Promise<FileUploadResponse | null> {
+    const sharedData = await this.getSharedImageFromServiceWorker();
+    if (!sharedData?.image) {
+      return null;
+    }
+
+    console.log("共有画像を処理中:", {
+      name: sharedData.image.name,
+      size: `${Math.round(sharedData.image.size / 1024)}KB`,
+      type: sharedData.image.type,
+      metadata: sharedData.metadata,
+    });
+
+    return await this.uploadFile(sharedData.image);
   }
 }
 

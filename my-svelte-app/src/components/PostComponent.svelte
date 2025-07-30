@@ -31,11 +31,8 @@
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
-  // 画像サイズ比較表示用
-  let originalImageSize = 0;
-  let compressedImageSize = 0;
-  let originalImageType = "";
-  let compressedImageType = "";
+  // 画像サイズ比較表示用（簡略化）
+  let imageSizeInfo = "";
   let imageSizeInfoVisible = false;
 
   // マネージャーインスタンス
@@ -44,45 +41,64 @@
   const imagePreviewManager = new ImagePreviewManager();
 
   // 共有画像を処理するハンドラー（簡素化）
-  function handleSharedImage(event: Event) {
+  async function handleSharedImage(event: Event) {
     const detail = (event as CustomEvent)?.detail;
     console.log("PostComponent: 共有画像を受信しました", detail?.file?.name);
 
     if (detail && detail.file) {
-      // 受信した共有画像を自動的にアップロード処理
-      uploadFile(detail.file);
-
-      // デバッグ情報を表示
-      console.log("PostComponent: 共有画像アップロード処理開始", {
-        name: detail.file.name,
-        size: `${Math.round(detail.file.size / 1024)}KB`,
-        type: detail.file.type,
-        metadata: detail.metadata,
-      });
+      // FileUploadManagerに処理を委譲
+      await uploadFile(detail.file);
     }
   }
 
-  // コンポーネントマウント時にイベントリスナーを追加
-  onMount(() => {
+  // コンポーネントマウント時の処理
+  onMount(async () => {
     console.log(
-      "PostComponent: shared-image-receivedイベントリスナーを登録します",
+      "PostComponent: イベントリスナーを登録し、共有画像をチェックします",
     );
     window.addEventListener(
       "shared-image-received",
       handleSharedImage as EventListener,
     );
+
+    // 共有からの起動をチェック
+    if (FileUploadManager.checkIfOpenedFromShare()) {
+      const result = await FileUploadManager.processSharedImage();
+      if (result?.success && result.url) {
+        insertImageUrlImmediately(result.url);
+        updateImageSizeInfo(result);
+      } else if (result?.error) {
+        uploadErrorMessage = result.error;
+        setTimeout(() => {
+          uploadErrorMessage = "";
+        }, 3000);
+      }
+    }
   });
 
-  // コンポーネント破棄時にイベントリスナーを削除
+  // コンポーネント破棄時にクリーンアップ
   onDestroy(() => {
-    console.log(
-      "PostComponent: shared-image-receivedイベントリスナーを削除します",
-    );
+    console.log("PostComponent: イベントリスナーを削除します");
     window.removeEventListener(
       "shared-image-received",
       handleSharedImage as EventListener,
     );
+    imagePreviewManager.cleanup();
   });
+
+  // 画像サイズ情報を更新（新しいヘルパー関数）
+  function updateImageSizeInfo(result: any) {
+    if (
+      result.wasCompressed &&
+      result.sizeReduction &&
+      result.compressionRatio
+    ) {
+      imageSizeInfo = `データ量: ${result.sizeReduction} （${result.compressionRatio}%）`;
+      imageSizeInfoVisible = true;
+    } else {
+      imageSizeInfoVisible = false;
+    }
+  }
 
   // 画像URLを投稿内容に挿入（遅延なしで即座に挿入）
   function insertImageUrlImmediately(imageUrl: string) {
@@ -165,13 +181,14 @@
     }
   }
 
-  // ファイルアップロード処理
+  // ファイルアップロード処理（簡略化）
   async function uploadFile(file: File) {
     if (!file) return;
 
-    // 画像ファイルかどうかをチェック
-    if (!file.type.startsWith("image/")) {
-      uploadErrorMessage = $_("only_images_allowed");
+    // ファイルタイプの検証をFileUploadManagerに委譲
+    const validation = FileUploadManager.validateImageFile(file);
+    if (!validation.isValid) {
+      uploadErrorMessage = $_(validation.errorMessage || "upload_failed");
       setTimeout(() => {
         uploadErrorMessage = "";
       }, 3000);
@@ -180,34 +197,21 @@
 
     try {
       isUploading = true;
-      // 親コンポーネントにアップロード状態を通知
       if (onUploadStatusChange) onUploadStatusChange(true);
       uploadErrorMessage = "";
-
-      // サイズ情報初期化
-      originalImageSize = file.size;
-      originalImageType = file.type;
-      compressedImageSize = 0;
-      compressedImageType = "";
       imageSizeInfoVisible = false;
 
       // ローカルストレージから設定されたエンドポイントを取得
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
 
-      // FileUploadManager.uploadFileを使ってアップロード
+      // FileUploadManagerに処理を委譲
       const result = await FileUploadManager.uploadFile(file, endpoint);
 
-      // 圧縮情報を取得して表示
-      if (result.originalSize) originalImageSize = result.originalSize;
-      if (result.compressedSize) compressedImageSize = result.compressedSize;
-      if (result.originalType) originalImageType = result.originalType;
-      if (result.compressedType) compressedImageType = result.compressedType;
-      imageSizeInfoVisible = result.wasCompressed || false;
+      // サイズ情報を更新
+      updateImageSizeInfo(result);
 
       if (result.success && result.url) {
-        // 成功したらURLを挿入
         insertImageUrl(result.url);
-        // 入力をリセット
         if (fileInput) {
           fileInput.value = "";
         }
@@ -226,7 +230,6 @@
       }, 3000);
     } finally {
       isUploading = false;
-      // 親コンポーネントにアップロード状態を通知
       if (onUploadStatusChange) onUploadStatusChange(false);
     }
   }
@@ -296,18 +299,6 @@
 
   // プレビュー用: postContentを画像とテキストに分割（遅延なし）
   $: contentParts = imagePreviewManager.parseContentWithImages(postContent);
-
-  // コンポーネント破棄時にクリーンアップ
-  onDestroy(() => {
-    console.log(
-      "PostComponent: shared-image-receivedイベントリスナーを削除します",
-    );
-    window.removeEventListener(
-      "shared-image-received",
-      handleSharedImage as EventListener,
-    );
-    imagePreviewManager.cleanup();
-  });
 </script>
 
 <!-- 投稿入力エリア -->
@@ -398,16 +389,10 @@
     <div class="upload-error">{uploadErrorMessage}</div>
   {/if}
 
-  <!-- 画像サイズ比較表示 -->
+  <!-- 画像サイズ比較表示（簡略化） -->
   {#if imageSizeInfoVisible}
     <div class="image-size-info">
-      <span>
-        データ量: {Math.round(originalImageSize / 1024)}KB → {Math.round(
-          compressedImageSize / 1024,
-        )}KB （{originalImageSize > 0
-          ? Math.round((compressedImageSize / originalImageSize) * 100)
-          : 0}%）
-      </span>
+      <span>{imageSizeInfo}</span>
     </div>
   {/if}
 </div>
