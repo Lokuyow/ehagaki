@@ -208,7 +208,7 @@
       const sharedImageData = await shareHandler.checkForSharedImageOnLaunch();
 
       if (sharedImageData && sharedImageData.image) {
-        processingSharedImage = true; // 画像検出時のみtrueに
+        processingSharedImage = true;
         console.log(
           "共有画像を検出しました:",
           sharedImageData.image.name,
@@ -216,10 +216,14 @@
           `タイプ: ${sharedImageData.image.type}`,
         );
         sharedImageReceived = true;
+        isUploading = true; // 共有画像アップロード中もuploading表示
 
+        // ここでアップロード処理を呼び出す場合はawaitで待つ
+        // アップロード完了後に下記を実行
         setTimeout(() => {
+          isUploading = false;
           sharedImageReceived = false;
-        }, 5000);
+        }, 5000); // アップロード完了後5秒で消す（必要に応じて調整）
       } else {
         console.log("共有画像はありませんでした");
       }
@@ -260,6 +264,9 @@
 
   function handleUploadStatusChange(uploading: boolean) {
     isUploading = uploading;
+    if (!uploading) {
+      sharedImageReceived = false;
+    }
   }
 </script>
 
@@ -300,19 +307,6 @@
     <!-- 設定ダイアログ -->
     <SettingsDialog show={showSettings} onClose={closeSettings} />
 
-    {#if processingSharedImage}
-      <div class="loading-overlay">
-        <p>{$_("processing_shared_image")}</p>
-      </div>
-    {/if}
-
-    <!-- 共有画像受信通知 -->
-    {#if sharedImageReceived && !processingSharedImage}
-      <div class="shared-image-notification">
-        <p>{$_("shared_image_received")}</p>
-      </div>
-    {/if}
-
     <!-- SW更新モーダル（Popover API対応） -->
     <SwUpdateModal
       show={showSwUpdateModal}
@@ -335,12 +329,13 @@
         </button>
       {/if}
 
-      <!-- アップロード状態を中央に表示 -->
       <div class="footer-center">
         {#if isUploading}
           <div class="upload-status">
             <span class="loading-indicator"></span>
-            <span>{$_("uploading")}...</span>
+            <span>
+              {$_("uploading")}...
+            </span>
           </div>
         {/if}
       </div>
@@ -394,6 +389,7 @@
     display: flex;
     justify-content: center;
     align-items: center;
+    min-width: 0;
   }
   .upload-status {
     display: flex;
@@ -401,6 +397,7 @@
     gap: 8px;
     color: #1da1f2;
     font-size: 0.8rem;
+    white-space: nowrap;
   }
   .loading-indicator {
     display: inline-block;
@@ -442,33 +439,6 @@
     box-shadow: 0 1px 2px #0002;
     transform: scale(0.94);
   }
-  .loading-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.7);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-  .shared-image-notification {
-    position: fixed;
-    bottom: 80px; /* フッターの高さ分上に */
-    left: 50%;
-    transform: translateX(-50%);
-    background-color: #4caf50;
-    color: white;
-    padding: 10px 20px;
-    border-radius: 4px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    z-index: 900;
-    animation: fadeOut 5s forwards;
-  }
-
   @keyframes fadeOut {
     0% {
       opacity: 1;

@@ -31,7 +31,5 @@
   "logout_confirmation": "ログアウト確認",
   "logout_warning": "本当にログアウトしますか？",
   "logout": "ログアウト",
-  "shared_image_received": "共有画像を受信してアップロードしました",
-  "processing_shared_image": "共有画像を処理しています...",
   "invalid_secret": "無効な秘密鍵です"
 }
