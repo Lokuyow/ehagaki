@@ -38,9 +38,6 @@
   let compressedImageType = "";
   let imageSizeInfoVisible = false;
 
-  // 遅延表示用の状態
-  let delayedImages: Record<string, boolean> = {};
-
   // マネージャーインスタンス
   const postManager = new PostManager(rxNostr);
   const shareHandler = getShareHandler();
@@ -85,18 +82,10 @@
       "shared-image-received",
       handleSharedImage as EventListener,
     );
-
-    // タイマーをクリア
-    for (const key in delayedImages) {
-      if (delayedImages[key]) {
-        delayedImages[key] = false;
-      }
-    }
   });
 
-  // 画像URLを投稿内容に挿入
-  function insertImageUrl(imageUrl: string) {
-    // カーソル位置にURLを挿入
+  // 画像URLを投稿内容に挿入（遅延なしで即座に挿入）
+  function insertImageUrlImmediately(imageUrl: string) {
     const textArea = document.querySelector(
       ".post-input",
     ) as HTMLTextAreaElement;
@@ -107,7 +96,6 @@
       const beforeText = postContent.substring(0, startPos);
       const afterText = postContent.substring(endPos);
 
-      // URLの前後に改行を入れる（必要に応じて調整）
       const newText =
         beforeText +
         (beforeText.endsWith("\n") || beforeText === "" ? "" : "\n") +
@@ -133,6 +121,14 @@
         imageUrl +
         "\n";
     }
+  }
+
+  // 画像URLを遅延挿入する新しい関数
+  function insertImageUrl(imageUrl: string) {
+    // 1秒後にURLを挿入
+    setTimeout(() => {
+      insertImageUrlImmediately(imageUrl);
+    }, 1000);
   }
 
   // ファイル選択ダイアログを開く
@@ -298,15 +294,8 @@
     };
   }
 
-  // プレビュー用: postContentを画像とテキストに分割
+  // プレビュー用: postContentを画像とテキストに分割（遅延なし）
   $: contentParts = imagePreviewManager.parseContentWithImages(postContent);
-
-  // 画像遅延表示の管理
-  $: {
-    imagePreviewManager.manageDelayedImages(contentParts, (updated) => {
-      delayedImages = updated;
-    });
-  }
 
   // コンポーネント破棄時にクリーンアップ
   onDestroy(() => {
@@ -369,11 +358,7 @@
       {#if postContent.trim()}
         {#each contentParts as part}
           {#if part.type === "image"}
-            {#if delayedImages[part.value]}
-              <img src={part.value} alt="" class="preview-image" />
-            {:else}
-              <span class="preview-image-placeholder"></span>
-            {/if}
+            <img src={part.value} alt="" class="preview-image" />
           {:else}
             {@html part.value.replace(/\n/g, "<br>")}
           {/if}
@@ -649,17 +634,6 @@
     box-shadow: 0 1px 4px #0001;
     background: #fff;
   }
-
-  .preview-image-placeholder {
-    display: inline-block;
-    width: 100%;
-    height: 120px;
-    background: #f3f3f3;
-    border-radius: 6px;
-    margin: 8px 0;
-    box-shadow: 0 1px 4px #0001;
-  }
-
   .image-size-info {
     width: 100%;
     text-align: right;
