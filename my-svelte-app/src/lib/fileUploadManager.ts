@@ -17,6 +17,13 @@ export interface FileUploadResponse {
   sizeReduction?: string;
 }
 
+// 複数ファイルアップロードの進捗情報型
+export interface MultipleUploadProgress {
+  completed: number;
+  failed: number;
+  total: number;
+}
+
 /**
  * ファイルアップロード専用マネージャークラス
  * 責務: ファイルの圧縮・アップロード処理、共有画像処理
@@ -47,6 +54,66 @@ export class FileUploadManager {
 
     const signedEvent = await signer.signEvent(event);
     return signedEvent;
+  }
+
+  /**
+   * 複数ファイルを並列アップロード
+   */
+  public static async uploadMultipleFiles(
+    files: File[],
+    apiUrl: string = FileUploadManager.DEFAULT_API_URL,
+    onProgress?: (progress: MultipleUploadProgress) => void
+  ): Promise<FileUploadResponse[]> {
+    if (!files || files.length === 0) {
+      return [];
+    }
+
+    const results: FileUploadResponse[] = [];
+    let completed = 0;
+    let failed = 0;
+
+    const uploadPromises = files.map(async (file, index) => {
+      try {
+        const result = await this.uploadFile(file, apiUrl);
+        results[index] = result;
+        
+        if (result.success) {
+          completed++;
+        } else {
+          failed++;
+        }
+
+        if (onProgress) {
+          onProgress({
+            completed,
+            failed,
+            total: files.length
+          });
+        }
+
+        return result;
+      } catch (error) {
+        const errorResult: FileUploadResponse = {
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+        results[index] = errorResult;
+        failed++;
+
+        if (onProgress) {
+          onProgress({
+            completed,
+            failed,
+            total: files.length
+          });
+        }
+
+        return errorResult;
+      }
+    });
+
+    await Promise.all(uploadPromises);
+    return results;
   }
 
   /**

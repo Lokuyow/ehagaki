@@ -31,6 +31,14 @@
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
+  // 複数ファイルアップロード用の状態変数
+  let uploadProgress = {
+    total: 0,
+    completed: 0,
+    failed: 0,
+    inProgress: false,
+  };
+
   // 画像サイズ比較表示用（簡略化）
   let imageSizeInfo = "";
   let imageSizeInfoVisible = false;
@@ -127,6 +135,81 @@
     }
   }
 
+  // 複数ファイルのアップロード処理（新規）
+  async function uploadMultipleFiles(files: FileList | File[]) {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
+
+    uploadProgress = {
+      total: fileArray.length,
+      completed: 0,
+      failed: 0,
+      inProgress: true,
+    };
+
+    await showUploadingWhile(uploadMultipleFilesInternal(fileArray), 1000);
+  }
+
+  // 内部的な複数ファイルアップロード処理
+  async function uploadMultipleFilesInternal(files: File[]): Promise<void> {
+    try {
+      uploadErrorMessage = "";
+      imageSizeInfoVisible = false;
+
+      const endpoint = localStorage.getItem("uploadEndpoint") || "";
+      const results = await FileUploadManager.uploadMultipleFiles(
+        files,
+        endpoint,
+        (progress) => {
+          uploadProgress = {
+            ...uploadProgress,
+            completed: progress.completed,
+            failed: progress.failed,
+          };
+        },
+      );
+
+      const successResults = results.filter((r) => r.success);
+      const failedResults = results.filter((r) => !r.success);
+
+      if (successResults.length > 0) {
+        // 成功した画像URLを挿入
+        const urls = successResults.map((r) => r.url!).join("\n");
+        insertImageUrl(urls);
+
+        // サイズ情報を表示（最初の結果から）
+        if (successResults[0]) {
+          updateImageSizeInfo(successResults[0]);
+        }
+      }
+
+      if (failedResults.length > 0) {
+        const errorMsg = `${failedResults.length}個のファイルのアップロードに失敗しました`;
+        uploadErrorMessage = errorMsg;
+        setTimeout(() => {
+          uploadErrorMessage = "";
+        }, 5000);
+      }
+
+      if (fileInput) {
+        fileInput.value = "";
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      uploadErrorMessage = errorMsg;
+      setTimeout(() => {
+        uploadErrorMessage = "";
+      }, 5000);
+    } finally {
+      uploadProgress = {
+        total: 0,
+        completed: 0,
+        failed: 0,
+        inProgress: false,
+      };
+    }
+  }
+
   // ファイルアップロード処理（公開メソッド）
   async function uploadFile(file: File) {
     await showUploadingWhile(uploadFileInternal(file), 2500);
@@ -220,8 +303,12 @@
   // ファイルが選択された時
   async function handleFileSelect(event: Event) {
     const target = event.target as HTMLInputElement;
-    if (target.files && target.files[0]) {
-      await uploadFile(target.files[0]);
+    if (target.files && target.files.length > 0) {
+      if (target.files.length === 1) {
+        await uploadFile(target.files[0]);
+      } else {
+        await uploadMultipleFiles(target.files);
+      }
     }
   }
 
@@ -239,8 +326,12 @@
     event.preventDefault();
     dragOver = false;
 
-    if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
-      await uploadFile(event.dataTransfer.files[0]);
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      if (event.dataTransfer.files.length === 1) {
+        await uploadFile(event.dataTransfer.files[0]);
+      } else {
+        await uploadMultipleFiles(event.dataTransfer.files);
+      }
     }
   }
 
@@ -386,14 +477,35 @@
     ></textarea>
   </div>
 
-  <!-- ファイル入力（非表示） -->
+  <!-- ファイル入力（非表示）- multiple属性を追加 -->
   <input
     type="file"
     accept="image/*"
+    multiple
     on:change={handleFileSelect}
     bind:this={fileInput}
     style="display: none;"
   />
+
+  <!-- アップロード進捗表示（新規） -->
+  {#if uploadProgress.inProgress}
+    <div class="upload-progress">
+      <div class="progress-text">
+        アップロード中: {uploadProgress.completed}/{uploadProgress.total}
+        {#if uploadProgress.failed > 0}
+          (失敗: {uploadProgress.failed})
+        {/if}
+      </div>
+      <div class="progress-bar">
+        <div
+          class="progress-fill"
+          style="width: {Math.round(
+            (uploadProgress.completed / uploadProgress.total) * 100
+          )}%"
+        ></div>
+      </div>
+    </div>
+  {/if}
 
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>
@@ -639,5 +751,32 @@
     opacity: 0.8;
     user-select: none;
     letter-spacing: 0.01em;
+  }
+
+  /* 新規スタイル: アップロード進捗 */
+  .upload-progress {
+    width: 100%;
+    margin-bottom: 10px;
+  }
+
+  .progress-text {
+    font-size: 0.9rem;
+    color: #666;
+    margin-bottom: 4px;
+    text-align: center;
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background-color: #e0e0e0;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background-color: #1da1f2;
+    transition: width 0.3s ease;
   }
 </style>
