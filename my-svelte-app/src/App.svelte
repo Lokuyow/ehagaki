@@ -14,12 +14,20 @@
   import LogoutDialog from "./components/LogoutDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
+  import { useSwUpdate } from "./lib/useSwUpdate"; // 追加: サービスワーカー更新ロジック
+
+  // Service Worker更新関連
+  const {
+    showSwUpdateModal: swUpdateStore,
+    reloadForSwUpdate,
+    handleSwUpdate,
+  } = useSwUpdate();
+  let showSwUpdateModal = false;
 
   // UI状態管理
   let showDialog = false;
   let errorMessage = "";
   let showLogoutDialog = false;
-  let showSwUpdateModal = false;
 
   // 認証関連
   let secretKey = "";
@@ -56,9 +64,6 @@
   let processingSharedImage = false;
   let sharedImageReceived = false;
   let isUploading = false;
-
-  // Service Worker関連
-  let waitingSw: ServiceWorker | null = null;
 
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
@@ -161,20 +166,12 @@
   }
 
   // SW更新通知メッセージ
-  let swUpdateMessage = "Update available! Reloading...";
+  let swUpdateMessage = "Updating...";
 
-  function handleSwUpdate(sw: ServiceWorker) {
-    showSwUpdateModal = true;
-    waitingSw = sw;
-    // 2秒後にskipWaitingしてリロード
-    setTimeout(() => {
-      if (waitingSw) {
-        waitingSw.postMessage({ type: "SKIP_WAITING" });
-      }
-      showSwUpdateModal = false;
-      location.reload();
-    }, 2000);
-  }
+  // サービスワーカーのストアを監視
+  swUpdateStore.subscribe((value) => {
+    showSwUpdateModal = value;
+  });
 
   onMount(async () => {
     const storedLocale = localStorage.getItem("locale");
@@ -200,7 +197,7 @@
       await initializeNostr();
     }
 
-    // ShareHandlerのシングルトンを取得して共有画像を処理（簡素化）
+    // 共有画像処理（ShareHandler）
     try {
       console.log("共有画像の確認を開始します");
 
@@ -235,29 +232,20 @@
       }, 500);
     }
 
-    // Service Worker更新検知
+    // Service Worker更新検知を即時に行う
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        location.reload();
-      });
+      // 即座に更新チェック
+      handleSwUpdate();
 
-      navigator.serviceWorker.ready.then((reg) => {
-        if (reg && reg.waiting) {
-          handleSwUpdate(reg.waiting);
+      // ページの表示状態が変わった時に再チェック
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          navigator.serviceWorker.ready.then((reg) => {
+            if (reg.waiting) {
+              handleSwUpdate(reg.waiting);
+            }
+          });
         }
-        reg.addEventListener("updatefound", () => {
-          const newSw = reg.installing;
-          if (newSw) {
-            newSw.addEventListener("statechange", () => {
-              if (
-                newSw.state === "installed" &&
-                navigator.serviceWorker.controller
-              ) {
-                handleSwUpdate(newSw);
-              }
-            });
-          }
-        });
       });
     }
   });
@@ -307,10 +295,10 @@
     <!-- 設定ダイアログ -->
     <SettingsDialog show={showSettings} onClose={closeSettings} />
 
-    <!-- SW更新モーダル（Popover API対応） -->
+    <!-- SW更新モーダル -->
     <SwUpdateModal
       show={showSwUpdateModal}
-      onReload={() => {}}
+      onReload={reloadForSwUpdate}
       message={swUpdateMessage}
     />
 

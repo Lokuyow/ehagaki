@@ -209,6 +209,7 @@ async function saveSharedFlag() {
 
 // サービスワーカーのインストールイベントを処理
 self.addEventListener('install', (event) => {
+    // 高速インストールのためにskipWaitingを即実行
     event.waitUntil(self.skipWaiting());
 });
 
@@ -228,6 +229,7 @@ self.addEventListener('activate', (event) => {
                     }
                 })
             );
+            // 即座にcontrollerに
             await self.clients.claim();
         })()
     );
@@ -235,13 +237,13 @@ self.addEventListener('activate', (event) => {
 
 // クライアントからの要求に応じて、キャッシュした画像データを送信
 self.addEventListener('message', (event) => {
-    const client = event.source;
-
-    // SW更新用メッセージ
+    // SW更新用メッセージ - 優先的に処理
     if (event.data && event.data.type === 'SKIP_WAITING') {
         self.skipWaiting();
         return;
     }
+
+    const client = event.source;
 
     // クライアントが共有データを要求
     if (event.data && event.data.action === 'getSharedImage') {
