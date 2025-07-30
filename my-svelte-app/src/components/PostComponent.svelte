@@ -47,12 +47,10 @@
   async function handleSharedImage(event: Event) {
     // すでに処理済みの場合はスキップ
     if (hasProcessedSharedImageLocally) {
-      console.log("PostComponent: 共有画像は既に処理済みです");
       return;
     }
 
     const detail = (event as CustomEvent)?.detail;
-    console.log("PostComponent: 共有画像を受信しました", detail?.file?.name);
 
     if (detail && detail.file) {
       hasProcessedSharedImageLocally = true; // 処理済みフラグを設定
@@ -63,9 +61,6 @@
 
   // コンポーネントマウント時の処理
   onMount(async () => {
-    console.log(
-      "PostComponent: イベントリスナーを登録し、共有画像をチェックします",
-    );
     window.addEventListener(
       "shared-image-received",
       handleSharedImage as EventListener,
@@ -74,7 +69,6 @@
 
   // コンポーネント破棄時にクリーンアップ
   onDestroy(() => {
-    console.log("PostComponent: イベントリスナーを削除します");
     window.removeEventListener(
       "shared-image-received",
       handleSharedImage as EventListener,
@@ -140,7 +134,7 @@
     // 1秒後にURLを挿入
     setTimeout(() => {
       insertImageUrlImmediately(imageUrl);
-    }, 1000);
+    }, 1500);
   }
 
   // ファイル選択ダイアログを開く
@@ -218,7 +212,6 @@
         }, 3000);
       }
     } catch (error) {
-      console.error("Upload error:", error);
       uploadErrorMessage =
         error instanceof Error ? error.message : String(error);
       setTimeout(() => {

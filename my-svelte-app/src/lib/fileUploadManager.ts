@@ -84,7 +84,6 @@ export class FileUploadManager {
           );
           wasCompressed = true;
         } catch (imgErr) {
-          console.error("Image compression error:", imgErr);
           uploadFile = file;
         }
       }
@@ -100,20 +99,12 @@ export class FileUploadManager {
       const savedEndpoint = localStorage.getItem("uploadEndpoint");
       const finalUrl = savedEndpoint || apiUrl || FileUploadManager.DEFAULT_API_URL;
 
-      console.log('Upload process:', {
-        savedInStorage: savedEndpoint,
-        passedUrl: apiUrl,
-        usingUrl: finalUrl
-      });
-
       const authEvent = await this.createAuthEvent(finalUrl, "POST");
       const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
 
       const formData = new FormData();
       formData.append('file', uploadFile);
       formData.append('uploadtype', 'media');
-
-      console.log('Uploading file to:', finalUrl);
 
       const response = await fetch(finalUrl, {
         method: 'POST',
@@ -123,11 +114,8 @@ export class FileUploadManager {
         body: formData
       });
 
-      console.log('Upload response status:', response.status);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Upload error response:', errorText);
         return {
           success: false,
           error: `Upload failed: ${response.status} ${errorText}`,
@@ -142,7 +130,6 @@ export class FileUploadManager {
       }
 
       const data = await response.json();
-      console.log('Upload response data:', data);
 
       // NIP-96レスポンスからURLを取得
       if (data.status === 'success' && data.nip94_event?.tags) {
@@ -174,7 +161,6 @@ export class FileUploadManager {
         sizeReduction
       };
     } catch (error) {
-      console.error("File upload error:", error);
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)
@@ -189,13 +175,11 @@ export class FileUploadManager {
   public static async getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
     // サービスワーカーがアクティブか確認
     if (!('serviceWorker' in navigator)) {
-      console.log('Service Workerがサポートされていません');
       return null;
     }
 
     // コントローラーがなければ登録を待つ
     if (!navigator.serviceWorker.controller) {
-      console.log('Service Workerコントローラーがありません、登録を待ちます');
       try {
         await new Promise<void>((resolve) => {
           const timeout = setTimeout(() => resolve(), 5000); // タイムアウト時間を延長
@@ -206,12 +190,11 @@ export class FileUploadManager {
           }, { once: true });
         });
       } catch (e) {
-        console.error('Service Worker登録待機エラー:', e);
+        // ...existing error handling...
       }
     }
 
     if (!navigator.serviceWorker.controller) {
-      console.log('Service Workerコントローラーが取得できませんでした');
       return null;
     }
 
@@ -224,7 +207,6 @@ export class FileUploadManager {
 
         const promise = new Promise<{ image: File; metadata: any } | null>((resolve) => {
           messageChannel.port1.onmessage = (event) => {
-            console.log('MessageChannel: 応答を受信', event.data);
             if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
               resolve({
                 image: event.data.data.image,
@@ -255,7 +237,6 @@ export class FileUploadManager {
       const eventListenerPromise = (async () => {
         const promise = new Promise<{ image: File; metadata: any } | null>((resolve) => {
           const handler = (event: MessageEvent) => {
-            console.log('EventListener: 応答を受信', event.data);
             navigator.serviceWorker.removeEventListener('message', handler);
 
             if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
@@ -298,10 +279,8 @@ export class FileUploadManager {
         timeoutPromise
       ]);
 
-      console.log('共有画像取得結果:', result ? '成功' : '失敗');
       return result;
     } catch (error) {
-      console.error('共有画像の取得中にエラーが発生しました:', error);
       return null;
     }
   }
@@ -331,7 +310,6 @@ export class FileUploadManager {
   public static async processSharedImage(): Promise<FileUploadResponse | null> {
     // 既に処理済みの場合はスキップ
     if (this.hasProcessedSharedImage) {
-      console.log("FileUploadManager: 共有画像は既に処理済みです");
       return null;
     }
 
@@ -342,21 +320,7 @@ export class FileUploadManager {
 
     this.hasProcessedSharedImage = true; // 処理済みフラグを設定
 
-    console.log("共有画像を処理中:", {
-      name: sharedData.image.name,
-      size: `${Math.round(sharedData.image.size / 1024)}KB`,
-      type: sharedData.image.type,
-      metadata: sharedData.metadata,
-    });
-
     return await this.uploadFile(sharedData.image);
-  }
-
-  /**
-   * 処理済み状態をリセット（テスト用）
-   */
-  public static resetProcessedState(): void {
-    this.hasProcessedSharedImage = false;
   }
 }
 

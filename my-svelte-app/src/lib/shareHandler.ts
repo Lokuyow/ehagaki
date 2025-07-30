@@ -15,7 +15,6 @@ export class ShareHandler {
 
   constructor() {
     this.setupServiceWorkerListeners();
-    console.log('ShareHandler: 初期化完了');
   }
 
   /**
@@ -24,9 +23,6 @@ export class ShareHandler {
   private setupServiceWorkerListeners() {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
-      console.log('ShareHandler: サービスワーカーのメッセージリスナーを設定しました');
-    } else {
-      console.warn('ShareHandler: サービスワーカーがサポートされていません');
     }
   }
 
@@ -35,8 +31,6 @@ export class ShareHandler {
    */
   private handleServiceWorkerMessage(event: MessageEvent): void {
     if (event.data?.type === 'SHARED_IMAGE') {
-      console.log('ShareHandler: 共有画像データを受信しました', event.data?.data?.image?.name || 'データなし');
-
       const sharedData = event.data.data;
       const requestId = event.data.requestId;
 
@@ -82,7 +76,6 @@ export class ShareHandler {
 
       window.dispatchEvent(sharedImageEvent);
       this.hasProcessedSharedImage = true; // 処理済みフラグを設定
-      console.log('ShareHandler: shared-image-receivedイベントを発行しました');
     } catch (error) {
       console.error('ShareHandler: イベント発行エラー', error);
     }
@@ -101,37 +94,25 @@ export class ShareHandler {
    */
   public async checkForSharedImageOnLaunch(): Promise<SharedImageData | null> {
     if (!ShareHandler.checkIfOpenedFromShare()) {
-      console.log('ShareHandler: 共有からの起動ではありません');
       return null;
     }
 
     if (this.hasProcessedSharedImage) { // 既に処理済みの場合はスキップ
-      console.log('ShareHandler: 共有画像は既に処理済みです');
       return null;
     }
 
-    console.log('ShareHandler: 共有から起動されました、共有画像を確認します');
     this.isProcessingSharedImage = true;
 
     try {
       const hasSharedFlag = await this.checkSharedFlagInIndexedDB();
-      console.log('ShareHandler: IndexedDBの共有フラグ:', hasSharedFlag);
 
       // 最大3回試行
       for (let i = 0; i < 3; i++) {
-        console.log(`ShareHandler: サービスワーカーから共有画像を取得試行 (${i + 1}/3)`);
-
         const sharedImageData = await this.getSharedImageFromServiceWorker();
         if (sharedImageData) {
           this.sharedImageFile = sharedImageData.image;
           this.sharedImageMetadata = sharedImageData.metadata;
-          // this.hasProcessedSharedImage = true; // イベント発行を妨げるため、この行を削除します
           this.dispatchSharedImageEvent();
-
-          console.log('ShareHandler: 共有画像を取得しました',
-            sharedImageData.image.name,
-            `${Math.round(sharedImageData.image.size / 1024)}KB`
-          );
 
           return sharedImageData;
         }
@@ -141,10 +122,8 @@ export class ShareHandler {
         }
       }
 
-      console.log('ShareHandler: 共有画像が見つかりませんでした');
       return null;
     } catch (error) {
-      console.error('ShareHandler: 共有画像取得エラー', error);
       return null;
     } finally {
       this.isProcessingSharedImage = false;
@@ -156,22 +135,18 @@ export class ShareHandler {
    */
   public async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
     if (!('serviceWorker' in navigator)) {
-      console.log('ShareHandler: Service Workerがサポートされていません');
       return null;
     }
 
     if (!navigator.serviceWorker.controller) {
-      console.log('ShareHandler: Service Workerコントローラーがありません、登録を待ちます');
       try {
         await this.waitForServiceWorkerController();
       } catch (e) {
-        console.error('ShareHandler: Service Worker登録待機エラー:', e);
         return null;
       }
     }
 
     if (!navigator.serviceWorker.controller) {
-      console.log('ShareHandler: Service Workerコントローラーが取得できませんでした');
       return null;
     }
 
@@ -293,12 +268,10 @@ export class ShareHandler {
 
             getRequest.onerror = () => resolve(false);
           } catch (err) {
-            console.error('ShareHandler: IndexedDB操作エラー', err);
             resolve(false);
           }
         };
       } catch (err) {
-        console.error('ShareHandler: IndexedDB初期化エラー', err);
         resolve(false);
       }
     });
@@ -315,13 +288,6 @@ export class ShareHandler {
 
   public getSharedImageMetadata(): any {
     return this.sharedImageMetadata;
-  }
-
-  /**
-   * 処理済み状態をリセット（必要に応じて使用）
-   */
-  public resetProcessedState(): void {
-    this.hasProcessedSharedImage = false;
   }
 
   /**
@@ -351,13 +317,5 @@ export function getShareHandler(): ShareHandler {
     globalShareHandler = new ShareHandler();
   }
   return globalShareHandler;
-}
-
-/**
- * 共有画像データ型
- */
-export interface SharedImageData {
-  image: File;
-  metadata?: any;
 }
 
