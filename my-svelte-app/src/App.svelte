@@ -197,7 +197,7 @@
       await initializeNostr();
     }
 
-    // 共有画像処理（ShareHandler）
+    // 共有画像処理（ShareHandler）- 状態管理はPostComponentに委譲
     try {
       console.log("共有画像の確認を開始します");
 
@@ -205,31 +205,24 @@
       const sharedImageData = await shareHandler.checkForSharedImageOnLaunch();
 
       if (sharedImageData && sharedImageData.image) {
-        processingSharedImage = true;
         console.log(
           "共有画像を検出しました:",
           sharedImageData.image.name,
           `サイズ: ${Math.round(sharedImageData.image.size / 1024)}KB`,
           `タイプ: ${sharedImageData.image.type}`,
         );
-        sharedImageReceived = true;
-        isUploading = true; // 共有画像アップロード中もuploading表示
 
-        // ここでアップロード処理を呼び出す場合はawaitで待つ
-        // アップロード完了後に下記を実行
-        setTimeout(() => {
-          isUploading = false;
-          sharedImageReceived = false;
-        }, 5000); // アップロード完了後5秒で消す（必要に応じて調整）
+        // カスタムイベントでPostComponentに共有画像を通知
+        window.dispatchEvent(
+          new CustomEvent("shared-image-received", {
+            detail: { file: sharedImageData.image },
+          }),
+        );
       } else {
         console.log("共有画像はありませんでした");
       }
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
-    } finally {
-      setTimeout(() => {
-        processingSharedImage = false;
-      }, 500);
     }
 
     // Service Worker更新検知を即時に行う

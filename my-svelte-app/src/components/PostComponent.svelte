@@ -45,9 +45,91 @@
     const detail = (event as CustomEvent)?.detail;
 
     if (detail && detail.file) {
-      // FileUploadManagerに処理を委譲
-      await uploadFile(detail.file);
+      // showUploadingWhileを使って統一された状態管理でアップロード処理
+      await showUploadingWhile(uploadFileInternal(detail.file), 3000);
     }
+  }
+
+  // アップロード状態管理用のヘルパー関数
+  async function showUploadingWhile<T>(
+    uploadPromise: Promise<T>,
+    minDuration = 2500,
+  ): Promise<T> {
+    isUploading = true;
+    if (onUploadStatusChange) onUploadStatusChange(true);
+
+    const timer = new Promise<void>((resolve) =>
+      setTimeout(resolve, minDuration),
+    );
+
+    try {
+      const [result] = await Promise.all([uploadPromise, timer]);
+      return result;
+    } finally {
+      isUploading = false;
+      if (onUploadStatusChange) onUploadStatusChange(false);
+    }
+  }
+
+  // 内部的なアップロード処理（状態管理なし）
+  async function uploadFileInternal(
+    file: File,
+  ): Promise<{ success: boolean; url?: string; error?: string }> {
+    if (!file) {
+      return { success: false, error: $_("no_file_selected") };
+    }
+
+    // ファイルタイプの検証をFileUploadManagerに委譲
+    const validation = FileUploadManager.validateImageFile(file);
+    if (!validation.isValid) {
+      const errorMsg = $_(validation.errorMessage || "upload_failed");
+      uploadErrorMessage = errorMsg;
+      setTimeout(() => {
+        uploadErrorMessage = "";
+      }, 3000);
+      return { success: false, error: errorMsg };
+    }
+
+    try {
+      uploadErrorMessage = "";
+      imageSizeInfoVisible = false;
+
+      // ローカルストレージから設定されたエンドポイントを取得
+      const endpoint = localStorage.getItem("uploadEndpoint") || "";
+
+      // FileUploadManagerに処理を委譲
+      const result = await FileUploadManager.uploadFile(file, endpoint);
+
+      // サイズ情報を更新
+      updateImageSizeInfo(result);
+
+      if (result.success && result.url) {
+        insertImageUrl(result.url);
+        if (fileInput) {
+          fileInput.value = "";
+        }
+        return { success: true, url: result.url };
+      } else {
+        const errorMsg = result.error || $_("upload_failed");
+        uploadErrorMessage = errorMsg;
+        setTimeout(() => {
+          uploadErrorMessage = "";
+        }, 3000);
+        return { success: false, error: errorMsg };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      uploadErrorMessage = errorMsg;
+      setTimeout(() => {
+        uploadErrorMessage = "";
+      }, 3000);
+      return { success: false, error: errorMsg };
+    }
+  }
+
+  // ファイルアップロード処理（公開メソッド）
+  async function uploadFile(file: File) {
+    await showUploadingWhile(uploadFileInternal(file), 2500);
   }
 
   // コンポーネントマウント時の処理
@@ -159,58 +241,6 @@
 
     if (event.dataTransfer?.files && event.dataTransfer.files[0]) {
       await uploadFile(event.dataTransfer.files[0]);
-    }
-  }
-
-  // ファイルアップロード処理（簡略化）
-  async function uploadFile(file: File) {
-    if (!file) return;
-
-    // ファイルタイプの検証をFileUploadManagerに委譲
-    const validation = FileUploadManager.validateImageFile(file);
-    if (!validation.isValid) {
-      uploadErrorMessage = $_(validation.errorMessage || "upload_failed");
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 3000);
-      return;
-    }
-
-    try {
-      isUploading = true;
-      if (onUploadStatusChange) onUploadStatusChange(true);
-      uploadErrorMessage = "";
-      imageSizeInfoVisible = false;
-
-      // ローカルストレージから設定されたエンドポイントを取得
-      const endpoint = localStorage.getItem("uploadEndpoint") || "";
-
-      // FileUploadManagerに処理を委譲
-      const result = await FileUploadManager.uploadFile(file, endpoint);
-
-      // サイズ情報を更新
-      updateImageSizeInfo(result);
-
-      if (result.success && result.url) {
-        insertImageUrl(result.url);
-        if (fileInput) {
-          fileInput.value = "";
-        }
-      } else {
-        uploadErrorMessage = result.error || $_("upload_failed");
-        setTimeout(() => {
-          uploadErrorMessage = "";
-        }, 3000);
-      }
-    } catch (error) {
-      uploadErrorMessage =
-        error instanceof Error ? error.message : String(error);
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 3000);
-    } finally {
-      isUploading = false;
-      if (onUploadStatusChange) onUploadStatusChange(false);
     }
   }
 
