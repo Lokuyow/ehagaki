@@ -334,7 +334,7 @@
           {hasStoredKey ? $_("logged_in") : $_("login")}
         </button>
       {/if}
-      
+
       <!-- アップロード状態を中央に表示 -->
       <div class="footer-center">
         {#if isUploading}
@@ -344,7 +344,7 @@
           </div>
         {/if}
       </div>
-      
+
       <button
         class="settings-btn btn-round"
         on:click={openSettings}

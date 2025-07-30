@@ -35,17 +35,27 @@
   let imageSizeInfo = "";
   let imageSizeInfoVisible = false;
 
+  // 重複処理防止用フラグ追加
+  let hasProcessedSharedImageLocally = false;
+
   // マネージャーインスタンス
   const postManager = new PostManager(rxNostr);
   const shareHandler = getShareHandler();
   const imagePreviewManager = new ImagePreviewManager();
 
-  // 共有画像を処理するハンドラー（簡素化）
+  // 共有画像を処理するハンドラー（重複防止追加）
   async function handleSharedImage(event: Event) {
+    // すでに処理済みの場合はスキップ
+    if (hasProcessedSharedImageLocally) {
+      console.log("PostComponent: 共有画像は既に処理済みです");
+      return;
+    }
+
     const detail = (event as CustomEvent)?.detail;
     console.log("PostComponent: 共有画像を受信しました", detail?.file?.name);
 
     if (detail && detail.file) {
+      hasProcessedSharedImageLocally = true; // 処理済みフラグを設定
       // FileUploadManagerに処理を委譲
       await uploadFile(detail.file);
     }
@@ -60,20 +70,6 @@
       "shared-image-received",
       handleSharedImage as EventListener,
     );
-
-    // 共有からの起動をチェック
-    if (FileUploadManager.checkIfOpenedFromShare()) {
-      const result = await FileUploadManager.processSharedImage();
-      if (result?.success && result.url) {
-        insertImageUrlImmediately(result.url);
-        updateImageSizeInfo(result);
-      } else if (result?.error) {
-        uploadErrorMessage = result.error;
-        setTimeout(() => {
-          uploadErrorMessage = "";
-        }, 3000);
-      }
-    }
   });
 
   // コンポーネント破棄時にクリーンアップ
@@ -100,7 +96,7 @@
     }
   }
 
-  // 画像URLを投稿内容に挿入（遅延なしで即座に挿入）
+  // 画像URLを挿入
   function insertImageUrlImmediately(imageUrl: string) {
     const textArea = document.querySelector(
       ".post-input",
