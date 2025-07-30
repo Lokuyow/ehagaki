@@ -35,25 +35,16 @@
   let imageSizeInfo = "";
   let imageSizeInfoVisible = false;
 
-  // 重複処理防止用フラグ追加
-  let hasProcessedSharedImageLocally = false;
-
   // マネージャーインスタンス
   const postManager = new PostManager(rxNostr);
   const shareHandler = getShareHandler();
   const imagePreviewManager = new ImagePreviewManager();
 
-  // 共有画像を処理するハンドラー（重複防止追加）
+  // 共有画像を処理するハンドラー
   async function handleSharedImage(event: Event) {
-    // すでに処理済みの場合はスキップ
-    if (hasProcessedSharedImageLocally) {
-      return;
-    }
-
     const detail = (event as CustomEvent)?.detail;
 
     if (detail && detail.file) {
-      hasProcessedSharedImageLocally = true; // 処理済みフラグを設定
       // FileUploadManagerに処理を委譲
       await uploadFile(detail.file);
     }

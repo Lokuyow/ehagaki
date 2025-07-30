@@ -23,7 +23,6 @@ export interface FileUploadResponse {
  */
 export class FileUploadManager {
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
-  private static hasProcessedSharedImage = false; // 処理済みフラグを追加
 
   /**
    * NIP-98形式の認証イベントを作成
@@ -308,17 +307,10 @@ export class FileUploadManager {
    * 共有画像の処理とアップロードを統合した便利メソッド
    */
   public static async processSharedImage(): Promise<FileUploadResponse | null> {
-    // 既に処理済みの場合はスキップ
-    if (this.hasProcessedSharedImage) {
-      return null;
-    }
-
     const sharedData = await this.getSharedImageFromServiceWorker();
     if (!sharedData?.image) {
       return null;
     }
-
-    this.hasProcessedSharedImage = true; // 処理済みフラグを設定
 
     return await this.uploadFile(sharedData.image);
   }

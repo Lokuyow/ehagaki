@@ -8,7 +8,6 @@ export class ShareHandler {
   private sharedImageFile: File | null = null;
   private sharedImageMetadata: any = null;
   private isProcessingSharedImage: boolean = false;
-  private hasProcessedSharedImage: boolean = false; // 処理済みフラグ
 
   // リクエスト追跡用のマップ
   private requestCallbacks: Map<string, (result: SharedImageData | null) => void> = new Map();
@@ -64,7 +63,7 @@ export class ShareHandler {
    * 共有画像イベントを発行
    */
   private dispatchSharedImageEvent(): void {
-    if (!this.sharedImageFile || this.hasProcessedSharedImage) return; // 処理済みの場合は発行しない
+    if (!this.sharedImageFile) return;
 
     try {
       const sharedImageEvent = new CustomEvent('shared-image-received', {
@@ -75,7 +74,6 @@ export class ShareHandler {
       });
 
       window.dispatchEvent(sharedImageEvent);
-      this.hasProcessedSharedImage = true; // 処理済みフラグを設定
     } catch (error) {
       console.error('ShareHandler: イベント発行エラー', error);
     }
@@ -94,10 +92,6 @@ export class ShareHandler {
    */
   public async checkForSharedImageOnLaunch(): Promise<SharedImageData | null> {
     if (!ShareHandler.checkIfOpenedFromShare()) {
-      return null;
-    }
-
-    if (this.hasProcessedSharedImage) { // 既に処理済みの場合はスキップ
       return null;
     }
 
@@ -294,7 +288,7 @@ export class ShareHandler {
    * 処理済み状態を取得
    */
   public hasProcessed(): boolean {
-    return this.hasProcessedSharedImage;
+    return false;
   }
 }
 
