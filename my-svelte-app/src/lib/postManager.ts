@@ -53,6 +53,22 @@ export class PostManager {
     return { valid: true };
   }
 
+  // ハッシュタグを抽出してtタグを生成
+  private extractHashtags(content: string): string[][] {
+    const hashtagRegex = /#([^\s#]+)/g;
+    const hashtags: string[][] = [];
+    let match;
+
+    while ((match = hashtagRegex.exec(content)) !== null) {
+      const hashtag = match[1];
+      if (hashtag && hashtag.trim()) {
+        hashtags.push(["t", hashtag]);
+      }
+    }
+
+    return hashtags;
+  }
+
   // 投稿を送信する（純粋な投稿処理のみ）
   async submitPost(content: string): Promise<PostResult> {
     const validation = this.validatePost(content);
@@ -71,11 +87,14 @@ export class PostManager {
       // 秘密鍵でsignerを作成
       const signer = seckeySigner(storedKey);
 
+      // ハッシュタグを抽出してtタグを生成
+      const hashtagTags = this.extractHashtags(content);
+
       // kind=1のテキスト投稿を作成
       const event = {
         kind: 1,
         content,
-        tags: [] // 必要に応じてタグを追加可能
+        tags: hashtagTags // ハッシュタグから生成したtタグを設定
       };
 
       // 秘密鍵で署名してイベントを送信
