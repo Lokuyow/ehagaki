@@ -64,12 +64,19 @@
     isUploading = true;
     onUploadStatusChange?.(true);
 
-    const timer = new Promise<void>((resolve) =>
-      setTimeout(resolve, minDuration),
-    );
+    const startTime = Date.now();
 
     try {
-      const [result] = await Promise.all([uploadPromise, timer]);
+      const result = await uploadPromise;
+
+      // アップロード完了後、最小時間が経過していない場合は遅延を追加
+      const elapsedTime = Date.now() - startTime;
+      const remainingTime = minDuration - elapsedTime;
+
+      if (remainingTime > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remainingTime));
+      }
+
       return result;
     } finally {
       isUploading = false;
@@ -92,7 +99,7 @@
 
     const endpoint = localStorage.getItem("uploadEndpoint") || "";
 
-    await withUploadState(
+    const results = await withUploadState(
       (async () => {
         try {
           uploadErrorMessage = "";
@@ -105,7 +112,7 @@
             );
             if (!validation.isValid) {
               showUploadError($_(validation.errorMessage || "upload_failed"));
-              return;
+              return null;
             }
 
             const result = await FileUploadManager.uploadFileWithCallbacks(
@@ -123,30 +130,36 @@
             );
           }
 
-          const successResults = results.filter((r) => r.success);
-          const failedResults = results.filter((r) => !r.success);
-
-          if (successResults.length > 0) {
-            const urls = successResults.map((r) => r.url!).join("\n");
-            insertImageUrl(urls);
-          }
-
-          if (failedResults.length > 0) {
-            const errorMsg =
-              failedResults.length === 1
-                ? failedResults[0].error || $_("upload_failed")
-                : `${failedResults.length}個のファイルのアップロードに失敗しました`;
-            showUploadError(errorMsg, 5000);
-          }
-
-          if (fileInput) fileInput.value = "";
+          return results;
         } catch (error) {
           const errorMsg =
             error instanceof Error ? error.message : String(error);
           showUploadError(errorMsg, 5000);
+          return null;
         }
       })(),
     );
+
+    // 遅延処理完了後にURL挿入とエラー処理を実行
+    if (results) {
+      const successResults = results.filter((r) => r.success);
+      const failedResults = results.filter((r) => !r.success);
+
+      if (successResults.length > 0) {
+        const urls = successResults.map((r) => r.url!).join("\n");
+        insertImageUrl(urls);
+      }
+
+      if (failedResults.length > 0) {
+        const errorMsg =
+          failedResults.length === 1
+            ? failedResults[0].error || $_("upload_failed")
+            : `${failedResults.length}個のファイルのアップロードに失敗しました`;
+        showUploadError(errorMsg, 5000);
+      }
+    }
+
+    if (fileInput) fileInput.value = "";
   }
 
   // 共有画像を処理するハンドラー
