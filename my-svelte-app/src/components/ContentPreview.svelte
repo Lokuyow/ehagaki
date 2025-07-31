@@ -4,6 +4,7 @@
         ImagePreviewManager,
         type ContentPart,
     } from "../lib/imagePreviewUtils";
+    import { formatTextWithHashtags } from "../lib/utils";
 
     export let content: string = "";
 
@@ -19,7 +20,10 @@
                 {#if part.type === "image"}
                     <img src={part.value} alt="" class="preview-image" />
                 {:else}
-                    {@html part.value.replace(/\n/g, "<br>")}
+                    {@html formatTextWithHashtags(part.value).replace(
+                        /\n/g,
+                        "<br>",
+                    )}
                 {/if}
             {/each}
         {:else}
@@ -63,5 +67,13 @@
         border-radius: 6px;
         box-shadow: 0 1px 4px #0001;
         background: #fff;
+    }
+
+    :global(.hashtag) {
+        color: #1976d2;
+        font-weight: 600;
+        background: rgba(25, 118, 210, 0.1);
+        padding: 2px 4px;
+        border-radius: 4px;
     }
 </style>

@@ -2,6 +2,7 @@ import { createRxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { firstValueFrom } from "rxjs";
 import { keyManager } from "./keyManager";
+import { generateHashtagTags } from "./utils";
 
 // 投稿結果の型定義
 export interface PostResult {
@@ -55,18 +56,7 @@ export class PostManager {
 
   // ハッシュタグを抽出してtタグを生成
   private extractHashtags(content: string): string[][] {
-    const hashtagRegex = /#([^\s#]+)/g;
-    const hashtags: string[][] = [];
-    let match;
-
-    while ((match = hashtagRegex.exec(content)) !== null) {
-      const hashtag = match[1];
-      if (hashtag && hashtag.trim()) {
-        hashtags.push(["t", hashtag]);
-      }
-    }
-
-    return hashtags;
+    return generateHashtagTags(content);
   }
 
   // 投稿を送信する（純粋な投稿処理のみ）
