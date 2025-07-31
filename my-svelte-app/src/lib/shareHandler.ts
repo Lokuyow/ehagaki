@@ -1,13 +1,43 @@
 /**
+ * 共有画像データ型
+ */
+export interface SharedImageData {
+  image: File;
+  metadata?: SharedImageMetadata;
+}
+
+/**
+ * 共有画像のメタデータ型
+ */
+export interface SharedImageMetadata {
+  name?: string;
+  type?: string;
+  size?: number;
+  timestamp?: string;
+}
+
+/**
+ * ServiceWorkerメッセージ型
+ */
+interface ServiceWorkerMessage {
+  type: 'SHARED_IMAGE';
+  data: SharedImageData | null;
+  requestId?: string;
+  timestamp?: number;
+}
+
+/**
  * 外部アプリからの共有画像を処理する中央ハンドラークラス
  * 責務: ServiceWorkerとの通信、共有画像の取得・管理、カスタムイベントの発行
  */
 export class ShareHandler {
-  private sharedImageFile: File | null = null;
-  private sharedImageMetadata: any = null;
-  private isProcessingSharedImage: boolean = false;
+  private static readonly REQUEST_TIMEOUT = 5000;
+  private static readonly RETRY_COUNT = 3;
+  private static readonly RETRY_DELAY = 1000;
 
-  // リクエスト追跡用のマップ
+  private sharedImageFile: File | null = null;
+  private sharedImageMetadata: SharedImageMetadata | null = null;
+  private isProcessingSharedImage: boolean = false;
   private requestCallbacks: Map<string, (result: SharedImageData | null) => void> = new Map();
 
   constructor() {
@@ -17,43 +47,34 @@ export class ShareHandler {
   /**
    * サービスワーカーのメッセージリスナーをセットアップ
    */
-  private setupServiceWorkerListeners() {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
-    }
+  private setupServiceWorkerListeners(): void {
+    if (!('serviceWorker' in navigator)) return;
+
+    navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
   }
 
   /**
    * サービスワーカーからのメッセージを処理
    */
-  private handleServiceWorkerMessage(event: MessageEvent): void {
-    if (event.data?.type === 'SHARED_IMAGE') {
-      const sharedData = event.data.data;
-      const requestId = event.data.requestId;
+  private handleServiceWorkerMessage(event: MessageEvent<ServiceWorkerMessage>): void {
+    const { data, type } = event.data || {};
+    
+    if (type !== 'SHARED_IMAGE') return;
 
-      if (sharedData?.image) {
-        this.sharedImageFile = sharedData.image;
-        this.sharedImageMetadata = sharedData.metadata || {};
-        this.dispatchSharedImageEvent();
+    const { requestId } = event.data;
+    const sharedData = data;
 
-        // リクエストIDが指定されていれば対応するコールバックを実行
-        if (requestId && this.requestCallbacks.has(requestId)) {
-          const callback = this.requestCallbacks.get(requestId);
-          if (callback) {
-            callback({
-              image: this.sharedImageFile!,
-              metadata: this.sharedImageMetadata
-            });
-            this.requestCallbacks.delete(requestId);
-          }
-        }
-      } else if (requestId && this.requestCallbacks.has(requestId)) {
-        const callback = this.requestCallbacks.get(requestId);
-        if (callback) {
-          callback(null);
-          this.requestCallbacks.delete(requestId);
-        }
-      }
+    if (sharedData?.image) {
+      this.sharedImageFile = sharedData.image;
+      this.sharedImageMetadata = sharedData.metadata || null;
+      this.dispatchSharedImageEvent();
+    }
+
+    // リクエストIDに対応するコールバックを実行
+    if (requestId && this.requestCallbacks.has(requestId)) {
+      const callback = this.requestCallbacks.get(requestId)!;
+      callback(sharedData);
+      this.requestCallbacks.delete(requestId);
     }
   }
 
@@ -82,7 +103,7 @@ export class ShareHandler {
    */
   public static checkIfOpenedFromShare(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.has('shared') && urlParams.get('shared') === 'true';
+    return urlParams.get('shared') === 'true';
   }
 
   /**
@@ -96,26 +117,29 @@ export class ShareHandler {
     this.isProcessingSharedImage = true;
 
     try {
-      const hasSharedFlag = await this.checkSharedFlagInIndexedDB();
+      // IndexedDBのフラグをチェック（バックグラウンド処理）
+      this.checkSharedFlagInIndexedDB().catch(() => {});
 
-      // 最大3回試行
-      for (let i = 0; i < 3; i++) {
+      // 複数回試行してServiceWorkerから画像を取得
+      for (let attempt = 0; attempt < ShareHandler.RETRY_COUNT; attempt++) {
         const sharedImageData = await this.getSharedImageFromServiceWorker();
+        
         if (sharedImageData) {
           this.sharedImageFile = sharedImageData.image;
-          this.sharedImageMetadata = sharedImageData.metadata;
+          this.sharedImageMetadata = sharedImageData.metadata || null;
           this.dispatchSharedImageEvent();
-
           return sharedImageData;
         }
 
-        if (i < 2) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
+        // 最後の試行でなければ待機
+        if (attempt < ShareHandler.RETRY_COUNT - 1) {
+          await this.delay(ShareHandler.RETRY_DELAY);
         }
       }
 
       return null;
     } catch (error) {
+      console.error('ShareHandler: 共有画像取得エラー', error);
       return null;
     } finally {
       this.isProcessingSharedImage = false;
@@ -123,36 +147,29 @@ export class ShareHandler {
   }
 
   /**
-   * ServiceWorkerから共有画像を取得（統合・改良版）
-   * FileUploadManagerから移行して統合
+   * ServiceWorkerから共有画像を取得
    */
   public async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    if (!('serviceWorker' in navigator)) {
-      return null;
-    }
+    if (!('serviceWorker' in navigator)) return null;
 
+    // ServiceWorkerコントローラーが利用可能になるまで待機
     if (!navigator.serviceWorker.controller) {
       try {
         await this.waitForServiceWorkerController();
-      } catch (e) {
+      } catch {
         return null;
       }
     }
 
-    if (!navigator.serviceWorker.controller) {
-      return null;
-    }
+    if (!navigator.serviceWorker.controller) return null;
 
     try {
-      // 1. MessageChannelを使用する方法
+      // MessageChannelを優先的に使用
       const messageChannelResult = await this.requestWithMessageChannel();
-      if (messageChannelResult) {
-        return messageChannelResult;
-      }
+      if (messageChannelResult) return messageChannelResult;
 
-      // 2. 通常のメッセージイベントリスナーを使用する方法（フォールバック）
-      const eventListenerResult = await this.requestWithEventListener();
-      return eventListenerResult;
+      // フォールバック: 通常のメッセージイベント
+      return await this.requestWithEventListener();
     } catch (error) {
       console.error('ShareHandler: ServiceWorker通信エラー', error);
       return null;
@@ -163,33 +180,26 @@ export class ShareHandler {
    * MessageChannelを使用したServiceWorkerとの通信
    */
   private async requestWithMessageChannel(): Promise<SharedImageData | null> {
+    if (!navigator.serviceWorker.controller) return null;
+
     const messageChannel = new MessageChannel();
+    const requestId = this.generateRequestId();
 
     const promise = new Promise<SharedImageData | null>((resolve) => {
-      const timeout = setTimeout(() => resolve(null), 3000);
+      const timeout = setTimeout(() => resolve(null), ShareHandler.REQUEST_TIMEOUT);
 
-      messageChannel.port1.onmessage = (event) => {
+      messageChannel.port1.onmessage = (event: MessageEvent<ServiceWorkerMessage>) => {
         clearTimeout(timeout);
         
-        if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-          resolve({
-            image: event.data.data.image,
-            metadata: event.data.data.metadata || {}
-          });
-        } else {
-          resolve(null);
-        }
+        const { data } = event.data || {};
+        resolve(data && data.image ? data : null);
       };
     });
 
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage(
-        { action: 'getSharedImage' },
-        [messageChannel.port2]
-      );
-    } else {
-      return null;
-    }
+    navigator.serviceWorker.controller.postMessage(
+      { action: 'getSharedImage', requestId },
+      [messageChannel.port2]
+    );
 
     return promise;
   }
@@ -198,33 +208,23 @@ export class ShareHandler {
    * 通常のイベントリスナーを使用したServiceWorkerとの通信
    */
   private async requestWithEventListener(): Promise<SharedImageData | null> {
+    if (!navigator.serviceWorker.controller) return null;
+
+    const requestId = this.generateRequestId();
+
     const promise = new Promise<SharedImageData | null>((resolve) => {
-      const handler = (event: MessageEvent) => {
-        navigator.serviceWorker.removeEventListener('message', handler);
-
-        if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-          resolve({
-            image: event.data.data.image,
-            metadata: event.data.data.metadata || {}
-          });
-        } else {
-          resolve(null);
-        }
-      };
-
-      navigator.serviceWorker.addEventListener('message', handler);
+      this.requestCallbacks.set(requestId, resolve);
 
       setTimeout(() => {
-        navigator.serviceWorker.removeEventListener('message', handler);
+        this.requestCallbacks.delete(requestId);
         resolve(null);
-      }, 3000);
+      }, ShareHandler.REQUEST_TIMEOUT);
     });
 
-    if (navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage' });
-    } else {
-      return null;
-    }
+    navigator.serviceWorker.controller.postMessage({ 
+      action: 'getSharedImage', 
+      requestId 
+    });
 
     return promise;
   }
@@ -239,12 +239,16 @@ export class ShareHandler {
         return;
       }
 
-      const timeout = setTimeout(() => reject(new Error('タイムアウト')), 5000);
+      const timeout = setTimeout(() => {
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+        reject(new Error('ServiceWorkerコントローラー待機タイムアウト'));
+      }, ShareHandler.REQUEST_TIMEOUT);
 
       const onControllerChange = () => {
         clearTimeout(timeout);
         navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-        setTimeout(() => resolve(), 500);
+        // 少し待ってからresolve
+        setTimeout(resolve, 500);
       };
 
       navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
@@ -252,7 +256,7 @@ export class ShareHandler {
   }
 
   /**
-   * IndexedDBから共有フラグを確認して削除する
+   * IndexedDBから共有フラグを確認して削除
    */
   private async checkSharedFlagInIndexedDB(): Promise<boolean> {
     return new Promise((resolve) => {
@@ -271,7 +275,9 @@ export class ShareHandler {
         request.onsuccess = (event) => {
           try {
             const db = (event.target as IDBOpenDBRequest).result;
+            
             if (!db.objectStoreNames.contains('flags')) {
+              db.close();
               resolve(false);
               return;
             }
@@ -282,27 +288,44 @@ export class ShareHandler {
 
             getRequest.onsuccess = () => {
               const flag = getRequest.result;
-              if (flag && flag.value === true) {
-                try {
-                  store.delete('sharedImage');
-                } catch (e) {
-                  console.error('ShareHandler: フラグ削除エラー', e);
-                }
-                resolve(true);
+              if (flag?.value === true) {
+                // フラグを削除
+                store.delete('sharedImage').onsuccess = () => {
+                  db.close();
+                  resolve(true);
+                };
               } else {
+                db.close();
                 resolve(false);
               }
             };
 
-            getRequest.onerror = () => resolve(false);
-          } catch (err) {
+            getRequest.onerror = () => {
+              db.close();
+              resolve(false);
+            };
+          } catch (error) {
             resolve(false);
           }
         };
-      } catch (err) {
+      } catch (error) {
         resolve(false);
       }
     });
+  }
+
+  /**
+   * 遅延処理のためのユーティリティメソッド
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * ユニークなリクエストIDを生成
+   */
+  private generateRequestId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
 
   // パブリックメソッド
@@ -314,24 +337,14 @@ export class ShareHandler {
     return this.sharedImageFile;
   }
 
-  public getSharedImageMetadata(): any {
+  public getSharedImageMetadata(): SharedImageMetadata | null {
     return this.sharedImageMetadata;
   }
 
-  /**
-   * 処理済み状態を取得
-   */
-  public hasProcessed(): boolean {
-    return false;
+  public clearSharedImage(): void {
+    this.sharedImageFile = null;
+    this.sharedImageMetadata = null;
   }
-}
-
-/**
- * 共有画像データ型
- */
-export interface SharedImageData {
-  image: File;
-  metadata?: any;
 }
 
 // グローバルなShareHandlerインスタンス（シングルトン）
