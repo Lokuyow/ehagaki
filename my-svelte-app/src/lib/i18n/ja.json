@@ -15,7 +15,6 @@
   "key_not_found": "鍵が見つかりません",
   "profile": "プロフィール",
   "preview": "プレビュー",
-  "uploading": "アップロード中",
   "upload_image": "画像をアップロード",
   "upload_failed": "アップロードに失敗しました",
   "only_images_allowed": "画像ファイルのみアップロード可能です",
@@ -31,5 +30,8 @@
   "logout_confirmation": "ログアウト確認",
   "logout_warning": "本当にログアウトしますか？",
   "logout": "ログアウト",
-  "invalid_secret": "無効な秘密鍵です"
+  "invalid_secret": "無効な秘密鍵です",
+  "uploading": "アップロード中",
+  "failed": "失敗",
+  "data_size": "データ量"
 }

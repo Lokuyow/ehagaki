@@ -15,7 +15,6 @@
   "key_not_found": "Key not found",
   "profile": "Profile",
   "preview": "Preview",
-  "uploading": "Uploading",
   "upload_image": "Upload Image",
   "upload_failed": "Upload failed",
   "only_images_allowed": "Only image files are allowed",
@@ -31,5 +30,8 @@
   "logout_confirmation": "Logout Confirmation",
   "logout_warning": "Are you sure you want to logout?",
   "logout": "Logout",
-  "invalid_secret": "Invalid secret key"
+  "invalid_secret": "Invalid secret key",
+  "uploading": "Uploading",
+  "failed": "Failed",
+  "data_size": "Data size"
 }

@@ -11,6 +11,17 @@
   export let hasStoredKey: boolean;
   export let onPostSuccess: (() => void) | undefined;
   export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
+  export let onImageSizeInfo:
+    | ((info: string, visible: boolean) => void)
+    | undefined;
+  export let onUploadProgress:
+    | ((progress: {
+        total: number;
+        completed: number;
+        failed: number;
+        inProgress: boolean;
+      }) => void)
+    | undefined;
 
   // 投稿機能のための状態変数
   let postContent = "";
@@ -38,10 +49,6 @@
     failed: 0,
     inProgress: false,
   };
-
-  // 画像サイズ比較表示用（簡略化）
-  let imageSizeInfo = "";
-  let imageSizeInfoVisible = false;
 
   // マネージャーインスタンス
   const postManager = new PostManager(rxNostr);
@@ -79,6 +86,20 @@
     }
   }
 
+  // 画像サイズ情報を更新（修正版）
+  function updateImageSizeInfo(result: any) {
+    if (
+      result.wasCompressed &&
+      result.sizeReduction &&
+      result.compressionRatio
+    ) {
+      const info = `${$_("data_size")}:<br>${result.sizeReduction} （${result.compressionRatio}%）`;
+      if (onImageSizeInfo) {
+        onImageSizeInfo(info, true);
+      }
+    }
+  }
+
   // 内部的なアップロード処理（状態管理なし）
   async function uploadFileInternal(
     file: File,
@@ -100,7 +121,6 @@
 
     try {
       uploadErrorMessage = "";
-      imageSizeInfoVisible = false;
 
       // ローカルストレージから設定されたエンドポイントを取得
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
@@ -108,11 +128,13 @@
       // FileUploadManagerに処理を委譲
       const result = await FileUploadManager.uploadFile(file, endpoint);
 
-      // サイズ情報を更新
-      updateImageSizeInfo(result);
-
       if (result.success && result.url) {
-        insertImageUrl(result.url);
+        // URL挿入を即座に実行（情報表示とは独立）
+        insertImageUrlImmediately(result.url);
+
+        // サイズ情報を更新（独立したタイミング）
+        updateImageSizeInfo(result);
+
         if (fileInput) {
           fileInput.value = "";
         }
@@ -135,7 +157,53 @@
     }
   }
 
-  // 複数ファイルのアップロード処理（新規）
+  // 単一ファイルのアップロード処理（進捗表示対応）
+  async function uploadSingleFile(file: File) {
+    uploadProgress = {
+      total: 1,
+      completed: 0,
+      failed: 0,
+      inProgress: true,
+    };
+
+    // 進捗をApp.svelteに通知
+    if (onUploadProgress) onUploadProgress(uploadProgress);
+
+    await showUploadingWhile(uploadSingleFileInternal(file), 2500);
+  }
+
+  // 内部的な単一ファイルアップロード処理
+  async function uploadSingleFileInternal(file: File): Promise<void> {
+    try {
+      const result = await uploadFileInternal(file);
+      
+      if (result.success) {
+        uploadProgress = {
+          ...uploadProgress,
+          completed: 1,
+        };
+      } else {
+        uploadProgress = {
+          ...uploadProgress,
+          failed: 1,
+        };
+      }
+      
+      // 進捗をApp.svelteに通知
+      if (onUploadProgress) onUploadProgress(uploadProgress);
+    } finally {
+      uploadProgress = {
+        total: 0,
+        completed: 0,
+        failed: 0,
+        inProgress: false,
+      };
+      // 進捗終了をApp.svelteに通知
+      if (onUploadProgress) onUploadProgress(uploadProgress);
+    }
+  }
+
+  // 複数ファイルのアップロード処理（修正）
   async function uploadMultipleFiles(files: FileList | File[]) {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
@@ -147,6 +215,9 @@
       inProgress: true,
     };
 
+    // 進捗をApp.svelteに通知
+    if (onUploadProgress) onUploadProgress(uploadProgress);
+
     await showUploadingWhile(uploadMultipleFilesInternal(fileArray), 1000);
   }
 
@@ -154,7 +225,6 @@
   async function uploadMultipleFilesInternal(files: File[]): Promise<void> {
     try {
       uploadErrorMessage = "";
-      imageSizeInfoVisible = false;
 
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
       const results = await FileUploadManager.uploadMultipleFiles(
@@ -166,6 +236,8 @@
             completed: progress.completed,
             failed: progress.failed,
           };
+          // 進捗をApp.svelteに通知
+          if (onUploadProgress) onUploadProgress(uploadProgress);
         },
       );
 
@@ -173,11 +245,11 @@
       const failedResults = results.filter((r) => !r.success);
 
       if (successResults.length > 0) {
-        // 成功した画像URLを挿入
+        // 成功した画像URLを即座に挿入
         const urls = successResults.map((r) => r.url!).join("\n");
-        insertImageUrl(urls);
+        insertImageUrlImmediately(urls);
 
-        // サイズ情報を表示（最初の結果から）
+        // サイズ情報を表示（最初の結果から、独立したタイミング）
         if (successResults[0]) {
           updateImageSizeInfo(successResults[0]);
         }
@@ -207,12 +279,14 @@
         failed: 0,
         inProgress: false,
       };
+      // 進捗終了をApp.svelteに通知
+      if (onUploadProgress) onUploadProgress(uploadProgress);
     }
   }
 
   // ファイルアップロード処理（公開メソッド）
   async function uploadFile(file: File) {
-    await showUploadingWhile(uploadFileInternal(file), 2500);
+    await uploadSingleFile(file);
   }
 
   // コンポーネントマウント時の処理
@@ -231,20 +305,6 @@
     );
     imagePreviewManager.cleanup();
   });
-
-  // 画像サイズ情報を更新（新しいヘルパー関数）
-  function updateImageSizeInfo(result: any) {
-    if (
-      result.wasCompressed &&
-      result.sizeReduction &&
-      result.compressionRatio
-    ) {
-      imageSizeInfo = `データ量: ${result.sizeReduction} （${result.compressionRatio}%）`;
-      imageSizeInfoVisible = true;
-    } else {
-      imageSizeInfoVisible = false;
-    }
-  }
 
   // 画像URLを挿入
   function insertImageUrlImmediately(imageUrl: string) {
@@ -285,14 +345,6 @@
     }
   }
 
-  // 画像URLを遅延挿入する新しい関数
-  function insertImageUrl(imageUrl: string) {
-    // 1秒後にURLを挿入
-    setTimeout(() => {
-      insertImageUrlImmediately(imageUrl);
-    }, 1500);
-  }
-
   // ファイル選択ダイアログを開く
   function openFileDialog() {
     if (fileInput) {
@@ -305,7 +357,7 @@
     const target = event.target as HTMLInputElement;
     if (target.files && target.files.length > 0) {
       if (target.files.length === 1) {
-        await uploadFile(target.files[0]);
+        await uploadSingleFile(target.files[0]);
       } else {
         await uploadMultipleFiles(target.files);
       }
@@ -328,7 +380,7 @@
 
     if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
       if (event.dataTransfer.files.length === 1) {
-        await uploadFile(event.dataTransfer.files[0]);
+        await uploadSingleFile(event.dataTransfer.files[0]);
       } else {
         await uploadMultipleFiles(event.dataTransfer.files);
       }
@@ -487,35 +539,8 @@
     style="display: none;"
   />
 
-  <!-- アップロード進捗表示（新規） -->
-  {#if uploadProgress.inProgress}
-    <div class="upload-progress">
-      <div class="progress-text">
-        アップロード中: {uploadProgress.completed}/{uploadProgress.total}
-        {#if uploadProgress.failed > 0}
-          (失敗: {uploadProgress.failed})
-        {/if}
-      </div>
-      <div class="progress-bar">
-        <div
-          class="progress-fill"
-          style="width: {Math.round(
-            (uploadProgress.completed / uploadProgress.total) * 100
-          )}%"
-        ></div>
-      </div>
-    </div>
-  {/if}
-
   {#if uploadErrorMessage}
     <div class="upload-error">{uploadErrorMessage}</div>
-  {/if}
-
-  <!-- 画像サイズ比較表示（簡略化） -->
-  {#if imageSizeInfoVisible}
-    <div class="image-size-info">
-      <span>{imageSizeInfo}</span>
-    </div>
   {/if}
 </div>
 
@@ -740,43 +765,5 @@
     border-radius: 6px;
     box-shadow: 0 1px 4px #0001;
     background: #fff;
-  }
-  .image-size-info {
-    width: 100%;
-    text-align: right;
-    font-size: 0.88rem;
-    color: #2e7d32;
-    margin-bottom: 2px;
-    margin-top: -4px;
-    opacity: 0.8;
-    user-select: none;
-    letter-spacing: 0.01em;
-  }
-
-  /* 新規スタイル: アップロード進捗 */
-  .upload-progress {
-    width: 100%;
-    margin-bottom: 10px;
-  }
-
-  .progress-text {
-    font-size: 0.9rem;
-    color: #666;
-    margin-bottom: 4px;
-    text-align: center;
-  }
-
-  .progress-bar {
-    width: 100%;
-    height: 4px;
-    background-color: #e0e0e0;
-    border-radius: 2px;
-    overflow: hidden;
-  }
-
-  .progress-fill {
-    height: 100%;
-    background-color: #1da1f2;
-    transition: width 0.3s ease;
   }
 </style>

@@ -13,6 +13,7 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
+  import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
   import { useSwUpdate } from "./lib/useSwUpdate"; // 追加: サービスワーカー更新ロジック
 
@@ -64,6 +65,19 @@
   let processingSharedImage = false;
   let sharedImageReceived = false;
   let isUploading = false;
+
+  // 削減データ量情報を追加
+  let imageSizeInfo = "";
+  let imageSizeInfoVisible = false;
+  let imageSizeInfoTimeout: number | null = null;
+
+  // アップロード進捗情報を追加
+  let uploadProgress = {
+    total: 0,
+    completed: 0,
+    failed: 0,
+    inProgress: false,
+  };
 
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
@@ -249,6 +263,36 @@
       sharedImageReceived = false;
     }
   }
+
+  // アップロード進捗情報を受け取る関数を追加
+  function handleUploadProgress(progress: {
+    total: number;
+    completed: number;
+    failed: number;
+    inProgress: boolean;
+  }) {
+    uploadProgress = progress;
+  }
+
+  // 削減データ量情報を受け取る関数を修正
+  function handleImageSizeInfo(info: string, visible: boolean) {
+    // 既存のタイムアウトをクリア
+    if (imageSizeInfoTimeout) {
+      clearTimeout(imageSizeInfoTimeout);
+      imageSizeInfoTimeout = null;
+    }
+
+    imageSizeInfo = info;
+    imageSizeInfoVisible = visible;
+
+    // 新しいタイムアウトを設定（表示時のみ）
+    if (visible) {
+      imageSizeInfoTimeout = setTimeout(() => {
+        imageSizeInfoVisible = false;
+        imageSizeInfoTimeout = null;
+      }, 3000);
+    }
+  }
 </script>
 
 {#if $locale}
@@ -262,6 +306,8 @@
           // 必要に応じて投稿成功時の処理を追加
         }}
         onUploadStatusChange={handleUploadStatusChange}
+        onImageSizeInfo={handleImageSizeInfo}
+        onUploadProgress={handleUploadProgress}
       />
     </div>
 
@@ -295,7 +341,7 @@
       message={swUpdateMessage}
     />
 
-    <!-- ヘッダー領域を最下部に配置 -->
+    <!-- フッター -->
     <div class="footer-bar">
       {#if hasStoredKey && profileLoaded}
         <ProfileComponent
@@ -310,16 +356,11 @@
         </button>
       {/if}
 
-      <div class="footer-center">
-        {#if isUploading}
-          <div class="upload-status">
-            <span class="loading-indicator"></span>
-            <span>
-              {$_("uploading")}...
-            </span>
-          </div>
-        {/if}
-      </div>
+      <FooterInfoDisplay
+        {imageSizeInfo}
+        {imageSizeInfoVisible}
+        {uploadProgress}
+      />
 
       <button
         class="settings-btn btn-round"
@@ -355,7 +396,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
+    gap: 8px;
     padding: 8px;
     background: #fff;
     position: fixed;
@@ -364,35 +405,6 @@
     bottom: 0;
     box-shadow: 0 -2px 8px #0001;
     z-index: 100;
-  }
-  .footer-center {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-width: 0;
-  }
-  .upload-status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: #1da1f2;
-    font-size: 0.8rem;
-    white-space: nowrap;
-  }
-  .loading-indicator {
-    display: inline-block;
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(29, 161, 242, 0.3);
-    border-radius: 50%;
-    border-top-color: #1da1f2;
-    animation: spin 1s ease-in-out infinite;
-  }
-  @keyframes spin {
-    to {
-      transform: rotate(360deg);
-    }
   }
   .login-btn {
     width: 110px;
@@ -420,6 +432,7 @@
     box-shadow: 0 1px 2px #0002;
     transform: scale(0.94);
   }
+
   @keyframes fadeOut {
     0% {
       opacity: 1;
