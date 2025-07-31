@@ -2,7 +2,10 @@
   import { _ } from "svelte-i18n";
   import type { PostStatus } from "../lib/postManager";
   import { PostManager } from "../lib/postManager";
-  import { FileUploadManager } from "../lib/fileUploadManager";
+  import {
+    FileUploadManager,
+    type UploadInfoCallbacks,
+  } from "../lib/fileUploadManager";
   import { getShareHandler } from "../lib/shareHandler";
   import { ImagePreviewManager } from "../lib/imagePreviewUtils";
   import { onMount, onDestroy } from "svelte";
@@ -14,14 +17,7 @@
   export let onImageSizeInfo:
     | ((info: string, visible: boolean) => void)
     | undefined;
-  export let onUploadProgress:
-    | ((progress: {
-        total: number;
-        completed: number;
-        failed: number;
-        inProgress: boolean;
-      }) => void)
-    | undefined;
+  export let onUploadProgress: ((progress: any) => void) | undefined;
 
   // 投稿機能のための状態変数
   let postContent = "";
@@ -41,14 +37,6 @@
   let uploadErrorMessage = "";
   let dragOver = false;
   let fileInput: HTMLInputElement;
-
-  // 複数ファイルアップロード用の状態変数
-  let uploadProgress = {
-    total: 0,
-    completed: 0,
-    failed: 0,
-    inProgress: false,
-  };
 
   // マネージャーインスタンス
   const postManager = new PostManager(rxNostr);
@@ -86,21 +74,15 @@
     }
   }
 
-  // 画像サイズ情報を更新（修正版）
-  function updateImageSizeInfo(result: any) {
-    if (
-      result.wasCompressed &&
-      result.sizeReduction &&
-      result.compressionRatio
-    ) {
-      const info = `${$_("data_size")}:<br>${result.sizeReduction} （${result.compressionRatio}%）`;
-      if (onImageSizeInfo) {
-        onImageSizeInfo(info, true);
-      }
-    }
+  // アップロード用コールバックを作成
+  function createUploadCallbacks(): UploadInfoCallbacks {
+    return {
+      onSizeInfo: onImageSizeInfo,
+      onProgress: onUploadProgress,
+    };
   }
 
-  // 内部的なアップロード処理（状態管理なし）
+  // 内部的なアップロード処理（簡素化）
   async function uploadFileInternal(
     file: File,
   ): Promise<{ success: boolean; url?: string; error?: string }> {
@@ -121,19 +103,18 @@
 
     try {
       uploadErrorMessage = "";
-
-      // ローカルストレージから設定されたエンドポイントを取得
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
+      const callbacks = createUploadCallbacks();
 
-      // FileUploadManagerに処理を委譲
-      const result = await FileUploadManager.uploadFile(file, endpoint);
+      // FileUploadManagerのコールバック対応版を使用
+      const result = await FileUploadManager.uploadFileWithCallbacks(
+        file,
+        endpoint,
+        callbacks,
+      );
 
       if (result.success && result.url) {
-        // URL挿入を即座に実行（情報表示とは独立）
         insertImageUrlImmediately(result.url);
-
-        // サイズ情報を更新（独立したタイミング）
-        updateImageSizeInfo(result);
 
         if (fileInput) {
           fileInput.value = "";
@@ -157,102 +138,44 @@
     }
   }
 
-  // 単一ファイルのアップロード処理（進捗表示対応）
+  // 単一ファイルのアップロード処理（簡素化）
   async function uploadSingleFile(file: File) {
-    uploadProgress = {
-      total: 1,
-      completed: 0,
-      failed: 0,
-      inProgress: true,
-    };
-
-    // 進捗をApp.svelteに通知
-    if (onUploadProgress) onUploadProgress(uploadProgress);
-
     await showUploadingWhile(uploadSingleFileInternal(file), 2500);
   }
 
-  // 内部的な単一ファイルアップロード処理
+  // 内部的な単一ファイルアップロード処理（簡素化）
   async function uploadSingleFileInternal(file: File): Promise<void> {
-    try {
-      const result = await uploadFileInternal(file);
-      
-      if (result.success) {
-        uploadProgress = {
-          ...uploadProgress,
-          completed: 1,
-        };
-      } else {
-        uploadProgress = {
-          ...uploadProgress,
-          failed: 1,
-        };
-      }
-      
-      // 進捗をApp.svelteに通知
-      if (onUploadProgress) onUploadProgress(uploadProgress);
-    } finally {
-      uploadProgress = {
-        total: 0,
-        completed: 0,
-        failed: 0,
-        inProgress: false,
-      };
-      // 進捗終了をApp.svelteに通知
-      if (onUploadProgress) onUploadProgress(uploadProgress);
-    }
+    await uploadFileInternal(file);
   }
 
-  // 複数ファイルのアップロード処理（修正）
+  // 複数ファイルのアップロード処理（簡素化）
   async function uploadMultipleFiles(files: FileList | File[]) {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
 
-    uploadProgress = {
-      total: fileArray.length,
-      completed: 0,
-      failed: 0,
-      inProgress: true,
-    };
-
-    // 進捗をApp.svelteに通知
-    if (onUploadProgress) onUploadProgress(uploadProgress);
-
     await showUploadingWhile(uploadMultipleFilesInternal(fileArray), 1000);
   }
 
-  // 内部的な複数ファイルアップロード処理
+  // 内部的な複数ファイルアップロード処理（簡素化）
   async function uploadMultipleFilesInternal(files: File[]): Promise<void> {
     try {
       uploadErrorMessage = "";
-
       const endpoint = localStorage.getItem("uploadEndpoint") || "";
-      const results = await FileUploadManager.uploadMultipleFiles(
+      const callbacks = createUploadCallbacks();
+
+      // FileUploadManagerのコールバック対応版を使用
+      const results = await FileUploadManager.uploadMultipleFilesWithCallbacks(
         files,
         endpoint,
-        (progress) => {
-          uploadProgress = {
-            ...uploadProgress,
-            completed: progress.completed,
-            failed: progress.failed,
-          };
-          // 進捗をApp.svelteに通知
-          if (onUploadProgress) onUploadProgress(uploadProgress);
-        },
+        callbacks,
       );
 
       const successResults = results.filter((r) => r.success);
       const failedResults = results.filter((r) => !r.success);
 
       if (successResults.length > 0) {
-        // 成功した画像URLを即座に挿入
         const urls = successResults.map((r) => r.url!).join("\n");
         insertImageUrlImmediately(urls);
-
-        // サイズ情報を表示（最初の結果から、独立したタイミング）
-        if (successResults[0]) {
-          updateImageSizeInfo(successResults[0]);
-        }
       }
 
       if (failedResults.length > 0) {
@@ -272,15 +195,6 @@
       setTimeout(() => {
         uploadErrorMessage = "";
       }, 5000);
-    } finally {
-      uploadProgress = {
-        total: 0,
-        completed: 0,
-        failed: 0,
-        inProgress: false,
-      };
-      // 進捗終了をApp.svelteに通知
-      if (onUploadProgress) onUploadProgress(uploadProgress);
     }
   }
 

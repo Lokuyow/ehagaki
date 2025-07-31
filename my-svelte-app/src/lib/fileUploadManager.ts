@@ -24,9 +24,22 @@ export interface MultipleUploadProgress {
   total: number;
 }
 
+// 新しい型定義: 情報通知用のコールバック
+export interface UploadInfoCallbacks {
+  onSizeInfo?: (info: string, visible: boolean) => void;
+  onProgress?: (progress: MultipleUploadProgress) => void;
+}
+
+// 新しい型定義: サイズ情報
+export interface SizeInfo {
+  compressionRatio: number;
+  sizeReduction: string;
+  wasCompressed: boolean;
+}
+
 /**
  * ファイルアップロード専用マネージャークラス
- * 責務: ファイルの圧縮・アップロード処理、共有画像処理
+ * 責務: ファイルの圧縮・アップロード処理、共有画像処理、情報管理
  */
 export class FileUploadManager {
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
@@ -57,6 +70,16 @@ export class FileUploadManager {
   }
 
   /**
+   * サイズ情報を生成する静的メソッド
+   */
+  public static generateSizeInfo(result: FileUploadResponse): string | null {
+    if (result.wasCompressed && result.sizeReduction && result.compressionRatio) {
+      return `データサイズ:<br>${result.sizeReduction} （${result.compressionRatio}%）`;
+    }
+    return null;
+  }
+
+  /**
    * 複数ファイルを並列アップロード
    */
   public static async uploadMultipleFiles(
@@ -76,7 +99,7 @@ export class FileUploadManager {
       try {
         const result = await this.uploadFile(file, apiUrl);
         results[index] = result;
-        
+
         if (result.success) {
           completed++;
         } else {
@@ -227,6 +250,138 @@ export class FileUploadManager {
         sizeReduction
       };
     } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
+   * 複数ファイルを並列アップロード（コールバック対応版）
+   */
+  public static async uploadMultipleFilesWithCallbacks(
+    files: File[],
+    apiUrl: string = FileUploadManager.DEFAULT_API_URL,
+    callbacks?: UploadInfoCallbacks
+  ): Promise<FileUploadResponse[]> {
+    if (!files || files.length === 0) {
+      return [];
+    }
+
+    const results: FileUploadResponse[] = [];
+    let completed = 0;
+    let failed = 0;
+
+    // 初期進捗を通知
+    if (callbacks?.onProgress) {
+      callbacks.onProgress({
+        completed: 0,
+        failed: 0,
+        total: files.length
+      });
+    }
+
+    const uploadPromises = files.map(async (file, index) => {
+      try {
+        const result = await this.uploadFile(file, apiUrl);
+        results[index] = result;
+
+        if (result.success) {
+          completed++;
+
+          // 最初の成功した結果からサイズ情報を生成
+          if (completed === 1 && callbacks?.onSizeInfo) {
+            const sizeInfo = this.generateSizeInfo(result);
+            if (sizeInfo) {
+              callbacks.onSizeInfo(sizeInfo, true);
+            }
+          }
+        } else {
+          failed++;
+        }
+
+        if (callbacks?.onProgress) {
+          callbacks.onProgress({
+            completed,
+            failed,
+            total: files.length
+          });
+        }
+
+        return result;
+      } catch (error) {
+        const errorResult: FileUploadResponse = {
+          success: false,
+          error: error instanceof Error ? error.message : String(error)
+        };
+        results[index] = errorResult;
+        failed++;
+
+        if (callbacks?.onProgress) {
+          callbacks.onProgress({
+            completed,
+            failed,
+            total: files.length
+          });
+        }
+
+        return errorResult;
+      }
+    });
+
+    await Promise.all(uploadPromises);
+    return results;
+  }
+
+  /**
+   * 単一ファイルアップロード（コールバック対応版）
+   */
+  public static async uploadFileWithCallbacks(
+    file: File,
+    apiUrl: string = FileUploadManager.DEFAULT_API_URL,
+    callbacks?: UploadInfoCallbacks
+  ): Promise<FileUploadResponse> {
+    // 進捗開始を通知
+    if (callbacks?.onProgress) {
+      callbacks.onProgress({
+        completed: 0,
+        failed: 0,
+        total: 1
+      });
+    }
+
+    try {
+      const result = await this.uploadFile(file, apiUrl);
+
+      // 結果に応じて進捗を更新
+      if (callbacks?.onProgress) {
+        callbacks.onProgress({
+          completed: result.success ? 1 : 0,
+          failed: result.success ? 0 : 1,
+          total: 1
+        });
+      }
+
+      // サイズ情報を通知
+      if (result.success && callbacks?.onSizeInfo) {
+        const sizeInfo = this.generateSizeInfo(result);
+        if (sizeInfo) {
+          callbacks.onSizeInfo(sizeInfo, true);
+        }
+      }
+
+      return result;
+    } catch (error) {
+      // エラー時の進捗更新
+      if (callbacks?.onProgress) {
+        callbacks.onProgress({
+          completed: 0,
+          failed: 1,
+          total: 1
+        });
+      }
+
       return {
         success: false,
         error: error instanceof Error ? error.message : String(error)

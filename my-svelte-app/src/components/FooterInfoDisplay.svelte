@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { onDestroy } from "svelte";
 
     export let imageSizeInfo: string = "";
     export let imageSizeInfoVisible: boolean = false;
@@ -14,10 +15,59 @@
         failed: 0,
         inProgress: false,
     };
+
+    // 自動タイムアウト管理
+    let timeoutId: number | null = null;
+
+    // サイズ情報の表示管理
+    export function showSizeInfo(info: string, duration: number = 3000) {
+        imageSizeInfo = info;
+        imageSizeInfoVisible = true;
+
+        // 既存のタイムアウトをクリア
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+
+        // 新しいタイムアウトを設定
+        timeoutId = setTimeout(() => {
+            imageSizeInfoVisible = false;
+            timeoutId = null;
+        }, duration);
+    }
+
+    // 進捗情報の更新
+    export function updateProgress(progress: {
+        total: number;
+        completed: number;
+        failed: number;
+        inProgress: boolean;
+    }) {
+        uploadProgress = progress;
+
+        // 進捗が完了したら一定時間後に非表示
+        if (!progress.inProgress && progress.total > 0) {
+            setTimeout(() => {
+                uploadProgress = {
+                    total: 0,
+                    completed: 0,
+                    failed: 0,
+                    inProgress: false,
+                };
+            }, 1000);
+        }
+    }
+
+    // クリーンアップ
+    onDestroy(() => {
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
+    });
 </script>
 
 <div class="footer-center">
-    {#if uploadProgress.inProgress}
+    {#if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">
             <div class="progress-text">
                 {$_("uploading")}: {uploadProgress.completed}/{uploadProgress.total}
@@ -28,13 +78,17 @@
             <div class="progress-bar">
                 <div
                     class="progress-fill"
-                    style="width: {Math.round(
-                        (uploadProgress.completed / uploadProgress.total) * 100,
-                    )}%"
+                    style="width: {uploadProgress.total > 0
+                        ? Math.round(
+                              (uploadProgress.completed /
+                                  uploadProgress.total) *
+                                  100,
+                          )
+                        : 0}%"
                 ></div>
             </div>
         </div>
-    {:else if imageSizeInfoVisible}
+    {:else if imageSizeInfoVisible && imageSizeInfo}
         <div class="image-size-info">
             {@html imageSizeInfo}
         </div>

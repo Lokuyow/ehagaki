@@ -66,18 +66,8 @@
   let sharedImageReceived = false;
   let isUploading = false;
 
-  // 削減データ量情報を追加
-  let imageSizeInfo = "";
-  let imageSizeInfoVisible = false;
-  let imageSizeInfoTimeout: number | null = null;
-
-  // アップロード進捗情報を追加
-  let uploadProgress = {
-    total: 0,
-    completed: 0,
-    failed: 0,
-    inProgress: false,
-  };
+  // FooterInfoDisplayコンポーネントへの参照
+  let footerInfoDisplay: any;
 
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
@@ -264,33 +254,22 @@
     }
   }
 
-  // アップロード進捗情報を受け取る関数を追加
+  // アップロード進捗情報を受け取る関数（FooterInfoDisplayに転送）
   function handleUploadProgress(progress: {
     total: number;
     completed: number;
     failed: number;
     inProgress: boolean;
   }) {
-    uploadProgress = progress;
+    if (footerInfoDisplay) {
+      footerInfoDisplay.updateProgress(progress);
+    }
   }
 
-  // 削減データ量情報を受け取る関数を修正
+  // 削減データ量情報を受け取る関数（FooterInfoDisplayに転送）
   function handleImageSizeInfo(info: string, visible: boolean) {
-    // 既存のタイムアウトをクリア
-    if (imageSizeInfoTimeout) {
-      clearTimeout(imageSizeInfoTimeout);
-      imageSizeInfoTimeout = null;
-    }
-
-    imageSizeInfo = info;
-    imageSizeInfoVisible = visible;
-
-    // 新しいタイムアウトを設定（表示時のみ）
-    if (visible) {
-      imageSizeInfoTimeout = setTimeout(() => {
-        imageSizeInfoVisible = false;
-        imageSizeInfoTimeout = null;
-      }, 3000);
+    if (footerInfoDisplay && visible) {
+      footerInfoDisplay.showSizeInfo(info);
     }
   }
 </script>
@@ -356,11 +335,7 @@
         </button>
       {/if}
 
-      <FooterInfoDisplay
-        {imageSizeInfo}
-        {imageSizeInfoVisible}
-        {uploadProgress}
-      />
+      <FooterInfoDisplay bind:this={footerInfoDisplay} />
 
       <button
         class="settings-btn btn-round"
