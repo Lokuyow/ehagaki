@@ -42,7 +42,7 @@ export function generateHashtagTags(content: string): string[][] {
  */
 export function formatTextWithHashtags(text: string): string {
     return text.replace(
-        HASHTAG_REGEX,
+        /(?:^|[\s\n])#([^\s#]+)/g,
         (match, hashtag, offset) => {
             const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
             return `${prefix}<span class="hashtag">#${hashtag}</span>`;
@@ -100,8 +100,11 @@ export function formatTextWithHashtagsAndLinks(text: string): string {
 
     // 次にハッシュタグを処理（リンク内のハッシュタグは除外）
     formattedText = formattedText.replace(
-        /(?<!<a[^>]*>.*?)#([a-zA-Z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+)(?![^<]*<\/a>)/g,
-        '<span class="hashtag">#$1</span>'
+        /(?<!<a[^>]*>.*?)(?:^|[\s\n])#([a-zA-Z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+)(?![^<]*<\/a>)/g,
+        (match, hashtag) => {
+            const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
+            return `${prefix}<span class="hashtag">#${hashtag}</span>`;
+        }
     );
 
     return formattedText;
