@@ -6,7 +6,6 @@
     FileUploadManager,
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
-  import { getShareHandler } from "../lib/shareHandler";
   import { ImagePreviewManager } from "../lib/imagePreviewUtils";
   import { onMount, onDestroy } from "svelte";
 
@@ -39,27 +38,31 @@
   let fileInput: HTMLInputElement;
 
   // マネージャーインスタンス
-  const postManager = new PostManager(rxNostr);
-  const shareHandler = getShareHandler();
+  let postManager: PostManager;
   const imagePreviewManager = new ImagePreviewManager();
 
-  // 共有画像を処理するハンドラー
-  async function handleSharedImage(event: Event) {
-    const detail = (event as CustomEvent)?.detail;
-
-    if (detail && detail.file) {
-      // showUploadingWhileを使って統一された状態管理でアップロード処理
-      await showUploadingWhile(uploadFileInternal(detail.file), 3000);
+  // rxNostrが変更されたときにpostManagerを更新
+  $: if (rxNostr) {
+    if (!postManager) {
+      postManager = new PostManager(rxNostr);
+    } else {
+      postManager.setRxNostr(rxNostr);
     }
   }
 
-  // アップロード状態管理用のヘルパー関数
-  async function showUploadingWhile<T>(
+  // アップロード用コールバックを作成
+  const uploadCallbacks: UploadInfoCallbacks = {
+    onSizeInfo: onImageSizeInfo,
+    onProgress: onUploadProgress,
+  };
+
+  // アップロード状態管理
+  async function withUploadState<T>(
     uploadPromise: Promise<T>,
-    minDuration = 2500,
+    minDuration = 2000,
   ): Promise<T> {
     isUploading = true;
-    if (onUploadStatusChange) onUploadStatusChange(true);
+    onUploadStatusChange?.(true);
 
     const timer = new Promise<void>((resolve) =>
       setTimeout(resolve, minDuration),
@@ -70,215 +73,138 @@
       return result;
     } finally {
       isUploading = false;
-      if (onUploadStatusChange) onUploadStatusChange(false);
+      onUploadStatusChange?.(false);
     }
   }
 
-  // アップロード用コールバックを作成
-  function createUploadCallbacks(): UploadInfoCallbacks {
-    return {
-      onSizeInfo: onImageSizeInfo,
-      onProgress: onUploadProgress,
-    };
-  }
-
-  // 内部的なアップロード処理（簡素化）
-  async function uploadFileInternal(
-    file: File,
-  ): Promise<{ success: boolean; url?: string; error?: string }> {
-    if (!file) {
-      return { success: false, error: $_("no_file_selected") };
-    }
-
-    // ファイルタイプの検証をFileUploadManagerに委譲
-    const validation = FileUploadManager.validateImageFile(file);
-    if (!validation.isValid) {
-      const errorMsg = $_(validation.errorMessage || "upload_failed");
-      uploadErrorMessage = errorMsg;
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 3000);
-      return { success: false, error: errorMsg };
-    }
-
-    try {
+  // エラー表示の統一管理
+  function showUploadError(message: string, duration = 3000) {
+    uploadErrorMessage = message;
+    setTimeout(() => {
       uploadErrorMessage = "";
-      const endpoint = localStorage.getItem("uploadEndpoint") || "";
-      const callbacks = createUploadCallbacks();
-
-      // FileUploadManagerのコールバック対応版を使用
-      const result = await FileUploadManager.uploadFileWithCallbacks(
-        file,
-        endpoint,
-        callbacks,
-      );
-
-      if (result.success && result.url) {
-        insertImageUrlImmediately(result.url);
-
-        if (fileInput) {
-          fileInput.value = "";
-        }
-        return { success: true, url: result.url };
-      } else {
-        const errorMsg = result.error || $_("upload_failed");
-        uploadErrorMessage = errorMsg;
-        setTimeout(() => {
-          uploadErrorMessage = "";
-        }, 3000);
-        return { success: false, error: errorMsg };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      uploadErrorMessage = errorMsg;
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 3000);
-      return { success: false, error: errorMsg };
-    }
+    }, duration);
   }
 
-  // 単一ファイルのアップロード処理（簡素化）
-  async function uploadSingleFile(file: File) {
-    await showUploadingWhile(uploadSingleFileInternal(file), 2500);
-  }
-
-  // 内部的な単一ファイルアップロード処理（簡素化）
-  async function uploadSingleFileInternal(file: File): Promise<void> {
-    await uploadFileInternal(file);
-  }
-
-  // 複数ファイルのアップロード処理（簡素化）
-  async function uploadMultipleFiles(files: FileList | File[]) {
+  // ファイルアップロード処理（統合版）
+  async function uploadFiles(files: File[] | FileList) {
     const fileArray = Array.from(files);
     if (fileArray.length === 0) return;
 
-    await showUploadingWhile(uploadMultipleFilesInternal(fileArray), 1000);
+    const endpoint = localStorage.getItem("uploadEndpoint") || "";
+
+    await withUploadState(
+      (async () => {
+        try {
+          uploadErrorMessage = "";
+
+          let results;
+          if (fileArray.length === 1) {
+            // 単一ファイルの検証
+            const validation = FileUploadManager.validateImageFile(
+              fileArray[0],
+            );
+            if (!validation.isValid) {
+              showUploadError($_(validation.errorMessage || "upload_failed"));
+              return;
+            }
+
+            const result = await FileUploadManager.uploadFileWithCallbacks(
+              fileArray[0],
+              endpoint,
+              uploadCallbacks,
+            );
+            results = [result];
+          } else {
+            // 複数ファイル
+            results = await FileUploadManager.uploadMultipleFilesWithCallbacks(
+              fileArray,
+              endpoint,
+              uploadCallbacks,
+            );
+          }
+
+          const successResults = results.filter((r) => r.success);
+          const failedResults = results.filter((r) => !r.success);
+
+          if (successResults.length > 0) {
+            const urls = successResults.map((r) => r.url!).join("\n");
+            insertImageUrl(urls);
+          }
+
+          if (failedResults.length > 0) {
+            const errorMsg =
+              failedResults.length === 1
+                ? failedResults[0].error || $_("upload_failed")
+                : `${failedResults.length}個のファイルのアップロードに失敗しました`;
+            showUploadError(errorMsg, 5000);
+          }
+
+          if (fileInput) fileInput.value = "";
+        } catch (error) {
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
+          showUploadError(errorMsg, 5000);
+        }
+      })(),
+    );
   }
 
-  // 内部的な複数ファイルアップロード処理（簡素化）
-  async function uploadMultipleFilesInternal(files: File[]): Promise<void> {
-    try {
-      uploadErrorMessage = "";
-      const endpoint = localStorage.getItem("uploadEndpoint") || "";
-      const callbacks = createUploadCallbacks();
-
-      // FileUploadManagerのコールバック対応版を使用
-      const results = await FileUploadManager.uploadMultipleFilesWithCallbacks(
-        files,
-        endpoint,
-        callbacks,
-      );
-
-      const successResults = results.filter((r) => r.success);
-      const failedResults = results.filter((r) => !r.success);
-
-      if (successResults.length > 0) {
-        const urls = successResults.map((r) => r.url!).join("\n");
-        insertImageUrlImmediately(urls);
-      }
-
-      if (failedResults.length > 0) {
-        const errorMsg = `${failedResults.length}個のファイルのアップロードに失敗しました`;
-        uploadErrorMessage = errorMsg;
-        setTimeout(() => {
-          uploadErrorMessage = "";
-        }, 5000);
-      }
-
-      if (fileInput) {
-        fileInput.value = "";
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      uploadErrorMessage = errorMsg;
-      setTimeout(() => {
-        uploadErrorMessage = "";
-      }, 5000);
+  // 共有画像を処理するハンドラー
+  async function handleSharedImage(event: Event) {
+    const detail = (event as CustomEvent)?.detail;
+    if (detail?.file) {
+      await uploadFiles([detail.file]);
     }
   }
 
-  // ファイルアップロード処理（公開メソッド）
-  async function uploadFile(file: File) {
-    await uploadSingleFile(file);
-  }
-
-  // コンポーネントマウント時の処理
-  onMount(async () => {
-    window.addEventListener(
-      "shared-image-received",
-      handleSharedImage as EventListener,
-    );
-  });
-
-  // コンポーネント破棄時にクリーンアップ
-  onDestroy(() => {
-    window.removeEventListener(
-      "shared-image-received",
-      handleSharedImage as EventListener,
-    );
-    imagePreviewManager.cleanup();
-  });
-
   // 画像URLを挿入
-  function insertImageUrlImmediately(imageUrl: string) {
+  function insertImageUrl(imageUrl: string) {
     const textArea = document.querySelector(
       ".post-input",
     ) as HTMLTextAreaElement;
+
     if (textArea) {
       const startPos = textArea.selectionStart || 0;
       const endPos = textArea.selectionEnd || 0;
-
       const beforeText = postContent.substring(0, startPos);
       const afterText = postContent.substring(endPos);
 
-      const newText =
+      const needsNewlineBefore = beforeText && !beforeText.endsWith("\n");
+      const needsNewlineAfter = afterText && !afterText.startsWith("\n");
+
+      postContent =
         beforeText +
-        (beforeText.endsWith("\n") || beforeText === "" ? "" : "\n") +
+        (needsNewlineBefore ? "\n" : "") +
         imageUrl +
-        (afterText.startsWith("\n") || afterText === "" ? "" : "\n") +
+        (needsNewlineAfter ? "\n" : "") +
         afterText;
 
-      postContent = newText;
-
-      // テキストエリアにフォーカスを戻す
+      // カーソル位置を調整
       setTimeout(() => {
         textArea.focus();
         const newCursorPos =
-          startPos +
-          imageUrl.length +
-          (beforeText.endsWith("\n") || beforeText === "" ? 0 : 1);
+          startPos + imageUrl.length + (needsNewlineBefore ? 1 : 0);
         textArea.setSelectionRange(newCursorPos, newCursorPos);
       }, 0);
     } else {
-      // テキストエリアが見つからない場合は末尾に追加
-      postContent +=
-        (postContent.endsWith("\n") || postContent === "" ? "" : "\n") +
-        imageUrl +
-        "\n";
+      // フォールバック: 末尾に追加
+      const needsNewline = postContent && !postContent.endsWith("\n");
+      postContent += (needsNewline ? "\n" : "") + imageUrl + "\n";
     }
   }
 
-  // ファイル選択ダイアログを開く
+  // ファイル選択・ドロップイベント統合
   function openFileDialog() {
-    if (fileInput) {
-      fileInput.click();
-    }
+    fileInput?.click();
   }
 
-  // ファイルが選択された時
   async function handleFileSelect(event: Event) {
-    const target = event.target as HTMLInputElement;
-    if (target.files && target.files.length > 0) {
-      if (target.files.length === 1) {
-        await uploadSingleFile(target.files[0]);
-      } else {
-        await uploadMultipleFiles(target.files);
-      }
+    const files = (event.target as HTMLInputElement).files;
+    if (files?.length) {
+      await uploadFiles(files);
     }
   }
 
-  // ドラッグ＆ドロップイベント
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
     dragOver = true;
@@ -292,56 +218,53 @@
     event.preventDefault();
     dragOver = false;
 
-    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-      if (event.dataTransfer.files.length === 1) {
-        await uploadSingleFile(event.dataTransfer.files[0]);
-      } else {
-        await uploadMultipleFiles(event.dataTransfer.files);
-      }
+    const files = event.dataTransfer?.files;
+    if (files?.length) {
+      await uploadFiles(files);
     }
   }
 
-  // 投稿送信処理（リファクタリング）
+  // 投稿処理
   async function submitPost() {
+    if (!postManager) {
+      console.error("PostManager is not initialized");
+      return;
+    }
+    
     if (postManager.containsSecretKey(postContent)) {
       pendingPostContent = postContent;
       showWarningDialog = true;
       return;
     }
-
     await executePost();
   }
 
-  // 実際の投稿処理
   async function executePost() {
+    if (!postManager) {
+      console.error("PostManager is not initialized");
+      return;
+    }
+    
     const success = await postManager.submitPost(postContent, postStatus);
-
     if (success) {
-      handlePostSuccess();
+      resetPostState();
+      onPostSuccess?.();
+      showSuccessMessage();
     }
   }
 
-  // 投稿成功時の処理
-  function handlePostSuccess() {
-    postStatus = {
-      ...postStatus,
-      success: true,
-      message: "post_success",
-    };
-
+  function resetPostState() {
     postContent = "";
-    if (onPostSuccess) onPostSuccess();
+    postStatus = { ...postStatus, success: true, message: "post_success" };
+  }
 
+  function showSuccessMessage() {
     setTimeout(() => {
-      postStatus = {
-        ...postStatus,
-        success: false,
-        message: "",
-      };
+      postStatus = { ...postStatus, success: false, message: "" };
     }, 3000);
   }
 
-  // ダイアログで「投稿」を選択した場合
+  // ダイアログ処理
   async function confirmPostSecretKey() {
     showWarningDialog = false;
     postContent = pendingPostContent;
@@ -349,22 +272,32 @@
     await executePost();
   }
 
-  // ダイアログで「キャンセル」を選択した場合
   function cancelPostSecretKey() {
     showWarningDialog = false;
     pendingPostContent = "";
   }
 
-  // 投稿内容が変更された場合のみエラー状態をリセット
+  // ライフサイクル
+  onMount(() => {
+    window.addEventListener(
+      "shared-image-received",
+      handleSharedImage as EventListener,
+    );
+  });
+
+  onDestroy(() => {
+    window.removeEventListener(
+      "shared-image-received",
+      handleSharedImage as EventListener,
+    );
+    imagePreviewManager.cleanup();
+  });
+
+  // リアクティブ処理
   $: if (postContent && postStatus.error) {
-    postStatus = {
-      ...postStatus,
-      error: false,
-      message: "",
-    };
+    postStatus = { ...postStatus, error: false, message: "" };
   }
 
-  // プレビュー用: postContentを画像とテキストに分割（遅延なし）
   $: contentParts = imagePreviewManager.parseContentWithImages(postContent);
 </script>
 

@@ -12,9 +12,16 @@ export interface PostStatus {
 }
 
 export class PostManager {
-  private rxNostr: ReturnType<typeof createRxNostr>;
+  private rxNostr: ReturnType<typeof createRxNostr> | null = null;
 
-  constructor(rxNostr: ReturnType<typeof createRxNostr>) {
+  constructor(rxNostr?: ReturnType<typeof createRxNostr>) {
+    if (rxNostr) {
+      this.rxNostr = rxNostr;
+    }
+  }
+
+  // rxNostrインスタンスを更新するメソッドを追加
+  setRxNostr(rxNostr: ReturnType<typeof createRxNostr>) {
     this.rxNostr = rxNostr;
   }
 
@@ -74,6 +81,11 @@ export class PostManager {
       };
 
       // 秘密鍵で署名してイベントを送信
+      if (!this.rxNostr) {
+        postStatus.error = true;
+        postStatus.message = "nostr_not_ready";
+        return false;
+      }
       await firstValueFrom(this.rxNostr.send(event, { signer }));
 
       // 送信成功 - オブジェクトを完全に置き換えて更新
