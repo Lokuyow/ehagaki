@@ -357,10 +357,12 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    height: 100dvh;
   }
   .main-content {
     margin-top: 10px;
     width: 100%;
+    height: calc(100% - 10px - 66px);
     display: flex;
     flex-direction: column;
     align-items: center;

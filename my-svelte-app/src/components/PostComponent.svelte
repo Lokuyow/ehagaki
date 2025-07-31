@@ -446,7 +446,8 @@
   .post-container {
     max-width: 600px;
     width: 100%;
-    margin: 0 auto;
+    height: 100%;
+    margin-bottom: 6px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -456,6 +457,7 @@
   .textarea-container {
     position: relative;
     width: 100%;
+    height: 100%;
     border-radius: 8px;
     transition: border-color 0.2s;
   }
@@ -469,8 +471,9 @@
     width: 100%;
     max-width: 600px;
     min-width: 300px;
-    max-height: 300px;
+    /* max-height: 100%; */
     min-height: 260px;
+    height: 100%;
     padding: 10px;
     border: 1px solid #ccc;
     border-radius: 8px;

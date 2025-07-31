@@ -41,7 +41,7 @@
         width: 100%;
         max-width: 600px;
         min-width: 300px;
-        max-height: 300px;
+        max-height: 280px;
         overflow: auto;
     }
 
