@@ -18,7 +18,7 @@
     | undefined;
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
-  // 投稿機能のための状態変数
+  // 投稿機能のための状態変数（UI状態管理をコンポーネントで完結）
   let postContent = "";
   let postStatus: PostStatus = {
     sending: false,
@@ -224,7 +224,7 @@
     }
   }
 
-  // 投稿処理
+  // 投稿処理（状態管理をコンポーネント内で完結）
   async function submitPost() {
     if (!postManager) {
       console.error("PostManager is not initialized");
@@ -245,17 +245,52 @@
       return;
     }
     
-    const success = await postManager.submitPost(postContent, postStatus);
-    if (success) {
-      resetPostState();
-      onPostSuccess?.();
-      showSuccessMessage();
+    // 送信開始状態を設定
+    postStatus = {
+      sending: true,
+      success: false,
+      error: false,
+      message: ""
+    };
+
+    try {
+      // PostManagerから結果を受け取る
+      const result = await postManager.submitPost(postContent);
+      
+      if (result.success) {
+        // 成功時の状態更新
+        postStatus = {
+          sending: false,
+          success: true,
+          error: false,
+          message: "post_success"
+        };
+        resetPostContent();
+        onPostSuccess?.();
+        showSuccessMessage();
+      } else {
+        // エラー時の状態更新
+        postStatus = {
+          sending: false,
+          success: false,
+          error: true,
+          message: result.error || "post_error"
+        };
+      }
+    } catch (error) {
+      // 予期しないエラーの処理
+      postStatus = {
+        sending: false,
+        success: false,
+        error: true,
+        message: "post_error"
+      };
+      console.error("投稿処理でエラーが発生:", error);
     }
   }
 
-  function resetPostState() {
+  function resetPostContent() {
     postContent = "";
-    postStatus = { ...postStatus, success: true, message: "post_success" };
   }
 
   function showSuccessMessage() {

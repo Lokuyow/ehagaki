@@ -3,7 +3,13 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import { firstValueFrom } from "rxjs";
 import { keyManager } from "./keyManager";
 
-// 投稿状態の型定義
+// 投稿結果の型定義
+export interface PostResult {
+  success: boolean;
+  error?: string;
+}
+
+// 投稿状態の型定義（UIコンポーネント用）
 export interface PostStatus {
   sending: boolean;
   success: boolean;
@@ -20,7 +26,7 @@ export class PostManager {
     }
   }
 
-  // rxNostrインスタンスを更新するメソッドを追加
+  // rxNostrインスタンスを更新するメソッド
   setRxNostr(rxNostr: ReturnType<typeof createRxNostr>) {
     this.rxNostr = rxNostr;
   }
@@ -47,27 +53,19 @@ export class PostManager {
     return { valid: true };
   }
 
-  // 投稿を送信する
-  async submitPost(content: string, postStatus: PostStatus): Promise<boolean> {
+  // 投稿を送信する（純粋な投稿処理のみ）
+  async submitPost(content: string): Promise<PostResult> {
     const validation = this.validatePost(content);
     if (!validation.valid) {
-      postStatus.error = true;
-      postStatus.message = validation.error!;
-      return false;
+      return { success: false, error: validation.error };
     }
 
     try {
-      postStatus.sending = true;
-      postStatus.success = false;
-      postStatus.error = false;
-
       // 秘密鍵を取得
       const storedKey = keyManager.loadFromStorage();
 
       if (!storedKey) {
-        postStatus.error = true;
-        postStatus.message = "key_not_found";
-        return false;
+        return { success: false, error: "key_not_found" };
       }
 
       // 秘密鍵でsignerを作成
@@ -82,30 +80,15 @@ export class PostManager {
 
       // 秘密鍵で署名してイベントを送信
       if (!this.rxNostr) {
-        postStatus.error = true;
-        postStatus.message = "nostr_not_ready";
-        return false;
+        return { success: false, error: "nostr_not_ready" };
       }
+
       await firstValueFrom(this.rxNostr.send(event, { signer }));
-
-      // 送信成功 - オブジェクトを完全に置き換えて更新
-      Object.assign(postStatus, {
-        sending: false,
-        success: true,
-        error: false,
-        message: "post_success"
-      });
-
-      return true;
+      return { success: true };
 
     } catch (err) {
-      // 送信エラー
-      postStatus.error = true;
-      postStatus.message = "post_error";
       console.error("投稿エラー:", err);
-      return false;
-    } finally {
-      postStatus.sending = false;
+      return { success: false, error: "post_error" };
     }
   }
 }
