@@ -2,8 +2,8 @@
  * 汎用的なユーティリティ関数
  */
 
-// ハッシュタグを検出する正規表現
-const HASHTAG_REGEX = /(?:^|[\s\n])#([^\s#]+)/g;
+// ハッシュタグを検出する正規表現（半角スペース、改行、タブ以外の文字を全て含む）
+const HASHTAG_REGEX = /(?:^|[\s\n])#([^\s\n\t]+)/g;
 
 /**
  * テキストからハッシュタグを抽出する
@@ -42,7 +42,7 @@ export function generateHashtagTags(content: string): string[][] {
  */
 export function formatTextWithHashtags(text: string): string {
     return text.replace(
-        /(?:^|[\s\n])#([^\s#]+)/g,
+        /(?:^|[\s\n])#([^\s\n\t]+)/g,
         (match, hashtag, offset) => {
             const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
             return `${prefix}<span class="hashtag">#${hashtag}</span>`;
@@ -56,7 +56,7 @@ export function formatTextWithHashtags(text: string): string {
  * @returns ハッシュタグが含まれている場合true
  */
 export function containsHashtags(content: string): boolean {
-    return /(?:^|[\s\n])#([^\s#]+)/.test(content);
+    return /(?:^|[\s\n])#([^\s\n\t]+)/.test(content);
 }
 
 /**
@@ -100,7 +100,7 @@ export function formatTextWithHashtagsAndLinks(text: string): string {
 
     // 次にハッシュタグを処理（リンク内のハッシュタグは除外）
     formattedText = formattedText.replace(
-        /(?<!<a[^>]*>.*?)(?:^|[\s\n])#([a-zA-Z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+)(?![^<]*<\/a>)/g,
+        /(?<!<a[^>]*>.*?)(?:^|[\s\n])#([^\s\n\t]+)(?![^<]*<\/a>)/g,
         (match, hashtag) => {
             const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
             return `${prefix}<span class="hashtag">#${hashtag}</span>`;
