@@ -201,7 +201,7 @@
       await initializeNostr();
     }
 
-    // 共有画像処理（ShareHandler）- 状態管理はPostComponentに委譲
+    // 共有画像処理（ShareHandler）- 統合された機能を使用
     try {
       console.log("共有画像の確認を開始します");
 

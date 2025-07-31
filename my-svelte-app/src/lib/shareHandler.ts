@@ -1,8 +1,6 @@
 /**
  * 外部アプリからの共有画像を処理する中央ハンドラークラス
- * - ServiceWorkerとの通信
- * - 共有画像の取得・管理
- * - カスタムイベントの発行
+ * 責務: ServiceWorkerとの通信、共有画像の取得・管理、カスタムイベントの発行
  */
 export class ShareHandler {
   private sharedImageFile: File | null = null;
@@ -125,7 +123,8 @@ export class ShareHandler {
   }
 
   /**
-   * ServiceWorkerから共有画像を取得（統合メソッド）
+   * ServiceWorkerから共有画像を取得（統合・改良版）
+   * FileUploadManagerから移行して統合
    */
   public async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
     if (!('serviceWorker' in navigator)) {
@@ -144,7 +143,90 @@ export class ShareHandler {
       return null;
     }
 
-    return this.requestSharedImageFromServiceWorker();
+    try {
+      // 1. MessageChannelを使用する方法
+      const messageChannelResult = await this.requestWithMessageChannel();
+      if (messageChannelResult) {
+        return messageChannelResult;
+      }
+
+      // 2. 通常のメッセージイベントリスナーを使用する方法（フォールバック）
+      const eventListenerResult = await this.requestWithEventListener();
+      return eventListenerResult;
+    } catch (error) {
+      console.error('ShareHandler: ServiceWorker通信エラー', error);
+      return null;
+    }
+  }
+
+  /**
+   * MessageChannelを使用したServiceWorkerとの通信
+   */
+  private async requestWithMessageChannel(): Promise<SharedImageData | null> {
+    const messageChannel = new MessageChannel();
+
+    const promise = new Promise<SharedImageData | null>((resolve) => {
+      const timeout = setTimeout(() => resolve(null), 3000);
+
+      messageChannel.port1.onmessage = (event) => {
+        clearTimeout(timeout);
+        
+        if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
+          resolve({
+            image: event.data.data.image,
+            metadata: event.data.data.metadata || {}
+          });
+        } else {
+          resolve(null);
+        }
+      };
+    });
+
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage(
+        { action: 'getSharedImage' },
+        [messageChannel.port2]
+      );
+    } else {
+      return null;
+    }
+
+    return promise;
+  }
+
+  /**
+   * 通常のイベントリスナーを使用したServiceWorkerとの通信
+   */
+  private async requestWithEventListener(): Promise<SharedImageData | null> {
+    const promise = new Promise<SharedImageData | null>((resolve) => {
+      const handler = (event: MessageEvent) => {
+        navigator.serviceWorker.removeEventListener('message', handler);
+
+        if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
+          resolve({
+            image: event.data.data.image,
+            metadata: event.data.data.metadata || {}
+          });
+        } else {
+          resolve(null);
+        }
+      };
+
+      navigator.serviceWorker.addEventListener('message', handler);
+
+      setTimeout(() => {
+        navigator.serviceWorker.removeEventListener('message', handler);
+        resolve(null);
+      }, 3000);
+    });
+
+    if (navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage' });
+    } else {
+      return null;
+    }
+
+    return promise;
   }
 
   /**
@@ -167,54 +249,6 @@ export class ShareHandler {
 
       navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
     });
-  }
-
-  /**
-   * ServiceWorkerに共有画像をリクエスト
-   */
-  private async requestSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    if (!navigator.serviceWorker.controller) {
-      return null;
-    }
-
-    const requestId = `req-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const messageChannel = new MessageChannel();
-
-    const promise = new Promise<SharedImageData | null>((resolve) => {
-      const timeout = setTimeout(() => {
-        this.requestCallbacks.delete(requestId);
-        resolve(null);
-      }, 3000);
-
-      this.requestCallbacks.set(requestId, (result) => {
-        clearTimeout(timeout);
-        resolve(result);
-      });
-
-      messageChannel.port1.onmessage = (event) => {
-        clearTimeout(timeout);
-
-        if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-          const data = event.data.data;
-          resolve({
-            image: data.image,
-            metadata: data.metadata || {}
-          });
-        } else {
-          resolve(null);
-        }
-      };
-    });
-
-    navigator.serviceWorker.controller.postMessage(
-      {
-        action: 'getSharedImage',
-        requestId: requestId
-      },
-      [messageChannel.port2]
-    );
-
-    return promise;
   }
 
   /**

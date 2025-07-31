@@ -39,7 +39,7 @@ export interface SizeInfo {
 
 /**
  * ファイルアップロード専用マネージャークラス
- * 責務: ファイルの圧縮・アップロード処理、共有画像処理、情報管理
+ * 責務: ファイルの圧縮・アップロード処理、情報管理
  */
 export class FileUploadManager {
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
@@ -390,30 +390,19 @@ export class FileUploadManager {
   }
 
   /**
-   * サービスワーカーに保存されている共有画像を取得
-   * @returns 共有された画像ファイルとメタデータ、またはnull
+   * ファイルタイプの検証
+   */
+  public static validateImageFile(file: File): { isValid: boolean; errorMessage?: string } {
+    if (!file.type.startsWith("image/")) {
+      return { isValid: false, errorMessage: "only_images_allowed" };
+    }
+    return { isValid: true };
+  }
+
+  /**
+   * ServiceWorkerから共有画像を取得
    */
   public static async getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
-    // サービスワーカーがアクティブか確認
-    if (!('serviceWorker' in navigator)) {
-      return null;
-    }
-
-    // コントローラーがなければ登録を待つ
-    if (!navigator.serviceWorker.controller) {
-      try {
-        await new Promise<void>((resolve) => {
-          const timeout = setTimeout(() => resolve(), 5000); // タイムアウト時間を延長
-
-          navigator.serviceWorker.addEventListener('controllerchange', () => {
-            clearTimeout(timeout);
-            resolve();
-          }, { once: true });
-        });
-      } catch (e) {
-        // ...existing error handling...
-      }
-    }
 
     if (!navigator.serviceWorker.controller) {
       return null;
@@ -513,16 +502,6 @@ export class FileUploadManager {
   public static checkIfOpenedFromShare(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
     return urlParams.has('shared') && urlParams.get('shared') === 'true';
-  }
-
-  /**
-   * ファイルタイプの検証
-   */
-  public static validateImageFile(file: File): { isValid: boolean; errorMessage?: string } {
-    if (!file.type.startsWith("image/")) {
-      return { isValid: false, errorMessage: "only_images_allowed" };
-    }
-    return { isValid: true };
   }
 
   /**

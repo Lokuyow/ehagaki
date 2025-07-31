@@ -230,7 +230,7 @@
       console.error("PostManager is not initialized");
       return;
     }
-    
+
     if (postManager.containsSecretKey(postContent)) {
       pendingPostContent = postContent;
       showWarningDialog = true;
@@ -244,26 +244,26 @@
       console.error("PostManager is not initialized");
       return;
     }
-    
+
     // 送信開始状態を設定
     postStatus = {
       sending: true,
       success: false,
       error: false,
-      message: ""
+      message: "",
     };
 
     try {
       // PostManagerから結果を受け取る
       const result = await postManager.submitPost(postContent);
-      
+
       if (result.success) {
         // 成功時の状態更新
         postStatus = {
           sending: false,
           success: true,
           error: false,
-          message: "post_success"
+          message: "post_success",
         };
         resetPostContent();
         onPostSuccess?.();
@@ -274,7 +274,7 @@
           sending: false,
           success: false,
           error: true,
-          message: result.error || "post_error"
+          message: result.error || "post_error",
         };
       }
     } catch (error) {
@@ -283,7 +283,7 @@
         sending: false,
         success: false,
         error: true,
-        message: "post_error"
+        message: "post_error",
       };
       console.error("投稿処理でエラーが発生:", error);
     }
