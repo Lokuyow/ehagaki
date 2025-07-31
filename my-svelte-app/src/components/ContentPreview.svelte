@@ -4,7 +4,7 @@
         ImagePreviewManager,
         type ContentPart,
     } from "../lib/imagePreviewUtils";
-    import { formatTextWithHashtags } from "../lib/utils";
+    import { formatTextWithHashtagsAndLinks } from "../lib/utils";
 
     export let content: string = "";
 
@@ -20,7 +20,7 @@
                 {#if part.type === "image"}
                     <img src={part.value} alt="" class="preview-image" />
                 {:else}
-                    {@html formatTextWithHashtags(part.value).replace(
+                    {@html formatTextWithHashtagsAndLinks(part.value).replace(
                         /\n/g,
                         "<br>",
                     )}
@@ -75,5 +75,21 @@
         background: rgba(25, 118, 210, 0.1);
         padding: 2px 4px;
         border-radius: 4px;
+    }
+
+    :global(.preview-link) {
+        color: #1da1f2;
+        text-decoration: underline;
+        word-break: break-all;
+        transition: color 0.2s ease;
+    }
+
+    :global(.preview-link:hover) {
+        color: #0d8bd9;
+        text-decoration: none;
+    }
+
+    :global(.preview-link:visited) {
+        color: #9c27b0;
     }
 </style>

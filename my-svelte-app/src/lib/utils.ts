@@ -58,3 +58,51 @@ export function formatTextWithHashtags(text: string): string {
 export function containsHashtags(content: string): boolean {
     return /(?:^|[\s\n])#([^\s#]+)/.test(content);
 }
+
+/**
+ * テキスト内のURLを検出し、HTMLリンクに変換する
+ * @param text テキスト
+ * @returns URLがリンクに変換されたテキスト
+ */
+export function formatTextWithLinks(text: string): string {
+    if (!text) return "";
+
+    // URLパターンを定義（前後に文字がない場合のみマッチ）
+    const urlRegex = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
+
+    return text.replace(urlRegex, (url) => {
+        // URLを安全にエスケープ
+        const escapedUrl = url.replace(/[&<>"']/g, (match) => {
+            const escapeMap: { [key: string]: string } = {
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            };
+            return escapeMap[match];
+        });
+
+        return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="preview-link">${escapedUrl}</a>`;
+    });
+}
+
+/**
+ * テキスト内のハッシュタグとURLを同時に処理する
+ * @param text テキスト
+ * @returns ハッシュタグとURLが適切に処理されたテキスト
+ */
+export function formatTextWithHashtagsAndLinks(text: string): string {
+    if (!text) return "";
+
+    // 最初にURLをリンクに変換
+    let formattedText = formatTextWithLinks(text);
+
+    // 次にハッシュタグを処理（リンク内のハッシュタグは除外）
+    formattedText = formattedText.replace(
+        /(?<!<a[^>]*>.*?)#([a-zA-Z0-9_\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]+)(?![^<]*<\/a>)/g,
+        '<span class="hashtag">#$1</span>'
+    );
+
+    return formattedText;
+}
