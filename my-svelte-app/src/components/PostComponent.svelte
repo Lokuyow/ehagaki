@@ -6,7 +6,7 @@
     FileUploadManager,
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
-  import { ImagePreviewManager } from "../lib/imagePreviewUtils";
+  import ContentPreview from "./ContentPreview.svelte";
   import { onMount, onDestroy } from "svelte";
 
   export let rxNostr: any;
@@ -39,7 +39,6 @@
 
   // マネージャーインスタンス
   let postManager: PostManager;
-  const imagePreviewManager = new ImagePreviewManager();
 
   // rxNostrが変更されたときにpostManagerを更新
   $: if (rxNostr) {
@@ -74,7 +73,9 @@
       const remainingTime = minDuration - elapsedTime;
 
       if (remainingTime > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, remainingTime));
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, remainingTime),
+        );
       }
 
       return result;
@@ -338,15 +339,12 @@
       "shared-image-received",
       handleSharedImage as EventListener,
     );
-    imagePreviewManager.cleanup();
   });
 
   // リアクティブ処理
   $: if (postContent && postStatus.error) {
     postStatus = { ...postStatus, error: false, message: "" };
   }
-
-  $: contentParts = imagePreviewManager.parseContentWithImages(postContent);
 </script>
 
 <!-- 投稿入力エリア -->
@@ -392,21 +390,7 @@
     </div>
   </div>
 
-  <div class="post-preview">
-    <div class="preview-content">
-      {#if postContent.trim()}
-        {#each contentParts as part}
-          {#if part.type === "image"}
-            <img src={part.value} alt="" class="preview-image" />
-          {:else}
-            {@html part.value.replace(/\n/g, "<br>")}
-          {/if}
-        {/each}
-      {:else}
-        <span class="preview-placeholder">{$_("preview")}</span>
-      {/if}
-    </div>
-  </div>
+  <ContentPreview content={postContent} />
 
   <!-- テキストエリア -->
   <div class="textarea-container" class:drag-over={dragOver}>
@@ -467,32 +451,6 @@
     flex-direction: column;
     align-items: center;
     gap: 8px;
-  }
-
-  .post-preview {
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 8px;
-    background: #f9f9f9;
-    width: 100%;
-    max-width: 600px;
-    min-width: 300px;
-    max-height: 300px;
-    overflow: auto;
-  }
-
-  .preview-content {
-    font-size: 0.9rem;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: #222;
-  }
-
-  .preview-placeholder {
-    color: #bbb;
-    font-style: italic;
-    user-select: none;
-    pointer-events: none;
   }
 
   .textarea-container {
@@ -650,15 +608,5 @@
   }
   .dialog-confirm:hover {
     background: #1a91da;
-  }
-
-  .preview-image {
-    max-width: 100%;
-    max-height: 240px;
-    display: block;
-    margin: 8px 0;
-    border-radius: 6px;
-    box-shadow: 0 1px 4px #0001;
-    background: #fff;
   }
 </style>
