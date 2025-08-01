@@ -64,7 +64,7 @@ button,
   color: var(--text);
   border-color: var(--border);
   background-color: var(--btn-bg);
-  box-shadow: 0 2px 8px var(--shadow);
+  /* box-shadow: 0 2px 8px var(--shadow); */
   transition: filter 0.2s ease;
   cursor: pointer;
 
@@ -85,7 +85,7 @@ button,
   }
 
   button:hover:not(:disabled) {
-    filter: brightness(0.9);
+    background-color: color-mix(in srgb, var(--btn-bg), black 10%);
   }
 }
 
@@ -135,6 +135,7 @@ button,
   :root {
     /* ライトモード用カラー変数 */
     --bg: #EBECED;
+    --dialog-bg: #fff;
     --preview-bg: #FCFCFC;
     --input-bg: #fff;
     --footer-bg: #FFF;
@@ -154,8 +155,9 @@ button,
   :root {
     /* ダークモード用カラー変数 */
     --bg: #19191A;
+    --dialog-bg: #333;
     --preview-bg: #262626;
-    --input-bg: #333333;
+    --input-bg: #333;
     --footer-bg: #111;
     --btn-bg: #333;
     --border: #444;

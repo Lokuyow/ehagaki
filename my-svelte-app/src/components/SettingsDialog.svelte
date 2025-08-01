@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { locale, _ } from "svelte-i18n";
+    import Dialog from "./Dialog.svelte";
 
     export let show = false;
     export let onClose: () => void;
@@ -58,92 +59,64 @@
     }
 </script>
 
-{#if show}
-    <button
-        type="button"
-        class="modal-backdrop"
-        aria-label="設定ダイアログを閉じる"
-        on:click={onClose}
-        tabindex="0"
-    ></button>
-    <div class="modal-dialog" role="dialog" aria-modal="true">
-        <div class="modal-header">
-            <span>{$_("settings") || "設定"}</span>
-            <button
-                class="modal-close btn-round"
-                on:click={onClose}
-                aria-label="閉じる"
-            >
-                <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
-            </button>
-        </div>
-        <div class="modal-body">
-            <!-- 言語設定セクション -->
-            <div class="setting-section">
-                <span class="setting-label">
-                    Language
-                    <div class="lang-icon-label svg-icon"></div>
-                </span>
-                <div class="setting-control">
-                    <button class="lang-btn btn" on:click={toggleLanguage}>
-                        <span>{$locale === "ja" ? "日本語" : "English"}</span>
-                    </button>
-                </div>
+<Dialog
+    {show}
+    {onClose}
+    ariaLabel={$_("settings") || "設定"}
+    className="settings-dialog"
+>
+    <div class="modal-header">
+        <span>{$_("settings") || "設定"}</span>
+        <button
+            class="modal-close btn-round"
+            on:click={onClose}
+            aria-label="閉じる"
+        >
+            <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+        </button>
+    </div>
+    <div class="modal-body">
+        <!-- 言語設定セクション -->
+        <div class="setting-section">
+            <span class="setting-label">
+                Language
+                <div class="lang-icon-label svg-icon"></div>
+            </span>
+            <div class="setting-control">
+                <button class="lang-btn btn" on:click={toggleLanguage}>
+                    <span>{$locale === "ja" ? "日本語" : "English"}</span>
+                </button>
             </div>
+        </div>
 
-            <!-- アップロード先設定セクション -->
-            <div class="setting-section">
-                <span class="setting-label"
-                    >{$_("upload_destination") || "アップロード先"}</span
-                >
-                <div class="setting-control">
-                    <select id="endpoint-select" bind:value={selectedEndpoint}>
-                        {#each uploadEndpoints as ep}
-                            <option value={ep.url}>{ep.label}</option>
-                        {/each}
-                    </select>
-                </div>
-            </div>
-        </div>
-        <!-- GitHub リンク追加 -->
-        <div class="settings-footer">
-            <a
-                href="https://github.com/Lokuyow/ehagaki"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="GitHub Repository"
-                class="github-link"
+        <!-- アップロード先設定セクション -->
+        <div class="setting-section">
+            <span class="setting-label"
+                >{$_("upload_destination") || "アップロード先"}</span
             >
-                <div class="github-icon svg-icon" aria-label="GitHub"></div>
-            </a>
+            <div class="setting-control">
+                <select id="endpoint-select" bind:value={selectedEndpoint}>
+                    {#each uploadEndpoints as ep}
+                        <option value={ep.url}>{ep.label}</option>
+                    {/each}
+                </select>
+            </div>
         </div>
     </div>
-{/if}
+    <div class="settings-footer">
+        <a
+            href="https://github.com/Lokuyow/ehagaki"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="GitHub Repository"
+            class="github-link"
+        >
+            <div class="github-icon svg-icon" aria-label="GitHub"></div>
+        </a>
+    </div>
+</Dialog>
 
 <style>
-    .modal-backdrop {
-        padding: 0;
-        border: none;
-        margin: 0;
-        transform: none;
-        position: fixed;
-        inset: 0;
-        background: #0006;
-        z-index: 1000;
-    }
-    .modal-dialog {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        z-index: 1001;
-        background: #fff;
-        box-shadow: 0 4px 24px #0002;
-        transform: translate(-50%, -50%);
-        min-width: 320px;
-        max-width: 90vw;
-        padding: 0;
-        animation: fadeIn 0.2s;
-    }
     .modal-header {
         display: flex;
         align-items: center;

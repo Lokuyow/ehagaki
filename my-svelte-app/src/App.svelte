@@ -6,12 +6,12 @@
   import { _, locale } from "svelte-i18n";
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
-  import LoginDialog from "./components/LoginDialog.svelte";
   import { keyManager, PublicKeyState } from "./lib/keyManager";
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte";
+  import LoginDialog from "./components/LoginDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用

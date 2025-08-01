@@ -1,6 +1,7 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { PublicKeyState } from "../lib/keyManager";
+    import Dialog from "./Dialog.svelte";
 
     export let secretKey: string;
     export let errorMessage: string = "";
@@ -43,94 +44,55 @@
     }
 </script>
 
-<div
-    class="dialog-overlay"
-    role="button"
-    tabindex="0"
-    aria-label="Close dialog"
-    on:click={handleClose}
-    on:keydown={(e) => {
-        if (e.key === "Enter" || e.key === " ") handleClose();
-    }}
+<Dialog
+    show={true}
+    {onClose}
+    ariaLabel={$_("input_secret")}
+    className="login-dialog"
 >
-    <div
-        class="dialog"
-        role="dialog"
-        aria-modal="true"
-        on:click|stopPropagation
-        tabindex="0"
-        on:keydown={(e) => {
-            if (e.key === "Escape") handleClose();
-        }}
-    >
-        <h2>{$_("input_secret")}</h2>
-        <p>{$_("input_nostr_secret")}</p>
-        <input
-            type="password"
-            bind:value={secretKey}
-            placeholder="nsec1…"
-            class="secret-input"
-            id="secretKey"
-            name="secretKey"
-        />
-        {#if npubValue}
-            <p class="pubkey-label">
-                {$_("public_key_npub")}:
-                <br />
-                <span class="pubkey-value" style="word-break:break-all"
-                    >{npubValue}</span
-                >
-            </p>
-        {/if}
-        {#if nprofileValue}
-            <p class="profilekey-label">
-                {$_("public_key_nprofile")}:
-                <br />
-                <span class="profilekey-value" style="word-break:break-all"
-                    >{nprofileValue}</span
-                >
-            </p>
-        {/if}
-        {#if errorMessage}
-            <p class="error-message">{$_(errorMessage)}</p>
-        {/if}
-        <div class="dialog-buttons">
-            <button on:click={handleClose} class="cancel-btn btn"
-                >{$_("cancel")}</button
+    <h2>{$_("input_secret")}</h2>
+    <p>{$_("input_nostr_secret")}</p>
+    <input
+        type="password"
+        bind:value={secretKey}
+        placeholder="nsec1…"
+        class="secret-input"
+        id="secretKey"
+        name="secretKey"
+    />
+    {#if npubValue}
+        <p class="pubkey-label">
+            {$_("public_key_npub")}:
+            <br />
+            <span class="pubkey-value" style="word-break:break-all"
+                >{npubValue}</span
             >
-            <button on:click={handleClear} class="clear-btn btn"
-                >{$_("clear")}</button
+        </p>
+    {/if}
+    {#if nprofileValue}
+        <p class="profilekey-label">
+            {$_("public_key_nprofile")}:
+            <br />
+            <span class="profilekey-value" style="word-break:break-all"
+                >{nprofileValue}</span
             >
-            <button on:click={handleSave} class="save-btn btn">{$_("save")}</button>
-        </div>
+        </p>
+    {/if}
+    {#if errorMessage}
+        <p class="error-message">{$_(errorMessage)}</p>
+    {/if}
+    <div class="dialog-buttons">
+        <button on:click={handleClose} class="cancel-btn btn"
+            >{$_("cancel")}</button
+        >
+        <button on:click={handleClear} class="clear-btn btn"
+            >{$_("clear")}</button
+        >
+        <button on:click={handleSave} class="save-btn btn">{$_("save")}</button>
     </div>
-</div>
+</Dialog>
 
 <style>
-    .dialog-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 100;
-    }
-
-    .dialog {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background-color: white;
-        color: #222;
-        padding: 16px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        width: 100%;
-        max-width: 500px;
-    }
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
@@ -146,9 +108,9 @@
         color: #333;
         width: 100%;
     }
-    .cancel-btn:hover {
+    /* .cancel-btn:hover {
         background-color: #e0e0e0;
-    }
+    } */
 
     .clear-btn {
         border: 1px solid #ccc;
@@ -156,9 +118,9 @@
         color: #333;
         width: 100%;
     }
-    .clear-btn:hover {
+    /* .clear-btn:hover {
         background-color: #ffe9b3;
-    }
+    } */
 
     .save-btn {
         background-color: #646cff;
@@ -167,9 +129,9 @@
         width: 100%;
     }
 
-    .save-btn:hover {
+    /* .save-btn:hover {
         background-color: #535bf2;
-    }
+    } */
 
     .error-message {
         font-size: 1rem;

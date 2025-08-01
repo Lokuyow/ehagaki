@@ -1,71 +1,30 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import Dialog from "./Dialog.svelte";
 
     export let show = false;
     export let onClose: () => void;
     export let onLogout: () => void;
 </script>
 
-{#if show}
-    <div
-        class="dialog-overlay"
-        role="presentation"
-        on:click={onClose}
-        on:keydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") onClose();
-        }}
-    >
-        <div
-            class="dialog"
-            role="dialog"
-            aria-modal="true"
-            tabindex="0"
-            on:click|stopPropagation
-            on:keydown={(e) => {
-                /* Prevent propagation for keyboard events as well */
-            }}
+<Dialog
+    {show}
+    {onClose}
+    ariaLabel={$_("logout_confirmation")}
+    className="logout-dialog"
+>
+    <h2>{$_("logout_confirmation")}</h2>
+    <p>{$_("logout_warning")}</p>
+    <div class="dialog-buttons">
+        <button on:click={onClose} class="cancel-btn btn">{$_("cancel")}</button
         >
-            <h2>{$_("logout_confirmation")}</h2>
-            <p>{$_("logout_warning")}</p>
-
-            <div class="dialog-buttons">
-                <button on:click={onClose} class="cancel-btn btn"
-                    >{$_("cancel")}</button
-                >
-                <button on:click={onLogout} class="logout-btn btn"
-                    >{$_("logout")}</button
-                >
-            </div>
-        </div>
+        <button on:click={onLogout} class="logout-btn btn"
+            >{$_("logout")}</button
+        >
     </div>
-{/if}
+</Dialog>
 
 <style>
-    .dialog-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 100;
-    }
-
-    .dialog {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        background-color: white;
-        color: #222;
-        padding: 2rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-        width: 100%;
-        max-width: 500px;
-    }
-
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
