@@ -388,22 +388,25 @@
     </div>
   </div>
 
-  <ContentPreview content={postContent} />
+  <!-- 入力＋プレビューラッパー -->
+  <div class="input-preview-wrapper">
+    <ContentPreview content={postContent} />
 
-  <!-- テキストエリア -->
-  <div class="textarea-container" class:drag-over={dragOver}>
-    <textarea
-      id="post-input"
-      name="postContent"
-      class="post-input"
-      bind:value={postContent}
-      placeholder={$_("enter_your_text")}
-      rows="5"
-      disabled={postStatus.sending}
-      on:dragover={handleDragOver}
-      on:dragleave={handleDragLeave}
-      on:drop={handleDrop}
-    ></textarea>
+    <!-- テキストエリア -->
+    <div class="textarea-container" class:drag-over={dragOver}>
+      <textarea
+        id="post-input"
+        name="postContent"
+        class="post-input"
+        bind:value={postContent}
+        placeholder={$_("enter_your_text")}
+        rows="5"
+        disabled={postStatus.sending}
+        on:dragover={handleDragOver}
+        on:dragleave={handleDragLeave}
+        on:drop={handleDrop}
+      ></textarea>
+    </div>
   </div>
 
   <!-- ファイル入力（非表示）- multiple属性を追加 -->
@@ -445,18 +448,28 @@
     max-width: 600px;
     width: 100%;
     height: 100%;
-    margin-bottom: 6px;
+    margin-bottom: 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 8px;
   }
 
+  .input-preview-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+    min-height: 200px;
+  }
   .textarea-container {
+    flex: 1 1 60%;
+    min-height: 120px;
+    max-height: 400px;
     position: relative;
     width: 100%;
     height: 100%;
-    border-radius: 8px;
     transition: border-color 0.2s;
   }
 
@@ -470,11 +483,11 @@
     max-width: 600px;
     min-width: 300px;
     /* max-height: 100%; */
-    min-height: 260px;
+    min-height: 80px;
+    max-height: 400px;
     height: 100%;
     padding: 10px;
     border: 1px solid #ccc;
-    border-radius: 8px;
     resize: vertical;
     font-family: inherit;
     font-size: 1.2rem;

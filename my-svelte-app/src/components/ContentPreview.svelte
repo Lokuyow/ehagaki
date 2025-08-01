@@ -1,9 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import {
-        ImagePreviewManager,
-        type ContentPart,
-    } from "../lib/imagePreviewUtils";
+    import { ImagePreviewManager } from "../lib/imagePreviewUtils";
     import { formatTextWithHashtagsAndLinks } from "../lib/utils";
 
     export let content: string = "";
@@ -35,14 +32,13 @@
 <style>
     .post-preview {
         padding: 12px;
-        border: 1px solid #ddd;
-        border-radius: 8px;
         background: var(--preview-bg);
         width: 100%;
-        max-width: 600px;
         min-width: 300px;
-        max-height: 300px;
+        /* 高さは親ラッパー依存に変更 */
+        flex: 1 1 40%;
         min-height: 50px;
+        max-height: 300px;
         overflow: auto;
     }
 
@@ -50,7 +46,6 @@
         font-size: 0.9rem;
         white-space: pre-wrap;
         word-break: break-word;
-        color: #222;
     }
 
     .preview-placeholder {

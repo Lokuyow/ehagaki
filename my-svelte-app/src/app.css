@@ -168,7 +168,8 @@ h1 {
 @media (prefers-color-scheme: dark) {
   :root {
     /* ダークモード用カラー変数 */
-    --bg: #242424;
+    --bg: #262626;
+    --preview-bg: #323333;
     --text: #fafcfc;
     --link: #646cff;
     --link-hover: #535bf2;
