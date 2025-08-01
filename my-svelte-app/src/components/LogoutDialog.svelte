@@ -78,7 +78,6 @@
     .cancel-btn {
         border: 1px solid #ccc;
         background-color: #f5f5f5;
-        color: #333;
         width: 100%;
     }
     .cancel-btn:hover {
@@ -87,7 +86,7 @@
 
     .logout-btn {
         background-color: #d32f2f;
-        color: white;
+        color: var(--text-r);
         border: none;
         width: 100%;
     }

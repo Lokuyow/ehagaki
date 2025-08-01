@@ -349,19 +349,17 @@
         title={$_("upload_image")}
         aria-label={$_("upload_image")}
       >
-        <div class="image-icon"></div>
+        <div class="image-icon svg-icon"></div>
       </button>
 
       <button
         class="post-button btn"
         disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
         on:click={submitPost}
+        title={$_("post")}
+        aria-label={$_("post")}
       >
-        {#if postStatus.sending}
-          {$_("posting")}...
-        {:else}
-          {$_("post")}
-        {/if}
+        <div class="plane-icon svg-icon"></div>
       </button>
     </div>
   </div>
@@ -419,13 +417,13 @@
     justify-content: flex-end;
     align-items: center;
     width: 100%;
-    height: 50px;
-    padding: 0 6px;
+    height: 60px;
+    padding: 0 10px;
   }
 
   .buttons-container {
     display: flex;
-    gap: 4px;
+    gap: 6px;
     align-items: center;
     height: 100%;
   }
@@ -434,11 +432,21 @@
     font-size: 1.1rem;
     font-weight: bold;
     border: 1px solid var(--hagaki);
-    width: 100px;
+    width: 54px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
   }
 
-  .post-button:hover:not(:disabled) {
-    border: 2px solid var(--hagaki);
+  .plane-icon {
+    mask-image: url("/ehagaki/icons/paper-plane-solid-full.svg");
+  }
+  .image-icon {
+    mask-image: url("/ehagaki/icons/image-solid-full.svg");
+    width: 30px;
+    height: 30px;
   }
 
   .post-status {
@@ -458,22 +466,8 @@
   }
 
   .image-button {
+    width: 54px;
     border: 1px solid var(--hagaki);
-  }
-
-  .image-button:hover:not(:disabled) {
-    background-color: #e0e0e0;
-  }
-
-  .image-icon {
-    width: 26px;
-    height: 26px;
-    mask-image: url("/ehagaki/icons/image-solid-full.svg");
-    mask-repeat: no-repeat;
-    mask-size: contain;
-    mask-position: center;
-    background-color: var(--svg);
-    display: inline-block;
   }
 
   .upload-error {
@@ -517,7 +511,7 @@
     max-height: 400px;
     height: 100%;
     padding: 10px;
-    border: 1px solid #ccc;
+    border: 1px solid var(--border);
     resize: vertical;
     font-family: inherit;
     font-size: 1.2rem;

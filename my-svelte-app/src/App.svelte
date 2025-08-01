@@ -342,7 +342,7 @@
         on:click={openSettings}
         aria-label="設定"
       >
-        <div class="settings-icon" aria-label="Settings"></div>
+        <div class="settings-icon svg-icon" aria-label="Settings"></div>
       </button>
     </div>
   </main>
@@ -371,7 +371,7 @@
     justify-content: space-between;
     gap: 8px;
     padding: 8px;
-    background: #fff;
+    background: var(--footer-bg);
     position: fixed;
     left: 0;
     right: 0;
@@ -383,33 +383,17 @@
     width: 110px;
     border: none;
     background: var(--theme);
-    color: #fff;
+    color: var(--text-r);
     z-index: 10;
     box-shadow: 0 2px 8px #0001;
   }
 
   .settings-btn {
-    background: #fff;
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 8px #0001;
+    border: 1px solid var(--btn-border);
   }
-  .settings-btn:hover {
-    background: #f0f0f0;
-  }
-  .settings-btn:active {
-    background: #e0e0e0;
-    box-shadow: 0 1px 2px #0002;
-    transform: scale(0.94);
-  }
+
   .settings-icon {
-    width: 26px;
-    height: 26px;
     mask-image: url("/ehagaki/icons/gear-solid-full.svg");
-    mask-repeat: no-repeat;
-    mask-size: contain;
-    mask-position: center;
-    background-color: var(--svg);
-    display: inline-block;
   }
 
   @keyframes fadeOut {

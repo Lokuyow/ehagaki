@@ -49,7 +49,8 @@
     }
 
     .preview-placeholder {
-        color: #bbb;
+        color: var(--text);
+        opacity: 0.5;
         font-style: italic;
         user-select: none;
         pointer-events: none;

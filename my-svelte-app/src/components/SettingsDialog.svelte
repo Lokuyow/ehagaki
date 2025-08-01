@@ -72,15 +72,17 @@
             <button
                 class="modal-close btn-round"
                 on:click={onClose}
-                aria-label="閉じる">&times;</button
+                aria-label="閉じる"
             >
+                <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+            </button>
         </div>
         <div class="modal-body">
             <!-- 言語設定セクション -->
             <div class="setting-section">
                 <span class="setting-label">
                     Language
-                    <div class="lang-icon-label"></div>
+                    <div class="lang-icon-label svg-icon"></div>
                 </span>
                 <div class="setting-control">
                     <button class="lang-btn btn" on:click={toggleLanguage}>
@@ -112,7 +114,7 @@
                 aria-label="GitHub Repository"
                 class="github-link"
             >
-                <div class="github-icon" aria-label="GitHub"></div>
+                <div class="github-icon svg-icon" aria-label="GitHub"></div>
             </a>
         </div>
     </div>
@@ -120,6 +122,10 @@
 
 <style>
     .modal-backdrop {
+        padding: 0;
+        border: none;
+        margin: 0;
+        transform: none;
         position: fixed;
         inset: 0;
         background: #0006;
@@ -131,14 +137,12 @@
         left: 50%;
         z-index: 1001;
         background: #fff;
-        border-radius: 8px;
         box-shadow: 0 4px 24px #0002;
         transform: translate(-50%, -50%);
         min-width: 320px;
         max-width: 90vw;
         padding: 0;
         animation: fadeIn 0.2s;
-        color: #222;
     }
     .modal-header {
         display: flex;
@@ -148,21 +152,19 @@
         border-bottom: 1px solid #eee;
         font-weight: bold;
         font-size: 1.1rem;
-        color: #222;
     }
     .modal-close {
         background: none;
         border: none;
-        font-size: 2rem;
-        cursor: pointer;
-        color: #888;
         padding: 0 4px;
         line-height: 1;
+    }
+    .xmark-icon {
+        mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
     }
     .modal-body {
         padding: 16px;
         font-size: 1rem;
-        color: #222;
         display: flex;
         flex-direction: column;
         gap: 16px;
@@ -179,16 +181,9 @@
         gap: 6px;
     }
     .lang-icon-label {
-        width: 32px;
-        height: 32px;
         vertical-align: middle;
-        /* SVGマスク表示に変更 */
+        /* mask-imageは個別指定 */
         mask-image: url("/ehagaki/icons/language-solid.svg");
-        mask-repeat: no-repeat;
-        mask-size: contain;
-        mask-position: center;
-        background-color: var(--svg);
-        display: inline-block;
     }
     .setting-control {
         display: flex;
@@ -196,16 +191,12 @@
         height: 50px;
     }
     .lang-btn {
-        background: #3b3b3b;
         border: 1px solid #ddd;
         width: 120px;
     }
-    .lang-btn:hover {
-        background: #797979;
-    }
+
     select {
         padding: 6px;
-        border-radius: 4px;
         border: 1px solid #ddd;
         min-width: 200px;
         height: 50px;
@@ -227,15 +218,9 @@
         text-decoration: none;
     }
     .github-icon {
-        width: 38px;
-        height: 38px;
         mask-image: url("/ehagaki/icons/github-mark.svg");
-        mask-repeat: no-repeat;
-        mask-size: contain;
-        mask-position: center;
-        background-color: var(--svg);
-        display: block;
     }
+
     @keyframes fadeIn {
         from {
             opacity: 0;

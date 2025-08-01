@@ -27,10 +27,7 @@
         class="profile-picture"
       />
     {:else}
-      <div
-        class="profile-picture default"
-        aria-label="User"
-      ></div>
+      <div class="profile-picture default svg-icon" aria-label="User"></div>
     {/if}
     <span class="profile-name">
       {profileData?.name && profileData.name !== ""
@@ -45,19 +42,11 @@
 <style>
   /* プロフィール表示のスタイル */
   .profile-display {
-    display: flex;
-    align-items: center;
     gap: 4px;
     padding: 6px 12px;
     z-index: 10;
-    background: #fff;
-    border: 1px solid #ccc;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--btn-border);
     max-width: 140px;
-  }
-
-  .profile-display:hover {
-    background: rgba(240, 240, 240, 0.9);
   }
 
   .profile-picture {
@@ -70,20 +59,14 @@
   .profile-picture.default {
     /* SVGマスク表示に変更 */
     mask-image: url("/ehagaki/icons/circle-user-solid-full.svg");
-    mask-repeat: no-repeat;
-    mask-size: contain;
-    mask-position: center;
-    background-color: var(--svg);
-    object-fit: unset;
     background-size: cover;
     background-position: center;
-    display: inline-block;
   }
 
   .profile-name {
     font-size: 0.9em;
     font-weight: 500;
-    color: #333;
+    color: var(--text);
     max-width: 100px;
     overflow: hidden;
     text-overflow: ellipsis;
