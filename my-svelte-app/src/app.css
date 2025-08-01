@@ -1,7 +1,8 @@
 :root {
-  --theme: #8CD921;
+  --theme: #1DBF73;
+  --hagaki: #CC0000;
 
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -54,68 +55,40 @@ h1 {
   padding: 2em;
 }
 
-/* 共通ボタンスタイル */
+button {
+  -webkit-tap-highlight-color: transparent;
+  color: var(--text);
+  transition: filter 0.2s ease;
 
-/* 角にアールをつけただけのボタン（ダイアログ内のボタン等） */
+  &:hover {
+    filter: brightness(0.90);
+  }
+}
+
+/* 共通ボタンスタイル */
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 角なし */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 100%;
-  border-radius: 4px;
   border: 1px solid transparent;
   padding: 6px;
   font-size: 1rem;
   font-weight: 500;
   font-family: inherit;
   background-color: var(--btn-bg);
-  color: var(--btn-text);
   border-color: var(--btn-border);
   cursor: pointer;
-  transition: border-color 0.25s, background 0.2s;
   outline: none;
   text-decoration: none;
   user-select: none;
   gap: 8px;
-  -webkit-tap-highlight-color: transparent;
-}
-
-/* 角が完全に丸くなった角丸四角形ボタン */
-.btn-pill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  border-radius: 50px;
-  /* 完全に丸い角 */
-  border: 1px solid transparent;
-  padding: 6px 16px;
-  font-size: 1rem;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: var(--btn-bg);
-  color: var(--btn-text);
-  border-color: var(--btn-border);
-  cursor: pointer;
-  transition: border-color 0.25s, background 0.2s;
-  outline: none;
-  text-decoration: none;
-  user-select: none;
-  gap: 8px;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.btn:hover,
-.btn-pill:hover {
-  border-color: var(--link);
-  background-color: var(--link-hover);
-}
-
-.btn:focus,
-.btn:focus-visible,
-.btn-pill:focus,
-.btn-pill:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }
 
 /* 丸ボタン（アイコンボタン等） */
@@ -129,10 +102,7 @@ h1 {
   justify-content: center;
   background: var(--btn-bg);
   border: 1px solid var(--btn-border);
-  color: var(--btn-text);
   cursor: pointer;
-  transition: background 0.2s, box-shadow 0.1s, transform 0.1s;
-  -webkit-tap-highlight-color: transparent;
 
   & img {
     width: 26px;
@@ -153,15 +123,15 @@ h1 {
 @media (prefers-color-scheme: light) {
   :root {
     /* ライトモード用カラー変数 */
-    --bg: #F0F1F2;
-    --preview-bg: #ffffff;
-    --text: #213547;
+    --bg: #EBECED;
+    --preview-bg: #FCFCFC;
+    --input-bg: #fff;
+    --text: #3D3D3D;
     --link: #646cff;
     --link-hover: #747bff;
     --btn-bg: #f9f9f9;
     --btn-border: #ccc;
-    --btn-text: #222;
-    --svg: #222;
+    --svg: #525252;
   }
 }
 
@@ -170,12 +140,12 @@ h1 {
     /* ダークモード用カラー変数 */
     --bg: #262626;
     --preview-bg: #323333;
+    --input-bg: #323333;
     --text: #fafcfc;
     --link: #646cff;
     --link-hover: #535bf2;
     --btn-bg: #1a1a1a;
     --btn-border: #646cff;
-    --btn-text: #fff;
     --svg: #fafcfc;
   }
 }

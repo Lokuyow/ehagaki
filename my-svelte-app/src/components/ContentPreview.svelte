@@ -57,7 +57,7 @@
 
     .preview-image {
         max-width: 100%;
-        max-height: 240px;
+        max-height: 160px;
         display: block;
         margin: 8px 0;
         border-radius: 6px;

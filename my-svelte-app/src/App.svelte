@@ -330,7 +330,7 @@
           showLogoutDialog={openLogoutDialog}
         />
       {:else}
-        <button class="login-btn btn-pill" on:click={showLoginDialog}>
+        <button class="login-btn btn" on:click={showLoginDialog}>
           {hasStoredKey ? $_("logged_in") : $_("login")}
         </button>
       {/if}
@@ -377,21 +377,17 @@
     right: 0;
     bottom: 0;
     box-shadow: 0 -2px 8px #0001;
-    z-index: 100;
+    z-index: 99;
   }
   .login-btn {
     width: 110px;
     border: none;
-    background: #646cff;
+    background: var(--theme);
+    color: #fff;
     z-index: 10;
     box-shadow: 0 2px 8px #0001;
   }
-  .login-btn:hover {
-    background: #535bf2;
-  }
-  .login-btn.btn-pill {
-    border-radius: 30px;
-  }
+
   .settings-btn {
     background: #fff;
     border: 1px solid #ccc;

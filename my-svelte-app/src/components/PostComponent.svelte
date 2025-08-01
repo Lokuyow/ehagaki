@@ -27,10 +27,6 @@
     message: "",
   };
 
-  // 警告ダイアログ表示用
-  let showWarningDialog = false;
-  let pendingPostContent = "";
-
   // 画像アップロード関連
   let isUploading = false;
   let uploadErrorMessage = "";
@@ -245,11 +241,6 @@
       return;
     }
 
-    if (postManager.containsSecretKey(postContent)) {
-      pendingPostContent = postContent;
-      showWarningDialog = true;
-      return;
-    }
     await executePost();
   }
 
@@ -313,19 +304,6 @@
     }, 3000);
   }
 
-  // ダイアログ処理
-  async function confirmPostSecretKey() {
-    showWarningDialog = false;
-    postContent = pendingPostContent;
-    pendingPostContent = "";
-    await executePost();
-  }
-
-  function cancelPostSecretKey() {
-    showWarningDialog = false;
-    pendingPostContent = "";
-  }
-
   // ライフサイクル
   onMount(() => {
     window.addEventListener(
@@ -365,7 +343,7 @@
 
     <div class="buttons-container">
       <button
-        class="image-button btn-round"
+        class="image-button btn"
         disabled={!hasStoredKey || postStatus.sending || isUploading}
         on:click={openFileDialog}
         title={$_("upload_image")}
@@ -375,7 +353,7 @@
       </button>
 
       <button
-        class="post-button btn-pill"
+        class="post-button btn"
         disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
         on:click={submitPost}
       >
@@ -424,25 +402,6 @@
   {/if}
 </div>
 
-{#if showWarningDialog}
-  <div class="dialog-backdrop">
-    <div class="dialog">
-      <div class="dialog-title">{$_("warning")}</div>
-      <div class="dialog-message">
-        {$_("secret_key_detected")}
-      </div>
-      <div class="dialog-actions">
-        <button class="dialog-cancel" on:click={cancelPostSecretKey}
-          >{$_("cancel")}</button
-        >
-        <button class="dialog-confirm" on:click={confirmPostSecretKey}
-          >{$_("post")}</button
-        >
-      </div>
-    </div>
-  </div>
-{/if}
-
 <style>
   .post-container {
     max-width: 600px;
@@ -455,80 +414,31 @@
     gap: 8px;
   }
 
-  .input-preview-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 100%;
-    height: 100%;
-    min-height: 200px;
-  }
-  .textarea-container {
-    flex: 1 1 60%;
-    min-height: 120px;
-    max-height: 400px;
-    position: relative;
-    width: 100%;
-    height: 100%;
-    transition: border-color 0.2s;
-  }
-
-  .drag-over {
-    border: 2px dashed #1da1f2;
-    background-color: rgba(29, 161, 242, 0.05);
-  }
-
-  .post-input {
-    width: 100%;
-    max-width: 600px;
-    min-width: 300px;
-    /* max-height: 100%; */
-    min-height: 80px;
-    max-height: 400px;
-    height: 100%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    resize: vertical;
-    font-family: inherit;
-    font-size: 1.2rem;
-    transition: border-color 0.2s;
-  }
-
-  .post-input:focus {
-    outline: none;
-    border-color: #1da1f2;
-  }
-
   .post-actions {
     display: flex;
     justify-content: flex-end;
     align-items: center;
     width: 100%;
     height: 50px;
+    padding: 0 6px;
   }
 
   .buttons-container {
     display: flex;
-    gap: 10px;
+    gap: 4px;
     align-items: center;
     height: 100%;
   }
 
-  .image-button:hover:not(:disabled) {
-    background-color: #e0e0e0;
+  .post-button {
+    font-size: 1.1rem;
+    font-weight: bold;
+    border: 1px solid var(--hagaki);
+    width: 100px;
   }
 
-  .image-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .upload-error {
-    color: #c62828;
-    font-size: 0.9rem;
-    margin-bottom: 10px;
-    width: 100%;
-    text-align: left;
+  .post-button:hover:not(:disabled) {
+    border: 2px solid var(--hagaki);
   }
 
   .post-status {
@@ -547,20 +457,12 @@
     color: #2e7d32;
   }
 
-  .post-button.btn-pill {
-    background-color: #1da1f2;
-    font-size: 1.1rem;
-    font-weight: bold;
-    width: 120px;
+  .image-button {
+    border: 1px solid var(--hagaki);
   }
 
-  .post-button:hover:not(:disabled) {
-    background-color: #1a91da;
-  }
-
-  .post-button:disabled {
-    background-color: #9ad4f9;
-    cursor: not-allowed;
+  .image-button:hover:not(:disabled) {
+    background-color: #e0e0e0;
   }
 
   .image-icon {
@@ -574,64 +476,56 @@
     display: inline-block;
   }
 
-  /* ダイアログスタイル */
-  .dialog-backdrop {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: #0006;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
+  .upload-error {
+    color: #c62828;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    width: 100%;
+    text-align: left;
   }
-  .dialog {
-    background: #fff;
-    border-radius: 8px;
-    padding: 24px 20px;
-    box-shadow: 0 2px 16px #0002;
-    min-width: 300px;
-    max-width: 90vw;
+
+  .input-preview-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 8px;
+    width: 100%;
+    height: 100%;
+    min-height: 200px;
   }
-  .dialog-title {
-    font-weight: bold;
-    font-size: 1.1rem;
-    color: #c62828;
+
+  .textarea-container {
+    flex: 1 1 60%;
+    min-height: 120px;
+    max-height: 400px;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: border-color 0.2s;
   }
-  .dialog-message {
-    color: #333;
-    font-size: 1rem;
+
+  .drag-over {
+    border: 2px dashed #1da1f2;
+    background-color: rgba(29, 161, 242, 0.05);
   }
-  .dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
+
+  .post-input {
+    background: var(--input-bg);
+    width: 100%;
+    max-width: 600px;
+    min-width: 300px;
+    min-height: 80px;
+    max-height: 400px;
+    height: 100%;
+    padding: 10px;
+    border: 1px solid #ccc;
+    resize: vertical;
+    font-family: inherit;
+    font-size: 1.2rem;
+    transition: border-color 0.2s;
   }
-  .dialog-cancel {
-    background: #eee;
-    color: #333;
-    border: none;
-    border-radius: 4px;
-    padding: 6px 16px;
-    cursor: pointer;
-  }
-  .dialog-confirm {
-    background: #1da1f2;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    padding: 6px 16px;
-    cursor: pointer;
-  }
-  .dialog-cancel:hover {
-    background: #ddd;
-  }
-  .dialog-confirm:hover {
-    background: #1a91da;
+
+  .post-input:focus {
+    outline: none;
+    border-color: #1da1f2;
   }
 </style>

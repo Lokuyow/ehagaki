@@ -10,7 +10,7 @@
 
 {#if hasStoredKey && profileLoaded}
   <div
-    class="profile-display btn-pill"
+    class="profile-display btn"
     on:click={showLogoutDialog}
     on:keydown={(e) => e.key === "Enter" && showLogoutDialog()}
     role="button"
