@@ -62,7 +62,7 @@ button,
 *[role="button"] {
   -webkit-tap-highlight-color: transparent;
   color: var(--text);
-  border-color: var(--btn-border);
+  border-color: var(--border);
   background-color: var(--btn-bg);
   box-shadow: 0 2px 8px var(--shadow);
   transition: filter 0.2s ease;
@@ -139,33 +139,31 @@ button,
     --input-bg: #fff;
     --footer-bg: #FFF;
     --btn-bg: #fff;
-    --btn-border: #ccc;
-    --border: #ccc;
+    --border: #ddd;
     --text: #3D3D3D;
     --text-r: #fff;
     --link: #646cff;
     --link-hover: #747bff;
     --svg: #525252;
-    --shadow: rgba(0, 0, 0, 0.1);
-    --hagaki: #CC0000;
+    --shadow: rgba(0, 0, 0, 0.15);
+    --hagaki: #e63a3a;
   }
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     /* ダークモード用カラー変数 */
-    --bg: #18191A;
+    --bg: #19191A;
     --preview-bg: #262626;
     --input-bg: #333333;
-    --footer-bg: #1A1A1A;
+    --footer-bg: #111;
     --btn-bg: #333;
-    --btn-border: #444;
-    --border: #737373;
+    --border: #444;
     --text: #fff;
     --link: #646cff;
     --link-hover: #535bf2;
     --svg: #f0f0f0;
-    --shadow: rgba(255, 255, 255, 0.05);
-    --hagaki: #E67373;
+    --shadow: rgba(255, 255, 255, 0.1);
+    --hagaki: #f9907d;
   }
 }

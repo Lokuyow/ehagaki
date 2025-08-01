@@ -405,7 +405,6 @@
     max-width: 600px;
     width: 100%;
     height: 100%;
-    margin-bottom: 12px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -417,7 +416,6 @@
     justify-content: flex-end;
     align-items: center;
     width: 100%;
-    height: 60px;
     padding: 0 10px;
   }
 
@@ -425,7 +423,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    height: 100%;
+    height: 60px;
   }
 
   .post-button {
@@ -481,7 +479,7 @@
   .input-preview-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     width: 100%;
     height: 100%;
     min-height: 200px;
@@ -490,7 +488,6 @@
   .textarea-container {
     flex: 1 1 60%;
     min-height: 120px;
-    max-height: 400px;
     position: relative;
     width: 100%;
     height: 100%;
@@ -508,7 +505,6 @@
     max-width: 600px;
     min-width: 300px;
     min-height: 80px;
-    max-height: 400px;
     height: 100%;
     padding: 10px;
     border: 1px solid var(--border);

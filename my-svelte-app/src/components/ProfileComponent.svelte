@@ -45,7 +45,7 @@
     gap: 4px;
     padding: 6px 12px;
     z-index: 10;
-    border: 1px solid var(--btn-border);
+    border: 1px solid var(--border);
     max-width: 140px;
   }
 

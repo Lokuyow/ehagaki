@@ -35,10 +35,8 @@
         background: var(--preview-bg);
         width: 100%;
         min-width: 300px;
-        /* 高さは親ラッパー依存に変更 */
         flex: 1 1 40%;
         min-height: 50px;
-        max-height: 300px;
         overflow: auto;
     }
 

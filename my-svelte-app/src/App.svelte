@@ -356,9 +356,9 @@
     height: 100dvh;
   }
   .main-content {
-    margin-top: 10px;
+    margin: 10px 0;
     width: 100%;
-    height: calc(100% - 10px - 66px);
+    height: calc(100% - 20px - 66px);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -389,7 +389,7 @@
   }
 
   .settings-btn {
-    border: 1px solid var(--btn-border);
+    border: 1px solid var(--border);
   }
 
   .settings-icon {
