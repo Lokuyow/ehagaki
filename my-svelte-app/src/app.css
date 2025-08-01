@@ -1,11 +1,13 @@
 :root {
+  --theme: #8CD921;
+
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light dark;
-  color: #222;
-  background-color: #242424;
+  color: var(--text);
+  background-color: var(--bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -20,7 +22,7 @@
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--link);
   text-decoration: inherit;
   -webkit-tap-highlight-color: transparent;
   opacity: 0.7;
@@ -33,12 +35,14 @@ a {
 
 @media (min-width: 601px) {
   a:hover {
-    color: #535bf2;
+    color: var(--link-hover);
   }
 }
 
 body {
   margin: 0;
+  color: var(--text);
+  background-color: var(--bg);
 }
 
 h1 {
@@ -64,8 +68,9 @@ h1 {
   font-size: 1rem;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
-  color: #fff;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
+  border-color: var(--btn-border);
   cursor: pointer;
   transition: border-color 0.25s, background 0.2s;
   outline: none;
@@ -88,8 +93,9 @@ h1 {
   font-size: 1rem;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
-  color: #fff;
+  background-color: var(--btn-bg);
+  color: var(--btn-text);
+  border-color: var(--btn-border);
   cursor: pointer;
   transition: border-color 0.25s, background 0.2s;
   outline: none;
@@ -101,8 +107,8 @@ h1 {
 
 .btn:hover,
 .btn-pill:hover {
-  border-color: #646cff;
-  background-color: #535bf2;
+  border-color: var(--link);
+  background-color: var(--link-hover);
 }
 
 .btn:focus,
@@ -121,9 +127,9 @@ h1 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #fff;
-  border: 1px solid #ccc;
-  color: #222;
+  background: var(--btn-bg);
+  border: 1px solid var(--btn-border);
+  color: var(--btn-text);
   cursor: pointer;
   transition: background 0.2s, box-shadow 0.1s, transform 0.1s;
   -webkit-tap-highlight-color: transparent;
@@ -146,15 +152,29 @@ h1 {
 
 @media (prefers-color-scheme: light) {
   :root {
-    color: #213547;
-    background-color: #fafcfc;
+    /* ライトモード用カラー変数 */
+    --bg: #F0F1F2;
+    --preview-bg: #ffffff;
+    --text: #213547;
+    --link: #646cff;
+    --link-hover: #747bff;
+    --btn-bg: #f9f9f9;
+    --btn-border: #ccc;
+    --btn-text: #222;
+    --svg: #222;
   }
+}
 
-  a:hover {
-    color: #747bff;
-  }
-
-  button {
-    background-color: #f9f9f9;
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ダークモード用カラー変数 */
+    --bg: #242424;
+    --text: #fafcfc;
+    --link: #646cff;
+    --link-hover: #535bf2;
+    --btn-bg: #1a1a1a;
+    --btn-border: #646cff;
+    --btn-text: #fff;
+    --svg: #fafcfc;
   }
 }

@@ -16,17 +16,22 @@
     role="button"
     tabindex="0"
   >
-    <img
-      src={profileData?.picture && profileData.picture !== ""
-        ? profileData.picture
-        : "/ehagaki/icons/circle-user-solid-full.svg"}
-      alt={profileData?.name
-        ? profileData.name
-        : profileData?.npub
-          ? profileData.npub
-          : "User"}
-      class="profile-picture"
-    />
+    {#if profileData?.picture && profileData.picture !== ""}
+      <img
+        src={profileData.picture}
+        alt={profileData?.name
+          ? profileData.name
+          : profileData?.npub
+            ? profileData.npub
+            : "User"}
+        class="profile-picture"
+      />
+    {:else}
+      <div
+        class="profile-picture default"
+        aria-label="User"
+      ></div>
+    {/if}
     <span class="profile-name">
       {profileData?.name && profileData.name !== ""
         ? profileData.name
@@ -60,6 +65,19 @@
     height: 32px;
     border-radius: 50%;
     object-fit: cover;
+  }
+
+  .profile-picture.default {
+    /* SVGマスク表示に変更 */
+    mask-image: url("/ehagaki/icons/circle-user-solid-full.svg");
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    mask-position: center;
+    background-color: var(--svg);
+    object-fit: unset;
+    background-size: cover;
+    background-position: center;
+    display: inline-block;
   }
 
   .profile-name {

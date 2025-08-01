@@ -15,7 +15,9 @@ export default defineConfig({
         name: 'eHagaki',
         short_name: 'eHagaki',
         description: '軽量なポストオンリー型Nostrクライアントで、デバイス上で画像を圧縮することにより高速かつデータ効率に優れたアップロードを実現します。',
-        theme_color: '#699f43ff',
+        display: 'standalone',
+        theme_color: '#8CD921',
+        background_color: '#364029',
         icons: [
           {
             src: '/ehagaki/hagaki_2mai.png',

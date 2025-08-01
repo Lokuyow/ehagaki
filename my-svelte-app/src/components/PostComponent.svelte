@@ -369,11 +369,9 @@
         disabled={!hasStoredKey || postStatus.sending || isUploading}
         on:click={openFileDialog}
         title={$_("upload_image")}
+        aria-label={$_("upload_image")}
       >
-        <img
-          src="/ehagaki/icons/image-solid-full.svg"
-          alt={$_("upload_image")}
-        />
+        <div class="image-icon"></div>
       </button>
 
       <button
@@ -550,6 +548,17 @@
   .post-button:disabled {
     background-color: #9ad4f9;
     cursor: not-allowed;
+  }
+
+  .image-icon {
+    width: 26px;
+    height: 26px;
+    mask-image: url("/ehagaki/icons/image-solid-full.svg");
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    mask-position: center;
+    background-color: var(--svg);
+    display: inline-block;
   }
 
   /* ダイアログスタイル */

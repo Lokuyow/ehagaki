@@ -342,11 +342,7 @@
         on:click={openSettings}
         aria-label="設定"
       >
-        <img
-          src="/ehagaki/icons/gear-solid-full.svg"
-          alt="Settings"
-          class="settings-icon"
-        />
+        <div class="settings-icon" aria-label="Settings"></div>
       </button>
     </div>
   </main>
@@ -408,6 +404,16 @@
     background: #e0e0e0;
     box-shadow: 0 1px 2px #0002;
     transform: scale(0.94);
+  }
+  .settings-icon {
+    width: 26px;
+    height: 26px;
+    mask-image: url("/ehagaki/icons/gear-solid-full.svg");
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    mask-position: center;
+    background-color: var(--svg);
+    display: inline-block;
   }
 
   @keyframes fadeOut {

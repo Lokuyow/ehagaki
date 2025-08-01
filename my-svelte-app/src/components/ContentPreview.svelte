@@ -34,14 +34,15 @@
 
 <style>
     .post-preview {
-        padding: 15px;
+        padding: 12px;
         border: 1px solid #ddd;
         border-radius: 8px;
-        background: #f9f9f9;
+        background: var(--preview-bg);
         width: 100%;
         max-width: 600px;
         min-width: 300px;
-        max-height: 280px;
+        max-height: 300px;
+        min-height: 50px;
         overflow: auto;
     }
 

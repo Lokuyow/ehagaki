@@ -80,11 +80,7 @@
             <div class="setting-section">
                 <span class="setting-label">
                     Language
-                    <img
-                        src="/ehagaki/icons/language-solid.svg"
-                        alt="Language"
-                        class="lang-icon-label"
-                    />
+                    <div class="lang-icon-label"></div>
                 </span>
                 <div class="setting-control">
                     <button class="lang-btn btn" on:click={toggleLanguage}>
@@ -116,11 +112,7 @@
                 aria-label="GitHub Repository"
                 class="github-link"
             >
-                <img
-                    src="/ehagaki/icons/github-mark.svg"
-                    alt="GitHub"
-                    class="github-icon"
-                />
+                <div class="github-icon" aria-label="GitHub"></div>
             </a>
         </div>
     </div>
@@ -190,6 +182,13 @@
         width: 32px;
         height: 32px;
         vertical-align: middle;
+        /* SVGマスク表示に変更 */
+        mask-image: url("/ehagaki/icons/language-solid.svg");
+        mask-repeat: no-repeat;
+        mask-size: contain;
+        mask-position: center;
+        background-color: var(--svg);
+        display: inline-block;
     }
     .setting-control {
         display: flex;
@@ -230,6 +229,11 @@
     .github-icon {
         width: 38px;
         height: 38px;
+        mask-image: url("/ehagaki/icons/github-mark.svg");
+        mask-repeat: no-repeat;
+        mask-size: contain;
+        mask-position: center;
+        background-color: var(--svg);
         display: block;
     }
     @keyframes fadeIn {
