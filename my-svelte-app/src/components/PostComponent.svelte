@@ -55,25 +55,19 @@
   // アップロード状態管理
   async function withUploadState<T>(
     uploadPromise: Promise<T>,
-    minDuration = 2000,
+    minDuration = 1500,
   ): Promise<T> {
     isUploading = true;
     onUploadStatusChange?.(true);
 
-    const startTime = Date.now();
-
     try {
+      // アップロード処理を実行
       const result = await uploadPromise;
 
-      // アップロード完了後、最小時間が経過していない場合は遅延を追加
-      const elapsedTime = Date.now() - startTime;
-      const remainingTime = minDuration - elapsedTime;
-
-      if (remainingTime > 0) {
-        await new Promise<void>((resolve) =>
-          setTimeout(resolve, remainingTime),
-        );
-      }
+      // アップロード完了後に遅延を追加
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, minDuration),
+      );
 
       return result;
     } finally {
