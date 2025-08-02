@@ -9,6 +9,7 @@
   import ContentPreview from "./ContentPreview.svelte";
   import { onMount, onDestroy } from "svelte";
   import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
@@ -36,6 +37,10 @@
 
   // マネージャーインスタンス
   let postManager: PostManager;
+
+  // ダイアログ表示用状態
+  let showSecretKeyDialog = false;
+  let pendingPost = "";
 
   // rxNostrが変更されたときにpostManagerを更新
   $: if (rxNostr) {
@@ -65,9 +70,7 @@
       const result = await uploadPromise;
 
       // アップロード完了後に遅延を追加
-      await new Promise<void>((resolve) =>
-        setTimeout(resolve, minDuration),
-      );
+      await new Promise<void>((resolve) => setTimeout(resolve, minDuration));
 
       return result;
     } finally {
@@ -236,7 +239,28 @@
       return;
     }
 
+    // 秘密鍵が含まれている場合はダイアログ表示
+    if (postManager.containsSecretKey(postContent)) {
+      pendingPost = postContent;
+      showSecretKeyDialog = true;
+      return;
+    }
+
     await executePost();
+  }
+
+  // ダイアログで送信を選択した場合
+  async function confirmSendWithSecretKey() {
+    showSecretKeyDialog = false;
+    postContent = pendingPost;
+    await executePost();
+    pendingPost = "";
+  }
+
+  // ダイアログでキャンセルを選択した場合
+  function cancelSendWithSecretKey() {
+    showSecretKeyDialog = false;
+    pendingPost = "";
   }
 
   async function executePost() {
@@ -393,6 +417,26 @@
   {/if}
 </div>
 
+<Dialog
+  bind:show={showSecretKeyDialog}
+  ariaLabel={$_("warning")}
+  onClose={cancelSendWithSecretKey}
+>
+  <div class="secretkey-dialog-content">
+    <div class="secretkey-dialog-message">
+      {$_("secret_key_detected")}
+    </div>
+    <div class="secretkey-dialog-buttons">
+      <Button className="btn cancel" on:click={cancelSendWithSecretKey}>
+        {$_("cancel")}
+      </Button>
+      <Button className="btn danger" on:click={confirmSendWithSecretKey}>
+        {$_("post")}
+      </Button>
+    </div>
+  </div>
+</Dialog>
+
 <style>
   .post-container {
     max-width: 800px;
@@ -509,5 +553,31 @@
   .post-input:focus {
     outline: none;
     border-color: var(--theme);
+  }
+
+  .secretkey-dialog-content {
+    text-align: center;
+  }
+  .secretkey-dialog-message {
+    margin: 28px 0 58px 0;
+    color: var(--text);
+    font-size: 1.2rem;
+    font-weight: bold;
+  }
+  .secretkey-dialog-buttons {
+    display: flex;
+    justify-content: center;
+    height: 60px;
+    gap: 16px;
+  }
+
+  :global(.btn.cancel) {
+    width: 100%;
+  }
+  :global(.btn.danger) {
+    background: #c62828;
+    color: #fff;
+    border: none;
+    width: 100%;
   }
 </style>

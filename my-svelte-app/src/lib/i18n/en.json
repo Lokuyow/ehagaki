@@ -6,7 +6,7 @@
   "cancel": "Cancel",
   "close": "Close",
   "error_saving": "Error saving the key",
-  "secret_key_detected": "Your post seems to contain a secret key. Do you really want to post it?",
+  "secret_key_detected": "Your post contains a private key. Are you sure you want to post it?",
   "warning": "Warning",
   "login_required": "Login required",
   "post_error": "Post error",

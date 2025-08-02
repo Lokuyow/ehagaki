@@ -6,7 +6,7 @@
   "cancel": "キャンセル",
   "close": "閉じる",
   "error_saving": "鍵の保存中にエラーが発生しました",
-  "secret_key_detected": "投稿内容に秘密鍵が含まれているようです。本当に投稿しますか？",
+  "secret_key_detected": "投稿内容に秘密鍵が含まれています。本当に投稿しますか？",
   "warning": "警告",
   "login_required": "ログインしてください",
   "post_error": "投稿エラー",
