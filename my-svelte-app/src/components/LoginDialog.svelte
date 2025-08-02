@@ -108,9 +108,6 @@
         color: #333;
         width: 100%;
     }
-    /* .cancel-btn:hover {
-        background-color: #e0e0e0;
-    } */
 
     .clear-btn {
         border: 1px solid #ccc;
@@ -118,9 +115,6 @@
         color: #333;
         width: 100%;
     }
-    /* .clear-btn:hover {
-        background-color: #ffe9b3;
-    } */
 
     .save-btn {
         background-color: #646cff;
@@ -128,10 +122,6 @@
         border: none;
         width: 100%;
     }
-
-    /* .save-btn:hover {
-        background-color: #535bf2;
-    } */
 
     .error-message {
         font-size: 1rem;

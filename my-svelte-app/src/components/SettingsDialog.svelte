@@ -117,6 +117,9 @@
 </Dialog>
 
 <style>
+    :global(.dialog.settings-dialog) {
+        padding: 0;
+    }
     .modal-header {
         display: flex;
         align-items: center;

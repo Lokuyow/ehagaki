@@ -16,7 +16,7 @@
         aria-label={ariaLabel}
     >
         <div
-            class="dialog {className}"
+            class="dialog {className} {$$props.class || ''}"
             role="dialog"
             aria-modal="true"
             tabindex="0"
@@ -54,9 +54,5 @@
         flex-direction: column;
         align-items: center;
         padding: 16px;
-    }
-
-    .settings-dialog {
-        padding: 0;
     }
 </style>
