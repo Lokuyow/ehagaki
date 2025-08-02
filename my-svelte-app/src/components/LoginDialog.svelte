@@ -147,7 +147,8 @@
         font-family: monospace;
         font-size: 1rem;
         padding: 0.6rem;
-        border: 1px solid #ccc;
+        background-color: var(--input-bg);
+        border: 1px solid var(--border);
         width: 100%;
         height: 50px;
         margin-top: 0.5rem;

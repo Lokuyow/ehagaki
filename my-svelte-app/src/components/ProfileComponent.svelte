@@ -10,7 +10,7 @@
 </script>
 
 {#if hasStoredKey && profileLoaded}
-  <Button className="profile-display btn" on:click={showLogoutDialog}>
+  <Button className="profile-display btn-round" on:click={showLogoutDialog}>
     {#if profileData?.picture && profileData.picture !== ""}
       <img
         src={profileData.picture}
@@ -38,9 +38,8 @@
   /* プロフィール表示のスタイル */
   :global(.profile-display) {
     gap: 4px;
-    padding: 6px 12px;
+    padding: 0 10px;
     z-index: 10;
-    border: 1px solid var(--border);
     max-width: 140px;
   }
 

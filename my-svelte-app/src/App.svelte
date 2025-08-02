@@ -331,7 +331,7 @@
           showLogoutDialog={openLogoutDialog}
         />
       {:else}
-        <Button className="login-btn btn" on:click={showLoginDialog}>
+        <Button className="login-btn btn-round" on:click={showLoginDialog}>
           {hasStoredKey ? $_("logged_in") : $_("login")}
         </Button>
       {/if}
@@ -339,7 +339,7 @@
       <FooterInfoDisplay bind:this={footerInfoDisplay} />
 
       <Button
-        className="settings-btn btn-round"
+        className="settings-btn btn-circle"
         on:click={openSettings}
         ariaLabel="設定"
       >

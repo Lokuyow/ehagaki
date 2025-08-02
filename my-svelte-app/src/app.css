@@ -73,7 +73,7 @@ select {
 }
 
 button:active,
-:global(*[role="button"]:active) {
+*[role="button"]:active {
   transform: scale(0.96);
 }
 
@@ -103,7 +103,7 @@ button:active,
     /* ライトモード用カラー変数 */
     --bg: #EBECED;
     --dialog-bg: #fff;
-    --preview-bg: #FCFCFC;
+    --preview-bg: #FAFAFA;
     --input-bg: #fff;
     --footer-bg: #FFF;
     --btn-bg: #fff;
@@ -123,11 +123,11 @@ button:active,
   :root {
     /* ダークモード用カラー変数 */
     --bg: #19191A;
-    --dialog-bg: #333;
+    --dialog-bg: #2E2E2E;
     --preview-bg: #262626;
-    --input-bg: #333;
+    --input-bg: #363636;
     --footer-bg: #111;
-    --btn-bg: #333;
+    --btn-bg: #363636;
     --border: #444;
     --hr-border: #444;
     --text: #fff;
@@ -135,6 +135,6 @@ button:active,
     --link-hover: #535bf2;
     --svg: #f0f0f0;
     --shadow: rgba(255, 255, 255, 0.1);
-    --hagaki: #f9907d;
+    --hagaki: #f88a77;
   }
 }

@@ -69,7 +69,7 @@
     <div class="modal-header">
         <span>{$_("settings") || "設定"}</span>
         <Button
-            className="modal-close btn-round"
+            className="modal-close btn-circle"
             on:click={onClose}
             ariaLabel="閉じる"
         >

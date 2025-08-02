@@ -478,7 +478,6 @@
   .input-preview-wrapper {
     display: flex;
     flex-direction: column;
-    gap: 6px;
     width: 100%;
     height: 100%;
     min-height: 200px;
@@ -515,6 +514,6 @@
 
   .post-input:focus {
     outline: none;
-    border-color: #1da1f2;
+    border-color: var(--hagaki);
   }
 </style>
