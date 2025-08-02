@@ -52,6 +52,7 @@
   };
 
   let profileLoaded = false;
+  let isLoadingProfile = false; // 追加: プロフィール読み込み状態
 
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
@@ -110,12 +111,14 @@
       errorMessage = "";
 
       if (currentHexKey) {
+        isLoadingProfile = true; // 読み込み開始
         await relayManager.fetchUserRelays(currentHexKey);
         const profile = await profileManager.fetchProfileData(currentHexKey);
         if (profile) {
           profileData = profile;
-          profileLoaded = true;
         }
+        profileLoaded = true;
+        isLoadingProfile = false; // 読み込み完了
       }
     } else {
       errorMessage = "error_saving";
@@ -193,7 +196,9 @@
       // ストアの値が更新されるまで少し待つ
       setTimeout(async () => {
         if (currentHexKey) {
+          isLoadingProfile = true; // 読み込み開始
           await initializeNostr(currentHexKey);
+          isLoadingProfile = false; // 読み込み完了
         } else {
           await initializeNostr();
         }
@@ -323,11 +328,12 @@
 
     <!-- フッター -->
     <div class="footer-bar">
-      {#if hasStoredKey && profileLoaded}
+      {#if hasStoredKey && (profileLoaded || isLoadingProfile)}
         <ProfileComponent
           {profileData}
           {profileLoaded}
           {hasStoredKey}
+          {isLoadingProfile}
           showLogoutDialog={openLogoutDialog}
         />
       {:else}
