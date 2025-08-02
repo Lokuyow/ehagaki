@@ -72,7 +72,7 @@ select {
   }
 }
 
-button:active,
+button:active:not(:disabled),
 *[role="button"]:active {
   transform: scale(0.96);
 }
