@@ -31,7 +31,7 @@
         display: flex;
         justify-content: flex-end;
         gap: 1rem;
-        margin-top: 1.5rem;
+        margin: 1.5rem 0;
         width: 100%;
         height: 50px;
     }

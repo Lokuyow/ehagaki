@@ -61,27 +61,21 @@
         id="secretKey"
         name="secretKey"
     />
-    {#if npubValue}
-        <p class="pubkey-label">
-            {$_("public_key_npub")}:
-            <br />
+    <div class="dialog-info">
+        {#if npubValue}
             <span class="pubkey-value" style="word-break:break-all"
                 >{npubValue}</span
             >
-        </p>
-    {/if}
-    {#if nprofileValue}
-        <p class="profilekey-label">
-            {$_("public_key_nprofile")}:
-            <br />
+        {/if}
+        {#if nprofileValue}
             <span class="profilekey-value" style="word-break:break-all"
                 >{nprofileValue}</span
             >
-        </p>
-    {/if}
-    {#if errorMessage}
-        <p class="error-message">{$_(errorMessage)}</p>
-    {/if}
+        {/if}
+        {#if errorMessage}
+            <p class="error-message">{$_(errorMessage)}</p>
+        {/if}
+    </div>
     <div class="dialog-buttons">
         <Button on:click={handleClose} className="cancel-btn btn"
             >{$_("cancel")}</Button
@@ -94,13 +88,13 @@
         >
     </div>
 </Dialog>
+}
 
 <style>
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
         gap: 6px;
-        margin-top: 1.5rem;
         width: 100%;
         height: 50px;
     }
@@ -132,14 +126,10 @@
         margin-top: 0.5rem;
     }
 
-    .pubkey-label,
-    .profilekey-label {
-        align-self: flex-start;
-        font-size: 0.92rem;
-        margin-bottom: 0.2rem;
-    }
     .pubkey-value,
     .profilekey-value {
+        align-self: flex-start;
+        margin: 0;
         font-size: 0.85rem;
     }
 
@@ -150,7 +140,19 @@
         background-color: var(--input-bg);
         border: 1px solid var(--border);
         width: 100%;
-        height: 50px;
+        height: 60px;
         margin-top: 0.5rem;
+    }
+
+    .dialog-info {
+        width: 100%;
+        margin: 20px 0;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
+        min-height: 86px;
+        box-sizing: border-box;
+        gap: 4px;
     }
 </style>

@@ -25,8 +25,6 @@
   "input_nostr_secret": "Nostrの秘密鍵(nsec1…)を入力してください",
   "save": "保存",
   "clear": "クリア",
-  "public_key_npub": "公開鍵(npub)",
-  "public_key_nprofile": "公開鍵(nprofile)",
   "logout_confirmation": "ログアウト確認",
   "logout_warning": "本当にログアウトしますか？",
   "logout": "ログアウト",
