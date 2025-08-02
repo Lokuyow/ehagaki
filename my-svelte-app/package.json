@@ -13,6 +13,7 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.1.0",
     "@tsconfig/svelte": "^5.0.4",
+    "@types/dompurify": "^3.0.5",
     "gh-pages": "^6.3.0",
     "svelte": "^5.35.5",
     "svelte-check": "^4.2.2",
@@ -23,8 +24,12 @@
   "dependencies": {
     "@rx-nostr/crypto": "^0.0.0",
     "browser-image-compression": "^2.0.2",
+    "dompurify": "^3.2.6",
     "nostr-tools": "^2.15.1",
     "rx-nostr": "^3.6.1",
-    "svelte-i18n": "^3.7.1"
+    "svelte-i18n": "^4.0.1"
+  },
+  "overrides": {
+    "esbuild": "^0.25.8"
   }
 }
