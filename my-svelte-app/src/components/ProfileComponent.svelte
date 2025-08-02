@@ -50,7 +50,6 @@
     gap: 4px;
     padding: 0 10px;
     z-index: 10;
-    max-width: 140px;
   }
 
   .profile-picture {
@@ -61,17 +60,14 @@
   }
 
   .profile-picture.default {
-    /* SVGマスク表示に変更 */
     mask-image: url("/ehagaki/icons/circle-user-solid-full.svg");
-    background-size: cover;
-    background-position: center;
   }
 
   .profile-name {
     font-size: 0.9em;
     font-weight: 500;
     color: var(--text);
-    max-width: 100px;
+    max-width: 80px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -96,7 +92,8 @@
   }
 
   @keyframes pulse {
-    0%, 100% {
+    0%,
+    100% {
       opacity: 0.6;
     }
     50% {
