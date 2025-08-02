@@ -35,22 +35,16 @@
     }
 
     .cancel-btn {
-        border: 1px solid #ccc;
         background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        color: #3d3d3d;
         width: 100%;
-    }
-    .cancel-btn:hover {
-        background-color: #e0e0e0;
     }
 
     .logout-btn {
         background-color: #d32f2f;
-        color: var(--text-r);
+        color: #fff;
         border: none;
         width: 100%;
-    }
-
-    .logout-btn:hover {
-        background-color: #b71c1c;
     }
 </style>

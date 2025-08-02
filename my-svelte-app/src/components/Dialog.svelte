@@ -43,6 +43,7 @@
         align-items: center;
         z-index: 100;
     }
+
     .dialog {
         background: var(--dialog-bg);
         color: var(--text);
@@ -53,5 +54,9 @@
         flex-direction: column;
         align-items: center;
         padding: 16px;
+    }
+
+    .settings-dialog {
+        padding: 0;
     }
 </style>

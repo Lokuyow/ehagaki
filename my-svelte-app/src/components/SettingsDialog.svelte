@@ -122,9 +122,10 @@
         align-items: center;
         justify-content: space-between;
         padding: 12px 16px;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--hr-border);
         font-weight: bold;
         font-size: 1.1rem;
+        width: 100%;
     }
     .modal-close {
         background: none;
@@ -141,6 +142,7 @@
         display: flex;
         flex-direction: column;
         gap: 16px;
+        width: 100%;
     }
     .setting-section {
         display: flex;
@@ -154,8 +156,6 @@
         gap: 6px;
     }
     .lang-icon-label {
-        vertical-align: middle;
-        /* mask-imageは個別指定 */
         mask-image: url("/ehagaki/icons/language-solid.svg");
     }
     .setting-control {
@@ -164,13 +164,11 @@
         height: 50px;
     }
     .lang-btn {
-        border: 1px solid #ddd;
         width: 120px;
     }
 
     select {
         padding: 6px;
-        border: 1px solid #ddd;
         min-width: 200px;
         height: 50px;
     }
@@ -182,8 +180,9 @@
         justify-content: flex-end;
         align-items: center;
         padding: 8px 16px 12px 16px;
-        border-top: 1px solid #eee;
+        border-top: 1px solid var(--hr-border);
         margin-top: 8px;
+        width: 100%;
     }
     .github-link {
         display: inline-flex;

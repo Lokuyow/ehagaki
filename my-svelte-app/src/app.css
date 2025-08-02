@@ -48,34 +48,28 @@ h1 {
   padding: 2em;
 }
 
-select {
-  cursor: pointer;
-  box-shadow: 0 2px 8px var(--shadow);
-  transition: filter 0.2s ease;
-
-  &:hover {
-    filter: brightness(0.95);
-  }
-}
-
 button,
-*[role="button"] {
+*[role="button"],
+select {
   -webkit-tap-highlight-color: transparent;
   color: var(--text);
-  border-color: var(--border);
+  border: 1px solid var(--border);
   background-color: var(--btn-bg);
   /* box-shadow: 0 2px 8px var(--shadow); */
   transition: filter 0.2s ease;
   cursor: pointer;
-
-  &:active {
-    transform: scale(0.96);
-  }
+  text-decoration: none;
+  user-select: none;
 
   &:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }
+}
+
+button:active,
+*[role="button"]:active {
+  transform: scale(0.96);
 }
 
 @media (min-width: 601px) {
@@ -99,8 +93,6 @@ button,
   font-size: 1rem;
   font-weight: 500;
   font-family: inherit;
-  text-decoration: none;
-  user-select: none;
   gap: 8px;
 }
 
@@ -141,6 +133,7 @@ button,
     --footer-bg: #FFF;
     --btn-bg: #fff;
     --border: #ddd;
+    --hr-border: #eee;
     --text: #3D3D3D;
     --text-r: #fff;
     --link: #646cff;
@@ -161,6 +154,7 @@ button,
     --footer-bg: #111;
     --btn-bg: #333;
     --border: #444;
+    --hr-border: #444;
     --text: #fff;
     --link: #646cff;
     --link-hover: #535bf2;
