@@ -546,7 +546,7 @@
     border: 1px solid var(--border);
     resize: none;
     font-family: inherit;
-    font-size: 1.2rem;
+    font-size: 1.1rem;
     transition: border-color 0.2s;
   }
 
