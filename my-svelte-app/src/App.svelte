@@ -363,20 +363,22 @@
     height: 100dvh;
   }
   .main-content {
-    margin: 10px 0;
+    margin-top: 10px;
     width: 100%;
-    height: calc(100% - 20px - 66px);
+    height: calc(100% - 10px - 66px);
     display: flex;
     flex-direction: column;
     align-items: center;
   }
   .footer-bar {
-    width: 100%;
-    height: 66px;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    width: 100%;
+    max-width: 800px;
+    height: 66px;
     gap: 8px;
+    margin: auto;
     padding: 8px;
     background: var(--footer-bg);
     position: fixed;

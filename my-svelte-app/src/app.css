@@ -126,11 +126,11 @@ button:active:not(:disabled),
     --dialog-bg: #2E2E2E;
     --preview-bg: #262626;
     --input-bg: #363636;
-    --footer-bg: #111;
+    --footer-bg: #222;
     --btn-bg: #363636;
     --border: #444;
     --hr-border: #444;
-    --text: #fff;
+    --text: #e6e6e6;
     --link: #646cff;
     --link-hover: #535bf2;
     --svg: #f0f0f0;

@@ -401,7 +401,7 @@
 
 <style>
   .post-container {
-    max-width: 600px;
+    max-width: 800px;
     width: 100%;
     height: 100%;
     display: flex;
@@ -415,7 +415,7 @@
     justify-content: flex-end;
     align-items: center;
     width: 100%;
-    padding: 0 10px;
+    padding: 0 16px;
   }
 
   .buttons-container {
@@ -500,13 +500,13 @@
   .post-input {
     background: var(--input-bg);
     width: 100%;
-    max-width: 600px;
+    max-width: 800px;
     min-width: 300px;
     min-height: 80px;
     height: 100%;
     padding: 10px;
     border: 1px solid var(--border);
-    resize: vertical;
+    resize: none;
     font-family: inherit;
     font-size: 1.2rem;
     transition: border-color 0.2s;
@@ -514,6 +514,6 @@
 
   .post-input:focus {
     outline: none;
-    border-color: var(--hagaki);
+    border-color: var(--theme);
   }
 </style>
