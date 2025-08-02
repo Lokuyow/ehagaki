@@ -1,6 +1,7 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { onDestroy } from "svelte";
+    import DOMPurify from "dompurify";
 
     export let imageSizeInfo: string = "";
     export let imageSizeInfoVisible: boolean = false;
@@ -90,7 +91,7 @@
         </div>
     {:else if imageSizeInfoVisible && imageSizeInfo}
         <div class="image-size-info">
-            {@html imageSizeInfo}
+            {@html DOMPurify.sanitize(imageSizeInfo)}
         </div>
     {/if}
 </div>

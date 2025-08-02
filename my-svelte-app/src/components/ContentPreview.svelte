@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { ImagePreviewManager } from "../lib/imagePreviewUtils";
     import { formatTextWithHashtagsAndLinks } from "../lib/utils";
+    import DOMPurify from "dompurify";
 
     export let content: string = "";
 
@@ -17,9 +18,11 @@
                 {#if part.type === "image"}
                     <img src={part.value} alt="" class="preview-image" />
                 {:else}
-                    {@html formatTextWithHashtagsAndLinks(part.value).replace(
-                        /\n/g,
-                        "<br>",
+                    {@html DOMPurify.sanitize(
+                        formatTextWithHashtagsAndLinks(part.value).replace(
+                            /\n/g,
+                            "<br>",
+                        )
                     )}
                 {/if}
             {/each}

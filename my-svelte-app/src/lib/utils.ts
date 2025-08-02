@@ -43,7 +43,7 @@ export function generateHashtagTags(content: string): string[][] {
 export function formatTextWithHashtags(text: string): string {
     return text.replace(
         /(?:^|[\s\n])#([^\s\n\t]+)/g,
-        (match, hashtag, offset) => {
+        (match, hashtag) => {
             const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
             return `${prefix}<span class="hashtag">#${hashtag}</span>`;
         }
@@ -71,19 +71,8 @@ export function formatTextWithLinks(text: string): string {
     const urlRegex = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
 
     return text.replace(urlRegex, (url) => {
-        // URLを安全にエスケープ
-        const escapedUrl = url.replace(/[&<>"']/g, (match) => {
-            const escapeMap: { [key: string]: string } = {
-                '&': '&amp;',
-                '<': '&lt;',
-                '>': '&gt;',
-                '"': '&quot;',
-                "'": '&#39;'
-            };
-            return escapeMap[match];
-        });
-
-        return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="preview-link">${escapedUrl}</a>`;
+        // ここでのエスケープ処理は不要。サニタイズはSvelte側で行う。
+        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="preview-link">${url}</a>`;
     });
 }
 
