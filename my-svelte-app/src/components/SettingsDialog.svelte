@@ -2,6 +2,7 @@
     import { onMount } from "svelte";
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
+    import Button from "./Button.svelte";
 
     export let show = false;
     export let onClose: () => void;
@@ -67,13 +68,13 @@
 >
     <div class="modal-header">
         <span>{$_("settings") || "設定"}</span>
-        <button
-            class="modal-close btn-round"
+        <Button
+            className="modal-close btn-round"
             on:click={onClose}
-            aria-label="閉じる"
+            ariaLabel="閉じる"
         >
             <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
-        </button>
+        </Button>
     </div>
     <div class="modal-body">
         <!-- 言語設定セクション -->
@@ -83,9 +84,9 @@
                 <div class="lang-icon-label svg-icon"></div>
             </span>
             <div class="setting-control">
-                <button class="lang-btn btn" on:click={toggleLanguage}>
+                <Button className="lang-btn btn" on:click={toggleLanguage}>
                     <span>{$locale === "ja" ? "日本語" : "English"}</span>
-                </button>
+                </Button>
             </div>
         </div>
 
@@ -130,7 +131,7 @@
         font-size: 1.1rem;
         width: 100%;
     }
-    .modal-close {
+    :global(.modal-close) {
         background: none;
         border: none;
         padding: 0 4px;
@@ -166,7 +167,7 @@
         align-items: center;
         height: 50px;
     }
-    .lang-btn {
+    :global(.lang-btn) {
         width: 120px;
     }
 

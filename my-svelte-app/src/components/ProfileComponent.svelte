@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
   import type { ProfileData } from "../lib/profileManager";
+  import Button from "./Button.svelte";
 
   export let profileData: ProfileData | null = null;
   export let profileLoaded = false;
@@ -9,13 +10,7 @@
 </script>
 
 {#if hasStoredKey && profileLoaded}
-  <div
-    class="profile-display btn"
-    on:click={showLogoutDialog}
-    on:keydown={(e) => e.key === "Enter" && showLogoutDialog()}
-    role="button"
-    tabindex="0"
-  >
+  <Button className="profile-display btn" on:click={showLogoutDialog}>
     {#if profileData?.picture && profileData.picture !== ""}
       <img
         src={profileData.picture}
@@ -36,12 +31,12 @@
           ? profileData.npub
           : "User"}
     </span>
-  </div>
+  </Button>
 {/if}
 
 <style>
   /* プロフィール表示のスタイル */
-  .profile-display {
+  :global(.profile-display) {
     gap: 4px;
     padding: 6px 12px;
     z-index: 10;

@@ -16,6 +16,7 @@
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
   import { useSwUpdate } from "./lib/useSwUpdate"; // 追加: サービスワーカー更新ロジック
+  import Button from "./components/Button.svelte";
 
   // Service Worker更新関連
   const {
@@ -330,20 +331,20 @@
           showLogoutDialog={openLogoutDialog}
         />
       {:else}
-        <button class="login-btn btn" on:click={showLoginDialog}>
+        <Button className="login-btn btn" on:click={showLoginDialog}>
           {hasStoredKey ? $_("logged_in") : $_("login")}
-        </button>
+        </Button>
       {/if}
 
       <FooterInfoDisplay bind:this={footerInfoDisplay} />
 
-      <button
-        class="settings-btn btn-round"
+      <Button
+        className="settings-btn btn-round"
         on:click={openSettings}
-        aria-label="設定"
+        ariaLabel="設定"
       >
         <div class="settings-icon svg-icon" aria-label="Settings"></div>
-      </button>
+      </Button>
     </div>
   </main>
 {/if}
@@ -379,7 +380,7 @@
     box-shadow: 0 -2px 8px #0001;
     z-index: 99;
   }
-  .login-btn {
+  :global(.login-btn) {
     width: 110px;
     border: none;
     background: var(--theme);
@@ -388,7 +389,7 @@
     box-shadow: 0 2px 8px #0001;
   }
 
-  .settings-btn {
+  :global(.settings-btn) {
     border: 1px solid var(--border);
   }
 

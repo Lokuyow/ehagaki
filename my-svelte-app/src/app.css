@@ -51,15 +51,20 @@ h1 {
 button,
 *[role="button"],
 select {
-  -webkit-tap-highlight-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0;
+  font-size: 1rem;
   color: var(--text);
   border: 1px solid var(--border);
   background-color: var(--btn-bg);
-  /* box-shadow: 0 2px 8px var(--shadow); */
   transition: filter 0.2s ease;
   cursor: pointer;
   text-decoration: none;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
 
   &:disabled {
     opacity: 0.4;
@@ -68,7 +73,7 @@ select {
 }
 
 button:active,
-*[role="button"]:active {
+:global(*[role="button"]:active) {
   transform: scale(0.96);
 }
 
@@ -81,36 +86,6 @@ button:active,
   button:hover:not(:disabled) {
     background-color: color-mix(in srgb, var(--btn-bg), black 10%);
   }
-}
-
-/* 角なし */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  padding: 6px;
-  font-size: 1rem;
-  font-weight: 500;
-  font-family: inherit;
-  gap: 8px;
-}
-
-/* 丸ボタン（アイコンボタン等） */
-.btn-round {
-  border-radius: 50%;
-  padding: 0;
-  width: 50px;
-  height: 50px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.btn-round:active {
-  background: #e0e0e0;
-  box-shadow: 0 1px 2px #0002;
-  transform: scale(0.96);
 }
 
 .svg-icon {

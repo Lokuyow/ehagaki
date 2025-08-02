@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { PublicKeyState } from "../lib/keyManager";
     import Dialog from "./Dialog.svelte";
+    import Button from "./Button.svelte";
 
     export let secretKey: string;
     export let errorMessage: string = "";
@@ -82,13 +83,15 @@
         <p class="error-message">{$_(errorMessage)}</p>
     {/if}
     <div class="dialog-buttons">
-        <button on:click={handleClose} class="cancel-btn btn"
-            >{$_("cancel")}</button
+        <Button on:click={handleClose} className="cancel-btn btn"
+            >{$_("cancel")}</Button
         >
-        <button on:click={handleClear} class="clear-btn btn"
-            >{$_("clear")}</button
+        <Button on:click={handleClear} className="clear-btn btn"
+            >{$_("clear")}</Button
         >
-        <button on:click={handleSave} class="save-btn btn">{$_("save")}</button>
+        <Button on:click={handleSave} className="save-btn btn"
+            >{$_("save")}</Button
+        >
     </div>
 </Dialog>
 
@@ -102,21 +105,21 @@
         height: 50px;
     }
 
-    .cancel-btn {
+    :global(.cancel-btn) {
         border: 1px solid #ccc;
         background-color: #f5f5f5;
         color: #333;
         width: 100%;
     }
 
-    .clear-btn {
+    :global(.clear-btn) {
         border: 1px solid #ccc;
         background-color: #fffbe6;
         color: #333;
         width: 100%;
     }
 
-    .save-btn {
+    :global(.save-btn) {
         background-color: #646cff;
         color: white;
         border: none;
@@ -138,7 +141,6 @@
     .pubkey-value,
     .profilekey-value {
         font-size: 0.85rem;
-        color: #444;
     }
 
     .secret-input {

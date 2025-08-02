@@ -8,6 +8,7 @@
   } from "../lib/fileUploadManager";
   import ContentPreview from "./ContentPreview.svelte";
   import { onMount, onDestroy } from "svelte";
+  import Button from "./Button.svelte";
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
@@ -342,25 +343,23 @@
     {/if}
 
     <div class="buttons-container">
-      <button
-        class="image-button btn"
+      <Button
+        className="image-button btn"
         disabled={!hasStoredKey || postStatus.sending || isUploading}
         on:click={openFileDialog}
-        title={$_("upload_image")}
-        aria-label={$_("upload_image")}
+        ariaLabel={$_("upload_image")}
       >
         <div class="image-icon svg-icon"></div>
-      </button>
+      </Button>
 
-      <button
-        class="post-button btn"
+      <Button
+        className="post-button btn"
         disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
         on:click={submitPost}
-        title={$_("post")}
-        aria-label={$_("post")}
+        ariaLabel={$_("post")}
       >
         <div class="plane-icon svg-icon"></div>
-      </button>
+      </Button>
     </div>
   </div>
 
@@ -426,7 +425,7 @@
     height: 60px;
   }
 
-  .post-button {
+  :global(.post-button) {
     font-size: 1.1rem;
     font-weight: bold;
     border: 1px solid var(--hagaki);
@@ -463,7 +462,7 @@
     color: #2e7d32;
   }
 
-  .image-button {
+  :global(.image-button) {
     width: 54px;
     border: 1px solid var(--hagaki);
   }

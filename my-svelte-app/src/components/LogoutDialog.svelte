@@ -1,6 +1,7 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
+    import Button from "./Button.svelte";
 
     export let show = false;
     export let onClose: () => void;
@@ -16,10 +17,11 @@
     <h2>{$_("logout_confirmation")}</h2>
     <p>{$_("logout_warning")}</p>
     <div class="dialog-buttons">
-        <button on:click={onClose} class="cancel-btn btn">{$_("cancel")}</button
+        <Button on:click={onClose} className="cancel-btn btn"
+            >{$_("cancel")}</Button
         >
-        <button on:click={onLogout} class="logout-btn btn"
-            >{$_("logout")}</button
+        <Button on:click={onLogout} className="logout-btn btn"
+            >{$_("logout")}</Button
         >
     </div>
 </Dialog>
@@ -34,14 +36,14 @@
         height: 50px;
     }
 
-    .cancel-btn {
+    :global(.cancel-btn) {
         background-color: #f5f5f5;
         border: 1px solid #ddd;
         color: #3d3d3d;
         width: 100%;
     }
 
-    .logout-btn {
+    :global(.logout-btn) {
         background-color: #d32f2f;
         color: #fff;
         border: none;
