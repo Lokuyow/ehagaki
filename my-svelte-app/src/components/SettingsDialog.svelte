@@ -79,13 +79,13 @@
     <div class="modal-body">
         <!-- 言語設定セクション -->
         <div class="setting-section">
-            <span class="setting-label">
-                Language
-                <div class="lang-icon-label svg-icon"></div>
-            </span>
+            <span class="setting-label"> Language/言語 </span>
             <div class="setting-control">
                 <Button className="lang-btn btn" on:click={toggleLanguage}>
-                    <span>{$locale === "ja" ? "日本語" : "English"}</span>
+                    <div
+                        class="lang-icon-btn svg-icon"
+                        aria-label="Language"
+                    ></div>
                 </Button>
             </div>
         </div>
@@ -159,16 +159,20 @@
         align-items: center;
         gap: 6px;
     }
-    .lang-icon-label {
-        mask-image: url("/ehagaki/icons/language-solid.svg");
-    }
+
     .setting-control {
         display: flex;
         align-items: center;
         height: 50px;
     }
     :global(.lang-btn) {
-        width: 120px;
+        width: 100px;
+    }
+
+    .lang-icon-btn {
+        width: 32px;
+        height: 32px;
+        mask-image: url("/ehagaki/icons/language-solid-full.svg");
     }
 
     select {
