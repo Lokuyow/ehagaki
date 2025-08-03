@@ -67,7 +67,7 @@ select {
   -webkit-tap-highlight-color: transparent;
 
   &:disabled {
-    opacity: 0.4;
+    opacity: 0.3;
     cursor: not-allowed;
   }
 }

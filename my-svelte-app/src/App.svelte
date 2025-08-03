@@ -273,7 +273,10 @@
   }
 
   // サイズ情報を受け取る関数（FooterInfoDisplayに転送）
-  function handleImageSizeInfo(info: SizeDisplayInfo | null, visible: boolean): void {
+  function handleImageSizeInfo(
+    info: SizeDisplayInfo | null,
+    visible: boolean,
+  ): void {
     if (footerInfoDisplay && visible) {
       footerInfoDisplay.showSizeInfo(info);
     }
@@ -393,6 +396,7 @@
     border: none;
     background: var(--theme);
     color: var(--text-r);
+    font-weight: 500;
     z-index: 10;
     box-shadow: 0 2px 8px #0001;
   }

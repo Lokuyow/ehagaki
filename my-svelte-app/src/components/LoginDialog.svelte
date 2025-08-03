@@ -88,7 +88,6 @@
         >
     </div>
 </Dialog>
-}
 
 <style>
     .dialog-buttons {
