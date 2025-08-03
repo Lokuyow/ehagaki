@@ -98,3 +98,62 @@ export function formatTextWithHashtagsAndLinks(text: string): string {
 
     return formattedText;
 }
+
+/**
+ * ファイルサイズ情報の型定義
+ */
+export interface FileSizeInfo {
+  originalSize: number;
+  compressedSize: number;
+  wasCompressed: boolean;
+  compressionRatio: number;
+  sizeReduction: string;
+}
+
+/**
+ * ファイルサイズを人間に読みやすい形式に変換
+ * @param bytes バイト数
+ * @returns 読みやすい形式の文字列
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return '0KB';
+  const kb = Math.round(bytes / 1024);
+  return `${kb}KB`;
+}
+
+/**
+ * ファイルサイズ情報を生成
+ * @param originalSize 元のファイルサイズ（バイト）
+ * @param compressedSize 圧縮後のファイルサイズ（バイト）
+ * @param wasCompressed 圧縮されたかどうか
+ * @returns ファイルサイズ情報
+ */
+export function createFileSizeInfo(
+  originalSize: number, 
+  compressedSize: number, 
+  wasCompressed: boolean
+): FileSizeInfo {
+  const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
+  const sizeReduction = `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
+  
+  return {
+    originalSize,
+    compressedSize,
+    wasCompressed,
+    compressionRatio,
+    sizeReduction
+  };
+}
+
+/**
+ * サイズ情報からHTML表示用の文字列を生成
+ * @param sizeInfo ファイルサイズ情報
+ * @returns 表示用HTML文字列、または圧縮されていない場合はnull
+ */
+export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string | null {
+  if (!sizeInfo || !sizeInfo.wasCompressed) {
+    return null;
+  }
+  
+  return `データサイズ:<br>${sizeInfo.sizeReduction} （${sizeInfo.compressionRatio}%）`;
+}

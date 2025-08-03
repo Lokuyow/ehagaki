@@ -1,5 +1,6 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
+import { createFileSizeInfo, type FileSizeInfo } from "./utils";
 import imageCompression from "browser-image-compression";
 
 // ファイルアップロードの応答型
@@ -7,13 +8,7 @@ export interface FileUploadResponse {
   success: boolean;
   url?: string;
   error?: string;
-  originalSize?: number;
-  compressedSize?: number;
-  originalType?: string;
-  compressedType?: string;
-  wasCompressed?: boolean;
-  compressionRatio?: number;
-  sizeReduction?: string;
+  sizeInfo?: FileSizeInfo;
 }
 
 // 複数ファイルアップロードの進捗情報型
@@ -26,7 +21,7 @@ export interface MultipleUploadProgress {
 
 // 情報通知用のコールバック
 export interface UploadInfoCallbacks {
-  onSizeInfo?: (info: string, visible: boolean) => void;
+  onSizeInfo?: (sizeInfo: FileSizeInfo) => void;
   onProgress?: (progress: MultipleUploadProgress) => void;
 }
 
@@ -96,16 +91,6 @@ export class FileUploadManager {
   }
 
   /**
-   * サイズ情報を生成
-   */
-  public static generateSizeInfo(result: FileUploadResponse): string | null {
-    if (result.wasCompressed && result.sizeReduction && result.compressionRatio) {
-      return `データサイズ:<br>${result.sizeReduction} （${result.compressionRatio}%）`;
-    }
-    return null;
-  }
-
-  /**
    * ファイルタイプの検証
    */
   public static validateImageFile(file: File): FileValidationResult {
@@ -132,16 +117,13 @@ export class FileUploadManager {
 
       // 元のファイル情報を記録
       const originalSize = file.size;
-      const originalType = file.type;
 
       // 画像圧縮
       const { file: uploadFile, wasCompressed } = await this.compressImage(file);
       const compressedSize = uploadFile.size;
-      const compressedType = uploadFile.type;
 
-      // サイズ比較情報を計算
-      const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
-      const sizeReduction = `${Math.round(originalSize / 1024)}KB → ${Math.round(compressedSize / 1024)}KB`;
+      // サイズ情報を生成
+      const sizeInfo = createFileSizeInfo(originalSize, compressedSize, wasCompressed);
 
       // アップロード先URLの決定
       const savedEndpoint = localStorage.getItem("uploadEndpoint");
@@ -161,22 +143,12 @@ export class FileUploadManager {
         body: formData
       });
 
-      const baseResponse = {
-        originalSize,
-        compressedSize,
-        originalType,
-        compressedType,
-        wasCompressed,
-        compressionRatio,
-        sizeReduction
-      };
-
       if (!response.ok) {
         const errorText = await response.text();
         return {
           success: false,
           error: `Upload failed: ${response.status} ${errorText}`,
-          ...baseResponse
+          sizeInfo
         };
       }
 
@@ -189,7 +161,7 @@ export class FileUploadManager {
           return {
             success: true,
             url: urlTag[1],
-            ...baseResponse
+            sizeInfo
           };
         }
       }
@@ -197,7 +169,7 @@ export class FileUploadManager {
       return {
         success: false,
         error: data.message || 'Could not extract URL from response',
-        ...baseResponse
+        sizeInfo
       };
     } catch (error) {
       return {
@@ -290,11 +262,8 @@ export class FileUploadManager {
       });
 
       // サイズ情報を通知
-      if (result.success && callbacks?.onSizeInfo) {
-        const sizeInfo = this.generateSizeInfo(result);
-        if (sizeInfo) {
-          callbacks.onSizeInfo(sizeInfo, true);
-        }
+      if (result.success && result.sizeInfo && callbacks?.onSizeInfo) {
+        callbacks.onSizeInfo(result.sizeInfo);
       }
 
       return result;
@@ -325,13 +294,10 @@ export class FileUploadManager {
 
     const results = await this.uploadMultipleFiles(files, apiUrl, callbacks?.onProgress);
 
-    // 最初の成功した結果からサイズ情報を生成
-    const firstSuccess = results.find(r => r.success);
-    if (firstSuccess && callbacks?.onSizeInfo) {
-      const sizeInfo = this.generateSizeInfo(firstSuccess);
-      if (sizeInfo) {
-        callbacks.onSizeInfo(sizeInfo, true);
-      }
+    // 最初の成功した結果からサイズ情報を通知
+    const firstSuccess = results.find(r => r.success && r.sizeInfo);
+    if (firstSuccess?.sizeInfo && callbacks?.onSizeInfo) {
+      callbacks.onSizeInfo(firstSuccess.sizeInfo);
     }
 
     return results;

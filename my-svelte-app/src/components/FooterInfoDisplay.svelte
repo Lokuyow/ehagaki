@@ -20,8 +20,12 @@
     // 自動タイムアウト管理
     let timeoutId: number | null = null;
 
-    // サイズ情報の表示管理
-    export function showSizeInfo(info: string, duration: number = 3000) {
+    /**
+     * サイズ情報の表示管理
+     * @param info 表示する情報（HTML可）
+     * @param duration 表示時間（ミリ秒）
+     */
+    export function showSizeInfo(info: string, duration: number = 3000): void {
         imageSizeInfo = info;
         imageSizeInfoVisible = true;
 
@@ -37,13 +41,16 @@
         }, duration);
     }
 
-    // 進捗情報の更新
+    /**
+     * 進捗情報の更新
+     * @param progress アップロード進捗情報
+     */
     export function updateProgress(progress: {
         total: number;
         completed: number;
         failed: number;
         inProgress: boolean;
-    }) {
+    }): void {
         uploadProgress = progress;
 
         // 進捗が完了したら一定時間後に非表示
@@ -111,15 +118,13 @@
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        color: #2e7d32;
-        font-size: 0.8rem;
+        color: var(--text);
+        font-size: 0.9rem;
         white-space: normal;
         word-wrap: break-word;
         text-align: left;
         max-width: 100%;
-        line-height: 1.2;
-        opacity: 0.9;
-        user-select: none;
+        line-height: 1;
     }
 
     .upload-progress {
@@ -127,12 +132,13 @@
         flex-direction: column;
         align-items: center;
         gap: 4px;
-        max-width: 100%;
+        width: 100%;
+        padding: 0 8px;
     }
 
     .progress-text {
         font-size: 0.9rem;
-        color: #666;
+        color: var(--text);
         text-align: center;
         white-space: normal;
         word-wrap: break-word;
@@ -140,15 +146,15 @@
     }
 
     .progress-bar {
-        width: 120px;
-        height: 10px;
+        width: 100%;
+        height: 14px;
         background-color: #e0e0e0;
         overflow: hidden;
     }
 
     .progress-fill {
         height: 100%;
-        background-color: #1da1f2;
+        background-color: var(--theme);
         transition: width 0.3s ease;
     }
 </style>

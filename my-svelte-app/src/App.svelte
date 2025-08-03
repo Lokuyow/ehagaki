@@ -265,14 +265,14 @@
     completed: number;
     failed: number;
     inProgress: boolean;
-  }) {
+  }): void {
     if (footerInfoDisplay) {
       footerInfoDisplay.updateProgress(progress);
     }
   }
 
-  // 削減データ量情報を受け取る関数（FooterInfoDisplayに転送）
-  function handleImageSizeInfo(info: string, visible: boolean) {
+  // サイズ情報を受け取る関数（FooterInfoDisplayに転送）
+  function handleImageSizeInfo(info: string, visible: boolean): void {
     if (footerInfoDisplay && visible) {
       footerInfoDisplay.showSizeInfo(info);
     }
