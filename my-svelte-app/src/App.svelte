@@ -64,7 +64,6 @@
   let relayManager: RelayManager;
 
   // 共有画像処理状態
-  let processingSharedImage = false;
   let sharedImageReceived = false;
   let isUploading = false;
 
