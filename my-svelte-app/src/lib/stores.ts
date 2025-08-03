@@ -19,12 +19,7 @@ export const imageSizeInfoStore = writable<{
  */
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
     imageSizeInfoStore.set({ info, visible: true });
-
-    if (info) {
-        setTimeout(() => {
-            imageSizeInfoStore.update(state => ({ ...state, visible: false }));
-        }, duration);
-    }
+    // タイマーによる自動非表示を削除
 }
 
 /**
