@@ -171,8 +171,6 @@
     }
 
     .lang-icon-btn {
-        width: 32px;
-        height: 32px;
         mask-image: url("/ehagaki/icons/language-solid-full.svg");
     }
 
