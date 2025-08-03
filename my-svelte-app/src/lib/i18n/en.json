@@ -31,5 +31,5 @@
   "invalid_secret": "Invalid secret key",
   "uploading": "Uploading",
   "failed": "Failed",
-  "data_size": "Data size"
+  "data_size": "Transmission size"
 }

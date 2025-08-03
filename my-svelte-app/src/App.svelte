@@ -17,6 +17,7 @@
   import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
   import { useSwUpdate } from "./lib/useSwUpdate"; // 追加: サービスワーカー更新ロジック
   import Button from "./components/Button.svelte";
+  import type { SizeDisplayInfo } from "./lib/utils";
 
   // Service Worker更新関連
   const {
@@ -272,7 +273,7 @@
   }
 
   // サイズ情報を受け取る関数（FooterInfoDisplayに転送）
-  function handleImageSizeInfo(info: string, visible: boolean): void {
+  function handleImageSizeInfo(info: SizeDisplayInfo | null, visible: boolean): void {
     if (footerInfoDisplay && visible) {
       footerInfoDisplay.showSizeInfo(info);
     }

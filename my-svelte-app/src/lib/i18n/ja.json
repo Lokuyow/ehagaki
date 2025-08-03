@@ -31,5 +31,5 @@
   "invalid_secret": "無効な秘密鍵です",
   "uploading": "アップロード中",
   "failed": "失敗",
-  "data_size": "データ量"
+  "data_size": "送信サイズ"
 }

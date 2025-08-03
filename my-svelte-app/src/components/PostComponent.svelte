@@ -6,7 +6,11 @@
     FileUploadManager,
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
-  import { generateSizeDisplayText, type FileSizeInfo } from "../lib/utils";
+  import {
+    type FileSizeInfo,
+    generateSizeDisplayInfo,
+    type SizeDisplayInfo,
+  } from "../lib/utils";
   import ContentPreview from "./ContentPreview.svelte";
   import { onMount, onDestroy } from "svelte";
   import Button from "./Button.svelte";
@@ -16,7 +20,9 @@
   export let hasStoredKey: boolean;
   export let onPostSuccess: (() => void) | undefined;
   export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
-  export let onImageSizeInfo: ((info: string, visible: boolean) => void) | undefined;
+  export let onImageSizeInfo:
+    | ((info: SizeDisplayInfo | null, visible: boolean) => void)
+    | undefined;
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
   // 投稿機能のための状態変数（UI状態管理をコンポーネントで完結）
@@ -53,9 +59,9 @@
   // アップロード用コールバックを作成
   const uploadCallbacks: UploadInfoCallbacks = {
     onSizeInfo: (sizeInfo: FileSizeInfo) => {
-      const displayText = generateSizeDisplayText(sizeInfo);
-      if (displayText && onImageSizeInfo) {
-        onImageSizeInfo(displayText, true);
+      const displayInfo = generateSizeDisplayInfo(sizeInfo);
+      if (displayInfo && onImageSizeInfo) {
+        onImageSizeInfo(displayInfo, true);
       }
     },
     onProgress: onUploadProgress,

@@ -1,9 +1,9 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { onDestroy } from "svelte";
-    import DOMPurify from "dompurify";
+    import type { SizeDisplayInfo } from "../lib/utils";
 
-    export let imageSizeInfo: string = "";
+    export let imageSizeInfo: SizeDisplayInfo | null = null;
     export let imageSizeInfoVisible: boolean = false;
     export let uploadProgress: {
         total: number;
@@ -22,10 +22,10 @@
 
     /**
      * サイズ情報の表示管理
-     * @param info 表示する情報（HTML可）
+     * @param info 表示する構造化データ
      * @param duration 表示時間（ミリ秒）
      */
-    export function showSizeInfo(info: string, duration: number = 3000): void {
+    export function showSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
         imageSizeInfo = info;
         imageSizeInfoVisible = true;
 
@@ -96,9 +96,12 @@
                 ></div>
             </div>
         </div>
-    {:else if imageSizeInfoVisible && imageSizeInfo}
+    {:else if imageSizeInfoVisible && imageSizeInfo && imageSizeInfo.wasCompressed}
         <div class="image-size-info">
-            {@html DOMPurify.sanitize(imageSizeInfo)}
+            <div class="size-label">{$_("data_size")}:</div>
+            <div class="size-details">
+                {imageSizeInfo.originalSize} → {imageSizeInfo.compressedSize} ({imageSizeInfo.compressionRatio}%)
+            </div>
         </div>
     {/if}
 </div>
@@ -116,15 +119,27 @@
 
     .image-size-info {
         display: flex;
-        align-items: center;
-        justify-content: flex-start;
+        flex-direction: column;
+        align-items: flex-start;
+        justify-content: center;
         color: var(--text);
         font-size: 0.9rem;
         white-space: normal;
         word-wrap: break-word;
         text-align: left;
         max-width: 100%;
-        line-height: 1;
+        line-height: 1.2;
+        gap: 2px;
+    }
+
+    .size-label {
+        font-size: 0.8rem;
+        opacity: 0.8;
+    }
+
+    .size-details {
+        font-size: 0.9rem;
+        font-weight: 500;
     }
 
     .upload-progress {

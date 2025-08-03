@@ -11,18 +11,18 @@ const HASHTAG_REGEX = /(?:^|[\s\n])#([^\s\n\t]+)/g;
  * @returns ハッシュタグの配列（#なし）
  */
 export function extractHashtags(content: string): string[] {
-    const hashtags: string[] = [];
-    let match;
-    const regex = new RegExp(HASHTAG_REGEX);
+  const hashtags: string[] = [];
+  let match;
+  const regex = new RegExp(HASHTAG_REGEX);
 
-    while ((match = regex.exec(content)) !== null) {
-        const hashtag = match[1];
-        if (hashtag && hashtag.trim()) {
-            hashtags.push(hashtag);
-        }
+  while ((match = regex.exec(content)) !== null) {
+    const hashtag = match[1];
+    if (hashtag && hashtag.trim()) {
+      hashtags.push(hashtag);
     }
+  }
 
-    return hashtags;
+  return hashtags;
 }
 
 /**
@@ -31,8 +31,8 @@ export function extractHashtags(content: string): string[] {
  * @returns tタグの配列
  */
 export function generateHashtagTags(content: string): string[][] {
-    const hashtags = extractHashtags(content);
-    return hashtags.map(hashtag => ["t", hashtag]);
+  const hashtags = extractHashtags(content);
+  return hashtags.map(hashtag => ["t", hashtag]);
 }
 
 /**
@@ -41,13 +41,13 @@ export function generateHashtagTags(content: string): string[][] {
  * @returns ハッシュタグがスタイル付きHTMLに変換されたテキスト
  */
 export function formatTextWithHashtags(text: string): string {
-    return text.replace(
-        /(?:^|[\s\n])#([^\s\n\t]+)/g,
-        (match, hashtag) => {
-            const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
-            return `${prefix}<span class="hashtag">#${hashtag}</span>`;
-        }
-    );
+  return text.replace(
+    /(?:^|[\s\n])#([^\s\n\t]+)/g,
+    (match, hashtag) => {
+      const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
+      return `${prefix}<span class="hashtag">#${hashtag}</span>`;
+    }
+  );
 }
 
 /**
@@ -56,7 +56,7 @@ export function formatTextWithHashtags(text: string): string {
  * @returns ハッシュタグが含まれている場合true
  */
 export function containsHashtags(content: string): boolean {
-    return /(?:^|[\s\n])#([^\s\n\t]+)/.test(content);
+  return /(?:^|[\s\n])#([^\s\n\t]+)/.test(content);
 }
 
 /**
@@ -65,15 +65,15 @@ export function containsHashtags(content: string): boolean {
  * @returns URLがリンクに変換されたテキスト
  */
 export function formatTextWithLinks(text: string): string {
-    if (!text) return "";
+  if (!text) return "";
 
-    // URLパターンを定義（前後に文字がない場合のみマッチ）
-    const urlRegex = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
+  // URLパターンを定義（前後に文字がない場合のみマッチ）
+  const urlRegex = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
 
-    return text.replace(urlRegex, (url) => {
-        // ここでのエスケープ処理は不要。サニタイズはSvelte側で行う。
-        return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="preview-link">${url}</a>`;
-    });
+  return text.replace(urlRegex, (url) => {
+    // ここでのエスケープ処理は不要。サニタイズはSvelte側で行う。
+    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="preview-link">${url}</a>`;
+  });
 }
 
 /**
@@ -82,21 +82,21 @@ export function formatTextWithLinks(text: string): string {
  * @returns ハッシュタグとURLが適切に処理されたテキスト
  */
 export function formatTextWithHashtagsAndLinks(text: string): string {
-    if (!text) return "";
+  if (!text) return "";
 
-    // 最初にURLをリンクに変換
-    let formattedText = formatTextWithLinks(text);
+  // 最初にURLをリンクに変換
+  let formattedText = formatTextWithLinks(text);
 
-    // 次にハッシュタグを処理（リンク内のハッシュタグは除外）
-    formattedText = formattedText.replace(
-        /(?<!<a[^>]*>.*?)(?:^|[\s\n])#([^\s\n\t]+)(?![^<]*<\/a>)/g,
-        (match, hashtag) => {
-            const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
-            return `${prefix}<span class="hashtag">#${hashtag}</span>`;
-        }
-    );
+  // 次にハッシュタグを処理（リンク内のハッシュタグは除外）
+  formattedText = formattedText.replace(
+    /(?<!<a[^>]*>.*?)(?:^|[\s\n])#([^\s\n\t]+)(?![^<]*<\/a>)/g,
+    (match, hashtag) => {
+      const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
+      return `${prefix}<span class="hashtag">#${hashtag}</span>`;
+    }
+  );
 
-    return formattedText;
+  return formattedText;
 }
 
 /**
@@ -129,13 +129,13 @@ export function formatFileSize(bytes: number): string {
  * @returns ファイルサイズ情報
  */
 export function createFileSizeInfo(
-  originalSize: number, 
-  compressedSize: number, 
+  originalSize: number,
+  compressedSize: number,
   wasCompressed: boolean
 ): FileSizeInfo {
   const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
   const sizeReduction = `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
-  
+
   return {
     originalSize,
     compressedSize,
@@ -146,14 +146,43 @@ export function createFileSizeInfo(
 }
 
 /**
+ * サイズ情報表示用の構造化データ
+ */
+export interface SizeDisplayInfo {
+  wasCompressed: boolean;
+  originalSize: string;
+  compressedSize: string;
+  compressionRatio: number;
+}
+
+/**
+ * サイズ情報から表示用の構造化データを生成
+ * @param sizeInfo ファイルサイズ情報
+ * @returns 表示用構造化データ、または圧縮されていない場合はnull
+ */
+export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisplayInfo | null {
+  if (!sizeInfo || !sizeInfo.wasCompressed) {
+    return null;
+  }
+
+  return {
+    wasCompressed: true,
+    originalSize: formatFileSize(sizeInfo.originalSize),
+    compressedSize: formatFileSize(sizeInfo.compressedSize),
+    compressionRatio: sizeInfo.compressionRatio
+  };
+}
+
+/**
  * サイズ情報からHTML表示用の文字列を生成
  * @param sizeInfo ファイルサイズ情報
  * @returns 表示用HTML文字列、または圧縮されていない場合はnull
  */
 export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string | null {
+  // 後方互換性のために保持（廃止予定）
   if (!sizeInfo || !sizeInfo.wasCompressed) {
     return null;
   }
-  
+
   return `データサイズ:<br>${sizeInfo.sizeReduction} （${sizeInfo.compressionRatio}%）`;
 }
