@@ -35,7 +35,7 @@
 <style>
     .post-preview {
         padding: 12px;
-        background: var(--preview-bg);
+        background: var(--bg-preview);
         width: 100%;
         min-width: 300px;
         flex: 1 1 40%;

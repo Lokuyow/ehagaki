@@ -27,6 +27,9 @@
 </Dialog>
 
 <style>
+    h2 {
+        color: var(--text-light);
+    }
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;

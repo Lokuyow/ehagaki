@@ -92,17 +92,17 @@
         flex-direction: column;
         align-items: flex-start;
         justify-content: center;
-        color: var(--text);
         font-size: 0.9rem;
         white-space: normal;
         word-wrap: break-word;
         text-align: left;
         max-width: 100%;
-        line-height: 1.2;
+        line-height: 1;
         gap: 2px;
     }
 
     .size-label {
+        color: var(--text-light);
         font-size: 0.8rem;
         opacity: 0.8;
     }

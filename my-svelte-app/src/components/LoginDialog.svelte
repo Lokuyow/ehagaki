@@ -90,6 +90,9 @@
 </Dialog>
 
 <style>
+    h2 {
+        color: var(--text-light);
+    }
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
@@ -101,14 +104,14 @@
     :global(.cancel-btn) {
         border: 1px solid #ccc;
         background-color: #f5f5f5;
-        color: #333;
+        color: #3D3D3D;
         width: 100%;
     }
 
     :global(.clear-btn) {
         border: 1px solid #ccc;
         background-color: #fffbe6;
-        color: #333;
+        color: #3D3D3D;
         width: 100%;
     }
 
@@ -136,7 +139,7 @@
         font-family: monospace;
         font-size: 1rem;
         padding: 0.6rem;
-        background-color: var(--input-bg);
+        background-color: var(--bg-input);
         border: 1px solid var(--border);
         width: 100%;
         height: 60px;

@@ -102,15 +102,16 @@ button:active:not(:disabled),
   :root {
     /* ライトモード用カラー変数 */
     --bg: #EBECED;
-    --dialog-bg: #fff;
-    --preview-bg: #FAFAFA;
-    --input-bg: #fff;
-    --footer-bg: #FFF;
+    --bg-dialog: #fff;
+    --bg-preview: #FAFAFA;
+    --bg-input: #fff;
+    --bg-footer: #FFF;
     --btn-bg: #fff;
     --border: #ddd;
-    --hr-border: #eee;
+    --border-hr: #eee;
     --text: #3D3D3D;
-    --text-r: #fff;
+    --text-light: #757575;
+    --text-r: #e6e6e6;
     --link: #646cff;
     --link-hover: #747bff;
     --svg: #525252;
@@ -123,14 +124,16 @@ button:active:not(:disabled),
   :root {
     /* ダークモード用カラー変数 */
     --bg: #19191A;
-    --dialog-bg: #242424;
-    --preview-bg: #262626;
-    --input-bg: #363636;
-    --footer-bg: #1A1A1A;
+    --bg-dialog: #242424;
+    --bg-preview: #262626;
+    --bg-input: #363636;
+    --bg-footer: #1A1A1A;
     --btn-bg: #363636;
     --border: #444;
-    --hr-border: #444;
+    --border-hr: #444;
     --text: #e6e6e6;
+    --text-light: #A6A6A6;
+    --text-r: #3D3D3D;
     --link: #646cff;
     --link-hover: #535bf2;
     --svg: #f0f0f0;

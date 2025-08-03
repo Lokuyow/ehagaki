@@ -532,7 +532,7 @@
   }
 
   .post-input {
-    background: var(--input-bg);
+    background: var(--bg-input);
     width: 100%;
     max-width: 800px;
     min-width: 300px;

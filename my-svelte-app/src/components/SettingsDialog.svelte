@@ -125,11 +125,12 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 12px 16px;
-        border-bottom: 1px solid var(--hr-border);
+        color: var(--text-light);
         font-weight: bold;
-        font-size: 1.1rem;
+        font-size: 1.3rem;
         width: 100%;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--border-hr);
     }
     :global(.modal-close) {
         background: none;
@@ -188,7 +189,7 @@
         justify-content: flex-end;
         align-items: center;
         padding: 8px 16px 12px 16px;
-        border-top: 1px solid var(--hr-border);
+        border-top: 1px solid var(--border-hr);
         margin-top: 8px;
         width: 100%;
     }

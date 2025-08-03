@@ -371,7 +371,7 @@
     gap: 8px;
     margin: auto;
     padding: 8px;
-    background: var(--footer-bg);
+    background: var(--bg-footer);
     position: fixed;
     left: 0;
     right: 0;
@@ -383,7 +383,7 @@
     width: 110px;
     border: none;
     background: var(--theme);
-    color: var(--text-r);
+    color: #fff;
     font-weight: 500;
     z-index: 10;
     box-shadow: 0 2px 8px #0001;
