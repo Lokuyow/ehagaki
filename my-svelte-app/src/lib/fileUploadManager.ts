@@ -1,6 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
-import { createFileSizeInfo, type FileSizeInfo } from "./utils";
+import { createFileSizeInfo, generateSizeDisplayInfo, type FileSizeInfo } from "./utils";
+import { showImageSizeInfo } from "./stores";
 import imageCompression from "browser-image-compression";
 
 // ファイルアップロードの応答型
@@ -19,9 +20,8 @@ export interface MultipleUploadProgress {
   inProgress: boolean;
 }
 
-// 情報通知用のコールバック
+// 情報通知用のコールバック（サイズ情報コールバックを削除）
 export interface UploadInfoCallbacks {
-  onSizeInfo?: (sizeInfo: FileSizeInfo) => void;
   onProgress?: (progress: MultipleUploadProgress) => void;
 }
 
@@ -261,9 +261,12 @@ export class FileUploadManager {
         inProgress: false
       });
 
-      // サイズ情報を通知
-      if (result.success && result.sizeInfo && callbacks?.onSizeInfo) {
-        callbacks.onSizeInfo(result.sizeInfo);
+      // サイズ情報をストアに書き込み
+      if (result.success && result.sizeInfo) {
+        const displayInfo = generateSizeDisplayInfo(result.sizeInfo);
+        if (displayInfo) {
+          showImageSizeInfo(displayInfo);
+        }
       }
 
       return result;
@@ -294,10 +297,13 @@ export class FileUploadManager {
 
     const results = await this.uploadMultipleFiles(files, apiUrl, callbacks?.onProgress);
 
-    // 最初の成功した結果からサイズ情報を通知
+    // 最初の成功した結果からサイズ情報をストアに書き込み
     const firstSuccess = results.find(r => r.success && r.sizeInfo);
-    if (firstSuccess?.sizeInfo && callbacks?.onSizeInfo) {
-      callbacks.onSizeInfo(firstSuccess.sizeInfo);
+    if (firstSuccess?.sizeInfo) {
+      const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
+      if (displayInfo) {
+        showImageSizeInfo(displayInfo);
+      }
     }
 
     return results;

@@ -1,10 +1,7 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { onDestroy } from "svelte";
-    import type { SizeDisplayInfo } from "../lib/utils";
+    import { imageSizeInfoStore } from "../lib/stores";
 
-    export let imageSizeInfo: SizeDisplayInfo | null = null;
-    export let imageSizeInfoVisible: boolean = false;
     export let uploadProgress: {
         total: number;
         completed: number;
@@ -17,29 +14,9 @@
         inProgress: false,
     };
 
-    // 自動タイムアウト管理
-    let timeoutId: number | null = null;
-
-    /**
-     * サイズ情報の表示管理
-     * @param info 表示する構造化データ
-     * @param duration 表示時間（ミリ秒）
-     */
-    export function showSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
-        imageSizeInfo = info;
-        imageSizeInfoVisible = true;
-
-        // 既存のタイムアウトをクリア
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
-
-        // 新しいタイムアウトを設定
-        timeoutId = setTimeout(() => {
-            imageSizeInfoVisible = false;
-            timeoutId = null;
-        }, duration);
-    }
+    // ストアから画像サイズ情報を取得
+    $: imageSizeInfo = $imageSizeInfoStore.info;
+    $: imageSizeInfoVisible = $imageSizeInfoStore.visible;
 
     /**
      * 進捗情報の更新
@@ -65,13 +42,6 @@
             }, 1000);
         }
     }
-
-    // クリーンアップ
-    onDestroy(() => {
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
-    });
 </script>
 
 <div class="footer-center">
