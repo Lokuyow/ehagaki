@@ -115,7 +115,7 @@ button:active:not(:disabled),
     --link: #646cff;
     --link-hover: #747bff;
     --svg: #525252;
-    --shadow: rgba(0, 0, 0, 0.15);
+    --shadow: rgba(0, 0, 0, 0.1);
     --hagaki: #e63a3a;
   }
 }
