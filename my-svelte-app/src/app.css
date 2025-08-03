@@ -123,10 +123,10 @@ button:active:not(:disabled),
   :root {
     /* ダークモード用カラー変数 */
     --bg: #19191A;
-    --dialog-bg: #2E2E2E;
+    --dialog-bg: #242424;
     --preview-bg: #262626;
     --input-bg: #363636;
-    --footer-bg: #222;
+    --footer-bg: #1A1A1A;
     --btn-bg: #363636;
     --border: #444;
     --hr-border: #444;
