@@ -80,6 +80,7 @@ select {
 button:active:not(:disabled),
 *[role="button"]:active {
   transform: scale(0.96);
+  transition: transform 0.1s;
 }
 
 @media (min-width: 601px) {
