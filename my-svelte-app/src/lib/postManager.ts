@@ -2,6 +2,8 @@ import { createRxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { generateHashtagTags } from "./utils";
+import { get } from "svelte/store";
+import { authState } from "./stores";
 
 // 投稿結果の型定義
 export interface PostResult {
@@ -19,7 +21,6 @@ export interface PostStatus {
 
 export class PostManager {
   private rxNostr: ReturnType<typeof createRxNostr> | null = null;
-  private isNostrLoginAuth: boolean = false; // nostr-login認証フラグを追加
 
   constructor(rxNostr?: ReturnType<typeof createRxNostr>) {
     if (rxNostr) {
@@ -32,16 +33,6 @@ export class PostManager {
     this.rxNostr = rxNostr;
   }
 
-  // 認証方法を設定するメソッドを追加
-  setAuthMethod(isNostrLogin: boolean) {
-    this.isNostrLoginAuth = isNostrLogin;
-  }
-
-  // 秘密鍵が含まれているかチェック
-  containsSecretKey(content: string): boolean {
-    return /nsec1[0-9a-zA-Z]+/.test(content);
-  }
-
   // 投稿内容の検証
   validatePost(content: string): { valid: boolean; error?: string } {
     if (!content.trim()) {
@@ -52,8 +43,9 @@ export class PostManager {
       return { valid: false, error: "nostr_not_ready" };
     }
 
-    // 認証状態をチェック
-    if (!keyManager.hasStoredKey() && !this.isNostrLoginAuth) {
+    // ストアから認証状態をチェック
+    const auth = get(authState);
+    if (!auth.isAuthenticated) {
       return { valid: false, error: "login_required" };
     }
 
@@ -80,8 +72,12 @@ export class PostManager {
         return { success: false, error: "nostr_not_ready" };
       }
 
+      // ストアから認証状態を取得
+      const auth = get(authState);
+      const isNostrLoginAuth = auth.type === 'nostr-login';
+
       // nostr-login認証の場合のみwindow.nostrを使用
-      if (this.isNostrLoginAuth && keyManager.isWindowNostrAvailable()) {
+      if (isNostrLoginAuth && keyManager.isWindowNostrAvailable()) {
         try {
           // 公開鍵を取得
           const pubkey = await keyManager.getPublicKeyFromWindowNostr();
@@ -103,7 +99,7 @@ export class PostManager {
 
           // rxNostr.send()を直接使用（応答待ちなし）
           const sendObservable = this.rxNostr.send(signedEvent);
-          
+
           // Observableをすぐに購読して送信開始、結果は無視
           const subscription = sendObservable.subscribe({
             next: (packet: any) => {
@@ -148,7 +144,7 @@ export class PostManager {
 
       // 秘密鍵で署名してイベントを送信
       const sendObservable = this.rxNostr.send(event, { signer });
-      
+
       // Observableをすぐに購読して送信開始
       const subscription = sendObservable.subscribe({
         next: (packet: any) => {

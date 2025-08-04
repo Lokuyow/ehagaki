@@ -1,5 +1,6 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import { writable, derived, type Readable } from "svelte/store";
+import { setNsecAuth, setNostrLoginAuth, clearAuthState } from "./stores";
 
 declare global {
   interface Window {
@@ -73,6 +74,9 @@ export class PublicKeyState {
       this._isValidStore.set(true);
       this._isNostrLoginStore.set(true);
       this._nsecStore.set(""); // nostr-loginの場合はnsecは空
+
+      // グローバル認証状態を更新
+      setNostrLoginAuth(auth.pubkey, npub, nprofile);
     }
   }
 
@@ -93,6 +97,9 @@ export class PublicKeyState {
     if (derivedData.hex) {
       this._dataStore.set(derivedData);
       this._isValidStore.set(true);
+      
+      // グローバル認証状態を更新
+      setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
     } else {
       this._dataStore.set({ hex: "", npub: "", nprofile: "" });
       this._isValidStore.set(false);
@@ -102,6 +109,8 @@ export class PublicKeyState {
   clear(): void {
     this._nsecStore.set("");
     this._isNostrLoginStore.set(false);
+    // グローバル認証状態をクリア
+    clearAuthState();
   }
 
   // 現在の値を同期的に取得（コンポーネント外での使用用）

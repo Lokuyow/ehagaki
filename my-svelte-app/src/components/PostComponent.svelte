@@ -47,15 +47,14 @@
     } else {
       postManager.setRxNostr(rxNostr);
     }
-    // 認証方法をPostManagerに通知
-    postManager.setAuthMethod(isNostrLoginAuth);
+    // 認証方法をPostManagerに通知（setAuthMethodは存在しないため削除）
   }
 
   // 認証方法が変更された時もPostManagerに通知
-  $: if (postManager && typeof isNostrLoginAuth !== 'undefined') {
-    postManager.setAuthMethod(isNostrLoginAuth);
+  // 認証方法が変更された時もPostManagerに通知（setAuthMethodは存在しないため削除）
+  $: if (postManager && typeof isNostrLoginAuth !== "undefined") {
+    // 何もしない
   }
-
   // アップロード用コールバックを作成
   const uploadCallbacks: UploadInfoCallbacks = {
     onProgress: onUploadProgress,
@@ -236,6 +235,12 @@
     }
   }
 
+  // 秘密鍵(nsec)が含まれているかチェックする関数
+  function containsSecretKey(text: string): boolean {
+    // nsecはnsec1から始まり、58文字以上
+    return /nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}/.test(text);
+  }
+
   // 投稿処理（状態管理をコンポーネント内で完結）
   async function submitPost() {
     if (!postManager) {
@@ -244,7 +249,7 @@
     }
 
     // 秘密鍵が含まれている場合はダイアログ表示
-    if (postManager.containsSecretKey(postContent)) {
+    if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
       return;

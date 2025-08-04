@@ -14,10 +14,12 @@
   import LoginDialog from "./components/LoginDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
-  import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
-  import { useSwUpdate } from "./lib/useSwUpdate"; // 追加: サービスワーカー更新ロジック
+  import { getShareHandler } from "./lib/shareHandler";
+  import { useSwUpdate } from "./lib/useSwUpdate";
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
+  // 認証状態ストアを追加
+  import { authState, clearAuthState } from "./lib/stores";
 
   // Service Worker更新関連
   const {
@@ -32,23 +34,18 @@
   let errorMessage = "";
   let showLogoutDialog = false;
 
-  // 認証関連
+  // 認証関連 - ストアから取得するように変更
   let secretKey = "";
-  let hasStoredKey = false;
-  let isNostrLoginAuth = false;
 
   // 公開鍵状態管理（統一・リアクティブ）
   const publicKeyState = new PublicKeyState();
   $: publicKeyState.setNsec(secretKey);
 
-  // 公開鍵ストアをサブスクライブ
-  let isValidKey = false;
-  let currentHexKey = "";
-  publicKeyState.isValid.subscribe((valid) => (isValidKey = valid));
-  publicKeyState.hex.subscribe((hex) => (currentHexKey = hex));
-  publicKeyState.isNostrLogin.subscribe(
-    (isNostrLogin) => (isNostrLoginAuth = isNostrLogin),
-  );
+  // 認証状態をストアから取得
+  $: isAuthenticated = $authState.isAuthenticated;
+  $: authType = $authState.type;
+  $: currentHexKey = $authState.pubkey;
+  $: isNostrLoginAuth = $authState.type === "nostr-login";
 
   // プロフィール情報
   let profileData: ProfileData = {
@@ -112,7 +109,6 @@
     if (auth.pubkey) {
       console.log("nostr-login認証成功:", auth);
       publicKeyState.setNostrLoginAuth(auth);
-      hasStoredKey = true; // nostr-loginでも認証済みとして扱う
 
       // Nostrクライアントを初期化してからプロフィール読み込み
       await initializeNostr(auth.pubkey);
@@ -145,14 +141,14 @@
   }
 
   async function saveSecretKey() {
-    if (!isValidKey) {
+    // ストアの状態を確認
+    if (!$authState.isValid) {
       errorMessage = "";
       return;
     }
 
     const success = keyManager.saveToStorage(secretKey);
     if (success) {
-      hasStoredKey = true;
       showDialog = false;
       errorMessage = "";
 
@@ -190,10 +186,8 @@
     if (uploadEndpointValue !== null)
       localStorage.setItem("uploadEndpoint", uploadEndpointValue);
 
-    hasStoredKey = false;
     secretKey = "";
-    isNostrLoginAuth = false;
-    publicKeyState.clear();
+    publicKeyState.clear(); // これでclearAuthState()も呼ばれる
     profileData = { name: "", picture: "" };
     profileLoaded = false;
 
@@ -260,7 +254,6 @@
     }
 
     const storedKey = keyManager.loadFromStorage();
-    hasStoredKey = !!storedKey;
 
     if (storedKey) {
       publicKeyState.setNsec(storedKey);
@@ -350,7 +343,7 @@
     <div class="main-content">
       <PostComponent
         {rxNostr}
-        hasStoredKey={hasStoredKey || isNostrLoginAuth}
+        hasStoredKey={isAuthenticated}
         {isNostrLoginAuth}
         onPostSuccess={() => {
           // 必要に応じて投稿成功時の処理を追加
@@ -393,11 +386,11 @@
 
     <!-- フッター -->
     <div class="footer-bar">
-      {#if (hasStoredKey || isNostrLoginAuth) && (profileLoaded || isLoadingProfile)}
+      {#if isAuthenticated && (profileLoaded || isLoadingProfile)}
         <ProfileComponent
           {profileData}
           {profileLoaded}
-          hasStoredKey={hasStoredKey || isNostrLoginAuth}
+          hasStoredKey={isAuthenticated}
           {isLoadingProfile}
           showLogoutDialog={openLogoutDialog}
         />
