@@ -1,6 +1,7 @@
-import { getPublicKey, nip19 } from "nostr-tools";
 import { writable, derived, type Readable } from "svelte/store";
 import { setNsecAuth, setNostrLoginAuth, clearAuthState } from "./stores";
+import { derivePublicKeyFromNsec, isValidNsec, type PublicKeyData } from "./utils";
+import { nip19 } from "nostr-tools";
 
 declare global {
   interface Window {
@@ -8,12 +9,6 @@ declare global {
       getPublicKey(): Promise<string>;
     };
   }
-}
-
-export interface PublicKeyData {
-  hex: string;
-  npub: string;
-  nprofile: string;
 }
 
 // nostr-login認証状態の型定義
@@ -87,17 +82,17 @@ export class PublicKeyState {
       return;
     }
 
-    if (!keyManager.isValidNsec(nsec)) {
+    if (!isValidNsec(nsec)) {
       this._dataStore.set({ hex: "", npub: "", nprofile: "" });
       this._isValidStore.set(false);
       return;
     }
 
-    const derivedData = keyManager.derivePublicKey(nsec);
+    const derivedData = derivePublicKeyFromNsec(nsec);
     if (derivedData.hex) {
       this._dataStore.set(derivedData);
       this._isValidStore.set(true);
-      
+
       // グローバル認証状態を更新
       setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
     } else {
@@ -137,29 +132,12 @@ export const keyManager = {
   /**
    * 秘密鍵がnsec形式として有効かチェックする
    */
-  isValidNsec(key: string): boolean {
-    return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
-  },
+  isValidNsec,
 
   /**
    * nsec形式の秘密鍵から公開鍵情報を導出する
    */
-  derivePublicKey(nsec: string): PublicKeyData {
-    try {
-      const { type, data } = nip19.decode(nsec);
-      if (type !== "nsec") {
-        console.warn("無効なnsec形式です");
-        return { hex: "", npub: "", nprofile: "" };
-      }
-      const hex = getPublicKey(data as Uint8Array);
-      const npub = nip19.npubEncode(hex);
-      const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
-      return { hex, npub, nprofile };
-    } catch (e) {
-      console.error("公開鍵の導出に失敗:", e);
-      return { hex: "", npub: "", nprofile: "" };
-    }
-  },
+  derivePublicKey: derivePublicKeyFromNsec,
 
   /**
    * 秘密鍵をローカルストレージに保存する
@@ -210,3 +188,4 @@ export const keyManager = {
     }
   }
 };
+

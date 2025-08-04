@@ -196,3 +196,64 @@ export function containsSecretKey(text: string): boolean {
   // nsecで始まる文字列を検出（部分的な秘密鍵でも警告）
   return /nsec1[023456789acdefghjklmnpqrstuvwxyz]{10,}/.test(text);
 }
+
+import { getPublicKey, nip19 } from "nostr-tools";
+
+/**
+ * 公開鍵データの型定義
+ */
+export interface PublicKeyData {
+  hex: string;
+  npub: string;
+  nprofile: string;
+}
+
+/**
+ * nsec形式の秘密鍵から公開鍵情報を導出する
+ * @param nsec nsec形式の秘密鍵
+ * @returns 公開鍵データ（hex, npub, nprofile）
+ */
+export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
+  try {
+    const { type, data } = nip19.decode(nsec);
+    if (type !== "nsec") {
+      console.warn("無効なnsec形式です");
+      return { hex: "", npub: "", nprofile: "" };
+    }
+    const hex = getPublicKey(data as Uint8Array);
+    const npub = nip19.npubEncode(hex);
+    const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
+    return { hex, npub, nprofile };
+  } catch (e) {
+    console.error("公開鍵の導出に失敗:", e);
+    return { hex: "", npub: "", nprofile: "" };
+  }
+}
+
+/**
+ * HEX形式の公開鍵からnpubとnprofileを生成する
+ * @param hex HEX形式の公開鍵
+ * @returns 公開鍵データ（hex, npub, nprofile）
+ */
+export function generatePublicKeyFormats(hex: string): PublicKeyData {
+  try {
+    if (!hex) {
+      return { hex: "", npub: "", nprofile: "" };
+    }
+    const npub = nip19.npubEncode(hex);
+    const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
+    return { hex, npub, nprofile };
+  } catch (e) {
+    console.error("公開鍵フォーマットの生成に失敗:", e);
+    return { hex: "", npub: "", nprofile: "" };
+  }
+}
+
+/**
+ * nsec形式の秘密鍵が有効かチェックする
+ * @param key チェック対象の文字列
+ * @returns 有効な場合true
+ */
+export function isValidNsec(key: string): boolean {
+  return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
+}
