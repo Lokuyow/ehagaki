@@ -19,6 +19,7 @@ export interface PostStatus {
 
 export class PostManager {
   private rxNostr: ReturnType<typeof createRxNostr> | null = null;
+  private isNostrLoginAuth: boolean = false; // nostr-login認証フラグを追加
 
   constructor(rxNostr?: ReturnType<typeof createRxNostr>) {
     if (rxNostr) {
@@ -29,6 +30,11 @@ export class PostManager {
   // rxNostrインスタンスを更新するメソッド
   setRxNostr(rxNostr: ReturnType<typeof createRxNostr>) {
     this.rxNostr = rxNostr;
+  }
+
+  // 認証方法を設定するメソッドを追加
+  setAuthMethod(isNostrLogin: boolean) {
+    this.isNostrLoginAuth = isNostrLogin;
   }
 
   // 秘密鍵が含まれているかチェック
@@ -46,8 +52,8 @@ export class PostManager {
       return { valid: false, error: "nostr_not_ready" };
     }
 
-    // window.nostrまたはローカルキーの存在をチェック
-    if (!keyManager.hasStoredKey() && !keyManager.isWindowNostrAvailable()) {
+    // 認証状態をチェック
+    if (!keyManager.hasStoredKey() && !this.isNostrLoginAuth) {
       return { valid: false, error: "login_required" };
     }
 
@@ -74,8 +80,8 @@ export class PostManager {
         return { success: false, error: "nostr_not_ready" };
       }
 
-      // window.nostrが利用可能な場合はそれを使用
-      if (keyManager.isWindowNostrAvailable()) {
+      // nostr-login認証の場合のみwindow.nostrを使用
+      if (this.isNostrLoginAuth && keyManager.isWindowNostrAvailable()) {
         try {
           // 公開鍵を取得
           const pubkey = await keyManager.getPublicKeyFromWindowNostr();
@@ -124,7 +130,7 @@ export class PostManager {
         }
       }
 
-      // ローカルキーがある場合はそれを使用
+      // ローカルキーを使用（秘密鍵直入れの場合）
       const storedKey = keyManager.loadFromStorage();
       if (!storedKey) {
         return { success: false, error: "key_not_found" };

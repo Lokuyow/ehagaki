@@ -351,6 +351,7 @@
       <PostComponent
         {rxNostr}
         hasStoredKey={hasStoredKey || isNostrLoginAuth}
+        {isNostrLoginAuth}
         onPostSuccess={() => {
           // 必要に応じて投稿成功時の処理を追加
         }}

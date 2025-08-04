@@ -13,6 +13,7 @@
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
+  export let isNostrLoginAuth: boolean = false; // nostr-login認証フラグを追加
   export let onPostSuccess: (() => void) | undefined;
   export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
   export let onUploadProgress: ((progress: any) => void) | undefined;
@@ -46,6 +47,13 @@
     } else {
       postManager.setRxNostr(rxNostr);
     }
+    // 認証方法をPostManagerに通知
+    postManager.setAuthMethod(isNostrLoginAuth);
+  }
+
+  // 認証方法が変更された時もPostManagerに通知
+  $: if (postManager && typeof isNostrLoginAuth !== 'undefined') {
+    postManager.setAuthMethod(isNostrLoginAuth);
   }
 
   // アップロード用コールバックを作成
