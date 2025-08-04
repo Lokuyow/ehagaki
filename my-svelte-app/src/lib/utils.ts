@@ -186,3 +186,13 @@ export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string |
 
   return `データサイズ:<br>${sizeInfo.sizeReduction} （${sizeInfo.compressionRatio}%）`;
 }
+
+/**
+ * 秘密鍵(nsec)が含まれているかチェックする関数
+ * @param text チェック対象のテキスト
+ * @returns 秘密鍵が含まれている場合true
+ */
+export function containsSecretKey(text: string): boolean {
+  // nsecで始まる文字列を検出（部分的な秘密鍵でも警告）
+  return /nsec1[023456789acdefghjklmnpqrstuvwxyz]{10,}/.test(text);
+}

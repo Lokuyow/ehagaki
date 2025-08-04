@@ -6,6 +6,7 @@
     FileUploadManager,
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
+  import { containsSecretKey } from "../lib/utils";
   import ContentPreview from "./ContentPreview.svelte";
   import { onMount, onDestroy } from "svelte";
   import Button from "./Button.svelte";
@@ -233,12 +234,6 @@
     if (files?.length) {
       await uploadFiles(files);
     }
-  }
-
-  // 秘密鍵(nsec)が含まれているかチェックする関数
-  function containsSecretKey(text: string): boolean {
-    // nsecはnsec1から始まり、58文字以上
-    return /nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}/.test(text);
   }
 
   // 投稿処理（状態管理をコンポーネント内で完結）
