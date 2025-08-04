@@ -328,6 +328,19 @@
     }, 3000);
   }
 
+  // Ctrl+Enterで投稿
+  function handleTextareaKeydown(event: KeyboardEvent) {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      (event.key === "Enter" || event.key === "NumpadEnter")
+    ) {
+      event.preventDefault();
+      if (!postStatus.sending && postContent.trim() && hasStoredKey) {
+        submitPost();
+      }
+    }
+  }
+
   // ライフサイクル
   onMount(() => {
     window.addEventListener(
@@ -403,6 +416,7 @@
         on:dragover={handleDragOver}
         on:dragleave={handleDragLeave}
         on:drop={handleDrop}
+        on:keydown={handleTextareaKeydown}
       ></textarea>
     </div>
   </div>
