@@ -16,6 +16,7 @@
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { getShareHandler } from "./lib/shareHandler"; // シングルトンを使用
   import { useSwUpdate } from "./lib/useSwUpdate"; // 追加: サービスワーカー更新ロジック
+  import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
 
   // Service Worker更新関連
@@ -34,6 +35,7 @@
   // 認証関連
   let secretKey = "";
   let hasStoredKey = false;
+  let isNostrLoginAuth = false;
 
   // 公開鍵状態管理（統一・リアクティブ）
   const publicKeyState = new PublicKeyState();
@@ -44,6 +46,9 @@
   let currentHexKey = "";
   publicKeyState.isValid.subscribe((valid) => (isValidKey = valid));
   publicKeyState.hex.subscribe((hex) => (currentHexKey = hex));
+  publicKeyState.isNostrLogin.subscribe(
+    (isNostrLogin) => (isNostrLoginAuth = isNostrLogin),
+  );
 
   // プロフィール情報
   let profileData: ProfileData = {
@@ -97,6 +102,48 @@
     }
   }
 
+  // nostr-login認証ハンドラー
+  async function handleNostrLoginAuth(auth: any) {
+    if (auth.type === "logout") {
+      logout();
+      return;
+    }
+
+    if (auth.pubkey) {
+      console.log("nostr-login認証成功:", auth);
+      publicKeyState.setNostrLoginAuth(auth);
+      hasStoredKey = true; // nostr-loginでも認証済みとして扱う
+
+      // Nostrクライアントを初期化してからプロフィール読み込み
+      await initializeNostr(auth.pubkey);
+
+      // リレーが確実に設定されるまで少し待つ
+      setTimeout(async () => {
+        await loadProfileForPubkey(auth.pubkey);
+      }, 500);
+    }
+  }
+
+  // 指定された公開鍵でプロフィールを読み込み
+  async function loadProfileForPubkey(pubkeyHex: string) {
+    if (!pubkeyHex) return;
+
+    // relayManagerとprofileManagerが初期化されているかチェック
+    if (!relayManager || !profileManager) {
+      console.warn("relayManagerまたはprofileManagerが初期化されていません");
+      await initializeNostr(pubkeyHex);
+    }
+
+    isLoadingProfile = true;
+    await relayManager.fetchUserRelays(pubkeyHex);
+    const profile = await profileManager.fetchProfileData(pubkeyHex);
+    if (profile) {
+      profileData = profile;
+    }
+    profileLoaded = true;
+    isLoadingProfile = false;
+  }
+
   async function saveSecretKey() {
     if (!isValidKey) {
       errorMessage = "";
@@ -110,14 +157,7 @@
       errorMessage = "";
 
       if (currentHexKey) {
-        isLoadingProfile = true; // 読み込み開始
-        await relayManager.fetchUserRelays(currentHexKey);
-        const profile = await profileManager.fetchProfileData(currentHexKey);
-        if (profile) {
-          profileData = profile;
-        }
-        profileLoaded = true;
-        isLoadingProfile = false; // 読み込み完了
+        await loadProfileForPubkey(currentHexKey);
       }
     } else {
       errorMessage = "error_saving";
@@ -152,11 +192,26 @@
 
     hasStoredKey = false;
     secretKey = "";
+    isNostrLoginAuth = false;
     publicKeyState.clear();
     profileData = { name: "", picture: "" };
     profileLoaded = false;
 
     showLogoutDialog = false;
+
+    // nostr-loginからもログアウト
+    if (nostrLoginManager.isInitialized) {
+      nostrLoginManager.logout();
+    }
+  }
+
+  // nostr-loginを使ったログイン
+  function loginWithNostrLogin() {
+    if (nostrLoginManager.isInitialized) {
+      nostrLoginManager.showLogin();
+    } else {
+      console.error("nostr-loginが初期化されていません");
+    }
   }
 
   let showSettings = false;
@@ -186,6 +241,24 @@
       locale.set(storedLocale);
     }
 
+    // nostr-loginを初期化
+    try {
+      await nostrLoginManager.init({
+        theme: "default",
+        darkMode: false,
+        perms: "sign_event:1,sign_event:0",
+        noBanner: true, // 明示的にバナーを無効化
+      });
+
+      // 認証ハンドラーを設定
+      nostrLoginManager.setAuthHandler(handleNostrLoginAuth);
+
+      // 初期化時の自動認証チェックは削除
+      // window.nostrの自動チェックによるダイアログ表示を防ぐ
+    } catch (error) {
+      console.error("nostr-login初期化失敗:", error);
+    }
+
     const storedKey = keyManager.loadFromStorage();
     hasStoredKey = !!storedKey;
 
@@ -195,9 +268,8 @@
       // ストアの値が更新されるまで少し待つ
       setTimeout(async () => {
         if (currentHexKey) {
-          isLoadingProfile = true; // 読み込み開始
           await initializeNostr(currentHexKey);
-          isLoadingProfile = false; // 読み込み完了
+          await loadProfileForPubkey(currentHexKey);
         } else {
           await initializeNostr();
         }
@@ -278,7 +350,7 @@
     <div class="main-content">
       <PostComponent
         {rxNostr}
-        {hasStoredKey}
+        hasStoredKey={hasStoredKey || isNostrLoginAuth}
         onPostSuccess={() => {
           // 必要に応じて投稿成功時の処理を追加
         }}
@@ -295,6 +367,7 @@
         {errorMessage}
         onClose={closeDialog}
         onSave={saveSecretKey}
+        onNostrLogin={loginWithNostrLogin}
       />
     {/if}
 
@@ -319,17 +392,17 @@
 
     <!-- フッター -->
     <div class="footer-bar">
-      {#if hasStoredKey && (profileLoaded || isLoadingProfile)}
+      {#if (hasStoredKey || isNostrLoginAuth) && (profileLoaded || isLoadingProfile)}
         <ProfileComponent
           {profileData}
           {profileLoaded}
-          {hasStoredKey}
+          hasStoredKey={hasStoredKey || isNostrLoginAuth}
           {isLoadingProfile}
           showLogoutDialog={openLogoutDialog}
         />
       {:else}
         <Button className="login-btn btn-round" on:click={showLoginDialog}>
-          {hasStoredKey ? $_("logged_in") : $_("login")}
+          {$_("login")}
         </Button>
       {/if}
 
@@ -379,14 +452,15 @@
     box-shadow: 0 -2px 8px var(--shadow);
     z-index: 99;
   }
+
   :global(.login-btn) {
+    background: var(--theme);
     width: 110px;
     border: none;
-    background: var(--theme);
     color: #fff;
     font-weight: 500;
+    font-size: 1.1rem;
     z-index: 10;
-    box-shadow: 0 2px 8px #0001;
   }
 
   :global(.settings-btn) {

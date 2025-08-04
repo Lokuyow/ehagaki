@@ -8,6 +8,7 @@
     export let errorMessage: string = "";
     export let onClose: () => void;
     export let onSave: () => void;
+    export let onNostrLogin: () => void;
 
     // 公開鍵状態管理（リアクティブ）
     const publicKeyState = new PublicKeyState();
@@ -51,8 +52,16 @@
     ariaLabel={$_("input_secret")}
     className="login-dialog"
 >
-    <h2>{$_("input_secret")}</h2>
-    <p>{$_("input_nostr_secret")}</p>
+    <h2>{$_("login")}</h2>
+    <Button className="nostr-login-button btn" on:click={onNostrLogin}>
+        Nostr Login
+    </Button>
+
+    <div class="divider">
+        <span>{$_("or")}</span>
+    </div>
+
+    <h3>{$_("input_secret")}</h3>
     <input
         type="password"
         bind:value={secretKey}
@@ -61,6 +70,7 @@
         id="secretKey"
         name="secretKey"
     />
+
     <div class="dialog-info">
         {#if npubValue}
             <span class="pubkey-value" style="word-break:break-all"
@@ -90,9 +100,6 @@
 </Dialog>
 
 <style>
-    h2 {
-        color: var(--text-light);
-    }
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
@@ -104,14 +111,14 @@
     :global(.cancel-btn) {
         border: 1px solid #ccc;
         background-color: #f5f5f5;
-        color: #3D3D3D;
+        color: #3d3d3d;
         width: 100%;
     }
 
     :global(.clear-btn) {
         border: 1px solid #ccc;
         background-color: #fffbe6;
-        color: #3D3D3D;
+        color: #3d3d3d;
         width: 100%;
     }
 
@@ -156,5 +163,36 @@
         min-height: 86px;
         box-sizing: border-box;
         gap: 4px;
+    }
+
+    :global(.nostr-login-button) {
+        background: #7c3aed;
+        color: white;
+        border: none;
+        height: 60px;
+        width: 130px;
+        margin: 16px 0;
+    }
+
+    .divider {
+        display: flex;
+        align-items: center;
+        text-align: center;
+        margin: 32px 0;
+        width: 90%;
+    }
+
+    .divider::before,
+    .divider::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: var(--border);
+    }
+
+    .divider span {
+        color: var(--text-light);
+        padding: 0 16px;
+        font-size: 1rem;
     }
 </style>

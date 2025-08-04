@@ -22,7 +22,6 @@
   "upload_destination": "Upload Destination",
   "settings": "Settings",
   "input_secret": "Enter Secret Key",
-  "input_nostr_secret": "Please enter your Nostr secret key (nsec1…)",
   "save": "Save",
   "clear": "Clear",
   "logout_confirmation": "Logout Confirmation",
@@ -31,5 +30,6 @@
   "invalid_secret": "Invalid secret key",
   "uploading": "Uploading",
   "failed": "Failed",
-  "data_size": "Transmission size"
+  "data_size": "Transmission size",
+  "nostr_login": "Nostr Login"
 }

@@ -1,10 +1,26 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import { writable, derived, type Readable } from "svelte/store";
 
+declare global {
+  interface Window {
+    nostr: {
+      getPublicKey(): Promise<string>;
+    };
+  }
+}
+
 export interface PublicKeyData {
   hex: string;
   npub: string;
   nprofile: string;
+}
+
+// nostr-login認証状態の型定義
+export interface NostrLoginAuth {
+  type: 'login' | 'signup' | 'logout';
+  pubkey?: string;
+  npub?: string;
+  otpData?: any;
 }
 
 // 公開鍵状態を管理するクラス（リアクティブ対応）
@@ -12,11 +28,13 @@ export class PublicKeyState {
   private _nsecStore = writable<string>("");
   private _dataStore = writable<PublicKeyData>({ hex: "", npub: "", nprofile: "" });
   private _isValidStore = writable<boolean>(false);
+  private _isNostrLoginStore = writable<boolean>(false);
 
   // リーダブルストアとして公開
   readonly nsec: Readable<string> = { subscribe: this._nsecStore.subscribe };
   readonly data: Readable<PublicKeyData> = { subscribe: this._dataStore.subscribe };
   readonly isValid: Readable<boolean> = { subscribe: this._isValidStore.subscribe };
+  readonly isNostrLogin: Readable<boolean> = { subscribe: this._isNostrLoginStore.subscribe };
 
   // 派生ストア
   readonly hex = derived(this._dataStore, ($data) => $data.hex);
@@ -33,6 +51,29 @@ export class PublicKeyState {
   // nsecを設定（リアクティブに更新される）
   setNsec(nsec: string): void {
     this._nsecStore.set(nsec || "");
+    this._isNostrLoginStore.set(false);
+  }
+
+  // nostr-loginからの認証情報を設定
+  setNostrLoginAuth(auth: NostrLoginAuth): void {
+    if (auth.type === 'logout') {
+      this.clear();
+      return;
+    }
+
+    if (auth.pubkey) {
+      const npub = auth.npub || nip19.npubEncode(auth.pubkey);
+      const nprofile = nip19.nprofileEncode({ pubkey: auth.pubkey, relays: [] });
+
+      this._dataStore.set({
+        hex: auth.pubkey,
+        npub,
+        nprofile
+      });
+      this._isValidStore.set(true);
+      this._isNostrLoginStore.set(true);
+      this._nsecStore.set(""); // nostr-loginの場合はnsecは空
+    }
   }
 
   private updateFromNsec(nsec: string): void {
@@ -60,6 +101,7 @@ export class PublicKeyState {
 
   clear(): void {
     this._nsecStore.set("");
+    this._isNostrLoginStore.set(false);
   }
 
   // 現在の値を同期的に取得（コンポーネント外での使用用）
@@ -72,6 +114,12 @@ export class PublicKeyState {
   get currentHex(): string {
     let value = "";
     this.hex.subscribe(val => value = val)();
+    return value;
+  }
+
+  get currentIsNostrLogin(): boolean {
+    let value = false;
+    this.isNostrLogin.subscribe(val => value = val)();
     return value;
   }
 }
@@ -129,5 +177,27 @@ export const keyManager = {
    */
   hasStoredKey(): boolean {
     return !!this.loadFromStorage();
+  },
+
+  /**
+   * window.nostrが利用可能かチェック
+   */
+  isWindowNostrAvailable(): boolean {
+    return typeof window !== 'undefined' && 'nostr' in window && typeof window.nostr === 'object';
+  },
+
+  /**
+   * window.nostrから公開鍵を取得
+   */
+  async getPublicKeyFromWindowNostr(): Promise<string | null> {
+    try {
+      if (!this.isWindowNostrAvailable()) {
+        return null;
+      }
+      return await window.nostr.getPublicKey();
+    } catch (e) {
+      console.error("window.nostrから公開鍵の取得に失敗:", e);
+      return null;
+    }
   }
 };

@@ -44,6 +44,11 @@ h1 {
   line-height: 1.1;
 }
 
+h2,
+h3 {
+  color: var(--text-light);
+}
+
 .card {
   padding: 2em;
 }

@@ -22,7 +22,6 @@
   "upload_destination": "アップロード先",
   "settings": "設定",
   "input_secret": "秘密鍵の入力",
-  "input_nostr_secret": "Nostrの秘密鍵(nsec1…)を入力してください",
   "save": "保存",
   "clear": "クリア",
   "logout_confirmation": "ログアウト確認",
@@ -31,5 +30,6 @@
   "invalid_secret": "無効な秘密鍵です",
   "uploading": "アップロード中",
   "failed": "失敗",
-  "data_size": "送信サイズ"
+  "data_size": "送信サイズ",
+  "nostr_login": "Nostr Login"
 }
