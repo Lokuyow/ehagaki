@@ -72,6 +72,9 @@
   // FooterInfoDisplayコンポーネントへの参照
   let footerInfoDisplay: any;
 
+  // PostComponentへの参照を追加
+  let postComponentRef: any;
+
   // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
@@ -201,6 +204,11 @@
     publicKeyState.clear(); // これでclearAuthState()も呼ばれる
     profileData = { name: "", picture: "" };
     profileLoaded = false;
+
+    // PostComponentの投稿内容をクリア
+    if (postComponentRef && typeof postComponentRef.resetPostContent === "function") {
+      postComponentRef.resetPostContent();
+    }
 
     showLogoutDialog = false;
   }
@@ -348,6 +356,7 @@
     <!-- 投稿ボタン・画像アップロードボタンを最上部に配置 -->
     <div class="main-content">
       <PostComponent
+        bind:this={postComponentRef}
         {rxNostr}
         hasStoredKey={isAuthenticated}
         {isNostrLoginAuth}

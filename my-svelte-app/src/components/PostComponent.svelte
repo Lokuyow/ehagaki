@@ -317,7 +317,8 @@
     }
   }
 
-  function resetPostContent() {
+  // 投稿内容リセット関数をexport
+  export function resetPostContent() {
     postContent = "";
   }
 
