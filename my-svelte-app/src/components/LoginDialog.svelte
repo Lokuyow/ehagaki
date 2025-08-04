@@ -52,7 +52,6 @@
     ariaLabel={$_("input_secret")}
     className="login-dialog"
 >
-    <h2>{$_("login")}</h2>
     <Button className="nostr-login-button btn" on:click={onNostrLogin}>
         Nostr Login
     </Button>
@@ -100,6 +99,9 @@
 </Dialog>
 
 <style>
+    h3 {
+        margin: 0 0 16px 0;
+    }
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
@@ -150,7 +152,6 @@
         border: 1px solid var(--border);
         width: 100%;
         height: 60px;
-        margin-top: 0.5rem;
     }
 
     .dialog-info {
@@ -171,7 +172,7 @@
         border: none;
         height: 60px;
         width: 130px;
-        margin: 16px 0;
+        margin-top: 32px;
     }
 
     .divider {
