@@ -102,7 +102,8 @@
   // nostr-login認証ハンドラー
   async function handleNostrLoginAuth(auth: any) {
     if (auth.type === "logout") {
-      logout();
+      // nostr-loginからのログアウト時は、nostrLoginManager.logout()を呼ばない
+      logoutInternal();
       return;
     }
 
@@ -179,6 +180,16 @@
   }
 
   function logout() {
+    logoutInternal();
+
+    // nostr-loginからもログアウト（手動ログアウトの場合のみ）
+    if (nostrLoginManager.isInitialized) {
+      nostrLoginManager.logout();
+    }
+  }
+
+  // 内部ログアウト処理（nostr-loginManager.logout()を呼ばない）
+  function logoutInternal() {
     const localeValue = localStorage.getItem("locale");
     const uploadEndpointValue = localStorage.getItem("uploadEndpoint");
     localStorage.clear();
@@ -192,11 +203,6 @@
     profileLoaded = false;
 
     showLogoutDialog = false;
-
-    // nostr-loginからもログアウト
-    if (nostrLoginManager.isInitialized) {
-      nostrLoginManager.logout();
-    }
   }
 
   // nostr-loginを使ったログイン

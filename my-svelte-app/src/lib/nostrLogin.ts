@@ -17,6 +17,7 @@ export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
 export class NostrLoginManager {
     private initialized = false;
     private authHandler: NostrLoginEventHandler | null = null;
+    private isLoggingOut = false; // ログアウト処理中フラグを追加
 
     /**
      * nostr-loginを初期化
@@ -75,22 +76,27 @@ export class NostrLoginManager {
      * 認証イベントリスナーを設定
      */
     private setupAuthListener(): void {
-        document.addEventListener('nlAuth', (event: any) => {
-            if (this.authHandler) {
-                const detail = event.detail;
+        document.addEventListener('nlAuth', (event: Event) => {
+            if (this.authHandler && !this.isLoggingOut) {
+                const detail = (event as CustomEvent).detail;
                 if (detail.type === 'logout') {
                     this.authHandler({ type: 'logout' });
                 } else if (detail.type === 'login' || detail.type === 'signup') {
-                    // npubから公開鍵を取得
-                    this.npubToPubkey(detail.npub || '').then(pubkey => {
+                    // pubkeyがあればそれを使い、なければnpubから変換
+                    const handleAuth = (pubkey: string) => {
                         const auth: NostrLoginAuth = {
                             type: detail.type,
-                            pubkey: pubkey || detail.pubkey,
+                            pubkey,
                             npub: detail.npub,
                             otpData: detail.otpData
                         };
                         this.authHandler!(auth);
-                    });
+                    };
+                    if (detail.pubkey) {
+                        handleAuth(detail.pubkey);
+                    } else if (detail.npub) {
+                        this.npubToPubkey(detail.npub).then(handleAuth);
+                    }
                 }
             }
         });
@@ -126,7 +132,13 @@ export class NostrLoginManager {
             return;
         }
 
+        this.isLoggingOut = true;
         document.dispatchEvent(new Event('nlLogout'));
+        
+        // フラグをリセット（少し遅延させる）
+        setTimeout(() => {
+            this.isLoggingOut = false;
+        }, 100);
     }
 
     /**
