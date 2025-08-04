@@ -170,9 +170,10 @@
         background: #7c3aed;
         color: white;
         border: none;
-        height: 60px;
-        width: 130px;
+        height: 65px;
+        width: 140px;
         margin-top: 32px;
+        font-size: 1.1rem;
     }
 
     .divider {
