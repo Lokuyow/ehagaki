@@ -4,44 +4,52 @@
   import Button from "./Button.svelte";
 
   export let profileData: ProfileData | null = null;
-  export let profileLoaded = false;
+  export const profileLoaded = false;
   export let hasStoredKey = false;
   export let showLogoutDialog: () => void;
-  export let isLoadingProfile = false; // 追加: プロフィール読み込み状態
+  export let isLoadingProfile = false;
+
+  // プロフィール画像のaltテキスト取得
+  const getProfileAlt = () =>
+    profileData?.name
+      ? profileData.name
+      : profileData?.npub
+        ? profileData.npub
+        : "User";
+
+  // プロフィール名取得
+  const getProfileName = () =>
+    profileData?.name && profileData.name !== ""
+      ? profileData.name
+      : profileData?.npub
+        ? profileData.npub
+        : "User";
 </script>
 
 {#if hasStoredKey}
-  {#if isLoadingProfile}
-    <!-- プロフィール読み込み中のプレースホルダー -->
-    <Button className="profile-display btn-round loading" disabled={true}>
+  <Button
+    className={`profile-display btn-round${isLoadingProfile ? " loading" : ""}`}
+    disabled={isLoadingProfile}
+    on:click={() => {
+      if (!isLoadingProfile) showLogoutDialog();
+    }}
+  >
+    {#if isLoadingProfile}
       <div class="profile-picture placeholder" aria-label="Loading"></div>
       <span class="profile-name placeholder-text">読み込み中...</span>
-    </Button>
-  {:else if profileLoaded}
-    <!-- 既存のプロフィール表示 -->
-    <Button className="profile-display btn-round" on:click={showLogoutDialog}>
-      {#if profileData?.picture && profileData.picture !== ""}
+    {:else}
+      {#if profileData?.picture}
         <img
           src={profileData.picture}
-          alt={profileData?.name
-            ? profileData.name
-            : profileData?.npub
-              ? profileData.npub
-              : "User"}
+          alt={getProfileAlt()}
           class="profile-picture"
         />
       {:else}
         <div class="profile-picture default svg-icon" aria-label="User"></div>
       {/if}
-      <span class="profile-name">
-        {profileData?.name && profileData.name !== ""
-          ? profileData.name
-          : profileData?.npub
-            ? profileData.npub
-            : "User"}
-      </span>
-    </Button>
-  {/if}
+      <span class="profile-name">{getProfileName()}</span>
+    {/if}
+  </Button>
 {/if}
 
 <style>

@@ -417,7 +417,6 @@
       {#if isAuthenticated && (profileLoaded || isLoadingProfile)}
         <ProfileComponent
           {profileData}
-          {profileLoaded}
           hasStoredKey={isAuthenticated}
           {isLoadingProfile}
           showLogoutDialog={openLogoutDialog}
