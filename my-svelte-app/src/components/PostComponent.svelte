@@ -479,7 +479,7 @@
     display: flex;
     gap: 6px;
     align-items: center;
-    height: 60px;
+    height: 64px;
   }
 
   :global(.post-button) {
@@ -496,11 +496,13 @@
 
   .plane-icon {
     mask-image: url("/ehagaki/icons/paper-plane-solid-full.svg");
+    width: 30px;
+    height: 30px;
   }
   .image-icon {
     mask-image: url("/ehagaki/icons/image-solid-full.svg");
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
   }
 
   .post-status {
