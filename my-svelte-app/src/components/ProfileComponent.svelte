@@ -36,7 +36,7 @@
   >
     {#if isLoadingProfile}
       <div class="profile-picture placeholder" aria-label="Loading"></div>
-      <span class="profile-name placeholder-text">読み込み中...</span>
+      <span class="profile-name placeholder-text">{$_("loading")}</span>
     {:else}
       {#if profileData?.picture}
         <img

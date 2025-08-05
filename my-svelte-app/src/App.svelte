@@ -82,8 +82,9 @@
     picture: "",
   };
 
+  // 初期状態: 読み込み中
   let profileLoaded = false;
-  let isLoadingProfile = false; // 追加: プロフィール読み込み状態
+  let isLoadingProfile = true; // ← 初期値をtrueに
 
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
@@ -110,6 +111,7 @@
     profileManager = new ProfileManager(rxNostr);
     relayManager = new RelayManager(rxNostr);
 
+    isLoadingProfile = true; // ← 初期化開始時にtrue
     if (pubkeyHex) {
       const savedRelays = relayManager.getFromLocalStorage(pubkeyHex);
 
@@ -129,6 +131,7 @@
     } else {
       relayManager.setBootstrapRelays();
     }
+    isLoadingProfile = false; // ← 初期化終了時にfalse
   }
 
   // nostr-login認証ハンドラー
@@ -306,9 +309,11 @@
         } else {
           await initializeNostr();
         }
+        isLoadingProfile = false; // ← 初期化完了後にfalse
       }, 10);
     } else {
       await initializeNostr();
+      isLoadingProfile = false; // ← 初期化完了後にfalse
     }
 
     // 共有画像処理（ShareHandler）- 統合された機能を使用
@@ -414,7 +419,13 @@
 
     <!-- フッター -->
     <div class="footer-bar">
-      {#if isAuthenticated && (profileLoaded || isLoadingProfile)}
+      {#if isLoadingProfile}
+        <!-- プレースホルダー表示 -->
+        <Button className="profile-display btn-round loading" disabled={true}>
+          <div class="profile-picture placeholder" aria-label="Loading"></div>
+          <span class="profile-name placeholder-text">{$_("loading")}</span>
+        </Button>
+      {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
         <ProfileComponent
           {profileData}
           hasStoredKey={isAuthenticated}
@@ -490,6 +501,36 @@
 
   .settings-icon {
     mask-image: url("/ehagaki/icons/gear-solid-full.svg");
+  }
+
+  /* プレースホルダー用のスタイルを追加 */
+  :global(.profile-display.loading) {
+    cursor: default;
+    opacity: 0.7;
+  }
+
+  .profile-picture.placeholder {
+    background: var(--border);
+    border-radius: 50%;
+    animation: pulse 1.5s ease-in-out infinite;
+    width: 32px;
+    height: 32px;
+  }
+
+  .placeholder-text {
+    color: var(--text);
+    opacity: 0.6;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,
+    100% {
+      opacity: 0.6;
+    }
+    50% {
+      opacity: 0.3;
+    }
   }
 
   @keyframes fadeOut {

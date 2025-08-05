@@ -31,5 +31,6 @@
   "uploading": "Uploading",
   "failed": "Failed",
   "data_size": "Transmission size",
-  "nostr_login": "Nostr Login"
+  "nostr_login": "Nostr Login",
+  "loading": "Loading..."
 }
