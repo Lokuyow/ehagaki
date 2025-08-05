@@ -73,7 +73,6 @@
 
   // 認証状態をストアから取得
   $: isAuthenticated = $authState.isAuthenticated;
-  $: authType = $authState.type;
   $: currentHexKey = $authState.pubkey;
   $: isNostrLoginAuth = $authState.type === "nostr-login";
 
@@ -269,7 +268,6 @@
   }
 
   // SW更新通知メッセージ
-  let swUpdateMessage = "Updating...";
 
   onMount(async () => {
     const storedLocale = localStorage.getItem("locale");
