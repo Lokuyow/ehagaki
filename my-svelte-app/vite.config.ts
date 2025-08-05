@@ -10,6 +10,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       strategies: 'injectManifest',
+      devOptions: {
+        enabled: true,
+      },
       scope: '/ehagaki/',
       manifest: {
         name: 'eHagaki',
