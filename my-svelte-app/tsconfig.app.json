@@ -15,8 +15,18 @@
     "checkJs": true,
     "isolatedModules": true,
     "moduleDetection": "force",
-    "composite": true
+    "composite": true,
+    "types": [
+      "@sveltejs/vite-plugin-svelte",
+      "vite-plugin-pwa/svelte"
+    ]
   },
-  "include": ["src/**/*.ts", "src/**/*.js", "src/**/*.svelte"],
-  "exclude": ["src/public/sw.js"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.js",
+    "src/**/*.svelte"
+  ],
+  "exclude": [
+    "src/public/sw.js"
+  ]
 }
