@@ -12,10 +12,10 @@ const HASHTAG_REGEX = /(?:^|[\s\n])#([^\s\n\t]+)/g;
  */
 export function extractHashtags(content: string): string[] {
   const hashtags: string[] = [];
-  let match;
-  const regex = new RegExp(HASHTAG_REGEX);
+  let match: RegExpExecArray | null;
+  HASHTAG_REGEX.lastIndex = 0; // RegExpの状態をリセット
 
-  while ((match = regex.exec(content)) !== null) {
+  while ((match = HASHTAG_REGEX.exec(content)) !== null) {
     const hashtag = match[1];
     if (hashtag && hashtag.trim()) {
       hashtags.push(hashtag);
@@ -31,8 +31,7 @@ export function extractHashtags(content: string): string[] {
  * @returns tタグの配列
  */
 export function generateHashtagTags(content: string): string[][] {
-  const hashtags = extractHashtags(content);
-  return hashtags.map(hashtag => ["t", hashtag]);
+  return extractHashtags(content).map(hashtag => ["t", hashtag]);
 }
 
 /**
@@ -42,7 +41,7 @@ export function generateHashtagTags(content: string): string[][] {
  */
 export function formatTextWithHashtags(text: string): string {
   return text.replace(
-    /(?:^|[\s\n])#([^\s\n\t]+)/g,
+    HASHTAG_REGEX,
     (match, hashtag) => {
       const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
       return `${prefix}<span class="hashtag">#${hashtag}</span>`;
@@ -56,7 +55,7 @@ export function formatTextWithHashtags(text: string): string {
  * @returns ハッシュタグが含まれている場合true
  */
 export function containsHashtags(content: string): boolean {
-  return /(?:^|[\s\n])#([^\s\n\t]+)/.test(content);
+  return HASHTAG_REGEX.test(content);
 }
 
 /**
@@ -70,10 +69,9 @@ export function formatTextWithLinks(text: string): string {
   // URLパターンを定義（前後に文字がない場合のみマッチ）
   const urlRegex = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
 
-  return text.replace(urlRegex, (url) => {
-    // ここでのエスケープ処理は不要。サニタイズはSvelte側で行う。
-    return `<a href="${url}" target="_blank" rel="noopener noreferrer" class="preview-link">${url}</a>`;
-  });
+  return text.replace(urlRegex, url =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer" class="preview-link">${url}</a>`
+  );
 }
 
 /**
@@ -161,9 +159,7 @@ export interface SizeDisplayInfo {
  * @returns 表示用構造化データ、または圧縮されていない場合はnull
  */
 export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisplayInfo | null {
-  if (!sizeInfo || !sizeInfo.wasCompressed) {
-    return null;
-  }
+  if (!sizeInfo || !sizeInfo.wasCompressed) return null;
 
   return {
     wasCompressed: true,
@@ -180,9 +176,7 @@ export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisp
  */
 export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string | null {
   // 後方互換性のために保持（廃止予定）
-  if (!sizeInfo || !sizeInfo.wasCompressed) {
-    return null;
-  }
+  if (!sizeInfo || !sizeInfo.wasCompressed) return null;
 
   return `データサイズ:<br>${sizeInfo.sizeReduction} （${sizeInfo.compressionRatio}%）`;
 }
@@ -237,13 +231,10 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
  */
 export function generatePublicKeyFormats(key: string): PublicKeyData {
   try {
-    if (!key) {
-      return { hex: "", npub: "", nprofile: "" };
-    }
+    if (!key) return { hex: "", npub: "", nprofile: "" };
     let hex = key;
     // npub形式の場合はデコードしてhexに変換
     if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(key)) {
-      const { nip19 } = require("nostr-tools");
       const decoded = nip19.decode(key);
       if (decoded.type === "npub") {
         hex = decoded.data as string;
