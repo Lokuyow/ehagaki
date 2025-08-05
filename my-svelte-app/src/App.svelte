@@ -19,7 +19,7 @@
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
   // 認証状態ストアを追加
-  import { authState, clearAuthState } from "./lib/stores";
+  import { authState } from "./lib/stores";
 
   // Service Worker更新関連 - 公式実装を使用
   const { offlineReady, needRefresh, updateServiceWorker } = useRegisterSW({
@@ -34,15 +34,15 @@
     },
     onOfflineReady() {
       console.log("SW offline ready");
-    }
+    },
   });
 
   // リアクティブに状態を監視
   $: {
-    console.log("SW states:", { 
-      offlineReady: $offlineReady, 
+    console.log("SW states:", {
+      offlineReady: $offlineReady,
       needRefresh: $needRefresh,
-      showModal: $offlineReady || $needRefresh
+      showModal: $offlineReady || $needRefresh,
     });
   }
 
