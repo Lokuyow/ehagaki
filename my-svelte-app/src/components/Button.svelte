@@ -19,7 +19,11 @@
 
 <style>
     .btn {
-        font-weight: 500;
+        border-radius: 8px;
+    }
+
+    .btn-angular {
+        border-radius: none;
     }
 
     .btn-round {

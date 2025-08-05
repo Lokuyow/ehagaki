@@ -380,7 +380,7 @@
 
     <div class="buttons-container">
       <Button
-        className="image-button btn"
+        className="image-button btn-angular"
         disabled={!hasStoredKey || postStatus.sending || isUploading}
         on:click={openFileDialog}
         ariaLabel={$_("upload_image")}
@@ -389,7 +389,7 @@
       </Button>
 
       <Button
-        className="post-button btn"
+        className="post-button btn-angular"
         disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
         on:click={submitPost}
         ariaLabel={$_("post")}

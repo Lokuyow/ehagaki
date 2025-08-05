@@ -86,13 +86,13 @@
         {/if}
     </div>
     <div class="dialog-buttons">
-        <Button on:click={handleClose} className="cancel-btn btn"
+        <Button on:click={handleClose} className="cancel-btn btn-angular"
             >{$_("cancel")}</Button
         >
-        <Button on:click={handleClear} className="clear-btn btn"
+        <Button on:click={handleClear} className="clear-btn btn-angular"
             >{$_("clear")}</Button
         >
-        <Button on:click={handleSave} className="save-btn btn"
+        <Button on:click={handleSave} className="save-btn btn-angular"
             >{$_("save")}</Button
         >
     </div>

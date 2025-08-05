@@ -17,10 +17,10 @@
     <h2>{$_("logout_confirmation")}</h2>
     <p>{$_("logout_warning")}</p>
     <div class="dialog-buttons">
-        <Button on:click={onClose} className="cancel-btn btn"
+        <Button on:click={onClose} className="cancel-btn btn-angular"
             >{$_("cancel")}</Button
         >
-        <Button on:click={onLogout} className="logout-btn btn"
+        <Button on:click={onLogout} className="logout-btn btn-angular"
             >{$_("logout")}</Button
         >
     </div>

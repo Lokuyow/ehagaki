@@ -62,6 +62,7 @@ select {
   height: 100%;
   padding: 0;
   font-size: 1rem;
+  font-weight: 500;
   color: var(--text);
   border: 1px solid var(--border);
   background-color: var(--btn-bg);
@@ -107,15 +108,16 @@ button:active:not(:disabled),
 @media (prefers-color-scheme: light) {
   :root {
     /* ライトモード用カラー変数 */
-    --bg: #EBECED;
-    --bg-dialog: #fff;
-    --bg-preview: #FAFAFA;
+    --bg: #ebeced;
+    --bg-dialog: #F7F7F7;
+    --bg-preview: #fafafa;
     --bg-input: #fff;
-    --bg-footer: #FFF;
+    --bg-footer: #F7F7F7;
+    --bg-translucent: #EDEDEDcc;
     --btn-bg: #fff;
     --border: #ddd;
     --border-hr: #eee;
-    --text: #3D3D3D;
+    --text: #3d3d3d;
     --text-light: #757575;
     --text-r: #e6e6e6;
     --link: #646cff;
@@ -130,11 +132,12 @@ button:active:not(:disabled),
   :root {
     /* ダークモード用カラー変数 */
     --bg: #19191A;
-    --bg-dialog: #242424;
+    --bg-dialog: #212121;
     --bg-preview: #262626;
-    --bg-input: #363636;
+    --bg-input: #404040;
     --bg-footer: #1A1A1A;
-    --btn-bg: #363636;
+    --bg-translucent: #212121cc;
+    --btn-bg: #404040;
     --border: #444;
     --border-hr: #444;
     --text: #e6e6e6;
