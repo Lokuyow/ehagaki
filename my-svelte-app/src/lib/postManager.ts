@@ -35,20 +35,10 @@ export class PostManager {
 
   // 投稿内容の検証
   validatePost(content: string): { valid: boolean; error?: string } {
-    if (!content.trim()) {
-      return { valid: false, error: "empty_content" };
-    }
-
-    if (!this.rxNostr) {
-      return { valid: false, error: "nostr_not_ready" };
-    }
-
-    // ストアから認証状態をチェック
+    if (!content.trim()) return { valid: false, error: "empty_content" };
+    if (!this.rxNostr) return { valid: false, error: "nostr_not_ready" };
     const auth = get(authState);
-    if (!auth.isAuthenticated) {
-      return { valid: false, error: "login_required" };
-    }
-
+    if (!auth.isAuthenticated) return { valid: false, error: "login_required" };
     return { valid: true };
   }
 
@@ -57,21 +47,70 @@ export class PostManager {
     return generateHashtagTags(content);
   }
 
+  // 投稿イベント生成（共通化）
+  private async buildEvent(content: string, pubkey?: string) {
+    const tags = this.extractHashtags(content);
+    const event: any = {
+      kind: 1,
+      content,
+      tags,
+      created_at: Math.floor(Date.now() / 1000)
+    };
+    if (pubkey) event.pubkey = pubkey;
+    return event;
+  }
+
+  // 投稿送信（共通化）
+  private sendEvent(event: any, signer?: any): Promise<PostResult> {
+    if (!this.rxNostr) return Promise.resolve({ success: false, error: "nostr_not_ready" });
+    return new Promise((resolve) => {
+      let resolved = false;
+      let hasSuccess = false;
+      const sendObservable = this.rxNostr!.send(event, signer ? { signer } : undefined);
+      const subscription = sendObservable.subscribe({
+        next: (packet: any) => {
+          console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗");
+          if (packet.ok && !resolved) {
+            hasSuccess = true;
+            resolved = true;
+            subscription.unsubscribe();
+            resolve({ success: true });
+          }
+        },
+        error: (error: any) => {
+          console.error("送信エラー:", error);
+          if (!resolved) {
+            resolved = true;
+            subscription.unsubscribe();
+            resolve({ success: false, error: "post_error" });
+          }
+        },
+        complete: () => {
+          // すべて失敗した場合のみここでresolve
+          if (!resolved && !hasSuccess) {
+            resolved = true;
+            subscription.unsubscribe();
+            resolve({ success: false, error: "post_error" });
+          }
+        }
+      });
+      // 念のためタイムアウトも設定
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          subscription.unsubscribe();
+          resolve(hasSuccess ? { success: true } : { success: false, error: "post_error" });
+        }
+      }, 3000);
+    });
+  }
+
   // 投稿を送信する（純粋な投稿処理のみ）
   async submitPost(content: string): Promise<PostResult> {
     const validation = this.validatePost(content);
-    if (!validation.valid) {
-      return { success: false, error: validation.error };
-    }
+    if (!validation.valid) return { success: false, error: validation.error };
 
     try {
-      // ハッシュタグを抽出してtタグを生成
-      const hashtagTags = this.extractHashtags(content);
-
-      if (!this.rxNostr) {
-        return { success: false, error: "nostr_not_ready" };
-      }
-
       // ストアから認証状態を取得
       const auth = get(authState);
       const isNostrLoginAuth = auth.type === 'nostr-login';
@@ -81,45 +120,11 @@ export class PostManager {
         try {
           // 公開鍵を取得
           const pubkey = await keyManager.getPublicKeyFromWindowNostr();
-          if (!pubkey) {
-            return { success: false, error: "pubkey_not_found" };
-          }
-
-          // kind=1のテキスト投稿を作成（window.nostr用）
-          const event = {
-            kind: 1,
-            content,
-            tags: hashtagTags,
-            created_at: Math.floor(Date.now() / 1000),
-            pubkey
-          };
-
+          if (!pubkey) return { success: false, error: "pubkey_not_found" };
+          const event = await this.buildEvent(content, pubkey);
           const signedEvent = await (window.nostr as any).signEvent(event);
           console.log("署名済みイベント:", signedEvent);
-
-          // rxNostr.send()を直接使用（応答待ちなし）
-          const sendObservable = this.rxNostr.send(signedEvent);
-
-          // Observableをすぐに購読して送信開始、結果は無視
-          const subscription = sendObservable.subscribe({
-            next: (packet: any) => {
-              console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗");
-            },
-            error: (error: any) => {
-              console.error("送信エラー:", error);
-            },
-            complete: () => {
-              console.log("送信完了");
-            }
-          });
-
-          // 購読をすぐに解除（送信は継続される）
-          setTimeout(() => {
-            subscription.unsubscribe();
-          }, 100);
-
-          console.log("イベントを送信しました（リレーへの送信開始）");
-          return { success: true };
+          return await this.sendEvent(signedEvent);
         } catch (err) {
           console.error("window.nostrでの投稿エラー:", err);
           return { success: false, error: "post_error" };
@@ -128,43 +133,10 @@ export class PostManager {
 
       // ローカルキーを使用（秘密鍵直入れの場合）
       const storedKey = keyManager.loadFromStorage();
-      if (!storedKey) {
-        return { success: false, error: "key_not_found" };
-      }
-
-      // kind=1のテキスト投稿を作成（ローカルキー用）
-      const event = {
-        kind: 1,
-        content,
-        tags: hashtagTags // ハッシュタグから生成したtタグを設定
-      };
-
-      // 秘密鍵でsignerを作成
+      if (!storedKey) return { success: false, error: "key_not_found" };
+      const event = await this.buildEvent(content);
       const signer = seckeySigner(storedKey);
-
-      // 秘密鍵で署名してイベントを送信
-      const sendObservable = this.rxNostr.send(event, { signer });
-
-      // Observableをすぐに購読して送信開始
-      const subscription = sendObservable.subscribe({
-        next: (packet: any) => {
-          console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗");
-        },
-        error: (error: any) => {
-          console.error("送信エラー:", error);
-        },
-        complete: () => {
-          console.log("送信完了");
-        }
-      });
-
-      // 購読をすぐに解除（送信は継続される）
-      setTimeout(() => {
-        subscription.unsubscribe();
-      }, 100);
-
-      console.log("イベントを送信しました（リレーへの送信開始）");
-      return { success: true };
+      return await this.sendEvent(event, signer);
 
     } catch (err) {
       console.error("投稿エラー:", err);
