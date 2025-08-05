@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = 'v0.3.1';
+const PRECACHE_VERSION = 'v0.3.2';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const REQUEST_TIMEOUT = 5000;
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -25,7 +25,7 @@ if (precacheManifest.length > 0) {
                 } catch (error) {
                     console.error('プリキャッシュエラー:', error);
                 }
-                await self.skipWaiting();
+                // skipWaiting()を削除して手動制御にする
             })()
         );
     });
@@ -254,16 +254,33 @@ async function saveSharedFlag() {
 }
 
 /**
- * インストールイベント
+ * インストールイベント - skipWaiting()を削除
  */
 self.addEventListener('install', (event) => {
-    event.waitUntil(self.skipWaiting());
+    console.log('SW installing...', PRECACHE_VERSION);
+    event.waitUntil(
+        (async () => {
+            try {
+                if (precacheManifest.length > 0) {
+                    const cache = await caches.open(PRECACHE_NAME);
+                    const urls = precacheManifest.map(entry => entry.url);
+                    await cache.addAll(urls);
+                    console.log('SW cached resources:', urls.length);
+                }
+            } catch (error) {
+                console.error('プリキャッシュエラー:', error);
+            }
+            // skipWaiting()を呼ばない - ユーザーの選択を待つ
+            console.log('SW installed, waiting for user action');
+        })()
+    );
 });
 
 /**
  * アクティベートイベント
  */
 self.addEventListener('activate', (event) => {
+    console.log('SW activating...', PRECACHE_VERSION);
     event.waitUntil(
         (async () => {
             try {
@@ -290,8 +307,9 @@ self.addEventListener('activate', (event) => {
  * メッセージイベント
  */
 self.addEventListener('message', (event) => {
-    // SW更新用メッセージ - 優先的に処理
+    // SKIP_WAITINGメッセージを受信した時のみskipWaitingを実行
     if (event.data?.type === 'SKIP_WAITING') {
+        console.log('SW received SKIP_WAITING, updating...');
         self.skipWaiting();
         return;
     }

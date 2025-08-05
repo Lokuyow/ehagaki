@@ -15,19 +15,49 @@
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { getShareHandler } from "./lib/shareHandler";
-  import { useSwUpdate } from "./lib/useSwUpdate";
+  import { useRegisterSW } from "virtual:pwa-register/svelte";
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
   // 認証状態ストアを追加
   import { authState, clearAuthState } from "./lib/stores";
 
-  // Service Worker更新関連
-  const {
-    showSwUpdateModal: swUpdateStore,
-    reloadForSwUpdate,
-    handleSwUpdate,
-  } = useSwUpdate();
-  let showSwUpdateModal = false;
+  // Service Worker更新関連 - 公式実装を使用
+  const { offlineReady, needRefresh, updateServiceWorker } = useRegisterSW({
+    onRegistered(r) {
+      console.log("SW registered:", r);
+    },
+    onRegisterError(error) {
+      console.log("SW registration error", error);
+    },
+    onNeedRefresh() {
+      console.log("SW needs refresh - showing prompt");
+    },
+    onOfflineReady() {
+      console.log("SW offline ready");
+    }
+  });
+
+  // リアクティブに状態を監視
+  $: {
+    console.log("SW states:", { 
+      offlineReady: $offlineReady, 
+      needRefresh: $needRefresh,
+      showModal: $offlineReady || $needRefresh
+    });
+  }
+
+  $: showSwUpdateModal = $offlineReady || $needRefresh;
+
+  function closeSwUpdateModal() {
+    console.log("Closing SW update modal");
+    offlineReady.set(false);
+    needRefresh.set(false);
+  }
+
+  function handleSwUpdate() {
+    console.log("Handling SW update - reloading page");
+    updateServiceWorker(true);
+  }
 
   // UI状態管理
   let showDialog = false;
@@ -206,7 +236,10 @@
     profileLoaded = false;
 
     // PostComponentの投稿内容をクリア
-    if (postComponentRef && typeof postComponentRef.resetPostContent === "function") {
+    if (
+      postComponentRef &&
+      typeof postComponentRef.resetPostContent === "function"
+    ) {
       postComponentRef.resetPostContent();
     }
 
@@ -237,11 +270,6 @@
 
   // SW更新通知メッセージ
   let swUpdateMessage = "Updating...";
-
-  // サービスワーカーのストアを監視
-  swUpdateStore.subscribe((value) => {
-    showSwUpdateModal = value;
-  });
 
   onMount(async () => {
     const storedLocale = localStorage.getItem("locale");
@@ -312,23 +340,6 @@
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
     }
-
-    // Service Worker更新検知を即時に行う
-    if ("serviceWorker" in navigator) {
-      // 即座に更新チェック
-      handleSwUpdate();
-
-      // ページの表示状態が変わった時に再チェック
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible") {
-          navigator.serviceWorker.ready.then((reg) => {
-            if (reg.waiting) {
-              handleSwUpdate(reg.waiting);
-            }
-          });
-        }
-      });
-    }
   });
 
   function handleUploadStatusChange(uploading: boolean) {
@@ -393,11 +404,15 @@
     <SettingsDialog show={showSettings} onClose={closeSettings} />
 
     <!-- SW更新モーダル -->
-    <SwUpdateModal
-      show={showSwUpdateModal}
-      onReload={reloadForSwUpdate}
-      message={swUpdateMessage}
-    />
+    {#if showSwUpdateModal}
+      <SwUpdateModal
+        show={showSwUpdateModal}
+        offlineReady={$offlineReady}
+        needRefresh={$needRefresh}
+        onReload={handleSwUpdate}
+        onClose={closeSwUpdateModal}
+      />
+    {/if}
 
     <!-- フッター -->
     <div class="footer-bar">
