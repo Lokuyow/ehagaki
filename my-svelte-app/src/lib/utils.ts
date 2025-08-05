@@ -231,14 +231,25 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
 }
 
 /**
- * HEX形式の公開鍵からnpubとnprofileを生成する
- * @param hex HEX形式の公開鍵
+ * HEX形式またはnpub形式の公開鍵からnpubとnprofileを生成する
+ * @param key HEX形式またはnpub形式の公開鍵
  * @returns 公開鍵データ（hex, npub, nprofile）
  */
-export function generatePublicKeyFormats(hex: string): PublicKeyData {
+export function generatePublicKeyFormats(key: string): PublicKeyData {
   try {
-    if (!hex) {
+    if (!key) {
       return { hex: "", npub: "", nprofile: "" };
+    }
+    let hex = key;
+    // npub形式の場合はデコードしてhexに変換
+    if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(key)) {
+      const { nip19 } = require("nostr-tools");
+      const decoded = nip19.decode(key);
+      if (decoded.type === "npub") {
+        hex = decoded.data as string;
+      } else {
+        return { hex: "", npub: "", nprofile: "" };
+      }
     }
     const npub = nip19.npubEncode(hex);
     const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });

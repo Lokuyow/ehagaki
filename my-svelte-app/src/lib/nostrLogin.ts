@@ -160,10 +160,10 @@ export class NostrLoginManager {
      */
     private async npubToPubkey(npub: string): Promise<string> {
         try {
-            // nostr-toolsのnip19を使ってデコード
-            const { nip19 } = await import('nostr-tools');
-            const { type, data } = nip19.decode(npub);
-            return type === 'npub' ? data as string : '';
+            // utils.tsのgeneratePublicKeyFormatsを利用
+            const { generatePublicKeyFormats } = await import('./utils');
+            const pubkeyData = generatePublicKeyFormats(npub);
+            return pubkeyData.hex || '';
         } catch (error) {
             console.error('npubのデコードエラー:', error);
             return '';
