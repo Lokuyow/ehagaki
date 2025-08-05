@@ -17,6 +17,52 @@ const FALLBACK_RELAYS = [
     "wss://nrelay-jp.c-stellar.net/",
 ];
 
+type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
+
+function saveToLocalStorage(pubkeyHex: string, relays: RelayConfig): void {
+    try {
+        localStorage.setItem(
+            `nostr-relays-${pubkeyHex}`,
+            JSON.stringify(relays),
+        );
+        console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
+    } catch (e) {
+        console.error("リレーリストの保存に失敗:", e);
+    }
+}
+
+function getFromLocalStorage(pubkeyHex: string): RelayConfig | null {
+    try {
+        const relays = localStorage.getItem(`nostr-relays-${pubkeyHex}`);
+        return relays ? JSON.parse(relays) : null;
+    } catch (e) {
+        console.error("リレーリストの取得に失敗:", e);
+        return null;
+    }
+}
+
+function parseKind10002Tags(tags: any[]): RelayConfig {
+    const relayConfigs: { [url: string]: { read: boolean; write: boolean } } = {};
+    tags
+        .filter((tag) => tag.length >= 2 && tag[0] === "r")
+        .forEach((tag) => {
+            const url = tag[1];
+            let read = true;
+            let write = true;
+            if (tag.length > 2) {
+                if (tag.length === 3) {
+                    if (tag[2] === "read") write = false;
+                    else if (tag[2] === "write") read = false;
+                } else {
+                    read = tag.includes("read");
+                    write = tag.includes("write");
+                }
+            }
+            relayConfigs[url] = { read, write };
+        });
+    return relayConfigs;
+}
+
 export class RelayManager {
     private rxNostr: any;
 
@@ -24,30 +70,15 @@ export class RelayManager {
         this.rxNostr = rxNostr;
     }
 
-    saveToLocalStorage(pubkeyHex: string, relays: any): void {
-        try {
-            localStorage.setItem(
-                `nostr-relays-${pubkeyHex}`,
-                JSON.stringify(relays),
-            );
-            console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
-        } catch (e) {
-            console.error("リレーリストの保存に失敗:", e);
-        }
+    saveToLocalStorage(pubkeyHex: string, relays: RelayConfig): void {
+        saveToLocalStorage(pubkeyHex, relays);
     }
 
-    getFromLocalStorage(pubkeyHex: string): any {
-        try {
-            const relays = localStorage.getItem(`nostr-relays-${pubkeyHex}`);
-            return relays ? JSON.parse(relays) : null;
-        } catch (e) {
-            console.error("リレーリストの取得に失敗:", e);
-            return null;
-        }
+    getFromLocalStorage(pubkeyHex: string): RelayConfig | null {
+        return getFromLocalStorage(pubkeyHex);
     }
 
     setBootstrapRelays(): void {
-        // setDefaultRelaysの代わりにTemporary RelaysでREQ購読
         this.rxNostr.use(
             createRxForwardReq(),
             {
@@ -55,27 +86,22 @@ export class RelayManager {
                     relays: BOOTSTRAP_RELAYS,
                 },
             }
-        ).subscribe(); // 購読開始（必要に応じてunsubscribe管理）
+        ).subscribe();
     }
 
     async fetchUserRelays(pubkeyHex: string): Promise<boolean> {
-        const foundKind10002 = await this.tryFetchKind10002(pubkeyHex, BOOTSTRAP_RELAYS);
-        if (foundKind10002) return true;
-        const foundKind3 = await this.tryFetchKind3(pubkeyHex, BOOTSTRAP_RELAYS);
-        if (foundKind3) return true;
+        if (await this.tryFetchKind10002(pubkeyHex, BOOTSTRAP_RELAYS)) return true;
+        if (await this.tryFetchKind3(pubkeyHex, BOOTSTRAP_RELAYS)) return true;
 
-        // どちらも取得できなかった場合、フォールバックリレーを設定
         this.rxNostr.setDefaultRelays(FALLBACK_RELAYS);
         console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
-        this.saveToLocalStorage(pubkeyHex, FALLBACK_RELAYS);
+        saveToLocalStorage(pubkeyHex, FALLBACK_RELAYS);
         return false;
     }
 
-    async tryFetchKind10002(pubkeyHex: string, relays: string[]): Promise<boolean> {
+    private async tryFetchKind10002(pubkeyHex: string, relays: string[]): Promise<boolean> {
         return new Promise((resolve) => {
             const rxReq = createRxForwardReq();
-            let found = false;
-
             const subscription = this.rxNostr.use(
                 rxReq,
                 { on: { relays } }
@@ -84,34 +110,12 @@ export class RelayManager {
                     packet.event?.kind === 10002 &&
                     packet.event.pubkey === pubkeyHex
                 ) {
-                    found = true;
                     try {
-                        const relayConfigs: {
-                            [url: string]: { read: boolean; write: boolean };
-                        } = {};
-
-                        packet.event.tags
-                            .filter((tag: any) => tag.length >= 2 && tag[0] === "r")
-                            .forEach((tag: any) => {
-                                const url = tag[1];
-                                let read = true;
-                                let write = true;
-                                if (tag.length > 2) {
-                                    if (tag.length === 3) {
-                                        if (tag[2] === "read") write = false;
-                                        else if (tag[2] === "write") read = false;
-                                    } else {
-                                        read = tag.includes("read");
-                                        write = tag.includes("write");
-                                    }
-                                }
-                                relayConfigs[url] = { read, write };
-                            });
-
+                        const relayConfigs = parseKind10002Tags(packet.event.tags);
                         if (Object.keys(relayConfigs).length > 0) {
                             this.rxNostr.setDefaultRelays(relayConfigs);
                             console.log("Kind 10002からリレーを設定:", relayConfigs);
-                            this.saveToLocalStorage(pubkeyHex, relayConfigs);
+                            saveToLocalStorage(pubkeyHex, relayConfigs);
                             subscription.unsubscribe();
                             resolve(true);
                         }
@@ -130,7 +134,7 @@ export class RelayManager {
         });
     }
 
-    async tryFetchKind3(pubkeyHex: string, relays: string[]): Promise<boolean> {
+    private async tryFetchKind3(pubkeyHex: string, relays: string[]): Promise<boolean> {
         return new Promise((resolve) => {
             const rxReq = createRxForwardReq();
 
@@ -148,7 +152,7 @@ export class RelayManager {
                         ) {
                             this.rxNostr.setDefaultRelays(relayObj);
                             console.log("Kind 3からリレーを設定:", relayObj);
-                            this.saveToLocalStorage(pubkeyHex, relayObj);
+                            saveToLocalStorage(pubkeyHex, relayObj);
                             subscription.unsubscribe();
                             resolve(true);
                         }
