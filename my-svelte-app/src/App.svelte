@@ -19,7 +19,7 @@
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
   // 認証状態ストアを追加
-  import { authState } from "./lib/stores";
+  import { authState, sharedImageStore } from "./lib/stores";
 
   // Service Worker更新関連 - 公式実装を使用
   const { offlineReady, needRefresh, updateServiceWorker } = useRegisterSW({
@@ -327,34 +327,27 @@
       isLoadingProfile = false; // ← 初期化完了後にfalse
     }
 
-    // 共有画像処理（ShareHandler）- 統合された機能を使用
     try {
       console.log("共有画像の確認を開始します");
-
       const shareHandler = getShareHandler();
-      const sharedImageData = await shareHandler.checkForSharedImageOnLaunch();
-
-      if (sharedImageData && sharedImageData.image) {
-        console.log(
-          "共有画像を検出しました:",
-          sharedImageData.image.name,
-          `サイズ: ${Math.round(sharedImageData.image.size / 1024)}KB`,
-          `タイプ: ${sharedImageData.image.type}`,
-        );
-
-        // カスタムイベントでPostComponentに共有画像を通知
-        window.dispatchEvent(
-          new CustomEvent("shared-image-received", {
-            detail: { file: sharedImageData.image },
-          }),
-        );
-      } else {
-        console.log("共有画像はありませんでした");
-      }
+      await shareHandler.checkForSharedImageOnLaunch();
+      // 以降の処理はストアのリアクティブで行う
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
     }
   });
+
+  // 共有画像ストアの購読
+  $: if (
+    $sharedImageStore.received &&
+    $sharedImageStore.file &&
+    postComponentRef
+  ) {
+    // 受信済みフラグを一度だけ処理
+    postComponentRef.uploadFiles([$sharedImageStore.file]);
+    // ストアをリセット
+    sharedImageStore.set({ file: null, metadata: undefined, received: false });
+  }
 
   function handleUploadStatusChange(uploading: boolean) {
     isUploading = uploading;

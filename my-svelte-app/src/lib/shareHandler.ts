@@ -1,3 +1,5 @@
+import { sharedImageStore } from './stores';
+
 /**
  * 共有画像データ型
  */
@@ -50,7 +52,12 @@ export class ShareHandler {
     if (data?.image) {
       this.sharedImageFile = data.image;
       this.sharedImageMetadata = data.metadata || null;
-      this.dispatchSharedImageEvent();
+      // Storeを更新
+      sharedImageStore.set({
+        file: this.sharedImageFile,
+        metadata: this.sharedImageMetadata,
+        received: true
+      });
     }
 
     if (requestId && this.requestCallbacks.has(requestId)) {
@@ -60,14 +67,7 @@ export class ShareHandler {
   }
 
   private dispatchSharedImageEvent(): void {
-    if (!this.sharedImageFile) return;
-    try {
-      window.dispatchEvent(new CustomEvent('shared-image-received', {
-        detail: { file: this.sharedImageFile, metadata: this.sharedImageMetadata }
-      }));
-    } catch (error) {
-      console.error('ShareHandler: イベント発行エラー', error);
-    }
+    // ここはもう使われないので空実装に
   }
 
   public static checkIfOpenedFromShare(): boolean {
@@ -84,7 +84,14 @@ export class ShareHandler {
         if (sharedImageData) {
           this.sharedImageFile = sharedImageData.image;
           this.sharedImageMetadata = sharedImageData.metadata || null;
-          this.dispatchSharedImageEvent();
+          // Storeを更新
+          sharedImageStore.set({
+            file: this.sharedImageFile,
+            metadata: this.sharedImageMetadata,
+            received: true
+          });
+          // windowイベントの発火は不要
+          // this.dispatchSharedImageEvent();
           return sharedImageData;
         }
         if (attempt < ShareHandler.RETRY_COUNT - 1) await this.delay(ShareHandler.RETRY_DELAY);

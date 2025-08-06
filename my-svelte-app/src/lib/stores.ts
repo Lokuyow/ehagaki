@@ -101,3 +101,17 @@ export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number
 export function hideImageSizeInfo(): void {
     imageSizeInfoStore.set({ info: null, visible: false });
 }
+
+/**
+ * 共有画像の状態ストア
+ */
+export interface SharedImageStoreState {
+    file: File | null;
+    metadata?: any;
+    received: boolean;
+}
+export const sharedImageStore = writable<SharedImageStoreState>({
+    file: null,
+    metadata: undefined,
+    received: false
+});

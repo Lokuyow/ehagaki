@@ -69,7 +69,8 @@
     setTimeout(() => (uploadErrorMessage = ""), duration);
   }
 
-  async function uploadFiles(files: File[] | FileList) {
+  // 外部から呼び出せるようにexport
+  export async function uploadFiles(files: File[] | FileList) {
     const fileArray = Array.from(files);
     if (!fileArray.length) return;
     const endpoint = localStorage.getItem("uploadEndpoint") || "";
@@ -259,20 +260,6 @@
         submitPost();
     }
   }
-
-  onMount(() => {
-    window.addEventListener(
-      "shared-image-received",
-      handleSharedImage as EventListener,
-    );
-  });
-
-  onDestroy(() => {
-    window.removeEventListener(
-      "shared-image-received",
-      handleSharedImage as EventListener,
-    );
-  });
 
   $: if (postContent && postStatus.error) {
     postStatus = { ...postStatus, error: false, message: "" };
