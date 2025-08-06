@@ -37,7 +37,7 @@ export interface FileValidationResult {
  */
 export class FileUploadManager {
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
-  private static readonly MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+  private static readonly MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
   private static readonly COMPRESSION_OPTIONS = {
     maxWidthOrHeight: 1024,
     fileType: "image/webp" as const,
@@ -45,15 +45,9 @@ export class FileUploadManager {
     useWebWorker: true,
   };
 
-  /**
-   * NIP-98形式の認証イベントを作成
-   */
   private static async createAuthEvent(url: string, method: string): Promise<any> {
     const storedKey = keyManager.loadFromStorage();
-    if (!storedKey) {
-      throw new Error('Authentication required');
-    }
-
+    if (!storedKey) throw new Error('Authentication required');
     const signer = seckeySigner(storedKey);
     const event = {
       kind: 27235,
@@ -64,18 +58,11 @@ export class FileUploadManager {
         ["method", method]
       ]
     };
-
     return await signer.signEvent(event);
   }
 
-  /**
-   * 画像ファイルを圧縮
-   */
   private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean }> {
-    if (!file.type.startsWith("image/")) {
-      return { file, wasCompressed: false };
-    }
-
+    if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
     try {
       const compressed = await imageCompression(file, this.COMPRESSION_OPTIONS);
       const compressedFile = new File(
@@ -84,54 +71,38 @@ export class FileUploadManager {
         { type: "image/webp" }
       );
       return { file: compressedFile, wasCompressed: true };
-    } catch (error) {
-      console.warn('画像圧縮に失敗しました:', error);
+    } catch {
       return { file, wasCompressed: false };
     }
   }
 
-  /**
-   * ファイルタイプの検証
-   */
   public static validateImageFile(file: File): FileValidationResult {
-    if (!file.type.startsWith("image/")) {
-      return { isValid: false, errorMessage: "only_images_allowed" };
-    }
-    if (file.size > this.MAX_FILE_SIZE) {
-      return { isValid: false, errorMessage: "file_too_large" };
-    }
+    if (!file.type.startsWith("image/")) return { isValid: false, errorMessage: "only_images_allowed" };
+    if (file.size > this.MAX_FILE_SIZE) return { isValid: false, errorMessage: "file_too_large" };
     return { isValid: true };
   }
 
-  /**
-   * 単一ファイルをアップロード
-   */
+  private static getUploadEndpoint(apiUrl: string): string {
+    return localStorage.getItem("uploadEndpoint") || apiUrl;
+  }
+
+  private static async buildAuthHeader(url: string): Promise<string> {
+    const authEvent = await this.createAuthEvent(url, "POST");
+    return `Nostr ${btoa(JSON.stringify(authEvent))}`;
+  }
+
   public static async uploadFile(
     file: File,
     apiUrl: string = this.DEFAULT_API_URL
   ): Promise<FileUploadResponse> {
     try {
-      if (!file) {
-        return { success: false, error: "No file selected" };
-      }
-
-      // 元のファイル情報を記録
+      if (!file) return { success: false, error: "No file selected" };
       const originalSize = file.size;
-
-      // 画像圧縮
       const { file: uploadFile, wasCompressed } = await this.compressImage(file);
       const compressedSize = uploadFile.size;
-
-      // サイズ情報を生成
       const sizeInfo = createFileSizeInfo(originalSize, compressedSize, wasCompressed);
-
-      // アップロード先URLの決定
-      const savedEndpoint = localStorage.getItem("uploadEndpoint");
-      const finalUrl = savedEndpoint || apiUrl;
-
-      // 認証とアップロード実行
-      const authEvent = await this.createAuthEvent(finalUrl, "POST");
-      const authHeader = `Nostr ${btoa(JSON.stringify(authEvent))}`;
+      const finalUrl = this.getUploadEndpoint(apiUrl);
+      const authHeader = await this.buildAuthHeader(finalUrl);
 
       const formData = new FormData();
       formData.append('file', uploadFile);
@@ -145,284 +116,152 @@ export class FileUploadManager {
 
       if (!response.ok) {
         const errorText = await response.text();
-        return {
-          success: false,
-          error: `Upload failed: ${response.status} ${errorText}`,
-          sizeInfo
-        };
+        return { success: false, error: `Upload failed: ${response.status} ${errorText}`, sizeInfo };
       }
 
       const data = await response.json();
-
-      // NIP-96レスポンスからURLを取得
       if (data.status === 'success' && data.nip94_event?.tags) {
         const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === 'url');
-        if (urlTag?.[1]) {
-          return {
-            success: true,
-            url: urlTag[1],
-            sizeInfo
-          };
-        }
+        if (urlTag?.[1]) return { success: true, url: urlTag[1], sizeInfo };
       }
-
-      return {
-        success: false,
-        error: data.message || 'Could not extract URL from response',
-        sizeInfo
-      };
+      return { success: false, error: data.message || 'Could not extract URL from response', sizeInfo };
     } catch (error) {
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      };
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  /**
-   * 複数ファイルを並列アップロード
-   */
   public static async uploadMultipleFiles(
     files: File[],
     apiUrl: string = this.DEFAULT_API_URL,
     onProgress?: (progress: MultipleUploadProgress) => void
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
-
     const results: FileUploadResponse[] = new Array(files.length);
-    let completed = 0;
-    let failed = 0;
-
-    const updateProgress = () => {
-      onProgress?.({
-        completed,
-        failed,
-        total: files.length,
-        inProgress: completed + failed < files.length
-      });
-    };
-
-    // 初期進捗を通知
+    let completed = 0, failed = 0;
+    const updateProgress = () => onProgress?.({
+      completed, failed, total: files.length, inProgress: completed + failed < files.length
+    });
     updateProgress();
-
-    const uploadPromises = files.map(async (file, index) => {
+    await Promise.all(files.map(async (file, index) => {
       try {
         const result = await this.uploadFile(file, apiUrl);
         results[index] = result;
-
-        if (result.success) {
-          completed++;
-        } else {
-          failed++;
-        }
-
+        result.success ? completed++ : failed++;
         updateProgress();
-        return result;
       } catch (error) {
-        const errorResult: FileUploadResponse = {
-          success: false,
-          error: error instanceof Error ? error.message : String(error)
-        };
-        results[index] = errorResult;
-        failed++;
-        updateProgress();
-        return errorResult;
+        results[index] = { success: false, error: error instanceof Error ? error.message : String(error) };
+        failed++; updateProgress();
       }
-    });
-
-    await Promise.all(uploadPromises);
+    }));
     return results;
   }
 
-  /**
-   * 単一ファイルアップロード（コールバック対応版）
-   */
   public static async uploadFileWithCallbacks(
     file: File,
     apiUrl: string = this.DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse> {
-    // 進捗開始を通知
-    callbacks?.onProgress?.({
-      completed: 0,
-      failed: 0,
-      total: 1,
-      inProgress: true
-    });
-
+    callbacks?.onProgress?.({ completed: 0, failed: 0, total: 1, inProgress: true });
     try {
       const result = await this.uploadFile(file, apiUrl);
-
-      // 進捗完了を通知
       callbacks?.onProgress?.({
         completed: result.success ? 1 : 0,
         failed: result.success ? 0 : 1,
         total: 1,
         inProgress: false
       });
-
-      // サイズ情報をストアに書き込み
       if (result.success && result.sizeInfo) {
         const displayInfo = generateSizeDisplayInfo(result.sizeInfo);
-        if (displayInfo) {
-          showImageSizeInfo(displayInfo);
-        }
+        if (displayInfo) showImageSizeInfo(displayInfo);
       }
-
       return result;
     } catch (error) {
-      callbacks?.onProgress?.({
-        completed: 0,
-        failed: 1,
-        total: 1,
-        inProgress: false
-      });
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : String(error)
-      };
+      callbacks?.onProgress?.({ completed: 0, failed: 1, total: 1, inProgress: false });
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }
 
-  /**
-   * 複数ファイルアップロード（コールバック対応版）
-   */
   public static async uploadMultipleFilesWithCallbacks(
     files: File[],
     apiUrl: string = this.DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
-
     const results = await this.uploadMultipleFiles(files, apiUrl, callbacks?.onProgress);
-
-    // 最初の成功した結果からサイズ情報をストアに書き込み
     const firstSuccess = results.find(r => r.success && r.sizeInfo);
     if (firstSuccess?.sizeInfo) {
       const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
-      if (displayInfo) {
-        showImageSizeInfo(displayInfo);
-      }
+      if (displayInfo) showImageSizeInfo(displayInfo);
     }
-
     return results;
   }
 
-  /**
-   * ServiceWorkerから共有画像を取得
-   */
-  public static async getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
+  // --- ServiceWorker関連の共通処理をユーティリティ関数化 ---
+  private static createSWMessagePromise(
+    useChannel: boolean
+  ): Promise<{ image: File; metadata: any } | null> {
+    return new Promise((resolve) => {
+      let timeoutId: number;
+      const cleanup = () => clearTimeout(timeoutId);
 
-    if (!navigator.serviceWorker.controller) {
-      return null;
-    }
-
-    try {
-      // 両方の方法を試す
-
-      // 1. MessageChannelを使用する方法
-      const messageChannelPromise = (async () => {
+      if (useChannel) {
         const messageChannel = new MessageChannel();
-
-        const promise = new Promise<{ image: File; metadata: any } | null>((resolve) => {
-          messageChannel.port1.onmessage = (event) => {
-            if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-              resolve({
-                image: event.data.data.image,
-                metadata: event.data.data.metadata || {}
-              });
-            } else {
-              resolve(null);
-            }
-          };
-
-          // タイムアウト設定
-          setTimeout(() => resolve(null), 3000);
-        });
-
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage(
-            { action: 'getSharedImage' },
-            [messageChannel.port2]
-          );
-        } else {
-          return null;
-        }
-
-        return promise;
-      })();
-
-      // 2. 通常のメッセージイベントリスナーを使用する方法
-      const eventListenerPromise = (async () => {
-        const promise = new Promise<{ image: File; metadata: any } | null>((resolve) => {
-          const handler = (event: MessageEvent) => {
-            navigator.serviceWorker.removeEventListener('message', handler);
-
-            if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-              resolve({
-                image: event.data.data.image,
-                metadata: event.data.data.metadata || {}
-              });
-            } else {
-              resolve(null);
-            }
-          };
-
-          navigator.serviceWorker.addEventListener('message', handler);
-
-          // タイムアウト設定
-          setTimeout(() => {
-            navigator.serviceWorker.removeEventListener('message', handler);
+        messageChannel.port1.onmessage = (event) => {
+          cleanup();
+          if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
+            resolve({ image: event.data.data.image, metadata: event.data.data.metadata || {} });
+          } else {
             resolve(null);
-          }, 3000);
-        });
+          }
+        };
+        timeoutId = window.setTimeout(() => resolve(null), 3000);
+        navigator.serviceWorker.controller?.postMessage(
+          { action: 'getSharedImage' },
+          [messageChannel.port2]
+        );
+      } else {
+        const handler = (event: MessageEvent) => {
+          cleanup();
+          navigator.serviceWorker.removeEventListener('message', handler);
+          if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
+            resolve({ image: event.data.data.image, metadata: event.data.data.metadata || {} });
+          } else {
+            resolve(null);
+          }
+        };
+        navigator.serviceWorker.addEventListener('message', handler);
+        timeoutId = window.setTimeout(() => {
+          navigator.serviceWorker.removeEventListener('message', handler);
+          resolve(null);
+        }, 3000);
+        navigator.serviceWorker.controller?.postMessage({ action: 'getSharedImage' });
+      }
+    });
+  }
 
-        if (navigator.serviceWorker.controller) {
-          navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage' });
-        } else {
-          return null;
-        }
-
-        return promise;
-      })();
-
-      // タイムアウト設定
-      const timeoutPromise = new Promise<null>((resolve) => {
-        setTimeout(() => resolve(null), 5000);
-      });
-
-      // どれか一つが結果を返すのを待つ
+  public static async getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
+    if (!navigator.serviceWorker.controller) return null;
+    try {
+      const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000));
       const result = await Promise.race([
-        messageChannelPromise,
-        eventListenerPromise,
+        this.createSWMessagePromise(true),
+        this.createSWMessagePromise(false),
         timeoutPromise
       ]);
-
       return result;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
 
-  /**
-   * URLパラメータから共有フラグを確認
-   * @returns 共有からの起動かどうか
-   */
   public static checkIfOpenedFromShare(): boolean {
     const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.has('shared') && urlParams.get('shared') === 'true';
+    return urlParams.get('shared') === 'true';
   }
 
-  /**
-   * 共有画像の処理とアップロードを統合した便利メソッド
-   */
   public static async processSharedImage(): Promise<FileUploadResponse | null> {
     const sharedData = await this.getSharedImageFromServiceWorker();
-    if (!sharedData?.image) {
-      return null;
-    }
-
+    if (!sharedData?.image) return null;
     return await this.uploadFile(sharedData.image);
   }
 }
