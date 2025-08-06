@@ -111,21 +111,21 @@
     }
 
     :global(.cancel-btn) {
+        --btn-bg: var(--white);
         border: 1px solid #ccc;
-        background-color: #f5f5f5;
         color: #3d3d3d;
         width: 100%;
     }
 
     :global(.clear-btn) {
+        --btn-bg: var(--yellow);
         border: 1px solid #ccc;
-        background-color: #fffbe6;
         color: #3d3d3d;
         width: 100%;
     }
 
     :global(.save-btn) {
-        background-color: #646cff;
+        --btn-bg: var(--theme);
         color: white;
         border: none;
         width: 100%;
@@ -167,7 +167,7 @@
     }
 
     :global(.nostr-login-button) {
-        background: #7c3aed;
+        --btn-bg: var(--nostr);
         color: white;
         border: none;
         height: 65px;

@@ -40,14 +40,14 @@
     }
 
     :global(.cancel-btn) {
-        background-color: #f5f5f5;
+        --btn-bg: var(--white);
         border: 1px solid #ddd;
         color: #3d3d3d;
         width: 100%;
     }
 
     :global(.logout-btn) {
-        background-color: #d32f2f;
+        --btn-bg: var(--red);
         color: #fff;
         border: none;
         width: 100%;

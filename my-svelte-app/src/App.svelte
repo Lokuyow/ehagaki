@@ -452,6 +452,7 @@
 {/if}
 
 <style>
+
   main {
     position: relative;
     display: flex;
@@ -486,7 +487,7 @@
   }
 
   :global(.login-btn) {
-    background: var(--theme);
+    --btn-bg: var(--theme);
     width: 110px;
     border: none;
     color: #fff;

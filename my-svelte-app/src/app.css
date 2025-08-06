@@ -1,5 +1,9 @@
 :root {
   --theme: #1DBF73;
+  --nostr: #7c3aed;
+  --white: #ffffff;
+  --yellow: #ffecbc;
+  --red: #d32f2f;
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   line-height: 1.5;
@@ -89,10 +93,6 @@ button:active:not(:disabled),
     color: var(--link-hover);
     opacity: 1;
   }
-
-  button:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--btn-bg), black 10%);
-  }
 }
 
 .svg-icon {
@@ -126,6 +126,12 @@ button:active:not(:disabled),
     --shadow: rgba(0, 0, 0, 0.1);
     --hagaki: #e63a3a;
   }
+
+  @media (min-width: 601px) {
+    button:hover:not(:disabled) {
+      background-color: color-mix(in srgb, var(--btn-bg), black 8%);
+    }
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -148,5 +154,11 @@ button:active:not(:disabled),
     --svg: #f0f0f0;
     --shadow: rgba(255, 255, 255, 0.1);
     --hagaki: #f88a77;
+  }
+
+  @media (min-width: 601px) {
+    button:hover:not(:disabled) {
+      background-color: color-mix(in srgb, var(--btn-bg), black 15%);
+    }
   }
 }
