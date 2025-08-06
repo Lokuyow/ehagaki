@@ -109,10 +109,19 @@
       })(),
     );
     if (results) {
-      const successResults = results.filter((r) => r.success);
-      const failedResults = results.filter((r) => !r.success);
+      // 成功したアップロード結果を選択順で抽出
+      const successResults: { url: string }[] = [];
+      const failedResults = [];
+      for (let i = 0; i < results.length; i++) {
+        const r = results[i];
+        if (r.success && r.url) {
+          successResults.push({ url: r.url });
+        } else if (!r.success) {
+          failedResults.push(r);
+        }
+      }
       if (successResults.length)
-        insertImageUrl(successResults.map((r) => r.url!).join("\n"));
+        insertImageUrl(successResults.map((r) => r.url).join("\n"));
       if (failedResults.length)
         showUploadError(
           failedResults.length === 1
