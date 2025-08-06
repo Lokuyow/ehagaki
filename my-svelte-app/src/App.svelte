@@ -153,6 +153,9 @@
       setTimeout(async () => {
         await loadProfileForPubkey(auth.pubkey);
       }, 500);
+
+      // nostr-login認証が完了したらログインダイアログを閉じる
+      showDialog = false;
     }
   }
 
