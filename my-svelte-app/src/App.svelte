@@ -120,7 +120,6 @@
         console.log("ローカルストレージのリレーリストを使用:", savedRelays);
       } else {
         relayManager.setBootstrapRelays();
-        await relayManager.fetchUserRelays(pubkeyHex);
       }
 
       const profile = await profileManager.fetchProfileData(pubkeyHex);
@@ -149,6 +148,11 @@
       // Nostrクライアントを初期化してからプロフィール読み込み
       await initializeNostr(auth.pubkey);
 
+      // ログイン時にリレー情報を取得
+      if (relayManager) {
+        await relayManager.fetchUserRelays(auth.pubkey);
+      }
+
       // リレーが確実に設定されるまで少し待つ
       setTimeout(async () => {
         await loadProfileForPubkey(auth.pubkey);
@@ -170,7 +174,7 @@
     }
 
     isLoadingProfile = true;
-    await relayManager.fetchUserRelays(pubkeyHex);
+    // fetchUserRelaysはここでは呼び出さない
     const profile = await profileManager.fetchProfileData(pubkeyHex);
     if (profile) {
       profileData = profile;
@@ -192,6 +196,10 @@
       errorMessage = "";
 
       if (currentHexKey) {
+        // ログイン時にリレー情報を取得
+        if (relayManager) {
+          await relayManager.fetchUserRelays(currentHexKey);
+        }
         await loadProfileForPubkey(currentHexKey);
       }
     } else {
@@ -455,7 +463,6 @@
 {/if}
 
 <style>
-
   main {
     position: relative;
     display: flex;
