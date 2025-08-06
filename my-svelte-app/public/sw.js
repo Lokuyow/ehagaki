@@ -1,73 +1,87 @@
 // 定数定義
 const PRECACHE_VERSION = 'v0.3.3';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
-const REQUEST_TIMEOUT = 5000;
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
 
-// 画像データをキャッシュするためのインメモリストア
 let sharedImageCache = null;
-
-// VitePWAがここにマニフェストを注入
 const precacheManifest = self.__WB_MANIFEST || [];
 
-/**
- * プリキャッシュの設定
- */
-if (precacheManifest.length > 0) {
-    self.addEventListener('install', (event) => {
-        event.waitUntil(
-            (async () => {
+// installイベント（skipWaitingは手動制御）
+self.addEventListener('install', (event) => {
+    console.log('SW installing...', PRECACHE_VERSION);
+    event.waitUntil(
+        (async () => {
+            if (precacheManifest.length > 0) {
                 try {
                     const cache = await caches.open(PRECACHE_NAME);
                     const urls = precacheManifest.map(entry => entry.url);
                     await cache.addAll(urls);
+                    console.log('SW cached resources:', urls.length);
                 } catch (error) {
                     console.error('プリキャッシュエラー:', error);
                 }
-                // skipWaiting()を削除して手動制御にする
-            })()
-        );
-    });
-}
+            }
+            console.log('SW installed, waiting for user action');
+        })()
+    );
+});
 
-/**
- * fetch時のキャッシュ戦略
- */
+// activateイベント
+self.addEventListener('activate', (event) => {
+    console.log('SW activating...', PRECACHE_VERSION);
+    event.waitUntil(
+        (async () => {
+            try {
+                const cacheNames = await caches.keys();
+                await Promise.all(
+                    cacheNames.map(name =>
+                        name !== PRECACHE_NAME ? caches.delete(name) : undefined
+                    )
+                );
+                await self.clients.claim();
+            } catch (error) {
+                console.error('アクティベートエラー:', error);
+            }
+        })()
+    );
+});
+
+// fetchイベント
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
-    
-    // アップロードリクエストの処理
     if (isUploadRequest(event.request, url)) {
         event.respondWith(handleUploadRequest(event.request));
     } else if (url.origin === self.location.origin) {
-        // 自サイトのリソースはCache First戦略
-        event.respondWith(handleCacheFirstStrategy(event.request));
+        event.respondWith(handleCacheFirst(event.request));
     }
-    // 外部リソースはキャッシュせず、ネットワークから直接取得（デフォルト動作）
 });
 
-/**
- * アップロードリクエストかどうかを判定
- */
+// messageイベント
+self.addEventListener('message', (event) => {
+    if (event.data?.type === 'SKIP_WAITING') {
+        console.log('SW received SKIP_WAITING, updating...');
+        self.skipWaiting();
+        return;
+    }
+    if (event.data?.action === 'getSharedImage') {
+        respondSharedImage(event);
+    }
+});
+
+// アップロードリクエスト判定
 function isUploadRequest(request, url) {
-    return request.method === 'POST' && 
-           (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
+    return request.method === 'POST' &&
+        (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
 }
 
-/**
- * アップロードリクエストの処理
- */
+// アップロードリクエスト処理
 async function handleUploadRequest(request) {
     try {
         const formData = await request.formData();
         const image = formData.get('image');
+        if (!image) return createRedirectResponse('/ehagaki/', 'no-image');
 
-        if (!image) {
-            return createRedirectResponse('/ehagaki/', 'no-image');
-        }
-
-        // 画像データをキャッシュに保存
         sharedImageCache = {
             image,
             metadata: {
@@ -77,35 +91,22 @@ async function handleUploadRequest(request) {
                 timestamp: new Date().toISOString()
             }
         };
-
-        // IndexedDBに共有フラグを保存（バックグラウンド処理）
-        saveSharedFlag().catch(err => 
-            console.error('IndexedDB保存エラー:', err)
-        );
-
-        // クライアント処理
-        return await handleClientRedirection();
-
+        saveSharedFlag().catch(err => console.error('IndexedDB保存エラー:', err));
+        return await redirectClient();
     } catch (error) {
         console.error('アップロード処理エラー:', error);
         return createRedirectResponse('/ehagaki/', 'processing-error');
     }
 }
 
-/**
- * クライアントのリダイレクション処理
- */
-async function handleClientRedirection() {
+// クライアントリダイレクト
+async function redirectClient() {
     try {
-        const clients = await self.clients.matchAll({
-            type: 'window',
-            includeUncontrolled: true
-        });
-
+        const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
         if (clients.length > 0) {
-            return await handleExistingClient(clients[0]);
+            return await focusAndNotifyClient(clients[0]);
         } else {
-            return await handleNewClient();
+            return await openNewClient();
         }
     } catch (error) {
         console.error('クライアント処理エラー:', error);
@@ -113,31 +114,24 @@ async function handleClientRedirection() {
     }
 }
 
-/**
- * 既存クライアントの処理
- */
-async function handleExistingClient(client) {
+// 既存クライアント通知
+async function focusAndNotifyClient(client) {
     try {
         await client.focus();
-        
-        // メッセージを複数回送信（信頼性向上）
-        const sendMessage = (retry = 0) => {
-            try {
-                client.postMessage({
-                    type: 'SHARED_IMAGE',
-                    data: sharedImageCache,
-                    timestamp: Date.now(),
-                    retry
-                });
-            } catch (error) {
-                console.error(`メッセージ送信エラー (retry: ${retry}):`, error);
-            }
-        };
-
-        sendMessage(0);
-        setTimeout(() => sendMessage(1), 1000);
-        setTimeout(() => sendMessage(2), 2000);
-
+        for (let retry = 0; retry < 3; retry++) {
+            setTimeout(() => {
+                try {
+                    client.postMessage({
+                        type: 'SHARED_IMAGE',
+                        data: sharedImageCache,
+                        timestamp: Date.now(),
+                        retry
+                    });
+                } catch (e) {
+                    console.error(`メッセージ送信エラー (retry: ${retry}):`, e);
+                }
+            }, retry * 1000);
+        }
         return createRedirectResponse('/ehagaki/', 'success');
     } catch (error) {
         console.error('既存クライアント処理エラー:', error);
@@ -145,57 +139,39 @@ async function handleExistingClient(client) {
     }
 }
 
-/**
- * 新しいクライアントの処理
- */
-async function handleNewClient() {
+// 新規クライアントオープン
+async function openNewClient() {
     try {
-        const newWindowUrl = new URL('/ehagaki/?shared=true', self.location.origin).href;
-        const windowClient = await self.clients.openWindow(newWindowUrl);
-
+        const url = new URL('/ehagaki/?shared=true', self.location.origin).href;
+        const windowClient = await self.clients.openWindow(url);
         if (windowClient) {
-            return new Response('', {
-                status: 200,
-                headers: { 'Content-Type': 'text/plain' }
-            });
-        } else {
-            return createRedirectResponse('/ehagaki/', 'window-error');
+            return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
         }
+        return createRedirectResponse('/ehagaki/', 'window-error');
     } catch (error) {
         console.error('新しいウィンドウ作成エラー:', error);
         return createRedirectResponse('/ehagaki/', 'open-window-error');
     }
 }
 
-/**
- * Cache First戦略の実装
- */
-async function handleCacheFirstStrategy(request) {
+// Cache First戦略
+async function handleCacheFirst(request) {
     try {
         const cache = await caches.open(PRECACHE_NAME);
-        const cachedResponse = await cache.match(request);
-
-        if (cachedResponse) {
-            return cachedResponse;
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const network = await fetch(request);
+        if (network.ok && request.method === 'GET') {
+            await cache.put(request, network.clone());
         }
-
-        const networkResponse = await fetch(request);
-
-        if (networkResponse.ok && request.method === 'GET') {
-            const responseToCache = networkResponse.clone();
-            await cache.put(request, responseToCache);
-        }
-
-        return networkResponse;
+        return network;
     } catch (error) {
         console.error('キャッシュ戦略エラー:', error);
         return new Response('Not Found', { status: 404 });
     }
 }
 
-/**
- * リダイレクトレスポンスを作成
- */
+// リダイレクトレスポンス
 function createRedirectResponse(path, error = null) {
     const url = new URL(path, self.location.origin);
     if (error) {
@@ -205,41 +181,28 @@ function createRedirectResponse(path, error = null) {
     return Response.redirect(url.href, 303);
 }
 
-/**
- * IndexedDBに共有フラグを保存
- */
+// IndexedDBに共有フラグ保存
 async function saveSharedFlag() {
     return new Promise((resolve, reject) => {
         try {
-            const request = indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
-
-            request.onupgradeneeded = (event) => {
-                const db = event.target.result;
+            const req = indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
+            req.onupgradeneeded = (e) => {
+                const db = e.target.result;
                 if (!db.objectStoreNames.contains('flags')) {
                     db.createObjectStore('flags', { keyPath: 'id' });
                 }
             };
-
-            request.onerror = () => reject(new Error('IndexedDB open failed'));
-
-            request.onsuccess = (event) => {
+            req.onerror = () => reject(new Error('IndexedDB open failed'));
+            req.onsuccess = (e) => {
                 try {
-                    const db = event.target.result;
-                    const transaction = db.transaction(['flags'], 'readwrite');
-                    const store = transaction.objectStore('flags');
-
-                    const sharedFlag = {
-                        id: 'sharedImage',
-                        timestamp: Date.now(),
-                        value: true
-                    };
-
-                    const storeRequest = store.put(sharedFlag);
-                    storeRequest.onsuccess = () => {
+                    const db = e.target.result;
+                    const tx = db.transaction(['flags'], 'readwrite');
+                    const store = tx.objectStore('flags');
+                    store.put({ id: 'sharedImage', timestamp: Date.now(), value: true }).onsuccess = () => {
                         db.close();
                         resolve();
                     };
-                    storeRequest.onerror = () => {
+                    tx.onerror = () => {
                         db.close();
                         reject(new Error('Failed to store shared flag'));
                     };
@@ -253,100 +216,22 @@ async function saveSharedFlag() {
     });
 }
 
-/**
- * インストールイベント - skipWaiting()を削除
- */
-self.addEventListener('install', (event) => {
-    console.log('SW installing...', PRECACHE_VERSION);
-    event.waitUntil(
-        (async () => {
-            try {
-                if (precacheManifest.length > 0) {
-                    const cache = await caches.open(PRECACHE_NAME);
-                    const urls = precacheManifest.map(entry => entry.url);
-                    await cache.addAll(urls);
-                    console.log('SW cached resources:', urls.length);
-                }
-            } catch (error) {
-                console.error('プリキャッシュエラー:', error);
-            }
-            // skipWaiting()を呼ばない - ユーザーの選択を待つ
-            console.log('SW installed, waiting for user action');
-        })()
-    );
-});
-
-/**
- * アクティベートイベント
- */
-self.addEventListener('activate', (event) => {
-    console.log('SW activating...', PRECACHE_VERSION);
-    event.waitUntil(
-        (async () => {
-            try {
-                // 古いキャッシュを削除
-                const validCaches = [PRECACHE_NAME];
-                const cacheNames = await caches.keys();
-                await Promise.all(
-                    cacheNames.map(name => {
-                        if (!validCaches.includes(name)) {
-                            return caches.delete(name);
-                        }
-                    })
-                );
-                
-                await self.clients.claim();
-            } catch (error) {
-                console.error('アクティベートエラー:', error);
-            }
-        })()
-    );
-});
-
-/**
- * メッセージイベント
- */
-self.addEventListener('message', (event) => {
-    // SKIP_WAITINGメッセージを受信した時のみskipWaitingを実行
-    if (event.data?.type === 'SKIP_WAITING') {
-        console.log('SW received SKIP_WAITING, updating...');
-        self.skipWaiting();
-        return;
-    }
-
-    // 共有データ要求の処理
-    if (event.data?.action === 'getSharedImage') {
-        handleSharedImageRequest(event);
-    }
-});
-
-/**
- * 共有画像リクエストの処理
- */
-function handleSharedImageRequest(event) {
+// 共有画像リクエスト応答
+function respondSharedImage(event) {
     const client = event.source;
     const requestId = event.data.requestId || null;
-
-    const responseMessage = {
+    const msg = {
         type: 'SHARED_IMAGE',
         data: sharedImageCache,
-        requestId: requestId,
+        requestId,
         timestamp: Date.now()
     };
-
-    // 応答の送信
     if (event.ports?.[0]) {
-        // MessageChannelが使用されている場合
-        event.ports[0].postMessage(responseMessage);
+        event.ports[0].postMessage(msg);
     } else if (client) {
-        // 通常のメッセージ応答
-        client.postMessage(responseMessage);
+        client.postMessage(msg);
     }
-
-    // キャッシュを30秒間保持（複数回の取得に対応）
     if (sharedImageCache) {
-        setTimeout(() => {
-            sharedImageCache = null;
-        }, 30000);
+        setTimeout(() => { sharedImageCache = null; }, 30000);
     }
 }
