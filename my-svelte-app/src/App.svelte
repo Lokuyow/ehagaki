@@ -460,16 +460,18 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    height: 100dvh;
+    height: 100svh;
   }
+
   .main-content {
-    margin-top: 10px;
-    width: 100%;
-    height: calc(100% - 10px - 66px);
     display: flex;
     flex-direction: column;
     align-items: center;
+    margin-top: 10px;
+    width: 100%;
+    height: calc(100% - 10px - 66px);
   }
+
   .footer-bar {
     display: flex;
     align-items: center;
@@ -507,7 +509,6 @@
     mask-image: url("/ehagaki/icons/gear-solid-full.svg");
   }
 
-  /* プレースホルダー用のスタイルを追加 */
   :global(.profile-display.loading) {
     cursor: default;
     opacity: 0.7;
