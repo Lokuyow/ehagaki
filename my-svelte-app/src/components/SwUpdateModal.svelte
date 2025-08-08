@@ -1,7 +1,6 @@
 <script lang="ts">
     import Button from "./Button.svelte";
     export let show: boolean;
-    export let offlineReady: boolean;
     export let needRefresh: boolean;
     export let onReload: () => void;
     export let onClose: () => void;
@@ -10,7 +9,6 @@
     $: {
         console.log("SwUpdateModal props:", {
             show,
-            offlineReady,
             needRefresh,
         });
     }
@@ -19,9 +17,7 @@
 {#if show}
     <div class="pwa-toast" role="alert">
         <div class="message">
-            {#if offlineReady}
-                <span>アプリはオフラインで利用可能です</span>
-            {:else if needRefresh}
+            {#if needRefresh}
                 <span
                     >新しいコンテンツが利用可能です。更新ボタンをクリックして更新してください。</span
                 >

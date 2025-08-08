@@ -22,7 +22,7 @@
   import { authState, sharedImageStore } from "./lib/stores";
 
   // Service Worker更新関連 - 公式実装を使用
-  const { offlineReady, needRefresh, updateServiceWorker } = useRegisterSW({
+  const { needRefresh, updateServiceWorker } = useRegisterSW({
     onRegistered(r) {
       console.log("SW registered:", r);
     },
@@ -32,25 +32,20 @@
     onNeedRefresh() {
       console.log("SW needs refresh - showing prompt");
     },
-    onOfflineReady() {
-      console.log("SW offline ready");
-    },
   });
 
   // リアクティブに状態を監視
   $: {
     console.log("SW states:", {
-      offlineReady: $offlineReady,
       needRefresh: $needRefresh,
-      showModal: $offlineReady || $needRefresh,
+      showModal: $needRefresh,
     });
   }
 
-  $: showSwUpdateModal = $offlineReady || $needRefresh;
+  $: showSwUpdateModal = $needRefresh;
 
   function closeSwUpdateModal() {
     console.log("Closing SW update modal");
-    offlineReady.set(false);
     needRefresh.set(false);
   }
 
@@ -414,7 +409,6 @@
     {#if showSwUpdateModal}
       <SwUpdateModal
         show={showSwUpdateModal}
-        offlineReady={$offlineReady}
         needRefresh={$needRefresh}
         onReload={handleSwUpdate}
         onClose={closeSwUpdateModal}
