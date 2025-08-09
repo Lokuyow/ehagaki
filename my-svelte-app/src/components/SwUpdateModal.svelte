@@ -44,7 +44,7 @@
     .pwa-toast {
         position: fixed;
         right: 16px;
-        bottom: 88px;
+        bottom: 70px;
         z-index: 3000;
         background: var(--bg-translucent);
         border-radius: 12px;
@@ -64,6 +64,7 @@
         display: flex;
         gap: 8px;
         justify-content: flex-end;
+        height: 46px;
     }
 
     :global(.reload-btn),
@@ -72,11 +73,11 @@
         border-radius: 6px;
         padding: 6px 12px;
         font-size: 0.9rem;
+        width: 110px;
     }
 
     :global(.reload-btn) {
-        background: var(--theme);
+        --btn-bg: var(--theme);
         color: white;
-        border-color: none;
     }
 </style>
