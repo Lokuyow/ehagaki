@@ -330,6 +330,14 @@
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
     }
+
+    // デバッグ用: 開発環境のみSW更新ダイアログ強制表示関数をwindowに追加
+    if (import.meta.env.MODE === "development") {
+      window.showSwUpdateModalDebug = () => {
+        needRefresh.set(true);
+        console.log("SW更新ダイアログを強制表示しました");
+      };
+    }
   });
 
   // 共有画像ストアの購読
