@@ -46,10 +46,8 @@ export class FileUploadManager {
   };
 
   private static async createAuthEvent(url: string, method: string): Promise<any> {
-    const storedKey = keyManager.loadFromStorage();
-    if (!storedKey) throw new Error('Authentication required');
-    const signer = seckeySigner(storedKey);
-    const event = {
+    // 共通の未署名イベント
+    const unsignedEvent = {
       kind: 27235,
       created_at: Math.floor(Date.now() / 1000),
       content: "",
@@ -58,7 +56,27 @@ export class FileUploadManager {
         ["method", method]
       ]
     };
-    return await signer.signEvent(event);
+
+    // 1) ローカル秘密鍵があればそれで署名
+    const storedKey = keyManager.loadFromStorage();
+    if (storedKey) {
+      const signer = seckeySigner(storedKey);
+      return await signer.signEvent(unsignedEvent);
+    }
+
+    // 2) nostr-login / nip-07 プロバイダがあればそれで署名
+    const nostr = (window as any)?.nostr;
+    if (nostr?.signEvent) {
+      try {
+        const signed = await nostr.signEvent(unsignedEvent);
+        return signed;
+      } catch (e) {
+        throw new Error("Failed to sign auth event via nostr-login");
+      }
+    }
+
+    // 3) どちらも無ければ認証不可
+    throw new Error('Authentication required');
   }
 
   private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean }> {
@@ -83,7 +101,10 @@ export class FileUploadManager {
   }
 
   private static getUploadEndpoint(apiUrl: string): string {
-    return localStorage.getItem("uploadEndpoint") || apiUrl;
+    const stored = localStorage.getItem("uploadEndpoint");
+    // 空文字や未設定ならデフォルトへフォールバック
+    const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
+    return pick(stored) ?? pick(apiUrl) ?? this.DEFAULT_API_URL;
   }
 
   private static async buildAuthHeader(url: string): Promise<string> {
