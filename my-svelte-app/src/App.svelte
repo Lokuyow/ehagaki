@@ -19,7 +19,7 @@
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
   // 認証状態ストアを追加
-  import { authState, sharedImageStore } from "./lib/stores";
+  import { authState, sharedImageStore, hideImageSizeInfo } from "./lib/stores";
 
   // Service Worker更新関連 - 公式実装を使用
   const { needRefresh, updateServiceWorker } = useRegisterSW({
@@ -252,6 +252,21 @@
     }
 
     showLogoutDialog = false;
+
+    // フッター情報をクリア
+    if (
+      footerInfoDisplay &&
+      typeof footerInfoDisplay.updateProgress === "function"
+    ) {
+      footerInfoDisplay.updateProgress({
+        total: 0,
+        completed: 0,
+        failed: 0,
+        inProgress: false,
+      });
+    }
+    // 画像サイズ情報もクリア
+    hideImageSizeInfo();
   }
 
   // nostr-loginを使ったログイン
@@ -537,19 +552,6 @@
     }
     50% {
       opacity: 0.3;
-    }
-  }
-
-  @keyframes fadeOut {
-    0% {
-      opacity: 1;
-    }
-    70% {
-      opacity: 1;
-    }
-    100% {
-      opacity: 0;
-      visibility: hidden;
     }
   }
 </style>
