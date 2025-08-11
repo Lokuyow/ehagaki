@@ -10,6 +10,9 @@
     export let onSave: () => void;
     export let onNostrLogin: () => void;
 
+    // ローディング状態管理
+    let isNostrLoginLoading = false;
+
     // 公開鍵状態管理（リアクティブ）
     const publicKeyState = new PublicKeyState();
 
@@ -44,6 +47,11 @@
     function handleClear() {
         secretKey = "";
     }
+    function handleNostrLogin() {
+        isNostrLoginLoading = true;
+        console.log("Nostr Loginボタンクリック - ローディング開始");
+        onNostrLogin?.();
+    }
 </script>
 
 <Dialog
@@ -52,8 +60,19 @@
     ariaLabel={$_("input_secret")}
     className="login-dialog"
 >
-    <Button className="nostr-login-button btn" on:click={onNostrLogin}>
-        Nostr Login
+    <Button
+        className="nostr-login-button btn {isNostrLoginLoading
+            ? 'loading'
+            : ''}"
+        on:click={handleNostrLogin}
+        disabled={isNostrLoginLoading}
+    >
+        {#if isNostrLoginLoading}
+            <div class="loading-spinner"></div>
+            <span class="loading-text">{$_("loading")}...</span>
+        {:else}
+            Nostr Login
+        {/if}
     </Button>
 
     <div class="divider">
@@ -174,6 +193,89 @@
         width: 140px;
         margin-top: 32px;
         font-size: 1.1rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.2s ease-in-out;
+        position: relative;
+        overflow: hidden;
+    }
+
+    :global(.nostr-login-button.loading) {
+        opacity: 0.8;
+        cursor: not-allowed;
+        background: var(--nostr) !important;
+        color: white !important;
+    }
+
+    :global(.nostr-login-button.loading::before) {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.2),
+            transparent
+        );
+        animation: shimmer 1.5s infinite;
+    }
+
+    .loading-spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        border-top: 2px solid white;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        flex-shrink: 0;
+    }
+
+    .loading-text {
+        font-size: 0.95rem;
+        opacity: 0.9;
+        animation: pulse-text 1.5s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+        0% {
+            transform: rotate(0deg);
+        }
+        100% {
+            transform: rotate(360deg);
+        }
+    }
+
+    @keyframes shimmer {
+        0% {
+            left: -100%;
+        }
+        100% {
+            left: 100%;
+        }
+    }
+
+    @keyframes pulse-text {
+        0%,
+        100% {
+            opacity: 0.9;
+        }
+        50% {
+            opacity: 0.6;
+        }
+    }
+
+    :global(.nostr-login-button:hover:not(.loading)) {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(139, 69, 19, 0.3);
+    }
+
+    :global(.nostr-login-button:active:not(.loading)) {
+        transform: translateY(0);
     }
 
     .divider {
