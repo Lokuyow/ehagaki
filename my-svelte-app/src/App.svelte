@@ -3,7 +3,7 @@
   import { createRxNostr } from "rx-nostr";
   import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
-  import { _, locale } from "svelte-i18n";
+  import { _, locale, waitLocale } from "svelte-i18n";
   import { ProfileManager, type ProfileData } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import { keyManager, PublicKeyState } from "./lib/keyManager";
@@ -301,11 +301,19 @@
 
   // SW更新通知メッセージ
 
+  // ロケール初期化フラグを追加
+  let localeInitialized = false;
+
   onMount(async () => {
+    // ロケール初期化を最優先で実行
     const storedLocale = localStorage.getItem("locale");
     if (storedLocale && storedLocale !== $locale) {
       locale.set(storedLocale);
     }
+
+    // 追加: 辞書ロード完了を待つ（これが完了するまで描画しない）
+    await waitLocale();
+    localeInitialized = true;
 
     // nostr-loginを初期化
     try {
@@ -395,7 +403,8 @@
   }
 </script>
 
-{#if $locale}
+<!-- ロケールが初期化されてから描画 -->
+{#if $locale && localeInitialized}
   <main>
     <!-- 投稿ボタン・画像アップロードボタンを最上部に配置 -->
     <div class="main-content">
