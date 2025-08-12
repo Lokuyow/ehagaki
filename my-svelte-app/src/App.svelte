@@ -527,7 +527,7 @@
 
   :global(.login-btn) {
     --btn-bg: var(--theme);
-    width: 110px;
+    width: 140px;
     border: none;
     color: #fff;
     font-weight: 500;
@@ -544,7 +544,7 @@
   }
 
   :global(.profile-display.loading) {
-    cursor: default;
     opacity: 0.7;
+    padding: 0;
   }
 </style>

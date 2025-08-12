@@ -23,21 +23,24 @@
     .loading-placeholder {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 4px;
         position: relative;
+        width: 140px;
+        height: 100%;
+        padding: 0 10px;
     }
     .placeholder-image {
         background: var(--darker);
         border-radius: 50%;
         animation: pulse 1.5s ease-in-out infinite;
-        width: 32px;
-        height: 32px;
+        width: 26px;
+        height: 26px;
         flex-shrink: 0;
     }
     .placeholder-text {
         color: var(--text);
         opacity: 0.6;
-        font-size: 1rem;
+        font-size: 0.95rem;
         font-weight: 500;
     }
     .loading-text {

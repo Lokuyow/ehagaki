@@ -58,6 +58,7 @@
     gap: 4px;
     padding: 0 10px;
     z-index: 10;
+    width: 140px;
   }
 
   .profile-picture {
