@@ -10,9 +10,7 @@
     export let onClose: () => void;
     export let onSave: () => void;
     export let onNostrLogin: () => void;
-
-    // ローディング状態管理
-    let isNostrLoginLoading = false;
+    export let isLoadingProfile: boolean = false; // ← 追加
 
     // 公開鍵状態管理（リアクティブ）
     const publicKeyState = new PublicKeyState();
@@ -49,8 +47,7 @@
         secretKey = "";
     }
     function handleNostrLogin() {
-        isNostrLoginLoading = true;
-        console.log("Nostr Loginボタンクリック - ローディング開始");
+        // isLoadingProfileは親で制御
         onNostrLogin?.();
     }
 </script>
@@ -62,13 +59,11 @@
     className="login-dialog"
 >
     <Button
-        className="nostr-login-button btn {isNostrLoginLoading
-            ? 'loading'
-            : ''}"
+        className="nostr-login-button btn {isLoadingProfile ? 'loading' : ''}"
         on:click={handleNostrLogin}
-        disabled={isNostrLoginLoading}
+        disabled={isLoadingProfile}
     >
-        {#if isNostrLoginLoading}
+        {#if isLoadingProfile}
             <LoadingPlaceholder
                 text={$_("loading")}
                 showImage={false}

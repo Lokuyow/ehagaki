@@ -141,6 +141,9 @@
       console.log("nostr-login認証成功:", auth);
       publicKeyState.setNostrLoginAuth(auth);
 
+      // プレースホルダー表示開始
+      isLoadingProfile = true;
+
       // Nostrクライアントを初期化してからプロフィール読み込み
       await initializeNostr(auth.pubkey);
 
@@ -186,6 +189,9 @@
       return;
     }
 
+    // プレースホルダー表示開始
+    isLoadingProfile = true;
+
     const success = keyManager.saveToStorage(secretKey);
     if (success) {
       showDialog = false;
@@ -201,6 +207,7 @@
     } else {
       errorMessage = "error_saving";
       publicKeyState.clear();
+      isLoadingProfile = false;
     }
   }
 
@@ -414,6 +421,7 @@
         onClose={closeDialog}
         onSave={saveSecretKey}
         onNostrLogin={loginWithNostrLogin}
+        {isLoadingProfile}
       />
     {/if}
 
