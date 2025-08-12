@@ -2,6 +2,7 @@
   import { _ } from "svelte-i18n";
   import type { ProfileData } from "../lib/profileManager";
   import Button from "./Button.svelte";
+  import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
   export let profileData: ProfileData | null = null;
   export const profileLoaded = false;
@@ -35,8 +36,7 @@
     }}
   >
     {#if isLoadingProfile}
-      <div class="profile-picture placeholder" aria-label="Loading"></div>
-      <span class="profile-name placeholder-text">{$_("loading")}</span>
+      <LoadingPlaceholder text={$_("loading")} showImage={true} />
     {:else}
       {#if profileData?.picture}
         <img
@@ -79,33 +79,5 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  /* プレースホルダー用のスタイルを追加 */
-  :global(.profile-display.loading) {
-    cursor: default;
-    opacity: 0.7;
-  }
-
-  .profile-picture.placeholder {
-    background: var(--border);
-    border-radius: 50%;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  .placeholder-text {
-    color: var(--text);
-    opacity: 0.6;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 0.6;
-    }
-    50% {
-      opacity: 0.3;
-    }
   }
 </style>

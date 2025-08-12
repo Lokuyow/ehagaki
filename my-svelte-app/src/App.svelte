@@ -18,6 +18,7 @@
   import { useRegisterSW } from "virtual:pwa-register/svelte";
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
+  import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
   // 認証状態ストアを追加
   import { authState, sharedImageStore, hideImageSizeInfo } from "./lib/stores";
 
@@ -443,8 +444,7 @@
       {#if isLoadingProfile}
         <!-- プレースホルダー表示 -->
         <Button className="profile-display btn-round loading" disabled={true}>
-          <div class="profile-picture placeholder" aria-label="Loading"></div>
-          <span class="profile-name placeholder-text">{$_("loading")}</span>
+          <LoadingPlaceholder text="" showImage={true} />
         </Button>
       {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
         <ProfileComponent
@@ -529,29 +529,5 @@
   :global(.profile-display.loading) {
     cursor: default;
     opacity: 0.7;
-  }
-
-  .profile-picture.placeholder {
-    background: var(--border);
-    border-radius: 50%;
-    animation: pulse 1.5s ease-in-out infinite;
-    width: 32px;
-    height: 32px;
-  }
-
-  .placeholder-text {
-    color: var(--text);
-    opacity: 0.6;
-    animation: pulse 1.5s ease-in-out infinite;
-  }
-
-  @keyframes pulse {
-    0%,
-    100% {
-      opacity: 0.6;
-    }
-    50% {
-      opacity: 0.3;
-    }
   }
 </style>

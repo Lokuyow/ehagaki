@@ -3,6 +3,7 @@
     import { PublicKeyState } from "../lib/keyManager";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     export let secretKey: string;
     export let errorMessage: string = "";
@@ -68,8 +69,12 @@
         disabled={isNostrLoginLoading}
     >
         {#if isNostrLoginLoading}
-            <div class="loading-spinner"></div>
-            <span class="loading-text">{$_("loading")}...</span>
+            <LoadingPlaceholder
+                text={$_("loading")}
+                showImage={false}
+                showSpinner={true}
+                customClass="nostr-login-placeholder"
+            />
         {:else}
             Nostr Login
         {/if}
@@ -209,6 +214,7 @@
         color: white !important;
     }
 
+    /* shimmer animation for button loading (if needed) */
     :global(.nostr-login-button.loading::before) {
         content: "";
         position: absolute;
@@ -223,59 +229,6 @@
             transparent
         );
         animation: shimmer 1.5s infinite;
-    }
-
-    .loading-spinner {
-        width: 16px;
-        height: 16px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        border-top: 2px solid white;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        flex-shrink: 0;
-    }
-
-    .loading-text {
-        font-size: 0.95rem;
-        opacity: 0.9;
-        animation: pulse-text 1.5s ease-in-out infinite;
-    }
-
-    @keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-        100% {
-            transform: rotate(360deg);
-        }
-    }
-
-    @keyframes shimmer {
-        0% {
-            left: -100%;
-        }
-        100% {
-            left: 100%;
-        }
-    }
-
-    @keyframes pulse-text {
-        0%,
-        100% {
-            opacity: 0.9;
-        }
-        50% {
-            opacity: 0.6;
-        }
-    }
-
-    :global(.nostr-login-button:hover:not(.loading)) {
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(139, 69, 19, 0.3);
-    }
-
-    :global(.nostr-login-button:active:not(.loading)) {
-        transform: translateY(0);
     }
 
     .divider {
@@ -298,5 +251,16 @@
         color: var(--text-light);
         padding: 0 16px;
         font-size: 1rem;
+    }
+
+    /* nostr-login-button内のLoadingPlaceholder専用スタイル */
+    :global(.nostr-login-placeholder) {
+        color: #fff;
+    }
+    :global(.nostr-login-placeholder .loading-spinner) {
+        border-top-color: #fff;
+    }
+    :global(.nostr-login-placeholder .placeholder-text) {
+        color: #fff;
     }
 </style>

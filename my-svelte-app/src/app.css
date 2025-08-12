@@ -4,6 +4,7 @@
   --white: #ffffff;
   --yellow: #ffecbc;
   --red: #d32f2f;
+  --darker: rgba(0, 0, 0, 0.8);
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   line-height: 1.5;
