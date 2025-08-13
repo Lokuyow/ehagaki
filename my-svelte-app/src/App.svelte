@@ -458,7 +458,7 @@
 
     <!-- フッター -->
     <div class="footer-bar">
-      {#if isLoadingProfile}
+      {#if isAuthenticated && isLoadingProfile}
         <!-- プレースホルダー表示 -->
         <Button className="profile-display btn-round loading" disabled={true}>
           <LoadingPlaceholder text="" showImage={true} />
