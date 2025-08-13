@@ -45,24 +45,29 @@ export const authState = writable<AuthState>(initialAuthState);
  * 認証状態を更新する関数
  */
 export function updateAuthState(newState: Partial<AuthState>): void {
-    authState.update(current => ({
-        ...current,
-        ...newState,
-        isAuthenticated: newState.type !== 'none' && (newState.isValid ?? current.isValid)
-    }));
+    authState.update(current => {
+        const updated = { ...current, ...newState };
+        updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
+        return updated;
+    });
 }
 
 /**
  * 認証状態をクリア（ログアウト）
  */
 export function clearAuthState(): void {
-    authState.set(initialAuthState);
+    authState.set({ ...initialAuthState });
 }
 
 /**
  * nsec認証用の状態更新
  */
 export function setNsecAuth(pubkey: string, npub: string, nprofile: string): void {
+    if (!pubkey || !npub || !nprofile) {
+        console.warn('setNsecAuth: All parameters are required');
+        return;
+    }
+
     updateAuthState({
         type: 'nsec',
         pubkey,
@@ -76,6 +81,11 @@ export function setNsecAuth(pubkey: string, npub: string, nprofile: string): voi
  * nostr-login認証用の状態更新
  */
 export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string): void {
+    if (!pubkey || !npub || !nprofile) {
+        console.warn('setNostrLoginAuth: All parameters are required');
+        return;
+    }
+
     updateAuthState({
         type: 'nostr-login',
         pubkey,
@@ -91,8 +101,12 @@ export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string
  * @param duration 表示時間（ミリ秒）
  */
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
+    if (info === null) {
+        hideImageSizeInfo();
+        return;
+    }
+
     imageSizeInfoStore.set({ info, visible: true });
-    // タイマーによる自動非表示を削除
 }
 
 /**
@@ -107,9 +121,10 @@ export function hideImageSizeInfo(): void {
  */
 export interface SharedImageStoreState {
     file: File | null;
-    metadata?: any;
+    metadata?: Record<string, unknown>;
     received: boolean;
 }
+
 export const sharedImageStore = writable<SharedImageStoreState>({
     file: null,
     metadata: undefined,

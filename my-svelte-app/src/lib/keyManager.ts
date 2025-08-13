@@ -1,4 +1,4 @@
-import { writable, derived, type Readable } from "svelte/store";
+import { writable, derived, type Readable, get } from "svelte/store";
 import { setNsecAuth, setNostrLoginAuth, clearAuthState } from "./stores";
 import { derivePublicKeyFromNsec, isValidNsec, type PublicKeyData } from "./utils";
 import { nip19 } from "nostr-tools";
@@ -15,7 +15,7 @@ export interface NostrLoginAuth {
   type: 'login' | 'signup' | 'logout';
   pubkey?: string;
   npub?: string;
-  otpData?: any;
+  otpData?: unknown;
 }
 
 export class PublicKeyState {
@@ -38,7 +38,8 @@ export class PublicKeyState {
   }
 
   setNsec(nsec: string): void {
-    this._nsecStore.set(nsec || "");
+    const sanitizedNsec = nsec?.trim() || "";
+    this._nsecStore.set(sanitizedNsec);
     this._isNostrLoginStore.set(false);
   }
 
@@ -47,32 +48,52 @@ export class PublicKeyState {
       this.clear();
       return;
     }
-    if (auth.pubkey) {
+
+    if (!auth.pubkey) {
+      console.warn("NostrLoginAuth: pubkey is required for login/signup");
+      return;
+    }
+
+    try {
       const npub = auth.npub || nip19.npubEncode(auth.pubkey);
       const nprofile = nip19.nprofileEncode({ pubkey: auth.pubkey, relays: [] });
+
       this._dataStore.set({ hex: auth.pubkey, npub, nprofile });
       this._isValidStore.set(true);
       this._isNostrLoginStore.set(true);
       this._nsecStore.set("");
+
       setNostrLoginAuth(auth.pubkey, npub, nprofile);
+    } catch (error) {
+      console.error("Failed to set NostrLogin auth:", error);
+      this.clear();
     }
   }
 
   private updateFromNsec(nsec: string): void {
     if (!nsec || !isValidNsec(nsec)) {
-      this._dataStore.set({ hex: "", npub: "", nprofile: "" });
-      this._isValidStore.set(false);
+      this._resetState();
       return;
     }
-    const derivedData = derivePublicKeyFromNsec(nsec);
-    if (derivedData.hex) {
-      this._dataStore.set(derivedData);
-      this._isValidStore.set(true);
-      setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
-    } else {
-      this._dataStore.set({ hex: "", npub: "", nprofile: "" });
-      this._isValidStore.set(false);
+
+    try {
+      const derivedData = derivePublicKeyFromNsec(nsec);
+      if (derivedData.hex) {
+        this._dataStore.set(derivedData);
+        this._isValidStore.set(true);
+        setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
+      } else {
+        this._resetState();
+      }
+    } catch (error) {
+      console.error("Failed to derive public key from nsec:", error);
+      this._resetState();
     }
+  }
+
+  private _resetState(): void {
+    this._dataStore.set({ hex: "", npub: "", nprofile: "" });
+    this._isValidStore.set(false);
   }
 
   clear(): void {
@@ -81,55 +102,97 @@ export class PublicKeyState {
     clearAuthState();
   }
 
-  // getterは購読解除を即時実行
+  // パフォーマンス改善: get()を使用
   get currentIsValid(): boolean {
-    let value = false;
-    const unsub = this.isValid.subscribe(val => value = val);
-    unsub();
-    return value;
+    return get(this._isValidStore);
   }
+
   get currentHex(): string {
-    let value = "";
-    const unsub = this.hex.subscribe(val => value = val);
-    unsub();
-    return value;
+    return get(this.hex);
   }
+
   get currentIsNostrLogin(): boolean {
-    let value = false;
-    const unsub = this.isNostrLogin.subscribe(val => value = val);
-    unsub();
-    return value;
+    return get(this._isNostrLoginStore);
   }
+}
+
+interface KeyManagerError {
+  type: 'storage' | 'network' | 'validation';
+  message: string;
+  originalError?: unknown;
 }
 
 export const keyManager = {
   isValidNsec,
   derivePublicKey: derivePublicKeyFromNsec,
-  saveToStorage(key: string): boolean {
+
+  saveToStorage(key: string): { success: boolean; error?: KeyManagerError } {
+    if (!key?.trim()) {
+      return {
+        success: false,
+        error: { type: 'validation', message: 'Key cannot be empty' }
+      };
+    }
+
     try {
-      localStorage.setItem("nostr-secret-key", key);
-      return true;
-    } catch (e) {
-      console.error("鍵の保存に失敗:", e);
+      localStorage.setItem("nostr-secret-key", key.trim());
+      return { success: true };
+    } catch (error) {
+      const keyError: KeyManagerError = {
+        type: 'storage',
+        message: '鍵の保存に失敗しました',
+        originalError: error
+      };
+      console.error("鍵の保存に失敗:", error);
+      return { success: false, error: keyError };
+    }
+  },
+
+  loadFromStorage(): string | null {
+    try {
+      return localStorage.getItem("nostr-secret-key");
+    } catch (error) {
+      console.error("鍵の読み込みに失敗:", error);
+      return null;
+    }
+  },
+
+  hasStoredKey(): boolean {
+    try {
+      return !!localStorage.getItem("nostr-secret-key");
+    } catch (error) {
+      console.error("ストレージアクセスエラー:", error);
       return false;
     }
   },
-  loadFromStorage(): string | null {
-    return localStorage.getItem("nostr-secret-key");
-  },
-  hasStoredKey(): boolean {
-    return !!localStorage.getItem("nostr-secret-key");
-  },
+
   isWindowNostrAvailable(): boolean {
-    return typeof window !== 'undefined' && 'nostr' in window && typeof window.nostr === 'object';
+    return typeof window !== 'undefined' &&
+      'nostr' in window &&
+      typeof window.nostr === 'object' &&
+      window.nostr !== null &&
+      typeof window.nostr.getPublicKey === 'function';
   },
-  async getPublicKeyFromWindowNostr(): Promise<string | null> {
+
+  async getPublicKeyFromWindowNostr(): Promise<{ success: boolean; pubkey?: string; error?: KeyManagerError }> {
+    if (!this.isWindowNostrAvailable()) {
+      return {
+        success: false,
+        error: { type: 'validation', message: 'window.nostr is not available' }
+      };
+    }
+
     try {
-      if (!this.isWindowNostrAvailable()) return null;
-      return await window.nostr.getPublicKey();
-    } catch (e) {
-      console.error("window.nostrから公開鍵の取得に失敗:", e);
-      return null;
+      const pubkey = await window.nostr.getPublicKey();
+      return { success: true, pubkey };
+    } catch (error) {
+      const keyError: KeyManagerError = {
+        type: 'network',
+        message: 'window.nostrから公開鍵の取得に失敗しました',
+        originalError: error
+      };
+      console.error("window.nostrから公開鍵の取得に失敗:", error);
+      return { success: false, error: keyError };
     }
   }
 };
