@@ -22,6 +22,7 @@ export interface AuthState {
     npub: string;
     nprofile: string;
     isValid: boolean;
+    isInitialized: boolean; // 初期化完了フラグを追加
 }
 
 /**
@@ -33,7 +34,8 @@ const initialAuthState: AuthState = {
     pubkey: '',
     npub: '',
     nprofile: '',
-    isValid: false
+    isValid: false,
+    isInitialized: false // 初期化未完了
 };
 
 /**
@@ -130,3 +132,10 @@ export const sharedImageStore = writable<SharedImageStoreState>({
     metadata: undefined,
     received: false
 });
+
+/**
+ * 認証状態の初期化完了を設定
+ */
+export function setAuthInitialized(): void {
+    updateAuthState({ isInitialized: true });
+}

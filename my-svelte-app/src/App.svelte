@@ -20,7 +20,7 @@
   import Button from "./components/Button.svelte";
   import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
   // 認証状態ストアを追加
-  import { authState, sharedImageStore, hideImageSizeInfo } from "./lib/stores";
+  import { authState, sharedImageStore, hideImageSizeInfo, setAuthInitialized } from "./lib/stores";
 
   // Service Worker更新関連 - 公式実装を使用
   const { needRefresh, updateServiceWorker } = useRegisterSW({
@@ -71,6 +71,7 @@
   $: isAuthenticated = $authState.isAuthenticated;
   $: currentHexKey = $authState.pubkey;
   $: isNostrLoginAuth = $authState.type === "nostr-login";
+  $: isAuthInitialized = $authState.isInitialized; // 初期化完了フラグ
 
   // プロフィール情報
   let profileData: ProfileData = {
@@ -315,42 +316,59 @@
     await waitLocale();
     localeInitialized = true;
 
+    let hasNostrLoginAuth = false;
+
     // nostr-loginを初期化
     try {
       await nostrLoginManager.init({
         theme: "default",
         darkMode: false,
         perms: "sign_event:1,sign_event:0",
-        noBanner: true, // 明示的にバナーを無効化
+        noBanner: true,
       });
 
       // 認証ハンドラーを設定
       nostrLoginManager.setAuthHandler(handleNostrLoginAuth);
 
-      // 初期化時の自動認証チェックは削除
-      // window.nostrの自動チェックによるダイアログ表示を防ぐ
+      // nostr-loginの認証状態をより確実にチェック
+      await new Promise(resolve => setTimeout(resolve, 100)); // 初期化完了を待つ
+      
+      const currentUser = nostrLoginManager.getCurrentUser();
+      if (currentUser && currentUser.pubkey) {
+        console.log("既存のnostr-login認証を復元:", currentUser);
+        hasNostrLoginAuth = true;
+        await handleNostrLoginAuth({
+          type: 'login',
+          pubkey: currentUser.pubkey,
+          npub: currentUser.npub
+        });
+      }
     } catch (error) {
       console.error("nostr-login初期化失敗:", error);
     }
 
-    const storedKey = keyManager.loadFromStorage();
+    // nsec認証のチェック（nostr-login認証がない場合のみ）
+    if (!hasNostrLoginAuth) {
+      const storedKey = keyManager.loadFromStorage();
 
-    if (storedKey) {
-      publicKeyState.setNsec(storedKey);
+      if (storedKey) {
+        publicKeyState.setNsec(storedKey);
 
-      // ストアの値が更新されるまで少し待つ
-      setTimeout(async () => {
-        if (currentHexKey) {
-          await initializeNostr(currentHexKey);
-          await loadProfileForPubkey(currentHexKey);
-        } else {
-          await initializeNostr();
-        }
-        isLoadingProfile = false; // ← 初期化完了後にfalse
-      }, 10);
-    } else {
-      await initializeNostr();
-      isLoadingProfile = false; // ← 初期化完了後にfalse
+        setTimeout(async () => {
+          if (currentHexKey) {
+            await initializeNostr(currentHexKey);
+            await loadProfileForPubkey(currentHexKey);
+          } else {
+            await initializeNostr();
+          }
+          isLoadingProfile = false;
+          setAuthInitialized();
+        }, 10);
+      } else {
+        await initializeNostr();
+        isLoadingProfile = false;
+        setAuthInitialized();
+      }
     }
 
     try {
@@ -470,7 +488,7 @@
           {isLoadingProfile}
           showLogoutDialog={openLogoutDialog}
         />
-      {:else if !isLoadingProfile && !isAuthenticated}
+      {:else if !isLoadingProfile && !isAuthenticated && isAuthInitialized}
         <Button className="login-btn btn-round" on:click={showLoginDialog}>
           {$_("login")}
         </Button>

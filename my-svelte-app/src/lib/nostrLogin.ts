@@ -153,6 +153,70 @@ export class NostrLoginManager {
         }
     }
 
+    async checkAuthState(): Promise<NostrLoginAuth | null> {
+        if (!this._ensureInitialized()) return null;
+
+        try {
+            // nostr-loginの実際の認証状態を取得
+            const authEvent = new CustomEvent('nlCheckAuth');
+
+            return new Promise((resolve) => {
+                const handleAuthCheck = (event: Event) => {
+                    document.removeEventListener('nlAuthResponse', handleAuthCheck);
+                    const detail = (event as CustomEvent).detail;
+
+                    if (detail && detail.pubkey) {
+                        resolve({
+                            type: 'login',
+                            pubkey: detail.pubkey,
+                            npub: detail.npub
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                };
+
+                // タイムアウト設定
+                const timeout = setTimeout(() => {
+                    document.removeEventListener('nlAuthResponse', handleAuthCheck);
+                    resolve(null);
+                }, 1000);
+
+                document.addEventListener('nlAuthResponse', handleAuthCheck);
+                document.dispatchEvent(authEvent);
+            });
+        } catch (error) {
+            console.error('nostr-login認証状態チェックエラー:', error);
+            return null;
+        }
+    }
+
+    // より確実な認証状態チェック（nostr-loginの内部状態を直接確認）
+    isLoggedIn(): boolean {
+        try {
+            // nostr-loginの内部状態を確認する方法
+            const nlData = (window as any).nostrLogin;
+            return !!(nlData && nlData.pubkey);
+        } catch (error) {
+            return false;
+        }
+    }
+
+    getCurrentUser(): { pubkey?: string; npub?: string } | null {
+        try {
+            const nlData = (window as any).nostrLogin;
+            if (nlData && nlData.pubkey) {
+                return {
+                    pubkey: nlData.pubkey,
+                    npub: nlData.npub
+                };
+            }
+        } catch (error) {
+            console.error('getCurrentUser error:', error);
+        }
+        return null;
+    }
+
     get isInitialized(): boolean {
         return this.initialized;
     }
