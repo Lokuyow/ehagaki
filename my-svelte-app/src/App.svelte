@@ -470,7 +470,7 @@
           {isLoadingProfile}
           showLogoutDialog={openLogoutDialog}
         />
-      {:else}
+      {:else if !isLoadingProfile && !isAuthenticated}
         <Button className="login-btn btn-round" on:click={showLoginDialog}>
           {$_("login")}
         </Button>
