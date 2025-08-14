@@ -170,7 +170,7 @@ export class RelayManager {
                     console.log("Kind 10002: タイムアウト");
                 }
                 resolve(found);
-            }, 5000); // タイムアウトを5秒に延長
+            }, 3000);
         });
     }
 
@@ -213,7 +213,7 @@ export class RelayManager {
                     console.log("Kind 3: タイムアウト");
                 }
                 resolve(found);
-            }, 5000); // タイムアウトを5秒に延長
+            }, 3000);
         });
     }
 }
