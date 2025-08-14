@@ -7,7 +7,6 @@
   --darker: rgba(0, 0, 0, 0.8);
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
-  line-height: 1.5;
   font-weight: 400;
 
   color-scheme: light dark;
@@ -42,11 +41,6 @@ a {
   &:active {
     opacity: 1;
   }
-}
-
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
 }
 
 h2,
