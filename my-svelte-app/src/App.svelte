@@ -149,14 +149,6 @@
       // Nostrクライアントを初期化してからプロフィール読み込み
       await initializeNostr(auth.pubkey);
 
-      // 共通化関数でローカルストレージのリレーリストを利用
-      if (
-        relayManager &&
-        !relayManager.useRelaysFromLocalStorageIfExists(auth.pubkey)
-      ) {
-        await relayManager.fetchUserRelays(auth.pubkey);
-      }
-
       // リレーが確実に設定されるまで少し待つ
       setTimeout(async () => {
         await loadProfileForPubkey(auth.pubkey);
