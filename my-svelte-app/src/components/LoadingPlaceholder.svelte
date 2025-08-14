@@ -23,11 +23,11 @@
     .loading-placeholder {
         display: flex;
         align-items: center;
-        gap: 4px;
+        justify-content: center;
+        gap: 6px;
         position: relative;
-        width: 140px;
+        width: 100%;
         height: 100%;
-        padding: 0 10px;
     }
     .placeholder-image {
         background: var(--darker);
@@ -47,10 +47,10 @@
         animation: pulse-text 1.5s ease-in-out infinite;
     }
     .loading-spinner {
-        width: 16px;
-        height: 16px;
-        border: 2px solid rgba(255, 255, 255, 0.3);
-        border-top: 2px solid var(--text, white);
+        width: 20px;
+        height: 20px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top: 4px solid var(--text, white);
         border-radius: 50%;
         animation: spin 1s linear infinite;
         flex-shrink: 0;
