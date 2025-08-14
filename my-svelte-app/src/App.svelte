@@ -146,13 +146,24 @@
       // プレースホルダー表示開始
       isLoadingProfile = true;
 
-      // Nostrクライアントを初期化してからプロフィール読み込み
-      await initializeNostr(auth.pubkey);
-
-      // リレーが確実に設定されるまで少し待つ
-      setTimeout(async () => {
+      try {
+        // Nostrクライアントを初期化
+        await initializeNostr();
+        
+        // リレー情報を確実に取得
+        console.log("nostr-loginユーザーのリレー情報を取得中...");
+        await relayManager.fetchUserRelays(auth.pubkey);
+        
+        // リレー設定後、プロフィールを読み込み
+        console.log("nostr-loginユーザーのプロフィールを取得中...");
         await loadProfileForPubkey(auth.pubkey);
-      }, 500);
+        
+        console.log("nostr-login認証処理完了");
+      } catch (error) {
+        console.error("nostr-login認証処理中にエラーが発生:", error);
+        // エラーが発生してもローディング状態を解除
+        isLoadingProfile = false;
+      }
 
       // nostr-login認証が完了したらログインダイアログを閉じる
       showDialog = false;
@@ -161,22 +172,35 @@
 
   // 指定された公開鍵でプロフィールを読み込み
   async function loadProfileForPubkey(pubkeyHex: string) {
-    if (!pubkeyHex) return;
+    if (!pubkeyHex) {
+      console.warn("loadProfileForPubkey: pubkeyHexが空です");
+      return;
+    }
+
+    console.log(`プロフィール読み込み開始: ${pubkeyHex}`);
 
     // relayManagerとprofileManagerが初期化されているかチェック
     if (!relayManager || !profileManager) {
       console.warn("relayManagerまたはprofileManagerが初期化されていません");
-      await initializeNostr(pubkeyHex);
+      await initializeNostr();
     }
 
     isLoadingProfile = true;
-    // fetchUserRelaysはここでは呼び出さない
-    const profile = await profileManager.fetchProfileData(pubkeyHex);
-    if (profile) {
-      profileData = profile;
+    
+    try {
+      const profile = await profileManager.fetchProfileData(pubkeyHex);
+      if (profile) {
+        profileData = profile;
+        profileLoaded = true;
+        console.log("プロフィール読み込み完了:", profile);
+      } else {
+        console.warn("プロフィール取得に失敗しました");
+      }
+    } catch (error) {
+      console.error("プロフィール読み込み中にエラーが発生:", error);
+    } finally {
+      isLoadingProfile = false;
     }
-    profileLoaded = true;
-    isLoadingProfile = false;
   }
 
   async function saveSecretKey() {
@@ -330,7 +354,7 @@
       nostrLoginManager.setAuthHandler(handleNostrLoginAuth);
 
       // nostr-loginの認証状態をより確実にチェック
-      await new Promise((resolve) => setTimeout(resolve, 100)); // 初期化完了を待つ
+      await new Promise((resolve) => setTimeout(resolve, 200)); // 初期化完了を少し長めに待つ
 
       const currentUser = nostrLoginManager.getCurrentUser();
       if (currentUser && currentUser.pubkey) {
@@ -368,6 +392,9 @@
         isLoadingProfile = false;
         setAuthInitialized();
       }
+    } else {
+      // nostr-login認証がある場合も初期化完了を設定
+      setAuthInitialized();
     }
 
     try {

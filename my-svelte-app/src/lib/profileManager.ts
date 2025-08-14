@@ -46,8 +46,15 @@ export class ProfileManager {
   }
 
   async fetchProfileData(pubkeyHex: string): Promise<ProfileData | null> {
+    console.log(`プロフィール取得開始: ${pubkeyHex}`);
+    
     const cachedProfile = this.getFromLocalStorage(pubkeyHex);
-    if (cachedProfile) return cachedProfile;
+    if (cachedProfile) {
+      console.log("キャッシュからプロフィールを復元:", cachedProfile);
+      return cachedProfile;
+    }
+
+    console.log("リモートからプロフィール情報を取得中...");
 
     return new Promise((resolve) => {
       const rxReq = createRxForwardReq();
@@ -74,9 +81,11 @@ export class ProfileManager {
       setTimeout(() => {
         subscription.unsubscribe();
         if (!found) {
-          resolve(createProfileData({}, pubkeyHex));
+          console.log("プロフィール取得タイムアウト、デフォルトプロフィールを使用");
+          const defaultProfile = createProfileData({}, pubkeyHex);
+          resolve(defaultProfile);
         }
-      }, 3000);
+      }, 5000); // タイムアウトを5秒に延長
     });
   }
 }
