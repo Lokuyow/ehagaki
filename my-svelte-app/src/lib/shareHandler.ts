@@ -55,7 +55,7 @@ export class ShareHandler {
       // Storeを更新
       sharedImageStore.set({
         file: this.sharedImageFile,
-        metadata: this.sharedImageMetadata,
+        metadata: this.sharedImageMetadata ?? undefined,
         received: true
       });
     }
@@ -75,48 +75,14 @@ export class ShareHandler {
   }
 
   public async checkForSharedImageOnLaunch(): Promise<SharedImageData | null> {
-    if (!ShareHandler.checkIfOpenedFromShare()) return null;
-    this.isProcessingSharedImage = true;
-    try {
-      this.checkSharedFlagInIndexedDB().catch(() => { });
-      for (let attempt = 0; attempt < ShareHandler.RETRY_COUNT; attempt++) {
-        const sharedImageData = await this.getSharedImageFromServiceWorker();
-        if (sharedImageData) {
-          this.sharedImageFile = sharedImageData.image;
-          this.sharedImageMetadata = sharedImageData.metadata || null;
-          // Storeを更新
-          sharedImageStore.set({
-            file: this.sharedImageFile,
-            metadata: this.sharedImageMetadata,
-            received: true
-          });
-          // windowイベントの発火は不要
-          // this.dispatchSharedImageEvent();
-          return sharedImageData;
-        }
-        if (attempt < ShareHandler.RETRY_COUNT - 1) await this.delay(ShareHandler.RETRY_DELAY);
-      }
-      return null;
-    } catch (error) {
-      console.error('ShareHandler: 共有画像取得エラー', error);
-      return null;
-    } finally {
-      this.isProcessingSharedImage = false;
-    }
+    // このメソッドはfileUploadManager.tsに集約するため削除
+    // 利用側で直接fileUploadManagerのメソッドを呼ぶように変更
+    return null;
   }
 
   public async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    if (!('serviceWorker' in navigator)) return null;
-    if (!navigator.serviceWorker.controller) {
-      try { await this.waitForServiceWorkerController(); } catch { return null; }
-    }
-    if (!navigator.serviceWorker.controller) return null;
-    try {
-      return (await this.requestWithMessageChannel()) || (await this.requestWithEventListener());
-    } catch (error) {
-      console.error('ShareHandler: ServiceWorker通信エラー', error);
-      return null;
-    }
+    // このメソッドもfileUploadManager.tsに集約するため削除
+    return null;
   }
 
   private async requestWithMessageChannel(): Promise<SharedImageData | null> {

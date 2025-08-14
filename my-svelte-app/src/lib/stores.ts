@@ -126,7 +126,7 @@ export function hideImageSizeInfo(): void {
  */
 export interface SharedImageStoreState {
     file: File | null;
-    metadata?: Record<string, unknown>;
+    metadata?: import('./shareHandler').SharedImageMetadata; // 型を明示
     received: boolean;
 }
 

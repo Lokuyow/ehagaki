@@ -3,6 +3,7 @@ import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo, type FileSizeInfo } from "./utils";
 import { showImageSizeInfo } from "./stores";
 import imageCompression from "browser-image-compression";
+import type { SharedImageData } from "./shareHandler";
 
 // ファイルアップロードの応答型
 export interface FileUploadResponse {
@@ -220,7 +221,7 @@ export class FileUploadManager {
   // --- ServiceWorker関連の共通処理をユーティリティ関数化 ---
   private static createSWMessagePromise(
     useChannel: boolean
-  ): Promise<{ image: File; metadata: any } | null> {
+  ): Promise<SharedImageData | null> {
     return new Promise((resolve) => {
       let timeoutId: number;
       const cleanup = () => clearTimeout(timeoutId);
@@ -260,7 +261,7 @@ export class FileUploadManager {
     });
   }
 
-  public static async getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
+  public static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
     if (!navigator.serviceWorker.controller) return null;
     try {
       const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000));
@@ -288,7 +289,7 @@ export class FileUploadManager {
 }
 
 // getSharedImageFromServiceWorker: 別名エクスポート用（クラスのstaticメソッドを直接呼び出す）
-export async function getSharedImageFromServiceWorker(): Promise<{ image: File; metadata: any } | null> {
+export async function getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
   return await FileUploadManager.getSharedImageFromServiceWorker();
 }
 

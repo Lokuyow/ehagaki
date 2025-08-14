@@ -14,7 +14,7 @@
   import LoginDialog from "./components/LoginDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
-  import { getShareHandler } from "./lib/shareHandler";
+  import { FileUploadManager } from "./lib/fileUploadManager"; // 追加
   import { useRegisterSW } from "virtual:pwa-register/svelte";
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
@@ -437,8 +437,15 @@
 
     try {
       console.log("共有画像の確認を開始します");
-      const shareHandler = getShareHandler();
-      await shareHandler.checkForSharedImageOnLaunch();
+      // ↓ getShareHandler()の利用をやめ、FileUploadManagerのメソッドを直接利用
+      const shared = await FileUploadManager.getSharedImageFromServiceWorker();
+      if (shared?.image) {
+        sharedImageStore.set({
+          file: shared.image,
+          metadata: shared.metadata,
+          received: true,
+        });
+      }
       // 以降の処理はストアのリアクティブで行う
     } catch (error) {
       console.error("共有画像の処理中にエラーが発生しました:", error);
