@@ -25,6 +25,7 @@
     sharedImageStore,
     hideImageSizeInfo,
     setAuthInitialized,
+    setNsecAuth
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
@@ -208,29 +209,41 @@
   }
 
   async function saveSecretKey() {
-    // ストアの状態を確認
-    if (!$authState.isValid) {
-      errorMessage = "";
+    // 入力値で直接バリデーション（グローバル状態に依存しない）
+    if (!keyManager.isValidNsec(secretKey)) {
+      errorMessage = "invalid_secret";
       return;
     }
 
     // プレースホルダー表示開始
     isLoadingProfile = true;
 
-    const success = keyManager.saveToStorage(secretKey);
+    const { success } = keyManager.saveToStorage(secretKey);
     if (success) {
       showDialog = false;
       errorMessage = "";
 
-      if (currentHexKey) {
-        // 共通化関数でローカルストレージのリレーリストを利用
-        if (
-          relayManager &&
-          !relayManager.useRelaysFromLocalStorageIfExists(currentHexKey)
-        ) {
-          await relayManager.fetchUserRelays(currentHexKey);
+      // 保存時のみグローバル認証状態を更新
+      try {
+        const derived = keyManager.derivePublicKey(secretKey);
+        if (derived.hex) {
+          setNsecAuth(derived.hex, derived.npub, derived.nprofile);
+
+          // リレー設定とプロフィール取得
+          if (
+            relayManager &&
+            !relayManager.useRelaysFromLocalStorageIfExists(derived.hex)
+          ) {
+            await relayManager.fetchUserRelays(derived.hex);
+          }
+          await loadProfileForPubkey(derived.hex);
+        } else {
+          console.warn("鍵の派生に失敗しました");
+          isLoadingProfile = false;
         }
-        await loadProfileForPubkey(currentHexKey);
+      } catch (e) {
+        console.error("保存処理中の鍵派生でエラー:", e);
+        isLoadingProfile = false;
       }
     } else {
       errorMessage = "error_saving";
@@ -383,18 +396,26 @@
       const storedKey = keyManager.loadFromStorage();
 
       if (storedKey) {
+        // 入力用のローカル状態は更新（UI用）
         publicKeyState.setNsec(storedKey);
 
-        setTimeout(async () => {
-          if (currentHexKey) {
-            await initializeNostr(currentHexKey);
-            await loadProfileForPubkey(currentHexKey);
+        try {
+          // 起動時の復元でも一度だけグローバル認証状態を更新
+          const derived = keyManager.derivePublicKey(storedKey);
+          if (derived.hex) {
+            setNsecAuth(derived.hex, derived.npub, derived.nprofile);
+            await initializeNostr(derived.hex);
+            await loadProfileForPubkey(derived.hex);
           } else {
             await initializeNostr();
           }
-          isLoadingProfile = false;
-          setAuthInitialized();
-        }, 10);
+        } catch (e) {
+          console.error("起動時の鍵復元でエラー:", e);
+          await initializeNostr();
+        }
+
+        isLoadingProfile = false;
+        setAuthInitialized();
       } else {
         await initializeNostr();
         isLoadingProfile = false;

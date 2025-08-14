@@ -1,5 +1,5 @@
 import { writable, derived, type Readable, get } from "svelte/store";
-import { setNsecAuth, setNostrLoginAuth, clearAuthState } from "./stores";
+import { setNostrLoginAuth, clearAuthState } from "./stores";
 import { derivePublicKeyFromNsec, isValidNsec, type PublicKeyData } from "./utils";
 import { nip19 } from "nostr-tools";
 
@@ -81,7 +81,8 @@ export class PublicKeyState {
       if (derivedData.hex) {
         this._dataStore.set(derivedData);
         this._isValidStore.set(true);
-        setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
+        // 入力中はグローバル認証状態を更新しない（保存時にのみ更新）
+        // setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
       } else {
         this._resetState();
       }
