@@ -55,10 +55,9 @@
 <style>
   /* プロフィール表示のスタイル */
   :global(.profile-display) {
-    gap: 4px;
+    gap: 2px;
     padding: 0 10px;
     z-index: 10;
-    width: 140px;
   }
 
   .profile-picture {
@@ -77,6 +76,7 @@
     font-weight: 500;
     color: var(--text);
     max-width: 80px;
+    padding: 0 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

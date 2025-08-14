@@ -626,6 +626,7 @@
 
   :global(.profile-display.loading) {
     opacity: 0.7;
-    padding: 0;
+    padding: 0 10px;
+    gap: 2px;
   }
 </style>
