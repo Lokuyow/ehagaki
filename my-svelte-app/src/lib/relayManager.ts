@@ -41,6 +41,17 @@ function getFromLocalStorage(pubkeyHex: string): RelayConfig | null {
     }
 }
 
+// 共通化: ローカルストレージのリレーリストがあればセットしてtrueを返す
+function useRelaysFromLocalStorageIfExists(rxNostr: any, pubkeyHex: string): boolean {
+    const savedRelays = getFromLocalStorage(pubkeyHex);
+    if (savedRelays) {
+        rxNostr.setDefaultRelays(savedRelays);
+        console.log("ローカルストレージのリレーリストを使用:", savedRelays);
+        return true;
+    }
+    return false;
+}
+
 function parseKind10002Tags(tags: any[]): RelayConfig {
     const relayConfigs: { [url: string]: { read: boolean; write: boolean } } = {};
     tags
@@ -89,7 +100,17 @@ export class RelayManager {
         ).subscribe();
     }
 
+    // 共通化関数を利用
+    useRelaysFromLocalStorageIfExists(pubkeyHex: string): boolean {
+        return useRelaysFromLocalStorageIfExists(this.rxNostr, pubkeyHex);
+    }
+
     async fetchUserRelays(pubkeyHex: string): Promise<boolean> {
+        // 共通化関数でローカルストレージのリレーリストを利用
+        if (this.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
+            return true;
+        }
+
         if (await this.tryFetchKind10002(pubkeyHex, BOOTSTRAP_RELAYS)) return true;
         if (await this.tryFetchKind3(pubkeyHex, BOOTSTRAP_RELAYS)) return true;
 

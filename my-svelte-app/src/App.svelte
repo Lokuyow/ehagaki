@@ -20,7 +20,12 @@
   import Button from "./components/Button.svelte";
   import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
   // 認証状態ストアを追加
-  import { authState, sharedImageStore, hideImageSizeInfo, setAuthInitialized } from "./lib/stores";
+  import {
+    authState,
+    sharedImageStore,
+    hideImageSizeInfo,
+    setAuthInitialized,
+  } from "./lib/stores";
 
   // Service Worker更新関連 - 公式実装を使用
   const { needRefresh, updateServiceWorker } = useRegisterSW({
@@ -110,12 +115,8 @@
 
     isLoadingProfile = true; // ← 初期化開始時にtrue
     if (pubkeyHex) {
-      const savedRelays = relayManager.getFromLocalStorage(pubkeyHex);
-
-      if (savedRelays) {
-        rxNostr.setDefaultRelays(savedRelays);
-        console.log("ローカルストレージのリレーリストを使用:", savedRelays);
-      } else {
+      // 共通化関数でローカルストレージのリレーリストを利用
+      if (!relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
         relayManager.setBootstrapRelays();
       }
 
@@ -148,8 +149,11 @@
       // Nostrクライアントを初期化してからプロフィール読み込み
       await initializeNostr(auth.pubkey);
 
-      // ログイン時にリレー情報を取得
-      if (relayManager) {
+      // 共通化関数でローカルストレージのリレーリストを利用
+      if (
+        relayManager &&
+        !relayManager.useRelaysFromLocalStorageIfExists(auth.pubkey)
+      ) {
         await relayManager.fetchUserRelays(auth.pubkey);
       }
 
@@ -199,8 +203,11 @@
       errorMessage = "";
 
       if (currentHexKey) {
-        // ログイン時にリレー情報を取得
-        if (relayManager) {
+        // 共通化関数でローカルストレージのリレーリストを利用
+        if (
+          relayManager &&
+          !relayManager.useRelaysFromLocalStorageIfExists(currentHexKey)
+        ) {
           await relayManager.fetchUserRelays(currentHexKey);
         }
         await loadProfileForPubkey(currentHexKey);
@@ -331,16 +338,16 @@
       nostrLoginManager.setAuthHandler(handleNostrLoginAuth);
 
       // nostr-loginの認証状態をより確実にチェック
-      await new Promise(resolve => setTimeout(resolve, 100)); // 初期化完了を待つ
-      
+      await new Promise((resolve) => setTimeout(resolve, 100)); // 初期化完了を待つ
+
       const currentUser = nostrLoginManager.getCurrentUser();
       if (currentUser && currentUser.pubkey) {
         console.log("既存のnostr-login認証を復元:", currentUser);
         hasNostrLoginAuth = true;
         await handleNostrLoginAuth({
-          type: 'login',
+          type: "login",
           pubkey: currentUser.pubkey,
-          npub: currentUser.npub
+          npub: currentUser.npub,
         });
       }
     } catch (error) {
