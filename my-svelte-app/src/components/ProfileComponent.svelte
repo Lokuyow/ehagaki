@@ -8,7 +8,7 @@
   export const profileLoaded = false;
   export let hasStoredKey = false;
   export let showLogoutDialog: () => void;
-  export let isLoadingProfile = false;
+  export let isLoadingProfile: boolean = false;
 
   // プロフィール画像のaltテキスト取得
   const getProfileAlt = () =>

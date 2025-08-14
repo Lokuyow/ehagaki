@@ -10,7 +10,7 @@
     export let onClose: () => void;
     export let onSave: () => void;
     export let onNostrLogin: () => void;
-    export let isLoadingProfile: boolean = false; // ← 追加
+    export let isLoadingNostrLogin: boolean = false; // ← 変更
 
     // 公開鍵状態管理（リアクティブ）
     const publicKeyState = new PublicKeyState();
@@ -59,11 +59,11 @@
     className="login-dialog"
 >
     <Button
-        className="nostr-login-button btn {isLoadingProfile ? 'loading' : ''}"
+        className="nostr-login-button btn {isLoadingNostrLogin ? 'loading' : ''}"
         on:click={handleNostrLogin}
-        disabled={isLoadingProfile}
+        disabled={isLoadingNostrLogin}
     >
-        {#if isLoadingProfile}
+        {#if isLoadingNostrLogin}
             <LoadingPlaceholder
                 text={$_("loading")}
                 showImage={false}

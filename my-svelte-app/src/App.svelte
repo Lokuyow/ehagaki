@@ -25,7 +25,7 @@
     sharedImageStore,
     hideImageSizeInfo,
     setAuthInitialized,
-    setNsecAuth
+    setNsecAuth,
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
@@ -91,7 +91,8 @@
 
   // 初期状態: 読み込み中
   let profileLoaded = false;
-  let isLoadingProfile = true; // ← 初期値をtrueに
+  let isLoadingProfile = true; // ← プロフィール取得用
+  let isLoadingNostrLogin = false; // ← nostr-loginボタン用
 
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
@@ -149,7 +150,8 @@
       publicKeyState.setNostrLoginAuth(auth);
 
       // プレースホルダー表示開始
-      isLoadingProfile = true;
+      isLoadingNostrLogin = true; // nostr-loginボタンのローディング開始
+      isLoadingProfile = true; // プロフィール取得のローディング開始
 
       try {
         // Nostrクライアントを初期化
@@ -168,6 +170,9 @@
         console.error("nostr-login認証処理中にエラーが発生:", error);
         // エラーが発生してもローディング状態を解除
         isLoadingProfile = false;
+      } finally {
+        isLoadingNostrLogin = false; // nostr-loginボタンのローディング終了
+        isLoadingProfile = false; // プロフィール取得のローディング終了
       }
 
       // nostr-login認証が完了したらログインダイアログを閉じる
@@ -325,6 +330,7 @@
   // nostr-loginを使ったログイン
   function loginWithNostrLogin() {
     if (nostrLoginManager.isInitialized) {
+      isLoadingNostrLogin = true; // ボタンローディング開始
       nostrLoginManager.showLogin();
     } else {
       console.error("nostr-loginが初期化されていません");
@@ -505,7 +511,7 @@
         onClose={closeDialog}
         onSave={saveSecretKey}
         onNostrLogin={loginWithNostrLogin}
-        {isLoadingProfile}
+        {isLoadingNostrLogin}
       />
     {/if}
 
