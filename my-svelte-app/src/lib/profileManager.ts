@@ -47,7 +47,7 @@ export class ProfileManager {
 
   async fetchProfileData(pubkeyHex: string): Promise<ProfileData | null> {
     console.log(`プロフィール取得開始: ${pubkeyHex}`);
-    
+
     const cachedProfile = this.getFromLocalStorage(pubkeyHex);
     if (cachedProfile) {
       console.log("キャッシュからプロフィールを復元:", cachedProfile);
@@ -83,9 +83,10 @@ export class ProfileManager {
         if (!found) {
           console.log("プロフィール取得タイムアウト、デフォルトプロフィールを使用");
           const defaultProfile = createProfileData({}, pubkeyHex);
+          this.saveToLocalStorage(pubkeyHex, defaultProfile); // デフォルトも保存
           resolve(defaultProfile);
         }
-      }, 5000); // タイムアウトを5秒に延長
+      }, 3000);
     });
   }
 }
