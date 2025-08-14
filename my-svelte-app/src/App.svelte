@@ -279,6 +279,7 @@
     if (nostrLoginManager.isInitialized) {
       nostrLoginManager.logout();
     }
+    closeLogoutDialog(); // ログアウトダイアログを閉じる
   }
 
   // 内部ログアウト処理（nostr-loginManager.logout()を呼ばない）
