@@ -328,12 +328,28 @@
   }
 
   // nostr-loginを使ったログイン
-  function loginWithNostrLogin() {
-    if (nostrLoginManager.isInitialized) {
-      isLoadingNostrLogin = true; // ボタンローディング開始
-      nostrLoginManager.showLogin();
-    } else {
+  async function loginWithNostrLogin() {
+    if (!nostrLoginManager.isInitialized) {
       console.error("nostr-loginが初期化されていません");
+      return;
+    }
+
+    isLoadingNostrLogin = true; // ボタンローディング開始
+
+    try {
+      await nostrLoginManager.showLogin();
+      console.log("nostr-loginモーダルが正常に完了しました");
+    } catch (error) {
+      if (error instanceof Error && error.message === "Cancelled") {
+        console.log("ユーザーがnostr-loginモーダルをキャンセルしました");
+        // キャンセル時の処理（特に何もしない、ローディングを停止するだけ）
+      } else {
+        console.error("nostr-loginでエラーが発生しました:", error);
+        // その他のエラー処理
+      }
+    } finally {
+      // 成功・失敗・キャンセルいずれの場合もローディングを停止
+      isLoadingNostrLogin = false;
     }
   }
 

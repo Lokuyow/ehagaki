@@ -111,12 +111,18 @@ export class NostrLoginManager {
         this.authHandler = handler;
     }
 
-    showLogin(startScreen?: string): void {
-        if (!this._ensureInitialized()) return;
+    async showLogin(startScreen?: string): Promise<void> {
+        if (!this._ensureInitialized()) {
+            throw new Error('nostr-login is not initialized');
+        }
 
-        document.dispatchEvent(new CustomEvent('nlLaunch', {
-            detail: startScreen || 'welcome'
-        }));
+        try {
+            const { launch } = await import('nostr-login');
+            await launch((startScreen || 'welcome') as any);
+        } catch (error) {
+            // エラーを再スローして呼び出し元で処理できるようにする
+            throw error;
+        }
     }
 
     logout(): void {
