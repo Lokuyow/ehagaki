@@ -26,6 +26,7 @@
     hideImageSizeInfo,
     setAuthInitialized,
   } from "./lib/stores";
+  import { debugLog, debugAuthState } from "./lib/debug";
 
   // Service Worker更新関連 - 公式実装を使用
   const { needRefresh, updateServiceWorker } = useRegisterSW({
@@ -77,6 +78,9 @@
   $: currentHexKey = $authState.pubkey;
   $: isNostrLoginAuth = $authState.type === "nostr-login";
   $: isAuthInitialized = $authState.isInitialized; // 初期化完了フラグ
+
+  // 認証状態変化のデバッグログ
+  $: debugAuthState("Auth state changed", $authState);
 
   // プロフィール情報
   let profileData: ProfileData = {
@@ -149,15 +153,15 @@
       try {
         // Nostrクライアントを初期化
         await initializeNostr();
-        
+
         // リレー情報を確実に取得
         console.log("nostr-loginユーザーのリレー情報を取得中...");
         await relayManager.fetchUserRelays(auth.pubkey);
-        
+
         // リレー設定後、プロフィールを読み込み
         console.log("nostr-loginユーザーのプロフィールを取得中...");
         await loadProfileForPubkey(auth.pubkey);
-        
+
         console.log("nostr-login認証処理完了");
       } catch (error) {
         console.error("nostr-login認証処理中にエラーが発生:", error);
@@ -186,7 +190,7 @@
     }
 
     isLoadingProfile = true;
-    
+
     try {
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
@@ -263,6 +267,8 @@
 
   // 内部ログアウト処理（nostr-loginManager.logout()を呼ばない）
   function logoutInternal() {
+    debugLog("ログアウト処理開始");
+
     const localeValue = localStorage.getItem("locale");
     const uploadEndpointValue = localStorage.getItem("uploadEndpoint");
     localStorage.clear();
@@ -299,6 +305,8 @@
     }
     // 画像サイズ情報もクリア
     hideImageSizeInfo();
+
+    debugLog("ログアウト処理完了");
   }
 
   // nostr-loginを使ったログイン
@@ -413,6 +421,8 @@
         console.log("SW更新ダイアログを強制表示しました");
       };
     }
+
+    debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
   });
 
   // 共有画像ストアの購読

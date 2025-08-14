@@ -58,7 +58,10 @@ export function updateAuthState(newState: Partial<AuthState>): void {
  * 認証状態をクリア（ログアウト）
  */
 export function clearAuthState(): void {
-    authState.set({ ...initialAuthState });
+    authState.update(current => ({
+        ...initialAuthState,
+        isInitialized: current.isInitialized // 初期化フラグは保持
+    }));
 }
 
 /**
