@@ -142,3 +142,62 @@ export const sharedImageStore = writable<SharedImageStoreState>({
 export function setAuthInitialized(): void {
     updateAuthState({ isInitialized: true });
 }
+
+// --- UI状態管理ストアを追加 ---
+
+/**
+ * ログインダイアログ表示状態
+ */
+export const showLoginDialogStore = writable(false);
+
+/**
+ * ログアウトダイアログ表示状態
+ */
+export const showLogoutDialogStore = writable(false);
+
+/**
+ * 設定ダイアログ表示状態
+ */
+export const showSettingsDialogStore = writable(false);
+
+/**
+ * ログインダイアログを開く
+ */
+export function showLoginDialog() {
+    showLoginDialogStore.set(true);
+}
+
+/**
+ * ログインダイアログを閉じる
+ */
+export function closeLoginDialog() {
+    showLoginDialogStore.set(false);
+}
+
+/**
+ * ログアウトダイアログを開く
+ */
+export function openLogoutDialog() {
+    showLogoutDialogStore.set(true);
+}
+
+/**
+ * ログアウトダイアログを閉じる
+ */
+export function closeLogoutDialog() {
+    showLogoutDialogStore.set(false);
+}
+
+/**
+ * 設定ダイアログを開く
+ */
+export function openSettingsDialog() {
+    showSettingsDialogStore.set(true);
+}
+
+/**
+ * 設定ダイアログを閉じる
+ */
+export function closeSettingsDialog() {
+    showSettingsDialogStore.set(false);
+}

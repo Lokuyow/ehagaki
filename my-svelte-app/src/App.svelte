@@ -26,6 +26,16 @@
     hideImageSizeInfo,
     setAuthInitialized,
     setNsecAuth,
+    // 追加: UI状態ストアと関数
+    showLoginDialogStore,
+    showLogoutDialogStore,
+    showSettingsDialogStore,
+    showLoginDialog,
+    closeLoginDialog,
+    openLogoutDialog,
+    closeLogoutDialog,
+    openSettingsDialog,
+    closeSettingsDialog,
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
@@ -63,9 +73,7 @@
   }
 
   // UI状態管理
-  let showDialog = false;
   let errorMessage = "";
-  let showLogoutDialog = false;
 
   // 認証関連 - ストアから取得するように変更
   let secretKey = "";
@@ -176,7 +184,7 @@
       }
 
       // nostr-login認証が完了したらログインダイアログを閉じる
-      showDialog = false;
+      showLoginDialogStore.set(false);
     }
   }
 
@@ -225,7 +233,7 @@
 
     const { success } = keyManager.saveToStorage(secretKey);
     if (success) {
-      showDialog = false;
+      showLoginDialogStore.set(false);
       errorMessage = "";
 
       // 保存時のみグローバル認証状態を更新
@@ -257,22 +265,12 @@
     }
   }
 
-  function showLoginDialog() {
-    showDialog = true;
-  }
-
   function closeDialog() {
-    showDialog = false;
+    showLoginDialogStore.set(false);
     errorMessage = "";
   }
 
-  function openLogoutDialog() {
-    showLogoutDialog = true;
-  }
-
-  function closeLogoutDialog() {
-    showLogoutDialog = false;
-  }
+  // Duplicate closeLogoutDialog removed to fix redeclaration error
 
   function logout() {
     logoutInternal();
@@ -306,8 +304,6 @@
     ) {
       postComponentRef.resetPostContent();
     }
-
-    showLogoutDialog = false;
 
     // フッター情報をクリア
     if (
@@ -351,15 +347,6 @@
       // 成功・失敗・キャンセルいずれの場合もローディングを停止
       isLoadingNostrLogin = false;
     }
-  }
-
-  let showSettings = false;
-
-  function openSettings() {
-    showSettings = true;
-  }
-  function closeSettings() {
-    showSettings = false;
   }
 
   $: if ($locale) {
@@ -520,11 +507,11 @@
 
     <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
 
-    {#if showDialog}
+    {#if $showLoginDialogStore}
       <LoginDialog
         bind:secretKey
         {errorMessage}
-        onClose={closeDialog}
+        onClose={closeLoginDialog}
         onSave={saveSecretKey}
         onNostrLogin={loginWithNostrLogin}
         {isLoadingNostrLogin}
@@ -532,16 +519,19 @@
     {/if}
 
     <!-- ログアウトダイアログ -->
-    {#if showLogoutDialog}
+    {#if $showLogoutDialogStore}
       <LogoutDialog
-        show={showLogoutDialog}
+        show={$showLogoutDialogStore}
         onClose={closeLogoutDialog}
         onLogout={logout}
       />
     {/if}
 
     <!-- 設定ダイアログ -->
-    <SettingsDialog show={showSettings} onClose={closeSettings} />
+    <SettingsDialog
+      show={$showSettingsDialogStore}
+      onClose={closeSettingsDialog}
+    />
 
     <!-- SW更新モーダル -->
     {#if showSwUpdateModal}
@@ -577,7 +567,7 @@
 
       <Button
         className="settings-btn btn-circle"
-        on:click={openSettings}
+        on:click={openSettingsDialog}
         ariaLabel="設定"
       >
         <div class="settings-icon svg-icon" aria-label="Settings"></div>
