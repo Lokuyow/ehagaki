@@ -6,7 +6,6 @@
   import { _, locale, waitLocale } from "svelte-i18n";
   import { ProfileManager } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
-  import { keyManager, PublicKeyState } from "./lib/keyManager";
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
@@ -16,15 +15,13 @@
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { FileUploadManager } from "./lib/fileUploadManager";
   import { useRegisterSW } from "virtual:pwa-register/svelte";
-  import { nostrLoginManager } from "./lib/nostrLogin";
+  import { authService } from "./lib/authService";
   import Button from "./components/Button.svelte";
   import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
   import {
     authState,
     sharedImageStore,
     hideImageSizeInfo,
-    setAuthInitialized,
-    setNsecAuth,
     showLoginDialogStore,
     showLogoutDialogStore,
     showSettingsDialogStore,
@@ -70,7 +67,7 @@
 
   let errorMessage = "";
   let secretKey = "";
-  const publicKeyState = new PublicKeyState();
+  const publicKeyState = authService.getPublicKeyState();
   $: publicKeyState.setNsec(secretKey);
 
   $: isAuthenticated = $authState.isAuthenticated;
@@ -108,18 +105,19 @@
   }
 
   async function handleNostrLoginAuth(auth: any) {
-    if (auth.type === "logout") {
-      logoutInternal();
+    const result = await authService.authenticateWithNostrLogin(auth);
+    if (!result.success) {
+      console.error("nostr-login認証失敗:", result.error);
       return;
     }
-    if (auth.pubkey) {
-      publicKeyState.setNostrLoginAuth(auth);
+
+    if (result.pubkeyHex) {
       isLoadingNostrLogin = true;
       isLoadingProfileStore.set(true);
       try {
         await initializeNostr();
-        await relayManager.fetchUserRelays(auth.pubkey);
-        await loadProfileForPubkey(auth.pubkey);
+        await relayManager.fetchUserRelays(result.pubkeyHex);
+        await loadProfileForPubkey(result.pubkeyHex);
       } catch (error) {
         console.error("nostr-login認証処理中にエラー:", error);
         isLoadingProfileStore.set(false);
@@ -149,55 +147,35 @@
   }
 
   async function saveSecretKey() {
-    if (!keyManager.isValidNsec(secretKey)) {
-      errorMessage = "invalid_secret";
+    const result = await authService.authenticateWithNsec(secretKey);
+    if (!result.success) {
+      errorMessage = result.error || "authentication_error";
       return;
     }
+
     isLoadingProfileStore.set(true);
-    const { success } = keyManager.saveToStorage(secretKey);
-    if (success) {
-      showLoginDialogStore.set(false);
-      errorMessage = "";
-      try {
-        const derived = keyManager.derivePublicKey(secretKey);
-        if (derived.hex) {
-          setNsecAuth(derived.hex, derived.npub, derived.nprofile);
-          if (
-            relayManager &&
-            !relayManager.useRelaysFromLocalStorageIfExists(derived.hex)
-          ) {
-            await relayManager.fetchUserRelays(derived.hex);
-          }
-          await loadProfileForPubkey(derived.hex);
-        } else {
-          isLoadingProfileStore.set(false);
+    showLoginDialogStore.set(false);
+    errorMessage = "";
+
+    try {
+      if (result.pubkeyHex) {
+        if (
+          relayManager &&
+          !relayManager.useRelaysFromLocalStorageIfExists(result.pubkeyHex)
+        ) {
+          await relayManager.fetchUserRelays(result.pubkeyHex);
         }
-      } catch (e) {
+        await loadProfileForPubkey(result.pubkeyHex);
+      } else {
         isLoadingProfileStore.set(false);
       }
-    } else {
-      errorMessage = "error_saving";
-      publicKeyState.clear();
+    } catch (e) {
       isLoadingProfileStore.set(false);
     }
   }
 
   function logout() {
-    logoutInternal();
-    if (nostrLoginManager.isInitialized) nostrLoginManager.logout();
-    closeLogoutDialog();
-  }
-
-  function logoutInternal() {
-    debugLog("ログアウト処理開始");
-    const localeValue = localStorage.getItem("locale");
-    const uploadEndpointValue = localStorage.getItem("uploadEndpoint");
-    localStorage.clear();
-    if (localeValue !== null) localStorage.setItem("locale", localeValue);
-    if (uploadEndpointValue !== null)
-      localStorage.setItem("uploadEndpoint", uploadEndpointValue);
-    secretKey = "";
-    publicKeyState.clear();
+    authService.logout();
     profileDataStore.set({ name: "", picture: "" });
     profileLoadedStore.set(false);
     if (postComponentRef?.resetPostContent) postComponentRef.resetPostContent();
@@ -210,14 +188,13 @@
       });
     }
     hideImageSizeInfo();
-    debugLog("ログアウト処理完了");
+    closeLogoutDialog();
   }
 
   async function loginWithNostrLogin() {
-    if (!nostrLoginManager.isInitialized) return;
     isLoadingNostrLogin = true;
     try {
-      await nostrLoginManager.showLogin();
+      await authService.showNostrLoginDialog();
     } catch (error) {
       if (!(error instanceof Error && error.message === "Cancelled")) {
         console.error("nostr-loginでエラー:", error);
@@ -236,54 +213,21 @@
     if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
     await waitLocale();
     localeInitialized = true;
-    let hasNostrLoginAuth = false;
-    try {
-      await nostrLoginManager.init({
-        theme: "default",
-        darkMode: false,
-        perms: "sign_event:1,sign_event:0",
-        noBanner: true,
-      });
-      nostrLoginManager.setAuthHandler(handleNostrLoginAuth);
-      await new Promise((resolve) => setTimeout(resolve, 200));
-      const currentUser = nostrLoginManager.getCurrentUser();
-      if (currentUser?.pubkey) {
-        hasNostrLoginAuth = true;
-        await handleNostrLoginAuth({
-          type: "login",
-          pubkey: currentUser.pubkey,
-          npub: currentUser.npub,
-        });
-      }
-    } catch (error) {
-      console.error("nostr-login初期化失敗:", error);
-    }
-    if (!hasNostrLoginAuth) {
-      const storedKey = keyManager.loadFromStorage();
-      if (storedKey) {
-        publicKeyState.setNsec(storedKey);
-        try {
-          const derived = keyManager.derivePublicKey(storedKey);
-          if (derived.hex) {
-            setNsecAuth(derived.hex, derived.npub, derived.nprofile);
-            await initializeNostr(derived.hex);
-            await loadProfileForPubkey(derived.hex);
-          } else {
-            await initializeNostr();
-          }
-        } catch (e) {
-          await initializeNostr();
-        }
-        isLoadingProfileStore.set(false);
-        setAuthInitialized();
-      } else {
-        await initializeNostr();
-        isLoadingProfileStore.set(false);
-        setAuthInitialized();
-      }
+
+    // 認証サービスの初期化
+    authService.setNostrLoginHandler(handleNostrLoginAuth);
+    const authResult = await authService.initializeAuth();
+
+    if (authResult.hasAuth && authResult.pubkeyHex) {
+      await initializeNostr(authResult.pubkeyHex);
+      await loadProfileForPubkey(authResult.pubkeyHex);
     } else {
-      setAuthInitialized();
+      await initializeNostr();
     }
+
+    isLoadingProfileStore.set(false);
+    authService.markAuthInitialized();
+
     try {
       const shared = await FileUploadManager.getSharedImageFromServiceWorker();
       if (shared?.image) {

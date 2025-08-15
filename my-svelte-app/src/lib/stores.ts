@@ -74,10 +74,10 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     });
 }
 
-export function clearAuthState(): void {
+export function clearAuthState(preserveInitialized: boolean = true): void {
     authState.update(current => ({
         ...initialAuthState,
-        isInitialized: current.isInitialized
+        isInitialized: preserveInitialized ? current.isInitialized : false
     }));
 }
 
