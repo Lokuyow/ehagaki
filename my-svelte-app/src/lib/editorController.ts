@@ -13,7 +13,7 @@ export interface CursorPosition {
 export class EditorController {
     private editorElement: HTMLDivElement | null = null;
     private formatTimeout: ReturnType<typeof setTimeout> | null = null;
-    private isComposing: boolean = false; // IME入力中フラグ追加
+    private isComposing: boolean = false;
 
     // ハッシュタグを検出する正規表現（末尾を明確に区切る）
     private readonly HASHTAG_REGEX = HASHTAG_REGEX;
@@ -33,12 +33,10 @@ export class EditorController {
         // IME入力監視イベント追加
         element.addEventListener("compositionstart", () => {
             this.isComposing = true;
-            // IME入力中はbeforeinputによる挿入を防ぐ
             element.addEventListener("beforeinput", this.preventBeforeInput, true);
         });
         element.addEventListener("compositionend", () => {
             this.isComposing = false;
-            // IME入力終了時にbeforeinputの防止を解除
             element.removeEventListener("beforeinput", this.preventBeforeInput, true);
         });
 
@@ -47,7 +45,6 @@ export class EditorController {
             event.preventDefault();
             const text = event.clipboardData?.getData("text/plain");
             if (text) {
-                // カーソル位置にテキストを挿入
                 document.execCommand("insertText", false, text);
             }
         });
@@ -80,9 +77,7 @@ export class EditorController {
             } else if (node.nodeName === "IMG") {
                 const img = node as HTMLImageElement;
                 text += (text && !text.endsWith("\n") ? "\n" : "") + img.src + "\n";
-            } else if (node.nodeName === "BR") {
-                text += "\n";
-            } else if (node.nodeName === "DIV" && node.previousSibling) {
+            } else if (node.nodeName === "BR" || (node.nodeName === "DIV" && node.previousSibling)) {
                 text += "\n";
             }
         }
@@ -229,16 +224,11 @@ export class EditorController {
         }
 
         // containerがまだeditorElement内に存在するか確認
-        let isInEditor = false;
         let node: Node | null = cursorPos.container;
-        while (node) {
-            if (node === this.editorElement) {
-                isInEditor = true;
-                break;
-            }
+        while (node && node !== this.editorElement) {
             node = node.parentNode;
         }
-        if (!isInEditor) {
+        if (node !== this.editorElement) {
             this.focusAtEnd();
             return;
         }
@@ -252,7 +242,7 @@ export class EditorController {
                 newRange.collapse(true);
                 selection.addRange(newRange);
             }
-        } catch (e) {
+        } catch {
             this.focusAtEnd();
         }
     }
@@ -282,12 +272,14 @@ export class EditorController {
 
         const img = document.createElement("img");
         img.src = url;
-        img.style.maxWidth = "100%";
-        img.style.maxHeight = "200px";
-        img.style.display = "block";
-        img.style.margin = "8px 0";
-        img.style.borderRadius = "6px";
-        img.style.border = "1px solid var(--border)";
+        Object.assign(img.style, {
+            maxWidth: "100%",
+            maxHeight: "200px",
+            display: "block",
+            margin: "8px 0",
+            borderRadius: "6px",
+            border: "1px solid var(--border)"
+        });
         this.editorElement.appendChild(img);
     }
 
@@ -321,8 +313,7 @@ export class EditorController {
      * テキスト内のハッシュタグをHTMLスパンタグでラップする
      */
     private formatTextWithHashtags(text: string): string {
-        this.HASHTAG_REGEX.lastIndex = 0; // RegExpの状態をリセット
-
+        this.HASHTAG_REGEX.lastIndex = 0;
         return text.replace(this.HASHTAG_REGEX, (match, hashtag) => {
             const prefix = match.charAt(0) === '#' ? '' : match.charAt(0);
             return `${prefix}<span class="hashtag">${hashtag}</span>`;
@@ -343,10 +334,8 @@ export class EditorController {
 
         // <a>...</a> で分割して、アンカー外のみハッシュタグ処理
         const parts = linked.split(/(<a\b[^>]*>.*?<\/a>)/gis);
-        const formatted = parts.map((part) => {
-            if (/^<a\b/i.test(part)) return part; // アンカーはそのまま
-
-            // 先頭または空白の直後にある # + 許可文字列 をハッシュタグ化
+        return parts.map((part) => {
+            if (/^<a\b/i.test(part)) return part;
             HASHTAG_REGEX.lastIndex = 0;
             return part.replace(
                 HASHTAG_REGEX,
@@ -356,8 +345,6 @@ export class EditorController {
                 }
             );
         }).join("");
-
-        return formatted;
     }
 
     /**
@@ -534,12 +521,8 @@ export class EditorController {
      */
     destroy() {
         if (this.formatTimeout) {
-            if (this.formatTimeout !== null && this.formatTimeout !== undefined) {
-                if (this.formatTimeout !== undefined && this.formatTimeout !== null) {
-                    clearTimeout(this.formatTimeout);
-                    this.formatTimeout = null;
-                }
-            }
+            clearTimeout(this.formatTimeout);
+            this.formatTimeout = null;
         }
     }
 }
