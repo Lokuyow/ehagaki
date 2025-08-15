@@ -14,19 +14,17 @@
   import LoginDialog from "./components/LoginDialog.svelte";
   import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
-  import { FileUploadManager } from "./lib/fileUploadManager"; // 追加
+  import { FileUploadManager } from "./lib/fileUploadManager";
   import { useRegisterSW } from "virtual:pwa-register/svelte";
   import { nostrLoginManager } from "./lib/nostrLogin";
   import Button from "./components/Button.svelte";
   import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
-  // 認証状態ストアを追加
   import {
     authState,
     sharedImageStore,
     hideImageSizeInfo,
     setAuthInitialized,
     setNsecAuth,
-    // 追加: UI状態ストアと関数
     showLoginDialogStore,
     showLogoutDialogStore,
     showSettingsDialogStore,
@@ -41,7 +39,6 @@
     openSwUpdateModal,
     closeSwUpdateModal,
     handleSwUpdate,
-    // プロフィール・UI状態ストアを追加
     profileDataStore,
     profileLoadedStore,
     isLoadingProfileStore,
@@ -49,7 +46,6 @@
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
-  // Service Worker更新関連 - 公式実装を使用
   const { needRefresh } = useRegisterSW({
     onRegistered(r) {
       console.log("SW registered:", r);
@@ -62,7 +58,6 @@
     },
   });
 
-  // リアクティブに状態を監視
   $: {
     console.log("SW states:", {
       needRefresh: $needRefresh,
@@ -70,66 +65,37 @@
     });
   }
 
-  // SW更新モーダル表示状態をストアから取得
   $: showSwUpdateModal = $showSwUpdateModalStore;
+  $: if ($swNeedRefresh) openSwUpdateModal();
 
-  // SW更新状態を監視してモーダル表示
-  $: if ($swNeedRefresh) {
-    openSwUpdateModal();
-  }
-
-  // UI状態管理
   let errorMessage = "";
-
-  // 認証関連 - ストアから取得するように変更
   let secretKey = "";
-
-  // 公開鍵状態管理（統一・リアクティブ）
   const publicKeyState = new PublicKeyState();
   $: publicKeyState.setNsec(secretKey);
 
-  // 認証状態をストアから取得
   $: isAuthenticated = $authState.isAuthenticated;
   $: isNostrLoginAuth = $authState.type === "nostr-login";
-  $: isAuthInitialized = $authState.isInitialized; // 初期化完了フラグ
+  $: isAuthInitialized = $authState.isInitialized;
 
-  // 認証状態変化のデバッグログ
   $: debugAuthState("Auth state changed", $authState);
 
-  // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
-
-  // プロフィールマネージャーインスタンス
   let profileManager: ProfileManager;
-
-  // リレーマネージャーインスタンス
   let relayManager: RelayManager;
-
-  // 共有画像処理状態
   let sharedImageReceived = false;
-
-  // nostr-loginボタンのローディング状態
   let isLoadingNostrLogin = false;
-
-  // FooterInfoDisplayコンポーネントへの参照
   let footerInfoDisplay: any;
-
-  // PostComponentへの参照を追加
   let postComponentRef: any;
 
-  // Nostr関連の初期化処理
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
     profileManager = new ProfileManager(rxNostr);
     relayManager = new RelayManager(rxNostr);
-
     isLoadingProfileStore.set(true);
     if (pubkeyHex) {
-      // 共通化関数でローカルストレージのリレーリストを利用
       if (!relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
         relayManager.setBootstrapRelays();
       }
-
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
         profileDataStore.set(profile);
@@ -141,104 +107,61 @@
     isLoadingProfileStore.set(false);
   }
 
-  // nostr-login認証ハンドラー
   async function handleNostrLoginAuth(auth: any) {
     if (auth.type === "logout") {
-      // nostr-loginからのログアウト時は、nostrLoginManager.logout()を呼ばない
       logoutInternal();
       return;
     }
-
     if (auth.pubkey) {
-      console.log("nostr-login認証成功:", auth);
       publicKeyState.setNostrLoginAuth(auth);
-
-      // プレースホルダー表示開始
-      isLoadingNostrLogin = true; // nostr-loginボタンのローディング開始
-      isLoadingProfileStore.set(true); // プロフィール取得のローディング開始
-
+      isLoadingNostrLogin = true;
+      isLoadingProfileStore.set(true);
       try {
-        // Nostrクライアントを初期化
         await initializeNostr();
-
-        // リレー情報を確実に取得
-        console.log("nostr-loginユーザーのリレー情報を取得中...");
         await relayManager.fetchUserRelays(auth.pubkey);
-
-        // リレー設定後、プロフィールを読み込み
-        console.log("nostr-loginユーザーのプロフィールを取得中...");
         await loadProfileForPubkey(auth.pubkey);
-
-        console.log("nostr-login認証処理完了");
       } catch (error) {
-        console.error("nostr-login認証処理中にエラーが発生:", error);
-        // エラーが発生してもローディング状態を解除
+        console.error("nostr-login認証処理中にエラー:", error);
         isLoadingProfileStore.set(false);
       } finally {
-        isLoadingNostrLogin = false; // nostr-loginボタンのローディング終了
-        isLoadingProfileStore.set(false); // プロフィール取得のローディング終了
+        isLoadingNostrLogin = false;
+        isLoadingProfileStore.set(false);
       }
-
-      // nostr-login認証が完了したらログインダイアログを閉じる
       showLoginDialogStore.set(false);
     }
   }
 
-  // 指定された公開鍵でプロフィールを読み込み
   async function loadProfileForPubkey(pubkeyHex: string) {
-    if (!pubkeyHex) {
-      console.warn("loadProfileForPubkey: pubkeyHexが空です");
-      return;
-    }
-
-    console.log(`プロフィール読み込み開始: ${pubkeyHex}`);
-
-    // relayManagerとprofileManagerが初期化されているかチェック
-    if (!relayManager || !profileManager) {
-      console.warn("relayManagerまたはprofileManagerが初期化されていません");
-      await initializeNostr();
-    }
-
+    if (!pubkeyHex) return;
+    if (!relayManager || !profileManager) await initializeNostr();
     isLoadingProfileStore.set(true);
-
     try {
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
         profileDataStore.set(profile);
         profileLoadedStore.set(true);
-        console.log("プロフィール読み込み完了:", profile);
-      } else {
-        console.warn("プロフィール取得に失敗しました");
       }
     } catch (error) {
-      console.error("プロフィール読み込み中にエラーが発生:", error);
+      console.error("プロフィール読み込み中にエラー:", error);
     } finally {
       isLoadingProfileStore.set(false);
     }
   }
 
   async function saveSecretKey() {
-    // 入力値で直接バリデーション（グローバル状態に依存しない）
     if (!keyManager.isValidNsec(secretKey)) {
       errorMessage = "invalid_secret";
       return;
     }
-
-    // プレースホルダー表示開始
     isLoadingProfileStore.set(true);
-
     const { success } = keyManager.saveToStorage(secretKey);
     if (success) {
       showLoginDialogStore.set(false);
       errorMessage = "";
-
-      // 保存時のみグローバル認証状態を更新
       try {
         const derived = keyManager.derivePublicKey(secretKey);
         if (derived.hex) {
           setNsecAuth(derived.hex, derived.npub, derived.nprofile);
-
-          // リレー設定とプロフィール取得
           if (
             relayManager &&
             !relayManager.useRelaysFromLocalStorageIfExists(derived.hex)
@@ -247,11 +170,9 @@
           }
           await loadProfileForPubkey(derived.hex);
         } else {
-          console.warn("鍵の派生に失敗しました");
           isLoadingProfileStore.set(false);
         }
       } catch (e) {
-        console.error("保存処理中の鍵派生でエラー:", e);
         isLoadingProfileStore.set(false);
       }
     } else {
@@ -261,47 +182,26 @@
     }
   }
 
-  // Duplicate closeLogoutDialog removed to fix redeclaration error
-
   function logout() {
     logoutInternal();
-
-    // nostr-loginからもログアウト（手動ログアウトの場合のみ）
-    if (nostrLoginManager.isInitialized) {
-      nostrLoginManager.logout();
-    }
-    closeLogoutDialog(); // ログアウトダイアログを閉じる
+    if (nostrLoginManager.isInitialized) nostrLoginManager.logout();
+    closeLogoutDialog();
   }
 
-  // 内部ログアウト処理（nostr-loginManager.logout()を呼ばない）
   function logoutInternal() {
     debugLog("ログアウト処理開始");
-
     const localeValue = localStorage.getItem("locale");
     const uploadEndpointValue = localStorage.getItem("uploadEndpoint");
     localStorage.clear();
     if (localeValue !== null) localStorage.setItem("locale", localeValue);
     if (uploadEndpointValue !== null)
       localStorage.setItem("uploadEndpoint", uploadEndpointValue);
-
     secretKey = "";
-    publicKeyState.clear(); // これでclearAuthState()も呼ばれる
+    publicKeyState.clear();
     profileDataStore.set({ name: "", picture: "" });
     profileLoadedStore.set(false);
-
-    // PostComponentの投稿内容をクリア
-    if (
-      postComponentRef &&
-      typeof postComponentRef.resetPostContent === "function"
-    ) {
-      postComponentRef.resetPostContent();
-    }
-
-    // フッター情報をクリア
-    if (
-      footerInfoDisplay &&
-      typeof footerInfoDisplay.updateProgress === "function"
-    ) {
+    if (postComponentRef?.resetPostContent) postComponentRef.resetPostContent();
+    if (footerInfoDisplay?.updateProgress) {
       footerInfoDisplay.updateProgress({
         total: 0,
         completed: 0,
@@ -309,61 +209,34 @@
         inProgress: false,
       });
     }
-    // 画像サイズ情報もクリア
     hideImageSizeInfo();
-
     debugLog("ログアウト処理完了");
   }
 
-  // nostr-loginを使ったログイン
   async function loginWithNostrLogin() {
-    if (!nostrLoginManager.isInitialized) {
-      console.error("nostr-loginが初期化されていません");
-      return;
-    }
-
-    isLoadingNostrLogin = true; // ボタンローディング開始
-
+    if (!nostrLoginManager.isInitialized) return;
+    isLoadingNostrLogin = true;
     try {
       await nostrLoginManager.showLogin();
-      console.log("nostr-loginモーダルが正常に完了しました");
     } catch (error) {
-      if (error instanceof Error && error.message === "Cancelled") {
-        console.log("ユーザーがnostr-loginモーダルをキャンセルしました");
-        // キャンセル時の処理（特に何もしない、ローディングを停止するだけ）
-      } else {
-        console.error("nostr-loginでエラーが発生しました:", error);
-        // その他のエラー処理
+      if (!(error instanceof Error && error.message === "Cancelled")) {
+        console.error("nostr-loginでエラー:", error);
       }
     } finally {
-      // 成功・失敗・キャンセルいずれの場合もローディングを停止
       isLoadingNostrLogin = false;
     }
   }
 
-  $: if ($locale) {
-    localStorage.setItem("locale", $locale);
-  }
+  $: if ($locale) localStorage.setItem("locale", $locale);
 
-  // SW更新通知メッセージ
-
-  // ロケール初期化フラグを追加
   let localeInitialized = false;
 
   onMount(async () => {
-    // ロケール初期化を最優先で実行
     const storedLocale = localStorage.getItem("locale");
-    if (storedLocale && storedLocale !== $locale) {
-      locale.set(storedLocale);
-    }
-
-    // 追加: 辞書ロード完了を待つ（これが完了するまで描画しない）
+    if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
     await waitLocale();
     localeInitialized = true;
-
     let hasNostrLoginAuth = false;
-
-    // nostr-loginを初期化
     try {
       await nostrLoginManager.init({
         theme: "default",
@@ -371,16 +244,10 @@
         perms: "sign_event:1,sign_event:0",
         noBanner: true,
       });
-
-      // 認証ハンドラーを設定
       nostrLoginManager.setAuthHandler(handleNostrLoginAuth);
-
-      // nostr-loginの認証状態をより確実にチェック
-      await new Promise((resolve) => setTimeout(resolve, 200)); // 初期化完了を少し長めに待つ
-
+      await new Promise((resolve) => setTimeout(resolve, 200));
       const currentUser = nostrLoginManager.getCurrentUser();
-      if (currentUser && currentUser.pubkey) {
-        console.log("既存のnostr-login認証を復元:", currentUser);
+      if (currentUser?.pubkey) {
         hasNostrLoginAuth = true;
         await handleNostrLoginAuth({
           type: "login",
@@ -391,17 +258,11 @@
     } catch (error) {
       console.error("nostr-login初期化失敗:", error);
     }
-
-    // nsec認証のチェック（nostr-login認証がない場合のみ）
     if (!hasNostrLoginAuth) {
       const storedKey = keyManager.loadFromStorage();
-
       if (storedKey) {
-        // 入力用のローカル状態は更新（UI用）
         publicKeyState.setNsec(storedKey);
-
         try {
-          // 起動時の復元でも一度だけグローバル認証状態を更新
           const derived = keyManager.derivePublicKey(storedKey);
           if (derived.hex) {
             setNsecAuth(derived.hex, derived.npub, derived.nprofile);
@@ -411,10 +272,8 @@
             await initializeNostr();
           }
         } catch (e) {
-          console.error("起動時の鍵復元でエラー:", e);
           await initializeNostr();
         }
-
         isLoadingProfileStore.set(false);
         setAuthInitialized();
       } else {
@@ -423,13 +282,9 @@
         setAuthInitialized();
       }
     } else {
-      // nostr-login認証がある場合も初期化完了を設定
       setAuthInitialized();
     }
-
     try {
-      console.log("共有画像の確認を開始します");
-      // ↓ getShareHandler()の利用をやめ、FileUploadManagerのメソッドを直接利用
       const shared = await FileUploadManager.getSharedImageFromServiceWorker();
       if (shared?.image) {
         sharedImageStore.set({
@@ -438,42 +293,32 @@
           received: true,
         });
       }
-      // 以降の処理はストアのリアクティブで行う
     } catch (error) {
-      console.error("共有画像の処理中にエラーが発生しました:", error);
+      console.error("共有画像の処理中にエラー:", error);
     }
-
-    // デバッグ用: 開発環境のみSW更新ダイアログ強制表示関数をwindowに追加
     if (import.meta.env.MODE === "development") {
       window.showSwUpdateModalDebug = () => {
         needRefresh.set(true);
         console.log("SW更新ダイアログを強制表示しました");
       };
     }
-
     debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
   });
 
-  // 共有画像ストアの購読
   $: if (
     $sharedImageStore.received &&
     $sharedImageStore.file &&
     postComponentRef
   ) {
-    // 受信済みフラグを一度だけ処理
     postComponentRef.uploadFiles([$sharedImageStore.file]);
-    // ストアをリセット
     sharedImageStore.set({ file: null, metadata: undefined, received: false });
   }
 
   function handleUploadStatusChange(uploading: boolean) {
     isUploadingStore.set(uploading);
-    if (!uploading) {
-      sharedImageReceived = false;
-    }
+    if (!uploading) sharedImageReceived = false;
   }
 
-  // アップロード進捗情報を受け取る関数（FooterInfoDisplayに転送）
   function handleUploadProgress(progress: {
     total: number;
     completed: number;
@@ -486,25 +331,19 @@
   }
 </script>
 
-<!-- ロケールが初期化されてから描画 -->
 {#if $locale && localeInitialized}
   <main>
-    <!-- 投稿ボタン・画像アップロードボタンを最上部に配置 -->
     <div class="main-content">
       <PostComponent
         bind:this={postComponentRef}
         {rxNostr}
         hasStoredKey={isAuthenticated}
         {isNostrLoginAuth}
-        onPostSuccess={() => {
-          // 必要に応じて投稿成功時の処理を追加
-        }}
+        onPostSuccess={() => {}}
         onUploadStatusChange={handleUploadStatusChange}
         onUploadProgress={handleUploadProgress}
       />
     </div>
-
-    <!-- 必要に応じて他のコンポーネントやUIをここに追加 -->
 
     {#if $showLoginDialogStore}
       <LoginDialog
@@ -517,7 +356,6 @@
       />
     {/if}
 
-    <!-- ログアウトダイアログ -->
     {#if $showLogoutDialogStore}
       <LogoutDialog
         show={$showLogoutDialogStore}
@@ -526,13 +364,11 @@
       />
     {/if}
 
-    <!-- 設定ダイアログ -->
     <SettingsDialog
       show={$showSettingsDialogStore}
       onClose={closeSettingsDialog}
     />
 
-    <!-- SW更新モーダル -->
     {#if showSwUpdateModal}
       <SwUpdateModal
         show={showSwUpdateModal}
@@ -542,10 +378,8 @@
       />
     {/if}
 
-    <!-- フッター -->
     <div class="footer-bar">
       {#if isAuthenticated && $isLoadingProfileStore}
-        <!-- プレースホルダー表示 -->
         <Button className="profile-display btn-round loading" disabled={true}>
           <LoadingPlaceholder text="" showImage={true} />
         </Button>
