@@ -18,7 +18,8 @@ export class EditorController {
     // ハッシュタグを検出する正規表現（末尾を明確に区切る）
     private readonly HASHTAG_REGEX = HASHTAG_REGEX;
     // URLを検出する正規表現
-    private readonly URL_REGEX = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
+    // private readonly URL_REGEX = /(?<![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])(https?:\/\/[^\s<>"{}|\\^`[\]]+)(?![\w\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF])/gi;
+    private readonly URL_REGEX = /https?:\/\/[\w!?/+\-_~;.,*&@#$%()'[\]]+/gi;
 
     constructor(editorElement?: HTMLDivElement) {
         if (editorElement) {
@@ -191,6 +192,9 @@ export class EditorController {
                 }
             }
         });
+
+        // 既存のリンクの直後に続くURL許容文字を取り込んでリンクを伸長
+        this.extendPreviewLinks();
 
         // 既存の.hashtag内に後続の文字（空白/改行/不許可文字）が入ったらスパン外へ出す
         this.normalizeHashtagSpans();
@@ -463,6 +467,63 @@ export class EditorController {
                         span.parentNode?.insertBefore(children[j], span.nextSibling);
                     }
                     break;
+                }
+            }
+        });
+    }
+
+    /**
+     * URL許容文字判定（https?://[\w!?/+\-_~;.,*&@#$%()'[\]]+ と同じ文字集合）
+     */
+    private isUrlChar(ch: string): boolean {
+        return /[\w!?/+\-_~;.,*&@#$%()'\[\]]/.test(ch);
+    }
+
+    // 既に生成された <a.preview-link> の直後に続くURL許容文字を取り込み、hrefと表示テキストを伸長
+    private extendPreviewLinks() {
+        if (!this.editorElement) return;
+        const anchors = this.editorElement.querySelectorAll("a.preview-link");
+        anchors.forEach((aEl) => {
+            const anchor = aEl as HTMLAnchorElement;
+
+            let next: ChildNode | null = anchor.nextSibling;
+            while (next && next.nodeType === Node.TEXT_NODE) {
+                const textNode = next as Text;
+                const data = textNode.data ?? "";
+                if (!data) {
+                    // 空ノードは削除して次へ
+                    const toRemove = next;
+                    next = next.nextSibling;
+                    toRemove.parentNode?.removeChild(toRemove);
+                    continue;
+                }
+
+                // 先頭からURL許容文字のみを切り出す
+                let i = 0;
+                while (i < data.length && this.isUrlChar(data[i])) i++;
+
+                if (i === 0) {
+                    // 直後が非許容文字なら伸長終了
+                    break;
+                }
+
+                const take = data.slice(0, i);
+                const rest = data.slice(i);
+
+                // テキスト/リンク先を伸長
+                anchor.textContent = (anchor.textContent || "") + take;
+                anchor.setAttribute("href", anchor.textContent || "");
+
+                // 残りをノードに戻す or ノード削除
+                if (rest.length > 0) {
+                    textNode.data = rest;
+                    // 先頭が非許容文字になったのでここで終了
+                    break;
+                } else {
+                    // 全て取り込んだのでノード削除して次の兄弟を確認（連続Text対応）
+                    const toRemove = next;
+                    next = next.nextSibling;
+                    toRemove.parentNode?.removeChild(toRemove);
                 }
             }
         });
