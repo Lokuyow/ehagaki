@@ -39,10 +39,10 @@ export class NostrLoginManager {
             init({
                 ...mergedOptions,
                 bunkers: this._processBunkers(mergedOptions.bunkers),
-                startScreen: mergedOptions.startScreen as any
+                startScreen: mergedOptions.startScreen as any,
+                onAuth: this._handleAuthCallback.bind(this)
             });
 
-            this.setupAuthListener();
             this.initialized = true;
             console.log('nostr-login初期化完了');
         } catch (error) {
@@ -66,39 +66,32 @@ export class NostrLoginManager {
         return Array.isArray(bunkers) ? bunkers.join(',') : undefined;
     }
 
-    private setupAuthListener(): void {
-        document.addEventListener('nlAuth', this._handleAuthEvent.bind(this));
-    }
-
-    private async _handleAuthEvent(event: Event): Promise<void> {
+    private async _handleAuthCallback(npub: string, options: any): Promise<void> {
         if (!this.authHandler || this.isLoggingOut) return;
 
         try {
-            const detail = (event as CustomEvent<NostrLoginDetail>).detail;
-
-            if (detail.type === 'logout') {
+            // ログアウトの場合
+            if (!npub) {
                 this.authHandler({ type: 'logout' });
                 return;
             }
 
-            if (detail.type === 'login' || detail.type === 'signup') {
-                const pubkey = detail.pubkey ||
-                    (detail.npub ? await this.npubToPubkey(detail.npub) : '');
-
-                if (!pubkey) {
-                    console.warn('NostrLogin: Failed to get pubkey');
-                    return;
-                }
-
-                this.authHandler({
-                    type: detail.type,
-                    pubkey,
-                    npub: detail.npub,
-                    otpData: detail.otpData
-                });
+            const pubkey = await this.npubToPubkey(npub);
+            if (!pubkey) {
+                console.warn('NostrLogin: Failed to get pubkey from npub');
+                return;
             }
+
+            // ログインまたはサインアップ
+            const authType = options?.type || 'login';
+            this.authHandler({
+                type: authType,
+                pubkey,
+                npub,
+                otpData: options?.otpData
+            });
         } catch (error) {
-            console.error('NostrLogin auth event error:', error);
+            console.error('NostrLogin auth callback error:', error);
         }
     }
 
