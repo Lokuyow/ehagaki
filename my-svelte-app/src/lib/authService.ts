@@ -1,5 +1,5 @@
 import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
-import { nostrLoginManager } from './nostrLogin';
+import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
 import { setAuthInitialized, setNsecAuth, clearAuthState } from './stores';
 import { debugLog } from './debug';
 
@@ -11,6 +11,12 @@ export interface AuthResult {
 
 export class AuthService {
     private publicKeyState: PublicKeyState;
+    // ハードコードで設定できるようにプロパティ追加
+    nostrLoginOptions: NostrLoginOptions = {
+        theme: 'default',
+        perms: 'sign_event:1,sign_event:0',
+        noBanner: true,
+    };
 
     constructor() {
         this.publicKeyState = new PublicKeyState();
@@ -120,12 +126,7 @@ export class AuthService {
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
         try {
             // nostr-loginの初期化と認証チェック
-            await nostrLoginManager.init({
-                theme: 'default',
-                darkMode: false,
-                perms: 'sign_event:1,sign_event:0',
-                noBanner: true,
-            });
+            await nostrLoginManager.init(this.nostrLoginOptions);
 
             // 少し待ってから認証状態をチェック
             await new Promise(resolve => setTimeout(resolve, 200));

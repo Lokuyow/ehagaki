@@ -2,11 +2,9 @@ import type { NostrLoginAuth } from './keyManager';
 
 export interface NostrLoginOptions {
     theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
-    darkMode?: boolean;
     bunkers?: string[];
     perms?: string;
     noBanner?: boolean;
-    methods?: string[];
     startScreen?: string;
 }
 
@@ -41,8 +39,7 @@ export class NostrLoginManager {
             init({
                 ...mergedOptions,
                 bunkers: this._processBunkers(mergedOptions.bunkers),
-                startScreen: mergedOptions.startScreen as any,
-                noBanner: true
+                startScreen: mergedOptions.startScreen as any
             });
 
             this.setupAuthListener();
@@ -58,9 +55,7 @@ export class NostrLoginManager {
     private _createMergedOptions(options: NostrLoginOptions): NostrLoginOptions {
         return {
             theme: 'default',
-            darkMode: false,
             noBanner: true,
-            methods: ['connect', 'extension', 'readOnly', 'local'],
             perms: 'sign_event:1,sign_event:0',
             startScreen: 'welcome',
             ...options
