@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 import type { SizeDisplayInfo } from './utils';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
+import { HASHTAG_REGEX } from "./editorController";
 
 // --- 型定義 ---
 export interface AuthState {
@@ -22,6 +23,12 @@ export interface SharedImageStoreState {
 export interface ProfileData {
     name: string;
     picture: string;
+}
+
+export interface HashtagData {
+    content: string;
+    hashtags: string[];
+    tags: string[][];
 }
 
 // --- ストア定義 ---
@@ -64,6 +71,12 @@ export const profileDataStore = writable<ProfileData>({ name: "", picture: "" })
 export const profileLoadedStore = writable(false);
 export const isLoadingProfileStore = writable(true);
 export const isUploadingStore = writable(false);
+
+export const hashtagDataStore = writable<HashtagData>({
+    content: '',
+    hashtags: [],
+    tags: []
+});
 
 // --- 認証関連関数 ---
 export function updateAuthState(newState: Partial<AuthState>): void {
@@ -129,3 +142,37 @@ export function closeSwUpdateModal() {
     swNeedRefresh.set(false);
 }
 export function handleSwUpdate() { swUpdateServiceWorker(true); }
+
+// --- ハッシュタグデータ更新 ---
+export function updateHashtagData(content: string): void {
+    const hashtags = extractHashtagsFromContent(content);
+    // "t"タグの値を小文字化
+    const tags = hashtags.map(hashtag => ["t", hashtag.toLowerCase()]);
+
+    hashtagDataStore.set({
+        content,
+        hashtags,
+        tags
+    });
+}
+
+// --- ハッシュタグ処理関数（内部使用） ---
+function extractHashtagsFromContent(content: string): string[] {
+    const hashtags: string[] = [];
+    HASHTAG_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = HASHTAG_REGEX.exec(content)) !== null) {
+        const hashtag = match[1];
+        if (hashtag && hashtag.trim()) {
+            hashtags.push(hashtag);
+        }
+    }
+
+    return hashtags;
+}
+
+export function containsHashtags(content: string): boolean {
+    HASHTAG_REGEX.lastIndex = 0;
+    return HASHTAG_REGEX.test(content);
+}

@@ -7,8 +7,7 @@
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
   import { containsSecretKey } from "../lib/utils";
-  import ContentPreview from "./ContentPreview.svelte";
-  import { onMount, onDestroy } from "svelte";
+  import { EditorController } from "../lib/editorController";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
 
@@ -20,6 +19,8 @@
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
   let postContent = "";
+  let editorElement: HTMLDivElement;
+  let editorController: EditorController;
   let postStatus: PostStatus = {
     sending: false,
     success: false,
@@ -32,6 +33,10 @@
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
+  function openFileDialog() {
+    fileInput?.click();
+  }
+
   let postManager: PostManager;
   let showSecretKeyDialog = false;
   let pendingPost = "";
@@ -42,6 +47,11 @@
     } else {
       postManager.setRxNostr(rxNostr);
     }
+  }
+
+  // エディタ要素が設定されたらEditorControllerを初期化
+  $: if (editorElement && !editorController) {
+    editorController = new EditorController(editorElement);
   }
 
   const uploadCallbacks: UploadInfoCallbacks = {
@@ -120,8 +130,12 @@
           failedResults.push(r);
         }
       }
-      if (successResults.length)
-        insertImageUrl(successResults.map((r) => r.url).join("\n"));
+      if (successResults.length && editorController) {
+        editorController.insertImages(
+          successResults.map((r) => r.url).join("\n"),
+        );
+        postContent = editorController.getPlainText();
+      }
       if (failedResults.length)
         showUploadError(
           failedResults.length === 1
@@ -138,62 +152,20 @@
     if (detail?.file) await uploadFiles([detail.file]);
   }
 
-  function insertImageUrl(imageUrl: string) {
-    const textArea = document.querySelector(
-      ".post-input",
-    ) as HTMLTextAreaElement;
-    if (textArea) {
-      const startPos = textArea.selectionStart || 0;
-      const endPos = textArea.selectionEnd || 0;
-      const beforeText = postContent.substring(0, startPos);
-      const afterText = postContent.substring(endPos);
-      const needsNewlineBefore = beforeText && !beforeText.endsWith("\n");
-      const needsNewlineAfter = afterText && !afterText.startsWith("\n");
-      postContent =
-        beforeText +
-        (needsNewlineBefore ? "\n" : "") +
-        imageUrl +
-        (needsNewlineAfter ? "\n" : "") +
-        afterText;
-      setTimeout(() => {
-        textArea.focus();
-        const newCursorPos =
-          startPos + imageUrl.length + (needsNewlineBefore ? 1 : 0);
-        textArea.setSelectionRange(newCursorPos, newCursorPos);
-      }, 0);
-    } else {
-      const needsNewline = postContent && !postContent.endsWith("\n");
-      postContent += (needsNewline ? "\n" : "") + imageUrl + "\n";
-    }
-  }
-
-  function openFileDialog() {
-    fileInput?.click();
-  }
-
+  // ファイル選択時のハンドラ
   async function handleFileSelect(event: Event) {
-    const files = (event.target as HTMLInputElement).files;
-    if (files?.length) await uploadFiles(files);
-  }
-
-  function handleDragOver(event: DragEvent) {
-    event.preventDefault();
-    dragOver = true;
-  }
-
-  function handleDragLeave() {
-    dragOver = false;
-  }
-
-  async function handleDrop(event: DragEvent) {
-    event.preventDefault();
-    dragOver = false;
-    const files = event.dataTransfer?.files;
-    if (files?.length) await uploadFiles(files);
+    const input = event.target as HTMLInputElement;
+    if (input?.files && input.files.length > 0) {
+      await uploadFiles(input.files);
+    }
   }
 
   async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
+
+    // エディタからプレーンテキストを抽出
+    postContent = editorController?.getPlainText() || "";
+
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
@@ -250,6 +222,7 @@
 
   export function resetPostContent() {
     postContent = "";
+    editorController?.clear();
   }
 
   function showSuccessMessage() {
@@ -259,19 +232,50 @@
     );
   }
 
-  function handleTextareaKeydown(event: KeyboardEvent) {
+  function handleEditorKeydown(event: KeyboardEvent) {
     if (
       (event.ctrlKey || event.metaKey) &&
       (event.key === "Enter" || event.key === "NumpadEnter")
     ) {
       event.preventDefault();
-      if (!postStatus.sending && postContent.trim() && hasStoredKey)
-        submitPost();
+      const content = editorController?.getPlainText() || "";
+      if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
     }
   }
 
-  $: if (postContent && postStatus.error) {
-    postStatus = { ...postStatus, error: false, message: "" };
+  function handleEditorInput() {
+    if (!editorController) return;
+
+    editorController.formatContentDebounced(() => {
+      postContent = editorController.getPlainText();
+      if (postContent && postStatus.error) {
+        postStatus = { ...postStatus, error: false, message: "" };
+      }
+    });
+  }
+
+  // ドラッグ＆ドロップイベントハンドラ
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault();
+    dragOver = true;
+  }
+
+  function handleDragLeave(event: DragEvent) {
+    event.preventDefault();
+    dragOver = false;
+  }
+
+  async function handleDrop(event: DragEvent) {
+    event.preventDefault();
+    dragOver = false;
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      await uploadFiles(event.dataTransfer.files);
+    }
+  }
+
+  // postContentが外部から変更された場合、エディタに反映
+  $: if (editorController && postContent !== editorController.getPlainText()) {
+    editorController.setContent(postContent);
   }
 </script>
 
@@ -298,7 +302,9 @@
       </Button>
       <Button
         className="post-button btn-angular"
-        disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
+        disabled={!postContent.trim() ||
+          postStatus.sending ||
+          !hasStoredKey}
         on:click={submitPost}
         ariaLabel={$_("post")}
       >
@@ -307,23 +313,21 @@
     </div>
   </div>
 
-  <div class="input-preview-wrapper">
-    <ContentPreview content={postContent} />
-    <div class="textarea-container" class:drag-over={dragOver}>
-      <textarea
-        id="post-input"
-        name="postContent"
-        class="post-input"
-        bind:value={postContent}
-        placeholder={$_("enter_your_text")}
-        rows="5"
-        disabled={postStatus.sending}
-        on:dragover={handleDragOver}
-        on:dragleave={handleDragLeave}
-        on:drop={handleDrop}
-        on:keydown={handleTextareaKeydown}
-      ></textarea>
-    </div>
+  <div class="editor-container" class:drag-over={dragOver}>
+    <div
+      bind:this={editorElement}
+      contenteditable="true"
+      class="post-editor"
+      placeholder={$_("enter_your_text")}
+      role="textbox"
+      tabindex="0"
+      aria-multiline="true"
+      on:input={handleEditorInput}
+      on:keydown={handleEditorKeydown}
+      on:dragover={handleDragOver}
+      on:dragleave={handleDragLeave}
+      on:drop={handleDrop}
+    ></div>
   </div>
 
   <input
@@ -438,20 +442,11 @@
     text-align: left;
   }
 
-  .input-preview-wrapper {
-    display: flex;
-    flex-direction: column;
+  .editor-container {
     width: 100%;
     height: 100%;
     min-height: 200px;
-  }
-
-  .textarea-container {
-    flex: 1 1 60%;
-    min-height: 120px;
     position: relative;
-    width: 100%;
-    height: 100%;
     transition: border-color 0.2s;
   }
 
@@ -460,24 +455,70 @@
     background-color: rgba(29, 161, 242, 0.05);
   }
 
-  .post-input {
+  .post-editor {
     background: var(--bg-input);
     width: 100%;
     max-width: 800px;
     min-width: 300px;
-    min-height: 80px;
+    min-height: 200px;
     height: 100%;
     padding: 10px;
     border: 1px solid var(--border);
-    resize: none;
     font-family: inherit;
     font-size: 1.1rem;
+    line-height: 1.5;
+    overflow-y: auto;
     transition: border-color 0.2s;
+    white-space: pre-wrap;
+    word-break: break-word;
   }
 
-  .post-input:focus {
+  .post-editor:focus {
     outline: none;
     border-color: var(--theme);
+  }
+
+  .post-editor:empty:before {
+    content: attr(placeholder);
+    color: #999;
+    pointer-events: none;
+  }
+
+  /* エディタ内の画像スタイル（ContentPreviewに合わせる） */
+  .post-editor :global(img) {
+    max-width: 100%;
+    max-height: 160px;
+    display: block;
+    margin: 8px 0;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px #0001;
+    background: #fff;
+  }
+
+  /* エディタ内のハッシュタグスタイル（ContentPreviewと同じ） */
+  .post-editor :global(.hashtag) {
+    color: #1976d2;
+    font-weight: 600;
+    background: rgba(25, 118, 210, 0.1);
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+
+  /* エディタ内のリンクスタイル（ContentPreviewと同じ） */
+  .post-editor :global(.preview-link) {
+    color: #1da1f2;
+    text-decoration: underline;
+    word-break: break-all;
+    transition: color 0.2s ease;
+  }
+
+  .post-editor :global(.preview-link:hover) {
+    color: #0d8bd9;
+    text-decoration: none;
+  }
+
+  .post-editor :global(.preview-link:visited) {
+    color: #9c27b0;
   }
 
   .secretkey-dialog-content {
