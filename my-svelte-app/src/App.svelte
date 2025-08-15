@@ -4,7 +4,7 @@
   import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
-  import { ProfileManager, type ProfileData } from "./lib/profileManager";
+  import { ProfileManager } from "./lib/profileManager";
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import { keyManager, PublicKeyState } from "./lib/keyManager";
   import { RelayManager } from "./lib/relayManager";
@@ -41,11 +41,16 @@
     openSwUpdateModal,
     closeSwUpdateModal,
     handleSwUpdate,
+    // プロフィール・UI状態ストアを追加
+    profileDataStore,
+    profileLoadedStore,
+    isLoadingProfileStore,
+    isUploadingStore,
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
   // Service Worker更新関連 - 公式実装を使用
-  const { needRefresh, updateServiceWorker } = useRegisterSW({
+  const { needRefresh } = useRegisterSW({
     onRegistered(r) {
       console.log("SW registered:", r);
     },
@@ -85,23 +90,11 @@
 
   // 認証状態をストアから取得
   $: isAuthenticated = $authState.isAuthenticated;
-  $: currentHexKey = $authState.pubkey;
   $: isNostrLoginAuth = $authState.type === "nostr-login";
   $: isAuthInitialized = $authState.isInitialized; // 初期化完了フラグ
 
   // 認証状態変化のデバッグログ
   $: debugAuthState("Auth state changed", $authState);
-
-  // プロフィール情報
-  let profileData: ProfileData = {
-    name: "",
-    picture: "",
-  };
-
-  // 初期状態: 読み込み中
-  let profileLoaded = false;
-  let isLoadingProfile = true; // ← プロフィール取得用
-  let isLoadingNostrLogin = false; // ← nostr-loginボタン用
 
   // Nostrクライアントインスタンス
   let rxNostr: ReturnType<typeof createRxNostr>;
@@ -114,7 +107,9 @@
 
   // 共有画像処理状態
   let sharedImageReceived = false;
-  let isUploading = false;
+
+  // nostr-loginボタンのローディング状態
+  let isLoadingNostrLogin = false;
 
   // FooterInfoDisplayコンポーネントへの参照
   let footerInfoDisplay: any;
@@ -128,7 +123,7 @@
     profileManager = new ProfileManager(rxNostr);
     relayManager = new RelayManager(rxNostr);
 
-    isLoadingProfile = true; // ← 初期化開始時にtrue
+    isLoadingProfileStore.set(true);
     if (pubkeyHex) {
       // 共通化関数でローカルストレージのリレーリストを利用
       if (!relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
@@ -137,13 +132,13 @@
 
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
-        profileData = profile;
-        profileLoaded = true;
+        profileDataStore.set(profile);
+        profileLoadedStore.set(true);
       }
     } else {
       relayManager.setBootstrapRelays();
     }
-    isLoadingProfile = false; // ← 初期化終了時にfalse
+    isLoadingProfileStore.set(false);
   }
 
   // nostr-login認証ハンドラー
@@ -160,7 +155,7 @@
 
       // プレースホルダー表示開始
       isLoadingNostrLogin = true; // nostr-loginボタンのローディング開始
-      isLoadingProfile = true; // プロフィール取得のローディング開始
+      isLoadingProfileStore.set(true); // プロフィール取得のローディング開始
 
       try {
         // Nostrクライアントを初期化
@@ -178,10 +173,10 @@
       } catch (error) {
         console.error("nostr-login認証処理中にエラーが発生:", error);
         // エラーが発生してもローディング状態を解除
-        isLoadingProfile = false;
+        isLoadingProfileStore.set(false);
       } finally {
         isLoadingNostrLogin = false; // nostr-loginボタンのローディング終了
-        isLoadingProfile = false; // プロフィール取得のローディング終了
+        isLoadingProfileStore.set(false); // プロフィール取得のローディング終了
       }
 
       // nostr-login認証が完了したらログインダイアログを閉じる
@@ -204,13 +199,13 @@
       await initializeNostr();
     }
 
-    isLoadingProfile = true;
+    isLoadingProfileStore.set(true);
 
     try {
       const profile = await profileManager.fetchProfileData(pubkeyHex);
       if (profile) {
-        profileData = profile;
-        profileLoaded = true;
+        profileDataStore.set(profile);
+        profileLoadedStore.set(true);
         console.log("プロフィール読み込み完了:", profile);
       } else {
         console.warn("プロフィール取得に失敗しました");
@@ -218,7 +213,7 @@
     } catch (error) {
       console.error("プロフィール読み込み中にエラーが発生:", error);
     } finally {
-      isLoadingProfile = false;
+      isLoadingProfileStore.set(false);
     }
   }
 
@@ -230,7 +225,7 @@
     }
 
     // プレースホルダー表示開始
-    isLoadingProfile = true;
+    isLoadingProfileStore.set(true);
 
     const { success } = keyManager.saveToStorage(secretKey);
     if (success) {
@@ -253,22 +248,17 @@
           await loadProfileForPubkey(derived.hex);
         } else {
           console.warn("鍵の派生に失敗しました");
-          isLoadingProfile = false;
+          isLoadingProfileStore.set(false);
         }
       } catch (e) {
         console.error("保存処理中の鍵派生でエラー:", e);
-        isLoadingProfile = false;
+        isLoadingProfileStore.set(false);
       }
     } else {
       errorMessage = "error_saving";
       publicKeyState.clear();
-      isLoadingProfile = false;
+      isLoadingProfileStore.set(false);
     }
-  }
-
-  function closeDialog() {
-    showLoginDialogStore.set(false);
-    errorMessage = "";
   }
 
   // Duplicate closeLogoutDialog removed to fix redeclaration error
@@ -296,8 +286,8 @@
 
     secretKey = "";
     publicKeyState.clear(); // これでclearAuthState()も呼ばれる
-    profileData = { name: "", picture: "" };
-    profileLoaded = false;
+    profileDataStore.set({ name: "", picture: "" });
+    profileLoadedStore.set(false);
 
     // PostComponentの投稿内容をクリア
     if (
@@ -425,11 +415,11 @@
           await initializeNostr();
         }
 
-        isLoadingProfile = false;
+        isLoadingProfileStore.set(false);
         setAuthInitialized();
       } else {
         await initializeNostr();
-        isLoadingProfile = false;
+        isLoadingProfileStore.set(false);
         setAuthInitialized();
       }
     } else {
@@ -477,7 +467,7 @@
   }
 
   function handleUploadStatusChange(uploading: boolean) {
-    isUploading = uploading;
+    isUploadingStore.set(uploading);
     if (!uploading) {
       sharedImageReceived = false;
     }
@@ -554,19 +544,19 @@
 
     <!-- フッター -->
     <div class="footer-bar">
-      {#if isAuthenticated && isLoadingProfile}
+      {#if isAuthenticated && $isLoadingProfileStore}
         <!-- プレースホルダー表示 -->
         <Button className="profile-display btn-round loading" disabled={true}>
           <LoadingPlaceholder text="" showImage={true} />
         </Button>
-      {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
+      {:else if isAuthenticated && ($profileLoadedStore || $isLoadingProfileStore)}
         <ProfileComponent
-          {profileData}
+          profileData={$profileDataStore}
           hasStoredKey={isAuthenticated}
-          {isLoadingProfile}
+          isLoadingProfile={$isLoadingProfileStore}
           showLogoutDialog={openLogoutDialog}
         />
-      {:else if !isLoadingProfile && !isAuthenticated && isAuthInitialized}
+      {:else if !$isLoadingProfileStore && !isAuthenticated && isAuthInitialized}
         <Button className="login-btn btn-round" on:click={showLoginDialog}>
           {$_("login")}
         </Button>

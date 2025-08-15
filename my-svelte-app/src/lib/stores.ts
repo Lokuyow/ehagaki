@@ -240,3 +240,32 @@ export function closeSwUpdateModal() {
 export function handleSwUpdate() {
     swUpdateServiceWorker(true);
 }
+
+// --- プロフィール情報管理ストアを追加 ---
+
+/**
+ * プロフィール情報ストア
+ */
+export interface ProfileData {
+    name: string;
+    picture: string;
+}
+export const profileDataStore = writable<ProfileData>({
+    name: "",
+    picture: ""
+});
+
+/**
+ * プロフィールロード状態ストア
+ */
+export const profileLoadedStore = writable(false);
+
+/**
+ * プロフィール読み込み中状態ストア
+ */
+export const isLoadingProfileStore = writable(true);
+
+/**
+ * 画像アップロード中状態ストア
+ */
+export const isUploadingStore = writable(false);
