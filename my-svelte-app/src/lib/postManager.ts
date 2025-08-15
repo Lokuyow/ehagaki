@@ -50,13 +50,20 @@ export class PostManager {
   // 投稿イベント生成（共通化）
   private async buildEvent(content: string, pubkey?: string) {
     const tags = this.extractHashtags(content);
-    // Client tagを追加
-    tags.push([
-      "client",
-      "eHagaki",
-      "31990:ec42c765418b3db9c85abff3a88f4a3bbe57535eebbdc54522041fa5328c0600:1754918316480",
-      "wss://relay.nostr.band"
-    ]);
+    // Client tagを追加（オプトアウト対応）
+    let clientTagEnabled = true;
+    try {
+      const stored = localStorage.getItem("clientTagEnabled");
+      if (stored !== null) clientTagEnabled = stored === "true";
+    } catch {}
+    if (clientTagEnabled) {
+      tags.push([
+        "client",
+        "eHagaki",
+        "31990:ec42c765418b3db9c85abff3a88f4a3bbe57535eebbdc54522041fa5328c0600:1754918316480",
+        "wss://relay.nostr.band"
+      ]);
+    }
     const event: any = {
       kind: 1,
       content,

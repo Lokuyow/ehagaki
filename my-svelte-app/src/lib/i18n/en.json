@@ -32,5 +32,6 @@
   "failed": "Failed",
   "data_size": "Transmission size",
   "nostr_login": "Nostr Login",
-  "loading": "Loading..."
+  "loading": "Loading...",
+  "client_tag_label": "Add client name to post details (Client tag)"
 }

@@ -24,22 +24,28 @@
     }
 
     let selectedEndpoint: string;
+    let clientTagEnabled: boolean = true;
 
     onMount(() => {
-        // ブラウザの言語設定から初期アップロードエンドポイントを設定
+        // アップロード先
         const storedLocale = localStorage.getItem("locale");
         const browserLocale = navigator.language;
         const effectiveLocale =
             storedLocale ||
             (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
-
-        // ローカルストレージからエンドポイントを取得
         const saved = localStorage.getItem("uploadEndpoint");
         if (saved && uploadEndpoints.some((ep) => ep.url === saved)) {
             selectedEndpoint = saved;
         } else {
-            // 言語設定に基づいて適切なエンドポイントを設定
             selectedEndpoint = getDefaultEndpoint(effectiveLocale);
+        }
+        // client tag設定の初期化
+        const clientTagSetting = localStorage.getItem("clientTagEnabled");
+        if (clientTagSetting === null) {
+            clientTagEnabled = true;
+            localStorage.setItem("clientTagEnabled", "true");
+        } else {
+            clientTagEnabled = clientTagSetting === "true";
         }
     });
 
@@ -53,6 +59,11 @@
     $: if (selectedEndpoint) {
         localStorage.setItem("uploadEndpoint", selectedEndpoint);
     }
+
+    $: localStorage.setItem(
+        "clientTagEnabled",
+        clientTagEnabled ? "true" : "false",
+    );
 
     // 言語切替用関数を追加
     function toggleLanguage() {
@@ -101,6 +112,20 @@
                         <option value={ep.url}>{ep.label}</option>
                     {/each}
                 </select>
+            </div>
+        </div>
+
+        <!-- client tag オプトアウト設定セクション -->
+        <div class="setting-section">
+            <span class="setting-label">{$_("client_tag_label") || "投稿詳細にクライアント名をつける（Client tag）"}</span>
+            <div class="setting-control">
+                <label class="toggle-switch">
+                    <input type="checkbox" bind:checked={clientTagEnabled} />
+                    <span class="slider"></span>
+                </label>
+                <span style="margin-left:8px;">
+                    {clientTagEnabled ? "ON" : "OFF"}
+                </span>
             </div>
         </div>
     </div>
@@ -209,5 +234,45 @@
             opacity: 1;
             transform: translate(-50%, -50%);
         }
+    }
+
+    .toggle-switch {
+        position: relative;
+        display: inline-block;
+        width: 48px;
+        height: 28px;
+    }
+    .toggle-switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #ccc;
+        transition: 0.2s;
+        border-radius: 28px;
+    }
+    .toggle-switch input:checked + .slider {
+        background-color: var(--theme, #4caf50);
+    }
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 20px;
+        width: 20px;
+        left: 4px;
+        bottom: 4px;
+        background-color: white;
+        transition: 0.2s;
+        border-radius: 50%;
+    }
+    .toggle-switch input:checked + .slider:before {
+        transform: translateX(20px);
     }
 </style>
