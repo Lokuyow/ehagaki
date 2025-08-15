@@ -114,7 +114,7 @@ export class EditorController {
         const urlList = urls.split("\n").filter(Boolean);
         urlList.forEach((url) => {
             this.insertImageElement(url);
-            this.editorElement!.appendChild(document.createElement("br"));
+            // 画像間に改行を入れない
         });
 
         this.focusEditor();
