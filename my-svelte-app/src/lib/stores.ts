@@ -201,3 +201,42 @@ export function openSettingsDialog() {
 export function closeSettingsDialog() {
     showSettingsDialogStore.set(false);
 }
+
+// --- Service Worker更新管理ストアを追加 ---
+import { useRegisterSW } from "virtual:pwa-register/svelte";
+
+// SW登録・更新状態管理
+const swRegister = useRegisterSW({
+    onRegistered(r) {
+        console.log("SW registered:", r);
+    },
+    onRegisterError(error) {
+        console.log("SW registration error", error);
+    },
+    onNeedRefresh() {
+        console.log("SW needs refresh - showing prompt");
+    },
+});
+
+// SW更新状態ストア
+export const swNeedRefresh = swRegister.needRefresh;
+export const swUpdateServiceWorker = swRegister.updateServiceWorker;
+
+// SW更新モーダル表示状態ストア
+export const showSwUpdateModalStore = writable(false);
+
+// SW更新モーダルを開く
+export function openSwUpdateModal() {
+    showSwUpdateModalStore.set(true);
+}
+
+// SW更新モーダルを閉じる
+export function closeSwUpdateModal() {
+    showSwUpdateModalStore.set(false);
+    swNeedRefresh.set(false);
+}
+
+// SW更新を実行
+export function handleSwUpdate() {
+    swUpdateServiceWorker(true);
+}

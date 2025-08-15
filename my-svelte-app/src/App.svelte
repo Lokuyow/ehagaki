@@ -36,6 +36,11 @@
     closeLogoutDialog,
     openSettingsDialog,
     closeSettingsDialog,
+    swNeedRefresh,
+    showSwUpdateModalStore,
+    openSwUpdateModal,
+    closeSwUpdateModal,
+    handleSwUpdate,
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
@@ -60,16 +65,12 @@
     });
   }
 
-  $: showSwUpdateModal = $needRefresh;
+  // SW更新モーダル表示状態をストアから取得
+  $: showSwUpdateModal = $showSwUpdateModalStore;
 
-  function closeSwUpdateModal() {
-    console.log("Closing SW update modal");
-    needRefresh.set(false);
-  }
-
-  function handleSwUpdate() {
-    console.log("Handling SW update - reloading page");
-    updateServiceWorker(true);
+  // SW更新状態を監視してモーダル表示
+  $: if ($swNeedRefresh) {
+    openSwUpdateModal();
   }
 
   // UI状態管理
@@ -545,7 +546,7 @@
     {#if showSwUpdateModal}
       <SwUpdateModal
         show={showSwUpdateModal}
-        needRefresh={$needRefresh}
+        needRefresh={$swNeedRefresh}
         onReload={handleSwUpdate}
         onClose={closeSwUpdateModal}
       />
