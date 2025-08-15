@@ -32,9 +32,13 @@ export class EditorController {
         // IME入力監視イベント追加
         element.addEventListener("compositionstart", () => {
             this.isComposing = true;
+            // IME入力中はbeforeinputによる挿入を防ぐ
+            element.addEventListener("beforeinput", this.preventBeforeInput, true);
         });
         element.addEventListener("compositionend", () => {
             this.isComposing = false;
+            // IME入力終了時にbeforeinputの防止を解除
+            element.removeEventListener("beforeinput", this.preventBeforeInput, true);
         });
 
         // ペースト時に強制的にプレーンテキストとして挿入
@@ -46,6 +50,13 @@ export class EditorController {
                 document.execCommand("insertText", false, text);
             }
         });
+    }
+
+    // IME未確定文字の重複挿入防止用
+    private preventBeforeInput = (event: InputEvent) => {
+        if (this.isComposing && event.inputType === "insertCompositionText") {
+            event.stopImmediatePropagation();
+        }
     }
 
     /**
