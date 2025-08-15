@@ -36,6 +36,16 @@ export class EditorController {
         element.addEventListener("compositionend", () => {
             this.isComposing = false;
         });
+
+        // ペースト時に強制的にプレーンテキストとして挿入
+        element.addEventListener("paste", (event: ClipboardEvent) => {
+            event.preventDefault();
+            const text = event.clipboardData?.getData("text/plain");
+            if (text) {
+                // カーソル位置にテキストを挿入
+                document.execCommand("insertText", false, text);
+            }
+        });
     }
 
     /**
