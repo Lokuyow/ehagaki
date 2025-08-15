@@ -42,6 +42,17 @@
             }, 1000);
         }
     }
+
+    // 進捗・画像サイズ情報をリセットするメソッドを追加
+    export function reset() {
+        uploadProgress = {
+            total: 0,
+            completed: 0,
+            failed: 0,
+            inProgress: false,
+        };
+        imageSizeInfoStore.set({ info: null, visible: false });
+    }
 </script>
 
 <div class="footer-center">

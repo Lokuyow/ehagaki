@@ -273,6 +273,13 @@
       footerInfoDisplay.updateProgress(progress);
     }
   }
+
+  function handlePostSuccess() {
+    // 投稿成功時にfooter情報を全て削除
+    if (footerInfoDisplay?.reset) {
+      footerInfoDisplay.reset();
+    }
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -283,7 +290,7 @@
         {rxNostr}
         hasStoredKey={isAuthenticated}
         {isNostrLoginAuth}
-        onPostSuccess={() => {}}
+        onPostSuccess={handlePostSuccess}
         onUploadStatusChange={handleUploadStatusChange}
         onUploadProgress={handleUploadProgress}
       />
