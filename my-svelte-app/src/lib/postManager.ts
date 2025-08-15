@@ -125,9 +125,9 @@ export class PostManager {
       // nostr-login認証の場合のみwindow.nostrを使用
       if (isNostrLoginAuth && keyManager.isWindowNostrAvailable()) {
         try {
-          // 公開鍵を取得
-          const pubkey = await keyManager.getPublicKeyFromWindowNostr();
+          const pubkey = auth.pubkey;
           if (!pubkey) return { success: false, error: "pubkey_not_found" };
+
           const event = await this.buildEvent(content, pubkey);
           const signedEvent = await (window.nostr as any).signEvent(event);
           console.log("署名済みイベント:", signedEvent);
