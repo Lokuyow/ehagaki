@@ -1,8 +1,7 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
-  import { onMount, onDestroy } from "svelte";
-  import type { Readable } from "svelte/store";
-  import { EditorContent, Editor } from "svelte-tiptap";
+  import { onMount } from "svelte";
+  import { EditorContent } from "svelte-tiptap";
   import type { PostStatus } from "../lib/postManager";
   import { PostManager } from "../lib/postManager";
   import {
@@ -20,13 +19,12 @@
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
-  export const isNostrLoginAuth: boolean = false;
   export let onPostSuccess: (() => void) | undefined;
   export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
   let postContent = "";
-  let editor: any; // 型を変更してupdatePlaceholderメソッドにアクセス
+  let editor: any;
   let postStatus: PostStatus = {
     sending: false,
     success: false,
@@ -39,14 +37,11 @@
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
-  function openFileDialog() {
-    fileInput?.click();
-  }
-
   let postManager: PostManager;
   let showSecretKeyDialog = false;
   let pendingPost = "";
 
+  // --- PostManager初期化 ---
   $: if (rxNostr) {
     if (!postManager) {
       postManager = new PostManager(rxNostr);
@@ -55,17 +50,15 @@
     }
   }
 
+  // --- Editor初期化・クリーンアップ ---
   onMount(() => {
-    // エディタを初期化
     const initialPlaceholder =
       $_("enter_your_text") || "テキストを入力してください";
     editor = createEditorStore(initialPlaceholder);
 
-    // Tiptap v2のコンテンツ変更イベントを直接監視
     const handleContentUpdate = (event: CustomEvent) => {
       postContent = event.detail.plainText;
     };
-
     window.addEventListener(
       "editor-content-changed",
       handleContentUpdate as EventListener,
@@ -76,16 +69,26 @@
         "editor-content-changed",
         handleContentUpdate as EventListener,
       );
+      try {
+        if (editor) {
+          let currentEditor: any;
+          const unsub = (editor as any).subscribe
+            ? (editor as any).subscribe((v: any) => (currentEditor = v))
+            : null;
+          if (typeof unsub === "function") unsub();
+          if (currentEditor && typeof currentEditor.destroy === "function")
+            currentEditor.destroy();
+          if (typeof (editor as any).destroy === "function")
+            (editor as any).destroy();
+        }
+      } catch (e) {
+        console.warn("Editor cleanup failed:", e);
+      }
     };
   });
 
-  onDestroy(() => {
-    // ...existing cleanup code...
-  });
-
-  const uploadCallbacks: UploadInfoCallbacks = {
-    onProgress: onUploadProgress,
-  };
+  // --- ファイルアップロード関連 ---
+  const uploadCallbacks: UploadInfoCallbacks = { onProgress: onUploadProgress };
 
   async function withUploadState<T>(
     uploadPromise: Promise<T>,
@@ -158,7 +161,6 @@
         }
       }
       if (successResults.length) {
-        // Tiptap v2のコマンドを直接使用
         insertImagesToEditor(
           $editor,
           successResults.map((r) => r.url).join("\n"),
@@ -175,35 +177,16 @@
     if (fileInput) fileInput.value = "";
   }
 
-  async function handleSharedImage(event: Event) {
-    const detail = (event as CustomEvent)?.detail;
-    if (detail?.file) await uploadFiles([detail.file]);
-  }
-
+  // --- 投稿処理 ---
   async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
-
-    // Tiptap v2から直接テキストを取得
     postContent = $editor?.getText() || "";
-
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
       return;
     }
     await executePost();
-  }
-
-  async function confirmSendWithSecretKey() {
-    showSecretKeyDialog = false;
-    postContent = pendingPost;
-    await executePost();
-    pendingPost = "";
-  }
-
-  function cancelSendWithSecretKey() {
-    showSecretKeyDialog = false;
-    pendingPost = "";
   }
 
   async function executePost() {
@@ -242,7 +225,6 @@
 
   export function resetPostContent() {
     postContent = "";
-    // Tiptap v2のコマンドを使用
     if ($editor) {
       $editor.chain().clearContent().run();
     }
@@ -255,6 +237,43 @@
     );
   }
 
+  // --- シークレットキー警告ダイアログ ---
+  async function confirmSendWithSecretKey() {
+    showSecretKeyDialog = false;
+    postContent = pendingPost;
+    await executePost();
+    pendingPost = "";
+  }
+  function cancelSendWithSecretKey() {
+    showSecretKeyDialog = false;
+    pendingPost = "";
+  }
+
+  // --- UIイベントハンドラ ---
+  function openFileDialog() {
+    fileInput?.click();
+  }
+  function handleFileSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input?.files && input.files.length > 0) {
+      uploadFiles(input.files);
+    }
+  }
+  function handleDragOver(event: DragEvent) {
+    event.preventDefault();
+    dragOver = true;
+  }
+  function handleDragLeave(event: DragEvent) {
+    event.preventDefault();
+    dragOver = false;
+  }
+  async function handleDrop(event: DragEvent) {
+    event.preventDefault();
+    dragOver = false;
+    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+      await uploadFiles(event.dataTransfer.files);
+    }
+  }
   function handleEditorKeydown(event: KeyboardEvent) {
     if (
       (event.ctrlKey || event.metaKey) &&
@@ -266,50 +285,19 @@
     }
   }
 
-  function handleFileSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input?.files && input.files.length > 0) {
-      uploadFiles(input.files);
-    }
-  }
-
-  function handleDragOver(event: DragEvent) {
-    event.preventDefault();
-    dragOver = true;
-  }
-
-  function handleDragLeave(event: DragEvent) {
-    event.preventDefault();
-    dragOver = false;
-  }
-
-  async function handleDrop(event: DragEvent) {
-    event.preventDefault();
-    dragOver = false;
-    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-      await uploadFiles(event.dataTransfer.files);
-    }
-  }
-
-  // Tiptap v2の状態変更を直接監視
+  // --- リアクティブ: エディタ・プレースホルダー・エラー ---
   $: if ($editor && $editor.getText() !== postContent) {
     if (postStatus.error) {
       postStatus = { ...postStatus, error: false, message: "" };
     }
   }
-
-  // プレースホルダーテキストの変更を監視して動的更新（安全性を向上）
   $: if ($placeholderTextStore && editor) {
-    // エディターが完全に初期化されてから更新
     setTimeout(() => {
       if (editor.updatePlaceholder) {
         editor.updatePlaceholder($placeholderTextStore);
       }
     }, 0);
   }
-
-  // プレースホルダー文言をストアから取得
-  $: placeholderText = $placeholderTextStore || $_("enter_your_text");
 </script>
 
 <div class="post-container">

@@ -222,7 +222,8 @@
     localeInitialized = true;
 
     // プレースホルダーテキストを初期化
-    const initialPlaceholder = $_("enter_your_text") || "テキストを入力してください";
+    const initialPlaceholder =
+      $_("enter_your_text") || "テキストを入力してください";
     placeholderTextStore.set(initialPlaceholder);
 
     // 認証サービスの初期化
@@ -300,7 +301,6 @@
         bind:this={postComponentRef}
         {rxNostr}
         hasStoredKey={isAuthenticated}
-        {isNostrLoginAuth}
         onPostSuccess={handlePostSuccess}
         onUploadStatusChange={handleUploadStatusChange}
         onUploadProgress={handleUploadProgress}
