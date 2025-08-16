@@ -81,6 +81,11 @@ export const hashtagDataStore = writable<HashtagData>({
 // プレースホルダーテキスト用ストア
 export const placeholderTextStore = writable<string>('');
 
+// プレースホルダーテキスト更新用関数
+export function updatePlaceholderText(text: string): void {
+    placeholderTextStore.set(text);
+}
+
 // --- 認証関連関数 ---
 export function updateAuthState(newState: Partial<AuthState>): void {
     authState.update(current => {

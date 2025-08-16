@@ -3,7 +3,6 @@
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
-    import { placeholderTextStore } from "../lib/stores";
 
     export let show = false;
     export let onClose: () => void;
@@ -66,27 +65,11 @@
         clientTagEnabled ? "true" : "false",
     );
 
-    // 言語切替用関数を修正
+    // 言語切替用関数をシンプル化
     function toggleLanguage() {
         const newLocale = $locale === "ja" ? "en" : "ja";
         locale.set(newLocale);
-        // 少し遅延させてi18nの更新を待つ
-        setTimeout(() => {
-            updatePlaceholderText();
-        }, 100);
-    }
-
-    function updatePlaceholderText() {
-        const newText = $_("enter_your_text") || "テキストを入力してください";
-        placeholderTextStore.set(newText);
-    }
-
-    // 言語変更を監視してプレースホルダーを更新（初回読み込み用）
-    $: if ($locale) {
-        // 初期化時とロケール変更時にプレースホルダーを更新
-        setTimeout(() => {
-            updatePlaceholderText();
-        }, 50);
+        // プレースホルダー更新はApp.svelteで行う
     }
 </script>
 
@@ -136,7 +119,10 @@
 
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
-            <span class="setting-label">{$_("client_tag_label") || "投稿詳細にクライアント名をつける（Client tag）"}</span>
+            <span class="setting-label"
+                >{$_("client_tag_label") ||
+                    "投稿詳細にクライアント名をつける（Client tag）"}</span
+            >
             <div class="setting-control">
                 <label class="toggle-switch">
                     <input type="checkbox" bind:checked={clientTagEnabled} />

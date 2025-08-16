@@ -56,11 +56,9 @@
   }
 
   onMount(() => {
-    // 初期プレースホルダーテキストを設定
+    // エディタを初期化
     const initialPlaceholder =
       $_("enter_your_text") || "テキストを入力してください";
-    placeholderTextStore.set(initialPlaceholder);
-
     editor = createEditorStore(initialPlaceholder);
 
     // Tiptap v2のコンテンツ変更イベントを直接監視
@@ -307,9 +305,14 @@
     }
   }
 
-  // プレースホルダーテキストの変更を監視して動的更新
-  $: if ($placeholderTextStore && editor && editor.updatePlaceholder) {
-    editor.updatePlaceholder($placeholderTextStore);
+  // プレースホルダーテキストの変更を監視して動的更新（安全性を向上）
+  $: if ($placeholderTextStore && editor) {
+    // エディターが完全に初期化されてから更新
+    setTimeout(() => {
+      if (editor.updatePlaceholder) {
+        editor.updatePlaceholder($placeholderTextStore);
+      }
+    }, 0);
   }
 
   // プレースホルダー文言をストアから取得

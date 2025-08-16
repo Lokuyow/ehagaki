@@ -207,6 +207,12 @@
 
   $: if ($locale) localStorage.setItem("locale", $locale);
 
+  // locale変更時にプレースホルダーを更新
+  $: if ($locale) {
+    const text = $_("enter_your_text") || "テキストを入力してください";
+    placeholderTextStore.set(text);
+  }
+
   let localeInitialized = false;
 
   onMount(async () => {

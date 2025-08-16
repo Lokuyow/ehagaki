@@ -162,7 +162,7 @@ function escapeHtml(text: string): string {
  * Tiptap v2のエディターストアを作成
  */
 export function createEditorStore(placeholderText: string) {
-    const placeholderExtension = Placeholder.configure({
+    let placeholderExtension = Placeholder.configure({
         placeholder: placeholderText,
         emptyEditorClass: 'is-editor-empty',
         showOnlyWhenEditable: true,
@@ -209,18 +209,29 @@ export function createEditorStore(placeholderText: string) {
         },
     });
 
-    // プレースホルダー更新機能を追加
-    let currentEditor: any = null;
-
+    // プレースホルダー更新機能を簡潔に修正
     const updatePlaceholder = (newPlaceholder: string) => {
+        // editorStoreから現在のエディターインスタンスを取得
+        let currentEditor: any;
+        const unsubscribe = editorStore.subscribe(editor => {
+            currentEditor = editor;
+        });
+        unsubscribe();
+
         if (currentEditor) {
-            // Placeholder拡張を見つけて更新
+            // DOM要素に直接プレースホルダーを設定
+            const editorElement = currentEditor.view.dom;
+            if (editorElement) {
+                editorElement.setAttribute('data-placeholder', newPlaceholder);
+            }
+
+            // プレースホルダー拡張のオプションも更新
             const placeholderExt = currentEditor.extensionManager.extensions.find(
                 (ext: any) => ext.name === 'placeholder'
             );
             if (placeholderExt) {
                 placeholderExt.options.placeholder = newPlaceholder;
-                // エディターを強制的に再描画
+                // エディターを再描画
                 currentEditor.view.dispatch(
                     currentEditor.state.tr.setMeta('forceUpdate', true)
                 );
