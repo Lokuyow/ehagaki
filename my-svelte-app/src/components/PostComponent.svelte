@@ -530,6 +530,14 @@
     background: #fff;
   }
 
+  :global(.tiptap-editor .editor-paragraph) {
+    margin: 0;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1.5;
+    color: var(--text);
+  }
+
   :global(.tiptap-editor .hashtag) {
     color: #1976d2;
     font-weight: 600;
