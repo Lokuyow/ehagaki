@@ -346,3 +346,31 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
     });
 }
 
+/**
+ * エディターからプレーンテキストと画像URLを抽出して結合
+ */
+export function extractContentWithImages(editor: any): string {
+    if (!editor) return '';
+
+    const doc = editor.state.doc;
+    const fragments: string[] = [];
+
+    doc.descendants((node: any, pos: number) => {
+        if (node.type.name === 'paragraph') {
+            // パラグラフ内のテキストを取得
+            const textContent = node.textContent;
+            if (textContent.trim()) {
+                fragments.push(textContent);
+            }
+        } else if (node.type.name === 'image') {
+            // 画像ノードからURLを抽出
+            const src = node.attrs.src;
+            if (src) {
+                fragments.push(src);
+            }
+        }
+    });
+
+    return fragments.join('\n');
+}
+

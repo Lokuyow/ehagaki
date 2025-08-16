@@ -12,6 +12,7 @@
   import {
     createEditorStore,
     insertImagesToEditor,
+    extractContentWithImages,
   } from "../lib/editorController";
   import { placeholderTextStore } from "../lib/stores";
   import Button from "./Button.svelte";
@@ -180,7 +181,8 @@
   // --- 投稿処理 ---
   async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
-    postContent = $editor?.getText() || "";
+    // 画像URLを含む完全なコンテンツを取得
+    postContent = extractContentWithImages($editor) || "";
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
@@ -280,13 +282,14 @@
       (event.key === "Enter" || event.key === "NumpadEnter")
     ) {
       event.preventDefault();
-      const content = $editor?.getText() || "";
+      // 画像URLを含む完全なコンテンツを取得
+      const content = extractContentWithImages($editor) || "";
       if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
     }
   }
 
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
-  $: if ($editor && $editor.getText() !== postContent) {
+  $: if ($editor && extractContentWithImages($editor) !== postContent) {
     if (postStatus.error) {
       postStatus = { ...postStatus, error: false, message: "" };
     }
@@ -323,7 +326,9 @@
       </Button>
       <Button
         className="post-button btn-angular"
-        disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
+        disabled={!extractContentWithImages($editor)?.trim() ||
+          postStatus.sending ||
+          !hasStoredKey}
         on:click={submitPost}
         ariaLabel={$_("post")}
       >
