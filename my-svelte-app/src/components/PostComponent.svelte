@@ -14,6 +14,7 @@
     createEditorStore,
     insertImagesToEditor,
   } from "../lib/editorController";
+  import { placeholderTextStore } from "../lib/stores";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
 
@@ -25,7 +26,7 @@
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
   let postContent = "";
-  let editor: Readable<Editor>;
+  let editor: any; // 型を変更してupdatePlaceholderメソッドにアクセス
   let postStatus: PostStatus = {
     sending: false,
     success: false,
@@ -55,7 +56,12 @@
   }
 
   onMount(() => {
-    editor = createEditorStore();
+    // 初期プレースホルダーテキストを設定
+    const initialPlaceholder =
+      $_("enter_your_text") || "テキストを入力してください";
+    placeholderTextStore.set(initialPlaceholder);
+
+    editor = createEditorStore(initialPlaceholder);
 
     // Tiptap v2のコンテンツ変更イベントを直接監視
     const handleContentUpdate = (event: CustomEvent) => {
@@ -300,6 +306,14 @@
       postStatus = { ...postStatus, error: false, message: "" };
     }
   }
+
+  // プレースホルダーテキストの変更を監視して動的更新
+  $: if ($placeholderTextStore && editor && editor.updatePlaceholder) {
+    editor.updatePlaceholder($placeholderTextStore);
+  }
+
+  // プレースホルダー文言をストアから取得
+  $: placeholderText = $placeholderTextStore || $_("enter_your_text");
 </script>
 
 <div class="post-container">
@@ -524,7 +538,7 @@
   }
 
   :global(.tiptap-editor.is-editor-empty .ProseMirror-widget::before) {
-    content: "テキストを入力してください...";
+    content: "{placeholderText}"; /* ここを変数展開に変更 */
     color: var(--text-light, #999);
     pointer-events: none;
     position: absolute;

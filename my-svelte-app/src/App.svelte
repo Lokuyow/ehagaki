@@ -40,6 +40,7 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
+    placeholderTextStore,
   } from "./lib/stores";
   import { debugLog, debugAuthState } from "./lib/debug";
 
@@ -213,6 +214,10 @@
     if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
     await waitLocale();
     localeInitialized = true;
+
+    // プレースホルダーテキストを初期化
+    const initialPlaceholder = $_("enter_your_text") || "テキストを入力してください";
+    placeholderTextStore.set(initialPlaceholder);
 
     // 認証サービスの初期化
     authService.setNostrLoginHandler(handleNostrLoginAuth);

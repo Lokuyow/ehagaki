@@ -6,7 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { updateHashtagData } from "./stores";
-import Placeholder from '@tiptap/extension-placeholder'; // 追加
+import Placeholder from '@tiptap/extension-placeholder';
 
 // ハッシュタグ共通正規表現
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
@@ -24,7 +24,7 @@ export const ContentTrackingExtension = Extension.create({
                     init() {
                         return DecorationSet.empty;
                     },
-                    apply(tr, decorationSet) {
+                    apply(tr) {
                         const doc = tr.doc;
                         const decorations: Decoration[] = [];
 
@@ -161,8 +161,16 @@ function escapeHtml(text: string): string {
 /**
  * Tiptap v2のエディターストアを作成
  */
-export function createEditorStore() {
-    return createEditor({
+export function createEditorStore(placeholderText: string) {
+    const placeholderExtension = Placeholder.configure({
+        placeholder: placeholderText,
+        emptyEditorClass: 'is-editor-empty',
+        showOnlyWhenEditable: true,
+        showOnlyCurrent: false,
+        includeChildren: true,
+    });
+
+    const editorStore = createEditor({
         extensions: [
             StarterKit.configure({
                 paragraph: {
@@ -191,13 +199,7 @@ export function createEditorStore() {
             }),
             ContentTrackingExtension,
             ImagePasteExtension,
-            Placeholder.configure({
-                placeholder: 'テキストを入力してください...',
-                emptyEditorClass: 'is-editor-empty',
-                showOnlyWhenEditable: true,
-                showOnlyCurrent: false,
-                includeChildren: true,
-            }),
+            placeholderExtension,
         ],
         content: '<p></p>',
         editorProps: {
@@ -206,6 +208,30 @@ export function createEditorStore() {
             },
         },
     });
+
+    // プレースホルダー更新機能を追加
+    let currentEditor: any = null;
+
+    const updatePlaceholder = (newPlaceholder: string) => {
+        if (currentEditor) {
+            // Placeholder拡張を見つけて更新
+            const placeholderExt = currentEditor.extensionManager.extensions.find(
+                (ext: any) => ext.name === 'placeholder'
+            );
+            if (placeholderExt) {
+                placeholderExt.options.placeholder = newPlaceholder;
+                // エディターを強制的に再描画
+                currentEditor.view.dispatch(
+                    currentEditor.state.tr.setMeta('forceUpdate', true)
+                );
+            }
+        }
+    };
+
+    // ストアにメソッドを追加
+    (editorStore as any).updatePlaceholder = updatePlaceholder;
+
+    return editorStore;
 }
 
 /**

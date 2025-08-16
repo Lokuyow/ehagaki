@@ -3,6 +3,7 @@
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
+    import { placeholderTextStore } from "../lib/stores";
 
     export let show = false;
     export let onClose: () => void;
@@ -65,9 +66,27 @@
         clientTagEnabled ? "true" : "false",
     );
 
-    // 言語切替用関数を追加
+    // 言語切替用関数を修正
     function toggleLanguage() {
-        locale.set($locale === "ja" ? "en" : "ja");
+        const newLocale = $locale === "ja" ? "en" : "ja";
+        locale.set(newLocale);
+        // 少し遅延させてi18nの更新を待つ
+        setTimeout(() => {
+            updatePlaceholderText();
+        }, 100);
+    }
+
+    function updatePlaceholderText() {
+        const newText = $_("enter_your_text") || "テキストを入力してください";
+        placeholderTextStore.set(newText);
+    }
+
+    // 言語変更を監視してプレースホルダーを更新（初回読み込み用）
+    $: if ($locale) {
+        // 初期化時とロケール変更時にプレースホルダーを更新
+        setTimeout(() => {
+            updatePlaceholderText();
+        }, 50);
     }
 </script>
 
