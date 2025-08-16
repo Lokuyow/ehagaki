@@ -29,7 +29,8 @@
     "nostr-login": "^1.7.11",
     "nostr-tools": "^2.15.1",
     "rx-nostr": "^3.6.1",
-    "svelte-i18n": "^4.0.1"
+    "svelte-i18n": "^4.0.1",
+    "svelte-tiptap": "^2.2.0"
   },
   "overrides": {
     "esbuild": "^0.25.8"
