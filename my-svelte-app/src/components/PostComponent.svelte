@@ -522,21 +522,13 @@
   /* プレースホルダースタイル */
   :global(.tiptap-editor .is-editor-empty:first-child::before) {
     content: attr(data-placeholder);
-    color: var(--text-light, #999);
+    color: var(--text);
     pointer-events: none;
     height: 0;
     float: left;
     font-size: 1.1rem;
     line-height: 1.5;
-  }
-
-  :global(.tiptap-editor.is-editor-empty .ProseMirror-widget::before) {
-    content: "{placeholderText}"; /* ここを変数展開に変更 */
-    color: var(--text-light, #999);
-    pointer-events: none;
-    position: absolute;
-    font-size: 1.1rem;
-    line-height: 1.5;
+    opacity: 0.4;
   }
 
   /* エディタ内の要素スタイル */
@@ -559,26 +551,20 @@
   }
 
   :global(.tiptap-editor .hashtag) {
-    color: #1976d2;
+    color: var(--hashtag-text);
     font-weight: 600;
-    background: rgba(25, 118, 210, 0.1);
+    background: var(--hashtag-bg);
     padding: 2px 4px;
     border-radius: 4px;
   }
 
   :global(.tiptap-editor .preview-link) {
-    color: #1da1f2;
-    text-decoration: underline;
+    color: var(--link);
     word-break: break-all;
   }
 
-  :global(.tiptap-editor .preview-link:hover) {
-    color: #0d8bd9;
-    text-decoration: none;
-  }
-
   :global(.tiptap-editor .preview-link:visited) {
-    color: #9c27b0;
+    color: var(--link-visited);
   }
 
   .secretkey-dialog-content {
