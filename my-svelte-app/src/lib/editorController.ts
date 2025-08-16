@@ -188,7 +188,8 @@ export function createEditorStore(placeholderText: string) {
                 autolink: true,
                 linkOnPaste: true,
                 validate: (url) => {
-                    return /^https?:\/\//.test(url);
+                    // 指定された正規表現を使用してURLを検証
+                    return /^https?:\/\/[\w!\?\/\+\-_~=;\.,\*&@#$%\(\)'\[\]]+/.test(url);
                 }
             }),
             Image.configure({
