@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { updateHashtagData } from "./stores";
+import Placeholder from '@tiptap/extension-placeholder'; // 追加
 
 // ハッシュタグ共通正規表現
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
@@ -190,12 +191,18 @@ export function createEditorStore() {
             }),
             ContentTrackingExtension,
             ImagePasteExtension,
+            Placeholder.configure({
+                placeholder: 'テキストを入力してください...',
+                emptyEditorClass: 'is-editor-empty',
+                showOnlyWhenEditable: true,
+                showOnlyCurrent: false,
+                includeChildren: true,
+            }),
         ],
-        content: '',
+        content: '<p></p>',
         editorProps: {
             attributes: {
                 class: 'tiptap-editor',
-                'data-placeholder': 'テキストを入力してください...',
             },
         },
     });

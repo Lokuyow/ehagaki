@@ -501,6 +501,7 @@
   /* Tiptapエディターのスタイル */
   :global(.tiptap-editor) {
     width: 100%;
+    height: 100%;
     min-height: 200px;
     padding: 10px;
     font-family: inherit;
@@ -511,12 +512,24 @@
     word-break: break-word;
   }
 
-  :global(.tiptap-editor[data-placeholder]:empty::before) {
+  /* プレースホルダースタイル */
+  :global(.tiptap-editor .is-editor-empty:first-child::before) {
     content: attr(data-placeholder);
-    color: #999;
+    color: var(--text-light, #999);
     pointer-events: none;
-    float: left;
     height: 0;
+    float: left;
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+
+  :global(.tiptap-editor.is-editor-empty .ProseMirror-widget::before) {
+    content: "テキストを入力してください...";
+    color: var(--text-light, #999);
+    pointer-events: none;
+    position: absolute;
+    font-size: 1.1rem;
+    line-height: 1.5;
   }
 
   /* エディタ内の要素スタイル */
