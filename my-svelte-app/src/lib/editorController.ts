@@ -36,10 +36,14 @@ export const ContentTrackingExtension = Extension.create({
                                 let match;
 
                                 while ((match = regex.exec(text)) !== null) {
-                                    // match[0] は前後の空白＋#＋タグ本体、match[1] はタグ本体（#を含まない）
-                                    const start = pos + match.index + (match[0].length - match[1].length);
-                                    const end = start + (1 + match[1].length); // '#' + 本体長
-
+                                    // match[0]: 前後の空白＋#＋タグ本体, match[1]: タグ本体
+                                    // ハッシュタグの「#」からタグ本体までを装飾し、スペースは含めない
+                                    // match.index: マッチ開始位置（空白含む）
+                                    // match[0].indexOf('#'): 「#」の位置（空白の後）
+                                    const hashIndex = match[0].indexOf('#');
+                                    if (hashIndex === -1) continue;
+                                    const start = pos + match.index + hashIndex;
+                                    const end = start + 1 + match[1].length; // 「#」+タグ本体
                                     decorations.push(
                                         Decoration.inline(start, end, {
                                             class: 'hashtag'
