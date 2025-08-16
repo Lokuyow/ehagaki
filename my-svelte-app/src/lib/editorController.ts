@@ -7,6 +7,8 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { updateHashtagData } from "./stores";
 import Placeholder from '@tiptap/extension-placeholder';
+import { SvelteNodeViewRenderer } from 'svelte-tiptap';
+import SvelteImageNode from '../components/SvelteImageNode.svelte';
 
 // ハッシュタグ共通正規表現
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
@@ -246,6 +248,10 @@ export function createEditorStore(placeholderText: string) {
                     class: 'editor-image',
                 },
                 allowBase64: false,
+            }).extend({
+                addNodeView() {
+                    return SvelteNodeViewRenderer(SvelteImageNode);
+                },
             }),
             ContentTrackingExtension,
             ImagePasteExtension,
