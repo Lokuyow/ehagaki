@@ -59,7 +59,9 @@
     className="login-dialog"
 >
     <Button
-        className="nostr-login-button btn {isLoadingNostrLogin ? 'loading' : ''}"
+        className="nostr-login-button btn {isLoadingNostrLogin
+            ? 'loading'
+            : ''}"
         on:click={handleNostrLogin}
         disabled={isLoadingNostrLogin}
     >
@@ -197,7 +199,6 @@
         align-items: center;
         justify-content: center;
         gap: 8px;
-        transition: all 0.2s ease-in-out;
         position: relative;
         overflow: hidden;
     }

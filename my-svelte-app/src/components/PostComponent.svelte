@@ -484,7 +484,6 @@
     height: 100%;
     min-height: 200px;
     position: relative;
-    transition: border-color 0.2s;
     cursor: text;
     outline: none;
   }
@@ -504,7 +503,6 @@
     height: 100%;
     border: 1px solid var(--border);
     background: var(--bg-input);
-    transition: border-color 0.2s;
     position: relative;
   }
 
@@ -577,7 +575,6 @@
     color: #1da1f2;
     text-decoration: underline;
     word-break: break-all;
-    transition: color 0.2s ease;
   }
 
   :global(.tiptap-editor .preview-link:hover) {
