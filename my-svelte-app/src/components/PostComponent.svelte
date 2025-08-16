@@ -481,8 +481,7 @@
   }
 
   .editor-container.drag-over {
-    border-color: var(--theme);
-    background-color: rgba(var(--theme-rgb), 0.05);
+    border: 3px dashed var(--theme);
   }
 
   :global(.editor-content) {
