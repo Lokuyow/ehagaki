@@ -291,13 +291,6 @@
     }
   }
 
-  function handleContainerClick() {
-    // Tiptap v2のfocusコマンドを使用
-    if ($editor) {
-      $editor.chain().focus("end").run();
-    }
-  }
-
   // Tiptap v2の状態変更を直接監視
   $: if ($editor && $editor.getText() !== postContent) {
     if (postStatus.error) {
@@ -354,7 +347,6 @@
   <div
     class="editor-container"
     class:drag-over={dragOver}
-    on:click={handleContainerClick}
     on:keydown={handleEditorKeydown}
     on:dragover={handleDragOver}
     on:dragleave={handleDragLeave}
