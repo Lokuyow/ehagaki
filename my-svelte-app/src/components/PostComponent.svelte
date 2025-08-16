@@ -344,9 +344,7 @@
     tabindex="0"
   >
     {#if editor && $editor}
-      <div class="tiptap-wrapper">
-        <EditorContent editor={$editor} class="editor-content" />
-      </div>
+      <EditorContent editor={$editor} class="editor-content" />
     {/if}
   </div>
 
@@ -469,6 +467,8 @@
     position: relative;
     cursor: text;
     outline: none;
+    border: 1px solid var(--border);
+    background: var(--bg-input);
   }
 
   .editor-container:focus {
@@ -476,21 +476,13 @@
     outline-offset: -2px;
   }
 
+  .editor-container:focus-within {
+    border-color: var(--theme);
+  }
+
   .editor-container.drag-over {
     border-color: var(--theme);
     background-color: rgba(var(--theme-rgb), 0.05);
-  }
-
-  .tiptap-wrapper {
-    width: 100%;
-    height: 100%;
-    border: 1px solid var(--border);
-    background: var(--bg-input);
-    position: relative;
-  }
-
-  .editor-container:focus-within .tiptap-wrapper {
-    border-color: var(--theme);
   }
 
   :global(.editor-content) {
