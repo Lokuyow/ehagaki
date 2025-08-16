@@ -56,6 +56,46 @@ export const ContentTrackingExtension = Extension.create({
                     }
                 }
             }),
+            // 追加: link マークの再検証プラグイン
+            new Plugin({
+                key: new PluginKey('link-validator'),
+                // transactions がドキュメントを変更した場合に走る appendTransaction を使う
+                appendTransaction: (transactions, _oldState, newState) => {
+                    if (!transactions.some(tr => tr.docChanged)) return;
+                    const linkMark = newState.schema.marks.link;
+                    if (!linkMark) return;
+
+                    // ノード内の部分的な URL を検出するための正規表現（改行・半角/全角空白で分断されると分割される）
+                    const urlPartRegex = /https?:\/\/[^\s\u3000]+/gi;
+
+                    let tr: any = null;
+
+                    newState.doc.descendants((node, pos) => {
+                        if (!node.isText || !node.marks || node.marks.length === 0) return;
+
+                        const hasLink = node.marks.some(m => m.type === linkMark);
+                        if (!hasLink) return;
+
+                        const text = node.text || '';
+                        const matches = Array.from(text.matchAll(urlPartRegex));
+
+                        // 1) リンクマークを一旦削除
+                        tr = tr || newState.tr;
+                        tr.removeMark(pos, pos + text.length, linkMark);
+
+                        // 2) URL と判断できる部分だけ再付与（href 属性はマッチした文字列そのものを使用）
+                        for (const m of matches) {
+                            if (typeof m.index !== 'number') continue;
+                            const start = pos + m.index;
+                            const end = start + m[0].length;
+                            const mark = linkMark.create({ href: m[0] });
+                            tr.addMark(start, end, mark);
+                        }
+                    });
+
+                    return tr && tr.docChanged ? tr : null;
+                }
+            }),
             // コンテンツ更新追跡プラグイン
             new Plugin({
                 key: new PluginKey('content-update-tracker'),
