@@ -252,6 +252,27 @@ export function createEditorStore(placeholderText: string) {
             attributes: {
                 class: 'tiptap-editor',
             },
+            // --- ここから追加: Ctrl+クリックのみリンク遷移 ---
+            handleClickOn(view, _pos, _node, _nodePos, event, _direct) {
+                // クリックターゲットがリンクかどうか判定
+                let target = event.target as HTMLElement | null;
+                while (target && target !== view.dom) {
+                    if (target.tagName === 'A' && target.hasAttribute('href')) {
+                        // Ctrl（またはCmd）+クリック時のみ遷移許可
+                        if (event.ctrlKey || event.metaKey) {
+                            // 通常遷移
+                            return false;
+                        } else {
+                            // デフォルト遷移を抑制
+                            event.preventDefault();
+                            return true;
+                        }
+                    }
+                    target = target.parentElement;
+                }
+                return false;
+            },
+            // --- ここまで追加 ---
         },
     });
 
