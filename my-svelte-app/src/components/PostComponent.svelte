@@ -357,7 +357,7 @@
   >
     {#if editor && $editor}
       <div class="tiptap-wrapper">
-        <EditorContent editor={$editor} />
+        <EditorContent editor={$editor} class="editor-content" />
       </div>
     {/if}
   </div>
@@ -503,6 +503,11 @@
 
   .editor-container:focus-within .tiptap-wrapper {
     border-color: var(--theme);
+  }
+
+  :global(.editor-content) {
+    width: 100%;
+    height: 100%;
   }
 
   /* Tiptapエディターのスタイル */
