@@ -1,5 +1,8 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
+  import { onMount, onDestroy } from "svelte";
+  import type { Readable } from "svelte/store";
+  import { EditorContent, Editor } from "svelte-tiptap";
   import type { PostStatus } from "../lib/postManager";
   import { PostManager } from "../lib/postManager";
   import {
@@ -7,7 +10,10 @@
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
   import { containsSecretKey } from "../lib/utils";
-  import { EditorController } from "../lib/editorController";
+  import {
+    createEditorStore,
+    insertImagesToEditor,
+  } from "../lib/editorController";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
 
@@ -19,8 +25,7 @@
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
   let postContent = "";
-  let editorElement: HTMLDivElement;
-  let editorController: EditorController;
+  let editor: Readable<Editor>;
   let postStatus: PostStatus = {
     sending: false,
     success: false,
@@ -49,10 +54,30 @@
     }
   }
 
-  // エディタ要素が設定されたらEditorControllerを初期化
-  $: if (editorElement && !editorController) {
-    editorController = new EditorController(editorElement);
-  }
+  onMount(() => {
+    editor = createEditorStore();
+
+    // Tiptap v2のコンテンツ変更イベントを直接監視
+    const handleContentUpdate = (event: CustomEvent) => {
+      postContent = event.detail.plainText;
+    };
+
+    window.addEventListener(
+      "editor-content-changed",
+      handleContentUpdate as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "editor-content-changed",
+        handleContentUpdate as EventListener,
+      );
+    };
+  });
+
+  onDestroy(() => {
+    // ...existing cleanup code...
+  });
 
   const uploadCallbacks: UploadInfoCallbacks = {
     onProgress: onUploadProgress,
@@ -79,7 +104,6 @@
     setTimeout(() => (uploadErrorMessage = ""), duration);
   }
 
-  // 外部から呼び出せるようにexport
   export async function uploadFiles(files: File[] | FileList) {
     const fileArray = Array.from(files);
     if (!fileArray.length) return;
@@ -119,7 +143,6 @@
       })(),
     );
     if (results) {
-      // 成功したアップロード結果を選択順で抽出
       const successResults: { url: string }[] = [];
       const failedResults = [];
       for (let i = 0; i < results.length; i++) {
@@ -130,11 +153,12 @@
           failedResults.push(r);
         }
       }
-      if (successResults.length && editorController) {
-        editorController.insertImages(
+      if (successResults.length) {
+        // Tiptap v2のコマンドを直接使用
+        insertImagesToEditor(
+          $editor,
           successResults.map((r) => r.url).join("\n"),
         );
-        postContent = editorController.getPlainText();
       }
       if (failedResults.length)
         showUploadError(
@@ -152,19 +176,11 @@
     if (detail?.file) await uploadFiles([detail.file]);
   }
 
-  // ファイル選択時のハンドラ
-  async function handleFileSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input?.files && input.files.length > 0) {
-      await uploadFiles(input.files);
-    }
-  }
-
   async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
 
-    // エディタからプレーンテキストを抽出
-    postContent = editorController?.getPlainText() || "";
+    // Tiptap v2から直接テキストを取得
+    postContent = $editor?.getText() || "";
 
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
@@ -222,7 +238,10 @@
 
   export function resetPostContent() {
     postContent = "";
-    editorController?.clear();
+    // Tiptap v2のコマンドを使用
+    if ($editor) {
+      $editor.chain().clearContent().run();
+    }
   }
 
   function showSuccessMessage() {
@@ -238,23 +257,18 @@
       (event.key === "Enter" || event.key === "NumpadEnter")
     ) {
       event.preventDefault();
-      const content = editorController?.getPlainText() || "";
+      const content = $editor?.getText() || "";
       if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
     }
   }
 
-  function handleEditorInput() {
-    if (!editorController) return;
-
-    editorController.formatContentDebounced(() => {
-      postContent = editorController.getPlainText();
-      if (postContent && postStatus.error) {
-        postStatus = { ...postStatus, error: false, message: "" };
-      }
-    });
+  function handleFileSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input?.files && input.files.length > 0) {
+      uploadFiles(input.files);
+    }
   }
 
-  // ドラッグ＆ドロップイベントハンドラ
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
     dragOver = true;
@@ -273,9 +287,18 @@
     }
   }
 
-  // postContentが外部から変更された場合、エディタに反映
-  $: if (editorController && postContent !== editorController.getPlainText()) {
-    editorController.setContent(postContent);
+  function handleContainerClick() {
+    // Tiptap v2のfocusコマンドを使用
+    if ($editor) {
+      $editor.chain().focus("end").run();
+    }
+  }
+
+  // Tiptap v2の状態変更を直接監視
+  $: if ($editor && $editor.getText() !== postContent) {
+    if (postStatus.error) {
+      postStatus = { ...postStatus, error: false, message: "" };
+    }
   }
 </script>
 
@@ -302,9 +325,7 @@
       </Button>
       <Button
         className="post-button btn-angular"
-        disabled={!postContent.trim() ||
-          postStatus.sending ||
-          !hasStoredKey}
+        disabled={!postContent.trim() || postStatus.sending || !hasStoredKey}
         on:click={submitPost}
         ariaLabel={$_("post")}
       >
@@ -313,21 +334,23 @@
     </div>
   </div>
 
-  <div class="editor-container" class:drag-over={dragOver}>
-    <div
-      bind:this={editorElement}
-      contenteditable="true"
-      class="post-editor"
-      placeholder={$_("enter_your_text")}
-      role="textbox"
-      tabindex="0"
-      aria-multiline="true"
-      on:input={handleEditorInput}
-      on:keydown={handleEditorKeydown}
-      on:dragover={handleDragOver}
-      on:dragleave={handleDragLeave}
-      on:drop={handleDrop}
-    ></div>
+  <div
+    class="editor-container"
+    class:drag-over={dragOver}
+    on:click={handleContainerClick}
+    on:keydown={handleEditorKeydown}
+    on:dragover={handleDragOver}
+    on:dragleave={handleDragLeave}
+    on:drop={handleDrop}
+    aria-label="テキスト入力エリア"
+    role="textbox"
+    tabindex="0"
+  >
+    {#if editor && $editor}
+      <div class="tiptap-wrapper">
+        <EditorContent editor={$editor} />
+      </div>
+    {/if}
   </div>
 
   <input
@@ -448,44 +471,56 @@
     min-height: 200px;
     position: relative;
     transition: border-color 0.2s;
+    cursor: text;
+    outline: none;
   }
 
-  .drag-over {
-    border: 2px dashed #1da1f2;
-    background-color: rgba(29, 161, 242, 0.05);
+  .editor-container:focus {
+    outline: 2px solid var(--theme);
+    outline-offset: -2px;
   }
 
-  .post-editor {
-    background: var(--bg-input);
+  .editor-container.drag-over {
+    border-color: var(--theme);
+    background-color: rgba(var(--theme-rgb), 0.05);
+  }
+
+  .tiptap-wrapper {
     width: 100%;
-    max-width: 800px;
-    min-width: 300px;
-    min-height: 200px;
     height: 100%;
-    padding: 10px;
     border: 1px solid var(--border);
+    background: var(--bg-input);
+    transition: border-color 0.2s;
+    position: relative;
+  }
+
+  .editor-container:focus-within .tiptap-wrapper {
+    border-color: var(--theme);
+  }
+
+  /* Tiptapエディターのスタイル */
+  :global(.tiptap-editor) {
+    width: 100%;
+    min-height: 200px;
+    padding: 10px;
     font-family: inherit;
     font-size: 1.1rem;
     line-height: 1.5;
-    overflow-y: auto;
-    transition: border-color 0.2s;
+    outline: none;
     white-space: pre-wrap;
     word-break: break-word;
   }
 
-  .post-editor:focus {
-    outline: none;
-    border-color: var(--theme);
-  }
-
-  .post-editor:empty:before {
-    content: attr(placeholder);
+  :global(.tiptap-editor[data-placeholder]:empty::before) {
+    content: attr(data-placeholder);
     color: #999;
     pointer-events: none;
+    float: left;
+    height: 0;
   }
 
-  /* エディタ内の画像スタイル（ContentPreviewに合わせる） */
-  .post-editor :global(img) {
+  /* エディタ内の要素スタイル */
+  :global(.tiptap-editor .editor-image) {
     max-width: 100%;
     max-height: 160px;
     display: block;
@@ -495,8 +530,7 @@
     background: #fff;
   }
 
-  /* エディタ内のハッシュタグスタイル（ContentPreviewと同じ） */
-  .post-editor :global(.hashtag) {
+  :global(.tiptap-editor .hashtag) {
     color: #1976d2;
     font-weight: 600;
     background: rgba(25, 118, 210, 0.1);
@@ -504,20 +538,19 @@
     border-radius: 4px;
   }
 
-  /* エディタ内のリンクスタイル（ContentPreviewと同じ） */
-  .post-editor :global(.preview-link) {
+  :global(.tiptap-editor .preview-link) {
     color: #1da1f2;
     text-decoration: underline;
     word-break: break-all;
     transition: color 0.2s ease;
   }
 
-  .post-editor :global(.preview-link:hover) {
+  :global(.tiptap-editor .preview-link:hover) {
     color: #0d8bd9;
     text-decoration: none;
   }
 
-  .post-editor :global(.preview-link:visited) {
+  :global(.tiptap-editor .preview-link:visited) {
     color: #9c27b0;
   }
 

@@ -24,6 +24,10 @@
   },
   "dependencies": {
     "@rx-nostr/crypto": "^0.0.0",
+    "@tiptap/core": "^2.26.1",
+    "@tiptap/extension-image": "^2.26.1",
+    "@tiptap/extension-link": "^2.26.1",
+    "@tiptap/starter-kit": "^2.26.1",
     "browser-image-compression": "^2.0.2",
     "dompurify": "^3.2.6",
     "nostr-login": "^1.7.11",
