@@ -30,7 +30,6 @@
     "@tiptap/extension-placeholder": "^2.26.1",
     "@tiptap/starter-kit": "^2.26.1",
     "browser-image-compression": "^2.0.2",
-    "dompurify": "^3.2.6",
     "nostr-login": "^1.7.11",
     "nostr-tools": "^2.15.1",
     "rx-nostr": "^3.6.1",
