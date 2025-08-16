@@ -31,12 +31,14 @@ export const ContentTrackingExtension = Extension.create({
                         doc.descendants((node, pos) => {
                             if (node.isText && node.text) {
                                 const text = node.text;
-                                const regex = /(?:^|[\s\n\u3000])(#[^\s\n\u3000#]+)/g;
+                                // 既存の共通定数を利用して重複を排除
+                                const regex = new RegExp(HASHTAG_REGEX.source, 'g');
                                 let match;
 
                                 while ((match = regex.exec(text)) !== null) {
+                                    // match[0] は前後の空白＋#＋タグ本体、match[1] はタグ本体（#を含まない）
                                     const start = pos + match.index + (match[0].length - match[1].length);
-                                    const end = pos + match.index + match[0].length;
+                                    const end = start + (1 + match[1].length); // '#' + 本体長
 
                                     decorations.push(
                                         Decoration.inline(start, end, {
@@ -125,7 +127,8 @@ export const ContentTrackingExtension = Extension.create({
 
     addStorage() {
         return {
-            updateTimeout: null
+            // setTimeout の戻り値型を明示（ブラウザ環境）
+            updateTimeout: null as ReturnType<typeof setTimeout> | null
         };
     },
 
@@ -175,10 +178,12 @@ export const ImagePasteExtension = Extension.create({
 export function textToTiptapContent(text: string): string {
     const lines = text.split('\n');
     const content = lines.map(line => {
-        const imageUrlMatch = line.match(/^https?:\/\/[^\s]+\.(png|jpe?g|gif|webp|svg)(\?[^\s]*)?$/i);
+        const trimmed = line.trim();
+        const imageUrlMatch = trimmed.match(/^https?:\/\/[^\s]+\.(png|jpe?g|gif|webp|svg)(\?[^\s]*)?$/i);
 
         if (imageUrlMatch) {
-            return `<img src="${line.trim()}" class="editor-image" />`;
+            // src 属性を encodeURI で安全化（簡易）
+            return `<img src="${encodeURI(trimmed)}" class="editor-image" />`;
         } else if (line.trim()) {
             return `<p>${escapeHtml(line)}</p>`;
         } else {
@@ -289,15 +294,18 @@ export function createEditorStore(placeholderText: string) {
 /**
  * 画像URLリストをエディターに挿入するヘルパー関数
  */
-export function insertImagesToEditor(editor: any, urls: string) {
+export function insertImagesToEditor(editor: any, urls: string | string[]) {
     if (!editor) return;
 
-    const urlList = urls.split('\n').filter(Boolean);
+    const urlList = Array.isArray(urls) ? urls : urls.split('\n').map(s => s.trim()).filter(Boolean);
 
+    if (urlList.length === 0) return;
+
+    // 一回フォーカスしてから複数挿入（パフォーマンス微改善）
     editor.chain().focus().run();
 
     urlList.forEach((url) => {
-        const trimmedUrl = url.trim();
+        const trimmedUrl = (typeof url === 'string') ? url.trim() : '';
         if (trimmedUrl) {
             editor.chain()
                 .setImage({ src: trimmedUrl, alt: 'Uploaded image' })
