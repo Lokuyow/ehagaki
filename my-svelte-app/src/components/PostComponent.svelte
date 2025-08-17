@@ -267,12 +267,29 @@
 
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
-    dragOver = true;
+    const dt = event.dataTransfer;
+    // データ転送の types に内部ノード用の MIME type が含まれている場合は内部ドラッグと判断
+    const isInternalDrag =
+      !!dt &&
+      Array.from(dt.types || []).some((t) => t === "application/x-tiptap-node");
+    if (!isInternalDrag) {
+      dragOver = true;
+    } else {
+      // 内部ドラッグの場合は dragOver を有効にしない（既に true の場合は解除）
+      dragOver = false;
+    }
   }
 
   function handleDragLeave(event: DragEvent) {
     event.preventDefault();
-    dragOver = false;
+    const dt = event.dataTransfer;
+    const isInternalDrag =
+      !!dt &&
+      Array.from(dt.types || []).some((t) => t === "application/x-tiptap-node");
+    if (!isInternalDrag) {
+      dragOver = false;
+    }
+    // 内部ドラッグなら何もしない（エディター内の移動と見なす）
   }
 
   async function handleDrop(event: DragEvent) {
