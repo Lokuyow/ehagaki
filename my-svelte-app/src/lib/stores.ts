@@ -38,6 +38,7 @@ export interface EditorState {
     isUploading: boolean;
     uploadErrorMessage: string;
     postStatus: PostStatus;
+    hasImage?: boolean; // 追加: 画像が含まれるか
 }
 
 // --- ストア定義 ---
@@ -101,15 +102,17 @@ export const editorState = writable<EditorState>({
         success: false,
         error: false,
         message: ''
-    }
+    },
+    hasImage: false // 追加
 });
 
 // --- エディタ状態更新関数 ---
-export function updateEditorContent(content: string): void {
+export function updateEditorContent(content: string, hasImage: boolean = false): void {
     editorState.update(state => ({
         ...state,
         content,
-        canPost: !!content.trim()
+        hasImage,
+        canPost: !!content.trim() || hasImage // 画像のみでも投稿可
     }));
 }
 

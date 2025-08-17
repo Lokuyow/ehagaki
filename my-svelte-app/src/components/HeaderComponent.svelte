@@ -9,7 +9,7 @@
     $: postStatus = $editorState.postStatus;
     $: hasStoredKey = $authState.isAuthenticated;
     $: isUploading = $editorState.isUploading;
-    $: canPost = $editorState.canPost;
+    $: canPost = $editorState.canPost || $editorState.hasImage; // 修正
 
     function showSuccessMessage() {
         setTimeout(() => {

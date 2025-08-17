@@ -58,7 +58,18 @@
     editor = createEditorStore(initialPlaceholder);
 
     const handleContentUpdate = (event: CustomEvent) => {
-      updateEditorContent(event.detail.plainText);
+      // 画像が含まれているか判定
+      const plainText = event.detail.plainText;
+      let hasImage = false;
+      if ($editor) {
+        const doc = $editor.state?.doc;
+        if (doc) {
+          doc.descendants((node: any) => {
+            if (node.type?.name === "image") hasImage = true;
+          });
+        }
+      }
+      updateEditorContent(plainText, hasImage);
     };
     window.addEventListener(
       "editor-content-changed",
