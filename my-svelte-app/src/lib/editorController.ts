@@ -203,37 +203,7 @@ export const ImageDragDropExtension = Extension.create({
                                         });
 
                                         if (coords && typeof nodeData.pos === 'number') {
-                                            const { tr, schema } = view.state;
-                                            let transaction = tr;
-
-                                            // ドロップ位置と元の位置を取得
-                                            const dropPos = coords.pos;
-                                            const originalPos = nodeData.pos;
-
-                                            // 同じ位置にドロップした場合は何もしない
-                                            if (Math.abs(dropPos - originalPos) <= 1) {
-                                                return true;
-                                            }
-
-                                            // 新しい画像ノードを作成
-                                            const imageNode = schema.nodes.image.create(nodeData.attrs);
-
-                                            // 位置関係に応じて削除と挿入の順序を調整
-                                            if (dropPos < originalPos) {
-                                                // ドロップ位置が元の位置より前の場合
-                                                transaction = transaction.insert(dropPos, imageNode);
-                                                // 元のノードを削除（位置が1つずれるため+1）
-                                                transaction = transaction.delete(originalPos + 1, originalPos + 2);
-                                            } else {
-                                                // ドロップ位置が元の位置より後の場合
-                                                // 先に元のノードを削除
-                                                transaction = transaction.delete(originalPos, originalPos + 1);
-                                                // 削除によって位置が調整されるため-1
-                                                transaction = transaction.insert(dropPos - 1, imageNode);
-                                            }
-
-                                            view.dispatch(transaction);
-                                            return true;
+                                            return this.storage.moveImageNode(view, nodeData, coords.pos);
                                         }
                                     }
                                 } catch (e) {
@@ -243,9 +213,71 @@ export const ImageDragDropExtension = Extension.create({
                         }
                         return false;
                     }
+                },
+                view: (editorView) => {
+                    // タッチドロップイベントのリスナーを追加
+                    const handleTouchDrop = (event: CustomEvent) => {
+                        const { nodeData, dropX, dropY } = event.detail;
+
+                        if (nodeData && nodeData.type === 'image') {
+                            const coords = editorView.posAtCoords({
+                                left: dropX,
+                                top: dropY
+                            });
+
+                            if (coords && typeof nodeData.pos === 'number') {
+                                this.storage.moveImageNode(editorView, nodeData, coords.pos);
+                            }
+                        }
+                    };
+
+                    window.addEventListener('touch-image-drop', handleTouchDrop as EventListener);
+
+                    return {
+                        destroy() {
+                            window.removeEventListener('touch-image-drop', handleTouchDrop as EventListener);
+                        }
+                    };
                 }
             })
         ];
+    },
+
+    addStorage() {
+        return {
+            moveImageNode: (view: any, nodeData: any, dropPos: number) => {
+                const { tr, schema } = view.state;
+                let transaction = tr;
+
+                // ドロップ位置と元の位置を取得
+                const originalPos = nodeData.pos;
+
+                // 同じ位置にドロップした場合は何もしない
+                if (Math.abs(dropPos - originalPos) <= 1) {
+                    return true;
+                }
+
+                // 新しい画像ノードを作成
+                const imageNode = schema.nodes.image.create(nodeData.attrs);
+
+                // 位置関係に応じて削除と挿入の順序を調整
+                if (dropPos < originalPos) {
+                    // ドロップ位置が元の位置より前の場合
+                    transaction = transaction.insert(dropPos, imageNode);
+                    // 元のノードを削除（位置が1つずれるため+1）
+                    transaction = transaction.delete(originalPos + 1, originalPos + 2);
+                } else {
+                    // ドロップ位置が元の位置より後の場合
+                    // 先に元のノードを削除
+                    transaction = transaction.delete(originalPos, originalPos + 1);
+                    // 削除によって位置が調整されるため-1
+                    transaction = transaction.insert(dropPos - 1, imageNode);
+                }
+
+                view.dispatch(transaction);
+                return true;
+            }
+        };
     }
 });
 
@@ -334,7 +366,7 @@ export function createEditorStore(placeholderText: string) {
             attributes: {
                 class: 'tiptap-editor',
             },
-            // --- ここから追加: Ctrl+クリックのみリンク遷移 ---
+            // タッチデバイス対応のイベントハンドリング
             handleClickOn(view, _pos, _node, _nodePos, event, _direct) {
                 // クリックターゲットがリンクかどうか判定
                 let target = event.target as HTMLElement | null;
@@ -354,7 +386,6 @@ export function createEditorStore(placeholderText: string) {
                 }
                 return false;
             },
-            // --- ここまで追加 ---
         },
     });
 

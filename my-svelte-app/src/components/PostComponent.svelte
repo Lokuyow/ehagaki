@@ -264,14 +264,17 @@
       uploadFiles(input.files);
     }
   }
+  
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
     dragOver = true;
   }
+  
   function handleDragLeave(event: DragEvent) {
     event.preventDefault();
     dragOver = false;
   }
+  
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragOver = false;
@@ -288,6 +291,25 @@
       await uploadFiles(event.dataTransfer.files);
     }
   }
+
+  // タッチイベントハンドラーを追加
+  function handleTouchStart(event: TouchEvent) {
+    // ドラッグ表示の準備（必要に応じて）
+  }
+
+  function handleTouchMove(event: TouchEvent) {
+    // タッチ移動中の処理（スクロール制御など）
+    const target = event.target as HTMLElement;
+    if (target && target.closest('.editor-image-wrapper')) {
+      // 画像をドラッグ中の場合はスクロールを防止
+      event.preventDefault();
+    }
+  }
+
+  function handleTouchEnd(event: TouchEvent) {
+    dragOver = false;
+  }
+  
   function handleEditorKeydown(event: KeyboardEvent) {
     if (
       (event.ctrlKey || event.metaKey) &&
@@ -330,6 +352,9 @@
     on:dragover={handleDragOver}
     on:dragleave={handleDragLeave}
     on:drop={handleDrop}
+    on:touchstart={handleTouchStart}
+    on:touchmove={handleTouchMove}
+    on:touchend={handleTouchEnd}
     aria-label="テキスト入力エリア"
     role="textbox"
     tabindex="0"
@@ -402,6 +427,9 @@
     border: 1px solid var(--border);
     background: var(--bg-input);
     overflow: hidden;
+    /* タッチスクロール最適化 */
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y; /* 縦スクロールのみ許可 */
   }
 
   .editor-container:focus {
@@ -510,5 +538,19 @@
     color: #fff;
     border: none;
     width: 100%;
+  }
+
+  /* タッチデバイス用の追加スタイル */
+  @media (hover: none) and (pointer: coarse) {
+    .editor-container {
+      /* タッチデバイスでのタップ反応を改善 */
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    :global(.tiptap-editor) {
+      /* タッチデバイスでの選択を改善 */
+      -webkit-user-select: text;
+      user-select: text;
+    }
   }
 </style>
