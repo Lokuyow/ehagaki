@@ -479,16 +479,6 @@
   }
 
   /* エディタ内の要素スタイル */
-  :global(.tiptap-editor .editor-image) {
-    max-width: 100%;
-    max-height: 160px;
-    display: block;
-    margin: 8px 0;
-    border-radius: 6px;
-    box-shadow: 0 1px 4px #0001;
-    background: #fff;
-  }
-
   :global(.tiptap-editor .editor-paragraph) {
     margin: 0;
     padding: 0;
