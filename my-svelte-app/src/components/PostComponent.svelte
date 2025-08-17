@@ -152,21 +152,18 @@
     );
 
     if (results) {
-      const successResults: { url: string }[] = [];
+      const successUrls: string[] = [];
       const failedResults = [];
       for (let i = 0; i < results.length; i++) {
         const r = results[i];
         if (r.success && r.url) {
-          successResults.push({ url: r.url });
+          successUrls.push(r.url);
         } else if (!r.success) {
           failedResults.push(r);
         }
       }
-      if (successResults.length) {
-        insertImagesToEditor(
-          $editor,
-          successResults.map((r) => r.url).join("\n"),
-        );
+      if (successUrls.length) {
+        insertImagesToEditor($editor, successUrls);
       }
       if (failedResults.length)
         showUploadError(

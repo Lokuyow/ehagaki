@@ -332,17 +332,49 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
 
     if (urlList.length === 0) return;
 
-    // 一回フォーカスしてから複数挿入（パフォーマンス微改善）
+    // 一回フォーカスしてからバッチ挿入
     editor.chain().focus().run();
 
-    urlList.forEach((url) => {
+    // 複数画像を一度のトランザクションで挿入
+    const { state, dispatch } = editor.view;
+    const { tr, schema } = state;
+    let transaction = tr;
+
+    // 現在のカーソル位置を取得
+    const { from } = state.selection;
+    let insertPos = from;
+
+    urlList.forEach((url, index) => {
         const trimmedUrl = (typeof url === 'string') ? url.trim() : '';
         if (trimmedUrl) {
-            editor.chain()
-                .setImage({ src: trimmedUrl, alt: 'Uploaded image' })
-                .run();
+            // 画像ノードを作成
+            const imageNode = schema.nodes.image.create({
+                src: trimmedUrl,
+                alt: 'Uploaded image'
+            });
+            
+            // 各画像の後に改行を追加（最後の画像以外）
+            const nodes = [imageNode];
+            if (index < urlList.length - 1) {
+                nodes.push(schema.nodes.paragraph.create());
+            }
+            
+            // ノードを挿入
+            nodes.forEach(node => {
+                transaction = transaction.insert(insertPos, node);
+                insertPos += node.nodeSize;
+            });
         }
     });
+
+    // 最後に改行を追加
+    if (urlList.length > 0) {
+        const paragraphNode = schema.nodes.paragraph.create();
+        transaction = transaction.insert(insertPos, paragraphNode);
+    }
+
+    // トランザクションを適用
+    dispatch(transaction);
 }
 
 /**
