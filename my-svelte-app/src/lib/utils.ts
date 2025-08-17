@@ -164,3 +164,47 @@ export function generatePublicKeyFormats(key: string): PublicKeyData {
 export function isValidNsec(key: string): boolean {
   return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
 }
+
+/**
+ * 許可するプロトコル
+ */
+const ALLOWED_PROTOCOLS = ['http:', 'https:'];
+
+/**
+ * 許可する画像拡張子
+ */
+const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+
+/**
+ * URLを正規化してバリデーションする（リンク用）
+ * @param url 入力URL
+ * @returns 正常な場合は正規化済みURL文字列、異常ならnull
+ */
+export function validateAndNormalizeUrl(url: string): string | null {
+  try {
+    const normalized = encodeURI(url.trim());
+    const u = new URL(normalized);
+    if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 画像URLを正規化してバリデーションする
+ * @param url 入力URL
+ * @returns 正常な場合は正規化済みURL文字列、異常ならnull
+ */
+export function validateAndNormalizeImageUrl(url: string): string | null {
+  try {
+    const normalized = encodeURI(url.trim());
+    const u = new URL(normalized);
+    if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
+    const lower = u.pathname.toLowerCase();
+    if (!ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return null;
+    return u.href;
+  } catch {
+    return null;
+  }
+}

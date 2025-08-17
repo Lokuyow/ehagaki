@@ -9,6 +9,7 @@ import { updateHashtagData } from "./stores";
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
+import { validateAndNormalizeUrl, validateAndNormalizeImageUrl } from './utils';
 
 // ハッシュタグ共通正規表現
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
@@ -156,13 +157,12 @@ export const ImagePasteExtension = Extension.create({
                 props: {
                     handlePaste: (view, event) => {
                         const text = event.clipboardData?.getData('text/plain') || '';
-                        const imageUrlMatch = text.match(/^https?:\/\/[^\s]+\.(png|jpe?g|gif|webp|svg)(\?[^\s]*)?$/i);
-
-                        if (imageUrlMatch) {
+                        const normalizedUrl = validateAndNormalizeImageUrl(text);
+                        if (normalizedUrl) {
                             event.preventDefault();
                             const { tr } = view.state;
                             const imageNode = view.state.schema.nodes.image.create({
-                                src: text.trim(),
+                                src: normalizedUrl,
                                 alt: 'Pasted image'
                             });
 
@@ -404,14 +404,14 @@ export function textToTiptapNodes(text: string): any {
 
     for (const line of lines) {
         const trimmed = line.trim();
-        const imageUrlMatch = trimmed.match(/^https?:\/\/[^\s]+\.(png|jpe?g|gif|webp|svg)(\?[^\s]*)?$/i);
+        const normalizedUrl = validateAndNormalizeImageUrl(trimmed);
 
-        if (imageUrlMatch) {
+        if (normalizedUrl) {
             // 画像ノードを追加
             content.push({
                 type: 'image',
                 attrs: {
-                    src: trimmed,
+                    src: normalizedUrl,
                     alt: 'Image'
                 }
             });
@@ -527,8 +527,8 @@ export function createEditorStore(placeholderText: string) {
                 autolink: true,
                 linkOnPaste: true,
                 validate: (url) => {
-                    // 指定された正規表現を使用してURLを検証
-                    return /^https?:\/\/[\w!\?\/\+\-_~=;\.,\*&@#$%\(\)'\[\]]+/.test(url);
+                    // utilsのバリデーション関数を利用
+                    return !!validateAndNormalizeUrl(url);
                 }
             }),
             Image.configure({
@@ -641,9 +641,10 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
 
     urlList.forEach((url, index) => {
         const trimmedUrl = (typeof url === 'string') ? url.trim() : '';
-        if (trimmedUrl) {
+        const normalizedUrl = validateAndNormalizeImageUrl(trimmedUrl);
+        if (normalizedUrl) {
             const imageNode = schema.nodes.image.create({
-                src: trimmedUrl,
+                src: normalizedUrl,
                 alt: 'Uploaded image'
             });
 
