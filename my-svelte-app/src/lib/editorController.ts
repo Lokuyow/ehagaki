@@ -201,7 +201,7 @@ export const ImageDragDropExtension = Extension.create({
                     }
                 },
                 props: {
-                    handleDrop: (view, event, slice, moved) => {
+                    handleDrop: (view, event, _slice, moved) => {
                         // 既存のドラッグドロップ処理（外部ファイルなど）は通す
                         if (!moved && event.dataTransfer) {
                             const dragData = event.dataTransfer.getData('application/x-tiptap-node');
@@ -275,7 +275,7 @@ export const ImageDragDropExtension = Extension.create({
                     init() {
                         return DecorationSet.empty;
                     },
-                    apply(tr, decorationSet, oldState, newState) {
+                    apply(_tr, _prev, _oldState, newState) {
                         // imageDragDropKey を使用して状態を取得
                         const imageDragState = imageDragDropKey.getState(newState);
                         console.log('Drop zone plugin - drag state:', imageDragState); // デバッグログ
@@ -320,7 +320,6 @@ export const ImageDragDropExtension = Extension.create({
                                             dropZone.setAttribute('data-drop-pos', afterPos.toString());
 
                                             // ノードの種類に応じてコンテキストを表示
-                                            const nodeType = node.type.name === 'image' ? '画像' : 'テキスト';
                                             const nodeContent = node.type.name === 'paragraph'
                                                 ? (node.textContent.slice(0, 20) + (node.textContent.length > 20 ? '...' : ''))
                                                 : '画像';
@@ -390,14 +389,6 @@ export const ImageDragDropExtension = Extension.create({
     }
 });
 
-/**
- * HTMLエスケープ処理
- */
-function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-}
 
 // ドキュメントが空かどうか判定（insertImagesToEditorと共通化）
 function isEditorDocEmpty(state: any): boolean {
@@ -405,24 +396,105 @@ function isEditorDocEmpty(state: any): boolean {
 }
 
 /**
- * プレーンテキストをTiptap用のHTMLコンテンツに変換
+ * プレーンテキストをTiptap用のノード構造に変換
  */
-export function textToTiptapContent(text: string): string {
+export function textToTiptapNodes(text: string): any {
     const lines = text.split('\n');
-    const content = lines.map(line => {
+    const content: any[] = [];
+
+    for (const line of lines) {
         const trimmed = line.trim();
         const imageUrlMatch = trimmed.match(/^https?:\/\/[^\s]+\.(png|jpe?g|gif|webp|svg)(\?[^\s]*)?$/i);
 
         if (imageUrlMatch) {
-            return `<img src="${encodeURI(trimmed)}" class="editor-image" />`;
-        } else if (line.trim()) {
-            return `<p>${escapeHtml(line)}</p>`;
+            // 画像ノードを追加
+            content.push({
+                type: 'image',
+                attrs: {
+                    src: trimmed,
+                    alt: 'Image'
+                }
+            });
         } else {
-            return '<p></p>';
+            // パラグラフノードを追加（空行でも空のパラグラフとして追加）
+            content.push({
+                type: 'paragraph',
+                content: line.trim() ? [
+                    {
+                        type: 'text',
+                        text: line
+                    }
+                ] : []
+            });
         }
-    }).join('');
+    }
 
-    return content;
+    return {
+        type: 'doc',
+        content: content.length > 0 ? content : [{ type: 'paragraph' }]
+    };
+}
+
+/**
+ * テキストをエディターに挿入（ノード構造を直接作成）
+ */
+export function insertTextAsNodes(editor: any, text: string) {
+    if (!editor) return;
+
+    const nodeStructure = textToTiptapNodes(text);
+    const { state, dispatch } = editor.view;
+    const { tr, schema } = state;
+
+    let transaction = tr;
+    const docIsEmpty = isEditorDocEmpty(state);
+
+    if (docIsEmpty) {
+        // 空のエディタの場合は全体を置き換え
+        const nodes = nodeStructure.content.map((nodeData: any) =>
+            createNodeFromData(schema, nodeData)
+        );
+
+        if (nodes.length > 0) {
+            const fragment = schema.nodes.doc.createAndFill({}, nodes);
+            if (fragment) {
+                transaction = transaction.replaceWith(0, state.doc.content.size, fragment.content);
+            }
+        }
+    } else {
+        // 既存コンテンツがある場合は挿入位置に追加
+        let insertPos = state.selection.from;
+
+        nodeStructure.content.forEach((nodeData: any) => {
+            const node = createNodeFromData(schema, nodeData);
+            if (node) {
+                transaction = transaction.insert(insertPos, node);
+                insertPos += node.nodeSize;
+            }
+        });
+    }
+
+    dispatch(transaction);
+}
+
+/**
+ * スキーマからノードデータを作成するヘルパー関数
+ */
+function createNodeFromData(schema: any, nodeData: any): any {
+    switch (nodeData.type) {
+        case 'image':
+            return schema.nodes.image.create(nodeData.attrs);
+        case 'paragraph':
+            if (nodeData.content && nodeData.content.length > 0) {
+                const textNodes = nodeData.content.map((textData: any) =>
+                    schema.text(textData.text)
+                );
+                return schema.nodes.paragraph.create({}, textNodes);
+            } else {
+                return schema.nodes.paragraph.create();
+            }
+        default:
+            return null;
+    }
 }
 
 /**
@@ -474,7 +546,15 @@ export function createEditorStore(placeholderText: string) {
             ImageDragDropExtension,
             placeholderExtension,
         ],
-        content: '<p></p>',
+        // HTMLではなくJSONノード構造で初期化
+        content: {
+            type: 'doc',
+            content: [
+                {
+                    type: 'paragraph'
+                }
+            ]
+        },
         editorProps: {
             attributes: {
                 class: 'tiptap-editor',
@@ -589,7 +669,7 @@ export function extractContentWithImages(editor: any): string {
     const doc = editor.state.doc;
     const fragments: string[] = [];
 
-    doc.descendants((node: any, pos: number) => {
+    doc.descendants((node: any) => {
         if (node.type.name === 'paragraph') {
             // パラグラフ内のテキストを取得
             const textContent = node.textContent;
