@@ -217,41 +217,32 @@
 </NodeViewWrapper>
 
 <style>
-    /* NodeViewWrapperが生成するdata-node-view-wrapperを最小化 */
+    /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
     :global([data-node-view-wrapper]) {
-        display: inline-block;
-        width: auto;
-        max-width: 100%;
-        margin: 0;
+        display: block;
+        width: fit-content;
         padding: 0;
-        vertical-align: middle;
+        pointer-events: none;
     }
 
     /* ProseMirrorが生成する外側のラッパーも制御 */
     :global(.node-image),
     :global(.node-image.svelte-renderer) {
-        display: inline-block;
-        width: auto;
-        max-width: 100%;
-        margin: 4px 2px;
-        vertical-align: middle;
+        display: block;
+        width: fit-content;
         line-height: 0;
+        pointer-events: none;
+        margin: 3px 0;
     }
 
-    /* 選択時のスタイル */
-    :global(.ProseMirror-selectednode) {
-        outline: 2px solid var(--theme, #2196f3);
-        border-radius: 6px;
-    }
-
-    /* ボタンは画像に合わせて最小化（旧wrapperの役割も兼ねる） */
+    /* ボタンを画像サイズに完全に合わせる */
     .editor-image-button {
         background: none;
         border: none;
         padding: 0;
         margin: 0;
         cursor: grab;
-        display: inline-block;
+        display: inline;
         position: relative;
         touch-action: none;
         -webkit-touch-callout: none;
@@ -259,19 +250,22 @@
         user-select: none;
         width: auto;
         height: auto;
+        line-height: 0;
+        vertical-align: top;
+        pointer-events: auto;
     }
 
     .editor-image-button:active {
         cursor: grabbing;
     }
 
-    .editor-image-button:focus .editor-image {
+    /* data属性による状態制御 */
+    .editor-image-button[data-selected="true"] .editor-image {
         outline: 2px solid var(--theme, #2196f3);
     }
-
-    /* data属性による状態制御 */
     .editor-image-button[data-dragging="true"] .editor-image {
         opacity: 0.5;
+        outline: 2px solid var(--theme, #2196f3);
     }
 
     /* 画像要素 */
@@ -288,6 +282,7 @@
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
+        margin: 8px 0;
     }
 
     /* タッチデバイス用 */
