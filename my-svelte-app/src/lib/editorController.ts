@@ -14,15 +14,38 @@ import { validateAndNormalizeUrl, validateAndNormalizeImageUrl } from './utils';
 // ハッシュタグ共通正規表現
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 
-// ハッシュタグ装飾とコンテンツ更新を統合したExtension
+// 文字境界判定用の共通関数
+function isWordBoundary(char: string | undefined): boolean {
+    return !char || /[\s\n\u3000]/.test(char);
+}
+
+// URLの末尾クリーンアップ関数（より柔軟な判定）
+function cleanUrlEnd(url: string): { cleanUrl: string; actualLength: number } {
+    let cleanUrl = url;
+
+    // 末尾の不要な文字を段階的に除去（ただし、入力中の場合は保持）
+    // 連続する句読点や括弧のみを除去し、単独の場合は保持
+    const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
+    const trailingMatch = cleanUrl.match(trailingPattern);
+    if (trailingMatch) {
+        cleanUrl = cleanUrl.slice(0, -trailingMatch[0].length);
+    }
+
+    return {
+        cleanUrl,
+        actualLength: cleanUrl.length
+    };
+}
+
+// URLとハッシュタグの検出・装飾・再検証を統合したExtension
 export const ContentTrackingExtension = Extension.create({
     name: 'contentTracking',
 
     addProseMirrorPlugins() {
         return [
-            // ハッシュタグ装飾プラグイン
+            // ハッシュタグ装飾とURL再検証を統合したプラグイン
             new Plugin({
-                key: new PluginKey('hashtag-decoration'),
+                key: new PluginKey('content-decoration-validation'),
                 state: {
                     init() {
                         return DecorationSet.empty;
@@ -34,19 +57,15 @@ export const ContentTrackingExtension = Extension.create({
                         doc.descendants((node, pos) => {
                             if (node.isText && node.text) {
                                 const text = node.text;
-                                // 既存の共通定数を利用して重複を排除
-                                const regex = new RegExp(HASHTAG_REGEX.source, 'g');
-                                let match;
 
-                                while ((match = regex.exec(text)) !== null) {
-                                    // match[0]: 前後の空白＋#＋タグ本体, match[1]: タグ本体
-                                    // ハッシュタグの「#」からタグ本体までを装飾し、スペースは含めない
-                                    // match.index: マッチ開始位置（空白含む）
-                                    // match[0].indexOf('#'): 「#」の位置（空白の後）
-                                    const hashIndex = match[0].indexOf('#');
+                                // ハッシュタグ装飾
+                                const hashtagRegex = new RegExp(HASHTAG_REGEX.source, 'g');
+                                let hashtagMatch;
+                                while ((hashtagMatch = hashtagRegex.exec(text)) !== null) {
+                                    const hashIndex = hashtagMatch[0].indexOf('#');
                                     if (hashIndex === -1) continue;
-                                    const start = pos + match.index + hashIndex;
-                                    const end = start + 1 + match[1].length; // 「#」+タグ本体
+                                    const start = pos + hashtagMatch.index + hashIndex;
+                                    const end = start + 1 + hashtagMatch[1].length;
                                     decorations.push(
                                         Decoration.inline(start, end, {
                                             class: 'hashtag'
@@ -63,42 +82,65 @@ export const ContentTrackingExtension = Extension.create({
                     decorations(state) {
                         return this.getState(state);
                     }
-                }
-            }),
-            // 追加: link マークの再検証プラグイン
-            new Plugin({
-                key: new PluginKey('link-validator'),
-                // transactions がドキュメントを変更した場合に走る appendTransaction を使う
+                },
+                // URL再検証のためのappendTransactionを追加
                 appendTransaction: (transactions, _oldState, newState) => {
                     if (!transactions.some(tr => tr.docChanged)) return;
                     const linkMark = newState.schema.marks.link;
                     if (!linkMark) return;
 
-                    // ノード内の部分的な URL を検出するための正規表現（改行・半角/全角空白で分断されると分割される）
-                    const urlPartRegex = /https?:\/\/[^\s\u3000]+/gi;
-
                     let tr: any = null;
 
                     newState.doc.descendants((node, pos) => {
-                        if (!node.isText || !node.marks || node.marks.length === 0) return;
+                        if (!node.isText || !node.text) return;
 
-                        const hasLink = node.marks.some(m => m.type === linkMark);
-                        if (!hasLink) return;
+                        const text = node.text;
+                        const hasLinkMark = node.marks?.some(m => m.type === linkMark);
 
-                        const text = node.text || '';
-                        const matches = Array.from(text.matchAll(urlPartRegex));
+                        // 既存のリンクマークを一旦すべて削除
+                        if (hasLinkMark) {
+                            tr = tr || newState.tr;
+                            tr.removeMark(pos, pos + text.length, linkMark);
+                        }
 
-                        // 1) リンクマークを一旦削除
-                        tr = tr || newState.tr;
-                        tr.removeMark(pos, pos + text.length, linkMark);
+                        // より柔軟なURL検出パターン（入力中も考慮）
+                        const urlRegex = /https?:\/\/[^\s\u3000]+/gi;
+                        let urlMatch;
 
-                        // 2) URL と判断できる部分だけ再付与（href 属性はマッチした文字列そのものを使用）
-                        for (const m of matches) {
-                            if (typeof m.index !== 'number') continue;
-                            const start = pos + m.index;
-                            const end = start + m[0].length;
-                            const mark = linkMark.create({ href: m[0] });
-                            tr.addMark(start, end, mark);
+                        while ((urlMatch = urlRegex.exec(text)) !== null) {
+                            if (typeof urlMatch.index !== 'number') continue;
+
+                            const matchStart = urlMatch.index;
+                            const matchEnd = matchStart + urlMatch[0].length;
+
+                            // 前の文字が境界文字（スペース、改行、全角スペース、文字列開始）かチェック
+                            const prevChar = matchStart > 0 ? text[matchStart - 1] : undefined;
+
+                            // URLの前に境界文字以外がある場合はスキップ
+                            if (!isWordBoundary(prevChar)) {
+                                continue;
+                            }
+
+                            // URLの末尾処理（より柔軟に）
+                            const originalUrl = urlMatch[0];
+                            const { cleanUrl, actualLength } = cleanUrlEnd(originalUrl);
+                            const actualEnd = matchStart + actualLength;
+
+                            // より緩い検証（入力中のURLも考慮）
+                            // 基本的なURL構造があれば受け入れる
+                            const isValidUrl = /^https?:\/\/[a-zA-Z0-9]/.test(cleanUrl) && cleanUrl.length > 8;
+
+                            if (isValidUrl) {
+                                // utils関数でのバリデーションは最終確認のみ
+                                const normalizedUrl = validateAndNormalizeUrl(cleanUrl);
+                                const finalUrl = normalizedUrl || cleanUrl; // バリデーション失敗でも基本構造があれば使用
+
+                                tr = tr || newState.tr;
+                                const start = pos + matchStart;
+                                const end = pos + actualEnd;
+                                const mark = linkMark.create({ href: finalUrl });
+                                tr.addMark(start, end, mark);
+                            }
                         }
                     });
 
