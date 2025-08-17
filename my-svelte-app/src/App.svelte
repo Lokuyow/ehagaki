@@ -18,6 +18,7 @@
   import { authService } from "./lib/authService";
   import Button from "./components/Button.svelte";
   import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
+  import HeaderComponent from "./components/HeaderComponent.svelte";
   import {
     authState,
     sharedImageStore,
@@ -292,13 +293,34 @@
       footerInfoDisplay.reset();
     }
   }
+
+  // PostComponentの状態を受け取る変数を追加
+  let postStatus = {
+    sending: false,
+    success: false,
+    error: false,
+    message: "",
+  };
+  let canPost = false;
+  let isUploading = false;
 </script>
 
 {#if $locale && localeInitialized}
   <main>
     <div class="main-content">
+      <HeaderComponent
+        bind:postStatus
+        hasStoredKey={isAuthenticated}
+        {isUploading}
+        {canPost}
+        onUploadImage={() => postComponentRef?.openFileDialog()}
+        onSubmitPost={() => postComponentRef?.submitPost()}
+      />
       <PostComponent
         bind:this={postComponentRef}
+        bind:postStatus
+        bind:canPost
+        bind:isUploading
         {rxNostr}
         hasStoredKey={isAuthenticated}
         onPostSuccess={handlePostSuccess}
@@ -377,6 +399,7 @@
     display: flex;
     flex-direction: column;
     height: 100svh;
+    overflow: hidden;
   }
 
   .main-content {
@@ -385,7 +408,8 @@
     align-items: center;
     margin-top: 10px;
     width: 100%;
-    height: calc(100% - 10px - 66px);
+    height: calc(100% - 76px);
+    overflow: hidden;
   }
 
   .footer-bar {

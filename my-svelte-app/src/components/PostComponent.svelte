@@ -24,14 +24,16 @@
   export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
-  let postContent = "";
-  let editor: any;
-  let postStatus: PostStatus = {
+  // postStatusを外部に公開
+  export let postStatus: PostStatus = {
     sending: false,
     success: false,
     error: false,
     message: "",
   };
+
+  let postContent = "";
+  let editor: any;
 
   let isUploading = false;
   let uploadErrorMessage = "";
@@ -179,7 +181,7 @@
   }
 
   // --- 投稿処理 ---
-  async function submitPost() {
+  export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
     // 画像URLを含む完全なコンテンツを取得
     postContent = extractContentWithImages($editor) || "";
@@ -205,7 +207,6 @@
         };
         resetPostContent();
         onPostSuccess?.();
-        showSuccessMessage();
       } else {
         postStatus = {
           sending: false,
@@ -232,12 +233,12 @@
     }
   }
 
-  function showSuccessMessage() {
-    setTimeout(
-      () => (postStatus = { ...postStatus, success: false, message: "" }),
-      3000,
-    );
-  }
+  // 投稿可能かどうかの状態を外部に公開
+  export let canPost: boolean = false;
+  $: canPost = !!extractContentWithImages($editor)?.trim();
+
+  // アップロード状態を外部に公開
+  export { isUploading };
 
   // --- シークレットキー警告ダイアログ ---
   async function confirmSendWithSecretKey() {
@@ -252,9 +253,6 @@
   }
 
   // --- UIイベントハンドラ ---
-  function openFileDialog() {
-    fileInput?.click();
-  }
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input?.files && input.files.length > 0) {
@@ -304,39 +302,6 @@
 </script>
 
 <div class="post-container">
-  <div class="post-actions">
-    {#if postStatus.error}
-      <div class="post-status error">
-        {$_(postStatus.message)}
-      </div>
-    {/if}
-    {#if postStatus.success}
-      <div class="post-status success">
-        {$_(postStatus.message)}
-      </div>
-    {/if}
-    <div class="buttons-container">
-      <Button
-        className="image-button btn-angular"
-        disabled={!hasStoredKey || postStatus.sending || isUploading}
-        on:click={openFileDialog}
-        ariaLabel={$_("upload_image")}
-      >
-        <div class="image-icon svg-icon"></div>
-      </Button>
-      <Button
-        className="post-button btn-angular"
-        disabled={!extractContentWithImages($editor)?.trim() ||
-          postStatus.sending ||
-          !hasStoredKey}
-        on:click={submitPost}
-        ariaLabel={$_("post")}
-      >
-        <div class="plane-icon svg-icon"></div>
-      </Button>
-    </div>
-  </div>
-
   <div
     class="editor-container"
     class:drag-over={dragOver}
@@ -395,66 +360,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
-  }
-
-  .post-actions {
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    width: 100%;
-    padding: 0 16px;
-  }
-
-  .buttons-container {
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    height: 64px;
-  }
-
-  :global(.post-button) {
-    font-size: 1.1rem;
-    font-weight: bold;
-    border: 1px solid var(--hagaki);
-    width: 54px;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
-  }
-
-  .plane-icon {
-    mask-image: url("/ehagaki/icons/paper-plane-solid-full.svg");
-    width: 30px;
-    height: 30px;
-  }
-  .image-icon {
-    mask-image: url("/ehagaki/icons/image-solid-full.svg");
-    width: 32px;
-    height: 32px;
-  }
-
-  .post-status {
-    padding: 5px 10px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-  }
-
-  .post-status.error {
-    background-color: #ffebee;
-    color: #c62828;
-  }
-
-  .post-status.success {
-    background-color: #e8f5e9;
-    color: #2e7d32;
-  }
-
-  :global(.image-button) {
-    width: 54px;
-    border: 1px solid var(--hagaki);
+    overflow: hidden;
   }
 
   .upload-error {
@@ -474,6 +380,7 @@
     outline: none;
     border: 1px solid var(--border);
     background: var(--bg-input);
+    overflow: hidden;
   }
 
   .editor-container:focus {
@@ -507,6 +414,7 @@
     white-space: pre-wrap;
     word-break: break-word;
     overflow-y: auto;
+    overflow-x: hidden;
   }
 
   /* プレースホルダースタイル */
