@@ -340,7 +340,6 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
         if (trimmedUrl) {
             editor.chain()
                 .setImage({ src: trimmedUrl, alt: 'Uploaded image' })
-                .createParagraphNear()
                 .run();
         }
     });
