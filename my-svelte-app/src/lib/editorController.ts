@@ -335,7 +335,6 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
     // 一回フォーカスしてからバッチ挿入
     editor.chain().focus().run();
 
-    // 複数画像を一度のトランザクションで挿入
     const { state, dispatch } = editor.view;
     const { tr, schema } = state;
     let transaction = tr;
@@ -344,22 +343,31 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
     const { from } = state.selection;
     let insertPos = from;
 
+    // --- ここから修正: エディタが空の場合は改行を入れない ---
+    // ドキュメントが空かどうか判定
+    const isDocEmpty = state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && state.doc.firstChild.content.size === 0;
+
     urlList.forEach((url, index) => {
         const trimmedUrl = (typeof url === 'string') ? url.trim() : '';
         if (trimmedUrl) {
-            // 画像ノードを作成
             const imageNode = schema.nodes.image.create({
                 src: trimmedUrl,
                 alt: 'Uploaded image'
             });
 
-            // 画像ノードのみ挿入（前に改行を追加しない）
-            transaction = transaction.insert(insertPos, imageNode);
-            insertPos += imageNode.nodeSize;
+            // 最初の画像かつエディタが空の場合はパラグラフを置き換える
+            if (index === 0 && isDocEmpty) {
+                // 空パラグラフを画像ノードで置き換え
+                transaction = transaction.replaceWith(0, state.doc.content.size, imageNode);
+                insertPos = imageNode.nodeSize;
+            } else {
+                transaction = transaction.insert(insertPos, imageNode);
+                insertPos += imageNode.nodeSize;
+            }
         }
     });
+    // --- ここまで修正 ---
 
-    // トランザクションを適用
     dispatch(transaction);
 }
 
