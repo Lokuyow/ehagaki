@@ -352,26 +352,12 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
                 src: trimmedUrl,
                 alt: 'Uploaded image'
             });
-            
-            // 各画像の後に改行を追加（最後の画像以外）
-            const nodes = [imageNode];
-            if (index < urlList.length - 1) {
-                nodes.push(schema.nodes.paragraph.create());
-            }
-            
-            // ノードを挿入
-            nodes.forEach(node => {
-                transaction = transaction.insert(insertPos, node);
-                insertPos += node.nodeSize;
-            });
+
+            // 画像ノードのみ挿入（前に改行を追加しない）
+            transaction = transaction.insert(insertPos, imageNode);
+            insertPos += imageNode.nodeSize;
         }
     });
-
-    // 最後に改行を追加
-    if (urlList.length > 0) {
-        const paragraphNode = schema.nodes.paragraph.create();
-        transaction = transaction.insert(insertPos, paragraphNode);
-    }
 
     // トランザクションを適用
     dispatch(transaction);
