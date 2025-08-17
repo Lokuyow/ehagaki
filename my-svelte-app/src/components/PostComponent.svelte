@@ -52,22 +52,27 @@
   }
 
   // --- Editor初期化・クリーンアップ ---
+  // 画像ノードが含まれているか判定する共通関数
+  function hasImageInDoc(doc: any): boolean {
+    let found = false;
+    if (doc) {
+      doc.descendants((node: any) => {
+        if (node.type?.name === "image") found = true;
+      });
+    }
+    return found;
+  }
+
   onMount(() => {
     const initialPlaceholder =
       $_("enter_your_text") || "テキストを入力してください";
     editor = createEditorStore(initialPlaceholder);
 
     const handleContentUpdate = (event: CustomEvent) => {
-      // 画像が含まれているか判定
       const plainText = event.detail.plainText;
       let hasImage = false;
       if ($editor) {
-        const doc = $editor.state?.doc;
-        if (doc) {
-          doc.descendants((node: any) => {
-            if (node.type?.name === "image") hasImage = true;
-          });
-        }
+        hasImage = hasImageInDoc($editor.state?.doc);
       }
       updateEditorContent(plainText, hasImage);
     };

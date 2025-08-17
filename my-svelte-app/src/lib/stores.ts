@@ -107,12 +107,17 @@ export const editorState = writable<EditorState>({
 });
 
 // --- エディタ状態更新関数 ---
+// canPost判定ロジックを共通化
+function canPostByContent(content: string, hasImage: boolean): boolean {
+    return !!content.trim() || hasImage;
+}
+
 export function updateEditorContent(content: string, hasImage: boolean = false): void {
     editorState.update(state => ({
         ...state,
         content,
         hasImage,
-        canPost: !!content.trim() || hasImage // 画像のみでも投稿可
+        canPost: canPostByContent(content, hasImage)
     }));
 }
 
@@ -139,7 +144,8 @@ export function resetEditorState(): void {
             success: false,
             error: false,
             message: ''
-        }
+        },
+        hasImage: false // 画像状態もリセット
     }));
 }
 

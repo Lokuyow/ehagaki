@@ -279,7 +279,7 @@ export const ImageDragDropExtension = Extension.create({
                         // imageDragDropKey を使用して状態を取得
                         const imageDragState = imageDragDropKey.getState(newState);
                         console.log('Drop zone plugin - drag state:', imageDragState); // デバッグログ
-                        
+
                         if (!imageDragState?.isDragging) {
                             return DecorationSet.empty;
                         }
@@ -310,7 +310,7 @@ export const ImageDragDropExtension = Extension.create({
                             if (node.type.name === 'paragraph' || node.type.name === 'image') {
                                 insertionIndex++;
                                 const afterPos = pos + node.nodeSize;
-                                
+
                                 // ドラッグ中のノードの後ろには挿入ポイントを表示しない
                                 if (imageDragState.draggedNodePos !== pos) {
                                     decorations.push(
@@ -318,13 +318,13 @@ export const ImageDragDropExtension = Extension.create({
                                             const dropZone = document.createElement('div');
                                             dropZone.className = 'drop-zone-indicator drop-zone-between';
                                             dropZone.setAttribute('data-drop-pos', afterPos.toString());
-                                            
+
                                             // ノードの種類に応じてコンテキストを表示
                                             const nodeType = node.type.name === 'image' ? '画像' : 'テキスト';
-                                            const nodeContent = node.type.name === 'paragraph' 
+                                            const nodeContent = node.type.name === 'paragraph'
                                                 ? (node.textContent.slice(0, 20) + (node.textContent.length > 20 ? '...' : ''))
                                                 : '画像';
-                                            
+
                                             dropZone.innerHTML = `
                                                 <div class="drop-zone-content">
                                                     <span class="drop-zone-arrow">↓</span>
@@ -391,6 +391,20 @@ export const ImageDragDropExtension = Extension.create({
 });
 
 /**
+ * HTMLエスケープ処理
+ */
+function escapeHtml(text: string): string {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ドキュメントが空かどうか判定（insertImagesToEditorと共通化）
+function isEditorDocEmpty(state: any): boolean {
+    return state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && state.doc.firstChild.content.size === 0;
+}
+
+/**
  * プレーンテキストをTiptap用のHTMLコンテンツに変換
  */
 export function textToTiptapContent(text: string): string {
@@ -400,7 +414,6 @@ export function textToTiptapContent(text: string): string {
         const imageUrlMatch = trimmed.match(/^https?:\/\/[^\s]+\.(png|jpe?g|gif|webp|svg)(\?[^\s]*)?$/i);
 
         if (imageUrlMatch) {
-            // src 属性を encodeURI で安全化（簡易）
             return `<img src="${encodeURI(trimmed)}" class="editor-image" />`;
         } else if (line.trim()) {
             return `<p>${escapeHtml(line)}</p>`;
@@ -410,15 +423,6 @@ export function textToTiptapContent(text: string): string {
     }).join('');
 
     return content;
-}
-
-/**
- * HTMLエスケープ処理
- */
-function escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 /**
@@ -544,20 +548,16 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
 
     if (urlList.length === 0) return;
 
-    // 一回フォーカスしてからバッチ挿入
     editor.chain().focus().run();
 
     const { state, dispatch } = editor.view;
     const { tr, schema } = state;
     let transaction = tr;
 
-    // 現在のカーソル位置を取得
-    const { from } = state.selection;
-    let insertPos = from;
+    let insertPos = state.selection.from;
 
-    // --- ここから修正: エディタが空の場合は改行を入れない ---
-    // ドキュメントが空かどうか判定
-    const isDocEmpty = state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && state.doc.firstChild.content.size === 0;
+    // 共通化した空判定関数を利用
+    const docIsEmpty = isEditorDocEmpty(state);
 
     urlList.forEach((url, index) => {
         const trimmedUrl = (typeof url === 'string') ? url.trim() : '';
@@ -567,9 +567,7 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
                 alt: 'Uploaded image'
             });
 
-            // 最初の画像かつエディタが空の場合はパラグラフを置き換える
-            if (index === 0 && isDocEmpty) {
-                // 空パラグラフを画像ノードで置き換え
+            if (index === 0 && docIsEmpty) {
                 transaction = transaction.replaceWith(0, state.doc.content.size, imageNode);
                 insertPos = imageNode.nodeSize;
             } else {
@@ -578,7 +576,6 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
             }
         }
     });
-    // --- ここまで修正 ---
 
     dispatch(transaction);
 }
