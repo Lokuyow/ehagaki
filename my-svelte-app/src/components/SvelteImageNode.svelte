@@ -221,17 +221,46 @@
 </NodeViewWrapper>
 
 <style>
+    /* 既存のルールの一部を維持しつつ外側ラッパーに影響するグローバルルールを追加 */
+
+    /* NodeViewWrapper が生成するラッパーを画像サイズに合わせる（全体幅に広がらないように） */
+    :global([data-node-view-wrapper]) {
+        display: inline-block;
+        width: auto;
+        max-width: 100%;
+        vertical-align: middle; /* 行内配置を安定させる */
+        /* ここでは一旦 pointer-events を有効にしない（内部でのみ反応させる） */
+        pointer-events: none;
+    }
+
+    /* ProseMirror 側に付与されるノードラッパー（例: node-image ...）も制御 */
+    :global(.node-image),
+    :global(.node-image.svelte-renderer),
+    :global(.ProseMirror-selectednode) {
+        display: inline-block;
+        width: auto;
+        max-width: 100%;
+        pointer-events: none;
+    }
+
+    /* 内部の実際にクリック可能にしたい要素だけ有効にする */
     .editor-image-wrapper {
-        display: block;
+        display: inline-block; /* 以前: block */
         position: relative;
         margin: 0;
         padding: 0;
+        width: auto;
+        height: auto;
+        pointer-events: auto; /* 内部要素をクリック可能にする */
     }
-    .editor-image {
+
+    /* 画像はブロックにして周囲のインライン空白を除去 */
+    img.editor-image {
+        display: block; /* 追加: ブロック化して余白を排除 */
         max-width: 100%;
         max-height: 160px;
         border-radius: 6px;
-        box-shadow: 0 1px 4px #0001;
+        box-shadow: 0 1px 4px var(--shadow);
         background: #fff;
         cursor: pointer;
         outline: none;
@@ -241,25 +270,34 @@
         -webkit-user-select: none;
         user-select: none;
     }
+
     .editor-image-wrapper[data-selected="true"] .editor-image {
         outline: 2px solid var(--theme, #2196f3);
     }
     .editor-image-wrapper[data-dragging="true"] .editor-image {
         opacity: 0.5;
     }
+
+    /* ボタンは画像サイズに合わせて収縮し、クリックを受けるようにする */
     .editor-image-button {
         background: none;
         border: none;
-        padding: 0;
+        padding: 0; /* 余白を無くす */
         margin: 0;
         cursor: grab;
-        display: inline-block;
+        display: inline-flex; /* shrink-to-fit */
+        align-items: center;
+        justify-content: center;
         touch-action: none;
         /* コンテキストメニュー抑制 */
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
+        width: auto;
+        height: auto;
+        pointer-events: auto; /* ボタンと画像だけはクリック可能にする */
     }
+
     .editor-image-button:active {
         cursor: grabbing;
     }
