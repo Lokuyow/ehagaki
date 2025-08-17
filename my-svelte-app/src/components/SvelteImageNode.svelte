@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { NodeViewProps } from "@tiptap/core";
     import { NodeViewWrapper } from "svelte-tiptap";
+    import { onDestroy } from "svelte";
 
     export let node: NodeViewProps["node"];
     export let selected: boolean;
@@ -9,6 +10,12 @@
     let isDragging = false;
     let touchStartPos = { x: 0, y: 0 };
     let dragPreview: HTMLElement | null = null;
+
+    // 長押し判定（0.4秒）
+    const LONG_PRESS_DELAY = 400; // ms
+    const MOVE_CANCEL_THRESHOLD = 10; // px
+    let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
+    let touchStartTarget: HTMLElement | null = null;
 
     // 画像クリック時の例（必要に応じて拡張）
     function handleClick() {
@@ -41,47 +48,78 @@
     function handleTouchStart(event: TouchEvent) {
         if (event.touches.length !== 1) return;
 
-        // コンテキストメニューを抑制
-        event.preventDefault();
-
         const touch = event.touches[0];
         touchStartPos = { x: touch.clientX, y: touch.clientY };
-        isDragging = true;
-
-        // タッチ開始時にドラッグプレビューを作成
-        createDragPreview(
-            event.currentTarget as HTMLElement,
-            touch.clientX,
-            touch.clientY,
-        );
+        touchStartTarget = event.currentTarget as HTMLElement;
+        // 長押しタイマーをセット（発火時にドラッグ開始）
+        longPressTimeout = setTimeout(() => {
+            // 長押しとして確定
+            isDragging = true;
+            // 実際のドラッグプレビュー作成（この時点でpreventDefaultしても良い）
+            if (touchStartTarget) {
+                createDragPreview(
+                    touchStartTarget,
+                    touch.clientX,
+                    touch.clientY,
+                );
+            }
+        }, LONG_PRESS_DELAY);
     }
 
     // タッチ移動処理
     function handleTouchMove(event: TouchEvent) {
-        if (!isDragging || event.touches.length !== 1) return;
+        if (event.touches.length !== 1) {
+            // 複数タッチならキャンセル
+            if (longPressTimeout) {
+                clearTimeout(longPressTimeout);
+                longPressTimeout = null;
+            }
+            return;
+        }
 
-        event.preventDefault(); // スクロールを防止
         const touch = event.touches[0];
+        // 長押し前で一定距離移動したら長押しをキャンセル（スクロール意図と判断）
+        if (!isDragging && longPressTimeout) {
+            const dx = touch.clientX - touchStartPos.x;
+            const dy = touch.clientY - touchStartPos.y;
+            const distSq = dx * dx + dy * dy;
+            if (distSq > MOVE_CANCEL_THRESHOLD * MOVE_CANCEL_THRESHOLD) {
+                clearTimeout(longPressTimeout);
+                longPressTimeout = null;
+                touchStartTarget = null;
+                return;
+            }
+        }
 
-        // ドラッグプレビューを移動
+        if (!isDragging) return;
+
+        // ドラッグ中はスクロールを防止してプレビューを移動
+        event.preventDefault();
         updateDragPreview(touch.clientX, touch.clientY);
     }
 
     // タッチ終了処理
     function handleTouchEnd(event: TouchEvent) {
-        if (!isDragging) return;
+        // 長押しタイマーが残っていればクリア
+        if (longPressTimeout) {
+            clearTimeout(longPressTimeout);
+            longPressTimeout = null;
+            touchStartTarget = null;
+        }
+
+        // ドラッグしていた場合はドロップ処理を行う
+        if (!isDragging) {
+            return;
+        }
 
         event.preventDefault();
         const touch = event.changedTouches[0];
 
-        // ドロップ位置の要素を取得
         const elementBelow = document.elementFromPoint(
             touch.clientX,
             touch.clientY,
         );
-
         if (elementBelow) {
-            // カスタムイベントでドロップ処理をトリガー
             const touchDropEvent = new CustomEvent("touch-image-drop", {
                 detail: {
                     nodeData: {
@@ -140,6 +178,15 @@
             dragPreview = null;
         }
     }
+
+    // コンポーネント破棄時のクリーンアップ
+    onDestroy(() => {
+        if (longPressTimeout) {
+            clearTimeout(longPressTimeout);
+            longPressTimeout = null;
+        }
+        removeDragPreview();
+    });
 </script>
 
 <NodeViewWrapper>
