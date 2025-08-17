@@ -1,20 +1,27 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import type { PostStatus } from "../lib/postManager";
+    import { editorState, authState } from "../lib/stores";
     import Button from "./Button.svelte";
 
-    export let postStatus: PostStatus;
-    export let hasStoredKey: boolean;
-    export let isUploading: boolean;
-    export let canPost: boolean;
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
 
+    $: postStatus = $editorState.postStatus;
+    $: hasStoredKey = $authState.isAuthenticated;
+    $: isUploading = $editorState.isUploading;
+    $: canPost = $editorState.canPost;
+
     function showSuccessMessage() {
-        setTimeout(
-            () => (postStatus = { ...postStatus, success: false, message: "" }),
-            3000,
-        );
+        setTimeout(() => {
+            editorState.update((state) => ({
+                ...state,
+                postStatus: {
+                    ...state.postStatus,
+                    success: false,
+                    message: "",
+                },
+            }));
+        }, 3000);
     }
 
     $: if (postStatus.success) {

@@ -293,34 +293,17 @@
       footerInfoDisplay.reset();
     }
   }
-
-  // PostComponentの状態を受け取る変数を追加
-  let postStatus = {
-    sending: false,
-    success: false,
-    error: false,
-    message: "",
-  };
-  let canPost = false;
-  let isUploading = false;
 </script>
 
 {#if $locale && localeInitialized}
   <main>
     <div class="main-content">
       <HeaderComponent
-        bind:postStatus
-        hasStoredKey={isAuthenticated}
-        {isUploading}
-        {canPost}
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onSubmitPost={() => postComponentRef?.submitPost()}
       />
       <PostComponent
         bind:this={postComponentRef}
-        bind:postStatus
-        bind:canPost
-        bind:isUploading
         {rxNostr}
         hasStoredKey={isAuthenticated}
         onPostSuccess={handlePostSuccess}

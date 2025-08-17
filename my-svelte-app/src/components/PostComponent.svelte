@@ -2,7 +2,6 @@
   import { _ } from "svelte-i18n";
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
-  import type { PostStatus } from "../lib/postManager";
   import { PostManager } from "../lib/postManager";
   import {
     FileUploadManager,
@@ -14,7 +13,14 @@
     insertImagesToEditor,
     extractContentWithImages,
   } from "../lib/editorController";
-  import { placeholderTextStore } from "../lib/stores";
+  import {
+    placeholderTextStore,
+    editorState,
+    updateEditorContent,
+    updatePostStatus,
+    updateUploadState,
+    resetEditorState,
+  } from "../lib/stores";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
 
@@ -24,25 +30,17 @@
   export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
-  // postStatusを外部に公開
-  export let postStatus: PostStatus = {
-    sending: false,
-    success: false,
-    error: false,
-    message: "",
-  };
-
-  let postContent = "";
   let editor: any;
-
-  let isUploading = false;
-  let uploadErrorMessage = "";
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
   let postManager: PostManager;
   let showSecretKeyDialog = false;
   let pendingPost = "";
+
+  // ストアから状態を取得
+  $: postStatus = $editorState.postStatus;
+  $: uploadErrorMessage = $editorState.uploadErrorMessage;
 
   // --- PostManager初期化 ---
   $: if (rxNostr) {
@@ -60,7 +58,7 @@
     editor = createEditorStore(initialPlaceholder);
 
     const handleContentUpdate = (event: CustomEvent) => {
-      postContent = event.detail.plainText;
+      updateEditorContent(event.detail.plainText);
     };
     window.addEventListener(
       "editor-content-changed",
@@ -97,21 +95,21 @@
     uploadPromise: Promise<T>,
     minDuration = 1500,
   ): Promise<T> {
-    isUploading = true;
+    updateUploadState(true);
     onUploadStatusChange?.(true);
     try {
       const result = await uploadPromise;
       await new Promise<void>((resolve) => setTimeout(resolve, minDuration));
       return result;
     } finally {
-      isUploading = false;
+      updateUploadState(false);
       onUploadStatusChange?.(false);
     }
   }
 
   function showUploadError(message: string, duration = 3000) {
-    uploadErrorMessage = message;
-    setTimeout(() => (uploadErrorMessage = ""), duration);
+    updateUploadState($editorState.isUploading, message);
+    setTimeout(() => updateUploadState($editorState.isUploading, ""), duration);
   }
 
   export async function uploadFiles(files: File[] | FileList) {
@@ -120,7 +118,7 @@
     const endpoint = localStorage.getItem("uploadEndpoint") || "";
     const results = await withUploadState(
       (async () => {
-        uploadErrorMessage = "";
+        updateUploadState(true, "");
         try {
           if (fileArray.length === 1) {
             const validation = FileUploadManager.validateImageFile(
@@ -152,6 +150,7 @@
         }
       })(),
     );
+
     if (results) {
       const successResults: { url: string }[] = [];
       const failedResults = [];
@@ -183,68 +182,66 @@
   // --- 投稿処理 ---
   export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
-    // 画像URLを含む完全なコンテンツを取得
-    postContent = extractContentWithImages($editor) || "";
+    const postContent = extractContentWithImages($editor) || "";
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
       return;
     }
-    await executePost();
+    await executePost(postContent);
   }
 
-  async function executePost() {
+  async function executePost(content?: string) {
     if (!postManager) return console.error("PostManager is not initialized");
-    postStatus = { sending: true, success: false, error: false, message: "" };
+    const postContent = content || extractContentWithImages($editor) || "";
+
+    updatePostStatus({
+      sending: true,
+      success: false,
+      error: false,
+      message: "",
+    });
     try {
       const result = await postManager.submitPost(postContent);
       if (result.success) {
-        postStatus = {
+        updatePostStatus({
           sending: false,
           success: true,
           error: false,
           message: "post_success",
-        };
+        });
         resetPostContent();
         onPostSuccess?.();
       } else {
-        postStatus = {
+        updatePostStatus({
           sending: false,
           success: false,
           error: true,
           message: result.error || "post_error",
-        };
+        });
       }
     } catch (error) {
-      postStatus = {
+      updatePostStatus({
         sending: false,
         success: false,
         error: true,
         message: "post_error",
-      };
+      });
       console.error("投稿処理でエラーが発生:", error);
     }
   }
 
   export function resetPostContent() {
-    postContent = "";
+    resetEditorState();
     if ($editor) {
       $editor.chain().clearContent().run();
     }
   }
 
-  // 投稿可能かどうかの状態を外部に公開
-  export let canPost: boolean = false;
-  $: canPost = !!extractContentWithImages($editor)?.trim();
-
-  // アップロード状態を外部に公開
-  export { isUploading };
-
   // --- シークレットキー警告ダイアログ ---
   async function confirmSendWithSecretKey() {
     showSecretKeyDialog = false;
-    postContent = pendingPost;
-    await executePost();
+    await executePost(pendingPost);
     pendingPost = "";
   }
   function cancelSendWithSecretKey() {
@@ -280,16 +277,18 @@
       (event.key === "Enter" || event.key === "NumpadEnter")
     ) {
       event.preventDefault();
-      // 画像URLを含む完全なコンテンツを取得
       const content = extractContentWithImages($editor) || "";
       if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
     }
   }
 
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
-  $: if ($editor && extractContentWithImages($editor) !== postContent) {
+  $: if (
+    $editor &&
+    extractContentWithImages($editor) !== $editorState.content
+  ) {
     if (postStatus.error) {
-      postStatus = { ...postStatus, error: false, message: "" };
+      updatePostStatus({ ...postStatus, error: false, message: "" });
     }
   }
   $: if ($placeholderTextStore && editor) {
@@ -298,6 +297,11 @@
         editor.updatePlaceholder($placeholderTextStore);
       }
     }, 0);
+  }
+
+  // 外部からアクセスできるプロパティを公開
+  export function openFileDialog() {
+    fileInput?.click();
   }
 </script>
 

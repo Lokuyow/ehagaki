@@ -2,6 +2,7 @@ import { writable } from 'svelte/store';
 import type { SizeDisplayInfo } from './utils';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { HASHTAG_REGEX } from "./editorController";
+import type { PostStatus } from './postManager';
 
 // --- 型定義 ---
 export interface AuthState {
@@ -29,6 +30,14 @@ export interface HashtagData {
     content: string;
     hashtags: string[];
     tags: string[][];
+}
+
+export interface EditorState {
+    content: string;
+    canPost: boolean;
+    isUploading: boolean;
+    uploadErrorMessage: string;
+    postStatus: PostStatus;
 }
 
 // --- ストア定義 ---
@@ -80,6 +89,56 @@ export const hashtagDataStore = writable<HashtagData>({
 
 // プレースホルダーテキスト用ストア
 export const placeholderTextStore = writable<string>('');
+
+// エディタ状態管理用ストア
+export const editorState = writable<EditorState>({
+    content: '',
+    canPost: false,
+    isUploading: false,
+    uploadErrorMessage: '',
+    postStatus: {
+        sending: false,
+        success: false,
+        error: false,
+        message: ''
+    }
+});
+
+// --- エディタ状態更新関数 ---
+export function updateEditorContent(content: string): void {
+    editorState.update(state => ({
+        ...state,
+        content,
+        canPost: !!content.trim()
+    }));
+}
+
+export function updatePostStatus(postStatus: PostStatus): void {
+    editorState.update(state => ({ ...state, postStatus }));
+}
+
+export function updateUploadState(isUploading: boolean, errorMessage: string = ''): void {
+    editorState.update(state => ({
+        ...state,
+        isUploading,
+        uploadErrorMessage: errorMessage
+    }));
+}
+
+export function resetEditorState(): void {
+    editorState.update(state => ({
+        ...state,
+        content: '',
+        canPost: false,
+        uploadErrorMessage: '',
+        postStatus: {
+            sending: false,
+            success: false,
+            error: false,
+            message: ''
+        }
+    }));
+}
 
 // プレースホルダーテキスト更新用関数
 export function updatePlaceholderText(text: string): void {
