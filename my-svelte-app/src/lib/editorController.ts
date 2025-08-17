@@ -178,6 +178,77 @@ export const ImagePasteExtension = Extension.create({
     }
 });
 
+// 画像ドラッグドロップ用Extension
+export const ImageDragDropExtension = Extension.create({
+    name: 'imageDragDrop',
+
+    addProseMirrorPlugins() {
+        return [
+            new Plugin({
+                key: new PluginKey('image-drag-drop'),
+                props: {
+                    handleDrop: (view, event, slice, moved) => {
+                        // 既存のドラッグドロップ処理（外部ファイルなど）は通す
+                        if (!moved && event.dataTransfer) {
+                            const dragData = event.dataTransfer.getData('application/x-tiptap-node');
+                            if (dragData) {
+                                try {
+                                    const nodeData = JSON.parse(dragData);
+                                    if (nodeData.type === 'image') {
+                                        event.preventDefault();
+
+                                        const coords = view.posAtCoords({
+                                            left: event.clientX,
+                                            top: event.clientY
+                                        });
+
+                                        if (coords && typeof nodeData.pos === 'number') {
+                                            const { tr, schema } = view.state;
+                                            let transaction = tr;
+
+                                            // ドロップ位置と元の位置を取得
+                                            const dropPos = coords.pos;
+                                            const originalPos = nodeData.pos;
+
+                                            // 同じ位置にドロップした場合は何もしない
+                                            if (Math.abs(dropPos - originalPos) <= 1) {
+                                                return true;
+                                            }
+
+                                            // 新しい画像ノードを作成
+                                            const imageNode = schema.nodes.image.create(nodeData.attrs);
+
+                                            // 位置関係に応じて削除と挿入の順序を調整
+                                            if (dropPos < originalPos) {
+                                                // ドロップ位置が元の位置より前の場合
+                                                transaction = transaction.insert(dropPos, imageNode);
+                                                // 元のノードを削除（位置が1つずれるため+1）
+                                                transaction = transaction.delete(originalPos + 1, originalPos + 2);
+                                            } else {
+                                                // ドロップ位置が元の位置より後の場合
+                                                // 先に元のノードを削除
+                                                transaction = transaction.delete(originalPos, originalPos + 1);
+                                                // 削除によって位置が調整されるため-1
+                                                transaction = transaction.insert(dropPos - 1, imageNode);
+                                            }
+
+                                            view.dispatch(transaction);
+                                            return true;
+                                        }
+                                    }
+                                } catch (e) {
+                                    console.warn('Failed to parse drag data:', e);
+                                }
+                            }
+                        }
+                        return false;
+                    }
+                }
+            })
+        ];
+    }
+});
+
 /**
  * プレーンテキストをTiptap用のHTMLコンテンツに変換
  */
@@ -255,6 +326,7 @@ export function createEditorStore(placeholderText: string) {
             }),
             ContentTrackingExtension,
             ImagePasteExtension,
+            ImageDragDropExtension,
             placeholderExtension,
         ],
         content: '<p></p>',

@@ -275,6 +275,15 @@
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragOver = false;
+
+    // エディター内での画像移動の場合はエディター側で処理
+    const dragData = event.dataTransfer?.getData("application/x-tiptap-node");
+    if (dragData) {
+      // エディター内部の画像移動なので、ここでは何もしない
+      return;
+    }
+
+    // 外部ファイルドロップの場合のみファイルアップロード処理
     if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
       await uploadFiles(event.dataTransfer.files);
     }

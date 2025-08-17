@@ -4,10 +4,24 @@
 
     export let node: NodeViewProps["node"];
     export let selected: boolean;
+    export let getPos: NodeViewProps["getPos"];
 
     // 画像クリック時の例（必要に応じて拡張）
     function handleClick() {
         // 例: 画像クリックで何かする
+    }
+
+    // ドラッグ開始処理
+    function handleDragStart(event: DragEvent) {
+        if (!event.dataTransfer) return;
+        
+        // ドラッグデータにノード情報と位置を設定
+        event.dataTransfer.setData('application/x-tiptap-node', JSON.stringify({
+            type: 'image',
+            attrs: node.attrs,
+            pos: getPos()
+        }));
+        event.dataTransfer.effectAllowed = 'move';
     }
 </script>
 
@@ -19,6 +33,8 @@
             on:click={handleClick}
             tabindex="0"
             aria-label={node.attrs.alt || "Image"}
+            draggable="true"
+            on:dragstart={handleDragStart}
         >
             <img
                 src={node.attrs.src}
@@ -54,8 +70,11 @@
         border: none;
         padding: 0;
         margin: 0;
-        cursor: pointer;
+        cursor: grab;
         display: inline-block;
+    }
+    .editor-image-button:active {
+        cursor: grabbing;
     }
     .editor-image-button:focus .editor-image {
         outline: 2px solid var(--theme, #2196f3);
