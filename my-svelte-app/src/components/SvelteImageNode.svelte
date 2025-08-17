@@ -190,73 +190,93 @@
 </script>
 
 <NodeViewWrapper>
-    <div
-        class="editor-image-wrapper"
+    <button
+        type="button"
+        class="editor-image-button"
         data-selected={selected}
         data-dragging={isDragging}
+        on:click={handleClick}
+        tabindex="0"
+        aria-label={node.attrs.alt || "Image"}
+        draggable="true"
+        on:dragstart={handleDragStart}
+        on:dragend={handleDragEnd}
+        on:touchstart={handleTouchStart}
+        on:touchmove={handleTouchMove}
+        on:touchend={handleTouchEnd}
+        on:contextmenu={handleContextMenu}
     >
-        <button
-            type="button"
-            class="editor-image-button"
-            on:click={handleClick}
-            tabindex="0"
-            aria-label={node.attrs.alt || "Image"}
-            draggable="true"
-            on:dragstart={handleDragStart}
-            on:dragend={handleDragEnd}
-            on:touchstart={handleTouchStart}
-            on:touchmove={handleTouchMove}
-            on:touchend={handleTouchEnd}
+        <img
+            src={node.attrs.src}
+            alt={node.attrs.alt || ""}
+            class="editor-image"
+            draggable="false"
             on:contextmenu={handleContextMenu}
-        >
-            <img
-                src={node.attrs.src}
-                alt={node.attrs.alt || ""}
-                class="editor-image"
-                draggable="false"
-                on:contextmenu={handleContextMenu}
-            />
-        </button>
-    </div>
+        />
+    </button>
 </NodeViewWrapper>
 
 <style>
-    /* 既存のルールの一部を維持しつつ外側ラッパーに影響するグローバルルールを追加 */
-
-    /* NodeViewWrapper が生成するラッパーを画像サイズに合わせる（全体幅に広がらないように） */
+    /* NodeViewWrapperが生成するdata-node-view-wrapperを最小化 */
     :global([data-node-view-wrapper]) {
         display: inline-block;
         width: auto;
         max-width: 100%;
-        vertical-align: middle; /* 行内配置を安定させる */
-        /* ここでは一旦 pointer-events を有効にしない（内部でのみ反応させる） */
-        pointer-events: none;
+        margin: 0;
+        padding: 0;
+        vertical-align: middle;
     }
 
-    /* ProseMirror 側に付与されるノードラッパー（例: node-image ...）も制御 */
+    /* ProseMirrorが生成する外側のラッパーも制御 */
     :global(.node-image),
-    :global(.node-image.svelte-renderer),
-    :global(.ProseMirror-selectednode) {
+    :global(.node-image.svelte-renderer) {
         display: inline-block;
         width: auto;
         max-width: 100%;
-        pointer-events: none;
+        margin: 4px 2px;
+        vertical-align: middle;
+        line-height: 0;
     }
 
-    /* 内部の実際にクリック可能にしたい要素だけ有効にする */
-    .editor-image-wrapper {
-        display: inline-block; /* 以前: block */
-        position: relative;
-        margin: 0;
+    /* 選択時のスタイル */
+    :global(.ProseMirror-selectednode) {
+        outline: 2px solid var(--theme, #2196f3);
+        border-radius: 6px;
+    }
+
+    /* ボタンは画像に合わせて最小化（旧wrapperの役割も兼ねる） */
+    .editor-image-button {
+        background: none;
+        border: none;
         padding: 0;
+        margin: 0;
+        cursor: grab;
+        display: inline-block;
+        position: relative;
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
         width: auto;
         height: auto;
-        pointer-events: auto; /* 内部要素をクリック可能にする */
     }
 
-    /* 画像はブロックにして周囲のインライン空白を除去 */
+    .editor-image-button:active {
+        cursor: grabbing;
+    }
+
+    .editor-image-button:focus .editor-image {
+        outline: 2px solid var(--theme, #2196f3);
+    }
+
+    /* data属性による状態制御 */
+    .editor-image-button[data-dragging="true"] .editor-image {
+        opacity: 0.5;
+    }
+
+    /* 画像要素 */
     img.editor-image {
-        display: block; /* 追加: ブロック化して余白を排除 */
+        display: block;
         max-width: 100%;
         max-height: 160px;
         border-radius: 6px;
@@ -265,47 +285,12 @@
         cursor: pointer;
         outline: none;
         transition: opacity 0.2s ease;
-        /* コンテキストメニュー抑制 */
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
     }
 
-    .editor-image-wrapper[data-selected="true"] .editor-image {
-        outline: 2px solid var(--theme, #2196f3);
-    }
-    .editor-image-wrapper[data-dragging="true"] .editor-image {
-        opacity: 0.5;
-    }
-
-    /* ボタンは画像サイズに合わせて収縮し、クリックを受けるようにする */
-    .editor-image-button {
-        background: none;
-        border: none;
-        padding: 0; /* 余白を無くす */
-        margin: 0;
-        cursor: grab;
-        display: inline-flex; /* shrink-to-fit */
-        align-items: center;
-        justify-content: center;
-        touch-action: none;
-        /* コンテキストメニュー抑制 */
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-        width: auto;
-        height: auto;
-        pointer-events: auto; /* ボタンと画像だけはクリック可能にする */
-    }
-
-    .editor-image-button:active {
-        cursor: grabbing;
-    }
-    .editor-image-button:focus .editor-image {
-        outline: 2px solid var(--theme, #2196f3);
-    }
-
-    /* タッチデバイス用のスタイル */
+    /* タッチデバイス用 */
     @media (hover: none) {
         .editor-image-button {
             cursor: default;
