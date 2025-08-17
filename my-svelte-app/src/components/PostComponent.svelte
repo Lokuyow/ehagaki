@@ -311,20 +311,46 @@
 
   // タッチイベントハンドラーを追加
   function handleTouchStart(event: TouchEvent) {
-    // ドラッグ表示の準備（必要に応じて）
+    // ドラッグ中でない場合は通常のタッチイベントとして処理
+    const target = event.target as HTMLElement;
+    if (!target.closest(".editor-image-button")) {
+      // 画像以外の領域でのタッチは通常通り
+      return;
+    }
   }
 
   function handleTouchMove(event: TouchEvent) {
-    // タッチ移動中の処理（スクロール制御など）
     const target = event.target as HTMLElement;
-    if (target && target.closest(".editor-image-wrapper")) {
-      // 画像をドラッグ中の場合はスクロールを防止
+    if (
+      target &&
+      target.closest('.editor-image-button[data-dragging="true"]')
+    ) {
+      // ドラッグ中の画像の場合のみスクロールを防止
       event.preventDefault();
+      return false;
     }
+    // その他の場合は通常のスクロールを許可
   }
 
   function handleTouchEnd(event: TouchEvent) {
     dragOver = false;
+
+    // ドロップゾーンのクリーンアップ（改善版）
+    const dropZones = document.querySelectorAll(".drop-zone-indicator");
+    dropZones.forEach((zone) => {
+      // ホバー状態をクリア
+      zone.classList.remove("drop-zone-hover");
+      zone.classList.add("drop-zone-fade-out");
+    });
+
+    // フェードアウト後に削除
+    setTimeout(() => {
+      dropZones.forEach((zone) => {
+        if (zone.parentNode) {
+          zone.parentNode.removeChild(zone);
+        }
+      });
+    }, 300);
   }
 
   function handleEditorKeydown(event: KeyboardEvent) {
@@ -447,6 +473,8 @@
     /* タッチスクロール最適化 */
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y; /* 縦スクロールのみ許可 */
+    /* ドラッグ中のスクロール制御を改善 */
+    overscroll-behavior: contain;
   }
 
   .editor-container:focus {
@@ -547,11 +575,34 @@
     width: 100%;
   }
 
+  /* ドロップゾーンのフェードアウトアニメーション（改善版） */
+  :global(.drop-zone-fade-out) {
+    animation: dropZoneFadeOut 0.3s ease-out forwards;
+  }
+
+  @keyframes dropZoneFadeOut {
+    from {
+      opacity: 0.9;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.8);
+    }
+  }
+
   /* タッチデバイス用の追加スタイル */
   @media (hover: none) and (pointer: coarse) {
     .editor-container {
       /* タッチデバイスでのタップ反応を改善 */
       -webkit-tap-highlight-color: transparent;
+      /* ドラッグ中のパフォーマンス向上 */
+      will-change: scroll-position;
+    }
+
+    /* ドラッグ中の視覚フィードバック強化 */
+    :global(.editor-image-button[data-dragging="true"]) {
+      z-index: 1;
     }
 
     :global(.tiptap-editor) {

@@ -183,9 +183,23 @@ export const ImageDragDropExtension = Extension.create({
     name: 'imageDragDrop',
 
     addProseMirrorPlugins() {
+        const imageDragDropKey = new PluginKey('image-drag-drop');
+        const dropZoneKey = new PluginKey('drop-zone-indicator');
+
         return [
             new Plugin({
-                key: new PluginKey('image-drag-drop'),
+                key: imageDragDropKey,
+                state: {
+                    init: () => ({ isDragging: false, draggedNodePos: null }),
+                    apply: (tr, value) => {
+                        const meta = tr.getMeta('imageDrag');
+                        if (meta) {
+                            console.log('ImageDrag state update:', meta); // デバッグログ
+                            return { ...value, ...meta };
+                        }
+                        return value;
+                    }
+                },
                 props: {
                     handleDrop: (view, event, slice, moved) => {
                         // 既存のドラッグドロップ処理（外部ファイルなど）は通す
@@ -203,6 +217,8 @@ export const ImageDragDropExtension = Extension.create({
                                         });
 
                                         if (coords && typeof nodeData.pos === 'number') {
+                                            // ドラッグ終了状態に更新
+                                            view.dispatch(view.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null }));
                                             return this.storage.moveImageNode(view, nodeData, coords.pos);
                                         }
                                     }
@@ -217,6 +233,7 @@ export const ImageDragDropExtension = Extension.create({
                 view: (editorView) => {
                     // タッチドロップイベントのリスナーを追加
                     const handleTouchDrop = (event: CustomEvent) => {
+                        console.log('Touch drop event received:', event.detail); // デバッグログ
                         const { nodeData, dropX, dropY } = event.detail;
 
                         if (nodeData && nodeData.type === 'image') {
@@ -226,18 +243,110 @@ export const ImageDragDropExtension = Extension.create({
                             });
 
                             if (coords && typeof nodeData.pos === 'number') {
+                                // ドラッグ終了状態に更新
+                                editorView.dispatch(editorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null }));
                                 this.storage.moveImageNode(editorView, nodeData, coords.pos);
                             }
                         }
                     };
 
+                    // タッチドラッグ開始イベント
+                    const handleTouchDragStart = (event: CustomEvent) => {
+                        console.log('Touch drag start event received:', event.detail); // デバッグログ
+                        const { nodePos } = event.detail;
+                        editorView.dispatch(editorView.state.tr.setMeta('imageDrag', { isDragging: true, draggedNodePos: nodePos }));
+                    };
+
                     window.addEventListener('touch-image-drop', handleTouchDrop as EventListener);
+                    window.addEventListener('touch-image-drag-start', handleTouchDragStart as EventListener);
 
                     return {
                         destroy() {
                             window.removeEventListener('touch-image-drop', handleTouchDrop as EventListener);
+                            window.removeEventListener('touch-image-drag-start', handleTouchDragStart as EventListener);
                         }
                     };
+                }
+            }),
+            // ドロップゾーン表示プラグイン
+            new Plugin({
+                key: dropZoneKey,
+                state: {
+                    init() {
+                        return DecorationSet.empty;
+                    },
+                    apply(tr, decorationSet, oldState, newState) {
+                        // imageDragDropKey を使用して状態を取得
+                        const imageDragState = imageDragDropKey.getState(newState);
+                        console.log('Drop zone plugin - drag state:', imageDragState); // デバッグログ
+                        
+                        if (!imageDragState?.isDragging) {
+                            return DecorationSet.empty;
+                        }
+
+                        const decorations: Decoration[] = [];
+                        const doc = newState.doc;
+                        let insertionIndex = 0;
+
+                        // ドキュメントの最初にドロップゾーン（他のコンテンツより前）
+                        decorations.push(
+                            Decoration.widget(0, () => {
+                                const dropZone = document.createElement('div');
+                                dropZone.className = 'drop-zone-indicator drop-zone-top';
+                                dropZone.setAttribute('data-drop-pos', '0');
+                                dropZone.innerHTML = `
+                                    <div class="drop-zone-content">
+                                        <span class="drop-zone-arrow">↑</span>
+                                        <span class="drop-zone-text">最初に挿入</span>
+                                        <span class="drop-zone-arrow">↑</span>
+                                    </div>
+                                `;
+                                return dropZone;
+                            }, { side: -1 })
+                        );
+
+                        // 各ノードの後にドロップゾーンを追加
+                        doc.descendants((node, pos) => {
+                            if (node.type.name === 'paragraph' || node.type.name === 'image') {
+                                insertionIndex++;
+                                const afterPos = pos + node.nodeSize;
+                                
+                                // ドラッグ中のノードの後ろには挿入ポイントを表示しない
+                                if (imageDragState.draggedNodePos !== pos) {
+                                    decorations.push(
+                                        Decoration.widget(afterPos, () => {
+                                            const dropZone = document.createElement('div');
+                                            dropZone.className = 'drop-zone-indicator drop-zone-between';
+                                            dropZone.setAttribute('data-drop-pos', afterPos.toString());
+                                            
+                                            // ノードの種類に応じてコンテキストを表示
+                                            const nodeType = node.type.name === 'image' ? '画像' : 'テキスト';
+                                            const nodeContent = node.type.name === 'paragraph' 
+                                                ? (node.textContent.slice(0, 20) + (node.textContent.length > 20 ? '...' : ''))
+                                                : '画像';
+                                            
+                                            dropZone.innerHTML = `
+                                                <div class="drop-zone-content">
+                                                    <span class="drop-zone-arrow">↓</span>
+                                                    <span class="drop-zone-text">${nodeContent}の後に挿入</span>
+                                                    <span class="drop-zone-arrow">↓</span>
+                                                </div>
+                                            `;
+                                            return dropZone;
+                                        }, { side: 1 })
+                                    );
+                                }
+                            }
+                        });
+
+                        console.log('Total decorations created:', decorations.length); // デバッグログ
+                        return DecorationSet.create(doc, decorations);
+                    }
+                },
+                props: {
+                    decorations(state) {
+                        return this.getState(state);
+                    }
                 }
             })
         ];
