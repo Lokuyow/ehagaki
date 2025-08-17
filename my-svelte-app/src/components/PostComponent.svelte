@@ -264,17 +264,17 @@
       uploadFiles(input.files);
     }
   }
-  
+
   function handleDragOver(event: DragEvent) {
     event.preventDefault();
     dragOver = true;
   }
-  
+
   function handleDragLeave(event: DragEvent) {
     event.preventDefault();
     dragOver = false;
   }
-  
+
   async function handleDrop(event: DragEvent) {
     event.preventDefault();
     dragOver = false;
@@ -300,7 +300,7 @@
   function handleTouchMove(event: TouchEvent) {
     // タッチ移動中の処理（スクロール制御など）
     const target = event.target as HTMLElement;
-    if (target && target.closest('.editor-image-wrapper')) {
+    if (target && target.closest(".editor-image-wrapper")) {
       // 画像をドラッグ中の場合はスクロールを防止
       event.preventDefault();
     }
@@ -309,7 +309,7 @@
   function handleTouchEnd(event: TouchEvent) {
     dragOver = false;
   }
-  
+
   function handleEditorKeydown(event: KeyboardEvent) {
     if (
       (event.ctrlKey || event.metaKey) &&
@@ -546,11 +546,26 @@
       /* タッチデバイスでのタップ反応を改善 */
       -webkit-tap-highlight-color: transparent;
     }
-    
+
     :global(.tiptap-editor) {
       /* タッチデバイスでの選択を改善 */
       -webkit-user-select: text;
       user-select: text;
+    }
+  }
+
+  /* ProseMirror のギャップカーソルの色を上書き（Light / Dark 対応） */
+  :global(.tiptap-editor .ProseMirror-gapcursor):after,
+  :global(.tiptap-editor .ProseMirror-gapcursor):before {
+    border-top-color: black;
+    width: 30px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :global(.tiptap-editor .ProseMirror-gapcursor):after,
+    :global(.tiptap-editor .ProseMirror-gapcursor):before {
+      border-top-color: white;
+      width: 30px;
     }
   }
 </style>
