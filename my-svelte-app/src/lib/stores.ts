@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 import type { SizeDisplayInfo } from './utils';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
-import { HASHTAG_REGEX } from "./editorController";
+import { HASHTAG_REGEX } from "./editorExtensions";
 import type { PostStatus } from './postManager';
 
 // --- 型定義 ---

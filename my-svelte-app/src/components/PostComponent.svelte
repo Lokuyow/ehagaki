@@ -8,11 +8,11 @@
     type UploadInfoCallbacks,
   } from "../lib/fileUploadManager";
   import { containsSecretKey } from "../lib/utils";
+  import { createEditorStore } from "../lib/editorStore";
   import {
-    createEditorStore,
     insertImagesToEditor,
     extractContentWithImages,
-  } from "../lib/editorController";
+  } from "../lib/editorUtils";
   import {
     placeholderTextStore,
     editorState,
