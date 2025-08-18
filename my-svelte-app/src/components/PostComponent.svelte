@@ -617,14 +617,12 @@
   :global(.tiptap-editor .ProseMirror-gapcursor):after,
   :global(.tiptap-editor .ProseMirror-gapcursor):before {
     border-top-color: black;
-    width: 30px;
   }
 
   @media (prefers-color-scheme: dark) {
     :global(.tiptap-editor .ProseMirror-gapcursor):after,
     :global(.tiptap-editor .ProseMirror-gapcursor):before {
       border-top-color: white;
-      width: 30px;
     }
   }
 </style>
