@@ -1,4 +1,3 @@
-
 // ドキュメントが空かどうか判定
 export function isEditorDocEmpty(state: any): boolean {
     return state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && state.doc.firstChild.content.size === 0;

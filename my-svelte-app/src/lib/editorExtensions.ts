@@ -80,6 +80,7 @@ export const ContentTrackingExtension = Extension.create({
                 appendTransaction: (transactions, _oldState, newState) => {
                     if (!transactions.some(tr => tr.docChanged)) return;
                     const linkMark = newState.schema.marks.link;
+                    const imageNodeType = newState.schema.nodes.image;
                     if (!linkMark) return;
 
                     let tr: any = null;
@@ -118,6 +119,21 @@ export const ContentTrackingExtension = Extension.create({
                             const originalUrl = urlMatch[0];
                             const { cleanUrl, actualLength } = cleanUrlEnd(originalUrl);
                             const actualEnd = matchStart + actualLength;
+
+                            // 画像URLなら画像ノードに置換
+                            const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
+                            if (normalizedImageUrl && imageNodeType) {
+                                tr = tr || newState.tr;
+                                const start = pos + matchStart;
+                                const end = pos + actualEnd;
+                                // 画像ノードを作成してテキストを置換
+                                const imageNode = imageNodeType.create({
+                                    src: normalizedImageUrl,
+                                    alt: 'Image'
+                                });
+                                tr = tr.replaceWith(start, end, imageNode);
+                                continue;
+                            }
 
                             // より緩い検証（入力中のURLも考慮）
                             // 基本的なURL構造があれば受け入れる
@@ -195,6 +211,8 @@ export const ImagePasteExtension = Extension.create({
                         // --- 複数画像URL: 改行または半角スペース区切り対応 ---
                         // 改行または半角スペースで分割し、空要素を除外
                         const items = text.split(/[\n ]+/).map(line => line.trim()).filter(Boolean);
+
+                        // 画像URLのみ抽出
                         const imageNodes = items
                             .map(line => {
                                 const normalizedUrl = validateAndNormalizeImageUrl(line);
@@ -223,7 +241,8 @@ export const ImagePasteExtension = Extension.create({
                             view.dispatch(tr);
                             return true;
                         }
-                        // --- ここまで ---
+
+                        // 画像URLがなければ通常の貼り付け
                         return false;
                     }
                 }
