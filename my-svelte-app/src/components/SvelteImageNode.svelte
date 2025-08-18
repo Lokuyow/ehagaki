@@ -365,133 +365,40 @@
         }
     }
 
-    /* 改善されたドロップゾーンスタイル */
+    /* 改善されたドロップゾーンスタイル（シンプルなバーのみ） */
     :global(.drop-zone-indicator) {
-        min-height: 40px;
-        margin: 12px 0;
-        border-radius: 8px;
-        opacity: 0.9;
+        min-height: 0;
+        margin: 0;
+        border-radius: 3px;
+        opacity: 1;
         position: relative;
         z-index: 1000;
-        transition: all 0.3s ease;
+        transition: background 0.15s;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
+        height: 24px;
+        padding: 0;
+        background: none;
+        border: none;
+        box-shadow: none;
     }
 
-    /* トップドロップゾーン（最初に挿入） */
-    :global(.drop-zone-top) {
-        background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-        border: 2px dashed #2e7d32;
-        animation: dropZonePulseGreen 2s ease-in-out infinite;
+    :global(.drop-zone-bar) {
+        width: 90%;
+        max-width: 240px;
+        height: 4px;
+        border-radius: 2px;
+        background: #2196f3;
+        margin: 0 auto;
+        box-shadow: 0 1px 4px rgba(33, 150, 243, 0.1);
+        transition: background 0.15s;
     }
 
-    /* 間のドロップゾーン */
-    :global(.drop-zone-between) {
-        background: linear-gradient(
-            135deg,
-            var(--theme, #2196f3) 0%,
-            #1976d2 100%
-        );
-        border: 2px dashed #1565c0;
-        animation: dropZonePulseBlue 2s ease-in-out infinite;
-    }
-
-    /* ホバー状態 */
-    :global(.drop-zone-hover) {
-        transform: scale(1.05);
-        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
-        animation: dropZoneHighlight 0.6s ease-in-out infinite alternate;
-    }
-
-    /* ドロップゾーンの内容 */
-    :global(.drop-zone-content) {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        color: white;
-        font-weight: 600;
-        font-size: 14px;
-        text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-        padding: 8px 16px;
-    }
-
-    /* 矢印 */
-    :global(.drop-zone-arrow) {
-        font-size: 18px;
-        font-weight: bold;
-        animation: arrowBounce 1.5s ease-in-out infinite;
-    }
-
-    /* テキスト */
-    :global(.drop-zone-text) {
-        flex: 1;
-        text-align: center;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 200px;
-    }
-
-    /* アニメーション */
-    @keyframes dropZonePulseBlue {
-        0%,
-        100% {
-            opacity: 0.7;
-            border-color: #1565c0;
-        }
-        50% {
-            opacity: 1;
-            border-color: #42a5f5;
-        }
-    }
-
-    @keyframes dropZonePulseGreen {
-        0%,
-        100% {
-            opacity: 0.7;
-            border-color: #2e7d32;
-        }
-        50% {
-            opacity: 1;
-            border-color: #66bb6a;
-        }
-    }
-
-    @keyframes dropZoneHighlight {
-        0% {
-            box-shadow: 0 8px 25px rgba(255, 193, 7, 0.4);
-        }
-        100% {
-            box-shadow: 0 12px 35px rgba(255, 193, 7, 0.7);
-        }
-    }
-
-    @keyframes arrowBounce {
-        0%,
-        100% {
-            transform: translateY(0px);
-        }
-        50% {
-            transform: translateY(-3px);
-        }
-    }
-
-    /* レスポンシブ対応 */
-    @media (max-width: 480px) {
-        :global(.drop-zone-content) {
-            font-size: 12px;
-            gap: 8px;
-            padding: 6px 12px;
-        }
-
-        :global(.drop-zone-text) {
-            max-width: 150px;
-        }
-
-        :global(.drop-zone-arrow) {
-            font-size: 16px;
-        }
+    /* より分かりやすいハイライト色（鮮やかな黄色） */
+    :global(.drop-zone-hover .drop-zone-bar) {
+        background: #ffd600 !important;
+        box-shadow: 0 0 0 3px #ffd600;
     }
 </style>

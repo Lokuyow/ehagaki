@@ -340,13 +340,8 @@ export const ImageDragDropExtension = Extension.create({
                                 const dropZone = document.createElement('div');
                                 dropZone.className = 'drop-zone-indicator drop-zone-top';
                                 dropZone.setAttribute('data-drop-pos', '0');
-                                dropZone.innerHTML = `
-                                    <div class="drop-zone-content">
-                                        <span class="drop-zone-arrow">↑</span>
-                                        <span class="drop-zone-text">最初に挿入</span>
-                                        <span class="drop-zone-arrow">↑</span>
-                                    </div>
-                                `;
+                                // シンプルなバーのみ
+                                dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
                                 return dropZone;
                             }, { side: -1 })
                         );
@@ -363,19 +358,8 @@ export const ImageDragDropExtension = Extension.create({
                                             const dropZone = document.createElement('div');
                                             dropZone.className = 'drop-zone-indicator drop-zone-between';
                                             dropZone.setAttribute('data-drop-pos', afterPos.toString());
-
-                                            // ノードの種類に応じてコンテキストを表示
-                                            const nodeContent = node.type.name === 'paragraph'
-                                                ? (node.textContent.slice(0, 20) + (node.textContent.length > 20 ? '...' : ''))
-                                                : '画像';
-
-                                            dropZone.innerHTML = `
-                                                <div class="drop-zone-content">
-                                                    <span class="drop-zone-arrow">↓</span>
-                                                    <span class="drop-zone-text">${nodeContent}の後に挿入</span>
-                                                    <span class="drop-zone-arrow">↓</span>
-                                                </div>
-                                            `;
+                                            // シンプルなバーのみ
+                                            dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
                                             return dropZone;
                                         }, { side: 1 })
                                     );
