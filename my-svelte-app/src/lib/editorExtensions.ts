@@ -221,6 +221,19 @@ export const ImageDragDropExtension = Extension.create({
         const imageDragDropKey = new PluginKey('image-drag-drop');
         const dropZoneKey = new PluginKey('drop-zone-indicator');
 
+        // ドラッグ状態を解除する共通関数
+        function setDraggingFalse(viewOrEditorView: any) {
+            viewOrEditorView.dispatch(
+                viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
+            );
+        }
+
+        // ノード移動処理を共通化
+        function moveImage(viewOrEditorView: any, nodeData: any, targetPos: number, moveImageNode: any) {
+            setDraggingFalse(viewOrEditorView);
+            moveImageNode(viewOrEditorView, nodeData, targetPos);
+        }
+
         return [
             new Plugin({
                 key: imageDragDropKey,
@@ -229,7 +242,6 @@ export const ImageDragDropExtension = Extension.create({
                     apply: (tr, value) => {
                         const meta = tr.getMeta('imageDrag');
                         if (meta) {
-                            console.log('ImageDrag state update:', meta); // デバッグログ
                             return { ...value, ...meta };
                         }
                         return value;
@@ -237,69 +249,49 @@ export const ImageDragDropExtension = Extension.create({
                 },
                 props: {
                     handleDrop: (view, event, _slice, moved) => {
-                        // 既存のドラッグドロップ処理（外部ファイルなど）は通す
-                        if (!moved && event.dataTransfer) {
-                            const dragData = event.dataTransfer.getData('application/x-tiptap-node');
-                            if (dragData) {
-                                try {
-                                    const nodeData = JSON.parse(dragData);
-                                    if (nodeData.type === 'image') {
-                                        event.preventDefault();
-
-                                        const coords = view.posAtCoords({
-                                            left: event.clientX,
-                                            top: event.clientY
-                                        });
-
-                                        if (coords && typeof nodeData.pos === 'number') {
-                                            // ドラッグ終了状態に更新
-                                            view.dispatch(view.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null }));
-                                            return this.storage.moveImageNode(view, nodeData, coords.pos);
-                                        }
+                        const dragData = event.dataTransfer?.getData('application/x-tiptap-node');
+                        if (!moved && dragData) {
+                            try {
+                                const nodeData = JSON.parse(dragData);
+                                if (nodeData.type === 'image') {
+                                    event.preventDefault();
+                                    const coords = view.posAtCoords({
+                                        left: event.clientX,
+                                        top: event.clientY
+                                    });
+                                    if (coords && typeof nodeData.pos === 'number') {
+                                        moveImage(view, nodeData, coords.pos, (this as any).storage.moveImageNode);
+                                        return true;
                                     }
-                                } catch (e) {
-                                    console.warn('Failed to parse drag data:', e);
                                 }
+                            } catch (e) {
+                                console.warn('Failed to parse drag data:', e);
                             }
                         }
                         return false;
                     }
                 },
                 view: (editorView) => {
-                    // タッチドロップイベントのリスナーを追加
                     const handleTouchDrop = (event: CustomEvent) => {
-                        console.log('Touch drop event received:', event.detail); // デバッグログ
-                        const { nodeData, dropPosition } = event.detail;
-
+                        const { nodeData, dropPosition, dropX, dropY } = event.detail;
                         if (nodeData && nodeData.type === 'image') {
                             let targetPos: number;
-
                             if (typeof dropPosition === 'number') {
-                                // ドロップゾーンからの明示的な位置を使用
                                 targetPos = dropPosition;
-                                console.log('Using explicit drop position:', targetPos);
                             } else {
-                                // フォールバック: 座標からの位置計算
-                                const { dropX, dropY } = event.detail;
                                 const coords = editorView.posAtCoords({
                                     left: dropX,
                                     top: dropY
                                 });
                                 targetPos = coords?.pos || nodeData.pos;
-                                console.log('Using coordinate-based position:', targetPos);
                             }
-
                             if (typeof nodeData.pos === 'number') {
-                                // ドラッグ終了状態に更新
-                                editorView.dispatch(editorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null }));
-                                this.storage.moveImageNode(editorView, nodeData, targetPos);
+                                moveImage(editorView, nodeData, targetPos, (this as any).storage.moveImageNode);
                             }
                         }
                     };
 
-                    // タッチドラッグ開始イベント
                     const handleTouchDragStart = (event: CustomEvent) => {
-                        console.log('Touch drag start event received:', event.detail); // デバッグログ
                         const { nodePos } = event.detail;
                         editorView.dispatch(editorView.state.tr.setMeta('imageDrag', { isDragging: true, draggedNodePos: nodePos }));
                     };

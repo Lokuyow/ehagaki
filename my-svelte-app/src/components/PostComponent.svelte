@@ -316,12 +316,8 @@
 
   // タッチイベントハンドラーを追加
   function handleTouchStart(event: TouchEvent) {
-    // ドラッグ中でない場合は通常のタッチイベントとして処理
-    const target = event.target as HTMLElement;
-    if (!target.closest(".editor-image-button")) {
-      // 画像以外の領域でのタッチは通常通り
-      return;
-    }
+    // 画像以外の領域でのタッチも通常通り処理（PC/スマホ共通）
+    // 何もせず通過
   }
 
   function handleTouchMove(event: TouchEvent) {

@@ -22,6 +22,34 @@
         // 例: 画像クリックで何かする
     }
 
+    // ドラッグ開始イベント発火
+    function dispatchDragStart() {
+        window.dispatchEvent(
+            new CustomEvent("touch-image-drag-start", {
+                detail: { nodePos: getPos() },
+            }),
+        );
+    }
+
+    // ドラッグ終了イベント発火
+    function dispatchDragEnd() {
+        window.dispatchEvent(
+            new CustomEvent("touch-image-drop", {
+                detail: {
+                    nodeData: {
+                        type: "image",
+                        attrs: node.attrs,
+                        pos: getPos(),
+                    },
+                    dropX: 0,
+                    dropY: 0,
+                    target: null,
+                    dropPosition: null,
+                },
+            }),
+        );
+    }
+
     // ドラッグ開始処理
     function handleDragStart(event: DragEvent) {
         if (!event.dataTransfer) return;
@@ -37,15 +65,18 @@
         );
         event.dataTransfer.effectAllowed = "move";
         isDragging = true;
+        dispatchDragStart();
     }
 
     function handleDragEnd() {
         isDragging = false;
         removeDragPreview();
+        dispatchDragEnd();
     }
 
     // タッチ開始処理
     function handleTouchStart(event: TouchEvent) {
+        // PC/スマホ問わず1本指タッチで発火
         if (event.touches.length !== 1) return;
 
         console.log("Touch start on image"); // デバッグログ
@@ -57,16 +88,7 @@
             console.log("Long press detected, starting drag"); // デバッグログ
             // 長押しとして確定
             isDragging = true;
-
-            // ドラッグ開始イベントを発火（ドロップゾーン表示用）
-            const dragStartEvent = new CustomEvent("touch-image-drag-start", {
-                detail: { nodePos: getPos() },
-            });
-            console.log(
-                "Dispatching touch-image-drag-start event:",
-                dragStartEvent.detail,
-            ); // デバッグログ
-            window.dispatchEvent(dragStartEvent);
+            dispatchDragStart();
 
             // 実際のドラッグプレビュー作成
             if (touchStartTarget) {
@@ -81,6 +103,7 @@
 
     // タッチ移動処理
     function handleTouchMove(event: TouchEvent) {
+        // PC/スマホ問わず1本指タッチで発火
         if (event.touches.length !== 1) {
             // 複数タッチならキャンセル
             if (longPressTimeout) {
@@ -195,6 +218,8 @@
 
         isDragging = false;
         removeDragPreview();
+        // PC/スマホ共通でドラッグ終了イベント発火
+        dispatchDragEnd();
     }
 
     // コンテキストメニュー抑制
