@@ -192,19 +192,38 @@ export const ImagePasteExtension = Extension.create({
                 props: {
                     handlePaste: (view, event) => {
                         const text = event.clipboardData?.getData('text/plain') || '';
-                        const normalizedUrl = validateAndNormalizeImageUrl(text);
-                        if (normalizedUrl) {
-                            event.preventDefault();
-                            const { tr } = view.state;
-                            const imageNode = view.state.schema.nodes.image.create({
-                                src: normalizedUrl,
-                                alt: 'Pasted image'
-                            });
+                        // --- 複数画像URL: 改行または半角スペース区切り対応 ---
+                        // 改行または半角スペースで分割し、空要素を除外
+                        const items = text.split(/[\n ]+/).map(line => line.trim()).filter(Boolean);
+                        const imageNodes = items
+                            .map(line => {
+                                const normalizedUrl = validateAndNormalizeImageUrl(line);
+                                if (normalizedUrl) {
+                                    return view.state.schema.nodes.image.create({
+                                        src: normalizedUrl,
+                                        alt: 'Pasted image'
+                                    });
+                                }
+                                return null;
+                            })
+                            .filter(Boolean);
 
-                            const transaction = tr.replaceSelectionWith(imageNode);
-                            view.dispatch(transaction);
+                        if (imageNodes.length > 0) {
+                            event.preventDefault();
+                            let { tr } = view.state;
+                            imageNodes.forEach((imageNode, idx) => {
+                                if (!imageNode) return;
+                                if (idx === 0) {
+                                    tr = tr.replaceSelectionWith(imageNode);
+                                } else {
+                                    const pos = tr.selection.$to.pos;
+                                    tr = tr.insert(pos, imageNode);
+                                }
+                            });
+                            view.dispatch(tr);
                             return true;
                         }
+                        // --- ここまで ---
                         return false;
                     }
                 }
