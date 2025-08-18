@@ -160,7 +160,19 @@
             touch.clientX,
             touch.clientY,
         );
+
         if (elementBelow) {
+            // ドロップゾーンかその子要素を探す
+            const dropZone = elementBelow.closest(".drop-zone-indicator");
+            let targetDropPos = null;
+
+            if (dropZone) {
+                // ドロップゾーンの位置を取得
+                const dropPosAttr = dropZone.getAttribute("data-drop-pos");
+                targetDropPos = dropPosAttr ? parseInt(dropPosAttr, 10) : null;
+                console.log("Drop zone found with position:", targetDropPos);
+            }
+
             const touchDropEvent = new CustomEvent("touch-image-drop", {
                 detail: {
                     nodeData: {
@@ -171,6 +183,7 @@
                     dropX: touch.clientX,
                     dropY: touch.clientY,
                     target: elementBelow,
+                    dropPosition: targetDropPos, // 明示的なドロップ位置を追加
                 },
             });
             console.log(
