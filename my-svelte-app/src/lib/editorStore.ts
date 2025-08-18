@@ -7,6 +7,8 @@ import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from './utils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension } from './editorExtensions';
+import { writable } from 'svelte/store';
+import type { PostStatus } from './postManager';
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -127,4 +129,78 @@ export function createEditorStore(placeholderText: string) {
     (editorStore as any).updatePlaceholder = updatePlaceholder;
 
     return editorStore;
+}
+
+// --- エディタ関連のストアと関数を移動 ---
+// プレースホルダーテキスト用ストア
+export const placeholderTextStore = writable<string>('');
+
+// エディタ状態管理用ストア
+export interface EditorState {
+    content: string;
+    canPost: boolean;
+    isUploading: boolean;
+    uploadErrorMessage: string;
+    postStatus: PostStatus;
+    hasImage?: boolean;
+}
+export const editorState = writable<EditorState>({
+    content: '',
+    canPost: false,
+    isUploading: false,
+    uploadErrorMessage: '',
+    postStatus: {
+        sending: false,
+        success: false,
+        error: false,
+        message: ''
+    },
+    hasImage: false
+});
+
+// --- エディタ状態更新関数 ---
+function canPostByContent(content: string, hasImage: boolean): boolean {
+    return !!content.trim() || hasImage;
+}
+
+export function updateEditorContent(content: string, hasImage: boolean = false): void {
+    editorState.update(state => ({
+        ...state,
+        content,
+        hasImage,
+        canPost: canPostByContent(content, hasImage)
+    }));
+}
+
+export function updatePostStatus(postStatus: PostStatus): void {
+    editorState.update(state => ({ ...state, postStatus }));
+}
+
+export function updateUploadState(isUploading: boolean, errorMessage: string = ''): void {
+    editorState.update(state => ({
+        ...state,
+        isUploading,
+        uploadErrorMessage: errorMessage
+    }));
+}
+
+export function resetEditorState(): void {
+    editorState.update(state => ({
+        ...state,
+        content: '',
+        canPost: false,
+        uploadErrorMessage: '',
+        postStatus: {
+            sending: false,
+            success: false,
+            error: false,
+            message: ''
+        },
+        hasImage: false
+    }));
+}
+
+// プレースホルダーテキスト更新用関数
+export function updatePlaceholderText(text: string): void {
+    placeholderTextStore.set(text);
 }

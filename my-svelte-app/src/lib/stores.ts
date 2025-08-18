@@ -2,7 +2,6 @@ import { writable } from 'svelte/store';
 import type { SizeDisplayInfo } from './utils';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { HASHTAG_REGEX } from "./editorExtensions";
-import type { PostStatus } from './postManager';
 
 // --- 型定義 ---
 export interface AuthState {
@@ -30,15 +29,6 @@ export interface HashtagData {
     content: string;
     hashtags: string[];
     tags: string[][];
-}
-
-export interface EditorState {
-    content: string;
-    canPost: boolean;
-    isUploading: boolean;
-    uploadErrorMessage: string;
-    postStatus: PostStatus;
-    hasImage?: boolean; // 追加: 画像が含まれるか
 }
 
 // --- ストア定義 ---
@@ -88,71 +78,17 @@ export const hashtagDataStore = writable<HashtagData>({
     tags: []
 });
 
-// プレースホルダーテキスト用ストア
-export const placeholderTextStore = writable<string>('');
-
-// エディタ状態管理用ストア
-export const editorState = writable<EditorState>({
-    content: '',
-    canPost: false,
-    isUploading: false,
-    uploadErrorMessage: '',
-    postStatus: {
-        sending: false,
-        success: false,
-        error: false,
-        message: ''
-    },
-    hasImage: false // 追加
-});
-
-// --- エディタ状態更新関数 ---
-// canPost判定ロジックを共通化
-function canPostByContent(content: string, hasImage: boolean): boolean {
-    return !!content.trim() || hasImage;
-}
-
-export function updateEditorContent(content: string, hasImage: boolean = false): void {
-    editorState.update(state => ({
-        ...state,
-        content,
-        hasImage,
-        canPost: canPostByContent(content, hasImage)
-    }));
-}
-
-export function updatePostStatus(postStatus: PostStatus): void {
-    editorState.update(state => ({ ...state, postStatus }));
-}
-
-export function updateUploadState(isUploading: boolean, errorMessage: string = ''): void {
-    editorState.update(state => ({
-        ...state,
-        isUploading,
-        uploadErrorMessage: errorMessage
-    }));
-}
-
-export function resetEditorState(): void {
-    editorState.update(state => ({
-        ...state,
-        content: '',
-        canPost: false,
-        uploadErrorMessage: '',
-        postStatus: {
-            sending: false,
-            success: false,
-            error: false,
-            message: ''
-        },
-        hasImage: false // 画像状態もリセット
-    }));
-}
-
-// プレースホルダーテキスト更新用関数
-export function updatePlaceholderText(text: string): void {
-    placeholderTextStore.set(text);
-}
+// エディタ関連ストア/関数は editorStore.ts へ移動しました。
+// 互換性のため、ここから再エクスポートします。
+export {
+    placeholderTextStore,
+    editorState,
+    updateEditorContent,
+    updatePostStatus,
+    updateUploadState,
+    resetEditorState,
+    updatePlaceholderText
+} from './editorStore';
 
 // --- 認証関連関数 ---
 export function updateAuthState(newState: Partial<AuthState>): void {

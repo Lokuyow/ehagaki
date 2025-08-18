@@ -20,7 +20,7 @@
     updatePostStatus,
     updateUploadState,
     resetEditorState,
-  } from "../lib/stores";
+  } from "../lib/editorStore";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
 
