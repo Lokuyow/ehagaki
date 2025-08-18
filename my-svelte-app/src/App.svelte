@@ -41,8 +41,8 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
-    placeholderTextStore,
   } from "./lib/stores";
+  import { placeholderTextStore } from "./lib/editorStore";
   import { debugLog, debugAuthState } from "./lib/debug";
 
   const { needRefresh } = useRegisterSW({

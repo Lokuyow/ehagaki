@@ -1,6 +1,7 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { editorState, authState } from "../lib/stores";
+    import { editorState } from "../lib/editorStore";
+    import { authState } from "../lib/stores";
     import Button from "./Button.svelte";
 
     export let onUploadImage: () => void;

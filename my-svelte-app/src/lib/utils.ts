@@ -174,6 +174,3 @@ const ALLOWED_PROTOCOLS = ['http:', 'https:'];
  * 許可する画像拡張子
  */
 const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
-
-// validate 関数は editorUtils に移動したため再エクスポートして互換性を保つ
-export { validateAndNormalizeUrl, validateAndNormalizeImageUrl } from './editorUtils';

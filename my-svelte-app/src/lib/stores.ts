@@ -78,18 +78,6 @@ export const hashtagDataStore = writable<HashtagData>({
     tags: []
 });
 
-// エディタ関連ストア/関数は editorStore.ts へ移動しました。
-// 互換性のため、ここから再エクスポートします。
-export {
-    placeholderTextStore,
-    editorState,
-    updateEditorContent,
-    updatePostStatus,
-    updateUploadState,
-    resetEditorState,
-    updatePlaceholderText
-} from './editorStore';
-
 // --- 認証関連関数 ---
 export function updateAuthState(newState: Partial<AuthState>): void {
     authState.update(current => {
