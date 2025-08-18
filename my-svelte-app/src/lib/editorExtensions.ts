@@ -364,22 +364,48 @@ export const ImageDragDropExtension = Extension.create({
                         const decorations: Decoration[] = [];
                         const doc = newState.doc;
 
+                        // --- 画像が一番上にある場合は先頭バーを非表示 ---
+                        // 1. ドラッグ対象ノードが画像かつ先頭ノードか判定
+                        let skipTopDropZone = false;
+                        if (typeof imageDragState.draggedNodePos === "number") {
+                            const firstNode = doc.firstChild;
+                            if (
+                                firstNode &&
+                                firstNode.type.name === "image" &&
+                                firstNode.attrs &&
+                                // 先頭ノードのposは常に0
+                                imageDragState.draggedNodePos === 0
+                            ) {
+                                skipTopDropZone = true;
+                            }
+                        }
+
                         // ドキュメントの最初にドロップゾーン（他のコンテンツより前）
-                        decorations.push(
-                            Decoration.widget(0, () => {
-                                const dropZone = document.createElement('div');
-                                dropZone.className = 'drop-zone-indicator drop-zone-top';
-                                dropZone.setAttribute('data-drop-pos', '0');
-                                // シンプルなバーのみ
-                                dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
-                                return dropZone;
-                            }, { side: -1 })
-                        );
+                        if (!skipTopDropZone) {
+                            decorations.push(
+                                Decoration.widget(0, () => {
+                                    const dropZone = document.createElement('div');
+                                    dropZone.className = 'drop-zone-indicator drop-zone-top';
+                                    dropZone.setAttribute('data-drop-pos', '0');
+                                    // シンプルなバーのみ
+                                    dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
+                                    return dropZone;
+                                }, { side: -1 })
+                            );
+                        }
 
                         // 各ノードの間と後にドロップゾーンを追加
                         doc.descendants((node, pos) => {
                             if (node.type.name === 'paragraph' || node.type.name === 'image') {
                                 const afterPos = pos + node.nodeSize;
+
+                                // ドラッグ中の画像自身の直前（＝自分の上）にはバーを表示しない
+                                if (
+                                    typeof imageDragState.draggedNodePos === "number" &&
+                                    afterPos === imageDragState.draggedNodePos
+                                ) {
+                                    return;
+                                }
 
                                 // ドラッグ中のノードの後ろには挿入ポイントを表示しない
                                 if (imageDragState.draggedNodePos !== pos) {
