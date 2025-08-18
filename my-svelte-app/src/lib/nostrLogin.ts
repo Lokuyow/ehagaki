@@ -56,7 +56,7 @@ export class NostrLoginManager {
         return {
             theme: 'default',
             noBanner: true,
-            perms: 'sign_event:1,sign_event:0',
+            perms: 'get_public_key,sign_event:1,sign_event:27235',
             startScreen: 'welcome',
             ...options
         };

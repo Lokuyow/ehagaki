@@ -14,7 +14,6 @@ export class AuthService {
     // ハードコードで設定できるようにプロパティ追加
     nostrLoginOptions: NostrLoginOptions = {
         theme: 'default',
-        perms: 'sign_event:1,sign_event:0',
         noBanner: true,
     };
 
