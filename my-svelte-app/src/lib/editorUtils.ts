@@ -1,4 +1,3 @@
-import { validateAndNormalizeImageUrl } from './utils';
 
 // ドキュメントが空かどうか判定
 export function isEditorDocEmpty(state: any): boolean {
@@ -176,4 +175,34 @@ export function extractContentWithImages(editor: any): string {
     });
 
     return fragments.join('\n');
+}
+
+// エディタ周りに特化した URL 検証/正規化関数をここに移動
+const ALLOWED_PROTOCOLS = ['http:', 'https:'];
+const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+
+export function validateAndNormalizeUrl(url: string): string | null {
+    // 軽量な正規化 + プロトコルチェック
+    try {
+        const normalized = encodeURI(url.trim());
+        const u = new URL(normalized);
+        if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
+        return u.href;
+    } catch {
+        return null;
+    }
+}
+
+export function validateAndNormalizeImageUrl(url: string): string | null {
+    // 画像向けに拡張子チェックを追加
+    try {
+        const normalized = encodeURI(url.trim());
+        const u = new URL(normalized);
+        if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
+        const lower = u.pathname.toLowerCase();
+        if (!ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return null;
+        return u.href;
+    } catch {
+        return null;
+    }
 }

@@ -175,36 +175,5 @@ const ALLOWED_PROTOCOLS = ['http:', 'https:'];
  */
 const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
 
-/**
- * URLを正規化してバリデーションする（リンク用）
- * @param url 入力URL
- * @returns 正常な場合は正規化済みURL文字列、異常ならnull
- */
-export function validateAndNormalizeUrl(url: string): string | null {
-  try {
-    const normalized = encodeURI(url.trim());
-    const u = new URL(normalized);
-    if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
-    return u.href;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 画像URLを正規化してバリデーションする
- * @param url 入力URL
- * @returns 正常な場合は正規化済みURL文字列、異常ならnull
- */
-export function validateAndNormalizeImageUrl(url: string): string | null {
-  try {
-    const normalized = encodeURI(url.trim());
-    const u = new URL(normalized);
-    if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
-    const lower = u.pathname.toLowerCase();
-    if (!ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return null;
-    return u.href;
-  } catch {
-    return null;
-  }
-}
+// validate 関数は editorUtils に移動したため再エクスポートして互換性を保つ
+export { validateAndNormalizeUrl, validateAndNormalizeImageUrl } from './editorUtils';

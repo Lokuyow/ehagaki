@@ -5,7 +5,7 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
-import { validateAndNormalizeUrl } from './utils';
+import { validateAndNormalizeUrl } from './editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension } from './editorExtensions';
 import { writable } from 'svelte/store';
 import type { PostStatus } from './postManager';
