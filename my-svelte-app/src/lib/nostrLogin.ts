@@ -10,12 +10,6 @@ export interface NostrLoginOptions {
 
 export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
 
-interface NostrLoginDetail {
-    type: 'login' | 'signup' | 'logout';
-    pubkey?: string;
-    npub?: string;
-    otpData?: unknown;
-}
 
 export class NostrLoginManager {
     private initialized = false;
