@@ -176,6 +176,49 @@ export function extractContentWithImages(editor: any): string {
     return fragments.join('\n');
 }
 
+/**
+ * 画像ノードの移動処理（ドラッグ＆ドロップ用）
+ */
+export function moveImageNode(view: any, nodeData: any, dropPos: number) {
+    const { tr, schema } = view.state;
+    let transaction = tr;
+    const originalPos = nodeData.pos;
+
+    // 同じ位置にドロップした場合は何もしない
+    if (dropPos === originalPos) {
+        return true;
+    }
+
+    const imageNode = schema.nodes.image.create(nodeData.attrs);
+
+    try {
+        if (dropPos < originalPos) {
+            transaction = transaction.insert(dropPos, imageNode);
+            transaction = transaction.delete(originalPos + 1, originalPos + 2);
+        } else if (dropPos > originalPos + 1) {
+            transaction = transaction.delete(originalPos, originalPos + 1);
+            transaction = transaction.insert(dropPos - 1, imageNode);
+        } else {
+            // 隣接位置への移動は無視
+            return true;
+        }
+        view.dispatch(transaction);
+        return true;
+    } catch (error) {
+        console.error('Error moving image:', error);
+        return false;
+    }
+}
+
+/**
+ * ドラッグ状態を解除する共通関数
+ */
+export function setDraggingFalse(viewOrEditorView: any) {
+    viewOrEditorView.dispatch(
+        viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
+    );
+}
+
 // エディタ周りに特化した URL 検証/正規化関数をここに移動
 const ALLOWED_PROTOCOLS = ['http:', 'https:'];
 const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];

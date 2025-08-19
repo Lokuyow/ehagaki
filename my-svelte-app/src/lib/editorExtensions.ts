@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { updateHashtagData } from "./stores";
-import { validateAndNormalizeUrl, validateAndNormalizeImageUrl } from './editorUtils';
+import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse } from './editorUtils';
 
 // ハッシュタグ共通正規表現
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
@@ -308,7 +308,7 @@ export const ImageDragDropExtension = Extension.create({
                 },
                 view: (editorView) => {
                     let currentAutoScrollFrame: number | null = null;
-                    
+
                     const startAutoScroll = (direction: 'up' | 'down', touchY: number) => {
                         // 既存のスクロールを停止
                         if (currentAutoScrollFrame) {
@@ -321,7 +321,7 @@ export const ImageDragDropExtension = Extension.create({
 
                         const rect = tiptapEditor.getBoundingClientRect();
                         const scrollThreshold = 120; // 境界範囲
-                        
+
                         // 境界からの距離に応じて速度を調整（より滑らかに）
                         let distance = 0;
                         if (direction === 'up') {
@@ -329,7 +329,7 @@ export const ImageDragDropExtension = Extension.create({
                         } else {
                             distance = rect.bottom - touchY;
                         }
-                        
+
                         // 距離に応じた速度計算（より滑らかな範囲）
                         const normalizedDistance = Math.max(0, Math.min(1, distance / scrollThreshold));
                         const baseSpeed = 2; // 基本速度を下げる
@@ -344,14 +344,14 @@ export const ImageDragDropExtension = Extension.create({
                             if (direction === 'up' && currentScrollTop > 0) {
                                 const newScrollTop = Math.max(0, currentScrollTop - scrollSpeed);
                                 tiptapEditor.scrollTop = newScrollTop;
-                                
+
                                 if (newScrollTop > 0) {
                                     currentAutoScrollFrame = requestAnimationFrame(animateScroll);
                                 }
                             } else if (direction === 'down' && currentScrollTop < scrollHeight - clientHeight) {
                                 const newScrollTop = Math.min(scrollHeight - clientHeight, currentScrollTop + scrollSpeed);
                                 tiptapEditor.scrollTop = newScrollTop;
-                                
+
                                 if (newScrollTop < scrollHeight - clientHeight) {
                                     currentAutoScrollFrame = requestAnimationFrame(animateScroll);
                                 }
@@ -555,46 +555,3 @@ export const ImageDragDropExtension = Extension.create({
         };
     }
 });
-
-// --- 共通ユーティリティ: ドラッグ状態解除・ノード移動 ---
-// ドラッグ状態を解除する共通関数
-function setDraggingFalse(viewOrEditorView: any) {
-    viewOrEditorView.dispatch(
-        viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
-    );
-}
-
-// ノード移動処理を共通化
-// (重複定義を削除しました)
-
-// ノード移動処理を共通化
-function moveImageNode(view: any, nodeData: any, dropPos: number) {
-    const { tr, schema } = view.state;
-    let transaction = tr;
-    const originalPos = nodeData.pos;
-
-    // 同じ位置にドロップした場合は何もしない
-    if (dropPos === originalPos) {
-        return true;
-    }
-
-    const imageNode = schema.nodes.image.create(nodeData.attrs);
-
-    try {
-        if (dropPos < originalPos) {
-            transaction = transaction.insert(dropPos, imageNode);
-            transaction = transaction.delete(originalPos + 1, originalPos + 2);
-        } else if (dropPos > originalPos + 1) {
-            transaction = transaction.delete(originalPos, originalPos + 1);
-            transaction = transaction.insert(dropPos - 1, imageNode);
-        } else {
-            // 隣接位置への移動は無視
-            return true;
-        }
-        view.dispatch(transaction);
-        return true;
-    } catch (error) {
-        console.error('Error moving image:', error);
-        return false;
-    }
-}
