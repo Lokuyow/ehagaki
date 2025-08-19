@@ -4,6 +4,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { updateHashtagData } from "../stores";
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse } from './editorUtils';
 import { HASHTAG_REGEX } from '../constants';
+import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
 
 // 文字境界判定用の共通関数
 function isWordBoundary(char: string | undefined): boolean {
@@ -318,7 +319,7 @@ export const ImageDragDropExtension = Extension.create({
                         if (!tiptapEditor) return;
 
                         const rect = tiptapEditor.getBoundingClientRect();
-                        const scrollThreshold = 120; // 境界範囲
+                        const scrollThreshold = SCROLL_THRESHOLD; // 定数化
 
                         // 境界からの距離に応じて速度を調整（より滑らかに）
                         let distance = 0;
@@ -330,9 +331,7 @@ export const ImageDragDropExtension = Extension.create({
 
                         // 距離に応じた速度計算（より滑らかな範囲）
                         const normalizedDistance = Math.max(0, Math.min(1, distance / scrollThreshold));
-                        const baseSpeed = 2; // 基本速度を下げる
-                        const maxSpeed = 8; // 最高速度を下げる
-                        const scrollSpeed = baseSpeed + (maxSpeed - baseSpeed) * (1 - normalizedDistance);
+                        const scrollSpeed = SCROLL_BASE_SPEED + (SCROLL_MAX_SPEED - SCROLL_BASE_SPEED) * (1 - normalizedDistance);
 
                         const animateScroll = () => {
                             const currentScrollTop = tiptapEditor.scrollTop;
@@ -419,7 +418,7 @@ export const ImageDragDropExtension = Extension.create({
                         if (!tiptapEditor) return;
 
                         const rect = tiptapEditor.getBoundingClientRect();
-                        const scrollThreshold = 120; // 拡大された境界範囲
+                        const scrollThreshold = SCROLL_THRESHOLD; // 拡大された境界範囲
 
                         console.log('Touch move:', { touchY, rect, isDragging: state.isDragging }); // デバッグログ
 

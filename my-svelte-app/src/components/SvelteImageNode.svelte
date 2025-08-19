@@ -2,6 +2,7 @@
     import type { NodeViewProps } from "@tiptap/core";
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onDestroy } from "svelte";
+    import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
 
     export let node: NodeViewProps["node"];
     export let selected: boolean;
@@ -11,9 +12,6 @@
     let touchStartPos = { x: 0, y: 0 };
     let dragPreview: HTMLElement | null = null;
 
-    // 長押し判定（0.4秒）
-    const LONG_PRESS_DELAY = 400; // ms
-    const MOVE_CANCEL_THRESHOLD = 10; // px
     let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
     let touchStartTarget: HTMLElement | null = null;
 
