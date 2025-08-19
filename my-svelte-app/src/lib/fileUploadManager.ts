@@ -1,41 +1,18 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
-import { createFileSizeInfo, generateSizeDisplayInfo, type FileSizeInfo } from "./utils";
+import { createFileSizeInfo, generateSizeDisplayInfo } from "./utils";
 import { showImageSizeInfo } from "./stores";
 import imageCompression from "browser-image-compression";
 import type { SharedImageData } from "./shareHandler";
+import type {
+  FileUploadResponse,
+  MultipleUploadProgress,
+  UploadInfoCallbacks,
+  FileValidationResult
+} from "./types";
 
-// ファイルアップロードの応答型
-export interface FileUploadResponse {
-  success: boolean;
-  url?: string;
-  error?: string;
-  sizeInfo?: FileSizeInfo;
-}
-
-// 複数ファイルアップロードの進捗情報型
-export interface MultipleUploadProgress {
-  completed: number;
-  failed: number;
-  total: number;
-  inProgress: boolean;
-}
-
-// 情報通知用のコールバック（サイズ情報コールバックを削除）
-export interface UploadInfoCallbacks {
-  onProgress?: (progress: MultipleUploadProgress) => void;
-}
-
-// ファイル検証結果型
-export interface FileValidationResult {
-  isValid: boolean;
-  errorMessage?: string;
-}
-
-/**
- * ファイルアップロード専用マネージャークラス
- * 責務: ファイルの圧縮・アップロード処理、進捗管理
- */
+// ファイルアップロード専用マネージャークラス
+// 責務: ファイルの圧縮・アップロード処理、進捗管理
 export class FileUploadManager {
   private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
   private static readonly MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB

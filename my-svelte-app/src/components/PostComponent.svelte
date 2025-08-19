@@ -3,10 +3,8 @@
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
   import { PostManager } from "../lib/postManager";
-  import {
-    FileUploadManager,
-    type UploadInfoCallbacks,
-  } from "../lib/fileUploadManager";
+  import { FileUploadManager } from "../lib/fileUploadManager";
+  import type { UploadInfoCallbacks } from "../lib/types";
   import { containsSecretKey } from "../lib/utils";
   import { createEditorStore } from "../lib/editorStore";
   import {

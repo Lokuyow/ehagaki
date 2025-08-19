@@ -1,17 +1,5 @@
-/**
- * 汎用的なユーティリティ関数
- */
-
-/**
- * ファイルサイズ情報の型定義
- */
-export interface FileSizeInfo {
-  originalSize: number;
-  compressedSize: number;
-  wasCompressed: boolean;
-  compressionRatio: number;
-  sizeReduction: string;
-}
+import { getPublicKey, nip19 } from "nostr-tools";
+import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "./types";
 
 /**
  * ファイルサイズを人間に読みやすい形式に変換
@@ -46,16 +34,6 @@ export function createFileSizeInfo(
     compressionRatio,
     sizeReduction
   };
-}
-
-/**
- * サイズ情報表示用の構造化データ
- */
-export interface SizeDisplayInfo {
-  wasCompressed: boolean;
-  originalSize: string;
-  compressedSize: string;
-  compressionRatio: number;
 }
 
 /**
@@ -94,17 +72,6 @@ export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string |
 export function containsSecretKey(text: string): boolean {
   // nsecで始まる文字列を検出（部分的な秘密鍵でも警告）
   return /nsec1[023456789acdefghjklmnpqrstuvwxyz]{10,}/.test(text);
-}
-
-import { getPublicKey, nip19 } from "nostr-tools";
-
-/**
- * 公開鍵データの型定義
- */
-export interface PublicKeyData {
-  hex: string;
-  npub: string;
-  nprofile: string;
 }
 
 /**

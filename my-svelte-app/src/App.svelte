@@ -44,6 +44,7 @@
   } from "./lib/stores";
   import { placeholderTextStore } from "./lib/editorStore";
   import { debugLog, debugAuthState } from "./lib/debug";
+  import type { UploadProgress } from "./lib/types"; // 追加
 
   const { needRefresh } = useRegisterSW({
     onRegistered(r) {
@@ -276,12 +277,8 @@
     if (!uploading) sharedImageReceived = false;
   }
 
-  function handleUploadProgress(progress: {
-    total: number;
-    completed: number;
-    failed: number;
-    inProgress: boolean;
-  }): void {
+  function handleUploadProgress(progress: UploadProgress): void {
+    // 型を利用
     if (footerInfoDisplay) {
       footerInfoDisplay.updateProgress(progress);
     }

@@ -1,13 +1,9 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { imageSizeInfoStore } from "../lib/stores";
+    import type { UploadProgress } from "../lib/types";
 
-    export let uploadProgress: {
-        total: number;
-        completed: number;
-        failed: number;
-        inProgress: boolean;
-    } = {
+    export let uploadProgress: UploadProgress = {
         total: 0,
         completed: 0,
         failed: 0,
@@ -22,12 +18,7 @@
      * 進捗情報の更新
      * @param progress アップロード進捗情報
      */
-    export function updateProgress(progress: {
-        total: number;
-        completed: number;
-        failed: number;
-        inProgress: boolean;
-    }): void {
+    export function updateProgress(progress: UploadProgress): void {
         uploadProgress = progress;
 
         // 進捗が完了したら一定時間後に非表示

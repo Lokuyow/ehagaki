@@ -8,7 +8,7 @@ import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from './editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension } from './editorExtensions';
 import { writable } from 'svelte/store';
-import type { PostStatus } from './postManager';
+import type { PostStatus, EditorState } from './types'; // 型定義をtypes.tsからインポート
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -135,14 +135,6 @@ export function createEditorStore(placeholderText: string) {
 export const placeholderTextStore = writable<string>('');
 
 // エディタ状態管理用ストア
-export interface EditorState {
-    content: string;
-    canPost: boolean;
-    isUploading: boolean;
-    uploadErrorMessage: string;
-    postStatus: PostStatus;
-    hasImage?: boolean;
-}
 export const editorState = writable<EditorState>({
     content: '',
     canPost: false,
