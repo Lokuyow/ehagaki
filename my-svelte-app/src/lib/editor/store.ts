@@ -6,7 +6,7 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from './editorUtils';
-import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension } from './extensions';
+import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from './extensions';
 import { writable } from 'svelte/store';
 import type { PostStatus, EditorState } from '../types'; // 型定義をtypes.tsからインポート
 
@@ -57,6 +57,7 @@ export function createEditorStore(placeholderText: string) {
             ContentTrackingExtension,
             ImagePasteExtension,
             ImageDragDropExtension,
+            SmartBackspaceExtension, // ←追加
             placeholderExtension,
         ],
         // HTMLではなくJSONノード構造で初期化
