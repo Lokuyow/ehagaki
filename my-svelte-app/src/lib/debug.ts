@@ -1,3 +1,31 @@
+import { writable, type Writable } from "svelte/store";
+
+// --- dev環境判定ストア ---
+export const isDev = writable(import.meta.env.MODE === "development");
+
+// --- dev用: console.log履歴ストア ---
+export const devLog: Writable<string[]> = writable([]);
+
+function logToDevFooter(...args: any[]) {
+    const entry = args
+        .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
+        .join(" ");
+    devLog.update((logs) => [entry, ...logs].slice(0, 10));
+}
+
+// --- 開発時のみconsole.logをフック ---
+if (import.meta.env.MODE === "development") {
+    const origLog = console.log;
+    // すでにフック済みなら再度フックしない
+    if (!(window as any).__devLogHooked) {
+        console.log = function (...args: any[]) {
+            origLog.apply(console, args);
+            logToDevFooter(...args);
+        };
+        (window as any).__devLogHooked = true;
+    }
+}
+
 // デバッグ用ユーティリティ（本番ビルド時は何もしない）
 
 export function debugLog(...args: any[]) {
