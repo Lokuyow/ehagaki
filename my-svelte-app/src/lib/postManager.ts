@@ -2,8 +2,7 @@ import { createRxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { get } from "svelte/store";
-import { authState, hashtagDataStore } from "./stores";
-import { HASHTAG_REGEX } from "./constants";
+import { authState, hashtagDataStore, updateHashtagData } from "./stores";
 
 // 投稿結果の型定義
 export interface PostResult {
@@ -44,26 +43,13 @@ export class PostManager {
 
   // ハッシュタグを抽出してtタグを生成
   private extractHashtags(content: string): string[][] {
+    // contentがストアと異なる場合はストアを更新
     const hashtagData = get(hashtagDataStore);
-
-    // ストアのコンテンツと一致する場合はストアのタグを使用
-    if (hashtagData.content === content) {
-      return hashtagData.tags;
+    if (hashtagData.content !== content) {
+      updateHashtagData(content);
     }
-
-    // 一致しない場合は直接抽出
-    const hashtags: string[] = [];
-    HASHTAG_REGEX.lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = HASHTAG_REGEX.exec(content)) !== null) {
-      const hashtag = match[1];
-      if (hashtag && hashtag.trim()) {
-        hashtags.push(hashtag);
-      }
-    }
-
-    return hashtags.map(hashtag => ["t", hashtag]);
+    // ストアのtagsをそのまま返す（小文字化はstores側で行う）
+    return get(hashtagDataStore).tags;
   }
 
   // 投稿イベント生成（共通化）
