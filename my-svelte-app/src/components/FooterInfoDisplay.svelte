@@ -2,7 +2,28 @@
     import { _ } from "svelte-i18n";
     import { imageSizeInfoStore } from "../lib/stores";
     import type { UploadProgress } from "../lib/types";
-    import { isDev, devLog } from "../lib/debug"; // 追加
+    import { isDev, devLog, copyDevLogWithFallback } from "../lib/debug";
+
+    let copied = false;
+
+    // スマホ対応: タップ時に明示的に選択→コピー（Clipboard API優先、失敗時はtextareaフォールバック）
+    async function handleDevLogCopy(e?: Event) {
+        try {
+            e?.preventDefault();
+        } catch {}
+
+        try {
+            await copyDevLogWithFallback();
+            // コピーに成功（またはログが空で早期 return）した場合は UI を更新
+            // 空ログの場合は copied を立てない
+            if (($devLog?.length ?? 0) > 0) {
+                copied = true;
+                setTimeout(() => (copied = false), 1500);
+            }
+        } catch (err) {
+            console.warn("dev log copy failed:", err);
+        }
+    }
 
     export let uploadProgress: UploadProgress = {
         total: 0,
@@ -49,13 +70,20 @@
 
 <div class="footer-center">
     {#if $isDev && $devLog.length}
-        <div class="dev-console-log">
+        <button
+            type="button"
+            class="dev-console-log"
+            on:click={handleDevLogCopy}
+            on:touchend|preventDefault={handleDevLogCopy}
+            title="タップで全コピー"
+            aria-label="開発者ログをコピー"
+        >
             <ul>
-                {#each $devLog as log, i}
+                {#each [...$devLog].reverse() as log, i}
                     <li>{log}</li>
                 {/each}
             </ul>
-        </div>
+        </button>
     {/if}
     {#if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">
@@ -93,28 +121,42 @@
         flex: 1;
         display: flex;
         justify-content: flex-start;
-        align-items: center;
-        min-width: 0;
-        height: 100%;
-        overflow-y: auto;
-    }
-
-    .dev-console-log {
-        font-size: 0.6rem;
-        color: #c00;
-        background: #fff0f0;
-        overflow-y: auto;
-        white-space: pre-wrap;
-        height: 100%;
-        width: 100%;
-        max-height: 56px;
-    }
-    .dev-console-log ul {
-        margin: 0;
-        padding: 0 0 0 0.4rem;
-        list-style: disc inside;
-        max-height: 50px;
-        overflow-y: auto;
+        .dev-console-log {
+            font-size: 0.4rem;
+            color: #c00;
+            background: #fff0f0;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            height: 100%;
+            width: 100%;
+            max-height: 200px;
+            cursor: pointer; /* 追加: コピー可能を示す */
+            user-select: text;
+            border: none;
+            text-align: left;
+            padding: 0;
+            margin: 0;
+            outline: none;
+            box-shadow: none;
+            appearance: none;
+            border-radius: 0;
+        }
+        .dev-console-log:active,
+        .dev-console-log:focus {
+            background: #ffe0e0;
+        }
+        .dev-console-log ul {
+            margin: 0;
+            padding: 0 0 0 0.4rem;
+            list-style: disc inside;
+            max-height: 180px;
+            overflow-y: auto;
+        }
+        .dev-console-log li {
+            margin: 0;
+            padding: 0;
+            word-break: break-all;
+        }
     }
     .dev-console-log li {
         margin: 0;

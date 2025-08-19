@@ -10,7 +10,7 @@ function logToDevFooter(...args: any[]) {
     const entry = args
         .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
         .join(" ");
-    devLog.update((logs) => [entry, ...logs].slice(0, 10));
+    devLog.update((logs) => [entry, ...logs].slice(0, 50));
 }
 
 // --- 開発時のみconsole.logをフック ---
@@ -23,6 +23,75 @@ if (import.meta.env.MODE === "development") {
             logToDevFooter(...args);
         };
         (window as any).__devLogHooked = true;
+    }
+}
+
+// dev-console-logをタップしたら全内容をコピー（下が最新）
+// 変更: Promise を返すようにして呼び出し側で失敗を検知できるようにする
+export function copyDevLog(): Promise<void> {
+    return new Promise((resolve, reject) => {
+        let logs: string[] = [];
+        devLog.subscribe(v => logs = v)(); // 即時取得
+        const joined = logs?.join("\n") ?? "";
+        if (!joined) {
+            resolve();
+            return;
+        }
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+            navigator.clipboard.writeText(joined).then(resolve).catch(reject);
+        } else {
+            // Clipboard API が使えない環境では拒否する（呼び出し元で textarea フォールバックを行う）
+            reject(new Error("Clipboard API not available"));
+        }
+    });
+}
+
+// 追加: Clipboard API が使えなかった場合に textarea を用いたフォールバックまで行う
+export async function copyDevLogWithFallback(): Promise<void> {
+    let logs: string[] = [];
+    devLog.subscribe(v => logs = v)(); // 即時取得
+    const joined = logs?.join("\n") ?? "";
+    if (!joined) {
+        // ログが空なら成功扱いで返す（Footer 側では何もしない）
+        return;
+    }
+
+    // 1) まず Navigator.clipboard を試す
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        try {
+            await navigator.clipboard.writeText(joined);
+            return;
+        } catch (e) {
+            // 続行してフォールバックへ
+        }
+    }
+
+    // 2) フォールバック: textarea を利用（iOS 向けに font-size 調整）
+    try {
+        const textarea = document.createElement("textarea");
+        textarea.value = joined;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "absolute";
+        textarea.style.left = "-9999px";
+        textarea.style.fontSize = "12px"; // iOS の自動ズーム回避
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        try {
+            textarea.setSelectionRange(0, textarea.value.length);
+        } catch (_) {
+            // ignore
+        }
+        const successful = document.execCommand && document.execCommand("copy");
+        document.body.removeChild(textarea);
+        if (successful) {
+            return;
+        } else {
+            throw new Error("execCommand copy failed");
+        }
+    } catch (err) {
+        // 最後まで失敗したらエラーを投げる
+        throw err;
     }
 }
 
