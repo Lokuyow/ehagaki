@@ -28,7 +28,6 @@
             cancelable: true,
         });
 
-        console.log("Dispatching touch-image-drag-start:", startEvent.detail); // デバッグログ
         window.dispatchEvent(startEvent);
         document.dispatchEvent(
             new CustomEvent("touch-image-drag-start", {
@@ -55,7 +54,6 @@
             cancelable: true,
         });
 
-        console.log("Dispatching touch-image-drop:", endEvent.detail); // デバッグログ
         window.dispatchEvent(endEvent);
         document.dispatchEvent(
             new CustomEvent("touch-image-drop", {
@@ -93,13 +91,12 @@
         // PC/スマホ問わず1本指タッチで発火
         if (event.touches.length !== 1) return;
 
-        console.log("Touch start on image"); // デバッグログ
         const touch = event.touches[0];
         touchStartPos = { x: touch.clientX, y: touch.clientY };
         touchStartTarget = event.currentTarget as HTMLElement;
-        // 長押しタイマーをセット（発火時にドラッグ開始）
+
+        // 長押しタイマーをセット
         longPressTimeout = setTimeout(() => {
-            console.log("Long press detected, starting drag"); // デバッグログ
             // 長押しとして確定
             isDragging = true;
             dispatchDragStart();
@@ -128,13 +125,12 @@
         }
 
         const touch = event.touches[0];
-        // 長押し前で一定距離移動したら長押しをキャンセル（スクロール意図と判断）
+        // 長押し前で一定距離移動したら長押しをキャンセル
         if (!isDragging && longPressTimeout) {
             const dx = touch.clientX - touchStartPos.x;
             const dy = touch.clientY - touchStartPos.y;
             const distSq = dx * dx + dy * dy;
             if (distSq > MOVE_CANCEL_THRESHOLD * MOVE_CANCEL_THRESHOLD) {
-                console.log("Touch moved too far, canceling long press"); // デバッグログ
                 clearTimeout(longPressTimeout);
                 longPressTimeout = null;
                 touchStartTarget = null;
@@ -144,10 +140,6 @@
 
         if (!isDragging) return;
 
-        console.log("Touch move during drag:", {
-            x: touch.clientX,
-            y: touch.clientY,
-        }); // デバッグログ
         // ドラッグ中はスクロールを防止してプレビューを移動
         event.preventDefault();
         updateDragPreview(touch.clientX, touch.clientY);
@@ -155,7 +147,7 @@
         // ホバー中のドロップゾーンをハイライト
         highlightDropZoneAtPosition(touch.clientX, touch.clientY);
 
-        // 自動スクロール用のイベントを確実に発火
+        // 自動スクロール用のイベントを発火
         const moveEvent = new CustomEvent("touch-image-drag-move", {
             detail: {
                 touchX: touch.clientX,
@@ -166,10 +158,7 @@
             cancelable: true,
         });
 
-        console.log("Dispatching touch-image-drag-move:", moveEvent.detail); // デバッグログ
         window.dispatchEvent(moveEvent);
-
-        // 追加: 直接DOMイベントも発火（フォールバック）
         document.dispatchEvent(
             new CustomEvent("touch-image-drag-move", {
                 detail: moveEvent.detail,
@@ -196,8 +185,6 @@
 
     // タッチ終了処理
     function handleTouchEnd(event: TouchEvent) {
-        console.log("Touch end, isDragging:", isDragging); // デバッグログ
-
         // 長押しタイマーが残っていればクリア
         if (longPressTimeout) {
             clearTimeout(longPressTimeout);
@@ -213,7 +200,6 @@
         event.preventDefault();
         const touch = event.changedTouches[0];
 
-        console.log("Touch drop at:", { x: touch.clientX, y: touch.clientY }); // デバッグログ
         const elementBelow = document.elementFromPoint(
             touch.clientX,
             touch.clientY,
@@ -228,7 +214,6 @@
                 // ドロップゾーンの位置を取得
                 const dropPosAttr = dropZone.getAttribute("data-drop-pos");
                 targetDropPos = dropPosAttr ? parseInt(dropPosAttr, 10) : null;
-                console.log("Drop zone found with position:", targetDropPos);
             }
 
             const touchDropEvent = new CustomEvent("touch-image-drop", {
@@ -247,10 +232,6 @@
                 cancelable: true,
             });
 
-            console.log(
-                "Dispatching final touch-image-drop event:",
-                touchDropEvent.detail,
-            ); // デバッグログ
             window.dispatchEvent(touchDropEvent);
             document.dispatchEvent(
                 new CustomEvent("touch-image-drop", {

@@ -2,7 +2,7 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { updateHashtagData } from "../stores";
-import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse } from './editorUtils';
+import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from './editorUtils';
 import { HASHTAG_REGEX } from '../constants';
 import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
 
@@ -76,10 +76,8 @@ export const ContentTrackingExtension = Extension.create({
                     }
                 },
                 // URL再検証のためのappendTransactionを追加
-                appendTransaction: (transactions, _oldState, newState) => {
+                appendTransaction: (transactions, oldState, newState) => {
                     if (!transactions.some(tr => tr.docChanged)) return;
-
-                    console.log('ContentTrackingExtension: appendTransaction triggered');
 
                     const linkMark = newState.schema.marks.link;
                     const imageNodeType = newState.schema.nodes.image;
@@ -91,8 +89,6 @@ export const ContentTrackingExtension = Extension.create({
                         if (!node.isText || !node.text) return;
 
                         const text = node.text;
-                        console.log('ContentTrackingExtension: processing text node:', text);
-
                         const hasLinkMark = node.marks?.some(m => m.type === linkMark);
 
                         // 既存のリンクマークを一旦すべて削除
@@ -127,23 +123,23 @@ export const ContentTrackingExtension = Extension.create({
                             // 画像URLなら画像ノードに置換
                             const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
                             if (normalizedImageUrl && imageNodeType) {
-                                console.log('ContentTrackingExtension: found image URL in text:', normalizedImageUrl);
-
                                 tr = tr || newState.tr;
                                 const start = pos + matchStart;
                                 const end = pos + actualEnd;
 
-                                // 空のパラグラフ内の画像URLかチェック
+                                // 親ノードの詳細情報を取得
                                 const $start = newState.doc.resolve(start);
-                                const isInEmptyParagraph = $start.parent.type.name === 'paragraph' &&
-                                    $start.parent.content.size === (end - start);
+                                const parentNode = $start.parent;
 
-                                console.log('ContentTrackingExtension: paragraph info:', {
-                                    parentType: $start.parent.type.name,
-                                    parentContentSize: $start.parent.content.size,
-                                    urlLength: end - start,
-                                    isInEmptyParagraph
-                                });
+                                // より正確な空パラグラフ判定
+                                const isInEmptyParagraph = parentNode.type.name === 'paragraph' &&
+                                    parentNode.content.size === (end - start);
+
+                                // パラグラフが画像URLのみを含むかも判定
+                                const isOnlyImageUrlInParagraph = isParagraphWithOnlyImageUrl(parentNode, end - start);
+
+                                // 全文書が空かどうかもチェック
+                                const isDocEmpty = isEditorDocEmpty(newState);
 
                                 // 画像ノードを作成してテキストを置換
                                 const imageNode = imageNodeType.create({
@@ -151,18 +147,28 @@ export const ContentTrackingExtension = Extension.create({
                                     alt: 'Image'
                                 });
 
-                                if (isInEmptyParagraph) {
-                                    console.log('ContentTrackingExtension: replacing empty paragraph with image');
-                                    // 空のパラグラフ全体を画像で置換
-                                    const paragraphStart = $start.start($start.depth);
-                                    const paragraphEnd = $start.end($start.depth);
-                                    tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
+                                // パラグラフが画像URLのみを含む場合、または空のパラグラフの場合
+                                if (isInEmptyParagraph || isOnlyImageUrlInParagraph) {
+                                    // より正確な位置計算
+                                    const paragraphDepth = $start.depth;
+                                    const paragraphStart = $start.start(paragraphDepth);
+                                    const paragraphEnd = $start.end(paragraphDepth);
+
+                                    // 文書全体が空の場合、または実質的に単一の画像URL用パラグラフの場合
+                                    if (isDocEmpty || (newState.doc.childCount === 1 && isOnlyImageUrlInParagraph)) {
+                                        // より確実な文書全体置換
+                                        tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
+                                    } else {
+                                        // 通常のパラグラフ置換
+                                        tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
+                                    }
                                 } else {
-                                    console.log('ContentTrackingExtension: replacing URL text with image');
                                     // 通常の置換
                                     tr = tr.replaceWith(start, end, imageNode);
                                 }
-                                continue;
+
+                                // URLの処理が完了したらループを抜ける
+                                break;
                             }
 
                             // より緩い検証（入力中のURLも考慮）
@@ -184,7 +190,6 @@ export const ContentTrackingExtension = Extension.create({
                     });
 
                     if (tr && tr.docChanged) {
-                        console.log('ContentTrackingExtension: returning transaction');
                         return tr;
                     }
                     return null;
@@ -281,130 +286,54 @@ export const ImagePasteExtension = Extension.create({
                 key: new PluginKey('image-paste'),
                 props: {
                     handlePaste: (view, event) => {
-                        // より詳細な実機デバッグログ
-                        console.log('=== ImagePasteExtension DEBUG START ===');
-                        console.log('User agent:', navigator.userAgent);
-                        console.log('Event type:', event.type);
-                        // event.targetは循環参照のため出力しない
-                        // console.log('Event target:', event.target);
-
                         const text = event.clipboardData?.getData('text/plain') || '';
-                        console.log('Clipboard text length:', text.length);
-                        console.log('Clipboard text (first 100 chars):', text.substring(0, 100));
 
-                        // --- 複数画像URL: 改行または半角スペース区切り対応 ---
+                        // 複数画像URL: 改行または半角スペース区切り対応
                         const items = text.split(/[\n ]+/).map(line => line.trim()).filter(Boolean);
-                        console.log('Split items count:', items.length);
-                        console.log('Split items:', items);
 
                         // 画像URLのみ抽出
                         const imageUrls = items
-                            .map(line => {
-                                const result = validateAndNormalizeImageUrl(line);
-                                console.log(`URL validation: "${line}" -> ${result}`);
-                                return result;
-                            })
+                            .map(line => validateAndNormalizeImageUrl(line))
                             .filter(Boolean);
 
-                        console.log('Valid image URLs count:', imageUrls.length);
-                        console.log('Valid image URLs:', imageUrls);
-
                         if (imageUrls.length > 0) {
-                            console.log('=== PROCESSING IMAGE PASTE ===');
                             event.preventDefault();
 
                             const { state, dispatch } = view;
                             const { tr, selection, schema } = state;
 
-                            // 安全なデバッグログ出力
-                            try {
-                                console.log('- Document structure:', state.doc.toJSON());
-                            } catch (e) {
-                                console.log('- Document structure: [toJSON failed]');
-                            }
-                            console.log('- Selection:', { from: selection.from, to: selection.to, empty: selection.empty });
-
-                            // 空のパラグラフ内にカーソルがあるかチェック
                             const $from = state.doc.resolve(selection.from);
-                            console.log('Resolved position info:');
-                            console.log('- Depth:', $from.depth);
-                            console.log('- Parent type:', $from.parent.type.name);
-                            console.log('- Parent content size:', $from.parent.content.size);
-                            try {
-                                console.log('- Parent node:', $from.parent.toJSON());
-                            } catch (e) {
-                                console.log('- Parent node: [toJSON failed]');
-                            }
-
                             const isInEmptyParagraph = selection.empty &&
                                 $from.parent.type.name === 'paragraph' &&
                                 $from.parent.content.size === 0;
 
-                            console.log('Empty paragraph check result:', isInEmptyParagraph);
-
-                            // 画像ノードを作成
-                            const imageNodes = imageUrls.map((url, index) => {
-                                const node = schema.nodes.image.create({
+                            const imageNodes = imageUrls.map(url =>
+                                schema.nodes.image.create({
                                     src: url,
                                     alt: 'Pasted image'
-                                });
-                                console.log(`Created image node ${index}:`, node.toJSON());
-                                return node;
-                            });
+                                })
+                            );
 
                             let transaction = tr;
 
                             if (isInEmptyParagraph && imageNodes.length > 0) {
-                                console.log('=== EMPTY PARAGRAPH REPLACEMENT ===');
+                                // パラグラフの位置を正確に計算
+                                const paragraphDepth = $from.depth;
+                                const paragraphStart = $from.start(paragraphDepth);
+                                const paragraphEnd = $from.end(paragraphDepth);
 
-                                // より確実な範囲計算
-                                const paragraphStart = $from.before($from.depth);
-                                const paragraphEnd = $from.after($from.depth);
+                                // 空のパラグラフノード全体を画像ノードで置換
+                                transaction = transaction.replaceWith(paragraphStart, paragraphEnd, imageNodes[0]);
 
-                                console.log('Paragraph range calculation:');
-                                console.log('- Paragraph start:', paragraphStart);
-                                console.log('- Paragraph end:', paragraphEnd);
-                                console.log('- Range size:', paragraphEnd - paragraphStart);
-                                console.log('- Parent node size:', $from.parent.nodeSize);
-
-                                try {
-                                    // 最初の画像で置換
-                                    console.log('Replacing empty paragraph with first image...');
-                                    transaction = transaction.replaceWith(paragraphStart, paragraphEnd, imageNodes[0]);
-                                    console.log('First replacement successful');
-
-                                    // 残りの画像があれば順次挿入
-                                    let insertPos = paragraphStart + imageNodes[0].nodeSize;
-                                    console.log('Starting position for additional images:', insertPos);
-
-                                    for (let i = 1; i < imageNodes.length; i++) {
-                                        console.log(`Inserting image ${i} at position ${insertPos}`);
-                                        transaction = transaction.insert(insertPos, imageNodes[i]);
-                                        insertPos += imageNodes[i].nodeSize;
-                                        console.log(`Image ${i} inserted, next position: ${insertPos}`);
-                                    }
-
-                                    console.log('All replacements/insertions completed');
-                                } catch (error) {
-                                    console.error('Error during paragraph replacement:', error);
-                                    console.log('Falling back to normal insertion...');
-
-                                    // フォールバック: 通常の挿入
-                                    transaction = tr; // リセット
-                                    imageNodes.forEach((imageNode, idx) => {
-                                        if (idx === 0) {
-                                            transaction = transaction.replaceSelectionWith(imageNode);
-                                        } else {
-                                            const pos = transaction.selection.$to.pos;
-                                            transaction = transaction.insert(pos, imageNode);
-                                        }
-                                    });
+                                // 2枚目以降も挿入
+                                let insertPos = paragraphStart + imageNodes[0].nodeSize;
+                                for (let i = 1; i < imageNodes.length; i++) {
+                                    transaction = transaction.insert(insertPos, imageNodes[i]);
+                                    insertPos += imageNodes[i].nodeSize;
                                 }
                             } else {
-                                console.log('=== NORMAL INSERTION ===');
-                                // 通常の挿入処理
+                                // 通常の挿入
                                 imageNodes.forEach((imageNode, idx) => {
-                                    console.log(`Normal insertion of image ${idx}`);
                                     if (idx === 0) {
                                         transaction = transaction.replaceSelectionWith(imageNode);
                                     } else {
@@ -414,26 +343,10 @@ export const ImagePasteExtension = Extension.create({
                                 });
                             }
 
-                            console.log('Final transaction steps:', transaction.steps.length);
-                            console.log('Dispatching transaction...');
-
-                            // 実機でのタイミング問題対策として少し遅延
-                            setTimeout(() => {
-                                try {
-                                    dispatch(transaction);
-                                    console.log('Transaction dispatched successfully');
-                                    console.log('=== ImagePasteExtension DEBUG END (SUCCESS) ===');
-                                } catch (error) {
-                                    console.error('Error dispatching transaction:', error);
-                                    console.log('=== ImagePasteExtension DEBUG END (ERROR) ===');
-                                }
-                            }, 10);
-
+                            dispatch(transaction);
                             return true;
                         }
 
-                        console.log('No image URLs found, allowing normal paste');
-                        console.log('=== ImagePasteExtension DEBUG END (NORMAL) ===');
                         // 画像URLがなければ通常の貼り付け
                         return false;
                     }
@@ -559,7 +472,6 @@ export const ImageDragDropExtension = Extension.create({
                     };
 
                     const handleTouchDrop = (event: CustomEvent) => {
-                        console.log('Touch drop received in extension'); // デバッグログ
                         const { nodeData, dropPosition, dropX, dropY } = event.detail;
                         stopAutoScroll();
 
@@ -589,7 +501,6 @@ export const ImageDragDropExtension = Extension.create({
                     };
 
                     const handleTouchDragStart = (event: CustomEvent) => {
-                        console.log('Touch drag start received in extension'); // デバッグログ
                         const { nodePos } = event.detail;
                         editorView.dispatch(
                             editorView.state.tr.setMeta('imageDrag', {
@@ -611,18 +522,14 @@ export const ImageDragDropExtension = Extension.create({
                         if (!tiptapEditor) return;
 
                         const rect = tiptapEditor.getBoundingClientRect();
-                        const scrollThreshold = SCROLL_THRESHOLD; // 拡大された境界範囲
+                        const scrollThreshold = SCROLL_THRESHOLD;
 
-                        console.log('Touch move:', { touchY, rect, isDragging: state.isDragging }); // デバッグログ
-
-                        // 上端近くでスクロールアップ（範囲拡大）
+                        // 上端近くでスクロールアップ
                         if (touchY < rect.top + scrollThreshold) {
-                            console.log('Starting auto scroll up, distance:', rect.top + scrollThreshold - touchY); // デバッグログ
                             startAutoScroll('up', touchY);
                         }
-                        // 下端近くでスクロールダウン（範囲拡大）
+                        // 下端近くでスクロールダウン
                         else if (touchY > rect.bottom - scrollThreshold) {
-                            console.log('Starting auto scroll down, distance:', touchY - (rect.bottom - scrollThreshold)); // デバッグログ
                             startAutoScroll('down', touchY);
                         }
                         // 中間位置では自動スクロール停止
@@ -655,7 +562,6 @@ export const ImageDragDropExtension = Extension.create({
                     apply(_tr, _prev, _oldState, newState) {
                         // imageDragDropKey を使用して状態を取得
                         const imageDragState = imageDragDropKey.getState(newState);
-                        console.log('Drop zone plugin - drag state:', imageDragState); // デバッグログ
 
                         if (!imageDragState?.isDragging) {
                             return DecorationSet.empty;
@@ -664,8 +570,7 @@ export const ImageDragDropExtension = Extension.create({
                         const decorations: Decoration[] = [];
                         const doc = newState.doc;
 
-                        // --- 画像が一番上にある場合は先頭バーを非表示 ---
-                        // 1. ドラッグ対象ノードが画像かつ先頭ノードか判定
+                        // 画像が一番上にある場合は先頭バーを非表示
                         let skipTopDropZone = false;
                         if (typeof imageDragState.draggedNodePos === "number") {
                             const firstNode = doc.firstChild;
@@ -673,21 +578,19 @@ export const ImageDragDropExtension = Extension.create({
                                 firstNode &&
                                 firstNode.type.name === "image" &&
                                 firstNode.attrs &&
-                                // 先頭ノードのposは常に0
                                 imageDragState.draggedNodePos === 0
                             ) {
                                 skipTopDropZone = true;
                             }
                         }
 
-                        // ドキュメントの最初にドロップゾーン（他のコンテンツより前）
+                        // ドキュメントの最初にドロップゾーン
                         if (!skipTopDropZone) {
                             decorations.push(
                                 Decoration.widget(0, () => {
                                     const dropZone = document.createElement('div');
                                     dropZone.className = 'drop-zone-indicator drop-zone-top';
                                     dropZone.setAttribute('data-drop-pos', '0');
-                                    // シンプルなバーのみ
                                     dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
                                     return dropZone;
                                 }, { side: -1 })
@@ -699,7 +602,7 @@ export const ImageDragDropExtension = Extension.create({
                             if (node.type.name === 'paragraph' || node.type.name === 'image') {
                                 const afterPos = pos + node.nodeSize;
 
-                                // ドラッグ中の画像自身の直前（＝自分の上）にはバーを表示しない
+                                // ドラッグ中の画像自身の直前にはバーを表示しない
                                 if (
                                     typeof imageDragState.draggedNodePos === "number" &&
                                     afterPos === imageDragState.draggedNodePos
@@ -714,7 +617,6 @@ export const ImageDragDropExtension = Extension.create({
                                             const dropZone = document.createElement('div');
                                             dropZone.className = 'drop-zone-indicator drop-zone-between';
                                             dropZone.setAttribute('data-drop-pos', afterPos.toString());
-                                            // シンプルなバーのみ
                                             dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
                                             return dropZone;
                                         }, { side: 1 })
@@ -723,7 +625,6 @@ export const ImageDragDropExtension = Extension.create({
                             }
                         });
 
-                        console.log('Total decorations created:', decorations.length); // デバッグログ
                         return DecorationSet.create(doc, decorations);
                     }
                 },

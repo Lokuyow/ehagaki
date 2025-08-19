@@ -1,6 +1,24 @@
-// ドキュメントが空かどうか判定
+// ドキュメントが空かどうか判定（修正版）
 export function isEditorDocEmpty(state: any): boolean {
-    return state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && state.doc.firstChild.content.size === 0;
+    // 子ノードが1つで、それが空のパラグラフの場合
+    if (state.doc.childCount === 1) {
+        const firstChild = state.doc.firstChild;
+        return firstChild?.type.name === 'paragraph' && firstChild.content.size === 0;
+    }
+    
+    // 子ノードが0の場合も空と見なす
+    if (state.doc.childCount === 0) {
+        return true;
+    }
+    
+    return false;
+}
+
+// パラグラフが実質的に画像URLのみを含んでいるか判定する新しい関数
+export function isParagraphWithOnlyImageUrl(node: any, urlLength: number): boolean {
+    return node.type.name === 'paragraph' && 
+           node.content.size === urlLength && 
+           node.textContent.trim().length === urlLength;
 }
 
 /**
