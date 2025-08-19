@@ -233,17 +233,7 @@
         if (!img) return;
 
         dragPreview = img.cloneNode(true) as HTMLElement;
-        dragPreview.style.position = "fixed";
-        dragPreview.style.pointerEvents = "none";
-        dragPreview.style.zIndex = "10000";
-        dragPreview.style.opacity = "0.8";
-        dragPreview.style.transform = "scale(0.9) rotate(3deg)";
-        dragPreview.style.borderRadius = "8px";
-        dragPreview.style.maxWidth = "140px";
-        dragPreview.style.maxHeight = "140px";
-        dragPreview.style.boxShadow = "0 8px 32px rgba(0,0,0,0.3)";
-        dragPreview.style.border = "2px solid var(--theme, #2196f3)";
-        dragPreview.style.transition = "none";
+        dragPreview.classList.add("image-drag-preview"); // クラスを追加
 
         updateDragPreview(x, y);
         document.body.appendChild(dragPreview);
@@ -398,7 +388,6 @@
         opacity: 1;
         position: relative;
         z-index: 1000;
-        transition: background 0.15s;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -415,15 +404,29 @@
         max-width: 240px;
         height: 4px;
         border-radius: 2px;
-        background: #2196f3;
+        background: var(--blue);
         margin: 0 auto;
         box-shadow: 0 1px 4px rgba(33, 150, 243, 0.1);
-        transition: background 0.15s;
+        transition: background 0.2s ease-out;
     }
 
     /* より分かりやすいハイライト色（鮮やかな黄色） */
     :global(.drop-zone-hover .drop-zone-bar) {
-        background: #ffd600 !important;
-        box-shadow: 0 0 0 3px #ffd600;
+        background: var(--yellow);
+        box-shadow: 0 0 0 3px var(--yellow);
+    }
+
+    :global(.image-drag-preview) {
+        position: fixed;
+        pointer-events: none;
+        z-index: 10000;
+        opacity: 0.7;
+        transform: scale(0.9) rotate(3deg);
+        border-radius: 8px;
+        max-width: 140px;
+        max-height: 140px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        border: 2px solid var(--theme, #2196f3);
+        transition: none;
     }
 </style>
