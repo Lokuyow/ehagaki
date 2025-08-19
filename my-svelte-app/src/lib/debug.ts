@@ -47,9 +47,13 @@ export function copyDevLog(): Promise<void> {
 }
 
 // 追加: Clipboard API が使えなかった場合に textarea を用いたフォールバックまで行う
-export async function copyDevLogWithFallback(): Promise<void> {
+export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> {
     let logs: string[] = [];
-    devLog.subscribe(v => logs = v)(); // 即時取得
+    if (logsArg) {
+        logs = logsArg;
+    } else {
+        devLog.subscribe(v => logs = v)(); // 即時取得
+    }
     const joined = logs?.join("\n") ?? "";
     if (!joined) {
         // ログが空なら成功扱いで返す（Footer 側では何もしない）

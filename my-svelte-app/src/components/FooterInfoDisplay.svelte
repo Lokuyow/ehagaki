@@ -13,10 +13,12 @@
         } catch {}
 
         try {
-            await copyDevLogWithFallback();
+            // devLogの値を逆順でコピーするように変更
+            const logs = [...$devLog].reverse();
+            await copyDevLogWithFallback(logs);
             // コピーに成功（またはログが空で早期 return）した場合は UI を更新
             // 空ログの場合は copied を立てない
-            if (($devLog?.length ?? 0) > 0) {
+            if ((logs?.length ?? 0) > 0) {
                 copied = true;
                 setTimeout(() => (copied = false), 1500);
             }
@@ -121,15 +123,15 @@
         flex: 1;
         display: flex;
         justify-content: flex-start;
+        height: 100%;
         .dev-console-log {
-            font-size: 0.4rem;
+            font-size: 0.6rem;
             color: #c00;
             background: #fff0f0;
             overflow-y: auto;
             white-space: pre-wrap;
             height: 100%;
             width: 100%;
-            max-height: 200px;
             cursor: pointer; /* 追加: コピー可能を示す */
             user-select: text;
             border: none;
@@ -149,7 +151,6 @@
             margin: 0;
             padding: 0 0 0 0.4rem;
             list-style: disc inside;
-            max-height: 180px;
             overflow-y: auto;
         }
         .dev-console-log li {
