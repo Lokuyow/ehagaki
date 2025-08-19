@@ -398,7 +398,7 @@
     img.editor-image {
         display: block;
         max-width: 100%;
-        max-height: 160px;
+        max-height: 240px;
         border-radius: 6px;
         box-shadow: 0 1px 4px var(--shadow);
         background: #fff;
