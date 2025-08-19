@@ -78,6 +78,9 @@ export const ContentTrackingExtension = Extension.create({
                 // URL再検証のためのappendTransactionを追加
                 appendTransaction: (transactions, _oldState, newState) => {
                     if (!transactions.some(tr => tr.docChanged)) return;
+
+                    console.log('ContentTrackingExtension: appendTransaction triggered');
+
                     const linkMark = newState.schema.marks.link;
                     const imageNodeType = newState.schema.nodes.image;
                     if (!linkMark) return;
@@ -88,6 +91,8 @@ export const ContentTrackingExtension = Extension.create({
                         if (!node.isText || !node.text) return;
 
                         const text = node.text;
+                        console.log('ContentTrackingExtension: processing text node:', text);
+
                         const hasLinkMark = node.marks?.some(m => m.type === linkMark);
 
                         // 既存のリンクマークを一旦すべて削除
@@ -122,15 +127,41 @@ export const ContentTrackingExtension = Extension.create({
                             // 画像URLなら画像ノードに置換
                             const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
                             if (normalizedImageUrl && imageNodeType) {
+                                console.log('ContentTrackingExtension: found image URL in text:', normalizedImageUrl);
+
                                 tr = tr || newState.tr;
                                 const start = pos + matchStart;
                                 const end = pos + actualEnd;
+
+                                // 空のパラグラフ内の画像URLかチェック
+                                const $start = newState.doc.resolve(start);
+                                const isInEmptyParagraph = $start.parent.type.name === 'paragraph' &&
+                                    $start.parent.content.size === (end - start);
+
+                                console.log('ContentTrackingExtension: paragraph info:', {
+                                    parentType: $start.parent.type.name,
+                                    parentContentSize: $start.parent.content.size,
+                                    urlLength: end - start,
+                                    isInEmptyParagraph
+                                });
+
                                 // 画像ノードを作成してテキストを置換
                                 const imageNode = imageNodeType.create({
                                     src: normalizedImageUrl,
                                     alt: 'Image'
                                 });
-                                tr = tr.replaceWith(start, end, imageNode);
+
+                                if (isInEmptyParagraph) {
+                                    console.log('ContentTrackingExtension: replacing empty paragraph with image');
+                                    // 空のパラグラフ全体を画像で置換
+                                    const paragraphStart = $start.start($start.depth);
+                                    const paragraphEnd = $start.end($start.depth);
+                                    tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
+                                } else {
+                                    console.log('ContentTrackingExtension: replacing URL text with image');
+                                    // 通常の置換
+                                    tr = tr.replaceWith(start, end, imageNode);
+                                }
                                 continue;
                             }
 
@@ -152,7 +183,11 @@ export const ContentTrackingExtension = Extension.create({
                         }
                     });
 
-                    return tr && tr.docChanged ? tr : null;
+                    if (tr && tr.docChanged) {
+                        console.log('ContentTrackingExtension: returning transaction');
+                        return tr;
+                    }
+                    return null;
                 }
             }),
             // コンテンツ更新追跡プラグイン
@@ -246,41 +281,151 @@ export const ImagePasteExtension = Extension.create({
                 key: new PluginKey('image-paste'),
                 props: {
                     handlePaste: (view, event) => {
+                        // より詳細な実機デバッグログ
+                        console.log('=== ImagePasteExtension DEBUG START ===');
+                        console.log('User agent:', navigator.userAgent);
+                        console.log('Event type:', event.type);
+                        console.log('Event target:', event.target);
+
                         const text = event.clipboardData?.getData('text/plain') || '';
+                        console.log('Clipboard text length:', text.length);
+                        console.log('Clipboard text (first 100 chars):', text.substring(0, 100));
+
                         // --- 複数画像URL: 改行または半角スペース区切り対応 ---
-                        // 改行または半角スペースで分割し、空要素を除外
                         const items = text.split(/[\n ]+/).map(line => line.trim()).filter(Boolean);
+                        console.log('Split items count:', items.length);
+                        console.log('Split items:', items);
 
                         // 画像URLのみ抽出
-                        const imageNodes = items
+                        const imageUrls = items
                             .map(line => {
-                                const normalizedUrl = validateAndNormalizeImageUrl(line);
-                                if (normalizedUrl) {
-                                    return view.state.schema.nodes.image.create({
-                                        src: normalizedUrl,
-                                        alt: 'Pasted image'
-                                    });
-                                }
-                                return null;
+                                const result = validateAndNormalizeImageUrl(line);
+                                console.log(`URL validation: "${line}" -> ${result}`);
+                                return result;
                             })
                             .filter(Boolean);
 
-                        if (imageNodes.length > 0) {
+                        console.log('Valid image URLs count:', imageUrls.length);
+                        console.log('Valid image URLs:', imageUrls);
+
+                        if (imageUrls.length > 0) {
+                            console.log('=== PROCESSING IMAGE PASTE ===');
                             event.preventDefault();
-                            let { tr } = view.state;
-                            imageNodes.forEach((imageNode, idx) => {
-                                if (!imageNode) return;
-                                if (idx === 0) {
-                                    tr = tr.replaceSelectionWith(imageNode);
-                                } else {
-                                    const pos = tr.selection.$to.pos;
-                                    tr = tr.insert(pos, imageNode);
-                                }
+
+                            const { state, dispatch } = view;
+                            const { tr, selection, schema } = state;
+
+                            // 詳細な状態ログ
+                            console.log('Editor state info:');
+                            console.log('- Document structure:', JSON.stringify(state.doc.toJSON(), null, 2));
+                            console.log('- Selection:', { from: selection.from, to: selection.to, empty: selection.empty });
+
+                            // 空のパラグラフ内にカーソルがあるかチェック
+                            const $from = state.doc.resolve(selection.from);
+                            console.log('Resolved position info:');
+                            console.log('- Depth:', $from.depth);
+                            console.log('- Parent type:', $from.parent.type.name);
+                            console.log('- Parent content size:', $from.parent.content.size);
+                            console.log('- Parent node:', $from.parent.toJSON());
+
+                            const isInEmptyParagraph = selection.empty &&
+                                $from.parent.type.name === 'paragraph' &&
+                                $from.parent.content.size === 0;
+
+                            console.log('Empty paragraph check result:', isInEmptyParagraph);
+
+                            // 画像ノードを作成
+                            const imageNodes = imageUrls.map((url, index) => {
+                                const node = schema.nodes.image.create({
+                                    src: url,
+                                    alt: 'Pasted image'
+                                });
+                                console.log(`Created image node ${index}:`, node.toJSON());
+                                return node;
                             });
-                            view.dispatch(tr);
+
+                            let transaction = tr;
+
+                            if (isInEmptyParagraph && imageNodes.length > 0) {
+                                console.log('=== EMPTY PARAGRAPH REPLACEMENT ===');
+
+                                // より確実な範囲計算
+                                const paragraphStart = $from.before($from.depth);
+                                const paragraphEnd = $from.after($from.depth);
+
+                                console.log('Paragraph range calculation:');
+                                console.log('- Paragraph start:', paragraphStart);
+                                console.log('- Paragraph end:', paragraphEnd);
+                                console.log('- Range size:', paragraphEnd - paragraphStart);
+                                console.log('- Parent node size:', $from.parent.nodeSize);
+
+                                try {
+                                    // 最初の画像で置換
+                                    console.log('Replacing empty paragraph with first image...');
+                                    transaction = transaction.replaceWith(paragraphStart, paragraphEnd, imageNodes[0]);
+                                    console.log('First replacement successful');
+
+                                    // 残りの画像があれば順次挿入
+                                    let insertPos = paragraphStart + imageNodes[0].nodeSize;
+                                    console.log('Starting position for additional images:', insertPos);
+
+                                    for (let i = 1; i < imageNodes.length; i++) {
+                                        console.log(`Inserting image ${i} at position ${insertPos}`);
+                                        transaction = transaction.insert(insertPos, imageNodes[i]);
+                                        insertPos += imageNodes[i].nodeSize;
+                                        console.log(`Image ${i} inserted, next position: ${insertPos}`);
+                                    }
+
+                                    console.log('All replacements/insertions completed');
+                                } catch (error) {
+                                    console.error('Error during paragraph replacement:', error);
+                                    console.log('Falling back to normal insertion...');
+
+                                    // フォールバック: 通常の挿入
+                                    transaction = tr; // リセット
+                                    imageNodes.forEach((imageNode, idx) => {
+                                        if (idx === 0) {
+                                            transaction = transaction.replaceSelectionWith(imageNode);
+                                        } else {
+                                            const pos = transaction.selection.$to.pos;
+                                            transaction = transaction.insert(pos, imageNode);
+                                        }
+                                    });
+                                }
+                            } else {
+                                console.log('=== NORMAL INSERTION ===');
+                                // 通常の挿入処理
+                                imageNodes.forEach((imageNode, idx) => {
+                                    console.log(`Normal insertion of image ${idx}`);
+                                    if (idx === 0) {
+                                        transaction = transaction.replaceSelectionWith(imageNode);
+                                    } else {
+                                        const pos = transaction.selection.$to.pos;
+                                        transaction = transaction.insert(pos, imageNode);
+                                    }
+                                });
+                            }
+
+                            console.log('Final transaction steps:', transaction.steps.length);
+                            console.log('Dispatching transaction...');
+
+                            // 実機でのタイミング問題対策として少し遅延
+                            setTimeout(() => {
+                                try {
+                                    dispatch(transaction);
+                                    console.log('Transaction dispatched successfully');
+                                    console.log('=== ImagePasteExtension DEBUG END (SUCCESS) ===');
+                                } catch (error) {
+                                    console.error('Error dispatching transaction:', error);
+                                    console.log('=== ImagePasteExtension DEBUG END (ERROR) ===');
+                                }
+                            }, 10);
+
                             return true;
                         }
 
+                        console.log('No image URLs found, allowing normal paste');
+                        console.log('=== ImagePasteExtension DEBUG END (NORMAL) ===');
                         // 画像URLがなければ通常の貼り付け
                         return false;
                     }

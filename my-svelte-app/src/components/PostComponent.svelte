@@ -381,6 +381,22 @@
     }
   }
 
+  // スマートフォン実機用の追加イベントハンドラー
+  function handlePasteEvent(event: ClipboardEvent) {
+    console.log("=== PostComponent PASTE EVENT ===");
+    console.log("Event type:", event.type);
+    console.log("Event target:", event.target);
+    console.log("Clipboard data available:", !!event.clipboardData);
+
+    if (event.clipboardData) {
+      const text = event.clipboardData.getData("text/plain");
+      console.log("Paste text length:", text.length);
+      console.log("Paste text preview:", text.substring(0, 100));
+
+      // 実機での追加処理が必要な場合はここに追加
+    }
+  }
+
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
   $: if (
     currentEditor &&
@@ -409,6 +425,7 @@
     class="editor-container"
     class:drag-over={dragOver}
     on:keydown={handleEditorKeydown}
+    on:paste={handlePasteEvent}
     on:dragover={handleDragOver}
     on:dragleave={handleDragLeave}
     on:drop={handleDrop}
