@@ -24,28 +24,44 @@
 
     // ドラッグ開始イベント発火
     function dispatchDragStart() {
-        window.dispatchEvent(
+        const startEvent = new CustomEvent("touch-image-drag-start", {
+            detail: { nodePos: getPos() },
+            bubbles: true,
+            cancelable: true,
+        });
+
+        console.log("Dispatching touch-image-drag-start:", startEvent.detail); // デバッグログ
+        window.dispatchEvent(startEvent);
+        document.dispatchEvent(
             new CustomEvent("touch-image-drag-start", {
-                detail: { nodePos: getPos() },
+                detail: startEvent.detail,
             }),
         );
     }
 
     // ドラッグ終了イベント発火
     function dispatchDragEnd() {
-        window.dispatchEvent(
-            new CustomEvent("touch-image-drop", {
-                detail: {
-                    nodeData: {
-                        type: "image",
-                        attrs: node.attrs,
-                        pos: getPos(),
-                    },
-                    dropX: 0,
-                    dropY: 0,
-                    target: null,
-                    dropPosition: null,
+        const endEvent = new CustomEvent("touch-image-drop", {
+            detail: {
+                nodeData: {
+                    type: "image",
+                    attrs: node.attrs,
+                    pos: getPos(),
                 },
+                dropX: 0,
+                dropY: 0,
+                target: null,
+                dropPosition: null,
+            },
+            bubbles: true,
+            cancelable: true,
+        });
+
+        console.log("Dispatching touch-image-drop:", endEvent.detail); // デバッグログ
+        window.dispatchEvent(endEvent);
+        document.dispatchEvent(
+            new CustomEvent("touch-image-drop", {
+                detail: endEvent.detail,
             }),
         );
     }
@@ -140,6 +156,27 @@
 
         // ホバー中のドロップゾーンをハイライト
         highlightDropZoneAtPosition(touch.clientX, touch.clientY);
+
+        // 自動スクロール用のイベントを確実に発火
+        const moveEvent = new CustomEvent("touch-image-drag-move", {
+            detail: {
+                touchX: touch.clientX,
+                touchY: touch.clientY,
+                nodePos: getPos(),
+            },
+            bubbles: true,
+            cancelable: true,
+        });
+
+        console.log("Dispatching touch-image-drag-move:", moveEvent.detail); // デバッグログ
+        window.dispatchEvent(moveEvent);
+
+        // 追加: 直接DOMイベントも発火（フォールバック）
+        document.dispatchEvent(
+            new CustomEvent("touch-image-drag-move", {
+                detail: moveEvent.detail,
+            }),
+        );
     }
 
     // ドロップゾーンのホバーハイライト処理
@@ -206,20 +243,26 @@
                     dropX: touch.clientX,
                     dropY: touch.clientY,
                     target: elementBelow,
-                    dropPosition: targetDropPos, // 明示的なドロップ位置を追加
+                    dropPosition: targetDropPos,
                 },
+                bubbles: true,
+                cancelable: true,
             });
+
             console.log(
-                "Dispatching touch-image-drop event:",
+                "Dispatching final touch-image-drop event:",
                 touchDropEvent.detail,
             ); // デバッグログ
             window.dispatchEvent(touchDropEvent);
+            document.dispatchEvent(
+                new CustomEvent("touch-image-drop", {
+                    detail: touchDropEvent.detail,
+                }),
+            );
         }
 
         isDragging = false;
         removeDragPreview();
-        // PC/スマホ共通でドラッグ終了イベント発火
-        dispatchDragEnd();
     }
 
     // コンテキストメニュー抑制

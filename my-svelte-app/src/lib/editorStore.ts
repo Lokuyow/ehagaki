@@ -93,31 +93,30 @@ export function createEditorStore(placeholderText: string) {
                 return false;
             },
         },
+        onCreate({ editor }) {
+            // エディター作成時にグローバル参照を設定
+            (window as any).__currentEditor = editor;
+        },
+        onDestroy() {
+            // エディター破棄時にグローバル参照をクリア
+            delete (window as any).__currentEditor;
+        }
     });
 
-    // プレースホルダー更新機能を簡潔に修正
+    // プレースホルダー更新機能を修正
     const updatePlaceholder = (newPlaceholder: string) => {
-        // editorStoreから現在のエディターインスタンスを取得
-        let currentEditor: any;
-        const unsubscribe = editorStore.subscribe(editor => {
-            currentEditor = editor;
-        });
-        unsubscribe();
-
+        const currentEditor = (window as any).__currentEditor;
         if (currentEditor) {
-            // DOM要素に直接プレースホルダーを設定
             const editorElement = currentEditor.view.dom;
             if (editorElement) {
                 editorElement.setAttribute('data-placeholder', newPlaceholder);
             }
 
-            // プレースホルダー拡張のオプションも更新
             const placeholderExt = currentEditor.extensionManager.extensions.find(
                 (ext: any) => ext.name === 'placeholder'
             );
             if (placeholderExt) {
                 placeholderExt.options.placeholder = newPlaceholder;
-                // エディターを再描画
                 currentEditor.view.dispatch(
                     currentEditor.state.tr.setMeta('forceUpdate', true)
                 );

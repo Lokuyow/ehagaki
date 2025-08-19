@@ -31,6 +31,7 @@
   export let onUploadProgress: ((progress: any) => void) | undefined;
 
   let editor: any;
+  let currentEditor: any = null;
   let dragOver = false;
   let fileInput: HTMLInputElement;
 
@@ -68,14 +69,20 @@
       $_("enter_your_text") || "テキストを入力してください";
     editor = createEditorStore(initialPlaceholder);
 
+    // エディター状態の購読
+    const unsubscribe = editor.subscribe((editorInstance: any) => {
+      currentEditor = editorInstance;
+    });
+
     const handleContentUpdate = (event: CustomEvent) => {
       const plainText = event.detail.plainText;
       let hasImage = false;
-      if ($editor) {
-        hasImage = hasImageInDoc($editor.state?.doc);
+      if (currentEditor) {
+        hasImage = hasImageInDoc(currentEditor.state?.doc);
       }
       updateEditorContent(plainText, hasImage);
     };
+
     window.addEventListener(
       "editor-content-changed",
       handleContentUpdate as EventListener,
@@ -87,16 +94,9 @@
         handleContentUpdate as EventListener,
       );
       try {
-        if (editor) {
-          let currentEditor: any;
-          const unsub = (editor as any).subscribe
-            ? (editor as any).subscribe((v: any) => (currentEditor = v))
-            : null;
-          if (typeof unsub === "function") unsub();
-          if (currentEditor && typeof currentEditor.destroy === "function")
-            currentEditor.destroy();
-          if (typeof (editor as any).destroy === "function")
-            (editor as any).destroy();
+        unsubscribe();
+        if (currentEditor && typeof currentEditor.destroy === "function") {
+          currentEditor.destroy();
         }
       } catch (e) {
         console.warn("Editor cleanup failed:", e);
@@ -179,7 +179,7 @@
         }
       }
       if (successUrls.length) {
-        insertImagesToEditor($editor, successUrls);
+        insertImagesToEditor(currentEditor, successUrls);
       }
       if (failedResults.length)
         showUploadError(
@@ -195,7 +195,7 @@
   // --- 投稿処理 ---
   export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
-    const postContent = extractContentWithImages($editor) || "";
+    const postContent = extractContentWithImages(currentEditor) || "";
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
@@ -206,7 +206,8 @@
 
   async function executePost(content?: string) {
     if (!postManager) return console.error("PostManager is not initialized");
-    const postContent = content || extractContentWithImages($editor) || "";
+    const postContent =
+      content || extractContentWithImages(currentEditor) || "";
 
     updatePostStatus({
       sending: true,
@@ -246,8 +247,8 @@
 
   export function resetPostContent() {
     resetEditorState();
-    if ($editor) {
-      $editor.chain().clearContent().run();
+    if (currentEditor) {
+      currentEditor.chain().clearContent().run();
     }
   }
 
@@ -326,9 +327,26 @@
       target &&
       target.closest('.editor-image-button[data-dragging="true"]')
     ) {
-      // ドラッグ中の画像の場合のみスクロールを防止
-      event.preventDefault();
-      return false;
+      // ドラッグ中の画像の場合、自動スクロール境界外ではスクロールを防止
+      const touch = event.touches[0];
+      const scrollThreshold = 120; // ImageDragDropExtensionと同じ値に更新
+
+      // エディター境界を取得
+      const tiptapEditor = document.querySelector(
+        ".tiptap-editor",
+      ) as HTMLElement;
+      if (tiptapEditor) {
+        const editorRect = tiptapEditor.getBoundingClientRect();
+        const isNearTop = touch.clientY < editorRect.top + scrollThreshold;
+        const isNearBottom =
+          touch.clientY > editorRect.bottom - scrollThreshold;
+
+        // 境界近くでない場合のみスクロールを防止
+        if (!isNearTop && !isNearBottom) {
+          event.preventDefault();
+          return false;
+        }
+      }
     }
     // その他の場合は通常のスクロールを許可
   }
@@ -360,15 +378,15 @@
       (event.key === "Enter" || event.key === "NumpadEnter")
     ) {
       event.preventDefault();
-      const content = extractContentWithImages($editor) || "";
+      const content = extractContentWithImages(currentEditor) || "";
       if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
     }
   }
 
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
   $: if (
-    $editor &&
-    extractContentWithImages($editor) !== $editorState.content
+    currentEditor &&
+    extractContentWithImages(currentEditor) !== $editorState.content
   ) {
     if (postStatus.error) {
       updatePostStatus({ ...postStatus, error: false, message: "" });
@@ -403,8 +421,8 @@
     role="textbox"
     tabindex="0"
   >
-    {#if editor && $editor}
-      <EditorContent editor={$editor} class="editor-content" />
+    {#if editor && currentEditor}
+      <EditorContent editor={currentEditor} class="editor-content" />
     {/if}
   </div>
 
@@ -476,6 +494,8 @@
     touch-action: pan-y; /* 縦スクロールのみ許可 */
     /* ドラッグ中のスクロール制御を改善 */
     overscroll-behavior: contain;
+    /* 自動スクロール時はスムーズスクロールを無効化 */
+    scroll-behavior: auto;
   }
 
   .editor-container:focus {
@@ -510,6 +530,12 @@
     word-break: break-word;
     overflow-y: auto;
     overflow-x: hidden;
+    /* スクロール最適化 */
+    scroll-behavior: auto;
+    -webkit-overflow-scrolling: touch;
+    /* GPU加速を有効化 */
+    will-change: scroll-position;
+    transform: translateZ(0);
   }
 
   /* プレースホルダースタイル */
@@ -610,6 +636,11 @@
       /* タッチデバイスでの選択を改善 */
       -webkit-user-select: text;
       user-select: text;
+      /* スクロールパフォーマンス最適化 */
+      -webkit-transform: translateZ(0);
+      transform: translateZ(0);
+      backface-visibility: hidden;
+      perspective: 1000;
     }
   }
 

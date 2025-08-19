@@ -263,10 +263,19 @@ export const ImageDragDropExtension = Extension.create({
             new Plugin({
                 key: imageDragDropKey,
                 state: {
-                    init: () => ({ isDragging: false, draggedNodePos: null }),
+                    init: () => ({
+                        isDragging: false,
+                        draggedNodePos: null,
+                        autoScrollInterval: null as ReturnType<typeof setInterval> | null
+                    }),
                     apply: (tr, value) => {
                         const meta = tr.getMeta('imageDrag');
                         if (meta) {
+                            // 自動スクロール制御
+                            if (meta.isDragging === false && value.autoScrollInterval) {
+                                clearInterval(value.autoScrollInterval);
+                                return { ...value, ...meta, autoScrollInterval: null };
+                            }
                             return { ...value, ...meta };
                         }
                         return value;
@@ -298,8 +307,80 @@ export const ImageDragDropExtension = Extension.create({
                     }
                 },
                 view: (editorView) => {
+                    let currentAutoScrollFrame: number | null = null;
+                    
+                    const startAutoScroll = (direction: 'up' | 'down', touchY: number) => {
+                        // 既存のスクロールを停止
+                        if (currentAutoScrollFrame) {
+                            cancelAnimationFrame(currentAutoScrollFrame);
+                            currentAutoScrollFrame = null;
+                        }
+
+                        const tiptapEditor = editorView.dom as HTMLElement;
+                        if (!tiptapEditor) return;
+
+                        const rect = tiptapEditor.getBoundingClientRect();
+                        const scrollThreshold = 120; // 境界範囲
+                        
+                        // 境界からの距離に応じて速度を調整（より滑らかに）
+                        let distance = 0;
+                        if (direction === 'up') {
+                            distance = touchY - rect.top;
+                        } else {
+                            distance = rect.bottom - touchY;
+                        }
+                        
+                        // 距離に応じた速度計算（より滑らかな範囲）
+                        const normalizedDistance = Math.max(0, Math.min(1, distance / scrollThreshold));
+                        const baseSpeed = 2; // 基本速度を下げる
+                        const maxSpeed = 8; // 最高速度を下げる
+                        const scrollSpeed = baseSpeed + (maxSpeed - baseSpeed) * (1 - normalizedDistance);
+
+                        const animateScroll = () => {
+                            const currentScrollTop = tiptapEditor.scrollTop;
+                            const scrollHeight = tiptapEditor.scrollHeight;
+                            const clientHeight = tiptapEditor.clientHeight;
+
+                            if (direction === 'up' && currentScrollTop > 0) {
+                                const newScrollTop = Math.max(0, currentScrollTop - scrollSpeed);
+                                tiptapEditor.scrollTop = newScrollTop;
+                                
+                                if (newScrollTop > 0) {
+                                    currentAutoScrollFrame = requestAnimationFrame(animateScroll);
+                                }
+                            } else if (direction === 'down' && currentScrollTop < scrollHeight - clientHeight) {
+                                const newScrollTop = Math.min(scrollHeight - clientHeight, currentScrollTop + scrollSpeed);
+                                tiptapEditor.scrollTop = newScrollTop;
+                                
+                                if (newScrollTop < scrollHeight - clientHeight) {
+                                    currentAutoScrollFrame = requestAnimationFrame(animateScroll);
+                                }
+                            }
+                        };
+
+                        currentAutoScrollFrame = requestAnimationFrame(animateScroll);
+                    };
+
+                    const stopAutoScroll = () => {
+                        if (currentAutoScrollFrame) {
+                            cancelAnimationFrame(currentAutoScrollFrame);
+                            currentAutoScrollFrame = null;
+                        }
+                    };
+
                     const handleTouchDrop = (event: CustomEvent) => {
+                        console.log('Touch drop received in extension'); // デバッグログ
                         const { nodeData, dropPosition, dropX, dropY } = event.detail;
+                        stopAutoScroll();
+
+                        // ドラッグ状態を解除
+                        editorView.dispatch(
+                            editorView.state.tr.setMeta('imageDrag', {
+                                isDragging: false,
+                                draggedNodePos: null
+                            })
+                        );
+
                         if (nodeData && nodeData.type === 'image') {
                             let targetPos: number;
                             if (typeof dropPosition === 'number') {
@@ -312,24 +393,64 @@ export const ImageDragDropExtension = Extension.create({
                                 targetPos = coords?.pos || nodeData.pos;
                             }
                             if (typeof nodeData.pos === 'number') {
-                                setDraggingFalse(editorView);
                                 moveImageNode(editorView, nodeData, targetPos);
                             }
                         }
                     };
 
                     const handleTouchDragStart = (event: CustomEvent) => {
+                        console.log('Touch drag start received in extension'); // デバッグログ
                         const { nodePos } = event.detail;
-                        editorView.dispatch(editorView.state.tr.setMeta('imageDrag', { isDragging: true, draggedNodePos: nodePos }));
+                        editorView.dispatch(
+                            editorView.state.tr.setMeta('imageDrag', {
+                                isDragging: true,
+                                draggedNodePos: nodePos
+                            })
+                        );
+                    };
+
+                    const handleTouchMove = (event: CustomEvent) => {
+                        const { touchY } = event.detail;
+                        if (typeof touchY !== 'number') return;
+
+                        const state = imageDragDropKey.getState(editorView.state);
+                        if (!state?.isDragging) return;
+
+                        // .tiptap-editor要素を直接取得
+                        const tiptapEditor = editorView.dom as HTMLElement;
+                        if (!tiptapEditor) return;
+
+                        const rect = tiptapEditor.getBoundingClientRect();
+                        const scrollThreshold = 120; // 拡大された境界範囲
+
+                        console.log('Touch move:', { touchY, rect, isDragging: state.isDragging }); // デバッグログ
+
+                        // 上端近くでスクロールアップ（範囲拡大）
+                        if (touchY < rect.top + scrollThreshold) {
+                            console.log('Starting auto scroll up, distance:', rect.top + scrollThreshold - touchY); // デバッグログ
+                            startAutoScroll('up', touchY);
+                        }
+                        // 下端近くでスクロールダウン（範囲拡大）
+                        else if (touchY > rect.bottom - scrollThreshold) {
+                            console.log('Starting auto scroll down, distance:', touchY - (rect.bottom - scrollThreshold)); // デバッグログ
+                            startAutoScroll('down', touchY);
+                        }
+                        // 中間位置では自動スクロール停止
+                        else {
+                            stopAutoScroll();
+                        }
                     };
 
                     window.addEventListener('touch-image-drop', handleTouchDrop as EventListener);
                     window.addEventListener('touch-image-drag-start', handleTouchDragStart as EventListener);
+                    window.addEventListener('touch-image-drag-move', handleTouchMove as EventListener);
 
                     return {
                         destroy() {
+                            stopAutoScroll();
                             window.removeEventListener('touch-image-drop', handleTouchDrop as EventListener);
                             window.removeEventListener('touch-image-drag-start', handleTouchDragStart as EventListener);
+                            window.removeEventListener('touch-image-drag-move', handleTouchMove as EventListener);
                         }
                     };
                 }
@@ -442,6 +563,9 @@ function setDraggingFalse(viewOrEditorView: any) {
         viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
     );
 }
+
+// ノード移動処理を共通化
+// (重複定義を削除しました)
 
 // ノード移動処理を共通化
 function moveImageNode(view: any, nodeData: any, dropPos: number) {
