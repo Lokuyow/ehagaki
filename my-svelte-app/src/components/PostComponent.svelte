@@ -6,11 +6,11 @@
   import { FileUploadManager } from "../lib/fileUploadManager";
   import type { UploadInfoCallbacks } from "../lib/types";
   import { containsSecretKey } from "../lib/utils";
-  import { createEditorStore } from "../lib/editorStore";
+  import { createEditorStore } from "../lib/editor/store";
   import {
     insertImagesToEditor,
     extractContentWithImages,
-  } from "../lib/editorUtils";
+  } from "../lib/editor/editorUtils";
   import {
     placeholderTextStore,
     editorState,
@@ -18,7 +18,7 @@
     updatePostStatus,
     updateUploadState,
     resetEditorState,
-  } from "../lib/editorStore";
+  } from "../lib/editor/store";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
 

@@ -1,9 +1,9 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { updateHashtagData } from "./stores";
+import { updateHashtagData } from "../stores";
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse } from './editorUtils';
-import { HASHTAG_REGEX } from './constants';
+import { HASHTAG_REGEX } from '../constants';
 
 // 文字境界判定用の共通関数
 function isWordBoundary(char: string | undefined): boolean {

@@ -4,11 +4,11 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
-import SvelteImageNode from '../components/SvelteImageNode.svelte';
+import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from './editorUtils';
-import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension } from './editorExtensions';
+import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension } from './extensions';
 import { writable } from 'svelte/store';
-import type { PostStatus, EditorState } from './types'; // 型定義をtypes.tsからインポート
+import type { PostStatus, EditorState } from '../types'; // 型定義をtypes.tsからインポート
 
 /**
  * Tiptap v2のエディターストアを作成

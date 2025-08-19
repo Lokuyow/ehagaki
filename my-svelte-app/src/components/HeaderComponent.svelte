@@ -1,6 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { editorState } from "../lib/editorStore";
+    import { editorState } from "../lib/editor/store";
     import { authState } from "../lib/stores";
     import Button from "./Button.svelte";
 

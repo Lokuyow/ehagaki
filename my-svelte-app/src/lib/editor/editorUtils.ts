@@ -220,7 +220,7 @@ export function setDraggingFalse(viewOrEditorView: any) {
 }
 
 // エディタ周りに特化した URL 検証/正規化関数をここに移動
-import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "./constants";
+import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
 
 export function validateAndNormalizeUrl(url: string): string | null {
     // 軽量な正規化 + プロトコルチェック
