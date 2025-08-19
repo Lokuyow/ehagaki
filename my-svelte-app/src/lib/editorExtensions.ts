@@ -259,19 +259,6 @@ export const ImageDragDropExtension = Extension.create({
         const imageDragDropKey = new PluginKey('image-drag-drop');
         const dropZoneKey = new PluginKey('drop-zone-indicator');
 
-        // ドラッグ状態を解除する共通関数
-        function setDraggingFalse(viewOrEditorView: any) {
-            viewOrEditorView.dispatch(
-                viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
-            );
-        }
-
-        // ノード移動処理を共通化
-        function moveImage(viewOrEditorView: any, nodeData: any, targetPos: number, moveImageNode: any) {
-            setDraggingFalse(viewOrEditorView);
-            moveImageNode(viewOrEditorView, nodeData, targetPos);
-        }
-
         return [
             new Plugin({
                 key: imageDragDropKey,
@@ -298,7 +285,8 @@ export const ImageDragDropExtension = Extension.create({
                                         top: event.clientY
                                     });
                                     if (coords && typeof nodeData.pos === 'number') {
-                                        moveImage(view, nodeData, coords.pos, (this as any).storage.moveImageNode);
+                                        setDraggingFalse(view);
+                                        moveImageNode(view, nodeData, coords.pos);
                                         return true;
                                     }
                                 }
@@ -324,7 +312,8 @@ export const ImageDragDropExtension = Extension.create({
                                 targetPos = coords?.pos || nodeData.pos;
                             }
                             if (typeof nodeData.pos === 'number') {
-                                moveImage(editorView, nodeData, targetPos, (this as any).storage.moveImageNode);
+                                setDraggingFalse(editorView);
+                                moveImageNode(editorView, nodeData, targetPos);
                             }
                         }
                     };
@@ -439,52 +428,49 @@ export const ImageDragDropExtension = Extension.create({
     addStorage() {
         return {
             moveImageNode: (view: any, nodeData: any, dropPos: number) => {
-                const { tr, schema } = view.state;
-                let transaction = tr;
-
-                // ドロップ位置と元の位置を取得
-                const originalPos = nodeData.pos;
-
-                console.log('Moving image:', { originalPos, dropPos });
-
-                // 同じ位置にドロップした場合は何もしない
-                if (dropPos === originalPos) {
-                    console.log('Same position drop, ignoring');
-                    return true;
-                }
-
-                // 新しい画像ノードを作成
-                const imageNode = schema.nodes.image.create(nodeData.attrs);
-
-                try {
-                    // 位置関係に応じて削除と挿入の順序を調整
-                    if (dropPos < originalPos) {
-                        // ドロップ位置が元の位置より前の場合
-                        console.log('Dropping before original position');
-                        transaction = transaction.insert(dropPos, imageNode);
-                        // 元のノードを削除（位置が1つずれるため+1）
-                        transaction = transaction.delete(originalPos + 1, originalPos + 2);
-                    } else if (dropPos > originalPos + 1) {
-                        // ドロップ位置が元の位置より十分後ろの場合
-                        console.log('Dropping after original position');
-                        // 先に元のノードを削除
-                        transaction = transaction.delete(originalPos, originalPos + 1);
-                        // 削除によって位置が調整されるため-1
-                        transaction = transaction.insert(dropPos - 1, imageNode);
-                    } else {
-                        // 隣接位置への移動は無視
-                        console.log('Adjacent position drop, ignoring');
-                        return true;
-                    }
-
-                    view.dispatch(transaction);
-                    console.log('Image moved successfully');
-                    return true;
-                } catch (error) {
-                    console.error('Error moving image:', error);
-                    return false;
-                }
+                setDraggingFalse(view);
+                return moveImageNode(view, nodeData, dropPos);
             }
         };
     }
 });
+
+// --- 共通ユーティリティ: ドラッグ状態解除・ノード移動 ---
+// ドラッグ状態を解除する共通関数
+function setDraggingFalse(viewOrEditorView: any) {
+    viewOrEditorView.dispatch(
+        viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
+    );
+}
+
+// ノード移動処理を共通化
+function moveImageNode(view: any, nodeData: any, dropPos: number) {
+    const { tr, schema } = view.state;
+    let transaction = tr;
+    const originalPos = nodeData.pos;
+
+    // 同じ位置にドロップした場合は何もしない
+    if (dropPos === originalPos) {
+        return true;
+    }
+
+    const imageNode = schema.nodes.image.create(nodeData.attrs);
+
+    try {
+        if (dropPos < originalPos) {
+            transaction = transaction.insert(dropPos, imageNode);
+            transaction = transaction.delete(originalPos + 1, originalPos + 2);
+        } else if (dropPos > originalPos + 1) {
+            transaction = transaction.delete(originalPos, originalPos + 1);
+            transaction = transaction.insert(dropPos - 1, imageNode);
+        } else {
+            // 隣接位置への移動は無視
+            return true;
+        }
+        view.dispatch(transaction);
+        return true;
+    } catch (error) {
+        console.error('Error moving image:', error);
+        return false;
+    }
+}
