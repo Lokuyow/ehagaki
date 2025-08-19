@@ -68,13 +68,13 @@
   $: showSwUpdateModal = $showSwUpdateModalStore;
   $: if ($swNeedRefresh) openSwUpdateModal();
 
+  // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = "";
   let secretKey = "";
   const publicKeyState = authService.getPublicKeyState();
   $: publicKeyState.setNsec(secretKey);
 
   $: isAuthenticated = $authState.isAuthenticated;
-  $: isNostrLoginAuth = $authState.type === "nostr-login";
   $: isAuthInitialized = $authState.isInitialized;
 
   $: debugAuthState("Auth state changed", $authState);
@@ -149,13 +149,13 @@
     }
   }
 
+  // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey() {
     const result = await authService.authenticateWithNsec(secretKey);
     if (!result.success) {
       errorMessage = result.error || "authentication_error";
       return;
     }
-
     isLoadingProfileStore.set(true);
     showLoginDialogStore.set(false);
     errorMessage = "";

@@ -10,33 +10,32 @@
     export let onClose: () => void;
     export let onSave: () => void;
     export let onNostrLogin: () => void;
-    export let isLoadingNostrLogin: boolean = false; // ← 変更
+    export let isLoadingNostrLogin: boolean = false;
 
-    // 公開鍵状態管理（リアクティブ）
+    // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
 
-    // 入力を動的に監視してリアクティブに更新
+    // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $: if (secretKey !== undefined) {
         publicKeyState.setNsec(secretKey);
     }
 
-    // 公開鍵状態をサブスクライブして状態を取得
+    // --- 公開鍵状態のサブスクライブ ---
     $: isValid = false;
     $: npubValue = "";
     $: nprofileValue = "";
-
-    // 各ストアをサブスクライブ
     $: publicKeyState.isValid.subscribe((val) => (isValid = val));
     $: publicKeyState.npub.subscribe((val) => (npubValue = val));
     $: publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
 
-    // エラーメッセージの動的更新
+    // --- バリデーションによるエラーメッセージ制御 ---
     $: if (secretKey) {
         errorMessage = isValid ? "" : "invalid_secret";
     } else {
         errorMessage = "";
     }
 
+    // --- UIイベントハンドラ ---
     function handleClose() {
         onClose?.();
     }
@@ -47,7 +46,6 @@
         secretKey = "";
     }
     function handleNostrLogin() {
-        // isLoadingProfileは親で制御
         onNostrLogin?.();
     }
 </script>

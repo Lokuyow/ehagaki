@@ -20,9 +20,13 @@ export interface NostrLoginAuth {
 }
 
 export class PublicKeyState {
+  // --- nsec（秘密鍵）管理 ---
   private _nsecStore = writable<string>("");
+  // 公開鍵データ
   private _dataStore = writable<PublicKeyData>({ hex: "", npub: "", nprofile: "" });
+  // バリデーション状態
   private _isValidStore = writable(false);
+  // nostr-login認証状態
   private _isNostrLoginStore = writable(false);
 
   readonly nsec: Readable<string> = { subscribe: this._nsecStore.subscribe };
@@ -35,35 +39,34 @@ export class PublicKeyState {
   readonly nprofile = derived(this._dataStore, ($data) => $data.nprofile);
 
   constructor() {
+    // nsecが変更されたら自動的に公開鍵情報を更新
     this._nsecStore.subscribe((nsec) => this.updateFromNsec(nsec));
   }
 
+  // --- nsec（秘密鍵）セット ---
   setNsec(nsec: string): void {
     const sanitizedNsec = nsec?.trim() || "";
     this._nsecStore.set(sanitizedNsec);
     this._isNostrLoginStore.set(false);
   }
 
+  // --- nostr-login認証セット ---
   setNostrLoginAuth(auth: NostrLoginAuth): void {
     if (auth.type === 'logout') {
       this.clear();
       return;
     }
-
     if (!auth.pubkey) {
       console.warn("NostrLoginAuth: pubkey is required for login/signup");
       return;
     }
-
     try {
       const npub = auth.npub || nip19.npubEncode(auth.pubkey);
       const nprofile = nip19.nprofileEncode({ pubkey: auth.pubkey, relays: [] });
-
       this._dataStore.set({ hex: auth.pubkey, npub, nprofile });
       this._isValidStore.set(true);
       this._isNostrLoginStore.set(true);
       this._nsecStore.set("");
-
       setNostrLoginAuth(auth.pubkey, npub, nprofile);
     } catch (error) {
       console.error("Failed to set NostrLogin auth:", error);
@@ -71,19 +74,18 @@ export class PublicKeyState {
     }
   }
 
+  // --- nsecから公開鍵情報を導出 ---
   private updateFromNsec(nsec: string): void {
     if (!nsec || !isValidNsec(nsec)) {
       this._resetState();
       return;
     }
-
     try {
       const derivedData = derivePublicKeyFromNsec(nsec);
       if (derivedData.hex) {
         this._dataStore.set(derivedData);
         this._isValidStore.set(true);
         // 入力中はグローバル認証状態を更新しない（保存時にのみ更新）
-        // setNsecAuth(derivedData.hex, derivedData.npub, derivedData.nprofile);
       } else {
         this._resetState();
       }
@@ -93,31 +95,32 @@ export class PublicKeyState {
     }
   }
 
+  // --- 内部状態リセット ---
   private _resetState(): void {
     this._dataStore.set({ hex: "", npub: "", nprofile: "" });
     this._isValidStore.set(false);
   }
 
+  // --- 全クリア ---
   clear(): void {
     this._nsecStore.set("");
     this._isNostrLoginStore.set(false);
     clearAuthState();
   }
 
-  // パフォーマンス改善: get()を使用
+  // --- 現在値取得（パフォーマンス用） ---
   get currentIsValid(): boolean {
     return get(this._isValidStore);
   }
-
   get currentHex(): string {
     return get(this.hex);
   }
-
   get currentIsNostrLogin(): boolean {
     return get(this._isNostrLoginStore);
   }
 }
 
+// --- ストレージ操作・ユーティリティ ---
 interface KeyManagerError {
   type: 'storage' | 'network' | 'validation';
   message: string;
@@ -128,6 +131,7 @@ export const keyManager = {
   isValidNsec,
   derivePublicKey: derivePublicKeyFromNsec,
 
+  // --- 秘密鍵をストレージに保存 ---
   saveToStorage(key: string): { success: boolean; error?: KeyManagerError } {
     if (!key?.trim()) {
       return {
@@ -135,7 +139,6 @@ export const keyManager = {
         error: { type: 'validation', message: 'Key cannot be empty' }
       };
     }
-
     try {
       localStorage.setItem("nostr-secret-key", key.trim());
       return { success: true };
@@ -150,6 +153,7 @@ export const keyManager = {
     }
   },
 
+  // --- 秘密鍵をストレージから取得 ---
   loadFromStorage(): string | null {
     try {
       return localStorage.getItem("nostr-secret-key");
@@ -159,6 +163,7 @@ export const keyManager = {
     }
   },
 
+  // --- 秘密鍵が保存されているか判定 ---
   hasStoredKey(): boolean {
     try {
       return !!localStorage.getItem("nostr-secret-key");
@@ -168,6 +173,7 @@ export const keyManager = {
     }
   },
 
+  // --- window.nostrの有無判定 ---
   isWindowNostrAvailable(): boolean {
     return typeof window !== 'undefined' &&
       'nostr' in window &&
@@ -176,6 +182,7 @@ export const keyManager = {
       typeof window.nostr.getPublicKey === 'function';
   },
 
+  // --- window.nostrから公開鍵取得 ---
   async getPublicKeyFromWindowNostr(): Promise<{ success: boolean; pubkey?: string; error?: KeyManagerError }> {
     if (!this.isWindowNostrAvailable()) {
       return {
@@ -183,7 +190,6 @@ export const keyManager = {
         error: { type: 'validation', message: 'window.nostr is not available' }
       };
     }
-
     try {
       const pubkey = await window.nostr.getPublicKey();
       return { success: true, pubkey };

@@ -37,6 +37,7 @@ export const imageSizeInfoStore = writable<{ info: SizeDisplayInfo | null; visib
     visible: false
 });
 
+// --- 認証状態ストアと操作関数 ---
 const initialAuthState: AuthState = {
     type: 'none',
     isAuthenticated: false,
@@ -47,6 +48,46 @@ const initialAuthState: AuthState = {
     isInitialized: false
 };
 export const authState = writable<AuthState>(initialAuthState);
+
+// --- 認証状態の更新 ---
+export function updateAuthState(newState: Partial<AuthState>): void {
+    authState.update(current => {
+        const updated = { ...current, ...newState };
+        updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
+        return updated;
+    });
+}
+
+// --- 認証状態のクリア ---
+export function clearAuthState(preserveInitialized: boolean = true): void {
+    authState.update(current => ({
+        ...initialAuthState,
+        isInitialized: preserveInitialized ? current.isInitialized : false
+    }));
+}
+
+// --- nsec認証セット ---
+export function setNsecAuth(pubkey: string, npub: string, nprofile: string): void {
+    if (!pubkey || !npub || !nprofile) {
+        console.warn('setNsecAuth: All parameters are required');
+        return;
+    }
+    updateAuthState({ type: 'nsec', pubkey, npub, nprofile, isValid: true });
+}
+
+// --- nostr-login認証セット ---
+export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string): void {
+    if (!pubkey || !npub || !nprofile) {
+        console.warn('setNostrLoginAuth: All parameters are required');
+        return;
+    }
+    updateAuthState({ type: 'nostr-login', pubkey, npub, nprofile, isValid: true });
+}
+
+// --- 認証初期化フラグセット ---
+export function setAuthInitialized(): void {
+    updateAuthState({ isInitialized: true });
+}
 
 export const sharedImageStore = writable<SharedImageStoreState>({
     file: null,
@@ -77,42 +118,6 @@ export const hashtagDataStore = writable<HashtagData>({
     hashtags: [],
     tags: []
 });
-
-// --- 認証関連関数 ---
-export function updateAuthState(newState: Partial<AuthState>): void {
-    authState.update(current => {
-        const updated = { ...current, ...newState };
-        updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
-        return updated;
-    });
-}
-
-export function clearAuthState(preserveInitialized: boolean = true): void {
-    authState.update(current => ({
-        ...initialAuthState,
-        isInitialized: preserveInitialized ? current.isInitialized : false
-    }));
-}
-
-export function setNsecAuth(pubkey: string, npub: string, nprofile: string): void {
-    if (!pubkey || !npub || !nprofile) {
-        console.warn('setNsecAuth: All parameters are required');
-        return;
-    }
-    updateAuthState({ type: 'nsec', pubkey, npub, nprofile, isValid: true });
-}
-
-export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string): void {
-    if (!pubkey || !npub || !nprofile) {
-        console.warn('setNostrLoginAuth: All parameters are required');
-        return;
-    }
-    updateAuthState({ type: 'nostr-login', pubkey, npub, nprofile, isValid: true });
-}
-
-export function setAuthInitialized(): void {
-    updateAuthState({ isInitialized: true });
-}
 
 // --- 画像サイズ情報表示 ---
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
