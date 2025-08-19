@@ -3,7 +3,7 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { get } from "svelte/store";
 import { authState, hashtagDataStore } from "./stores";
-import { HASHTAG_REGEX } from "./editorExtensions";
+import { HASHTAG_REGEX } from "./constants";
 
 // 投稿結果の型定義
 export interface PostResult {

@@ -1,21 +1,5 @@
 import { createRxForwardReq } from "rx-nostr";
-
-export const BOOTSTRAP_RELAYS = [
-    "wss://purplepag.es/",
-    "wss://directory.yabu.me/",
-    "wss://indexer.coracle.social/",
-    "wss://user.kindpag.es/",
-];
-
-const FALLBACK_RELAYS = [
-    "wss://relay.nostr.band/",
-    "wss://nos.lol/",
-    "wss://relay.damus.io/",
-    "wss://relay-jp.nostr.wirednet.jp/",
-    "wss://yabu.me/",
-    "wss://r.kojira.io/",
-    "wss://nrelay-jp.c-stellar.net/",
-];
+import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 
 type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
 
@@ -107,7 +91,7 @@ export class RelayManager {
 
     async fetchUserRelays(pubkeyHex: string): Promise<boolean> {
         console.log(`リレー取得開始: ${pubkeyHex}`);
-        
+
         // 共通化関数でローカルストレージのリレーリストを利用
         if (this.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
             console.log("ローカルストレージからリレーを復元しました");
@@ -115,7 +99,7 @@ export class RelayManager {
         }
 
         console.log("リモートからリレー情報を取得中...");
-        
+
         if (await this.tryFetchKind10002(pubkeyHex, BOOTSTRAP_RELAYS)) {
             console.log("Kind 10002からリレー取得成功");
             return true;
@@ -137,7 +121,7 @@ export class RelayManager {
         return new Promise((resolve) => {
             const rxReq = createRxForwardReq();
             let found = false;
-            
+
             const subscription = this.rxNostr.use(
                 rxReq,
                 { on: { relays } }

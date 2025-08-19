@@ -1,6 +1,7 @@
 import { writable, derived, type Readable, get } from "svelte/store";
 import { setNostrLoginAuth, clearAuthState } from "./stores";
-import { derivePublicKeyFromNsec, isValidNsec, type PublicKeyData } from "./utils";
+import { derivePublicKeyFromNsec, isValidNsec } from "./utils";
+import type { PublicKeyData } from "./types";
 import { nip19 } from "nostr-tools";
 
 declare global {

@@ -3,9 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { updateHashtagData } from "./stores";
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse } from './editorUtils';
-
-// ハッシュタグ共通正規表現
-export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
+import { HASHTAG_REGEX } from './constants';
 
 // 文字境界判定用の共通関数
 function isWordBoundary(char: string | undefined): boolean {

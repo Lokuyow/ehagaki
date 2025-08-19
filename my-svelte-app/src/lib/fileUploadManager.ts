@@ -10,19 +10,15 @@ import type {
   UploadInfoCallbacks,
   FileValidationResult
 } from "./types";
+import {
+  DEFAULT_API_URL,
+  MAX_FILE_SIZE,
+  COMPRESSION_OPTIONS
+} from "./constants";
 
 // ファイルアップロード専用マネージャークラス
 // 責務: ファイルの圧縮・アップロード処理、進捗管理
 export class FileUploadManager {
-  private static readonly DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
-  private static readonly MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-  private static readonly COMPRESSION_OPTIONS = {
-    maxWidthOrHeight: 1024,
-    fileType: "image/webp" as const,
-    initialQuality: 0.80,
-    useWebWorker: true,
-  };
-
   private static async createAuthEvent(url: string, method: string): Promise<any> {
     // 共通の未署名イベント
     const unsignedEvent = {
@@ -60,7 +56,7 @@ export class FileUploadManager {
   private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean }> {
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
     try {
-      const compressed = await imageCompression(file, this.COMPRESSION_OPTIONS);
+      const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
       const compressedFile = new File(
         [compressed],
         file.name.replace(/\.[^.]+$/, "") + ".webp",
@@ -74,7 +70,7 @@ export class FileUploadManager {
 
   public static validateImageFile(file: File): FileValidationResult {
     if (!file.type.startsWith("image/")) return { isValid: false, errorMessage: "only_images_allowed" };
-    if (file.size > this.MAX_FILE_SIZE) return { isValid: false, errorMessage: "file_too_large" };
+    if (file.size > MAX_FILE_SIZE) return { isValid: false, errorMessage: "file_too_large" };
     return { isValid: true };
   }
 
@@ -82,7 +78,7 @@ export class FileUploadManager {
     const stored = localStorage.getItem("uploadEndpoint");
     // 空文字や未設定ならデフォルトへフォールバック
     const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
-    return pick(stored) ?? pick(apiUrl) ?? this.DEFAULT_API_URL;
+    return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
   }
 
   private static async buildAuthHeader(url: string): Promise<string> {
@@ -92,7 +88,7 @@ export class FileUploadManager {
 
   public static async uploadFile(
     file: File,
-    apiUrl: string = this.DEFAULT_API_URL
+    apiUrl: string = DEFAULT_API_URL
   ): Promise<FileUploadResponse> {
     try {
       if (!file) return { success: false, error: "No file selected" };
@@ -131,7 +127,7 @@ export class FileUploadManager {
 
   public static async uploadMultipleFiles(
     files: File[],
-    apiUrl: string = this.DEFAULT_API_URL,
+    apiUrl: string = DEFAULT_API_URL,
     onProgress?: (progress: MultipleUploadProgress) => void
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
@@ -157,7 +153,7 @@ export class FileUploadManager {
 
   public static async uploadFileWithCallbacks(
     file: File,
-    apiUrl: string = this.DEFAULT_API_URL,
+    apiUrl: string = DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse> {
     callbacks?.onProgress?.({ completed: 0, failed: 0, total: 1, inProgress: true });
@@ -182,7 +178,7 @@ export class FileUploadManager {
 
   public static async uploadMultipleFilesWithCallbacks(
     files: File[],
-    apiUrl: string = this.DEFAULT_API_URL,
+    apiUrl: string = DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
