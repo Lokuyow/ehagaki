@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { imageSizeInfoStore } from "../lib/stores";
     import type { UploadProgress } from "../lib/types";
+    import { isDev, devLog } from "../lib/debug"; // 追加
 
     export let uploadProgress: UploadProgress = {
         total: 0,
@@ -47,6 +48,15 @@
 </script>
 
 <div class="footer-center">
+    {#if $isDev && $devLog.length}
+        <div class="dev-console-log">
+            <ul>
+                {#each $devLog as log, i}
+                    <li>{log}</li>
+                {/each}
+            </ul>
+        </div>
+    {/if}
     {#if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">
             <div class="progress-text">
@@ -87,6 +97,29 @@
         min-width: 0;
         height: 100%;
         overflow-y: auto;
+    }
+
+    .dev-console-log {
+        font-size: 0.6rem;
+        color: #c00;
+        background: #fff0f0;
+        overflow-y: auto;
+        white-space: pre-wrap;
+        height: 100%;
+        width: 100%;
+        max-height: 56px;
+    }
+    .dev-console-log ul {
+        margin: 0;
+        padding: 0 0 0 0.4rem;
+        list-style: disc inside;
+        max-height: 50px;
+        overflow-y: auto;
+    }
+    .dev-console-log li {
+        margin: 0;
+        padding: 0;
+        word-break: break-all;
     }
 
     .image-size-info {
