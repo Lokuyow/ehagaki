@@ -285,7 +285,8 @@ export const ImagePasteExtension = Extension.create({
                         console.log('=== ImagePasteExtension DEBUG START ===');
                         console.log('User agent:', navigator.userAgent);
                         console.log('Event type:', event.type);
-                        console.log('Event target:', event.target);
+                        // event.targetは循環参照のため出力しない
+                        // console.log('Event target:', event.target);
 
                         const text = event.clipboardData?.getData('text/plain') || '';
                         console.log('Clipboard text length:', text.length);
@@ -315,9 +316,12 @@ export const ImagePasteExtension = Extension.create({
                             const { state, dispatch } = view;
                             const { tr, selection, schema } = state;
 
-                            // 詳細な状態ログ
-                            console.log('Editor state info:');
-                            console.log('- Document structure:', JSON.stringify(state.doc.toJSON(), null, 2));
+                            // 安全なデバッグログ出力
+                            try {
+                                console.log('- Document structure:', state.doc.toJSON());
+                            } catch (e) {
+                                console.log('- Document structure: [toJSON failed]');
+                            }
                             console.log('- Selection:', { from: selection.from, to: selection.to, empty: selection.empty });
 
                             // 空のパラグラフ内にカーソルがあるかチェック
@@ -326,7 +330,11 @@ export const ImagePasteExtension = Extension.create({
                             console.log('- Depth:', $from.depth);
                             console.log('- Parent type:', $from.parent.type.name);
                             console.log('- Parent content size:', $from.parent.content.size);
-                            console.log('- Parent node:', $from.parent.toJSON());
+                            try {
+                                console.log('- Parent node:', $from.parent.toJSON());
+                            } catch (e) {
+                                console.log('- Parent node: [toJSON failed]');
+                            }
 
                             const isInEmptyParagraph = selection.empty &&
                                 $from.parent.type.name === 'paragraph' &&

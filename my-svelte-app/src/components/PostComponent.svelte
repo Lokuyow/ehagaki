@@ -385,7 +385,7 @@
   function handlePasteEvent(event: ClipboardEvent) {
     console.log("=== PostComponent PASTE EVENT ===");
     console.log("Event type:", event.type);
-    console.log("Event target:", event.target);
+    // event.targetは循環参照の可能性があるので出力しない
     console.log("Clipboard data available:", !!event.clipboardData);
 
     if (event.clipboardData) {
