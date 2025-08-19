@@ -1,5 +1,5 @@
 import { writable } from 'svelte/store';
-import type { SizeDisplayInfo } from './utils';
+import type { SizeDisplayInfo } from './types';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { HASHTAG_REGEX } from "./editorExtensions";
 
