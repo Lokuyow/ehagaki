@@ -131,13 +131,3 @@ export function generatePublicKeyFormats(key: string): PublicKeyData {
 export function isValidNsec(key: string): boolean {
   return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
 }
-
-/**
- * 許可するプロトコル
- */
-const ALLOWED_PROTOCOLS = ['http:', 'https:'];
-
-/**
- * 許可する画像拡張子
- */
-const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
