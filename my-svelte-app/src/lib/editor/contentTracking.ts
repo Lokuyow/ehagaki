@@ -70,7 +70,7 @@ function processLinksAndImages(
                 const $start = newState.doc.resolve(start);
                 const parentNode = $start.parent;
                 const isInEmptyParagraph: boolean = parentNode.type.name === 'paragraph' &&
-                    parentNode.content.size === (end - start);
+                    parentNode.textContent.trim().length === 0;
                 const isOnlyImageUrlInParagraph: boolean = isParagraphWithOnlyImageUrl(parentNode, end - start);
                 const isDocEmpty: boolean = isEditorDocEmpty(newState);
                 const imageNode = imageNodeType.create({

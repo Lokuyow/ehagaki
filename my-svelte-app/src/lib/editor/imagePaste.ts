@@ -28,9 +28,14 @@ export const ImagePasteExtension = Extension.create({
                             const { tr, selection, schema } = state;
 
                             const $from = state.doc.resolve(selection.from);
+                            // 空判定を content.size だけで判定すると、
+                            // クライアント（PC）のクリップボードやブラウザ実装差異で
+                            // 非表示のテキストノードが存在する場合に失敗するため、
+                            // textContent の trim による判定を採用する。
+                            const parent = $from.parent;
                             const isInEmptyParagraph = selection.empty &&
-                                $from.parent.type.name === 'paragraph' &&
-                                $from.parent.content.size === 0;
+                                parent.type.name === 'paragraph' &&
+                                parent.textContent.trim().length === 0;
 
                             const imageNodes = imageUrls.map(url =>
                                 schema.nodes.image.create({
@@ -67,6 +72,39 @@ export const ImagePasteExtension = Extension.create({
                                     }
                                 });
                             }
+
+                            // --- クリーンアップ: 実質的に空のパラグラフを削除 ---
+                            const removeEmptyParagraphs = (tx: any) => {
+                                const doc = tx.doc;
+                                if (!doc) return tx;
+                                // 集めてから後ろ順で削除（位置ずれ対策）
+                                const deletions: [number, number][] = [];
+                                doc.descendants((node: any, pos: number) => {
+                                    if (node.type.name !== 'paragraph') return;
+                                    // テキストが存在しない（見た目上空）かつ画像ノードを含まない場合のみ対象
+                                    if (node.textContent.trim().length === 0) {
+                                        if (doc.childCount === 1) return; // ドキュメントが1ノードだけなら残す
+                                        let hasImage = false;
+                                        node.descendants((n: any) => {
+                                            if (n.type && n.type.name === 'image') {
+                                                hasImage = true;
+                                                return false;
+                                            }
+                                            return true;
+                                        });
+                                        if (!hasImage) {
+                                            deletions.push([pos, pos + node.nodeSize]);
+                                        }
+                                    }
+                                });
+                                deletions.sort((a, b) => b[0] - a[0]);
+                                deletions.forEach(([start, end]) => {
+                                    tx = tx.delete(start, end);
+                                });
+                                return tx;
+                            };
+
+                            transaction = removeEmptyParagraphs(transaction);
 
                             dispatch(transaction);
                             return true;
