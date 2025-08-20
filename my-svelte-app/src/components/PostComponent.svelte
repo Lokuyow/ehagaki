@@ -381,11 +381,6 @@
     }
   }
 
-  // スマートフォン実機用の追加イベントハンドラー
-  function handlePasteEvent(event: ClipboardEvent) {
-    // 必要に応じて処理を追加
-  }
-
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
   $: if (
     currentEditor &&
@@ -414,7 +409,6 @@
     class="editor-container"
     class:drag-over={dragOver}
     on:keydown={handleEditorKeydown}
-    on:paste={handlePasteEvent}
     on:dragover={handleDragOver}
     on:dragleave={handleDragLeave}
     on:drop={handleDrop}
