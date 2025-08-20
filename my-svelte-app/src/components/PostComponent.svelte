@@ -313,12 +313,6 @@
     }
   }
 
-  // タッチイベントハンドラーを追加
-  function handleTouchStart(event: TouchEvent) {
-    // 画像以外の領域でのタッチも通常通り処理（PC/スマホ共通）
-    // 何もせず通過
-  }
-
   function handleTouchMove(event: TouchEvent) {
     const target = event.target as HTMLElement;
     if (
@@ -412,7 +406,6 @@
     on:dragover={handleDragOver}
     on:dragleave={handleDragLeave}
     on:drop={handleDrop}
-    on:touchstart={handleTouchStart}
     on:touchmove={handleTouchMove}
     on:touchend={handleTouchEnd}
     aria-label="テキスト入力エリア"

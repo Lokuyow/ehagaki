@@ -7,6 +7,7 @@ import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from './editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '.';
+import { GapCursorNewlineExtension } from './gapCursorNewline';
 import { writable } from 'svelte/store';
 import type { PostStatus, EditorState } from '../types'; // 型定義をtypes.tsからインポート
 import { HASHTAG_REGEX } from '../constants';
@@ -75,6 +76,7 @@ export function createEditorStore(placeholderText: string) {
             ImagePasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
+            GapCursorNewlineExtension,
             placeholderExtension,
         ],
         // HTMLではなくJSONノード構造で初期化
