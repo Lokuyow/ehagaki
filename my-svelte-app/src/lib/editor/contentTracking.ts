@@ -5,189 +5,147 @@ import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isWordBoundary, 
 import { HASHTAG_REGEX } from '../constants';
 import { updateHashtagData } from './store';
 
+// ハッシュタグのデコレーション（装飾）を生成する関数
+interface HashtagMatch extends RegExpExecArray {
+    1: string; // The hashtag text (without #)
+}
+
+function getHashtagDecorations(doc: import('@tiptap/pm/model').Node): DecorationSet {
+    const decorations: Decoration[] = [];
+    doc.descendants((node: import('@tiptap/pm/model').Node, pos: number) => {
+        if (!node.isText || !node.text) return;
+        const text: string = node.text;
+        const hashtagRegex: RegExp = new RegExp(HASHTAG_REGEX.source, 'g');
+        let match: HashtagMatch | null;
+        while ((match = hashtagRegex.exec(text) as HashtagMatch | null) !== null) {
+            const hashIndex: number = match[0].indexOf('#');
+            if (hashIndex === -1) continue;
+            const start: number = pos + match.index + hashIndex;
+            const end: number = start + 1 + match[1].length;
+            decorations.push(
+                Decoration.inline(start, end, { class: 'hashtag' })
+            );
+        }
+    });
+    return DecorationSet.create(doc, decorations);
+}
+
+// テキスト中のURLや画像URLを検出し、リンクや画像ノードへ変換する関数
+function processLinksAndImages(
+    newState: import('@tiptap/pm/state').EditorState
+): import('@tiptap/pm/state').Transaction | null {
+    const linkMark = newState.schema.marks.link;
+    const imageNodeType = newState.schema.nodes.image;
+    if (!linkMark) return null;
+
+    let tr: import('@tiptap/pm/state').Transaction | null = null;
+    newState.doc.descendants((node: import('@tiptap/pm/model').Node, pos: number) => {
+        if (!node.isText || !node.text) return;
+        const text: string = node.text;
+        const hasLinkMark: boolean = node.marks?.some(m => m.type === linkMark) ?? false;
+
+        if (hasLinkMark) {
+            tr = tr || newState.tr;
+            tr.removeMark(pos, pos + text.length, linkMark);
+        }
+
+        const urlRegex: RegExp = /https?:\/\/[^\s\u3000]+/gi;
+        let urlMatch: RegExpExecArray | null;
+        while ((urlMatch = urlRegex.exec(text)) !== null) {
+            if (typeof urlMatch.index !== 'number') continue;
+            const matchStart: number = urlMatch.index;
+            const originalUrl: string = urlMatch[0];
+            const prevChar: string | undefined = matchStart > 0 ? text[matchStart - 1] : undefined;
+            if (!isWordBoundary(prevChar)) continue;
+
+            const { cleanUrl, actualLength }: { cleanUrl: string; actualLength: number } = cleanUrlEnd(originalUrl);
+            const matchEnd: number = matchStart + actualLength;
+
+            // 画像URLの場合
+            const normalizedImageUrl: string | null = validateAndNormalizeImageUrl(cleanUrl);
+            if (normalizedImageUrl && imageNodeType) {
+                tr = tr || newState.tr;
+                const start: number = pos + matchStart;
+                const end: number = pos + matchEnd;
+                const $start = newState.doc.resolve(start);
+                const parentNode = $start.parent;
+                const isInEmptyParagraph: boolean = parentNode.type.name === 'paragraph' &&
+                    parentNode.content.size === (end - start);
+                const isOnlyImageUrlInParagraph: boolean = isParagraphWithOnlyImageUrl(parentNode, end - start);
+                const isDocEmpty: boolean = isEditorDocEmpty(newState);
+                const imageNode = imageNodeType.create({
+                    src: normalizedImageUrl,
+                    alt: 'Image'
+                });
+
+                if (isInEmptyParagraph || isOnlyImageUrlInParagraph) {
+                    const paragraphDepth: number = $start.depth;
+                    const paragraphStart: number = $start.start(paragraphDepth);
+                    const paragraphEnd: number = $start.end(paragraphDepth);
+                    if (isDocEmpty || (newState.doc.childCount === 1 && isOnlyImageUrlInParagraph)) {
+                        tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
+                    } else {
+                        tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
+                    }
+                } else {
+                    tr = tr.replaceWith(start, end, imageNode);
+                }
+                break;
+            }
+
+            // 通常のURLの場合
+            const isValidUrl: boolean = /^https?:\/\/[a-zA-Z0-9]/.test(cleanUrl) && cleanUrl.length > 8;
+            if (isValidUrl) {
+                const normalizedUrl: string | null = validateAndNormalizeUrl(cleanUrl);
+                const finalUrl: string = normalizedUrl || cleanUrl;
+                tr = tr || newState.tr;
+                const start: number = pos + matchStart;
+                const end: number = pos + matchEnd;
+                const mark = linkMark.create({ href: finalUrl });
+                tr.addMark(start, end, mark);
+            }
+        }
+    });
+    return tr !== null && (tr as import('@tiptap/pm/state').Transaction).docChanged ? tr : null;
+}
+
 export const ContentTrackingExtension = Extension.create({
     name: 'contentTracking',
 
+    // ProseMirrorプラグインを追加するメソッド
     addProseMirrorPlugins() {
         return [
-            // ハッシュタグ装飾とURL再検証を統合したプラグイン
             new Plugin({
                 key: new PluginKey('content-decoration-validation'),
                 state: {
-                    init() {
-                        return DecorationSet.empty;
-                    },
-                    apply(tr) {
-                        const doc = tr.doc;
-                        const decorations: Decoration[] = [];
-
-                        doc.descendants((node, pos) => {
-                            if (node.isText && node.text) {
-                                const text = node.text;
-
-                                // ハッシュタグ装飾
-                                const hashtagRegex = new RegExp(HASHTAG_REGEX.source, 'g');
-                                let hashtagMatch;
-                                while ((hashtagMatch = hashtagRegex.exec(text)) !== null) {
-                                    const hashIndex = hashtagMatch[0].indexOf('#');
-                                    if (hashIndex === -1) continue;
-                                    const start = pos + hashtagMatch.index + hashIndex;
-                                    const end = start + 1 + hashtagMatch[1].length;
-                                    decorations.push(
-                                        Decoration.inline(start, end, {
-                                            class: 'hashtag'
-                                        })
-                                    );
-                                }
-                            }
-                        });
-
-                        return DecorationSet.create(doc, decorations);
+                    init: (_, { doc }) => getHashtagDecorations(doc),
+                    apply(tr, _old) {
+                        return getHashtagDecorations(tr.doc);
                     }
                 },
                 props: {
                     decorations(state) {
-                        return this.getState(state);
+                        return getHashtagDecorations(state.doc);
                     }
                 },
-                // URL再検証のためのappendTransactionを追加
-                appendTransaction: (transactions, oldState, newState) => {
+                appendTransaction: (transactions, _oldState, newState) => {
                     if (!transactions.some(tr => tr.docChanged)) return;
-
-                    const linkMark = newState.schema.marks.link;
-                    const imageNodeType = newState.schema.nodes.image;
-                    if (!linkMark) return;
-
-                    let tr: any = null;
-
-                    newState.doc.descendants((node, pos) => {
-                        if (!node.isText || !node.text) return;
-
-                        const text = node.text;
-                        const hasLinkMark = node.marks?.some(m => m.type === linkMark);
-
-                        // 既存のリンクマークを一旦すべて削除
-                        if (hasLinkMark) {
-                            tr = tr || newState.tr;
-                            tr.removeMark(pos, pos + text.length, linkMark);
-                        }
-
-                        // より柔軟なURL検出パターン（入力中も考慮）
-                        const urlRegex = /https?:\/\/[^\s\u3000]+/gi;
-                        let urlMatch;
-
-                        while ((urlMatch = urlRegex.exec(text)) !== null) {
-                            if (typeof urlMatch.index !== 'number') continue;
-
-                            const matchStart = urlMatch.index;
-                            const matchEnd = matchStart + urlMatch[0].length;
-
-                            // 前の文字が境界文字（スペース、改行、全角スペース、文字列開始）かチェック
-                            const prevChar = matchStart > 0 ? text[matchStart - 1] : undefined;
-
-                            // URLの前に境界文字以外がある場合はスキップ
-                            if (!isWordBoundary(prevChar)) {
-                                continue;
-                            }
-
-                            // URLの末尾処理（より柔軟に）
-                            const originalUrl = urlMatch[0];
-                            const { cleanUrl, actualLength } = cleanUrlEnd(originalUrl);
-                            const actualEnd = matchStart + actualLength;
-
-                            // 画像URLなら画像ノードに置換
-                            const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
-                            if (normalizedImageUrl && imageNodeType) {
-                                tr = tr || newState.tr;
-                                const start = pos + matchStart;
-                                const end = pos + actualEnd;
-
-                                // 親ノードの詳細情報を取得
-                                const $start = newState.doc.resolve(start);
-                                const parentNode = $start.parent;
-
-                                // より正確な空パラグラフ判定
-                                const isInEmptyParagraph = parentNode.type.name === 'paragraph' &&
-                                    parentNode.content.size === (end - start);
-
-                                // パラグラフが画像URLのみを含むかも判定
-                                const isOnlyImageUrlInParagraph = isParagraphWithOnlyImageUrl(parentNode, end - start);
-
-                                // 全文書が空かどうかもチェック
-                                const isDocEmpty = isEditorDocEmpty(newState);
-
-                                // 画像ノードを作成してテキストを置換
-                                const imageNode = imageNodeType.create({
-                                    src: normalizedImageUrl,
-                                    alt: 'Image'
-                                });
-
-                                // パラグラフが画像URLのみを含む場合、または空のパラグラフの場合
-                                if (isInEmptyParagraph || isOnlyImageUrlInParagraph) {
-                                    // より正確な位置計算
-                                    const paragraphDepth = $start.depth;
-                                    const paragraphStart = $start.start(paragraphDepth);
-                                    const paragraphEnd = $start.end(paragraphDepth);
-
-                                    // 文書全体が空の場合、または実質的に単一の画像URL用パラグラフの場合
-                                    if (isDocEmpty || (newState.doc.childCount === 1 && isOnlyImageUrlInParagraph)) {
-                                        // より確実な文書全体置換
-                                        tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
-                                    } else {
-                                        // 通常のパラグラフ置換
-                                        tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
-                                    }
-                                } else {
-                                    // 通常の置換
-                                    tr = tr.replaceWith(start, end, imageNode);
-                                }
-
-                                // URLの処理が完了したらループを抜ける
-                                break;
-                            }
-
-                            // より緩い検証（入力中のURLも考慮）
-                            // 基本的なURL構造があれば受け入れる
-                            const isValidUrl = /^https?:\/\/[a-zA-Z0-9]/.test(cleanUrl) && cleanUrl.length > 8;
-
-                            if (isValidUrl) {
-                                // utils関数でのバリデーションは最終確認のみ
-                                const normalizedUrl = validateAndNormalizeUrl(cleanUrl);
-                                const finalUrl = normalizedUrl || cleanUrl; // バリデーション失敗でも基本構造があれば使用
-
-                                tr = tr || newState.tr;
-                                const start = pos + matchStart;
-                                const end = pos + actualEnd;
-                                const mark = linkMark.create({ href: finalUrl });
-                                tr.addMark(start, end, mark);
-                            }
-                        }
-                    });
-
-                    if (tr && tr.docChanged) {
-                        return tr;
-                    }
-                    return null;
+                    return processLinksAndImages(newState);
                 }
             }),
-            // コンテンツ更新追跡プラグイン
             new Plugin({
                 key: new PluginKey('content-update-tracker'),
                 state: {
                     init: () => null,
                     apply: (tr) => {
                         if (tr.docChanged) {
-                            // デバウンス処理付きでハッシュタグデータを更新
                             this.storage.updateTimeout && clearTimeout(this.storage.updateTimeout);
                             this.storage.updateTimeout = setTimeout(() => {
                                 const plainText = tr.doc.textContent;
                                 updateHashtagData(plainText);
-
-                                // カスタムイベント発火（外部コンポーネント用）
-                                const event = new CustomEvent('editor-content-changed', {
+                                window.dispatchEvent(new CustomEvent('editor-content-changed', {
                                     detail: { plainText }
-                                });
-                                window.dispatchEvent(event);
+                                }));
                             }, 300);
                         }
                         return null;
@@ -197,13 +155,14 @@ export const ContentTrackingExtension = Extension.create({
         ];
     },
 
+    // ストレージ（内部状態）を初期化するメソッド
     addStorage() {
         return {
-            // setTimeout の戻り値型を明示（ブラウザ環境）
             updateTimeout: null as ReturnType<typeof setTimeout> | null
         };
     },
 
+    // 拡張破棄時にクリーンアップ処理を行うメソッド
     onDestroy() {
         if (this.storage.updateTimeout) {
             clearTimeout(this.storage.updateTimeout);
