@@ -1,7 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { updateHashtagData } from "../stores";
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse, isEditorDocEmpty, isParagraphWithOnlyImageUrl, isWordBoundary, cleanUrlEnd } from './editorUtils';
 import { HASHTAG_REGEX } from '../constants';
 import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
@@ -10,7 +9,15 @@ import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../consta
 export const ContentTrackingExtension = Extension.create({
     name: 'contentTracking',
 
+    // --- コールバックを外部から注入できるように ---
+    addOptions() {
+        return {
+            onContentChanged: null as ((plainText: string) => void) | null
+        };
+    },
+
     addProseMirrorPlugins() {
+        const onContentChanged = this.options.onContentChanged;
         return [
             // ハッシュタグ装飾とURL再検証を統合したプラグイン
             new Plugin({
@@ -170,17 +177,13 @@ export const ContentTrackingExtension = Extension.create({
                     init: () => null,
                     apply: (tr) => {
                         if (tr.docChanged) {
-                            // デバウンス処理付きでハッシュタグデータを更新
                             this.storage.updateTimeout && clearTimeout(this.storage.updateTimeout);
                             this.storage.updateTimeout = setTimeout(() => {
                                 const plainText = tr.doc.textContent;
-                                updateHashtagData(plainText);
-
-                                // カスタムイベント発火（外部コンポーネント用）
-                                const event = new CustomEvent('editor-content-changed', {
-                                    detail: { plainText }
-                                });
-                                window.dispatchEvent(event);
+                                // --- 外部コールバックで処理 ---
+                                if (typeof onContentChanged === "function") {
+                                    onContentChanged(plainText);
+                                }
                             }, 300);
                         }
                         return null;

@@ -2,7 +2,9 @@ import { createRxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { get } from "svelte/store";
-import { authState, hashtagDataStore, updateHashtagData } from "./stores";
+import { authState } from "./stores";
+import { extractHashtagsFromContent } from "./editor/store"; // 追加: extractHashtagsFromContentをインポート
+import { hashtagDataStore } from "./editor/store";
 
 // 投稿結果の型定義
 export interface PostResult {
@@ -41,20 +43,11 @@ export class PostManager {
     return { valid: true };
   }
 
-  // ハッシュタグを抽出してtタグを生成
-  private extractHashtags(content: string): string[][] {
-    // contentがストアと異なる場合はストアを更新
-    const hashtagData = get(hashtagDataStore);
-    if (hashtagData.content !== content) {
-      updateHashtagData(content);
-    }
-    // ストアのtagsをそのまま返す（小文字化はstores側で行う）
-    return get(hashtagDataStore).tags;
-  }
-
   // 投稿イベント生成（共通化）
   private async buildEvent(content: string, pubkey?: string) {
-    const tags = this.extractHashtags(content);
+    // ストアからハッシュタグを取得
+    const { hashtags } = get(hashtagDataStore);
+    const tags = hashtags.map((hashtag: string) => ["t", hashtag]);
     // Client tagを追加（オプトアウト対応）
     let clientTagEnabled = true;
     try {

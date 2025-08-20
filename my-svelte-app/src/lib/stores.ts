@@ -1,7 +1,6 @@
 import { writable } from 'svelte/store';
 import type { SizeDisplayInfo } from './types';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
-import { HASHTAG_REGEX } from "./constants";
 
 // --- 型定義 ---
 export interface AuthState {
@@ -147,37 +146,3 @@ export function closeSwUpdateModal() {
     swNeedRefresh.set(false);
 }
 export function handleSwUpdate() { swUpdateServiceWorker(true); }
-
-// --- ハッシュタグデータ更新 ---
-export function updateHashtagData(content: string): void {
-    const hashtags = extractHashtagsFromContent(content);
-    // "t"タグの値を小文字化
-    const tags = hashtags.map(hashtag => ["t", hashtag.toLowerCase()]);
-
-    hashtagDataStore.set({
-        content,
-        hashtags,
-        tags
-    });
-}
-
-// --- ハッシュタグ処理関数（内部使用） ---
-function extractHashtagsFromContent(content: string): string[] {
-    const hashtags: string[] = [];
-    HASHTAG_REGEX.lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = HASHTAG_REGEX.exec(content)) !== null) {
-        const hashtag = match[1];
-        if (hashtag && hashtag.trim()) {
-            hashtags.push(hashtag);
-        }
-    }
-
-    return hashtags;
-}
-
-export function containsHashtags(content: string): boolean {
-    HASHTAG_REGEX.lastIndex = 0;
-    return HASHTAG_REGEX.test(content);
-}

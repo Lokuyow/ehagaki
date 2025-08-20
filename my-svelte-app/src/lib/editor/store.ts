@@ -9,6 +9,14 @@ import { validateAndNormalizeUrl } from './editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from './extensions';
 import { writable } from 'svelte/store';
 import type { PostStatus, EditorState } from '../types'; // 型定義をtypes.tsからインポート
+import { HASHTAG_REGEX } from '../constants';
+
+// ハッシュタグデータ用ストア
+export const hashtagDataStore = writable<{ content: string; hashtags: string[]; tags: [string, string][] }>({
+    content: '',
+    hashtags: [],
+    tags: []
+});
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -54,7 +62,16 @@ export function createEditorStore(placeholderText: string) {
                     return SvelteNodeViewRenderer(SvelteImageNode);
                 },
             }),
-            ContentTrackingExtension,
+            ContentTrackingExtension.configure({
+                onContentChanged: (plainText: string) => {
+                    updateHashtagData(plainText);
+                    // カスタムイベントもここで発火
+                    const event = new CustomEvent('editor-content-changed', {
+                        detail: { plainText }
+                    });
+                    window.dispatchEvent(event);
+                }
+            }),
             ImagePasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
@@ -195,4 +212,33 @@ export function resetEditorState(): void {
 // プレースホルダーテキスト更新用関数
 export function updatePlaceholderText(text: string): void {
     placeholderTextStore.set(text);
+}
+
+// --- ハッシュタグデータ更新 ---
+export function updateHashtagData(content: string): void {
+    const hashtags = extractHashtagsFromContent(content);
+    // "t"タグの値を小文字化 → extractHashtagsFromContentで小文字化済み
+    const tags: [string, string][] = hashtags.map(hashtag => ["t", hashtag]);
+
+    hashtagDataStore.set({
+        content,
+        hashtags,
+        tags
+    });
+}
+
+// --- ハッシュタグ処理関数（内部使用） ---
+export function extractHashtagsFromContent(content: string): string[] {
+    const hashtags: string[] = [];
+    HASHTAG_REGEX.lastIndex = 0;
+    let match: RegExpExecArray | null;
+
+    while ((match = HASHTAG_REGEX.exec(content)) !== null) {
+        const hashtag = match[1];
+        if (hashtag && hashtag.trim()) {
+            hashtags.push(hashtag.toLowerCase());
+        }
+    }
+
+    return hashtags;
 }
