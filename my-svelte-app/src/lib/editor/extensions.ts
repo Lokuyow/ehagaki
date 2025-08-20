@@ -2,32 +2,9 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { updateHashtagData } from "../stores";
-import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from './editorUtils';
+import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, moveImageNode, setDraggingFalse, isEditorDocEmpty, isParagraphWithOnlyImageUrl, isWordBoundary, cleanUrlEnd } from './editorUtils';
 import { HASHTAG_REGEX } from '../constants';
 import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
-
-// 文字境界判定用の共通関数
-function isWordBoundary(char: string | undefined): boolean {
-    return !char || /[\s\n\u3000]/.test(char);
-}
-
-// URLの末尾クリーンアップ関数（より柔軟な判定）
-function cleanUrlEnd(url: string): { cleanUrl: string; actualLength: number } {
-    let cleanUrl = url;
-
-    // 末尾の不要な文字を段階的に除去（ただし、入力中の場合は保持）
-    // 連続する句読点や括弧のみを除去し、単独の場合は保持
-    const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
-    const trailingMatch = cleanUrl.match(trailingPattern);
-    if (trailingMatch) {
-        cleanUrl = cleanUrl.slice(0, -trailingMatch[0].length);
-    }
-
-    return {
-        cleanUrl,
-        actualLength: cleanUrl.length
-    };
-}
 
 // URLとハッシュタグの検出・装飾・再検証を統合したExtension
 export const ContentTrackingExtension = Extension.create({
@@ -125,7 +102,7 @@ export const ContentTrackingExtension = Extension.create({
                             if (normalizedImageUrl && imageNodeType) {
                                 tr = tr || newState.tr;
                                 const start = pos + matchStart;
-                                const end = pos + actualEnd;
+                                const end = pos + matchStart + actualLength;
 
                                 // 親ノードの詳細情報を取得
                                 const $start = newState.doc.resolve(start);
@@ -149,26 +126,17 @@ export const ContentTrackingExtension = Extension.create({
 
                                 // パラグラフが画像URLのみを含む場合、または空のパラグラフの場合
                                 if (isInEmptyParagraph || isOnlyImageUrlInParagraph) {
-                                    // より正確な位置計算
-                                    const paragraphDepth = $start.depth;
-                                    const paragraphStart = $start.start(paragraphDepth);
-                                    const paragraphEnd = $start.end(paragraphDepth);
-
-                                    // 文書全体が空の場合、または実質的に単一の画像URL用パラグラフの場合
-                                    if (isDocEmpty || (newState.doc.childCount === 1 && isOnlyImageUrlInParagraph)) {
-                                        // より確実な文書全体置換
-                                        tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
-                                    } else {
-                                        // 通常のパラグラフ置換
-                                        tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
-                                    }
+                                    // より確実な文書全体置換
+                                    tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
                                 } else {
-                                    // 通常の置換
-                                    tr = tr.replaceWith(start, end, imageNode);
+                                    // 通常のパラグラフ置換
+                                    tr = tr.replaceWith($start.start(), $start.end(), imageNode);
                                 }
-
                                 // URLの処理が完了したらループを抜ける
-                                break;
+                                return;
+                            } else {
+                                // 通常の置換（画像でない場合はリンク化のために後で使う）
+                                // ここでは何もしない
                             }
 
                             // より緩い検証（入力中のURLも考慮）
@@ -182,7 +150,7 @@ export const ContentTrackingExtension = Extension.create({
 
                                 tr = tr || newState.tr;
                                 const start = pos + matchStart;
-                                const end = pos + actualEnd;
+                                const end = pos + matchStart + actualLength;
                                 const mark = linkMark.create({ href: finalUrl });
                                 tr.addMark(start, end, mark);
                             }

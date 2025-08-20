@@ -5,20 +5,20 @@ export function isEditorDocEmpty(state: any): boolean {
         const firstChild = state.doc.firstChild;
         return firstChild?.type.name === 'paragraph' && firstChild.content.size === 0;
     }
-    
+
     // 子ノードが0の場合も空と見なす
     if (state.doc.childCount === 0) {
         return true;
     }
-    
+
     return false;
 }
 
 // パラグラフが実質的に画像URLのみを含んでいるか判定する新しい関数
 export function isParagraphWithOnlyImageUrl(node: any, urlLength: number): boolean {
-    return node.type.name === 'paragraph' && 
-           node.content.size === urlLength && 
-           node.textContent.trim().length === urlLength;
+    return node.type.name === 'paragraph' &&
+        node.content.size === urlLength &&
+        node.textContent.trim().length === urlLength;
 }
 
 /**
@@ -264,4 +264,27 @@ export function validateAndNormalizeImageUrl(url: string): string | null {
     } catch {
         return null;
     }
+}
+
+// 文字境界判定用の共通関数
+export function isWordBoundary(char: string | undefined): boolean {
+    return !char || /[\s\n\u3000]/.test(char);
+}
+
+// URLの末尾クリーンアップ関数（より柔軟な判定）
+export function cleanUrlEnd(url: string): { cleanUrl: string; actualLength: number } {
+    let cleanUrl = url;
+
+    // 末尾の不要な文字を段階的に除去（ただし、入力中の場合は保持）
+    // 連続する句読点や括弧のみを除去し、単独の場合は保持
+    const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
+    const trailingMatch = cleanUrl.match(trailingPattern);
+    if (trailingMatch) {
+        cleanUrl = cleanUrl.slice(0, -trailingMatch[0].length);
+    }
+
+    return {
+        cleanUrl,
+        actualLength: cleanUrl.length
+    };
 }
