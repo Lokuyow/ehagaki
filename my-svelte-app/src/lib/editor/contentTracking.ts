@@ -1,20 +1,14 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isParagraphWithOnlyImageUrl, isEditorDocEmpty, isWordBoundary, cleanUrlEnd } from './editorUtils';
+import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from './editorUtils';
 import { HASHTAG_REGEX } from '../constants';
+import { updateHashtagData } from './store';
 
 export const ContentTrackingExtension = Extension.create({
     name: 'contentTracking',
 
-    addOptions() {
-        return {
-            onContentChanged: null as ((plainText: string) => void) | null
-        };
-    },
-
     addProseMirrorPlugins() {
-        const onContentChanged = this.options.onContentChanged;
         return [
             // ハッシュタグ装飾とURL再検証を統合したプラグイン
             new Plugin({
@@ -106,7 +100,7 @@ export const ContentTrackingExtension = Extension.create({
                             if (normalizedImageUrl && imageNodeType) {
                                 tr = tr || newState.tr;
                                 const start = pos + matchStart;
-                                const end = pos + matchStart + actualLength;
+                                const end = pos + actualEnd;
 
                                 // 親ノードの詳細情報を取得
                                 const $start = newState.doc.resolve(start);
@@ -130,17 +124,26 @@ export const ContentTrackingExtension = Extension.create({
 
                                 // パラグラフが画像URLのみを含む場合、または空のパラグラフの場合
                                 if (isInEmptyParagraph || isOnlyImageUrlInParagraph) {
-                                    // より確実な文書全体置換
-                                    tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
+                                    // より正確な位置計算
+                                    const paragraphDepth = $start.depth;
+                                    const paragraphStart = $start.start(paragraphDepth);
+                                    const paragraphEnd = $start.end(paragraphDepth);
+
+                                    // 文書全体が空の場合、または実質的に単一の画像URL用パラグラフの場合
+                                    if (isDocEmpty || (newState.doc.childCount === 1 && isOnlyImageUrlInParagraph)) {
+                                        // より確実な文書全体置換
+                                        tr = tr.delete(0, newState.doc.content.size).insert(0, imageNode);
+                                    } else {
+                                        // 通常のパラグラフ置換
+                                        tr = tr.replaceWith(paragraphStart, paragraphEnd, imageNode);
+                                    }
                                 } else {
-                                    // 通常のパラグラフ置換
-                                    tr = tr.replaceWith($start.start(), $start.end(), imageNode);
+                                    // 通常の置換
+                                    tr = tr.replaceWith(start, end, imageNode);
                                 }
+
                                 // URLの処理が完了したらループを抜ける
-                                return;
-                            } else {
-                                // 通常の置換（画像でない場合はリンク化のために後で使う）
-                                // ここでは何もしない
+                                break;
                             }
 
                             // より緩い検証（入力中のURLも考慮）
@@ -154,7 +157,7 @@ export const ContentTrackingExtension = Extension.create({
 
                                 tr = tr || newState.tr;
                                 const start = pos + matchStart;
-                                const end = pos + matchStart + actualLength;
+                                const end = pos + actualEnd;
                                 const mark = linkMark.create({ href: finalUrl });
                                 tr.addMark(start, end, mark);
                             }
@@ -174,13 +177,17 @@ export const ContentTrackingExtension = Extension.create({
                     init: () => null,
                     apply: (tr) => {
                         if (tr.docChanged) {
+                            // デバウンス処理付きでハッシュタグデータを更新
                             this.storage.updateTimeout && clearTimeout(this.storage.updateTimeout);
                             this.storage.updateTimeout = setTimeout(() => {
                                 const plainText = tr.doc.textContent;
-                                // --- 外部コールバックで処理 ---
-                                if (typeof onContentChanged === "function") {
-                                    onContentChanged(plainText);
-                                }
+                                updateHashtagData(plainText);
+
+                                // カスタムイベント発火（外部コンポーネント用）
+                                const event = new CustomEvent('editor-content-changed', {
+                                    detail: { plainText }
+                                });
+                                window.dispatchEvent(event);
                             }, 300);
                         }
                         return null;
