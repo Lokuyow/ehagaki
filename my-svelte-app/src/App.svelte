@@ -290,6 +290,11 @@
       footerInfoDisplay.reset();
     }
   }
+
+  // 追加: エディター内容クリア
+  function handleResetPostContent() {
+    postComponentRef?.resetPostContent();
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -298,6 +303,7 @@
       <HeaderComponent
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onSubmitPost={() => postComponentRef?.submitPost()}
+        onResetPostContent={handleResetPostContent}
       />
       <PostComponent
         bind:this={postComponentRef}

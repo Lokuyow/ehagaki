@@ -6,6 +6,7 @@
 
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
+    export let onResetPostContent: () => void; // 追加
 
     $: postStatus = $editorState.postStatus;
     $: hasStoredKey = $authState.isAuthenticated;
@@ -43,6 +44,14 @@
             </div>
         {/if}
         <div class="buttons-container">
+            <Button
+                className="clear-button btn-angular"
+                disabled={!canPost || postStatus.sending || isUploading}
+                on:click={onResetPostContent}
+                ariaLabel={$_("clear_editor")}
+            >
+                <div class="trash-icon svg-icon"></div>
+            </Button>
             <Button
                 className="image-button btn-angular"
                 disabled={!hasStoredKey || postStatus.sending || isUploading}
@@ -107,6 +116,11 @@
         width: 32px;
         height: 32px;
     }
+    .trash-icon {
+        mask-image: url("/icons/trash-solid-full.svg");
+        width: 30px;
+        height: 30px;
+    }
 
     .post-status {
         padding: 5px 10px;
@@ -125,6 +139,10 @@
     }
 
     :global(.image-button) {
+        width: 54px;
+        border: 1px solid var(--hagaki);
+    }
+    :global(.clear-button) {
         width: 54px;
         border: 1px solid var(--hagaki);
     }

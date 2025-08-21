@@ -23,7 +23,7 @@
     }
 
     .btn-angular {
-        border-radius: none;
+        border-radius: 0;
     }
 
     .btn-round {
