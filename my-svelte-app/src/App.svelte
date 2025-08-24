@@ -409,6 +409,7 @@
     margin: auto;
     padding: 8px;
     background: var(--bg-footer);
+    border-top: 1px solid var(--border);
     position: fixed;
     left: 0;
     right: 0;

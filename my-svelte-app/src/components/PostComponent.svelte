@@ -477,7 +477,6 @@
     position: relative;
     cursor: text;
     outline: none;
-    border: 1px solid var(--border);
     background: var(--bg-input);
     overflow: hidden;
     /* タッチスクロール最適化 */

@@ -1,5 +1,5 @@
 :root {
-  --theme: #1DBF73;
+  --theme: hsl(152, 74%, 43%);
   --nostr: #7c3aed;
   --white: #ffffff;
   --yellow: #ffd600;
@@ -101,13 +101,13 @@ button:active:not(:disabled),
 @media (prefers-color-scheme: light) {
   :root {
     /* ライトモード用カラー変数 */
-    --bg: #ebeced;
+    --bg: hsl(152, 5%, 93%);
     --bg-dialog: #F7F7F7;
     --bg-input: #fff;
-    --bg-footer: #F7F7F7;
+    --bg-footer: hsl(0, 0%, 90%);
     --bg-translucent: #EDEDEDcc;
     --btn-bg: #fff;
-    --border: #ddd;
+    --border: hsl(0, 0%, 85%);
     --border-hr: #eee;
     --text: #3d3d3d;
     --text-light: #757575;
@@ -131,13 +131,13 @@ button:active:not(:disabled),
 @media (prefers-color-scheme: dark) {
   :root {
     /* ダークモード用カラー変数 */
-    --bg: #19191A;
+    --bg: hsl(152, 3%, 14%);
     --bg-dialog: #212121;
     --bg-input: #333333;
-    --bg-footer: #1A1A1A;
+    --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
     --btn-bg: #404040;
-    --border: #444;
+    --border: hsl(0, 0%, 30%);
     --border-hr: #444;
     --text: #e6e6e6;
     --text-light: #A6A6A6;
