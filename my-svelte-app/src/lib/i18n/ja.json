@@ -10,7 +10,7 @@
   "warning": "警告",
   "login_required": "ログインしてください",
   "post_error": "投稿エラー",
-  "post_success": "投稿しました",
+  "post_success": "投稿完了",
   "nostr_not_ready": "Nostrに接続できていません",
   "key_not_found": "鍵が見つかりません",
   "profile": "プロフィール",

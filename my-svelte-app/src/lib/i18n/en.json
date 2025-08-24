@@ -10,7 +10,7 @@
   "warning": "Warning",
   "login_required": "Login required",
   "post_error": "Post error",
-  "post_success": "Posted successfully",
+  "post_success": "Posted",
   "nostr_not_ready": "Nostr is not connected",
   "key_not_found": "Key not found",
   "profile": "Profile",

@@ -29,6 +29,21 @@
     $: if (postStatus.success) {
         showSuccessMessage();
     }
+
+    // --- dev用: post success強制表示デバッグ ---
+    if (import.meta.env.MODE === "development") {
+        (window as any).showPostSuccessDebug = () => {
+            editorState.update((state) => ({
+                ...state,
+                postStatus: {
+                    ...state.postStatus,
+                    success: true,
+                    error: false,
+                    message: "post_success",
+                },
+            }));
+        };
+    }
 </script>
 
 <div class="header-container">
