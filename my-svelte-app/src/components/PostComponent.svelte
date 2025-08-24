@@ -489,15 +489,6 @@
     scroll-behavior: auto;
   }
 
-  .editor-container:focus {
-    outline: 2px solid var(--theme);
-    outline-offset: -2px;
-  }
-
-  .editor-container:focus-within {
-    border-color: var(--theme);
-  }
-
   .editor-container.drag-over {
     border: 3px dashed var(--theme);
   }

@@ -23,12 +23,12 @@ export default defineConfig({
         background_color: '#364029',
         icons: [
           {
-            src: '/ehagaki/hagaki_2mai.png',
+            src: '/ehagaki/ehagaki_icon_192x192.webp',
             sizes: '192x192',
             type: 'image/png'
           },
           {
-            src: '/ehagaki/hagaki_2mai.png',
+            src: '/ehagaki/ehagaki_icon_512x512.webp',
             sizes: '512x512',
             type: 'image/png'
           }

@@ -32,6 +32,21 @@
 </script>
 
 <div class="header-container">
+    <div class="header-left">
+        <a
+            href="https://lokuyow.github.io/ehagaki/"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="site-icon-link"
+            aria-label="ehagaki"
+        >
+            <img
+                src="./ehagaki_icon.svg"
+                alt="ehagaki icon"
+                class="site-icon"
+            />
+        </a>
+    </div>
     <div class="post-actions">
         {#if postStatus.error}
             <div class="post-status error">
@@ -76,7 +91,33 @@
     .header-container {
         max-width: 800px;
         width: 100%;
-        margin-bottom: 8px;
+        height: 64px;
+        margin-bottom: 6px;
+        padding: 0 8px;
+        display: flex;
+        flex-direction: row;
+        align-items: flex-end;
+    }
+
+    .header-left {
+        display: flex;
+        align-items: center;
+        height: 100%;
+        width: auto;
+    }
+
+    .site-icon-link {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        width: 100%;
+    }
+
+    .site-icon {
+        width: auto;
+        height: 100%;
+        object-fit: cover;
     }
 
     .post-actions {
@@ -84,14 +125,14 @@
         justify-content: flex-end;
         align-items: center;
         width: 100%;
-        padding: 0 12px;
+        height: 100%;
     }
 
     .buttons-container {
         display: flex;
         gap: 6px;
         align-items: center;
-        height: 64px;
+        height: 100%;
     }
 
     :global(.post-button) {

@@ -392,9 +392,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 10px;
+    margin-top: 8px;
     width: 100%;
-    height: calc(100% - 76px);
+    height: calc(100% - 74px);
     overflow: hidden;
   }
 
