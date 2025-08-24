@@ -92,8 +92,8 @@
         max-width: 800px;
         width: 100%;
         height: 64px;
-        margin-bottom: 6px;
-        padding: 0 8px;
+        margin-bottom: 8px;
+        padding: 0 12px;
         display: flex;
         flex-direction: row;
         align-items: flex-end;
