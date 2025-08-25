@@ -17,20 +17,34 @@ export default defineConfig({
       manifest: {
         name: 'eHagaki',
         short_name: 'eHagaki',
-        description: '軽量なポストオンリー型Nostrクライアントで、デバイス上で画像を圧縮することにより高速かつデータ効率に優れたアップロードを実現します。',
+        description: '投稿専用Nostrクライアント。デバイス上で画像を圧縮してからアップロード。エディター内に直接コンテンツを表示。',
         display: 'standalone',
         theme_color: '#2b664bff',
         background_color: '#364029',
         icons: [
           {
-            src: '/ehagaki/ehagaki_icon_192x192.webp',
+            src: '/ehagaki/ehagaki_icon_x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
-            src: '/ehagaki/ehagaki_icon_512x512.webp',
+            src: '/ehagaki/ehagaki_icon_x512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
+          },
+          {
+            src: "/ehagaki/web-app-manifest-192x192.png",
+            sizes: "192x192",
+            type: "image/png",
+            purpose: "maskable"
+          },
+          {
+            src: "/ehagaki/web-app-manifest-512x512.png",
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "maskable"
           }
         ],
         share_target: {
