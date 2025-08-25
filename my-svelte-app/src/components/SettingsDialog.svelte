@@ -124,13 +124,14 @@
                     "投稿詳細にクライアント名をつける（Client tag）"}</span
             >
             <div class="setting-control">
-                <label class="toggle-switch">
-                    <input type="checkbox" bind:checked={clientTagEnabled} />
+                <label class="toggle-switch" for="client-tag-toggle">
+                    <input
+                        id="client-tag-toggle"
+                        type="checkbox"
+                        bind:checked={clientTagEnabled}
+                    />
                     <span class="slider"></span>
                 </label>
-                <span style="margin-left:8px;">
-                    {clientTagEnabled ? "ON" : "OFF"}
-                </span>
             </div>
         </div>
     </div>
@@ -176,15 +177,16 @@
         font-size: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 20px;
         width: 100%;
     }
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 6px;
     }
     .setting-label {
+        font-size: 1.1rem;
         font-weight: 500;
         display: flex;
         align-items: center;
@@ -194,10 +196,12 @@
     .setting-control {
         display: flex;
         align-items: center;
-        height: 50px;
+        height: fit-content;
+        padding-left: 10px;
     }
     :global(.lang-btn) {
         width: 100px;
+        height: 50px;
     }
 
     .lang-icon-btn {
@@ -230,22 +234,11 @@
         mask-image: url("/ehagaki/icons/github-mark.svg");
     }
 
-    @keyframes fadeIn {
-        from {
-            opacity: 0;
-            transform: translate(-50%, -46%);
-        }
-        to {
-            opacity: 1;
-            transform: translate(-50%, -50%);
-        }
-    }
-
     .toggle-switch {
         position: relative;
         display: inline-block;
-        width: 48px;
-        height: 28px;
+        width: 90px;
+        height: 50px;
     }
     .toggle-switch input {
         opacity: 0;
@@ -259,9 +252,9 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: #ccc;
+        background-color: #bbb;
         transition: 0.2s;
-        border-radius: 28px;
+        border-radius: 50px;
     }
     .toggle-switch input:checked + .slider {
         background-color: var(--theme, #4caf50);
@@ -269,15 +262,15 @@
     .slider:before {
         position: absolute;
         content: "";
-        height: 20px;
-        width: 20px;
-        left: 4px;
-        bottom: 4px;
+        height: 41px;
+        width: 41px;
+        left: 5px;
+        bottom: 5px;
         background-color: white;
         transition: 0.2s;
         border-radius: 50%;
     }
     .toggle-switch input:checked + .slider:before {
-        transform: translateX(20px);
+        transform: translateX(40px);
     }
 </style>

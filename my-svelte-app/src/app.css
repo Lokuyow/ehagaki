@@ -88,6 +88,10 @@ button:active:not(:disabled),
   }
 }
 
+span {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .svg-icon {
   mask-repeat: no-repeat;
   mask-size: contain;
