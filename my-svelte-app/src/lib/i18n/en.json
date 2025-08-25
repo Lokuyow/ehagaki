@@ -34,5 +34,7 @@
   "nostr_login": "Nostr Login",
   "loading": "Loading...",
   "client_tag_label": "Add client name to post (Client tag)",
-  "refresh_relays_and_profile": "Refresh relay list & profile"
+  "refresh_relays_and_profile": "Refresh relay list & profile",
+  "change": "Change",
+  "refresh": "Refresh"
 }

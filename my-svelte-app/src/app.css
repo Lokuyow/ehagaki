@@ -63,7 +63,7 @@ select {
   font-size: 1rem;
   font-weight: 500;
   color: var(--text);
-  border: 1px solid var(--border);
+  border: none;
   background-color: var(--btn-bg);
   cursor: pointer;
   text-decoration: none;

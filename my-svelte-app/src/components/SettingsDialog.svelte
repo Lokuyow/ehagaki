@@ -102,6 +102,7 @@
                         class="lang-icon-btn svg-icon"
                         aria-label="Language"
                     ></div>
+                    <span class="btn-text">{$_("change") || "変更"}</span>
                 </Button>
             </div>
         </div>
@@ -154,6 +155,7 @@
                         class="rotate-right-icon svg-icon"
                         aria-label="再取得"
                     ></div>
+                    <span class="btn-text">{$_("refresh") || "更新"}</span>
                 </Button>
             </div>
         </div>
@@ -222,15 +224,10 @@
         height: fit-content;
         padding-left: 10px;
     }
-    :global(.lang-btn) {
-        width: 100px;
-        height: 50px;
-    }
 
     .lang-icon-btn {
         mask-image: url("/ehagaki/icons/language-solid-full.svg");
     }
-
     select {
         padding: 6px;
         min-width: 200px;
@@ -299,10 +296,5 @@
     }
     .toggle-switch input:checked + .slider:before {
         transform: translateX(40px);
-    }
-
-    :global(.refresh-relays-profile-btn) {
-        height: 50px;
-        width: 100px;
     }
 </style>

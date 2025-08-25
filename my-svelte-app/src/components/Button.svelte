@@ -20,6 +20,19 @@
 <style>
     .btn {
         border-radius: 6px;
+        padding: 12px 18px 12px 14px;
+        gap: 6px;
+
+        :global(.svg-icon) {
+            width: 26px;
+            height: 26px;
+        }
+
+        :global(.btn-text) {
+            color: var(--text-light);
+            font-size: 1.1rem;
+            font-weight: 500;
+        }
     }
 
     .btn-angular {
