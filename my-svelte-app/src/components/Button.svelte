@@ -19,7 +19,7 @@
 
 <style>
     .btn {
-        border-radius: 8px;
+        border-radius: 6px;
     }
 
     .btn-angular {
