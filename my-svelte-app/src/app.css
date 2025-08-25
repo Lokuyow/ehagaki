@@ -63,7 +63,7 @@ select {
   font-size: 1rem;
   font-weight: 500;
   color: var(--text);
-  border: none;
+  border: 1px solid var(--border);
   background-color: var(--btn-bg);
   cursor: pointer;
   text-decoration: none;
@@ -111,7 +111,7 @@ span {
     --bg-footer: hsl(0, 0%, 90%);
     --bg-translucent: #EDEDEDcc;
     --btn-bg: #fff;
-    --border: hsl(0, 0%, 85%);
+    --border: hsl(0, 0%, 88%);
     --border-hr: #eee;
     --text: #3d3d3d;
     --text-light: #757575;
@@ -141,7 +141,7 @@ span {
     --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
     --btn-bg: #404040;
-    --border: hsl(0, 0%, 30%);
+    --border: hsl(0, 0%, 27%);
     --border-hr: #444;
     --text: #e6e6e6;
     --text-light: #A6A6A6;
