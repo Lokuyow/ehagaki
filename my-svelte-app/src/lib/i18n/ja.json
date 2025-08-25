@@ -33,5 +33,6 @@
   "data_size": "送信サイズ",
   "nostr_login": "Nostr Login",
   "loading": "読み込み中...",
-  "client_tag_label": "投稿にクライアント名をつける（Client tag）"
+  "client_tag_label": "投稿にクライアント名をつける（Client tag）",
+  "refresh_relays_and_profile": "リレーリスト・プロフィール再取得"
 }

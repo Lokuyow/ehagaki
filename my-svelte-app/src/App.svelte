@@ -132,12 +132,15 @@
     }
   }
 
-  async function loadProfileForPubkey(pubkeyHex: string) {
+  async function loadProfileForPubkey(
+    pubkeyHex: string,
+    opts?: { forceRemote?: boolean },
+  ) {
     if (!pubkeyHex) return;
     if (!relayManager || !profileManager) await initializeNostr();
     isLoadingProfileStore.set(true);
     try {
-      const profile = await profileManager.fetchProfileData(pubkeyHex);
+      const profile = await profileManager.fetchProfileData(pubkeyHex, opts);
       if (profile) {
         profileDataStore.set(profile);
         profileLoadedStore.set(true);
@@ -295,6 +298,29 @@
   function handleResetPostContent() {
     postComponentRef?.resetPostContent();
   }
+
+  // --- 追加: 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
+  async function handleRefreshRelaysAndProfile() {
+    if (!isAuthenticated || !$authState.pubkey) return;
+    if (!relayManager || !profileManager) {
+      await initializeNostr($authState.pubkey);
+    }
+    // ローカルストレージのキャッシュを使わず必ずリモート取得
+    // 1. リレーリスト再取得
+    if (relayManager) {
+      // リレーキャッシュ削除
+      relayManager.saveToLocalStorage($authState.pubkey, {});
+      await relayManager.fetchUserRelays($authState.pubkey, {
+        forceRemote: true,
+      });
+    }
+    // 2. プロフィール再取得
+    if (profileManager) {
+      // プロフィールキャッシュ削除
+      profileManager.saveToLocalStorage($authState.pubkey, null);
+      await loadProfileForPubkey($authState.pubkey, { forceRemote: true });
+    }
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -337,6 +363,7 @@
     <SettingsDialog
       show={$showSettingsDialogStore}
       onClose={closeSettingsDialog}
+      on:refreshRelaysAndProfile={handleRefreshRelaysAndProfile}
     />
 
     {#if showSwUpdateModal}

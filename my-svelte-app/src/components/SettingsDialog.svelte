@@ -3,9 +3,12 @@
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
+    import { createEventDispatcher } from "svelte";
 
     export let show = false;
     export let onClose: () => void;
+
+    const dispatch = createEventDispatcher();
 
     // アップロード先候補
     const uploadEndpoints = [
@@ -134,6 +137,26 @@
                 </label>
             </div>
         </div>
+
+        <!-- リレー・プロフィール再取得セクション -->
+        <div class="setting-section">
+            <span class="setting-label"
+                >{$_("refresh_relays_and_profile") ||
+                    "リレーリスト・プロフィール再取得"}</span
+            >
+            <div class="setting-control">
+                <Button
+                    className="btn refresh-relays-profile-btn"
+                    on:click={() => dispatch("refreshRelaysAndProfile")}
+                    ariaLabel={$_("refresh_relays_and_profile") || "再取得"}
+                >
+                    <div
+                        class="rotate-right-icon svg-icon"
+                        aria-label="再取得"
+                    ></div>
+                </Button>
+            </div>
+        </div>
     </div>
     <div class="settings-footer">
         <a
@@ -234,6 +257,10 @@
         mask-image: url("/ehagaki/icons/github-mark.svg");
     }
 
+    .rotate-right-icon {
+        mask-image: url("/ehagaki/icons/rotate-right-solid-full.svg");
+    }
+
     .toggle-switch {
         position: relative;
         display: inline-block;
@@ -272,5 +299,10 @@
     }
     .toggle-switch input:checked + .slider:before {
         transform: translateX(40px);
+    }
+
+    :global(.refresh-relays-profile-btn) {
+        height: 50px;
+        width: 100px;
     }
 </style>

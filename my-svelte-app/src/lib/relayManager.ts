@@ -3,8 +3,12 @@ import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 
 type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
 
-function saveToLocalStorage(pubkeyHex: string, relays: RelayConfig): void {
+function saveToLocalStorage(pubkeyHex: string, relays: RelayConfig | null): void {
     try {
+        if (relays === null) {
+            localStorage.removeItem(`nostr-relays-${pubkeyHex}`);
+            return;
+        }
         localStorage.setItem(
             `nostr-relays-${pubkeyHex}`,
             JSON.stringify(relays),
@@ -89,11 +93,11 @@ export class RelayManager {
         return useRelaysFromLocalStorageIfExists(this.rxNostr, pubkeyHex);
     }
 
-    async fetchUserRelays(pubkeyHex: string): Promise<boolean> {
+    async fetchUserRelays(pubkeyHex: string, opts?: { forceRemote?: boolean }): Promise<boolean> {
         console.log(`リレー取得開始: ${pubkeyHex}`);
 
-        // 共通化関数でローカルストレージのリレーリストを利用
-        if (this.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
+        // forceRemoteがfalseまたは未指定ならローカルストレージ利用
+        if (!opts?.forceRemote && this.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
             console.log("ローカルストレージからリレーを復元しました");
             return true;
         }

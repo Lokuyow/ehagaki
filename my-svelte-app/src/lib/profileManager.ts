@@ -24,8 +24,12 @@ function createProfileData(content: any, pubkeyHex: string): ProfileData {
 export class ProfileManager {
   constructor(private rxNostr: ReturnType<typeof createRxNostr>) { }
 
-  saveToLocalStorage(pubkeyHex: string, profile: ProfileData): void {
+  saveToLocalStorage(pubkeyHex: string, profile: ProfileData | null): void {
     try {
+      if (profile === null) {
+        localStorage.removeItem(`nostr-profile-${pubkeyHex}`);
+        return;
+      }
       localStorage.setItem(`nostr-profile-${pubkeyHex}`, JSON.stringify(profile));
       console.log("プロフィール情報をローカルストレージに保存:", pubkeyHex);
     } catch (e) {
@@ -45,13 +49,16 @@ export class ProfileManager {
     }
   }
 
-  async fetchProfileData(pubkeyHex: string): Promise<ProfileData | null> {
+  async fetchProfileData(pubkeyHex: string, opts?: { forceRemote?: boolean }): Promise<ProfileData | null> {
     console.log(`プロフィール取得開始: ${pubkeyHex}`);
 
-    const cachedProfile = this.getFromLocalStorage(pubkeyHex);
-    if (cachedProfile) {
-      console.log("キャッシュからプロフィールを復元:", cachedProfile);
-      return cachedProfile;
+    // forceRemoteがfalseまたは未指定ならローカルストレージ利用
+    if (!opts?.forceRemote) {
+      const cachedProfile = this.getFromLocalStorage(pubkeyHex);
+      if (cachedProfile) {
+        console.log("キャッシュからプロフィールを復元:", cachedProfile);
+        return cachedProfile;
+      }
     }
 
     console.log("リモートからプロフィール情報を取得中...");
