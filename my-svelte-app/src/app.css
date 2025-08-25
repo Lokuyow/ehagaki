@@ -79,7 +79,7 @@ select {
 button:active:not(:disabled),
 *[role="button"]:active {
   transform: scale(0.9);
-  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
 }
 
 @media (min-width: 601px) {
