@@ -49,6 +49,7 @@
         color: var(--text);
         width: 100%;
         max-width: 500px;
+        max-height: 90svh;
         display: flex;
         flex-direction: column;
         align-items: center;

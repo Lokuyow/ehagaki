@@ -29,6 +29,44 @@
     let selectedEndpoint: string;
     let clientTagEnabled: boolean = true;
 
+    // 投稿先リレー表示用
+    let writeRelays: string[] = [];
+    let showRelays = false; // 折りたたみ状態管理
+
+    function loadWriteRelays() {
+        // pubkeyHexは通常ユーザーごとに異なるため、ここでは例としてlocalStorageから最初に見つかったものを使う
+        // 実際はユーザーのpubkeyHexをprops等で渡すのが望ましい
+        const relayKey = Object.keys(localStorage).find((k) =>
+            k.startsWith("nostr-relays-"),
+        );
+        if (!relayKey) {
+            writeRelays = [];
+            return;
+        }
+        try {
+            const relays = JSON.parse(localStorage.getItem(relayKey) ?? "null");
+            if (Array.isArray(relays)) {
+                // 配列の場合（FALLBACK_RELAYS等）
+                writeRelays = relays;
+            } else if (relays && typeof relays === "object") {
+                // オブジェクト形式
+                writeRelays = Object.entries(relays)
+                    .filter(
+                        ([url, conf]) =>
+                            conf &&
+                            typeof conf === "object" &&
+                            "write" in conf &&
+                            (conf as { write?: boolean }).write,
+                    )
+                    .map(([url]) => url);
+            } else {
+                writeRelays = [];
+            }
+        } catch {
+            writeRelays = [];
+        }
+    }
+
     onMount(() => {
         // アップロード先
         const storedLocale = localStorage.getItem("locale");
@@ -50,7 +88,13 @@
         } else {
             clientTagEnabled = clientTagSetting === "true";
         }
+        loadWriteRelays();
     });
+
+    // 設定ダイアログが開かれるたびにリレーリストを再取得
+    $: if (show) {
+        loadWriteRelays();
+    }
 
     $: if ($locale) {
         const saved = localStorage.getItem("uploadEndpoint");
@@ -158,6 +202,40 @@
                     <span class="btn-text">{$_("refresh") || "更新"}</span>
                 </Button>
             </div>
+
+            <!-- 投稿先リレー表示セクション（折りたたみ対応） -->
+            <div class="setting-info">
+                <button
+                    type="button"
+                    class="relay-toggle-label"
+                    on:click={() => (showRelays = !showRelays)}
+                    aria-pressed={showRelays}
+                    aria-label="投稿先リレーの表示切替"
+                    style="cursor:pointer; background:none; border:none; padding:0; font: inherit;"
+                >
+                    <span class="relay-toggle-icon" aria-label="toggle">
+                        {#if showRelays}
+                            ▼
+                        {:else}
+                            ▶
+                        {/if}
+                    </span>
+                    書き込み先リレーリスト
+                </button>
+                {#if showRelays}
+                    <div class="setting-control relay-list">
+                        {#if writeRelays.length > 0}
+                            <ul>
+                                {#each writeRelays as relay}
+                                    <li>{relay}</li>
+                                {/each}
+                            </ul>
+                        {:else}
+                            <span style="color: #888;">リレー情報なし</span>
+                        {/if}
+                    </div>
+                {/if}
+            </div>
         </div>
     </div>
     <div class="settings-footer">
@@ -185,7 +263,7 @@
         font-weight: bold;
         font-size: 1.3rem;
         width: 100%;
-        padding: 12px 16px;
+        padding: 8px 16px;
         border-bottom: 1px solid var(--border-hr);
     }
     :global(.modal-close) {
@@ -204,6 +282,7 @@
         flex-direction: column;
         gap: 20px;
         width: 100%;
+        overflow-y: auto;
     }
     .setting-section {
         display: flex;
@@ -296,5 +375,30 @@
     }
     .toggle-switch input:checked + .slider:before {
         transform: translateX(40px);
+    }
+    .setting-info {
+        padding-left: 20px;
+    }
+    .relay-list ul {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 0.95rem;
+    }
+    .relay-list li {
+        word-break: break-all;
+        color: var(--text-light);
+    }
+    .relay-toggle-label {
+        user-select: none;
+        display: flex;
+        align-items: center;
+        height: 35px;
+        gap: 6px;
+        margin-right: auto;
+        margin-left: 0;
+    }
+    .relay-toggle-icon {
+        font-size: 1.2rem;
+        color: #888;
     }
 </style>
