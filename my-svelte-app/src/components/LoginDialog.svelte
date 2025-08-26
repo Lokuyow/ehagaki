@@ -136,14 +136,14 @@
 
     :global(.cancel-btn) {
         --btn-bg: var(--white);
-        border: 1px solid #ccc;
+        border: 1px solid hsl(0, 0%, 92%);
         color: #3d3d3d;
         width: 100%;
     }
 
     :global(.clear-btn) {
         --btn-bg: var(--yellow);
-        border: 1px solid #ccc;
+        border: none;
         color: #3d3d3d;
         width: 100%;
     }
