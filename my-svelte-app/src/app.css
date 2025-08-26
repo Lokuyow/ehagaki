@@ -63,7 +63,7 @@ select {
   font-size: 1rem;
   font-weight: 500;
   color: var(--text);
-  border: 1px solid var(--border);
+  border: 1px solid var(--btn-border);
   background-color: var(--btn-bg);
   cursor: pointer;
   text-decoration: none;
@@ -106,15 +106,15 @@ span {
   :root {
     /* ライトモード用カラー変数 */
     --bg: hsl(152, 5%, 93%);
-    --bg-dialog: #F7F7F7;
+    --bg-dialog: hsl(0, 0%, 98%);
     --bg-input: #fff;
-    --bg-footer: hsl(0, 0%, 90%);
+    --bg-footer: hsl(0, 0%, 87%);
     --bg-translucent: #EDEDEDcc;
     --btn-bg: #fff;
-    --border: hsl(0, 0%, 88%);
-    --border-hr: #eee;
+    --btn-border: hsl(0, 0%, 92%);
+    --border-hr: hsl(0, 0%, 84%);
     --text: #3d3d3d;
-    --text-light: #757575;
+    --text-light: hsl(0, 0%, 46%);
     --text-r: #e6e6e6;
     --link: #1a0dab;
     --link-visited: #681da8;
@@ -135,16 +135,16 @@ span {
 @media (prefers-color-scheme: dark) {
   :root {
     /* ダークモード用カラー変数 */
-    --bg: hsl(152, 3%, 14%);
-    --bg-dialog: #212121;
+    --bg: hsl(152, 3%, 13%);
+    --bg-dialog: hsl(0, 0%, 15%);
     --bg-input: #333333;
     --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
-    --btn-bg: #404040;
-    --border: hsl(0, 0%, 27%);
-    --border-hr: #444;
-    --text: #e6e6e6;
-    --text-light: #A6A6A6;
+    --btn-bg: hsl(0, 0%, 27%);
+    --btn-border: hsl(0, 0%, 30%);
+    --border-hr: hsl(0, 0%, 30%);
+    --text: hsl(0, 0%, 90%);
+    --text-light: hsl(0, 0%, 75%);
     --text-r: #3D3D3D;
     --link: #99c3ff;
     --link-visited: #c58af9;

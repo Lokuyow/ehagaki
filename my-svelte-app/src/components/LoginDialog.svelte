@@ -71,7 +71,12 @@
                 customClass="nostr-login-placeholder"
             />
         {:else}
-            Nostr Login
+            <img
+                src="/ehagaki/icons/nostr-login.svg"
+                alt="nostr-login"
+                class="nostr-login-icon"
+            />
+            <span class="btn-text">Nostr Login</span>
         {/if}
     </Button>
 
@@ -168,7 +173,7 @@
         font-size: 1rem;
         padding: 0.6rem;
         background-color: var(--bg-input);
-        border: 1px solid var(--border);
+        border: 1px solid var(--btn-border);
         width: 100%;
         height: 60px;
     }
@@ -186,11 +191,8 @@
     }
 
     :global(.nostr-login-button) {
-        --btn-bg: var(--nostr);
-        color: white;
-        border: none;
+        color: var(--text-light);
         height: 65px;
-        width: 140px;
         margin-top: 32px;
         font-size: 1.1rem;
         display: flex;
@@ -201,11 +203,17 @@
         overflow: hidden;
     }
 
+    .nostr-login-icon {
+        width: 32px;
+        height: 32px;
+        margin-right: 4px;
+        flex-shrink: 0;
+        display: inline-block;
+    }
+
     :global(.nostr-login-button.loading) {
         opacity: 0.8;
         cursor: not-allowed;
-        background: var(--nostr) !important;
-        color: white !important;
     }
 
     /* shimmer animation for button loading (if needed) */
@@ -230,7 +238,7 @@
         align-items: center;
         text-align: center;
         margin: 32px 0;
-        width: 90%;
+        width: 92%;
     }
 
     .divider::before,
@@ -238,23 +246,12 @@
         content: "";
         flex: 1;
         height: 1px;
-        background: var(--border);
+        background: var(--border-hr);
     }
 
     .divider span {
         color: var(--text-light);
         padding: 0 16px;
         font-size: 1rem;
-    }
-
-    /* nostr-login-button内のLoadingPlaceholder専用スタイル */
-    :global(.nostr-login-placeholder) {
-        color: #fff;
-    }
-    :global(.nostr-login-placeholder .loading-spinner) {
-        border-top-color: #fff;
-    }
-    :global(.nostr-login-placeholder .placeholder-text) {
-        color: #fff;
     }
 </style>

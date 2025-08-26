@@ -47,7 +47,6 @@
     .dialog {
         background: var(--bg-dialog);
         color: var(--text);
-        box-shadow: 0 4px 12px var(--shadow);
         width: 100%;
         max-width: 500px;
         display: flex;

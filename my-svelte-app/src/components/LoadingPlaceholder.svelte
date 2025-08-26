@@ -24,7 +24,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 6px;
+        gap: 8px;
         position: relative;
         width: 100%;
         height: 100%;
@@ -49,13 +49,12 @@
     .loading-spinner {
         width: 20px;
         height: 20px;
-        border: 4px solid rgba(255, 255, 255, 0.3);
-        border-top: 4px solid var(--text, white);
+        border: 4px solid hsl(0, 0%, 60%);
+        border-top: 4px solid hsl(0, 0%, 90%);
         border-radius: 50%;
         animation: spin 1s linear infinite;
         flex-shrink: 0;
         background: transparent;
-        margin-right: 2px;
     }
     @keyframes spin {
         0% {
