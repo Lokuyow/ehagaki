@@ -6,7 +6,7 @@
     import { createEventDispatcher } from "svelte";
     import { authState, relayListUpdatedStore } from "../lib/stores";
     import { get } from "svelte/store";
-    import { uploadEndpoints, getCompressionLevels } from "../lib/constants"; // 追加
+    import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
 
     export let show = false;
     export let onClose: () => void;
@@ -14,23 +14,23 @@
     const dispatch = createEventDispatcher();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
-    $: compressionLevels = getCompressionLevels($_); // 変更
-
-    function getDefaultEndpoint(loc: string | null | undefined) {
-        if (loc === "ja") return "https://yabu.me/api/v2/media";
-        return "https://nostrcheck.me/api/v2/media";
-    }
+    $: compressionLevels = getCompressionLevels($_);
 
     let selectedEndpoint: string;
-    let clientTagEnabled: boolean = true;
+    let clientTagEnabled = true;
     let selectedCompression: string;
 
     // 投稿先リレー表示用
     let writeRelays: string[] = [];
-    let showRelays = false; // 折りたたみ状態管理
+    let showRelays = false;
+
+    function getDefaultEndpoint(loc: string | null | undefined) {
+        return loc === "ja"
+            ? "https://yabu.me/api/v2/media"
+            : "https://nostrcheck.me/api/v2/media";
+    }
 
     function loadWriteRelays() {
-        // authStateからpubkeyを取得
         const pubkeyHex = get(authState).pubkey;
         if (!pubkeyHex) {
             writeRelays = [];
@@ -40,13 +40,11 @@
         try {
             const relays = JSON.parse(localStorage.getItem(relayKey) ?? "null");
             if (Array.isArray(relays)) {
-                // 配列の場合（FALLBACK_RELAYS等）
                 writeRelays = relays;
             } else if (relays && typeof relays === "object") {
-                // オブジェクト形式
                 writeRelays = Object.entries(relays)
                     .filter(
-                        ([url, conf]) =>
+                        ([, conf]) =>
                             conf &&
                             typeof conf === "object" &&
                             "write" in conf &&
@@ -69,74 +67,57 @@
             storedLocale ||
             (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
         const saved = localStorage.getItem("uploadEndpoint");
-        if (saved && uploadEndpoints.some((ep) => ep.url === saved)) {
-            selectedEndpoint = saved;
-        } else {
-            selectedEndpoint = getDefaultEndpoint(effectiveLocale);
-        }
+        selectedEndpoint =
+            saved && uploadEndpoints.some((ep) => ep.url === saved)
+                ? saved
+                : getDefaultEndpoint(effectiveLocale);
+
         // client tag設定の初期化
         const clientTagSetting = localStorage.getItem("clientTagEnabled");
+        clientTagEnabled =
+            clientTagSetting === null ? true : clientTagSetting === "true";
         if (clientTagSetting === null) {
-            clientTagEnabled = true;
             localStorage.setItem("clientTagEnabled", "true");
-        } else {
-            clientTagEnabled = clientTagSetting === "true";
         }
+
         // 圧縮設定の初期化
-        const savedCompression = localStorage.getItem("imageCompressionLevel");
-        if (savedCompression) {
-            selectedCompression = savedCompression;
-        } else {
-            selectedCompression = "medium";
-        }
+        selectedCompression =
+            localStorage.getItem("imageCompressionLevel") || "medium";
+
         loadWriteRelays();
     });
 
-    // 設定ダイアログが開かれるたびにリレーリストを再取得
-    $: if (show) {
-        loadWriteRelays();
-    }
+    // showがtrueのたびにリレーリストを再取得
+    $: if (show) loadWriteRelays();
 
     // showがfalseになったらリレーリストの折り畳みも閉じる
-    $: if (!show) {
-        showRelays = false;
+    $: if (!show) showRelays = false;
+
+    // $locale変更時、保存がなければデフォルトエンドポイントを再設定
+    $: if ($locale && !localStorage.getItem("uploadEndpoint")) {
+        selectedEndpoint = getDefaultEndpoint($locale);
     }
 
-    $: if ($locale) {
-        const saved = localStorage.getItem("uploadEndpoint");
-        if (!saved) {
-            selectedEndpoint = getDefaultEndpoint($locale);
-        }
-    }
-
-    $: if (selectedEndpoint) {
+    // 設定変更時にlocalStorageへ保存
+    $: selectedEndpoint &&
         localStorage.setItem("uploadEndpoint", selectedEndpoint);
-    }
-
     $: localStorage.setItem(
         "clientTagEnabled",
         clientTagEnabled ? "true" : "false",
     );
-
-    $: if (selectedCompression) {
+    $: selectedCompression &&
         localStorage.setItem("imageCompressionLevel", selectedCompression);
-    }
 
-    // 言語切替用関数をシンプル化
     function toggleLanguage() {
-        const newLocale = $locale === "ja" ? "en" : "ja";
-        locale.set(newLocale);
-        // プレースホルダー更新はApp.svelteで行う
+        locale.set($locale === "ja" ? "en" : "ja");
     }
 
-    // 新しい relays-updated イベントを受けてリストを更新
     function onRelaysUpdated() {
         loadWriteRelays();
     }
 
-    // リレーリスト更新検知
     relayListUpdatedStore.subscribe(() => {
-        setTimeout(loadWriteRelays, 0); // ← 次のtickでリストを更新
+        setTimeout(loadWriteRelays, 0);
     });
 </script>
 
@@ -230,10 +211,7 @@
             <div class="setting-control">
                 <Button
                     className="btn refresh-relays-profile-btn"
-                    on:click={() => {
-                        dispatch("refreshRelaysAndProfile");
-                        // loadWriteRelays() はここで呼ばない
-                    }}
+                    on:click={() => dispatch("refreshRelaysAndProfile")}
                     ariaLabel={$_("refresh_relays_and_profile") || "再取得"}
                 >
                     <div
