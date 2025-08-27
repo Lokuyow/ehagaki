@@ -1,5 +1,6 @@
 <script lang="ts">
     import Button from "./Button.svelte";
+    import { t } from "svelte-i18n";
     export let show: boolean;
     export let needRefresh: boolean;
     export let onReload: () => void;
@@ -18,22 +19,24 @@
     <div class="pwa-toast" role="alert">
         <div class="message">
             {#if needRefresh}
-                <span
-                    >新しいコンテンツが利用可能です。更新ボタンをクリックして更新してください。</span
-                >
+                <span>{$t("new_version_found")}</span>
             {/if}
         </div>
         <div class="buttons">
-            <Button className="close-btn" on:click={onClose} ariaLabel="閉じる">
-                閉じる
+            <Button
+                className="close-btn"
+                on:click={onClose}
+                ariaLabel={$t("close")}
+            >
+                {$t("close")}
             </Button>
             {#if needRefresh}
                 <Button
                     className="reload-btn"
                     on:click={onReload}
-                    ariaLabel="更新"
+                    ariaLabel={$t("refresh")}
                 >
-                    更新
+                    {$t("refresh")}
                 </Button>
             {/if}
         </div>
@@ -43,7 +46,7 @@
 <style>
     .pwa-toast {
         position: fixed;
-        right: 16px;
+        right: 12px;
         bottom: 70px;
         z-index: 3000;
         background: var(--bg-translucent);
@@ -57,7 +60,7 @@
 
     .message {
         margin-bottom: 12px;
-        font-size: 0.95rem;
+        font-size: 1rem;
     }
 
     .buttons {
