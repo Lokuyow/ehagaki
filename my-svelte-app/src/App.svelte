@@ -259,7 +259,7 @@
     }
     if (import.meta.env.MODE === "development") {
       window.showSwUpdateModalDebug = () => {
-        needRefresh.set(true);
+        swNeedRefresh.set(true);
         console.log("SW更新ダイアログを強制表示しました");
       };
     }
