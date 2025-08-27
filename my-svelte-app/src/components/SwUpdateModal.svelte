@@ -1,10 +1,18 @@
 <script lang="ts">
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { t } from "svelte-i18n";
     export let show: boolean;
     export let needRefresh: boolean;
     export let onReload: () => void;
     export let onClose: () => void;
+
+    let isReloading = false;
+
+    function handleReload() {
+        isReloading = true;
+        onReload();
+    }
 
     // デバッグ用のリアクティブ文
     $: {
@@ -33,10 +41,19 @@
             {#if needRefresh}
                 <Button
                     className="reload-btn"
-                    on:click={onReload}
+                    on:click={handleReload}
                     ariaLabel={$t("refresh")}
                 >
-                    {$t("refresh")}
+                    {#if isReloading}
+                        <LoadingPlaceholder
+                            showSpinner={true}
+                            showImage={false}
+                            text=""
+                            customClass="reload-btn-loading"
+                        />
+                    {:else}
+                        {$t("refresh")}
+                    {/if}
                 </Button>
             {/if}
         </div>
@@ -74,7 +91,6 @@
     :global(.close-btn) {
         outline: none;
         border-radius: 6px;
-        padding: 6px 12px;
         font-size: 0.9rem;
         width: 110px;
     }
@@ -82,5 +98,19 @@
     :global(.reload-btn) {
         --btn-bg: var(--theme);
         color: white;
+    }
+
+    :global(.reload-btn-loading.loading-placeholder) {
+        gap: 6px;
+
+        :global(.loading-spinner) {
+            width: 16px;
+            height: 16px;
+        }
+
+        :global(.placeholder-text) {
+            font-size: 0.8rem;
+            color: hsl(0, 0%, 90%);
+        }
     }
 </style>
