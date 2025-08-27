@@ -363,7 +363,6 @@
         align-items: center;
         padding: 8px 16px 12px 16px;
         border-top: 1px solid var(--border-hr);
-        margin-top: 8px;
         width: 100%;
     }
     .github-link {
