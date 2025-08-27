@@ -172,7 +172,6 @@
         justify-content: center;
         font-size: 0.9rem;
         white-space: normal;
-        word-wrap: break-word;
         text-align: left;
         max-width: 100%;
         line-height: 1;
@@ -204,7 +203,6 @@
         color: var(--text);
         text-align: center;
         white-space: normal;
-        word-wrap: break-word;
         line-height: 1.2;
     }
 

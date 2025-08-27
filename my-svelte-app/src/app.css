@@ -32,6 +32,9 @@ body {
   margin: 0;
   color: var(--text);
   background-color: var(--bg);
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-break: strict;
 }
 
 a {

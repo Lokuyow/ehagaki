@@ -508,7 +508,6 @@
     line-height: 1.4;
     outline: none;
     white-space: pre-wrap;
-    word-break: break-word;
     overflow-y: auto;
     overflow-x: hidden;
     /* スクロール最適化 */
