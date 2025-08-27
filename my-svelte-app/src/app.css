@@ -95,6 +95,10 @@ span {
   -webkit-tap-highlight-color: transparent;
 }
 
+select {
+  border-radius: 6px;
+}
+
 .svg-icon {
   mask-repeat: no-repeat;
   mask-size: contain;
