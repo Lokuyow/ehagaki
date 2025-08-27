@@ -4,6 +4,8 @@
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
     import { createEventDispatcher } from "svelte";
+    import { authState, relayListUpdatedStore } from "../lib/stores";
+    import { get } from "svelte/store";
 
     export let show = false;
     export let onClose: () => void;
@@ -43,15 +45,13 @@
     let showRelays = false; // 折りたたみ状態管理
 
     function loadWriteRelays() {
-        // pubkeyHexは通常ユーザーごとに異なるため、ここでは例としてlocalStorageから最初に見つかったものを使う
-        // 実際はユーザーのpubkeyHexをprops等で渡すのが望ましい
-        const relayKey = Object.keys(localStorage).find((k) =>
-            k.startsWith("nostr-relays-"),
-        );
-        if (!relayKey) {
+        // authStateからpubkeyを取得
+        const pubkeyHex = get(authState).pubkey;
+        if (!pubkeyHex) {
             writeRelays = [];
             return;
         }
+        const relayKey = `nostr-relays-${pubkeyHex}`;
         try {
             const relays = JSON.parse(localStorage.getItem(relayKey) ?? "null");
             if (Array.isArray(relays)) {
@@ -112,6 +112,11 @@
         loadWriteRelays();
     }
 
+    // showがfalseになったらリレーリストの折り畳みも閉じる
+    $: if (!show) {
+        showRelays = false;
+    }
+
     $: if ($locale) {
         const saved = localStorage.getItem("uploadEndpoint");
         if (!saved) {
@@ -138,6 +143,16 @@
         locale.set(newLocale);
         // プレースホルダー更新はApp.svelteで行う
     }
+
+    // 新しい relays-updated イベントを受けてリストを更新
+    function onRelaysUpdated() {
+        loadWriteRelays();
+    }
+
+    // リレーリスト更新検知
+    relayListUpdatedStore.subscribe(() => {
+        setTimeout(loadWriteRelays, 0); // ← 次のtickでリストを更新
+    });
 </script>
 
 <Dialog
@@ -145,6 +160,7 @@
     {onClose}
     ariaLabel={$_("settings") || "設定"}
     className="settings-dialog"
+    on:relays-updated={onRelaysUpdated}
 >
     <div class="modal-header">
         <span>{$_("settings") || "設定"}</span>
@@ -229,7 +245,10 @@
             <div class="setting-control">
                 <Button
                     className="btn refresh-relays-profile-btn"
-                    on:click={() => dispatch("refreshRelaysAndProfile")}
+                    on:click={() => {
+                        dispatch("refreshRelaysAndProfile");
+                        // loadWriteRelays() はここで呼ばない
+                    }}
                     ariaLabel={$_("refresh_relays_and_profile") || "再取得"}
                 >
                     <div

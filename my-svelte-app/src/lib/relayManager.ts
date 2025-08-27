@@ -1,5 +1,6 @@
 import { createRxForwardReq } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
+import { relayListUpdatedStore } from "./stores";
 
 type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
 
@@ -13,6 +14,8 @@ function saveToLocalStorage(pubkeyHex: string, relays: RelayConfig | null): void
             `nostr-relays-${pubkeyHex}`,
             JSON.stringify(relays),
         );
+        // リレーリスト更新を通知
+        relayListUpdatedStore.update(n => n + 1);
         console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
     } catch (e) {
         console.error("リレーリストの保存に失敗:", e);

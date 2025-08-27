@@ -308,8 +308,6 @@
     // ローカルストレージのキャッシュを使わず必ずリモート取得
     // 1. リレーリスト再取得
     if (relayManager) {
-      // リレーキャッシュ削除
-      relayManager.saveToLocalStorage($authState.pubkey, {});
       await relayManager.fetchUserRelays($authState.pubkey, {
         forceRemote: true,
       });

@@ -146,3 +146,6 @@ export function closeSwUpdateModal() {
     swNeedRefresh.set(false);
 }
 export function handleSwUpdate() { swUpdateServiceWorker(true); }
+
+// --- リレーリスト更新通知ストア ---
+export const relayListUpdatedStore = writable<number>(0);
