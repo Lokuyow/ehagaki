@@ -257,7 +257,7 @@
                             ▶
                         {/if}
                     </span>
-                    書き込み先リレーリスト
+                    {$_("write_relays_list") || "書き込み先リレーリスト"}
                 </button>
                 {#if showRelays}
                     <div class="setting-control relay-list">
@@ -317,14 +317,14 @@
         font-size: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        gap: 14px;
         width: 100%;
         overflow-y: auto;
     }
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 4px;
     }
     .setting-label {
         font-size: 1.1rem;
@@ -382,8 +382,8 @@
     .toggle-switch {
         position: relative;
         display: inline-block;
-        width: 100px;
-        height: 50px;
+        width: 90px;
+        height: 44px;
         transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
     }
     .toggle-switch input {
@@ -410,16 +410,16 @@
     .slider:before {
         position: absolute;
         content: "";
-        height: 40px;
-        width: 40px;
-        left: 5px;
-        bottom: 5px;
+        height: 38px;
+        width: 38px;
+        left: 3px;
+        bottom: 3px;
         background-color: var(--toggle-circle);
         transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
         border-radius: 50%;
     }
     .toggle-switch input:checked + .slider:before {
-        transform: translateX(50px);
+        transform: translateX(46px);
     }
     .setting-info {
         padding-left: 20px;

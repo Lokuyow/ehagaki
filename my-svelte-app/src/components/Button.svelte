@@ -20,17 +20,17 @@
 <style>
     .btn {
         border-radius: 6px;
-        padding: 12px 18px 12px 14px;
-        gap: 6px;
+        padding: 12px 18px 12px 16px;
+        gap: 8px;
 
         :global(.svg-icon) {
-            width: 26px;
-            height: 26px;
+            width: 24px;
+            height: 24px;
         }
 
         :global(.btn-text) {
             color: var(--text-light);
-            font-size: 1.1rem;
+            font-size: 1rem;
             font-weight: 500;
         }
     }

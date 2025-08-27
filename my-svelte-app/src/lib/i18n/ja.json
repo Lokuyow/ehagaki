@@ -42,5 +42,6 @@
   "compression_none": "無圧縮",
   "compression_low": "低圧縮",
   "compression_medium": "中圧縮",
-  "compression_high": "高圧縮"
+  "compression_high": "高圧縮",
+  "write_relays_list": "書き込み先リレーリスト"
 }

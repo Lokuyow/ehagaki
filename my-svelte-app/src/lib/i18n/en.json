@@ -42,5 +42,6 @@
   "compression_none": "No compression",
   "compression_low": "Low compression",
   "compression_medium": "Medium compression",
-  "compression_high": "High compression"
+  "compression_high": "High compression",
+  "write_relays_list": "Write relays list"
 }
