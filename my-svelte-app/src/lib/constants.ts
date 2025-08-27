@@ -56,3 +56,24 @@ export const MOVE_CANCEL_THRESHOLD = 10; // px
 export const SCROLL_THRESHOLD = 100; // px, ドラッグ時の自動スクロール境界範囲
 export const SCROLL_BASE_SPEED = 1;  // px/frame, 自動スクロールの基本速度
 export const SCROLL_MAX_SPEED = 10;   // px/frame, 自動スクロールの最大速度
+
+// --- SettingsDialog用定数 ---
+export const uploadEndpoints = [
+    { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
+    { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
+    { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
+    {
+        label: "nostr.build",
+        url: "https://nostr.build/api/v2/nip96/upload",
+    },
+];
+
+// 圧縮設定候補を返す関数（i18n対応）
+export function getCompressionLevels($_: (key: string) => string | undefined) {
+    return [
+        { label: $_("compression_none") || "無圧縮", value: "none" },
+        { label: $_("compression_low") || "低圧縮", value: "low" },
+        { label: $_("compression_medium") || "中圧縮", value: "medium" },
+        { label: $_("compression_high") || "高圧縮", value: "high" },
+    ];
+}

@@ -6,30 +6,15 @@
     import { createEventDispatcher } from "svelte";
     import { authState, relayListUpdatedStore } from "../lib/stores";
     import { get } from "svelte/store";
+    import { uploadEndpoints, getCompressionLevels } from "../lib/constants"; // 追加
 
     export let show = false;
     export let onClose: () => void;
 
     const dispatch = createEventDispatcher();
 
-    // アップロード先候補
-    const uploadEndpoints = [
-        { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
-        { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
-        { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
-        {
-            label: "nostr.build",
-            url: "https://nostr.build/api/v2/nip96/upload",
-        },
-    ];
-
     // 圧縮設定候補（$locale変更時にラベルも更新）
-    $: compressionLevels = [
-        { label: $_("compression_none") || "無圧縮", value: "none" },
-        { label: $_("compression_low") || "低圧縮", value: "low" },
-        { label: $_("compression_medium") || "中圧縮", value: "medium" },
-        { label: $_("compression_high") || "高圧縮", value: "high" },
-    ];
+    $: compressionLevels = getCompressionLevels($_); // 変更
 
     function getDefaultEndpoint(loc: string | null | undefined) {
         if (loc === "ja") return "https://yabu.me/api/v2/media";
