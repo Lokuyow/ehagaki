@@ -21,6 +21,14 @@
         },
     ];
 
+    // 圧縮設定候補（$locale変更時にラベルも更新）
+    $: compressionLevels = [
+        { label: $_("compression_none") || "無圧縮", value: "none" },
+        { label: $_("compression_low") || "低圧縮", value: "low" },
+        { label: $_("compression_medium") || "中圧縮", value: "medium" },
+        { label: $_("compression_high") || "高圧縮", value: "high" },
+    ];
+
     function getDefaultEndpoint(loc: string | null | undefined) {
         if (loc === "ja") return "https://yabu.me/api/v2/media";
         return "https://nostrcheck.me/api/v2/media";
@@ -28,6 +36,7 @@
 
     let selectedEndpoint: string;
     let clientTagEnabled: boolean = true;
+    let selectedCompression: string;
 
     // 投稿先リレー表示用
     let writeRelays: string[] = [];
@@ -88,6 +97,13 @@
         } else {
             clientTagEnabled = clientTagSetting === "true";
         }
+        // 圧縮設定の初期化
+        const savedCompression = localStorage.getItem("imageCompressionLevel");
+        if (savedCompression) {
+            selectedCompression = savedCompression;
+        } else {
+            selectedCompression = "medium";
+        }
         loadWriteRelays();
     });
 
@@ -111,6 +127,10 @@
         "clientTagEnabled",
         clientTagEnabled ? "true" : "false",
     );
+
+    $: if (selectedCompression) {
+        localStorage.setItem("imageCompressionLevel", selectedCompression);
+    }
 
     // 言語切替用関数をシンプル化
     function toggleLanguage() {
@@ -160,6 +180,23 @@
                 <select id="endpoint-select" bind:value={selectedEndpoint}>
                     {#each uploadEndpoints as ep}
                         <option value={ep.url}>{ep.label}</option>
+                    {/each}
+                </select>
+            </div>
+        </div>
+
+        <!-- 画像圧縮設定セクション -->
+        <div class="setting-section">
+            <span class="setting-label"
+                >{$_("compression_setting") || "画像圧縮設定"}</span
+            >
+            <div class="setting-control">
+                <select
+                    id="compression-select"
+                    bind:value={selectedCompression}
+                >
+                    {#each compressionLevels as level}
+                        <option value={level.value}>{level.label}</option>
                     {/each}
                 </select>
             </div>
@@ -314,6 +351,11 @@
     }
     #endpoint-select {
         font-size: 1rem;
+    }
+    #compression-select {
+        font-size: 1rem;
+        min-width: 200px;
+        height: 50px;
     }
     .settings-footer {
         display: flex;

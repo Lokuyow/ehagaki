@@ -13,7 +13,7 @@ import type {
 import {
   DEFAULT_API_URL,
   MAX_FILE_SIZE,
-  COMPRESSION_OPTIONS
+  COMPRESSION_OPTIONS_MAP // 修正: COMPRESSION_OPTIONS の import を削除
 } from "./constants";
 
 // ファイルアップロード専用マネージャークラス
@@ -53,16 +53,34 @@ export class FileUploadManager {
     throw new Error('Authentication required');
   }
 
+  private static getCompressionOptions(): any {
+    const level = (localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
+    const opt = COMPRESSION_OPTIONS_MAP[level];
+    if (opt && 'skip' in opt && (opt as { skip: boolean }).skip) return null;
+    return opt;
+  }
+
   private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean }> {
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
+    const options = this.getCompressionOptions();
+    if (!options) {
+      // 無圧縮
+      return { file, wasCompressed: false };
+    }
     try {
-      const compressed = await imageCompression(file, COMPRESSION_OPTIONS);
-      const compressedFile = new File(
-        [compressed],
-        file.name.replace(/\.[^.]+$/, "") + ".webp",
-        { type: "image/webp" }
-      );
-      return { file: compressedFile, wasCompressed: true };
+      const compressed = await imageCompression(file, options);
+      // fileType指定がある場合のみ拡張子・typeを変換
+      let outFile: File;
+      if (options.fileType && file.type !== options.fileType) {
+        outFile = new File(
+          [compressed],
+          file.name.replace(/\.[^.]+$/, "") + ".webp",
+          { type: "image/webp" }
+        );
+      } else {
+        outFile = new File([compressed], file.name, { type: file.type });
+      }
+      return { file: outFile, wasCompressed: true };
     } catch {
       return { file, wasCompressed: false };
     }

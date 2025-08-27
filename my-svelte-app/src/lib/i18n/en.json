@@ -37,5 +37,10 @@
   "refresh_relays_and_profile": "Refresh relay list & profile",
   "change": "Change",
   "refresh": "Refresh",
-  "new_version_found": "A new version is available."
+  "new_version_found": "A new version is available.",
+  "compression_setting": "Image Compression",
+  "compression_none": "No compression",
+  "compression_low": "Low compression",
+  "compression_medium": "Medium compression",
+  "compression_high": "High compression"
 }

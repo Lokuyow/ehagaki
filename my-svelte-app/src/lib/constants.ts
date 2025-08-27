@@ -18,11 +18,29 @@ export const FALLBACK_RELAYS = [
 // --- fileUploadManager用定数 ---
 export const DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
-export const COMPRESSION_OPTIONS = {
-    maxWidthOrHeight: 1024,
-    fileType: "image/webp" as const,
-    initialQuality: 0.80,
-    useWebWorker: true,
+export const COMPRESSION_OPTIONS_MAP = {
+    none: {
+        // 無圧縮: 変換せずそのまま
+        skip: true
+    },
+    low: {
+        maxWidthOrHeight: 2048,
+        fileType: "image/webp" as const,
+        initialQuality: 0.95,
+        useWebWorker: true,
+    },
+    medium: {
+        maxWidthOrHeight: 1024,
+        fileType: "image/webp" as const,
+        initialQuality: 0.80,
+        useWebWorker: true,
+    },
+    high: {
+        maxWidthOrHeight: 800,
+        fileType: "image/webp" as const,
+        initialQuality: 0.40,
+        useWebWorker: true,
+    }
 };
 
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
