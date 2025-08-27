@@ -6,6 +6,9 @@
   --red: #d32f2f;
   --blue: #2196f3;
   --darker: rgba(0, 0, 0, 0.8);
+  --dark-gray: hsl(0, 0%, 28%);
+  --gray: hsl(0, 0%, 53%);
+  --light-gray: hsl(0, 0%, 85%);
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
@@ -78,8 +81,8 @@ select {
 
 button:active:not(:disabled),
 *[role="button"]:active {
-  transform: scale(0.9);
-  transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
+  transform: scale(0.92);
+  transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
 }
 
 @media (min-width: 601px) {
@@ -123,6 +126,8 @@ span {
     --hagaki: #e63a3a;
     --hashtag-text: #106BC7;
     --hashtag-bg: #106BC71a;
+    --toggle-bg: var(--svg);
+    --toggle-circle: var(--bg-dialog);
   }
 
   @media (min-width: 601px) {
@@ -153,6 +158,8 @@ span {
     --hagaki: #FC8672;
     --hashtag-text: #65B1FC;
     --hashtag-bg: #65B1FC1a;
+    --toggle-bg: var(--svg);
+    --toggle-circle: var(--bg-dialog);
   }
 
   @media (min-width: 601px) {

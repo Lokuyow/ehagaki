@@ -340,8 +340,9 @@
     .toggle-switch {
         position: relative;
         display: inline-block;
-        width: 90px;
+        width: 100px;
         height: 50px;
+        transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
     }
     .toggle-switch input {
         opacity: 0;
@@ -355,12 +356,14 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: #bbb;
+        background-color: var(--toggle-bg);
+        opacity: 0.2;
         transition: 0.2s;
         border-radius: 50px;
     }
     .toggle-switch input:checked + .slider {
-        background-color: var(--theme, #4caf50);
+        background-color: var(--toggle-bg);
+        opacity: 1;
     }
     .slider:before {
         position: absolute;
@@ -369,12 +372,12 @@
         width: 40px;
         left: 5px;
         bottom: 5px;
-        background-color: white;
-        transition: 0.2s;
+        background-color: var(--toggle-circle);
+        transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
         border-radius: 50%;
     }
     .toggle-switch input:checked + .slider:before {
-        transform: translateX(40px);
+        transform: translateX(50px);
     }
     .setting-info {
         padding-left: 20px;
@@ -399,6 +402,6 @@
     }
     .relay-toggle-icon {
         font-size: 1.2rem;
-        color: #888;
+        color: var(--gray);
     }
 </style>
