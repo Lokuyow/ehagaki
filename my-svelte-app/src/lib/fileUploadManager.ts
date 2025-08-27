@@ -13,46 +13,13 @@ import type {
 import {
   DEFAULT_API_URL,
   MAX_FILE_SIZE,
-  COMPRESSION_OPTIONS_MAP // 修正: COMPRESSION_OPTIONS の import を削除
+  COMPRESSION_OPTIONS_MAP
 } from "./constants";
+import { getToken } from "nostr-tools/nip98";
 
 // ファイルアップロード専用マネージャークラス
 // 責務: ファイルの圧縮・アップロード処理、進捗管理
 export class FileUploadManager {
-  private static async createAuthEvent(url: string, method: string): Promise<any> {
-    // 共通の未署名イベント
-    const unsignedEvent = {
-      kind: 27235,
-      created_at: Math.floor(Date.now() / 1000),
-      content: "",
-      tags: [
-        ["u", url],
-        ["method", method]
-      ]
-    };
-
-    // 1) ローカル秘密鍵があればそれで署名
-    const storedKey = keyManager.loadFromStorage();
-    if (storedKey) {
-      const signer = seckeySigner(storedKey);
-      return await signer.signEvent(unsignedEvent);
-    }
-
-    // 2) nostr-login / nip-07 プロバイダがあればそれで署名
-    const nostr = (window as any)?.nostr;
-    if (nostr?.signEvent) {
-      try {
-        const signed = await nostr.signEvent(unsignedEvent);
-        return signed;
-      } catch (e) {
-        throw new Error("Failed to sign auth event via nostr-login");
-      }
-    }
-
-    // 3) どちらも無ければ認証不可
-    throw new Error('Authentication required');
-  }
-
   private static getCompressionOptions(): any {
     const level = (localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
     const opt = COMPRESSION_OPTIONS_MAP[level];
@@ -99,9 +66,26 @@ export class FileUploadManager {
     return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
   }
 
+  // --- 追加: nip98 の getToken を使った Authorization ヘッダー生成 ---
   private static async buildAuthHeader(url: string): Promise<string> {
-    const authEvent = await this.createAuthEvent(url, "POST");
-    return `Nostr ${btoa(JSON.stringify(authEvent))}`;
+    // 1) ローカル秘密鍵があればそれで署名
+    const storedKey = keyManager.loadFromStorage();
+    let signFunc: (event: any) => Promise<any>;
+    if (storedKey) {
+      const signer = seckeySigner(storedKey);
+      signFunc = (event) => signer.signEvent(event);
+    } else {
+      // 2) nostr-login / nip-07 プロバイダがあればそれで署名
+      const nostr = (window as any)?.nostr;
+      if (nostr?.signEvent) {
+        signFunc = (event) => nostr.signEvent(event);
+      } else {
+        throw new Error('Authentication required');
+      }
+    }
+    // nip98 の getToken を使って Authorization ヘッダー値を生成
+    const token = await getToken(url, "POST", signFunc, true /* Nostr prefix */);
+    return token;
   }
 
   public static async uploadFile(
