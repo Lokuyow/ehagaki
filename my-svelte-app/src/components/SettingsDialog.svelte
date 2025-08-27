@@ -4,7 +4,12 @@
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
     import { createEventDispatcher } from "svelte";
-    import { authState, relayListUpdatedStore } from "../lib/stores";
+    import {
+        authState,
+        relayListUpdatedStore,
+        swVersionStore,
+        fetchSwVersion,
+    } from "../lib/stores";
     import { get } from "svelte/store";
     import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
 
@@ -19,6 +24,10 @@
     let selectedEndpoint: string;
     let clientTagEnabled = true;
     let selectedCompression: string;
+
+    // swVersion from store
+    let swVersion: string | null = null;
+    swVersionStore.subscribe((v) => (swVersion = v));
 
     // 投稿先リレー表示用
     let writeRelays: string[] = [];
@@ -85,6 +94,7 @@
             localStorage.getItem("imageCompressionLevel") || "medium";
 
         loadWriteRelays();
+        fetchSwVersion();
     });
 
     // showがtrueのたびにリレーリストを再取得
@@ -258,6 +268,11 @@
         </div>
     </div>
     <div class="settings-footer">
+        <div class="footer-left">
+            <span class="site-name">eHagaki</span>
+            <span class="cache-version">{swVersion ? `v${swVersion}` : ""}</span
+            >
+        </div>
         <a
             href="https://github.com/Lokuyow/ehagaki"
             target="_blank"
@@ -346,6 +361,23 @@
         padding: 8px 16px 12px 16px;
         border-top: 1px solid var(--border-hr);
         width: 100%;
+    }
+    .footer-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-right: auto;
+        font-size: 1rem;
+        color: var(--text-light);
+        opacity: 0.8;
+    }
+    .site-name {
+        font-weight: bold;
+        letter-spacing: 0.5px;
+    }
+    .cache-version {
+        font-size: 0.95em;
+        color: var(--gray);
     }
     .github-link {
         display: inline-flex;

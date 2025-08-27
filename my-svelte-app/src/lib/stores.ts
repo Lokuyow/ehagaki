@@ -118,6 +118,8 @@ export const hashtagDataStore = writable<HashtagData>({
     tags: []
 });
 
+export const swVersionStore = writable<string | null>(null);
+
 // --- 画像サイズ情報表示 ---
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
     if (info === null) {
@@ -149,3 +151,28 @@ export function handleSwUpdate() { swUpdateServiceWorker(true); }
 
 // --- リレーリスト更新通知ストア ---
 export const relayListUpdatedStore = writable<number>(0);
+
+export async function fetchSwVersion(): Promise<string | null> {
+    if (!navigator.serviceWorker?.controller) return null;
+    return new Promise((resolve) => {
+        const messageChannel = new MessageChannel();
+        messageChannel.port1.onmessage = (event) => {
+            if (event.data?.version) {
+                swVersionStore.set(event.data.version);
+                resolve(event.data.version);
+            } else {
+                resolve(null);
+            }
+        };
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage(
+                { type: 'GET_VERSION' },
+                [messageChannel.port2]
+            );
+        } else {
+            resolve(null);
+            return;
+        }
+        setTimeout(() => resolve(null), 2000); // タイムアウト
+    });
+}

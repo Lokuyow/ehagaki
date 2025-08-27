@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = 'v0.6.2';
+const PRECACHE_VERSION = '0.6.2';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
@@ -62,6 +62,10 @@ self.addEventListener('message', (event) => {
     if (event.data?.type === 'SKIP_WAITING') {
         console.log('SW received SKIP_WAITING, updating...');
         self.skipWaiting();
+        return;
+    }
+    if (event.data?.type === 'GET_VERSION') {
+        event.ports?.[0]?.postMessage({ version: PRECACHE_VERSION });
         return;
     }
     if (event.data?.action === 'getSharedImage') {
