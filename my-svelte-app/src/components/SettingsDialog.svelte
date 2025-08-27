@@ -171,20 +171,6 @@
             </div>
         </div>
 
-        <!-- アップロード先設定セクション -->
-        <div class="setting-section">
-            <span class="setting-label"
-                >{$_("upload_destination") || "アップロード先"}</span
-            >
-            <div class="setting-control">
-                <select id="endpoint-select" bind:value={selectedEndpoint}>
-                    {#each uploadEndpoints as ep}
-                        <option value={ep.url}>{ep.label}</option>
-                    {/each}
-                </select>
-            </div>
-        </div>
-
         <!-- 画像圧縮設定セクション -->
         <div class="setting-section">
             <span class="setting-label"
@@ -197,6 +183,20 @@
                 >
                     {#each compressionLevels as level}
                         <option value={level.value}>{level.label}</option>
+                    {/each}
+                </select>
+            </div>
+        </div>
+
+        <!-- アップロード先設定セクション -->
+        <div class="setting-section">
+            <span class="setting-label"
+                >{$_("upload_destination") || "アップロード先"}</span
+            >
+            <div class="setting-control">
+                <select id="endpoint-select" bind:value={selectedEndpoint}>
+                    {#each uploadEndpoints as ep}
+                        <option value={ep.url}>{ep.label}</option>
                     {/each}
                 </select>
             </div>
