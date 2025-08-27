@@ -6,7 +6,8 @@
 
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
-    export let onResetPostContent: () => void; // 追加
+    export let onResetPostContent: () => void;
+    export let onClearContentAfterSuccess: (() => void) | undefined = undefined; // 追加
 
     $: postStatus = $editorState.postStatus;
     $: hasStoredKey = $authState.isAuthenticated;
@@ -21,16 +22,21 @@
                     ...state.postStatus,
                     success: false,
                     message: "",
+                    completed: false,
                 },
             }));
+            // 成功メッセージを非表示にした後、コンテンツをクリア
+            if (onClearContentAfterSuccess) {
+                onClearContentAfterSuccess();
+            }
         }, 3000);
     }
 
-    $: if (postStatus.success) {
+    $: if (postStatus.success && postStatus.completed) {
         showSuccessMessage();
     }
 
-    // --- dev用: post success強制表示デバッグ ---
+    // --- dev用: post success/error強制表示デバッグ ---
     if (import.meta.env.MODE === "development") {
         (window as any).showPostSuccessDebug = () => {
             editorState.update((state) => ({
@@ -40,6 +46,17 @@
                     success: true,
                     error: false,
                     message: "post_success",
+                },
+            }));
+        };
+        (window as any).showPostErrorDebug = () => {
+            editorState.update((state) => ({
+                ...state,
+                postStatus: {
+                    ...state.postStatus,
+                    success: false,
+                    error: true,
+                    message: "post_error",
                 },
             }));
         };
@@ -61,18 +78,20 @@
                 class="site-icon"
             />
         </a>
+        <div class="post-status-wrapper">
+            {#if postStatus.error}
+                <div class="post-status error">
+                    {$_(postStatus.message)}
+                </div>
+            {/if}
+            {#if postStatus.success}
+                <div class="post-status success">
+                    {$_(postStatus.message)}
+                </div>
+            {/if}
+        </div>
     </div>
     <div class="post-actions">
-        {#if postStatus.error}
-            <div class="post-status error">
-                {$_(postStatus.message)}
-            </div>
-        {/if}
-        {#if postStatus.success}
-            <div class="post-status success">
-                {$_(postStatus.message)}
-            </div>
-        {/if}
         <div class="buttons-container">
             <Button
                 className="clear-button btn-angular"
@@ -115,6 +134,7 @@
     }
 
     .header-left {
+        position: relative;
         display: flex;
         align-items: center;
         height: 100%;
@@ -178,10 +198,20 @@
         height: 30px;
     }
 
+    .post-status-wrapper {
+        position: absolute;
+        top: 25px;
+        left: 68px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        white-space: nowrap;
+    }
+
     .post-status {
-        padding: 5px 10px;
+        padding: 5px 8px;
         border-radius: 4px;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
     }
 
     .post-status.error {
@@ -190,8 +220,8 @@
     }
 
     .post-status.success {
-        background-color: #e8f5e9;
-        color: #2e7d32;
+        background-color: hsl(125, 39%, 90%);
+        color: hsl(123, 46%, 30%);
     }
 
     :global(.image-button) {

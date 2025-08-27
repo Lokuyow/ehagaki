@@ -3,6 +3,7 @@ export interface PostStatus {
     success: boolean;
     error: boolean;
     message: string;
+    completed?: boolean; // 投稿完了フラグを追加
 }
 
 export interface EditorState {

@@ -205,9 +205,24 @@ export function resetEditorState(): void {
             sending: false,
             success: false,
             error: false,
-            message: ''
+            message: '',
+            completed: false
         },
         hasImage: false
+    }));
+}
+
+// 投稿ステータスのみをリセット（コンテンツはそのまま）
+export function resetPostStatus(): void {
+    editorState.update(state => ({
+        ...state,
+        postStatus: {
+            sending: false,
+            success: false,
+            error: false,
+            message: '',
+            completed: false
+        }
     }));
 }
 

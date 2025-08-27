@@ -18,6 +18,7 @@
     updatePostStatus,
     updateUploadState,
     resetEditorState,
+    resetPostStatus, // 追加
   } from "../lib/editor/store";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
@@ -212,6 +213,7 @@
       success: false,
       error: false,
       message: "",
+      completed: false,
     });
     try {
       const result = await postManager.submitPost(postContent);
@@ -221,8 +223,9 @@
           success: true,
           error: false,
           message: "post_success",
+          completed: true,
         });
-        resetPostContent();
+        // 成功メッセージを表示するため、すぐにはリセットしない
         onPostSuccess?.();
       } else {
         updatePostStatus({
@@ -230,6 +233,7 @@
           success: false,
           error: true,
           message: result.error || "post_error",
+          completed: false,
         });
       }
     } catch (error) {
@@ -238,6 +242,7 @@
         success: false,
         error: true,
         message: "post_error",
+        completed: false,
       });
       console.error("投稿処理でエラーが発生:", error);
     }
@@ -248,6 +253,14 @@
     if (currentEditor) {
       currentEditor.chain().clearContent().run();
     }
+  }
+
+  // 投稿成功後のコンテンツクリア（遅延実行）
+  export function clearContentAfterSuccess() {
+    if (currentEditor) {
+      currentEditor.chain().clearContent().run();
+    }
+    resetPostStatus();
   }
 
   // --- シークレットキー警告ダイアログ ---
