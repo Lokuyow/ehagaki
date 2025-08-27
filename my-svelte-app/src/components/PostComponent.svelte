@@ -507,7 +507,6 @@
     font-size: 1.25rem;
     line-height: 1.4;
     outline: none;
-    white-space: pre-wrap;
     overflow-y: auto;
     overflow-x: hidden;
     /* スクロール最適化 */
@@ -534,6 +533,7 @@
     margin: 0;
     padding: 0;
     color: var(--text);
+    white-space: break-spaces;
   }
 
   :global(.tiptap-editor .hashtag) {
@@ -542,6 +542,7 @@
     background: var(--hashtag-bg);
     padding: 2px 4px;
     border-radius: 4px;
+    word-break: break-all;
   }
 
   :global(.tiptap-editor .preview-link) {
