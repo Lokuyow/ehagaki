@@ -504,8 +504,8 @@
     min-height: 200px;
     padding: 10px;
     font-family: inherit;
-    font-size: 1.1rem;
-    line-height: 1.5;
+    font-size: 1.25rem;
+    line-height: 1.4;
     outline: none;
     white-space: pre-wrap;
     word-break: break-word;
@@ -526,8 +526,7 @@
     pointer-events: none;
     height: 0;
     float: left;
-    font-size: 1.1rem;
-    line-height: 1.5;
+    font-size: 1.25rem;
     opacity: 0.4;
   }
 
@@ -535,8 +534,6 @@
   :global(.tiptap-editor .editor-paragraph) {
     margin: 0;
     padding: 0;
-    font-size: 1.1rem;
-    line-height: 1.5;
     color: var(--text);
   }
 
