@@ -434,7 +434,6 @@
     margin: auto;
     padding: 8px;
     background: var(--bg-footer);
-    border-top: 1px solid var(--border);
     position: fixed;
     left: 0;
     right: 0;
@@ -451,10 +450,6 @@
     font-weight: 500;
     font-size: 1.1rem;
     z-index: 10;
-  }
-
-  :global(.settings-btn) {
-    border: 1px solid var(--border);
   }
 
   .settings-icon {

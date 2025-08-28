@@ -380,9 +380,8 @@
         display: block;
         max-width: 100%;
         max-height: 240px;
+        border: 1px solid var(--border);
         border-radius: 6px;
-        box-shadow: 0 1px 4px var(--shadow);
-        background: #fff;
         cursor: pointer;
         outline: none;
         transition: opacity 0.2s ease;

@@ -6,9 +6,9 @@
   --red: #d32f2f;
   --blue: #2196f3;
   --darker: rgba(0, 0, 0, 0.8);
-  --dark-gray: hsl(0, 0%, 28%);
-  --gray: hsl(0, 0%, 53%);
-  --light-gray: hsl(0, 0%, 85%);
+  --dark-gray: hsl(0, 0%, 66%);
+  --gray: hsl(0, 0%, 50%);
+  --light-gray: hsl(0, 0%, 83%);
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
@@ -123,6 +123,7 @@ select {
     --btn-bg: #fff;
     --btn-border: hsl(0, 0%, 92%);
 
+    --border: var(--gray);
     --border-hr: hsl(0, 0%, 84%);
 
     --text: #3d3d3d;
@@ -162,6 +163,7 @@ select {
     --btn-bg: hsl(0, 0%, 27%);
     --btn-border: hsl(0, 0%, 30%);
 
+    --border: var(--light-gray);
     --border-hr: hsl(0, 0%, 30%);
 
     --text: hsl(0, 0%, 90%);
