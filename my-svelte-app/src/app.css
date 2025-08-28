@@ -123,7 +123,7 @@ select {
     --btn-bg: #fff;
     --btn-border: hsl(0, 0%, 92%);
 
-    --border: var(--gray);
+    --border: var(--light-gray);
     --border-hr: hsl(0, 0%, 84%);
 
     --text: #3d3d3d;
@@ -163,7 +163,7 @@ select {
     --btn-bg: hsl(0, 0%, 27%);
     --btn-border: hsl(0, 0%, 30%);
 
-    --border: var(--light-gray);
+    --border: var(--gray);
     --border-hr: hsl(0, 0%, 30%);
 
     --text: hsl(0, 0%, 90%);
