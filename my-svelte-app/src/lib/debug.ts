@@ -120,6 +120,23 @@ export function debugAuthState(label: string, authState: any) {
     }
 }
 
+// --- 画像アップロード時のHTTPレスポンスをdevモードのみログ出力 ---
+export async function debugLogUploadResponse(response: Response) {
+    if (import.meta.env.MODE !== "development") return;
+    try {
+        const cloned = response.clone();
+        const text = await cloned.text();
+        console.log("[UPLOAD RESPONSE]", {
+            status: response.status,
+            statusText: response.statusText,
+            url: response.url,
+            body: text
+        });
+    } catch (e) {
+        console.log("[UPLOAD RESPONSE] (failed to read body)", e);
+    }
+}
+
 // デバッグ用の関数やモックデータなどもここに追加可能
 
 // SW更新ダイアログを強制表示するデバッグ関数型

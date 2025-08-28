@@ -16,6 +16,7 @@ import {
   COMPRESSION_OPTIONS_MAP
 } from "./constants";
 import { getToken } from "nostr-tools/nip98";
+import { debugLogUploadResponse } from "./debug"; // 追加
 
 // ファイルアップロード専用マネージャークラス
 // 責務: ファイルの圧縮・アップロード処理、進捗管理
@@ -110,6 +111,9 @@ export class FileUploadManager {
         headers: { 'Authorization': authHeader },
         body: formData
       });
+
+      // --- devモード時のレスポンスログをdebug.tsに移譲 ---
+      await debugLogUploadResponse(response);
 
       if (!response.ok) {
         const errorText = await response.text();
