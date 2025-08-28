@@ -367,10 +367,12 @@
     /* data属性による状態制御 */
     .editor-image-button[data-selected="true"] .editor-image {
         outline: 2px solid var(--theme, #2196f3);
+        outline-offset: -1px;
     }
     .editor-image-button[data-dragging="true"] .editor-image {
         opacity: 0.3;
         outline: 2px solid var(--theme, #2196f3);
+        outline-offset: -1px;
         transform: scale(0.95);
         transition: all 0.2s ease;
     }
