@@ -116,25 +116,32 @@ select {
   :root {
     /* ライトモード用カラー変数 */
     --bg: hsl(152, 5%, 93%);
-    --bg-dialog: hsl(0, 0%, 98%);
-    --bg-input: #fff;
+    --bg-input: hsl(0, 0%, 100%);
     --bg-footer: hsl(0, 0%, 87%);
     --bg-translucent: #EDEDEDcc;
+
     --btn-bg: #fff;
     --btn-border: hsl(0, 0%, 92%);
+
     --border-hr: hsl(0, 0%, 84%);
+
     --text: #3d3d3d;
     --text-light: hsl(0, 0%, 46%);
     --text-r: #e6e6e6;
+
     --link: #1a0dab;
     --link-visited: #681da8;
+
+    --dialog: hsl(0, 0%, 98%);
+    --dialog-overlay: rgba(0, 0, 0, 0.4);
+
     --svg: #525252;
     --shadow: rgba(0, 0, 0, 0.1);
     --hagaki: #e63a3a;
     --hashtag-text: #106BC7;
     --hashtag-bg: #106BC71a;
     --toggle-bg: var(--svg);
-    --toggle-circle: var(--bg-dialog);
+    --toggle-circle: var(--dialog);
   }
 
   @media (min-width: 601px) {
@@ -148,25 +155,32 @@ select {
   :root {
     /* ダークモード用カラー変数 */
     --bg: hsl(152, 3%, 13%);
-    --bg-dialog: hsl(0, 0%, 15%);
-    --bg-input: #333333;
+    --bg-input: hsl(0, 0%, 20%);
     --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
+
     --btn-bg: hsl(0, 0%, 27%);
     --btn-border: hsl(0, 0%, 30%);
+
     --border-hr: hsl(0, 0%, 30%);
+
     --text: hsl(0, 0%, 90%);
     --text-light: hsl(0, 0%, 75%);
     --text-r: #3D3D3D;
+
     --link: #99c3ff;
     --link-visited: #c58af9;
+
+    --dialog: hsl(0, 0%, 18%);
+    --dialog-overlay: rgba(0, 0, 0, 0.7);
+
     --svg: #f0f0f0;
     --shadow: rgba(255, 255, 255, 0.1);
     --hagaki: #FC8672;
     --hashtag-text: #65B1FC;
     --hashtag-bg: #65B1FC1a;
     --toggle-bg: var(--svg);
-    --toggle-circle: var(--bg-dialog);
+    --toggle-circle: var(--dialog);
   }
 
   @media (min-width: 601px) {
