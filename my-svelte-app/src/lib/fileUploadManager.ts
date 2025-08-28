@@ -68,7 +68,7 @@ export class FileUploadManager {
   }
 
   // --- 追加: nip98 の getToken を使った Authorization ヘッダー生成 ---
-  private static async buildAuthHeader(url: string): Promise<string> {
+  private static async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
     // 1) ローカル秘密鍵があればそれで署名
     const storedKey = keyManager.loadFromStorage();
     let signFunc: (event: any) => Promise<any>;
@@ -85,8 +85,41 @@ export class FileUploadManager {
       }
     }
     // nip98 の getToken を使って Authorization ヘッダー値を生成
-    const token = await getToken(url, "POST", signFunc, true /* Nostr prefix */);
+    const token = await getToken(url, method, signFunc, true /* Nostr prefix */);
     return token;
+  }
+
+  // --- アップロード完了をポーリングして検知する処理 ---
+  private static async pollUploadStatus(
+    processingUrl: string,
+    authHeader: string,
+    maxWaitTime: number = 8000
+  ): Promise<any> {
+    const startTime = Date.now();
+    while (true) {
+      if (Date.now() - startTime > maxWaitTime) {
+        throw new Error("Timeout while polling processing_url");
+      }
+      const response = await fetch(processingUrl, {
+        method: "GET",
+        headers: { Authorization: authHeader }
+      });
+      if (!response.ok) {
+        throw new Error(`Unexpected status code ${response.status} while polling processing_url`);
+      }
+      if (response.status === 201) {
+        return await response.json();
+      }
+      const processingStatus = await response.json();
+      if (processingStatus.status === "processing") {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        continue;
+      }
+      if (processingStatus.status === "error") {
+        throw new Error("File processing failed");
+      }
+      throw new Error("Unexpected processing status");
+    }
   }
 
   public static async uploadFile(
@@ -100,7 +133,7 @@ export class FileUploadManager {
       const compressedSize = uploadFile.size;
       const sizeInfo = createFileSizeInfo(originalSize, compressedSize, wasCompressed);
       const finalUrl = this.getUploadEndpoint(apiUrl);
-      const authHeader = await this.buildAuthHeader(finalUrl);
+      const authHeader = await this.buildAuthHeader(finalUrl, "POST");
 
       const formData = new FormData();
       formData.append('file', uploadFile);
@@ -115,12 +148,24 @@ export class FileUploadManager {
       // --- devモード時のレスポンスログをdebug.tsに移譲 ---
       await debugLogUploadResponse(response);
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        return { success: false, error: `Upload failed: ${response.status} ${errorText}`, sizeInfo };
+      let data: any;
+      try {
+        data = await response.json();
+      } catch {
+        return { success: false, error: 'Could not parse upload response', sizeInfo };
       }
 
-      const data = await response.json();
+      // --- ポーリング処理追加 ---
+      if ((response.status === 200 || response.status === 202) && data.processing_url) {
+        try {
+          // 認証トークン再取得（GETメソッドで取得）
+          const processingAuthToken = await this.buildAuthHeader(data.processing_url, "GET");
+          data = await this.pollUploadStatus(data.processing_url, processingAuthToken, 8000);
+        } catch (e) {
+          return { success: false, error: e instanceof Error ? e.message : String(e), sizeInfo };
+        }
+      }
+
       if (data.status === 'success' && data.nip94_event?.tags) {
         const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === 'url');
         if (urlTag?.[1]) return { success: true, url: urlTag[1], sizeInfo };

@@ -106,15 +106,11 @@
   // --- ファイルアップロード関連 ---
   const uploadCallbacks: UploadInfoCallbacks = { onProgress: onUploadProgress };
 
-  async function withUploadState<T>(
-    uploadPromise: Promise<T>,
-    minDuration = 1500,
-  ): Promise<T> {
+  async function withUploadState<T>(uploadPromise: Promise<T>): Promise<T> {
     updateUploadState(true);
     onUploadStatusChange?.(true);
     try {
       const result = await uploadPromise;
-      await new Promise<void>((resolve) => setTimeout(resolve, minDuration));
       return result;
     } finally {
       updateUploadState(false);
