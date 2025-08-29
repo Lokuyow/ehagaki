@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.0.4';
+const PRECACHE_VERSION = '1.0.5';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
