@@ -11,6 +11,7 @@ export interface AuthState {
     nprofile: string;
     isValid: boolean;
     isInitialized: boolean;
+    isExtensionLogin?: boolean; // 追加
 }
 
 export interface SharedImageStoreState {
@@ -44,7 +45,8 @@ const initialAuthState: AuthState = {
     npub: '',
     nprofile: '',
     isValid: false,
-    isInitialized: false
+    isInitialized: false,
+    isExtensionLogin: false // 追加
 };
 export const authState = writable<AuthState>(initialAuthState);
 
@@ -53,6 +55,12 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     authState.update(current => {
         const updated = { ...current, ...newState };
         updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
+        // Extensionログイン判定: nostr-login かつ window.nostrが存在し、window.nostr.signEventがfunction
+        updated.isExtensionLogin =
+            updated.type === 'nostr-login' &&
+            typeof window !== 'undefined' &&
+            typeof (window as any).nostr === 'object' &&
+            typeof (window as any).nostr.signEvent === 'function';
         return updated;
     });
 }
