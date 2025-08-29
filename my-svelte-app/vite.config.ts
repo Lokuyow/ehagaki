@@ -35,13 +35,13 @@ export default defineConfig({
             purpose: 'any'
           },
           {
-            src: "/ehagaki/web-app-manifest-192x192.png",
+            src: "/ehagaki/maskable_icon_x192.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable"
           },
           {
-            src: "/ehagaki/web-app-manifest-512x512.png",
+            src: "/ehagaki/maskable_icon_x512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
