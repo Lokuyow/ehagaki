@@ -109,7 +109,7 @@ export const showSwUpdateModalStore = writable(false);
 
 export const profileDataStore = writable<ProfileData>({ name: "", picture: "" });
 export const profileLoadedStore = writable(false);
-export const isLoadingProfileStore = writable(true);
+export const isLoadingProfileStore = writable(false);
 export const isUploadingStore = writable(false);
 
 export const hashtagDataStore = writable<HashtagData>({

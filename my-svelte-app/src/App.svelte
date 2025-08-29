@@ -231,19 +231,22 @@
       $_("enter_your_text") || "テキストを入力してください";
     placeholderTextStore.set(initialPlaceholder);
 
-    // 認証サービスの初期化
+    // 認証サービスの認証ハンドラーを先にセット
     authService.setNostrLoginHandler(handleNostrLoginAuth);
-    const authResult = await authService.initializeAuth();
 
-    if (authResult.hasAuth && authResult.pubkeyHex) {
-      await initializeNostr(authResult.pubkeyHex);
-      await loadProfileForPubkey(authResult.pubkeyHex);
-    } else {
-      await initializeNostr();
-    }
-
-    isLoadingProfileStore.set(false);
-    authService.markAuthInitialized();
+    // --- ここから: initializeAuthをawaitせずに早期実行 ---
+    (async () => {
+      const authResult = await authService.initializeAuth();
+      if (authResult.hasAuth && authResult.pubkeyHex) {
+        await initializeNostr(authResult.pubkeyHex);
+        await loadProfileForPubkey(authResult.pubkeyHex);
+      } else {
+        await initializeNostr();
+      }
+      isLoadingProfileStore.set(false);
+      authService.markAuthInitialized();
+    })();
+    // --- ここまで ---
 
     try {
       const shared = await FileUploadManager.getSharedImageFromServiceWorker();
@@ -385,7 +388,8 @@
           isLoadingProfile={$isLoadingProfileStore}
           showLogoutDialog={openLogoutDialog}
         />
-      {:else if !$isLoadingProfileStore && !isAuthenticated && isAuthInitialized}
+      {:else if !$isLoadingProfileStore && !isAuthenticated}
+        <!-- isAuthInitializedを条件から外す -->
         <Button className="login-btn btn-round" on:click={showLoginDialog}>
           {$_("login")}
         </Button>

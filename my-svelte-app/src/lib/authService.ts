@@ -127,10 +127,41 @@ export class AuthService {
             // nostr-loginの初期化と認証チェック
             await nostrLoginManager.init(this.nostrLoginOptions);
 
-            // 少し待ってから認証状態をチェック
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // --- リトライ回数・間隔を短縮 ---
+            let retries = 10; // 20→10
+            let currentUser = null;
+            while (retries-- > 0) {
+                currentUser = nostrLoginManager.getCurrentUser();
+                if (currentUser?.pubkey) break;
+                await new Promise(resolve => setTimeout(resolve, 50)); // 100ms→50ms
+            }
+            // --- ここまで ---
 
-            const currentUser = nostrLoginManager.getCurrentUser();
+            // --- localStorageから直接復元 ---
+            if (!currentUser?.pubkey) {
+                try {
+                    const nip46Raw = localStorage.getItem('__nostrlogin_nip46');
+                    if (nip46Raw) {
+                        const nip46 = JSON.parse(nip46Raw);
+                        if (nip46?.pubkey) {
+                            // window.nostrLoginがセットされるまでさらに待つ
+                            let waitNostrLogin = 5; // 10→5
+                            while (waitNostrLogin-- > 0) {
+                                currentUser = nostrLoginManager.getCurrentUser();
+                                if (currentUser?.pubkey) break;
+                                await new Promise(resolve => setTimeout(resolve, 50)); // 100ms→50ms
+                            }
+                            if (!currentUser?.pubkey) {
+                                currentUser = { pubkey: nip46.pubkey, npub: undefined };
+                            }
+                        }
+                    }
+                } catch (e) {
+                    // ignore
+                }
+            }
+            // --- ここまで ---
+
             if (currentUser?.pubkey) {
                 this.publicKeyState.setNostrLoginAuth({
                     type: 'login',
