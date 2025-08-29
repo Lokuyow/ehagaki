@@ -19,7 +19,7 @@ export default defineConfig({
         short_name: 'eHagaki',
         description: '投稿専用Nostrクライアント。デバイス上で画像を圧縮してからアップロード。エディター内に直接コンテンツを表示。',
         display: 'standalone',
-        theme_color: '#2b664bff',
+        theme_color: '#2b664b',
         background_color: '#364029',
         icons: [
           {
