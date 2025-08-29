@@ -7,7 +7,6 @@
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
     export let onResetPostContent: () => void;
-    export let onClearContentAfterSuccess: (() => void) | undefined = undefined; // 追加
 
     $: postStatus = $editorState.postStatus;
     $: hasStoredKey = $authState.isAuthenticated;
@@ -25,10 +24,6 @@
                     completed: false,
                 },
             }));
-            // 成功メッセージを非表示にした後、コンテンツをクリア
-            if (onClearContentAfterSuccess) {
-                onClearContentAfterSuccess();
-            }
         }, 3000);
     }
 

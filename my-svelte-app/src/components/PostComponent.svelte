@@ -221,7 +221,10 @@
           message: "post_success",
           completed: true,
         });
-        // 成功メッセージを表示するため、すぐにはリセットしない
+        // 投稿成功時にエディター内容をクリア
+        if (currentEditor) {
+          currentEditor.chain().clearContent().run();
+        }
         onPostSuccess?.();
       } else {
         updatePostStatus({
