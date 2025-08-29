@@ -77,6 +77,31 @@
   $: isAuthenticated = $authState.isAuthenticated;
   $: isAuthInitialized = $authState.isInitialized;
 
+  // --- 追加: 初回レンダリング時にローカルストレージで即時認証判定 ---
+  let initialAuthChecked = false;
+  let initialIsAuthenticated = false;
+  let initialPubkey = "";
+
+  // ローカルストレージから即時判定
+  if (!initialAuthChecked) {
+    const nsec = localStorage.getItem("nsec");
+    const nip46Raw = localStorage.getItem("__nostrlogin_nip46");
+    if (nsec) {
+      initialIsAuthenticated = true;
+    } else if (nip46Raw) {
+      try {
+        const nip46 = JSON.parse(nip46Raw);
+        if (nip46?.pubkey) {
+          initialIsAuthenticated = true;
+          initialPubkey = nip46.pubkey;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+    initialAuthChecked = true;
+  }
+
   $: debugAuthState("Auth state changed", $authState);
 
   let rxNostr: ReturnType<typeof createRxNostr>;
@@ -351,6 +376,42 @@
         onUploadProgress={handleUploadProgress}
       />
     </div>
+    <div class="footer-bar">
+      {#if !isAuthInitialized}
+        <!-- 初期化前はローディングのみ表示 -->
+        <Button className="profile-display btn-round loading" disabled={true}>
+          <LoadingPlaceholder text="" showImage={true} />
+        </Button>
+      {:else}
+        <!-- 初期化後: 通常の認証状態に従う -->
+        {#if isAuthenticated && $isLoadingProfileStore}
+          <Button className="profile-display btn-round loading" disabled={true}>
+            <LoadingPlaceholder text="" showImage={true} />
+          </Button>
+        {:else if isAuthenticated && ($profileLoadedStore || $isLoadingProfileStore)}
+          <ProfileComponent
+            profileData={$profileDataStore}
+            hasStoredKey={isAuthenticated}
+            isLoadingProfile={$isLoadingProfileStore}
+            showLogoutDialog={openLogoutDialog}
+          />
+        {:else if !$isLoadingProfileStore && !isAuthenticated}
+          <Button className="login-btn btn-round" on:click={showLoginDialog}>
+            {$_("login")}
+          </Button>
+        {/if}
+      {/if}
+
+      <FooterInfoDisplay bind:this={footerInfoDisplay} />
+
+      <Button
+        className="settings-btn btn-circle"
+        on:click={openSettingsDialog}
+        ariaLabel="設定"
+      >
+        <div class="settings-icon svg-icon" aria-label="Settings"></div>
+      </Button>
+    </div>
 
     {#if $showLoginDialogStore}
       <LoginDialog
@@ -385,36 +446,6 @@
         onClose={closeSwUpdateModal}
       />
     {/if}
-
-    <div class="footer-bar">
-      {#if isAuthenticated && $isLoadingProfileStore}
-        <Button className="profile-display btn-round loading" disabled={true}>
-          <LoadingPlaceholder text="" showImage={true} />
-        </Button>
-      {:else if isAuthenticated && ($profileLoadedStore || $isLoadingProfileStore)}
-        <ProfileComponent
-          profileData={$profileDataStore}
-          hasStoredKey={isAuthenticated}
-          isLoadingProfile={$isLoadingProfileStore}
-          showLogoutDialog={openLogoutDialog}
-        />
-      {:else if !$isLoadingProfileStore && !isAuthenticated}
-        <!-- isAuthInitializedを条件から外す -->
-        <Button className="login-btn btn-round" on:click={showLoginDialog}>
-          {$_("login")}
-        </Button>
-      {/if}
-
-      <FooterInfoDisplay bind:this={footerInfoDisplay} />
-
-      <Button
-        className="settings-btn btn-circle"
-        on:click={openSettingsDialog}
-        ariaLabel="設定"
-      >
-        <div class="settings-icon svg-icon" aria-label="Settings"></div>
-      </Button>
-    </div>
   </main>
 {/if}
 

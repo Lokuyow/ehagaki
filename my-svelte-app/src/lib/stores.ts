@@ -55,8 +55,9 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     authState.update(current => {
         const updated = { ...current, ...newState };
         updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
-        // Extensionログイン判定: nostr-login かつ window.nostrが存在し、window.nostr.signEventがfunction
+        // Extensionログイン判定: 認証済みかつ nostr-login かつ window.nostrが存在し、window.nostr.signEventがfunction
         updated.isExtensionLogin =
+            updated.isAuthenticated &&
             updated.type === 'nostr-login' &&
             typeof window !== 'undefined' &&
             typeof (window as any).nostr === 'object' &&
