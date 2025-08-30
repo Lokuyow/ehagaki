@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.0.6';
+const PRECACHE_VERSION = '1.0.7';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
@@ -50,7 +50,8 @@ self.addEventListener('activate', (event) => {
 // fetchイベント
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
-    if (isUploadRequest(event.request, url)) {
+    // 修正: オリジンが同じ場合のみ横取り
+    if (isUploadRequest(event.request, url) && url.origin === self.location.origin) {
         event.respondWith(handleUploadRequest(event.request));
     } else if (url.origin === self.location.origin) {
         event.respondWith(handleCacheFirst(event.request));
