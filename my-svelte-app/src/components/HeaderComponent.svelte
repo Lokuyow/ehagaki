@@ -7,7 +7,6 @@
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
     export let onResetPostContent: () => void;
-    export let extensionLoginWait: boolean = false; // 追加
 
     $: postStatus = $editorState.postStatus;
     $: hasStoredKey = $authState.isAuthenticated;
@@ -107,10 +106,7 @@
             </Button>
             <Button
                 className="post-button btn-angular"
-                disabled={!canPost ||
-                    postStatus.sending ||
-                    !hasStoredKey ||
-                    extensionLoginWait}
+                disabled={!canPost || postStatus.sending || !hasStoredKey}
                 on:click={onSubmitPost}
                 ariaLabel={$_("post")}
             >

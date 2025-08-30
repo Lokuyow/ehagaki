@@ -111,7 +111,6 @@
   let isLoadingNostrLogin = false;
   let footerInfoDisplay: any;
   let postComponentRef: any;
-  let extensionLoginWait = false; // 投稿ボタン有効化待機フラグ
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
@@ -348,14 +347,6 @@
       await loadProfileForPubkey($authState.pubkey, { forceRemote: true });
     }
   }
-
-  // Extensionログイン時の投稿ボタン有効化遅延
-  $: if ($authState.isExtensionLogin && isAuthenticated && isAuthInitialized) {
-    extensionLoginWait = true;
-    setTimeout(() => {
-      extensionLoginWait = false;
-    }, 3000); // 3秒後に解除
-  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -365,7 +356,6 @@
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onSubmitPost={() => postComponentRef?.submitPost()}
         onResetPostContent={handleResetPostContent}
-        {extensionLoginWait}
       />
       <PostComponent
         bind:this={postComponentRef}
