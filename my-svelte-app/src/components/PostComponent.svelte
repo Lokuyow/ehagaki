@@ -22,6 +22,7 @@
   } from "../lib/editor/store";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
+  import ImageFullscreen from "./ImageFullscreen.svelte";
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
@@ -37,6 +38,11 @@
   let postManager: PostManager;
   let showSecretKeyDialog = false;
   let pendingPost = "";
+
+  // 全画面表示用の状態
+  let showImageFullscreen = false;
+  let fullscreenImageSrc = "";
+  let fullscreenImageAlt = "";
 
   // ストアから状態を取得
   $: postStatus = $editorState.postStatus;
@@ -82,15 +88,29 @@
       updateEditorContent(plainText, hasImage);
     };
 
+    const handleImageFullscreenRequest = (event: CustomEvent) => {
+      fullscreenImageSrc = event.detail.src;
+      fullscreenImageAlt = event.detail.alt;
+      showImageFullscreen = true;
+    };
+
     window.addEventListener(
       "editor-content-changed",
       handleContentUpdate as EventListener,
+    );
+    window.addEventListener(
+      "image-fullscreen-request",
+      handleImageFullscreenRequest as EventListener,
     );
 
     return () => {
       window.removeEventListener(
         "editor-content-changed",
         handleContentUpdate as EventListener,
+      );
+      window.removeEventListener(
+        "image-fullscreen-request",
+        handleImageFullscreenRequest as EventListener,
       );
       try {
         unsubscribe();
@@ -408,6 +428,22 @@
   export function openFileDialog() {
     fileInput?.click();
   }
+
+  function handleImageFullscreenClose() {
+    showImageFullscreen = false;
+    fullscreenImageSrc = "";
+    fullscreenImageAlt = "";
+
+    // 全画面表示を閉じた後、エディターにフォーカスを戻す
+    setTimeout(() => {
+      const editorElement = document.querySelector(
+        ".tiptap-editor",
+      ) as HTMLElement;
+      if (editorElement) {
+        editorElement.focus();
+      }
+    }, 150);
+  }
 </script>
 
 <div class="post-container">
@@ -463,6 +499,13 @@
   </div>
 </Dialog>
 
+<ImageFullscreen
+  bind:show={showImageFullscreen}
+  src={fullscreenImageSrc}
+  alt={fullscreenImageAlt}
+  on:close={handleImageFullscreenClose}
+/>
+
 <style>
   .post-container {
     max-width: 800px;
@@ -498,6 +541,8 @@
     overscroll-behavior: contain;
     /* 自動スクロール時はスムーズスクロールを無効化 */
     scroll-behavior: auto;
+    /* タッチデバイスでのフォーカス処理改善 */
+    -webkit-tap-highlight-color: transparent;
   }
 
   .editor-container.drag-over {
@@ -527,6 +572,8 @@
     /* GPU加速を有効化 */
     will-change: scroll-position;
     transform: translateZ(0);
+    /* タッチデバイスでのフォーカス処理改善 */
+    -webkit-tap-highlight-color: transparent;
   }
 
   /* プレースホルダースタイル */

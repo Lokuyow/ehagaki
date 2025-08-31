@@ -16,8 +16,35 @@
     let touchStartTarget: HTMLElement | null = null;
 
     // 画像クリック時の例（必要に応じて拡張）
-    function handleClick() {
-        // 例: 画像クリックで何かする
+    function handleClick(event: MouseEvent) {
+        // ドラッグ中の場合はクリックを無視
+        if (isDragging) {
+            event.preventDefault();
+            return;
+        }
+
+        // エディターからフォーカスを外す（キーボードを隠す）
+        const editorElement = document.querySelector('.tiptap-editor') as HTMLElement;
+        if (editorElement) {
+            editorElement.blur();
+        }
+
+        // body要素にフォーカスを移す（より確実にキーボードを隠す）
+        document.body.focus();
+
+        // 全画面表示イベントを発火
+        const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
+            detail: {
+                src: node.attrs.src,
+                alt: node.attrs.alt || "Image",
+            },
+            bubbles: true,
+            cancelable: true,
+        });
+
+        window.dispatchEvent(fullscreenEvent);
+        event.preventDefault();
+        event.stopPropagation();
     }
 
     // ドラッグ開始イベント発火
@@ -190,6 +217,15 @@
             clearTimeout(longPressTimeout);
             longPressTimeout = null;
             touchStartTarget = null;
+            
+            // 長押しでない通常のタップの場合、エディターのフォーカスを外す
+            if (!isDragging) {
+                const editorElement = document.querySelector('.tiptap-editor') as HTMLElement;
+                if (editorElement) {
+                    editorElement.blur();
+                }
+                document.body.focus();
+            }
         }
 
         // ドラッグしていた場合はドロップ処理を行う
@@ -358,10 +394,14 @@
         line-height: 0;
         vertical-align: top;
         pointer-events: auto;
+        /* フォーカス時のアウトラインを無効化 */
+        outline: none;
+        -webkit-tap-highlight-color: transparent;
     }
 
-    .editor-image-button:active {
-        cursor: grabbing;
+    .editor-image-button:focus {
+        /* フォーカス時もアウトラインを表示しない */
+        outline: none;
     }
 
     /* data属性による状態制御 */
