@@ -3,7 +3,6 @@
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
-    import { createEventDispatcher } from "svelte";
     import {
         authState,
         relayListUpdatedStore,
@@ -15,8 +14,7 @@
 
     export let show = false;
     export let onClose: () => void;
-
-    const dispatch = createEventDispatcher();
+    export let onRefreshRelaysAndProfile: () => void = () => {};
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     $: compressionLevels = getCompressionLevels($_);
@@ -221,7 +219,9 @@
             <div class="setting-control">
                 <Button
                     className="btn refresh-relays-profile-btn"
-                    on:click={() => dispatch("refreshRelaysAndProfile")}
+                    on:click={() =>
+                        onRefreshRelaysAndProfile &&
+                        onRefreshRelaysAndProfile()}
                     ariaLabel={$_("refresh_relays_and_profile") || "再取得"}
                 >
                     <div

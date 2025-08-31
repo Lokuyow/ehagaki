@@ -435,7 +435,7 @@
     <SettingsDialog
       show={$showSettingsDialogStore}
       onClose={closeSettingsDialog}
-      on:refreshRelaysAndProfile={handleRefreshRelaysAndProfile}
+      onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
     />
 
     {#if showSwUpdateModal}
