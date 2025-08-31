@@ -18,6 +18,8 @@
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $: if (secretKey !== undefined) {
         publicKeyState.setNsec(secretKey);
+        // 入力または programmatic な変更があったらエラーメッセージを消す
+        errorMessage = "";
     }
 
     // --- 公開鍵状態のサブスクライブ ---
@@ -28,24 +30,30 @@
     $: publicKeyState.npub.subscribe((val) => (npubValue = val));
     $: publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
 
-    // --- バリデーションによるエラーメッセージ制御 ---
-    $: if (secretKey) {
-        errorMessage = isValid ? "" : "invalid_secret";
-    } else {
-        errorMessage = "";
-    }
-
     // --- UIイベントハンドラ ---
     function handleClose() {
         onClose?.();
     }
     function handleSave() {
+        if (!secretKey) {
+            // 未入力時は新しいメッセージキーをセット
+            errorMessage = "secret_required";
+            return;
+        }
+        if (!isValid) {
+            errorMessage = "invalid_secret";
+            return;
+        }
+        errorMessage = ""; // 成功時はエラーを消す
         onSave?.();
     }
     function handleClear() {
         secretKey = "";
+        errorMessage = "";
     }
     function handleNostrLogin() {
+        // Nostr ログイン開始時に既存のエラーメッセージを消す
+        errorMessage = "";
         onNostrLogin?.();
     }
 </script>
@@ -92,6 +100,12 @@
         class="secret-input"
         id="secretKey"
         name="secretKey"
+        autocomplete="current-password"
+        required
+        on:input={() => (errorMessage = "")}
+        on:keydown={(e) => {
+            if (e.key === "Enter") handleSave();
+        }}
     />
 
     <div class="dialog-info">
@@ -156,8 +170,9 @@
     }
 
     .error-message {
-        font-size: 1rem;
-        color: #d32f2f;
+        font-size: 1.2rem;
+        font-weight: 500;
+        color: var(--text-red);
         margin-top: 0.5rem;
     }
 

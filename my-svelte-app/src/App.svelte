@@ -74,6 +74,12 @@
   const publicKeyState = authService.getPublicKeyState();
   $: publicKeyState.setNsec(secretKey);
 
+  // --- 追加: ログインダイアログが開かれたら前の入力をクリア ---
+  $: if ($showLoginDialogStore) {
+    secretKey = "";
+    errorMessage = "";
+  }
+
   $: isAuthenticated = $authState.isAuthenticated;
   $: isAuthInitialized = $authState.isInitialized;
 
@@ -220,6 +226,10 @@
     }
     hideImageSizeInfo();
     closeLogoutDialog();
+
+    // --- 追加: ログアウト時にも入力をクリアしておく ---
+    secretKey = "";
+    errorMessage = "";
   }
 
   async function loginWithNostrLogin() {

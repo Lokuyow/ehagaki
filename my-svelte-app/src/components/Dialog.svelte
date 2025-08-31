@@ -10,9 +10,6 @@
         class="dialog-overlay"
         role="presentation"
         on:click={onClose}
-        on:keydown={(e) => {
-            if (e.key === "Enter" || e.key === " ") onClose();
-        }}
         aria-label={ariaLabel}
     >
         <div

@@ -28,6 +28,7 @@
   "logout_warning": "本当にログアウトしますか？",
   "logout": "ログアウト",
   "invalid_secret": "無効な秘密鍵です",
+  "secret_required": "秘密鍵を入力してください",
   "uploading": "アップロード中",
   "failed": "失敗",
   "data_size": "送信サイズ",

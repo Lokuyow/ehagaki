@@ -28,6 +28,7 @@
   "logout_warning": "Are you sure you want to logout?",
   "logout": "Logout",
   "invalid_secret": "Invalid secret key",
+  "secret_required": "Please enter your secret key",
   "uploading": "Uploading",
   "failed": "Failed",
   "data_size": "Transmission size",
