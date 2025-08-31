@@ -11,7 +11,6 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
-  import SwUpdateModal from "./components/SwUpdateModal.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { FileUploadManager } from "./lib/fileUploadManager";
   import { useRegisterSW } from "virtual:pwa-register/svelte";
@@ -33,10 +32,6 @@
     openSettingsDialog,
     closeSettingsDialog,
     swNeedRefresh,
-    showSwUpdateModalStore,
-    openSwUpdateModal,
-    closeSwUpdateModal,
-    handleSwUpdate,
     profileDataStore,
     profileLoadedStore,
     isLoadingProfileStore,
@@ -64,9 +59,6 @@
       showModal: $needRefresh,
     });
   }
-
-  $: showSwUpdateModal = $showSwUpdateModalStore;
-  $: if ($swNeedRefresh) openSwUpdateModal();
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = "";
@@ -405,11 +397,14 @@
       <FooterInfoDisplay bind:this={footerInfoDisplay} />
 
       <Button
-        className="settings-btn btn-circle"
+        className="settings-btn btn-circle {$swNeedRefresh ? 'has-update' : ''}"
         on:click={openSettingsDialog}
         ariaLabel="設定"
       >
         <div class="settings-icon svg-icon" aria-label="Settings"></div>
+        {#if $swNeedRefresh}
+          <div class="update-indicator"></div>
+        {/if}
       </Button>
     </div>
 
@@ -437,15 +432,6 @@
       onClose={closeSettingsDialog}
       onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
     />
-
-    {#if showSwUpdateModal}
-      <SwUpdateModal
-        show={showSwUpdateModal}
-        needRefresh={$swNeedRefresh}
-        onReload={handleSwUpdate}
-        onClose={closeSwUpdateModal}
-      />
-    {/if}
   </main>
 {/if}
 
@@ -499,6 +485,27 @@
 
   .settings-icon {
     mask-image: url("/ehagaki/icons/gear-solid-full.svg");
+  }
+
+  :global(.settings-btn.has-update) {
+    position: relative;
+  }
+
+  .update-indicator {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 10px;
+    height: 10px;
+    background: var(--theme);
+    border-radius: 50%;
+    animation: pulse 2500ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    50% {
+      opacity: 0.3;
+    }
   }
 
   :global(.profile-display.loading) {

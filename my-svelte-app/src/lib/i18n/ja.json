@@ -44,5 +44,10 @@
   "compression_low": "低圧縮",
   "compression_medium": "中圧縮",
   "compression_high": "高圧縮",
-  "write_relays_list": "書き込み先リレーリスト"
+  "write_relays_list": "書き込み先リレーリスト",
+  "sw_update_available": "アプリの更新があります",
+  "update_app": "アプリを更新",
+  "updating": "更新中...",
+  "toggle_write_relays_list": "投稿先リレーの表示切替",
+  "no_relay_info": "リレー情報なし"
 }

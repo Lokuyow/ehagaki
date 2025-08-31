@@ -8,6 +8,8 @@
         relayListUpdatedStore,
         swVersionStore,
         fetchSwVersion,
+        swNeedRefresh,
+        handleSwUpdate,
     } from "../lib/stores";
     import { get } from "svelte/store";
     import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
@@ -26,6 +28,18 @@
     // swVersion from store
     let swVersion: string | null = null;
     swVersionStore.subscribe((v) => (swVersion = v));
+
+    // SW更新状態
+    let isUpdating = false;
+
+    function handleSwRefresh() {
+        isUpdating = true;
+        handleSwUpdate();
+        // ページがリロードされるまで少し待つ
+        setTimeout(() => {
+            window.location.reload();
+        }, 1000);
+    }
 
     // 投稿先リレー表示用
     let writeRelays: string[] = [];
@@ -141,9 +155,9 @@
         <Button
             className="modal-close btn-circle"
             on:click={onClose}
-            ariaLabel="閉じる"
+            ariaLabel={$_("close") || "閉じる"}
         >
-            <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+            <div class="xmark-icon svg-icon" aria-label={$_("close") || "閉じる"}></div>
         </Button>
     </div>
     <div class="modal-body">
@@ -154,7 +168,7 @@
                 <Button className="lang-btn btn" on:click={toggleLanguage}>
                     <div
                         class="lang-icon-btn svg-icon"
-                        aria-label="Language"
+                        aria-label={$_("change") || "変更"}
                     ></div>
                     <span class="btn-text">{$_("change") || "変更"}</span>
                 </Button>
@@ -226,7 +240,7 @@
                 >
                     <div
                         class="rotate-right-icon svg-icon"
-                        aria-label="再取得"
+                        aria-label={$_("refresh") || "更新"}
                     ></div>
                     <span class="btn-text">{$_("refresh") || "更新"}</span>
                 </Button>
@@ -239,7 +253,7 @@
                     class="relay-toggle-label"
                     on:click={() => (showRelays = !showRelays)}
                     aria-pressed={showRelays}
-                    aria-label="投稿先リレーの表示切替"
+                    aria-label={$_("toggle_write_relays_list") || "投稿先リレーの表示切替"}
                     style="cursor:pointer; background:none; border:none; padding:0; font: inherit;"
                 >
                     <span class="relay-toggle-icon" aria-label="toggle">
@@ -260,12 +274,39 @@
                                 {/each}
                             </ul>
                         {:else}
-                            <span style="color: #888;">リレー情報なし</span>
+                            <span style="color: #888;">{$_("no_relay_info") || "リレー情報なし"}</span>
                         {/if}
                     </div>
                 {/if}
             </div>
         </div>
+
+        <!-- SW更新セクション -->
+        {#if $swNeedRefresh}
+            <div class="setting-section sw-update-section">
+                <span class="setting-label sw-update-label">
+                    {$_("sw_update_available") || "アプリの更新があります"}
+                </span>
+                <div class="setting-control">
+                    <Button
+                        className="btn sw-update-btn"
+                        on:click={handleSwRefresh}
+                        disabled={isUpdating}
+                        ariaLabel={$_("update_app") || "アプリを更新"}
+                    >
+                        <div
+                            class="rotate-right-icon svg-icon"
+                            aria-label={$_("refresh") || "更新"}
+                        ></div>
+                        <span class="btn-text">
+                            {isUpdating
+                                ? $_("updating") || "更新中..."
+                                : $_("update_app") || "更新"}
+                        </span>
+                    </Button>
+                </div>
+            </div>
+        {/if}
     </div>
     <div class="settings-footer">
         <div class="footer-left">
@@ -458,5 +499,36 @@
     .relay-toggle-icon {
         font-size: 1.2rem;
         color: var(--gray);
+    }
+
+    .sw-update-section {
+        border: 1px solid var(--theme);
+        border-radius: 8px;
+        padding: 12px;
+        background: rgba(var(--theme-rgb), 0.05);
+    }
+
+    .sw-update-label {
+        color: var(--theme);
+        font-weight: 600;
+    }
+
+    :global(.btn.sw-update-btn) {
+        --btn-bg: var(--theme);
+        color: white;
+        min-width: 120px;
+
+        :global(.svg-icon) {
+            background-color: white;
+        }
+
+        :global(.btn-text) {
+            color: white;
+        }
+    }
+
+    :global(.sw-update-btn:disabled) {
+        --btn-bg: var(--gray);
+        opacity: 0.6;
     }
 </style>

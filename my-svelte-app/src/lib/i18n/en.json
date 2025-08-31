@@ -44,5 +44,10 @@
   "compression_low": "Low compression",
   "compression_medium": "Medium compression",
   "compression_high": "High compression",
-  "write_relays_list": "Write relays list"
+  "write_relays_list": "Write relays list",
+  "sw_update_available": "A new update is available",
+  "update_app": "Update app",
+  "updating": "Updating...",
+  "toggle_write_relays_list": "Toggle write relays list",
+  "no_relay_info": "No relay info"
 }

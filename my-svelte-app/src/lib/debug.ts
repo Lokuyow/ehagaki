@@ -145,3 +145,12 @@ declare global {
         showSwUpdateModalDebug?: () => void;
     }
 }
+
+// --- ここから追加: SW更新ダイアログ強制表示デバッグ機能 ---
+import { swNeedRefresh } from "./stores";
+if (import.meta.env.MODE === "development") {
+    window.showSwUpdateModalDebug = () => {
+        swNeedRefresh.set(true);
+        console.log("SW更新ダイアログを強制表示しました");
+    };
+}

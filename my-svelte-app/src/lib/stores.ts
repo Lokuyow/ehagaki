@@ -114,7 +114,6 @@ const swRegister = useRegisterSW({
 });
 export const swNeedRefresh = swRegister.needRefresh;
 export const swUpdateServiceWorker = swRegister.updateServiceWorker;
-export const showSwUpdateModalStore = writable(false);
 
 export const profileDataStore = writable<ProfileData>({ name: "", picture: "" });
 export const profileLoadedStore = writable(false);
@@ -151,12 +150,9 @@ export function openSettingsDialog() { showSettingsDialogStore.set(true); }
 export function closeSettingsDialog() { showSettingsDialogStore.set(false); }
 
 // --- Service Worker更新制御 ---
-export function openSwUpdateModal() { showSwUpdateModalStore.set(true); }
-export function closeSwUpdateModal() {
-    showSwUpdateModalStore.set(false);
-    swNeedRefresh.set(false);
+export function handleSwUpdate() {
+    swUpdateServiceWorker(true);
 }
-export function handleSwUpdate() { swUpdateServiceWorker(true); }
 
 // --- リレーリスト更新通知ストア ---
 export const relayListUpdatedStore = writable<number>(0);
