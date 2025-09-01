@@ -79,11 +79,11 @@ export function getCompressionLevels($_: (key: string) => string | undefined) {
 }
 
 export const ZOOM_CONFIG = {
-    MIN_SCALE: 0.5,
-    MAX_SCALE: 5,
+    MIN_SCALE: 1,
+    MAX_SCALE: 100,
     DEFAULT_SCALE: 1,
     DOUBLE_CLICK_SCALE: 2.5,
-    RESET_THRESHOLD: 1.2, // この値以上の拡大時はダブルタップで1倍に戻す
+    RESET_THRESHOLD: 1.3, // この値以上の拡大時はダブルタップで1倍に戻す
     ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
     THRESHOLD: 0.1,
     PINCH_MIN_DISTANCE: 10, // ピンチ操作の最小距離
