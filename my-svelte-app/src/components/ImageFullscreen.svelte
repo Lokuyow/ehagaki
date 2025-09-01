@@ -265,14 +265,31 @@
         setBodyStyle("-webkit-user-select", "");
     }
 
-    function handleDoubleClick(): void {
-        if (!imageContainerElement) return;
+    function handleDoubleClick(event: MouseEvent): void {
+        if (!imageContainerElement || !containerElement) return;
 
         if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
             resetTransform();
         } else {
+            // カーソル位置を取得
+            const rect = containerElement.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+
+            // カーソル位置と画面中心の差分を計算
+            const offsetX = event.clientX - rect.left - centerX;
+            const offsetY = event.clientY - rect.top - centerY;
+
+            // 拡大率を設定
             transformState.scale = ZOOM_CONFIG.DOUBLE_CLICK_SCALE;
-            transformState.translate = { x: 0, y: 0 };
+
+            // カーソル位置が中心に来るように平移を調整
+            // 拡大後の座標系で逆方向に移動
+            transformState.translate = {
+                x: -offsetX,
+                y: -offsetY,
+            };
+
             updateTransform();
             setImageCursor();
             imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
