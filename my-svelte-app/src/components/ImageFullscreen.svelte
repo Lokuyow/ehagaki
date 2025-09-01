@@ -41,6 +41,7 @@
     // タップ検出用の状態
     let lastTapTime = 0;
     let tapTimeoutId: number | null = null;
+    let lastTapPosition: { x: number; y: number } | null = null;
 
     // ストアの購読
     const unsubscribe = transformStore.subscribe((value) => {
@@ -302,23 +303,27 @@
     }
 
     // タップ検出
-    function handleTap(): void {
+    function handleTap(clientX: number, clientY: number): void {
         const currentTime = Date.now();
 
         if (currentTime - lastTapTime < 300 && tapTimeoutId !== null) {
             clearTapTimer();
             stopDragIfActive();
-            executeZoomToggle();
+            // ダブルタップ時は記録された座標を使用
+            executeZoomToggle(clientX, clientY);
             lastTapTime = 0;
+            lastTapPosition = null;
             return;
         }
 
         lastTapTime = currentTime;
+        lastTapPosition = { x: clientX, y: clientY };
         clearTapTimer();
 
         tapTimeoutId = Number(
             setTimeout(() => {
                 tapTimeoutId = null;
+                lastTapPosition = null;
             }, 300),
         );
     }
@@ -337,7 +342,7 @@
         isTouch = false,
     ): void {
         if (isTouch) {
-            handleTap();
+            handleTap(clientX, clientY);
         }
 
         if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
@@ -449,6 +454,7 @@
 
         clearTapTimer();
         clearHistoryState();
+        lastTapPosition = null;
     });
 </script>
 
