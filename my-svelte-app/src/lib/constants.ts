@@ -83,8 +83,10 @@ export const ZOOM_CONFIG = {
     MAX_SCALE: 5,
     DEFAULT_SCALE: 1,
     DOUBLE_CLICK_SCALE: 2.5,
+    RESET_THRESHOLD: 1.2, // この値以上の拡大時はダブルタップで1倍に戻す
     ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
     THRESHOLD: 0.1,
+    PINCH_MIN_DISTANCE: 10, // ピンチ操作の最小距離
 } as const;
 
 export const TIMING = {

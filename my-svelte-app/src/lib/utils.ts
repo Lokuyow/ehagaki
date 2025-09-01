@@ -256,3 +256,72 @@ export function calculateDragDelta(
         y: currentMouse.y - startMouse.y
     };
 }
+
+export interface TouchPosition {
+    x: number;
+    y: number;
+}
+
+export interface PinchInfo {
+    distance: number;
+    centerX: number;
+    centerY: number;
+}
+
+/**
+ * 2点間の距離を計算
+ */
+export function calculateDistance(touch1: Touch, touch2: Touch): number {
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * 2点の中心座標を計算
+ */
+export function calculatePinchCenter(touch1: Touch, touch2: Touch): TouchPosition {
+    return {
+        x: (touch1.clientX + touch2.clientX) / 2,
+        y: (touch1.clientY + touch2.clientY) / 2
+    };
+}
+
+/**
+ * ピンチ情報を計算
+ */
+export function calculatePinchInfo(touch1: Touch, touch2: Touch): PinchInfo {
+    const center = calculatePinchCenter(touch1, touch2);
+    return {
+        distance: calculateDistance(touch1, touch2),
+        centerX: center.x,
+        centerY: center.y
+    };
+}
+
+/**
+ * ピンチズーム計算を実行
+ */
+export function calculatePinchZoom(
+    currentScale: number,
+    currentTranslate: MousePosition,
+    scaleRatio: number,
+    centerX: number,
+    centerY: number,
+    containerElement: HTMLElement
+): ZoomCalculation {
+    const rect = containerElement.getBoundingClientRect();
+    const offsetX = centerX - rect.left - rect.width / 2;
+    const offsetY = centerY - rect.top - rect.height / 2;
+    
+    const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
+    const actualScaleRatio = newScale / currentScale;
+    
+    return {
+        newScale,
+        newTranslate: {
+            x: currentTranslate.x * actualScaleRatio - offsetX * (actualScaleRatio - 1),
+            y: currentTranslate.y * actualScaleRatio - offsetY * (actualScaleRatio - 1)
+        }
+    };
+}

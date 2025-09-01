@@ -17,6 +17,14 @@ export interface DragState {
     startTranslate: Position;
 }
 
+export interface PinchState {
+    isPinching: boolean;
+    initialDistance: number;
+    initialScale: number;
+    centerX: number;
+    centerY: number;
+}
+
 function createTransformStore() {
     const { subscribe, set, update } = writable<TransformState>({
         scale: ZOOM_CONFIG.DEFAULT_SCALE,
@@ -42,5 +50,15 @@ export function createDragState(): DragState {
         isDragging: false,
         start: { x: 0, y: 0 },
         startTranslate: { x: 0, y: 0 }
+    };
+}
+
+export function createPinchState(): PinchState {
+    return {
+        isPinching: false,
+        initialDistance: 0,
+        initialScale: 1,
+        centerX: 0,
+        centerY: 0
     };
 }
