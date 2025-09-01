@@ -10,7 +10,7 @@ function logToDevFooter(...args: any[]) {
     const entry = args
         .map((a) => (typeof a === "object" ? JSON.stringify(a) : String(a)))
         .join(" ");
-    devLog.update((logs) => [entry, ...logs].slice(0, 50));
+    devLog.update((logs) => [entry, ...logs].slice(0, 250)); // 50→250に変更
 }
 
 // --- 開発時のみconsole.logをフック ---
