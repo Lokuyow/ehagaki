@@ -102,6 +102,8 @@
 
     // メイン操作関数
     function close(): void {
+        reset(); // 状態をリセットしてから閉じる
+
         show = false;
         onClose();
 
@@ -121,6 +123,12 @@
 
         resetTransform();
         dragState.isDragging = false;
+        pinchState.isPinching = false; // ピンチ状態もリセット
+
+        // タップ関連の状態もリセット
+        lastTapTime = 0;
+        clearTapTimer();
+
         clearBodyStyles();
     }
 
@@ -128,6 +136,7 @@
     function handlePopState(event: PopStateEvent): void {
         if (show && historyPushed) {
             event.preventDefault();
+            reset(); // 状態をリセット
             clearHistoryState();
             show = false;
             onClose();
