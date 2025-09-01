@@ -377,7 +377,8 @@
         position: absolute;
         top: 20px;
         right: 20px;
-        background: rgba(255, 255, 255, 0.1);
+        background-color: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(4px);
         border: none;
         color: white;
         font-size: 24px;
@@ -393,7 +394,7 @@
     }
 
     .close-button:hover {
-        background: rgba(255, 255, 255, 0.2);
+        background: rgba(25, 25, 25, 0.6);
     }
 
     .close-icon {
