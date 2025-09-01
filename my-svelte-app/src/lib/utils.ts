@@ -131,3 +131,128 @@ export function generatePublicKeyFormats(key: string): PublicKeyData {
 export function isValidNsec(key: string): boolean {
   return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
 }
+
+export function clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+}
+
+export function isNearScale(scale: number, target: number, threshold: number): boolean {
+    return Math.abs(scale - target) < threshold;
+}
+
+export function setBodyStyle(property: string, value: string): void {
+    document.body.style.setProperty(property, value);
+}
+
+export function clearBodyStyles(): void {
+    setBodyStyle("overflow", "");
+    setBodyStyle("user-select", "");
+    setBodyStyle("-webkit-user-select", "");
+}
+
+export function focusEditor(selector: string, delay: number): void {
+    setTimeout(() => {
+        const editorElement = document.querySelector(selector) as HTMLElement;
+        if (editorElement) {
+            editorElement.focus();
+        }
+    }, delay);
+}
+
+export interface MousePosition {
+    x: number;
+    y: number;
+}
+
+export interface ViewportInfo {
+    centerX: number;
+    centerY: number;
+    offsetX: number;
+    offsetY: number;
+}
+
+export interface ZoomCalculation {
+    newScale: number;
+    newTranslate: MousePosition;
+}
+
+/**
+ * マウスイベントから相対座標を取得
+ */
+export function getMousePosition(event: MouseEvent): MousePosition {
+    return {
+        x: event.clientX,
+        y: event.clientY
+    };
+}
+
+/**
+ * 要素の中心からのオフセットを計算
+ */
+export function calculateViewportInfo(
+    element: HTMLElement,
+    mouseX: number,
+    mouseY: number
+): ViewportInfo {
+    const rect = element.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+    
+    return {
+        centerX,
+        centerY,
+        offsetX: mouseX - rect.left - centerX,
+        offsetY: mouseY - rect.top - centerY
+    };
+}
+
+/**
+ * ズーム計算を実行
+ */
+export function calculateZoom(
+    currentScale: number,
+    currentTranslate: MousePosition,
+    newScale: number,
+    offsetX: number,
+    offsetY: number
+): ZoomCalculation {
+    const scaleRatio = newScale / currentScale;
+    
+    return {
+        newScale,
+        newTranslate: {
+            x: currentTranslate.x * scaleRatio - offsetX * (scaleRatio - 1),
+            y: currentTranslate.y * scaleRatio - offsetY * (scaleRatio - 1)
+        }
+    };
+}
+
+/**
+ * ダブルクリック時のズーム位置計算
+ */
+export function calculateDoubleClickZoom(
+    targetScale: number,
+    offsetX: number,
+    offsetY: number
+): ZoomCalculation {
+    return {
+        newScale: targetScale,
+        newTranslate: {
+            x: -offsetX,
+            y: -offsetY
+        }
+    };
+}
+
+/**
+ * ドラッグの移動量計算
+ */
+export function calculateDragDelta(
+    currentMouse: MousePosition,
+    startMouse: MousePosition
+): MousePosition {
+    return {
+        x: currentMouse.x - startMouse.x,
+        y: currentMouse.y - startMouse.y
+    };
+}

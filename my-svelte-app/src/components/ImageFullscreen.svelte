@@ -1,35 +1,26 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-
-    // 定数定義
-    const ZOOM_CONFIG = {
-        MIN_SCALE: 0.5,
-        MAX_SCALE: 5,
-        DEFAULT_SCALE: 1,
-        DOUBLE_CLICK_SCALE: 2.5,
-        ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
-        THRESHOLD: 0.1,
-    } as const;
-
-    const TIMING = {
-        EDITOR_FOCUS_DELAY: 100,
-        TRANSITION_DURATION: "0.3s",
-    } as const;
-
-    const SELECTORS = {
-        EDITOR: ".tiptap-editor",
-    } as const;
-
-    // 型定義
-    interface Position {
-        x: number;
-        y: number;
-    }
-
-    interface TransformState {
-        scale: number;
-        translate: Position;
-    }
+    import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
+    import {
+        clamp,
+        isNearScale,
+        setBodyStyle,
+        clearBodyStyles,
+        focusEditor,
+        getMousePosition,
+        calculateViewportInfo,
+        calculateZoom,
+        calculateDoubleClickZoom,
+        calculateDragDelta,
+        type MousePosition,
+    } from "../lib/utils";
+    import {
+        transformStore,
+        createDragState,
+        type Position,
+        type TransformState,
+        type DragState,
+    } from "../lib/stores/transformStore";
 
     // Props
     export let src: string = "";
@@ -42,33 +33,21 @@
     let containerElement: HTMLDivElement;
     let imageContainerElement: HTMLDivElement;
 
-    // 変換状態
-    let transformState: TransformState = {
-        scale: ZOOM_CONFIG.DEFAULT_SCALE,
-        translate: { x: 0, y: 0 },
-    };
-
-    // ドラッグ状態
-    let dragState = {
-        isDragging: false,
-        start: { x: 0, y: 0 },
-        startTranslate: { x: 0, y: 0 },
-    };
-
-    // その他の状態
+    // 状態管理
+    let transformState: TransformState;
+    let dragState: DragState = createDragState();
     let animationFrameId: number | null = null;
     let historyPushed = false;
 
-    // ユーティリティ関数
-    function clamp(value: number, min: number, max: number): number {
-        return Math.max(min, Math.min(max, value));
-    }
+    // ストアの購読
+    const unsubscribe = transformStore.subscribe((value) => {
+        transformState = value;
+        if (imageContainerElement) {
+            updateTransform();
+        }
+    });
 
-    function isNearScale(scale: number, target: number): boolean {
-        return Math.abs(scale - target) < ZOOM_CONFIG.THRESHOLD;
-    }
-
-    // 変換関数
+    // DOM操作関数
     function updateTransform(): void {
         if (!imageContainerElement) return;
 
@@ -85,13 +64,11 @@
         imageContainerElement.style.cursor = "default";
         imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
 
-        transformState.scale = ZOOM_CONFIG.DEFAULT_SCALE;
-        transformState.translate = { x: 0, y: 0 };
+        transformStore.reset();
     }
 
     function setImageCursor(): void {
         if (!imageContainerElement) return;
-
         imageContainerElement.style.cursor =
             transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE
                 ? "grab"
@@ -112,30 +89,7 @@
         }
     }
 
-    // フォーカス管理
-    function focusEditor(): void {
-        setTimeout(() => {
-            const editorElement = document.querySelector(
-                SELECTORS.EDITOR,
-            ) as HTMLElement;
-            if (editorElement) {
-                editorElement.focus();
-            }
-        }, TIMING.EDITOR_FOCUS_DELAY);
-    }
-
-    // DOM操作ユーティリティ
-    function setBodyStyle(property: string, value: string): void {
-        document.body.style.setProperty(property, value);
-    }
-
-    function clearBodyStyles(): void {
-        setBodyStyle("overflow", "");
-        setBodyStyle("user-select", "");
-        setBodyStyle("-webkit-user-select", "");
-    }
-
-    // メインの操作関数
+    // メイン操作関数
     function close(): void {
         show = false;
         onClose();
@@ -145,7 +99,7 @@
             history.back();
         }
 
-        focusEditor();
+        focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
     }
 
     function reset(): void {
@@ -159,7 +113,7 @@
         clearBodyStyles();
     }
 
-    // イベントハンドラー
+    // イベントハンドラー - ナビゲーション
     function handlePopState(event: PopStateEvent): void {
         if (show && historyPushed) {
             event.preventDefault();
@@ -181,6 +135,7 @@
         }
     }
 
+    // イベントハンドラー - ズーム
     function handleWheel(event: WheelEvent): void {
         event.preventDefault();
 
@@ -199,45 +154,76 @@
             imageContainerElement &&
             containerElement
         ) {
-            // カーソル位置を取得
-            const rect = containerElement.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-
-            // カーソル位置と画面中心の差分を計算
-            const offsetX = event.clientX - rect.left - centerX;
-            const offsetY = event.clientY - rect.top - centerY;
-
-            // 現在の拡大率と新しい拡大率の比率を計算
-            const scaleRatio = newScale / transformState.scale;
-
-            // 現在の平移位置から、カーソル位置を基準とした新しい平移位置を計算
-            transformState.translate.x =
-                transformState.translate.x * scaleRatio -
-                offsetX * (scaleRatio - 1);
-            transformState.translate.y =
-                transformState.translate.y * scaleRatio -
-                offsetY * (scaleRatio - 1);
-
-            transformState.scale = newScale;
+            const mousePos = getMousePosition(event);
+            const viewport = calculateViewportInfo(
+                containerElement,
+                mousePos.x,
+                mousePos.y,
+            );
 
             if (
-                transformState.scale === ZOOM_CONFIG.DEFAULT_SCALE ||
-                isNearScale(transformState.scale, ZOOM_CONFIG.DEFAULT_SCALE)
+                newScale === ZOOM_CONFIG.DEFAULT_SCALE ||
+                isNearScale(
+                    newScale,
+                    ZOOM_CONFIG.DEFAULT_SCALE,
+                    ZOOM_CONFIG.THRESHOLD,
+                )
             ) {
                 resetTransform();
             } else {
-                updateTransform();
+                const zoomCalc = calculateZoom(
+                    transformState.scale,
+                    transformState.translate,
+                    newScale,
+                    viewport.offsetX,
+                    viewport.offsetY,
+                );
+
+                transformStore.updateState({
+                    scale: zoomCalc.newScale,
+                    translate: zoomCalc.newTranslate,
+                });
                 setImageCursor();
             }
         }
     }
 
+    function handleDoubleClick(event: MouseEvent): void {
+        if (!imageContainerElement || !containerElement) return;
+
+        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
+            resetTransform();
+        } else {
+            const mousePos = getMousePosition(event);
+            const viewport = calculateViewportInfo(
+                containerElement,
+                mousePos.x,
+                mousePos.y,
+            );
+
+            const zoomCalc = calculateDoubleClickZoom(
+                ZOOM_CONFIG.DOUBLE_CLICK_SCALE,
+                viewport.offsetX,
+                viewport.offsetY,
+            );
+
+            transformStore.updateState({
+                scale: zoomCalc.newScale,
+                translate: zoomCalc.newTranslate,
+            });
+
+            setImageCursor();
+            imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
+        }
+    }
+
+    // イベントハンドラー - ドラッグ
     function handleMouseDown(event: MouseEvent): void {
         if (transformState.scale <= ZOOM_CONFIG.DEFAULT_SCALE) return;
 
+        const mousePos = getMousePosition(event);
         dragState.isDragging = true;
-        dragState.start = { x: event.clientX, y: event.clientY };
+        dragState.start = mousePos;
         dragState.startTranslate = { ...transformState.translate };
         event.preventDefault();
 
@@ -262,13 +248,13 @@
         }
 
         animationFrameId = requestAnimationFrame(() => {
-            const deltaX = event.clientX - dragState.start.x;
-            const deltaY = event.clientY - dragState.start.y;
+            const currentMouse = getMousePosition(event);
+            const delta = calculateDragDelta(currentMouse, dragState.start);
 
-            transformState.translate.x = dragState.startTranslate.x + deltaX;
-            transformState.translate.y = dragState.startTranslate.y + deltaY;
-
-            updateTransform();
+            transformStore.updateTranslate({
+                x: dragState.startTranslate.x + delta.x,
+                y: dragState.startTranslate.y + delta.y,
+            });
         });
     }
 
@@ -287,37 +273,6 @@
 
         setBodyStyle("user-select", "");
         setBodyStyle("-webkit-user-select", "");
-    }
-
-    function handleDoubleClick(event: MouseEvent): void {
-        if (!imageContainerElement || !containerElement) return;
-
-        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
-            resetTransform();
-        } else {
-            // カーソル位置を取得
-            const rect = containerElement.getBoundingClientRect();
-            const centerX = rect.width / 2;
-            const centerY = rect.height / 2;
-
-            // カーソル位置と画面中心の差分を計算
-            const offsetX = event.clientX - rect.left - centerX;
-            const offsetY = event.clientY - rect.top - centerY;
-
-            // 拡大率を設定
-            transformState.scale = ZOOM_CONFIG.DOUBLE_CLICK_SCALE;
-
-            // カーソル位置が中心に来るように平移を調整
-            // 拡大後の座標系で逆方向に移動
-            transformState.translate = {
-                x: -offsetX,
-                y: -offsetY,
-            };
-
-            updateTransform();
-            setImageCursor();
-            imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
-        }
     }
 
     // リアクティブ文
@@ -350,6 +305,7 @@
     });
 
     onDestroy(() => {
+        unsubscribe();
         clearBodyStyles();
 
         if (animationFrameId !== null) {

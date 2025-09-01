@@ -77,3 +77,21 @@ export function getCompressionLevels($_: (key: string) => string | undefined) {
         { label: $_("compression_high") || "高圧縮", value: "high" },
     ];
 }
+
+export const ZOOM_CONFIG = {
+    MIN_SCALE: 0.5,
+    MAX_SCALE: 5,
+    DEFAULT_SCALE: 1,
+    DOUBLE_CLICK_SCALE: 2.5,
+    ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
+    THRESHOLD: 0.1,
+} as const;
+
+export const TIMING = {
+    EDITOR_FOCUS_DELAY: 100,
+    TRANSITION_DURATION: "0.3s",
+} as const;
+
+export const SELECTORS = {
+    EDITOR: ".tiptap-editor",
+} as const;
