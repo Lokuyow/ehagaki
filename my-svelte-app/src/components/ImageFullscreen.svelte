@@ -2,26 +2,20 @@
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import {
-        clamp,
-        isNearScale,
         setBodyStyle,
         clearBodyStyles,
         focusEditor,
         getMousePosition,
         calculateViewportInfo,
-        calculateZoom,
-        calculateDoubleClickZoom,
+        calculateZoomFromEvent,
         calculateDragDelta,
         calculatePinchInfo,
-        calculatePinchZoom,
-        type MousePosition,
-        type PinchInfo,
+        calculatePinchZoomParams,
     } from "../lib/utils";
     import {
         transformStore,
         createDragState,
         createPinchState,
-        type Position,
         type TransformState,
         type DragState,
         type PinchState,
@@ -44,9 +38,10 @@
     let pinchState: PinchState = createPinchState();
     let animationFrameId: number | null = null;
     let historyPushed = false;
+
+    // タップ検出用の状態
     let lastTapTime = 0;
     let tapTimeoutId: number | null = null;
-    let tapCount = 0; // タップカウントを追加
 
     // ストアの購読
     const unsubscribe = transformStore.subscribe((value) => {
@@ -82,6 +77,13 @@
             transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE
                 ? "grab"
                 : "default";
+    }
+
+    function setTransition(enable: boolean): void {
+        if (!imageContainerElement) return;
+        imageContainerElement.style.transition = enable
+            ? `transform ${TIMING.TRANSITION_DURATION} ease`
+            : "none";
     }
 
     // 履歴管理
@@ -144,140 +146,67 @@
         }
     }
 
-    // イベントハンドラー - ズーム
+    // イベントハンドラー - ズーム（簡素化）
     function handleWheel(event: WheelEvent): void {
         event.preventDefault();
+        if (!imageContainerElement || !containerElement) return;
 
         const delta =
             event.deltaY > 0
                 ? ZOOM_CONFIG.ZOOM_DELTA.OUT
                 : ZOOM_CONFIG.ZOOM_DELTA.IN;
-        const newScale = clamp(
-            transformState.scale * delta,
-            ZOOM_CONFIG.MIN_SCALE,
-            ZOOM_CONFIG.MAX_SCALE,
+        const newScale = transformState.scale * delta;
+
+        const zoomParams = calculateZoomFromEvent(
+            event,
+            containerElement,
+            transformState.scale,
+            transformState.translate,
+            newScale,
         );
 
-        if (
-            newScale !== transformState.scale &&
-            imageContainerElement &&
-            containerElement
-        ) {
-            const mousePos = getMousePosition(event);
-            const viewport = calculateViewportInfo(
-                containerElement,
-                mousePos.x,
-                mousePos.y,
-            );
-
-            if (
-                newScale === ZOOM_CONFIG.DEFAULT_SCALE ||
-                isNearScale(
-                    newScale,
-                    ZOOM_CONFIG.DEFAULT_SCALE,
-                    ZOOM_CONFIG.THRESHOLD,
-                )
-            ) {
-                resetTransform();
-            } else {
-                const zoomCalc = calculateZoom(
-                    transformState.scale,
-                    transformState.translate,
-                    newScale,
-                    viewport.offsetX,
-                    viewport.offsetY,
-                );
-
-                transformStore.updateState({
-                    scale: zoomCalc.newScale,
-                    translate: zoomCalc.newTranslate,
-                });
-                setImageCursor();
-            }
-        }
+        transformStore.zoom(zoomParams);
+        setImageCursor();
     }
 
     function handleDoubleClick(event: MouseEvent): void {
         if (!imageContainerElement || !containerElement) return;
 
-        // 拡大率が一定以上の場合は1倍に戻す
         if (transformState.scale >= ZOOM_CONFIG.RESET_THRESHOLD) {
             resetTransform();
         } else {
-            const mousePos = getMousePosition(event);
             const viewport = calculateViewportInfo(
                 containerElement,
-                mousePos.x,
-                mousePos.y,
+                event.clientX,
+                event.clientY,
             );
 
-            const zoomCalc = calculateDoubleClickZoom(
+            transformStore.zoomToPoint(
                 ZOOM_CONFIG.DOUBLE_CLICK_SCALE,
                 viewport.offsetX,
                 viewport.offsetY,
             );
 
-            transformStore.updateState({
-                scale: zoomCalc.newScale,
-                translate: zoomCalc.newTranslate,
-            });
-
             setImageCursor();
-            imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
+            setTransition(true);
         }
     }
 
-    // タッチイベントハンドラー - ピンチズーム対応
+    // タッチイベントハンドラー（簡素化）
     function handleTouchStart(event: TouchEvent): void {
         event.preventDefault();
 
         if (event.touches.length === 1) {
-            // シングルタッチ - ドラッグ開始またはタップ検出
             const touch = event.touches[0];
-
-            // 常にタップ検出を行う（拡大時も縮小のためダブルタップを検出）
             handleTap();
 
             if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
-                // 拡大時はドラッグも有効にする
-                dragState.isDragging = true;
-                dragState.start = { x: touch.clientX, y: touch.clientY };
-                dragState.startTranslate = { ...transformState.translate };
-
-                if (imageContainerElement) {
-                    imageContainerElement.style.cursor = "grabbing";
-                    imageContainerElement.style.transition = "none";
-                }
-
-                setBodyStyle("user-select", "none");
-                setBodyStyle("-webkit-user-select", "none");
+                startDrag(touch.clientX, touch.clientY);
             }
         } else if (event.touches.length === 2) {
-            // ピンチズーム開始
-            dragState.isDragging = false;
-            // タップ関連のタイマーをクリア
-            if (tapTimeoutId !== null) {
-                clearTimeout(tapTimeoutId);
-                tapTimeoutId = null;
-            }
-            tapCount = 0;
-
-            const pinchInfo = calculatePinchInfo(
-                event.touches[0],
-                event.touches[1],
-            );
-
-            if (pinchInfo.distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
-                pinchState.isPinching = true;
-                pinchState.initialDistance = pinchInfo.distance;
-                pinchState.initialScale = transformState.scale;
-                pinchState.centerX = pinchInfo.centerX;
-                pinchState.centerY = pinchInfo.centerY;
-
-                if (imageContainerElement) {
-                    imageContainerElement.style.transition = "none";
-                }
-            }
+            stopDrag();
+            clearTapTimer();
+            startPinch(event);
         }
     }
 
@@ -285,52 +214,9 @@
         event.preventDefault();
 
         if (event.touches.length === 1 && dragState.isDragging) {
-            // ドラッグ処理
-            if (animationFrameId !== null) {
-                cancelAnimationFrame(animationFrameId);
-            }
-
-            animationFrameId = requestAnimationFrame(() => {
-                const touch = event.touches[0];
-                const currentTouch = { x: touch.clientX, y: touch.clientY };
-                const delta = calculateDragDelta(currentTouch, dragState.start);
-
-                transformStore.updateTranslate({
-                    x: dragState.startTranslate.x + delta.x,
-                    y: dragState.startTranslate.y + delta.y,
-                });
-            });
+            updateDrag(event.touches[0].clientX, event.touches[0].clientY);
         } else if (event.touches.length === 2 && pinchState.isPinching) {
-            // ピンチズーム処理
-            const pinchInfo = calculatePinchInfo(
-                event.touches[0],
-                event.touches[1],
-            );
-
-            if (pinchInfo.distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
-                const scaleRatio =
-                    pinchInfo.distance / pinchState.initialDistance;
-                const newScale = pinchState.initialScale * scaleRatio;
-
-                if (
-                    newScale >= ZOOM_CONFIG.MIN_SCALE &&
-                    newScale <= ZOOM_CONFIG.MAX_SCALE
-                ) {
-                    const zoomCalc = calculatePinchZoom(
-                        transformState.scale,
-                        transformState.translate,
-                        newScale / transformState.scale,
-                        pinchState.centerX,
-                        pinchState.centerY,
-                        containerElement,
-                    );
-
-                    transformStore.updateState({
-                        scale: zoomCalc.newScale,
-                        translate: zoomCalc.newTranslate,
-                    });
-                }
-            }
+            updatePinch(event);
         }
     }
 
@@ -338,92 +224,156 @@
         event.preventDefault();
 
         if (event.touches.length === 0) {
-            // 全てのタッチが終了
-            dragState.isDragging = false;
-            pinchState.isPinching = false;
-
-            if (animationFrameId !== null) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
-
-            if (imageContainerElement) {
-                setImageCursor();
-                imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
-            }
-
-            setBodyStyle("user-select", "");
-            setBodyStyle("-webkit-user-select", "");
-
-            // 1倍に近い場合は1倍に戻す
-            if (
-                isNearScale(
-                    transformState.scale,
-                    ZOOM_CONFIG.DEFAULT_SCALE,
-                    ZOOM_CONFIG.THRESHOLD,
-                )
-            ) {
-                resetTransform();
-            }
+            stopDrag();
+            stopPinch();
         } else if (event.touches.length === 1 && pinchState.isPinching) {
-            // ピンチからシングルタッチに移行
             pinchState.isPinching = false;
         }
     }
 
+    // ドラッグ操作の統合
+    function startDrag(clientX: number, clientY: number): void {
+        dragState.isDragging = true;
+        dragState.start = { x: clientX, y: clientY };
+        dragState.startTranslate = { ...transformState.translate };
+
+        if (imageContainerElement) {
+            imageContainerElement.style.cursor = "grabbing";
+            setTransition(false);
+        }
+
+        setBodyStyle("user-select", "none");
+        setBodyStyle("-webkit-user-select", "none");
+    }
+
+    function updateDrag(clientX: number, clientY: number): void {
+        if (!dragState.isDragging) return;
+
+        if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId);
+        }
+
+        animationFrameId = requestAnimationFrame(() => {
+            const delta = calculateDragDelta(
+                { x: clientX, y: clientY },
+                dragState.start,
+            );
+
+            transformStore.drag(delta.x, delta.y, dragState.startTranslate);
+        });
+    }
+
+    function stopDrag(): void {
+        if (!dragState.isDragging) return;
+
+        dragState.isDragging = false;
+
+        if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+
+        setImageCursor();
+        setTransition(true);
+        setBodyStyle("user-select", "");
+        setBodyStyle("-webkit-user-select", "");
+    }
+
+    // ピンチ操作の統合
+    function startPinch(event: TouchEvent): void {
+        const pinchInfo = calculatePinchInfo(
+            event.touches[0],
+            event.touches[1],
+        );
+
+        if (pinchInfo.distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
+            pinchState.isPinching = true;
+            pinchState.initialDistance = pinchInfo.distance;
+            pinchState.initialScale = transformState.scale;
+            pinchState.centerX = pinchInfo.centerX;
+            pinchState.centerY = pinchInfo.centerY;
+
+            setTransition(false);
+        }
+    }
+
+    function updatePinch(event: TouchEvent): void {
+        if (!pinchState.isPinching || !containerElement) return;
+
+        const pinchInfo = calculatePinchInfo(
+            event.touches[0],
+            event.touches[1],
+        );
+
+        if (pinchInfo.distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
+            const scaleRatio = pinchInfo.distance / pinchState.initialDistance;
+
+            const zoomParams = calculatePinchZoomParams(
+                transformState.scale,
+                (pinchState.initialScale * scaleRatio) / transformState.scale,
+                pinchState.centerX,
+                pinchState.centerY,
+                containerElement,
+            );
+
+            transformStore.zoom(zoomParams);
+        }
+    }
+
+    function stopPinch(): void {
+        pinchState.isPinching = false;
+        setTransition(true);
+    }
+
+    // タップ検出の統合
     function handleTap(): void {
         const currentTime = Date.now();
 
-        // 前回のタップから300ms以内かつ、まだタイマーが動いている場合はダブルタップ
         if (currentTime - lastTapTime < 300 && tapTimeoutId !== null) {
-            // ダブルタップ確定
             clearTimeout(tapTimeoutId);
             tapTimeoutId = null;
 
-            // 拡大率が一定以上の場合は1倍に戻す
-            if (transformState.scale >= ZOOM_CONFIG.RESET_THRESHOLD) {
-                resetTransform();
-            } else {
-                // タッチ座標が取得できない場合は中央に拡大
-                const zoomCalc = calculateDoubleClickZoom(
-                    ZOOM_CONFIG.DOUBLE_CLICK_SCALE,
-                    0,
-                    0,
-                );
+            transformStore.zoomToPoint(ZOOM_CONFIG.DOUBLE_CLICK_SCALE);
+            setImageCursor();
+            setTransition(true);
 
-                transformStore.updateState({
-                    scale: zoomCalc.newScale,
-                    translate: zoomCalc.newTranslate,
-                });
-
-                setImageCursor();
-                if (imageContainerElement) {
-                    imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
-                }
-            }
-
-            tapCount = 0;
             lastTapTime = 0;
             return;
         }
 
-        // 新しいタップシーケンス開始
-        tapCount = 1;
         lastTapTime = currentTime;
+        clearTapTimer();
 
-        // 既存のタイマーがあればクリア
-        if (tapTimeoutId !== null) {
-            clearTimeout(tapTimeoutId);
-        }
-
-        // シングルタップの処理を遅延実行（ダブルタップを待つ）
         tapTimeoutId = Number(
             setTimeout(() => {
-                // シングルタップでは何もしない（拡大しない）
-                tapCount = 0;
                 tapTimeoutId = null;
             }, 300),
         );
+    }
+
+    function clearTapTimer(): void {
+        if (tapTimeoutId !== null) {
+            clearTimeout(tapTimeoutId);
+            tapTimeoutId = null;
+        }
+    }
+
+    // マウスイベント（簡素化）
+    function handleMouseDown(event: MouseEvent): void {
+        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
+            startDrag(event.clientX, event.clientY);
+        }
+    }
+
+    function handleMouseMove(event: MouseEvent): void {
+        if (dragState.isDragging) {
+            event.preventDefault();
+            updateDrag(event.clientX, event.clientY);
+        }
+    }
+
+    function handleMouseUp(): void {
+        stopDrag();
     }
 
     // リアクティブ文
@@ -437,57 +387,6 @@
     }
 
     // ライフサイクル
-    // マウスドラッグ用イベントハンドラー
-    function handleMouseDown(event: MouseEvent): void {
-        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
-            dragState.isDragging = true;
-            dragState.start = { x: event.clientX, y: event.clientY };
-            dragState.startTranslate = { ...transformState.translate };
-
-            if (imageContainerElement) {
-                imageContainerElement.style.cursor = "grabbing";
-                imageContainerElement.style.transition = "none";
-            }
-
-            setBodyStyle("user-select", "none");
-            setBodyStyle("-webkit-user-select", "none");
-        }
-    }
-
-    function handleMouseMove(event: MouseEvent): void {
-        if (dragState.isDragging && imageContainerElement) {
-            event.preventDefault();
-            const currentMouse = { x: event.clientX, y: event.clientY };
-            const delta = calculateDragDelta(currentMouse, dragState.start);
-            transformStore.updateTranslate({
-                x: dragState.startTranslate.x + delta.x,
-                y: dragState.startTranslate.y + delta.y,
-            });
-        }
-    }
-
-    function handleMouseUp(event: MouseEvent): void {
-        if (dragState.isDragging) {
-            dragState.isDragging = false;
-            setImageCursor();
-            if (imageContainerElement) {
-                imageContainerElement.style.transition = `transform ${TIMING.TRANSITION_DURATION} ease`;
-            }
-            setBodyStyle("user-select", "");
-            setBodyStyle("-webkit-user-select", "");
-            // 1倍に近い場合は1倍に戻す
-            if (
-                isNearScale(
-                    transformState.scale,
-                    ZOOM_CONFIG.DEFAULT_SCALE,
-                    ZOOM_CONFIG.THRESHOLD,
-                )
-            ) {
-                resetTransform();
-            }
-        }
-    }
-
     onMount(() => {
         const eventHandlers = [
             { event: "mousemove", handler: handleMouseMove, target: document },
@@ -504,9 +403,7 @@
                 target.removeEventListener(event, handler as EventListener);
             });
 
-            if (tapTimeoutId !== null) {
-                clearTimeout(tapTimeoutId);
-            }
+            clearTapTimer();
         };
     });
 
@@ -518,11 +415,7 @@
             cancelAnimationFrame(animationFrameId);
         }
 
-        if (tapTimeoutId !== null) {
-            clearTimeout(tapTimeoutId);
-        }
-
-        window.removeEventListener("popstate", handlePopState);
+        clearTapTimer();
         clearHistoryState();
     });
 </script>

@@ -133,195 +133,195 @@ export function isValidNsec(key: string): boolean {
 }
 
 export function clamp(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, value));
+  return Math.max(min, Math.min(max, value));
 }
 
 export function isNearScale(scale: number, target: number, threshold: number): boolean {
-    return Math.abs(scale - target) < threshold;
+  return Math.abs(scale - target) < threshold;
 }
 
 export function setBodyStyle(property: string, value: string): void {
-    document.body.style.setProperty(property, value);
+  document.body.style.setProperty(property, value);
 }
 
 export function clearBodyStyles(): void {
-    setBodyStyle("overflow", "");
-    setBodyStyle("user-select", "");
-    setBodyStyle("-webkit-user-select", "");
+  setBodyStyle("overflow", "");
+  setBodyStyle("user-select", "");
+  setBodyStyle("-webkit-user-select", "");
 }
 
 export function focusEditor(selector: string, delay: number): void {
-    setTimeout(() => {
-        const editorElement = document.querySelector(selector) as HTMLElement;
-        if (editorElement) {
-            editorElement.focus();
-        }
-    }, delay);
+  setTimeout(() => {
+    const editorElement = document.querySelector(selector) as HTMLElement;
+    if (editorElement) {
+      editorElement.focus();
+    }
+  }, delay);
 }
 
 export interface MousePosition {
-    x: number;
-    y: number;
+  x: number;
+  y: number;
 }
 
 export interface ViewportInfo {
-    centerX: number;
-    centerY: number;
-    offsetX: number;
-    offsetY: number;
+  centerX: number;
+  centerY: number;
+  offsetX: number;
+  offsetY: number;
 }
 
 export interface ZoomCalculation {
-    newScale: number;
-    newTranslate: MousePosition;
+  newScale: number;
+  newTranslate: MousePosition;
+}
+
+export interface TouchPosition {
+  x: number;
+  y: number;
+}
+
+export interface PinchInfo {
+  distance: number;
+  centerX: number;
+  centerY: number;
+}
+
+// 統合されたズーム計算関数
+export function calculateZoomFromEvent(
+  event: MouseEvent | WheelEvent,
+  containerElement: HTMLElement,
+  currentScale: number,
+  currentTranslate: MousePosition,
+  targetScale: number
+): { scale: number; offsetX: number; offsetY: number } {
+  const rect = containerElement.getBoundingClientRect();
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
+  const offsetX = event.clientX - rect.left - centerX;
+  const offsetY = event.clientY - rect.top - centerY;
+
+  return {
+    scale: targetScale,
+    offsetX,
+    offsetY
+  };
+}
+
+// ピンチズーム用の計算を簡素化
+export function calculatePinchZoomParams(
+  currentScale: number,
+  scaleRatio: number,
+  centerX: number,
+  centerY: number,
+  containerElement: HTMLElement
+): { scale: number; offsetX: number; offsetY: number } {
+  const rect = containerElement.getBoundingClientRect();
+  const offsetX = centerX - rect.left - rect.width / 2;
+  const offsetY = centerY - rect.top - rect.height / 2;
+  const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
+
+  return {
+    scale: newScale,
+    offsetX,
+    offsetY
+  };
 }
 
 /**
  * マウスイベントから相対座標を取得
  */
 export function getMousePosition(event: MouseEvent): MousePosition {
-    return {
-        x: event.clientX,
-        y: event.clientY
-    };
+  return {
+    x: event.clientX,
+    y: event.clientY
+  };
 }
 
 /**
  * 要素の中心からのオフセットを計算
  */
 export function calculateViewportInfo(
-    element: HTMLElement,
-    mouseX: number,
-    mouseY: number
+  element: HTMLElement,
+  mouseX: number,
+  mouseY: number
 ): ViewportInfo {
-    const rect = element.getBoundingClientRect();
-    const centerX = rect.width / 2;
-    const centerY = rect.height / 2;
-    
-    return {
-        centerX,
-        centerY,
-        offsetX: mouseX - rect.left - centerX,
-        offsetY: mouseY - rect.top - centerY
-    };
-}
+  const rect = element.getBoundingClientRect();
+  const centerX = rect.width / 2;
+  const centerY = rect.height / 2;
 
-/**
- * ズーム計算を実行
- */
-export function calculateZoom(
-    currentScale: number,
-    currentTranslate: MousePosition,
-    newScale: number,
-    offsetX: number,
-    offsetY: number
-): ZoomCalculation {
-    const scaleRatio = newScale / currentScale;
-    
-    return {
-        newScale,
-        newTranslate: {
-            x: currentTranslate.x * scaleRatio - offsetX * (scaleRatio - 1),
-            y: currentTranslate.y * scaleRatio - offsetY * (scaleRatio - 1)
-        }
-    };
-}
-
-/**
- * ダブルクリック時のズーム位置計算
- */
-export function calculateDoubleClickZoom(
-    targetScale: number,
-    offsetX: number,
-    offsetY: number
-): ZoomCalculation {
-    return {
-        newScale: targetScale,
-        newTranslate: {
-            x: -offsetX,
-            y: -offsetY
-        }
-    };
+  return {
+    centerX,
+    centerY,
+    offsetX: mouseX - rect.left - centerX,
+    offsetY: mouseY - rect.top - centerY
+  };
 }
 
 /**
  * ドラッグの移動量計算
  */
 export function calculateDragDelta(
-    currentMouse: MousePosition,
-    startMouse: MousePosition
+  currentMouse: MousePosition,
+  startMouse: MousePosition
 ): MousePosition {
-    return {
-        x: currentMouse.x - startMouse.x,
-        y: currentMouse.y - startMouse.y
-    };
-}
-
-export interface TouchPosition {
-    x: number;
-    y: number;
-}
-
-export interface PinchInfo {
-    distance: number;
-    centerX: number;
-    centerY: number;
+  return {
+    x: currentMouse.x - startMouse.x,
+    y: currentMouse.y - startMouse.y
+  };
 }
 
 /**
  * 2点間の距離を計算
  */
 export function calculateDistance(touch1: Touch, touch2: Touch): number {
-    const dx = touch1.clientX - touch2.clientX;
-    const dy = touch1.clientY - touch2.clientY;
-    return Math.sqrt(dx * dx + dy * dy);
+  const dx = touch1.clientX - touch2.clientX;
+  const dy = touch1.clientY - touch2.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**
  * 2点の中心座標を計算
  */
 export function calculatePinchCenter(touch1: Touch, touch2: Touch): TouchPosition {
-    return {
-        x: (touch1.clientX + touch2.clientX) / 2,
-        y: (touch1.clientY + touch2.clientY) / 2
-    };
+  return {
+    x: (touch1.clientX + touch2.clientX) / 2,
+    y: (touch1.clientY + touch2.clientY) / 2
+  };
 }
 
 /**
  * ピンチ情報を計算
  */
 export function calculatePinchInfo(touch1: Touch, touch2: Touch): PinchInfo {
-    const center = calculatePinchCenter(touch1, touch2);
-    return {
-        distance: calculateDistance(touch1, touch2),
-        centerX: center.x,
-        centerY: center.y
-    };
+  const center = calculatePinchCenter(touch1, touch2);
+  return {
+    distance: calculateDistance(touch1, touch2),
+    centerX: center.x,
+    centerY: center.y
+  };
 }
 
-/**
- * ピンチズーム計算を実行
- */
 export function calculatePinchZoom(
-    currentScale: number,
-    currentTranslate: MousePosition,
-    scaleRatio: number,
-    centerX: number,
-    centerY: number,
-    containerElement: HTMLElement
+  currentScale: number,
+  currentTranslate: MousePosition,
+  scaleRatio: number,
+  centerX: number,
+  centerY: number,
+  containerElement: HTMLElement
 ): ZoomCalculation {
-    const rect = containerElement.getBoundingClientRect();
-    const offsetX = centerX - rect.left - rect.width / 2;
-    const offsetY = centerY - rect.top - rect.height / 2;
-    
-    const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
-    const actualScaleRatio = newScale / currentScale;
-    
-    return {
-        newScale,
-        newTranslate: {
-            x: currentTranslate.x * actualScaleRatio - offsetX * (actualScaleRatio - 1),
-            y: currentTranslate.y * actualScaleRatio - offsetY * (actualScaleRatio - 1)
-        }
-    };
+  const rect = containerElement.getBoundingClientRect();
+  const offsetX = centerX - rect.left - rect.width / 2;
+  const offsetY = centerY - rect.top - rect.height / 2;
+
+  const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
+  const actualScaleRatio = newScale / currentScale;
+
+  return {
+    newScale,
+    newTranslate: {
+      x: currentTranslate.x * actualScaleRatio - offsetX * (actualScaleRatio - 1),
+      y: currentTranslate.y * actualScaleRatio - offsetY * (actualScaleRatio - 1)
+    }
+  };
 }
