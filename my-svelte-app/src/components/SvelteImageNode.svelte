@@ -24,7 +24,9 @@
         }
 
         // エディターからフォーカスを外す（キーボードを隠す）
-        const editorElement = document.querySelector('.tiptap-editor') as HTMLElement;
+        const editorElement = document.querySelector(
+            ".tiptap-editor",
+        ) as HTMLElement;
         if (editorElement) {
             editorElement.blur();
         }
@@ -217,10 +219,12 @@
             clearTimeout(longPressTimeout);
             longPressTimeout = null;
             touchStartTarget = null;
-            
+
             // 長押しでない通常のタップの場合、エディターのフォーカスを外す
             if (!isDragging) {
-                const editorElement = document.querySelector('.tiptap-editor') as HTMLElement;
+                const editorElement = document.querySelector(
+                    ".tiptap-editor",
+                ) as HTMLElement;
                 if (editorElement) {
                     editorElement.blur();
                 }
@@ -397,11 +401,13 @@
         /* フォーカス時のアウトラインを無効化 */
         outline: none;
         -webkit-tap-highlight-color: transparent;
-    }
 
-    .editor-image-button:focus {
-        /* フォーカス時もアウトラインを表示しない */
-        outline: none;
+        &:focus {
+            outline: none;
+        }
+        &:active {
+            transform: scale(0.98);
+        }
     }
 
     /* data属性による状態制御 */
