@@ -194,7 +194,31 @@
             ZOOM_CONFIG.MAX_SCALE,
         );
 
-        if (newScale !== transformState.scale && imageContainerElement) {
+        if (
+            newScale !== transformState.scale &&
+            imageContainerElement &&
+            containerElement
+        ) {
+            // カーソル位置を取得
+            const rect = containerElement.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+
+            // カーソル位置と画面中心の差分を計算
+            const offsetX = event.clientX - rect.left - centerX;
+            const offsetY = event.clientY - rect.top - centerY;
+
+            // 現在の拡大率と新しい拡大率の比率を計算
+            const scaleRatio = newScale / transformState.scale;
+
+            // 現在の平移位置から、カーソル位置を基準とした新しい平移位置を計算
+            transformState.translate.x =
+                transformState.translate.x * scaleRatio -
+                offsetX * (scaleRatio - 1);
+            transformState.translate.y =
+                transformState.translate.y * scaleRatio -
+                offsetY * (scaleRatio - 1);
+
             transformState.scale = newScale;
 
             if (
