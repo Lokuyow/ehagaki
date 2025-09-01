@@ -36,6 +36,7 @@
     let dragState: DragState = createDragState();
     let pinchState: PinchState = createPinchState();
     let animationFrameId: number | null = null;
+    let pinchAnimationFrameId: number | null = null; // ピンチ専用のrequestAnimationFrame
     let historyPushed = false;
 
     // タップ検出用の状態
@@ -63,6 +64,18 @@
 
         imageContainerElement.style.transform = `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`;
         imageContainerElement.style.transformOrigin = "center";
+    }
+
+    // ピンチ操作中の直接DOM更新（ストア更新なし）
+    function updateTransformDirect(
+        scale: number,
+        translateX: number,
+        translateY: number,
+    ): void {
+        if (!imageContainerElement) return;
+
+        imageContainerElement.style.transition = "none";
+        imageContainerElement.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
     }
 
     function setImageCursor(): void {
@@ -94,6 +107,11 @@
         if (animationFrameId !== null) {
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
+        }
+
+        if (pinchAnimationFrameId !== null) {
+            cancelAnimationFrame(pinchAnimationFrameId);
+            pinchAnimationFrameId = null;
         }
 
         transformStore.reset();
@@ -258,17 +276,19 @@
 
     // ピンチ操作
     function startPinch(event: TouchEvent): void {
-        const pinchInfo = calculatePinchInfo(
-            event.touches[0],
-            event.touches[1],
-        );
+        const touch1 = event.touches[0];
+        const touch2 = event.touches[1];
 
-        if (pinchInfo.distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
+        const dx = touch1.clientX - touch2.clientX;
+        const dy = touch1.clientY - touch2.clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
             pinchState.isPinching = true;
-            pinchState.initialDistance = pinchInfo.distance;
+            pinchState.initialDistance = distance;
             pinchState.initialScale = transformState.scale;
-            pinchState.centerX = pinchInfo.centerX;
-            pinchState.centerY = pinchInfo.centerY;
+            pinchState.centerX = (touch1.clientX + touch2.clientX) / 2;
+            pinchState.centerY = (touch1.clientY + touch2.clientY) / 2;
 
             setTransition(false);
         }
@@ -277,29 +297,91 @@
     function updatePinch(event: TouchEvent): void {
         if (!pinchState.isPinching || !containerElement) return;
 
-        const pinchInfo = calculatePinchInfo(
-            event.touches[0],
-            event.touches[1],
-        );
-
-        if (pinchInfo.distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
-            const scaleRatio = pinchInfo.distance / pinchState.initialDistance;
-
-            const zoomParams = calculatePinchZoomParams(
-                transformState.scale,
-                (pinchState.initialScale * scaleRatio) / transformState.scale,
-                pinchState.centerX,
-                pinchState.centerY,
-                containerElement,
-            );
-
-            transformStore.zoom(zoomParams);
+        // 既存のアニメーションフレームをキャンセル
+        if (pinchAnimationFrameId !== null) {
+            cancelAnimationFrame(pinchAnimationFrameId);
         }
+
+        pinchAnimationFrameId = requestAnimationFrame(() => {
+            const touch1 = event.touches[0];
+            const touch2 = event.touches[1];
+
+            const dx = touch1.clientX - touch2.clientX;
+            const dy = touch1.clientY - touch2.clientY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
+                const scaleRatio = distance / pinchState.initialDistance;
+                const newScale = Math.max(
+                    ZOOM_CONFIG.MIN_SCALE,
+                    Math.min(
+                        ZOOM_CONFIG.MAX_SCALE,
+                        pinchState.initialScale * scaleRatio,
+                    ),
+                );
+
+                // コンテナの中心座標を取得
+                const rect = containerElement.getBoundingClientRect();
+                const containerCenterX = rect.width / 2;
+                const containerCenterY = rect.height / 2;
+
+                // ピンチ中心からコンテナ中心への相対位置
+                const offsetX =
+                    pinchState.centerX - rect.left - containerCenterX;
+                const offsetY =
+                    pinchState.centerY - rect.top - containerCenterY;
+
+                // スケール変化に応じた座標調整
+                const actualScaleRatio = newScale / transformState.scale;
+                const newTranslateX =
+                    transformState.translate.x * actualScaleRatio -
+                    offsetX * (actualScaleRatio - 1);
+                const newTranslateY =
+                    transformState.translate.y * actualScaleRatio -
+                    offsetY * (actualScaleRatio - 1);
+
+                // 直接DOM更新（ストア更新なし）
+                updateTransformDirect(newScale, newTranslateX, newTranslateY);
+            }
+        });
     }
 
     function stopPinch(): void {
+        if (!pinchState.isPinching) return;
+
+        // アニメーションフレームをキャンセル
+        if (pinchAnimationFrameId !== null) {
+            cancelAnimationFrame(pinchAnimationFrameId);
+            pinchAnimationFrameId = null;
+        }
+
         pinchState.isPinching = false;
+
+        // 最終状態をストアに反映
+        if (imageContainerElement) {
+            const transform = imageContainerElement.style.transform;
+            const scaleMatch = transform.match(/scale\(([\d.]+)\)/);
+            const translateMatch = transform.match(
+                /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/,
+            );
+
+            if (scaleMatch && translateMatch) {
+                const finalScale = parseFloat(scaleMatch[1]);
+                const finalTranslateX =
+                    parseFloat(translateMatch[1]) * finalScale;
+                const finalTranslateY =
+                    parseFloat(translateMatch[2]) * finalScale;
+
+                transformStore.setDirectState({
+                    scale: finalScale,
+                    translate: { x: finalTranslateX, y: finalTranslateY },
+                    useTransition: true,
+                });
+            }
+        }
+
         setTransition(true);
+        setImageCursor();
     }
 
     // タップ検出

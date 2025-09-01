@@ -49,6 +49,9 @@ function createTransformStore() {
             useTransition: true
         }),
 
+        // 直接状態を設定するメソッド（ピンチ操作終了時用）
+        setDirectState: (state: TransformState) => set(state),
+
         zoom: (params: ZoomParams) => update(state => {
             const newScale = clamp(params.scale, ZOOM_CONFIG.MIN_SCALE, ZOOM_CONFIG.MAX_SCALE);
 

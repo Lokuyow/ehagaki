@@ -87,6 +87,7 @@ export const ZOOM_CONFIG = {
     ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
     THRESHOLD: 0.1,
     PINCH_MIN_DISTANCE: 10, // ピンチ操作の最小距離
+    PINCH_SCALE_SENSITIVITY: 1.0, // ピンチスケール感度
 } as const;
 
 export const TIMING = {
@@ -95,6 +96,7 @@ export const TIMING = {
     TAP_TIMEOUT: 300, // タップ検出のタイムアウト
     ZOOM_TOGGLE_DELAY: 100, // ズーム切り替えの遅延
     TRANSITION_DELAY: 50, // トランジション再有効化の遅延
+    PINCH_THROTTLE: 16, // ピンチ更新のスロットル間隔（約60FPS）
 } as const;
 
 export const SELECTORS = {
