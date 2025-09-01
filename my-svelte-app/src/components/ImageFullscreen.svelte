@@ -8,7 +8,7 @@
         DEFAULT_SCALE: 1,
         DOUBLE_CLICK_SCALE: 2.5,
         ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
-        THRESHOLD: 0.1,
+        THRESHOLD: 0.5,
     } as const;
 
     const TIMING = {
