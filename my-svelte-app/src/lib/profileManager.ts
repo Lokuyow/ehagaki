@@ -12,17 +12,54 @@ function toNpub(pubkeyHex: string): string {
   return `npub1${pubkeyHex.slice(0, 10)}...`;
 }
 
-// ProfileData生成の共通化
-function createProfileData(content: any, pubkeyHex: string): ProfileData {
-  return {
-    name: content?.name || "",
-    picture: content?.picture || "",
-    npub: content?.name ? undefined : toNpub(pubkeyHex)
-  };
-}
-
 export class ProfileManager {
   constructor(private rxNostr: ReturnType<typeof createRxNostr>) { }
+
+  // プロフィール画像のキャッシュバスティング
+  private addCacheBuster(imageUrl: string): string {
+    if (!imageUrl) return imageUrl;
+    try {
+      const url = new URL(imageUrl);
+      url.searchParams.set('cb', Date.now().toString());
+      return url.toString();
+    } catch {
+      // URLが不正な場合はそのまま返す
+      return imageUrl;
+    }
+  }
+
+  // ProfileData生成時にキャッシュバスターを適用
+  private createProfileDataWithCacheBuster(content: any, pubkeyHex: string, forceRemote = false): ProfileData {
+    let picture = content?.picture || "";
+    if (picture && forceRemote) {
+      picture = this.addCacheBuster(picture);
+    }
+    
+    // プロフィール画像にマーカーを追加
+    if (picture) {
+      picture = this.addProfileMarker(picture);
+    }
+    
+    return {
+      name: content?.name || "",
+      picture,
+      npub: content?.name ? undefined : toNpub(pubkeyHex)
+    };
+  }
+
+  // プロフィール画像にマーカーを追加
+  private addProfileMarker(imageUrl: string): string {
+    if (!imageUrl) return imageUrl;
+    try {
+      const url = new URL(imageUrl);
+      // プロフィール画像であることを示すクエリパラメータを追加
+      url.searchParams.set('profile', 'true');
+      return url.toString();
+    } catch {
+      // URLが不正な場合はそのまま返す
+      return imageUrl;
+    }
+  }
 
   saveToLocalStorage(pubkeyHex: string, profile: ProfileData | null): void {
     try {
@@ -42,7 +79,14 @@ export class ProfileManager {
       const profile = localStorage.getItem(`nostr-profile-${pubkeyHex}`);
       if (!profile) return null;
       const parsed = JSON.parse(profile);
-      return createProfileData(parsed, pubkeyHex);
+      const profileData = this.createProfileDataWithCacheBuster(parsed, pubkeyHex);
+      
+      // ローカルストレージから取得時もプロフィールマーカーを追加
+      if (profileData.picture) {
+        profileData.picture = this.addProfileMarker(profileData.picture);
+      }
+      
+      return profileData;
     } catch (e) {
       console.error("プロフィール情報の取得に失敗:", e);
       return null;
@@ -72,7 +116,7 @@ export class ProfileManager {
           found = true;
           try {
             const content = JSON.parse(packet.event.content);
-            const profile = createProfileData(content, pubkeyHex);
+            const profile = this.createProfileDataWithCacheBuster(content, pubkeyHex, opts?.forceRemote);
             console.log("Kind 0からプロフィール情報を取得:", profile);
             this.saveToLocalStorage(pubkeyHex, profile);
             subscription.unsubscribe();
@@ -89,7 +133,7 @@ export class ProfileManager {
         subscription.unsubscribe();
         if (!found) {
           console.log("プロフィール取得タイムアウト、デフォルトプロフィールを使用");
-          const defaultProfile = createProfileData({}, pubkeyHex);
+          const defaultProfile = this.createProfileDataWithCacheBuster({}, pubkeyHex, opts?.forceRemote);
           this.saveToLocalStorage(pubkeyHex, defaultProfile); // デフォルトも保存
           resolve(defaultProfile);
         }

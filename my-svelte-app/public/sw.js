@@ -1,6 +1,7 @@
 // 定数定義
-const PRECACHE_VERSION = '1.0.80';
+const PRECACHE_VERSION = '1.0.8';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
+const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
 
@@ -53,6 +54,8 @@ self.addEventListener('fetch', (event) => {
     // 修正: オリジンが同じ場合のみ横取り
     if (isUploadRequest(event.request, url) && url.origin === self.location.origin) {
         event.respondWith(handleUploadRequest(event.request));
+    } else if (isProfileImageRequest(event.request)) {
+        event.respondWith(handleProfileImageRequest(event.request));
     } else if (url.origin === self.location.origin) {
         event.respondWith(handleCacheFirst(event.request));
     }
@@ -71,6 +74,14 @@ self.addEventListener('message', (event) => {
     }
     if (event.data?.action === 'getSharedImage') {
         respondSharedImage(event);
+    }
+    if (event.data?.action === 'clearProfileCache') {
+        clearProfileImageCache().then(() => {
+            event.ports?.[0]?.postMessage({ success: true });
+        }).catch(err => {
+            console.error('プロフィールキャッシュクリアエラー:', err);
+            event.ports?.[0]?.postMessage({ success: false, error: err.message });
+        });
     }
 });
 
@@ -173,6 +184,54 @@ async function handleCacheFirst(request) {
     } catch (error) {
         console.error('キャッシュ戦略エラー:', error);
         return new Response('Not Found', { status: 404 });
+    }
+}
+
+// プロフィール画像リクエスト判定
+function isProfileImageRequest(request) {
+    if (request.method !== 'GET') return false;
+
+    const url = new URL(request.url);
+
+    // profile=true クエリパラメータがある場合のみプロフィール画像として扱う
+    return url.searchParams.get('profile') === 'true';
+}
+
+// プロフィール画像リクエスト処理
+async function handleProfileImageRequest(request) {
+    try {
+        const cache = await caches.open(PROFILE_CACHE_NAME);
+        const cached = await cache.match(request);
+
+        if (cached) {
+            console.log('プロフィール画像をキャッシュから返却:', request.url);
+            return cached;
+        }
+
+        const response = await fetch(request);
+        if (response.ok) {
+            // レスポンスをクローンしてキャッシュに保存
+            await cache.put(request, response.clone());
+            console.log('プロフィール画像をキャッシュに保存:', request.url);
+        }
+
+        return response;
+    } catch (error) {
+        console.error('プロフィール画像処理エラー:', error);
+        // エラー時はネットワークからの取得を試行
+        return fetch(request);
+    }
+}
+
+// プロフィール画像キャッシュクリア
+async function clearProfileImageCache() {
+    try {
+        const deleted = await caches.delete(PROFILE_CACHE_NAME);
+        console.log('プロフィール画像キャッシュクリア:', deleted);
+        return deleted;
+    } catch (error) {
+        console.error('プロフィール画像キャッシュクリアエラー:', error);
+        throw error;
     }
 }
 

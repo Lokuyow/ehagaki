@@ -91,6 +91,39 @@ export class AuthService {
     }
 
     /**
+     * プロフィール画像キャッシュをクリア
+     */
+    private async clearProfileImageCache(): Promise<void> {
+        try {
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                const messageChannel = new MessageChannel();
+                return new Promise((resolve, reject) => {
+                    messageChannel.port1.onmessage = (event) => {
+                        if (event.data.success) {
+                            console.log('プロフィール画像キャッシュをクリアしました');
+                            resolve();
+                        } else {
+                            console.error('プロフィール画像キャッシュクリア失敗:', event.data.error);
+                            reject(new Error(event.data.error));
+                        }
+                    };
+
+                    if (navigator.serviceWorker.controller) {
+                        navigator.serviceWorker.controller.postMessage(
+                            { action: 'clearProfileCache' },
+                            [messageChannel.port2]
+                        );
+                    } else {
+                        reject(new Error('Service worker controller is null.'));
+                    }
+                });
+            }
+        } catch (error) {
+            console.error('プロフィール画像キャッシュクリア中にエラー:', error);
+        }
+    }
+
+    /**
      * ログアウト処理
      */
     logout(): void {
@@ -115,6 +148,11 @@ export class AuthService {
         if (nostrLoginManager.isInitialized) {
             nostrLoginManager.logout();
         }
+
+        // プロフィール画像キャッシュをクリア
+        this.clearProfileImageCache().catch(error => {
+            console.error('プロフィール画像キャッシュクリア中にエラー:', error);
+        });
 
         debugLog('ログアウト処理完了');
     }

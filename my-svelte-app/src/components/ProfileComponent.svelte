@@ -25,6 +25,20 @@
       : profileData?.npub
         ? profileData.npub
         : "User";
+
+  // プロフィール画像のpreload処理
+  function preloadProfileImage(src: string) {
+    if (!src) return;
+    
+    // プロフィール画像のプリロード（Service Workerでキャッシュされる）
+    const img = new Image();
+    img.src = src;
+  }
+
+  // プロフィールデータが変更された時にプリロード
+  $: if (profileData?.picture) {
+    preloadProfileImage(profileData.picture);
+  }
 </script>
 
 {#if hasStoredKey}
@@ -43,6 +57,8 @@
           src={profileData.picture}
           alt={getProfileAlt()}
           class="profile-picture"
+          loading="lazy"
+          crossorigin="anonymous"
         />
       {:else}
         <div class="profile-picture default svg-icon" aria-label="User"></div>
