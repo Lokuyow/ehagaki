@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
@@ -13,6 +13,8 @@
     } from "../lib/stores";
     import { get } from "svelte/store";
     import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
+    import { nostrZapView } from "nostr-zap-view";
+    import "nostr-zap";
 
     export let show = false;
     export let onClose: () => void;
@@ -111,6 +113,18 @@
 
     // showがtrueのたびにリレーリストを再取得
     $: if (show) loadWriteRelays();
+    // showがtrueのたびにnostr-zap-viewを再初期化（tickでDOM描画後に呼ぶ）
+    $: if (show) {
+        // DOM描画完了を待つ
+        (async () => {
+            await tick();
+            nostrZapView();
+            // nostr-zapのボタンも初期化
+            if (window.nostrZap) {
+                window.nostrZap.initTargets();
+            }
+        })();
+    }
 
     // showがfalseになったらリレーリストの折り畳みも閉じる
     $: if (!show) showRelays = false;
@@ -157,7 +171,10 @@
             on:click={onClose}
             ariaLabel={$_("close") || "閉じる"}
         >
-            <div class="xmark-icon svg-icon" aria-label={$_("close") || "閉じる"}></div>
+            <div
+                class="xmark-icon svg-icon"
+                aria-label={$_("close") || "閉じる"}
+            ></div>
         </Button>
     </div>
     <div class="modal-body">
@@ -253,7 +270,8 @@
                     class="relay-toggle-label"
                     on:click={() => (showRelays = !showRelays)}
                     aria-pressed={showRelays}
-                    aria-label={$_("toggle_write_relays_list") || "投稿先リレーの表示切替"}
+                    aria-label={$_("toggle_write_relays_list") ||
+                        "投稿先リレーの表示切替"}
                     style="cursor:pointer; background:none; border:none; padding:0; font: inherit;"
                 >
                     <span class="relay-toggle-icon" aria-label="toggle">
@@ -274,7 +292,9 @@
                                 {/each}
                             </ul>
                         {:else}
-                            <span style="color: #888;">{$_("no_relay_info") || "リレー情報なし"}</span>
+                            <span style="color: #888;"
+                                >{$_("no_relay_info") || "リレー情報なし"}</span
+                            >
                         {/if}
                     </div>
                 {/if}
@@ -314,6 +334,29 @@
             <span class="cache-version">{swVersion ? `v${swVersion}` : ""}</span
             >
         </div>
+
+        <div>
+            <div class="zap-view-btn-group">
+                <button
+                    class="zap-btn"
+                    data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
+                    data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                    data-relays="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                >
+                    Support
+                </button>
+                <button
+                    class="view-btn"
+                    data-title="Thanks for the Support!"
+                    data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                    data-zap-color-mode="true"
+                    data-relay-urls="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                >
+                    View
+                </button>
+            </div>
+        </div>
+
         <a
             href="https://github.com/Lokuyow/ehagaki"
             target="_blank"
@@ -406,10 +449,10 @@
     .footer-left {
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 6px;
         margin-right: auto;
         font-size: 1rem;
-        color: var(--text-light);
+        color: var(--text);
         opacity: 0.8;
     }
     .site-name {
@@ -418,12 +461,13 @@
     }
     .cache-version {
         font-size: 0.95em;
-        color: var(--gray);
+        color: var(--text-light);
     }
     .github-link {
         display: inline-flex;
         align-items: center;
         text-decoration: none;
+        margin-left: auto;
     }
     .github-icon {
         mask-image: url("/ehagaki/icons/github-mark.svg");
@@ -530,5 +574,29 @@
     :global(.sw-update-btn:disabled) {
         --btn-bg: var(--gray);
         opacity: 0.6;
+    }
+
+    .zap-view-btn-group {
+        display: inline-flex;
+        height: 35px;
+        margin: auto;
+
+        .zap-btn,
+        .view-btn {
+            color: var(--text-light);
+            min-width: 70px;
+        }
+
+        .zap-btn {
+            border-radius: 6px 0 0 6px;
+            border-right: 1px solid var(--border);
+            padding: 0 10px 0 13px;
+        }
+
+        .view-btn {
+            border-radius: 0 6px 6px 0;
+            border-left: 1px solid var(--border);
+            padding: 0 14px 0 12px;
+        }
     }
 </style>

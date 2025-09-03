@@ -68,3 +68,13 @@ export interface FileValidationResult {
     isValid: boolean;
     errorMessage?: string;
 }
+
+// --- window.nostrZap 型拡張 ---
+declare global {
+    interface Window {
+        nostrZap?: {
+            initTargets: () => void;
+            // 必要に応じて他のメソッドや型も追加
+        };
+    }
+}
