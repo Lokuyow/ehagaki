@@ -105,12 +105,13 @@
 {/if}
 
 <Dialog
-    {show}
+    bind:show
     useHistory={true}
     {onClose}
     ariaLabel={$_("input_secret")}
     className="login-dialog"
     showFooter={true}
+    let:close
 >
     <Button
         className="nostr-login-button btn {isLoadingNostrLogin

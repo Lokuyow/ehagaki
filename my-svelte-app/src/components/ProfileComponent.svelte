@@ -58,7 +58,6 @@
           alt={getProfileAlt()}
           class="profile-picture"
           loading="lazy"
-          crossorigin="anonymous"
         />
       {:else}
         <div class="profile-picture default svg-icon" aria-label="User"></div>

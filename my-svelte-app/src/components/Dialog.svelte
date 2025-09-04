@@ -11,32 +11,45 @@
 
     let isModalVisible = false;
 
-    function closeModal() {
+    // スロットプロップで提供する閉じる関数
+    const closeModal = () => {
         show = false;
-        onClose?.();
-    }
+    };
 
-    function handlePopState() {
+    // popstateイベント（戻る/進むボタン）のハンドラ
+    const handlePopState = () => {
+        // URLに#modalがなければ、モーダルを閉じる
         if (isModalVisible && window.location.hash !== "#modal") {
             closeModal();
         }
-    }
+    };
 
+    // showプロパティの変更を監視する
     $: {
         if (typeof window !== "undefined" && useHistory) {
             if (show) {
+                // モーダルを開く処理
                 isModalVisible = true;
+                // URLに#modalがなければ追加する
                 if (window.location.hash !== "#modal") {
                     history.pushState(null, "", "#modal");
                 }
             } else {
+                // モーダルを閉じる処理
                 isModalVisible = false;
+                // URLに#modalがあれば履歴を戻して削除する
                 if (window.location.hash === "#modal") {
                     history.back();
                 }
+                // onCloseコールバックを実行
+                onClose?.();
             }
         } else {
             isModalVisible = show;
+            // useHistoryがfalseの場合でもonCloseは実行
+            if (!show && onClose) {
+                onClose();
+            }
         }
     }
 
@@ -46,6 +59,10 @@
 
     onDestroy(() => {
         window.removeEventListener("popstate", handlePopState);
+        // コンポーネント破棄時にURLから#modalを除去
+        if (isModalVisible && window.location.hash === "#modal") {
+            history.back();
+        }
     });
 </script>
 
@@ -67,11 +84,11 @@
             }}
         >
             <div class="dialog-content">
-                <slot />
+                <slot close={closeModal} />
             </div>
             {#if showFooter}
                 <div class="dialog-footer">
-                    <slot name="footer">
+                    <slot name="footer" close={closeModal}>
                         <Button
                             className="modal-close btn-circle"
                             on:click={closeModal}

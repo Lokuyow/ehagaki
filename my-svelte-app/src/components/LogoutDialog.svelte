@@ -6,22 +6,27 @@
     export let show = false;
     export let onClose: () => void;
     export let onLogout: () => void;
+
+    function handleLogout() {
+        onLogout?.();
+    }
 </script>
 
 <Dialog
-    {show}
+    bind:show
     useHistory={true}
     {onClose}
     ariaLabel={$_("logout_confirmation")}
     className="logout-dialog"
+    let:close
 >
     <h2>{$_("logout_confirmation")}</h2>
     <p>{$_("logout_warning")}</p>
     <div class="dialog-buttons">
-        <Button on:click={onClose} className="cancel-btn btn-angular"
+        <Button on:click={close} className="cancel-btn btn-angular"
             >{$_("cancel")}</Button
         >
-        <Button on:click={onLogout} className="logout-btn btn-angular"
+        <Button on:click={handleLogout} className="logout-btn btn-angular"
             >{$_("logout")}</Button
         >
     </div>

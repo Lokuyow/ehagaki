@@ -140,6 +140,9 @@
     if (result.pubkeyHex) {
       isLoadingNostrLogin = true;
       isLoadingProfileStore.set(true);
+      // bind:showで管理されているので、storeを直接更新
+      showLoginDialogStore.set(false);
+
       try {
         await initializeNostr();
         await relayManager.fetchUserRelays(result.pubkeyHex);
@@ -151,7 +154,6 @@
         isLoadingNostrLogin = false;
         isLoadingProfileStore.set(false);
       }
-      showLoginDialogStore.set(false);
     }
   }
 
@@ -183,6 +185,7 @@
       return;
     }
     isLoadingProfileStore.set(true);
+    // bind:showで管理されているので、storeを直接更新
     showLoginDialogStore.set(false);
     errorMessage = "";
 
@@ -217,7 +220,8 @@
       });
     }
     hideImageSizeInfo();
-    closeLogoutDialog();
+    // bind:showで管理されているので、storeを直接更新
+    showLogoutDialogStore.set(false);
 
     // --- 追加: ログアウト時にも入力をクリアしておく ---
     secretKey = "";
@@ -432,7 +436,7 @@
 
     {#if $showLoginDialogStore}
       <LoginDialog
-        show={$showLoginDialogStore}
+        bind:show={$showLoginDialogStore}
         bind:secretKey
         onClose={closeLoginDialog}
         onSave={saveSecretKey}
@@ -443,7 +447,7 @@
 
     {#if $showLogoutDialogStore}
       <LogoutDialog
-        show={$showLogoutDialogStore}
+        bind:show={$showLogoutDialogStore}
         onClose={closeLogoutDialog}
         onLogout={logout}
       />
