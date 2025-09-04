@@ -83,6 +83,10 @@ select {
   }
 }
 
+button>* {
+  pointer-events: none;
+}
+
 button:active:not(:disabled),
 *[role="button"]:active {
   transform: scale(0.94);

@@ -16,8 +16,6 @@
     let dialogId = Math.random().toString(36).substr(2, 9);
     let isClosing = false; // 閉じる処理中フラグ
 
-    const externalOnClose = onClose;
-
     function pushDialogState() {
         if (!useHistory || pushedHistory) return;
         try {
@@ -32,24 +30,27 @@
         if (isClosing) return; // 重複実行防止
         isClosing = true;
 
+        const doClose = () => {
+            try {
+                onClose?.();
+            } finally {
+                isClosing = false;
+            }
+        };
+
         if (useHistory && pushedHistory) {
-            ignoreNextPop = false;
+            // 自分で戻す popstate は無視しつつ、即時にUIを閉じる
+            ignoreNextPop = true;
             pushedHistory = false;
             try {
                 window.history.back();
             } catch (e) {
-                // history.back()が失敗した場合は直接閉じる
-                setTimeout(() => {
-                    externalOnClose?.();
-                    isClosing = false;
-                }, 0);
+                // ignore
             }
+            // 外部に閉じる通知
+            setTimeout(doClose, 0);
         } else {
-            // 履歴エントリがない場合は直接閉じる
-            setTimeout(() => {
-                externalOnClose?.();
-                isClosing = false;
-            }, 0);
+            setTimeout(doClose, 0);
         }
     }
 
@@ -81,13 +82,12 @@
                 return;
             }
 
-            // このダイアログが開いている状態で履歴が戻された場合
-            if (show && pushedHistory && !isClosing) {
+            // ブラウザ戻るなどのpopstateで開いている場合は閉じる
+            if (show && pushedHistory) {
                 pushedHistory = false;
                 isClosing = true;
-                // popstate由来の閉じる処理
                 setTimeout(() => {
-                    externalOnClose?.();
+                    onClose?.();
                     isClosing = false;
                 }, 0);
             }
@@ -207,7 +207,6 @@
 
             .xmark-icon {
                 mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
-                pointer-events: none;
             }
         }
     }
