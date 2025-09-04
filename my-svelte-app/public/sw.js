@@ -299,7 +299,34 @@ function respondSharedImage(event) {
     } else if (client) {
         client.postMessage(msg);
     }
+    // 画像送信後すぐキャッシュとフラグをクリア
     if (sharedImageCache) {
-        setTimeout(() => { sharedImageCache = null; }, 30000);
+        sharedImageCache = null;
+        // IndexedDBのフラグも消す
+        clearSharedFlagInIndexedDB();
+    }
+}
+
+// IndexedDBの共有フラグ削除
+function clearSharedFlagInIndexedDB() {
+    try {
+        const req = indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
+        req.onsuccess = (e) => {
+            try {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains('flags')) {
+                    db.close();
+                    return;
+                }
+                const tx = db.transaction(['flags'], 'readwrite');
+                const store = tx.objectStore('flags');
+                store.delete('sharedImage').onsuccess = () => db.close();
+                tx.onerror = () => db.close();
+            } catch {
+                // ignore
+            }
+        };
+    } catch {
+        // ignore
     }
 }

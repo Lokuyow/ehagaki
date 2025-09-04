@@ -286,6 +286,8 @@ export class FileUploadManager {
   }
 
   public static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+    // 取得済みなら何も返さない
+    if (localStorage.getItem("sharedImageProcessed") === "1") return null;
     if (!navigator.serviceWorker.controller) return null;
     try {
       const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000));

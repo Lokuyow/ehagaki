@@ -222,6 +222,9 @@
     // --- 追加: ログアウト時にも入力をクリアしておく ---
     secretKey = "";
     errorMessage = "";
+
+    // --- 追加: sharedImageProcessedも削除 ---
+    localStorage.removeItem("sharedImageProcessed");
   }
 
   async function loginWithNostrLogin() {
@@ -246,6 +249,10 @@
   }
 
   let localeInitialized = false;
+
+  // 共有画像取得済みフラグ
+  const sharedImageAlreadyProcessed =
+    localStorage.getItem("sharedImageProcessed") === "1";
 
   onMount(async () => {
     const storedLocale = localStorage.getItem("locale");
@@ -275,17 +282,26 @@
     })();
     // --- ここまで ---
 
-    try {
-      const shared = await FileUploadManager.getSharedImageFromServiceWorker();
-      if (shared?.image) {
-        sharedImageStore.set({
-          file: shared.image,
-          metadata: shared.metadata,
-          received: true,
-        });
+    // 共有画像取得: 取得済みならスキップ
+    if (
+      FileUploadManager.checkIfOpenedFromShare() &&
+      !sharedImageAlreadyProcessed
+    ) {
+      try {
+        const shared =
+          await FileUploadManager.getSharedImageFromServiceWorker();
+        if (shared?.image) {
+          sharedImageStore.set({
+            file: shared.image,
+            metadata: shared.metadata,
+            received: true,
+          });
+          // 取得済みフラグをセット
+          localStorage.setItem("sharedImageProcessed", "1");
+        }
+      } catch (error) {
+        console.error("共有画像の処理中にエラー:", error);
       }
-    } catch (error) {
-      console.error("共有画像の処理中にエラー:", error);
     }
     if (import.meta.env.MODE === "development") {
       window.showSwUpdateModalDebug = () => {
@@ -303,6 +319,10 @@
   ) {
     postComponentRef.uploadFiles([$sharedImageStore.file]);
     sharedImageStore.set({ file: null, metadata: undefined, received: false });
+    // 取得済みフラグをセット
+    localStorage.setItem("sharedImageProcessed", "1");
+    // 受信直後に一度クリア（次回共有のため）
+    setTimeout(() => localStorage.removeItem("sharedImageProcessed"), 500);
   }
 
   function handleUploadStatusChange(uploading: boolean) {
@@ -322,6 +342,8 @@
     if (footerInfoDisplay?.reset) {
       footerInfoDisplay.reset();
     }
+    // 共有画像フラグをクリア
+    localStorage.removeItem("sharedImageProcessed");
   }
 
   // 追加: エディター内容クリア
