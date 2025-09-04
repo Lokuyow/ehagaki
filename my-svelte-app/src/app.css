@@ -141,7 +141,7 @@ select {
     --svg: hsl(0, 0%, 32%);
     --svg-light: var(--text-light);
     --shadow: rgba(0, 0, 0, 0.1);
-    --hagaki: #e63a3a;
+    --hagaki: hsl(0, 77%, 56%);
     --hashtag-text: #106BC7;
     --hashtag-bg: #106BC71a;
     --toggle-bg: var(--svg);
@@ -186,7 +186,7 @@ select {
     --svg-light: var(--text-light);
 
     --shadow: rgba(255, 255, 255, 0.1);
-    --hagaki: #FC8672;
+    --hagaki: hsl(5, 99%, 71%);
     --hashtag-text: #65B1FC;
     --hashtag-bg: #65B1FC1a;
     --toggle-bg: var(--svg);
