@@ -84,7 +84,7 @@ select {
 
 button:active:not(:disabled),
 *[role="button"]:active {
-  transform: scale(0.92);
+  transform: scale(0.94);
   transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
 }
 
