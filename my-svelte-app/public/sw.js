@@ -36,9 +36,13 @@ self.addEventListener('activate', (event) => {
             try {
                 const cacheNames = await caches.keys();
                 await Promise.all(
-                    cacheNames.map(name =>
-                        name !== PRECACHE_NAME ? caches.delete(name) : undefined
-                    )
+                    cacheNames.map(name => {
+                        // プリキャッシュとプロフィール画像キャッシュは保護する
+                        if (name !== PRECACHE_NAME && name !== PROFILE_CACHE_NAME) {
+                            return caches.delete(name);
+                        }
+                        return undefined;
+                    })
                 );
                 await self.clients.claim();
             } catch (error) {
