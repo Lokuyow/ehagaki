@@ -31,9 +31,6 @@
     $: publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
 
     // --- UIイベントハンドラ ---
-    function handleClose() {
-        onClose?.();
-    }
     function handleSave() {
         if (!secretKey) {
             // 未入力時は新しいメッセージキーをセット
@@ -63,6 +60,7 @@
     {onClose}
     ariaLabel={$_("input_secret")}
     className="login-dialog"
+    showFooter={true}
 >
     <Button
         className="nostr-login-button btn {isLoadingNostrLogin
@@ -124,9 +122,6 @@
         {/if}
     </div>
     <div class="dialog-buttons">
-        <Button on:click={handleClose} className="cancel-btn btn-angular"
-            >{$_("cancel")}</Button
-        >
         <Button on:click={handleClear} className="clear-btn btn-angular"
             >{$_("clear")}</Button
         >
@@ -143,7 +138,7 @@
     .dialog-buttons {
         display: flex;
         justify-content: flex-end;
-        gap: 6px;
+        gap: 8px;
         width: 100%;
         height: 50px;
     }
@@ -156,7 +151,7 @@
     }
 
     :global(.clear-btn) {
-        --btn-bg: var(--yellow);
+        --btn-bg: hsl(58, 99%, 68%);
         border: none;
         color: #3d3d3d;
         width: 100%;
@@ -208,7 +203,8 @@
     :global(.nostr-login-button) {
         color: var(--text-light);
         height: 65px;
-        margin-top: 32px;
+        margin-top: 44px;
+        margin-bottom: 16px;
         font-size: 1.1rem;
         display: flex;
         align-items: center;
@@ -253,7 +249,7 @@
         align-items: center;
         text-align: center;
         margin: 32px 0;
-        width: 92%;
+        width: 100%;
     }
 
     .divider::before,

@@ -358,7 +358,7 @@
 </Dialog>
 
 <style>
-    :global(.dialog.settings-dialog) {
+    :global(.settings-dialog .dialog-content) {
         padding: 0;
     }
     .settings-header {

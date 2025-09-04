@@ -105,7 +105,9 @@
                 if (e.key === "Escape") closeViaHistory();
             }}
         >
-            <slot />
+            <div class="dialog-content">
+                <slot />
+            </div>
             {#if showFooter}
                 <div class="dialog-footer">
                     <slot name="footer">
@@ -149,7 +151,15 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+    }
+
+    .dialog-content {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
         padding: 16px;
+        box-sizing: border-box;
     }
 
     .dialog-footer {
