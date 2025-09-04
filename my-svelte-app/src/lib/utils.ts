@@ -97,33 +97,6 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
 }
 
 /**
- * HEX形式またはnpub形式の公開鍵からnpubとnprofileを生成する
- * @param key HEX形式またはnpub形式の公開鍵
- * @returns 公開鍵データ（hex, npub, nprofile）
- */
-export function generatePublicKeyFormats(key: string): PublicKeyData {
-  try {
-    if (!key) return { hex: "", npub: "", nprofile: "" };
-    let hex = key;
-    // npub形式の場合はデコードしてhexに変換
-    if (/^npub1[023456789acdefghjklmnpqrstuvwxyz]+$/.test(key)) {
-      const decoded = nip19.decode(key);
-      if (decoded.type === "npub") {
-        hex = decoded.data as string;
-      } else {
-        return { hex: "", npub: "", nprofile: "" };
-      }
-    }
-    const npub = nip19.npubEncode(hex);
-    const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
-    return { hex, npub, nprofile };
-  } catch (e) {
-    console.error("公開鍵フォーマットの生成に失敗:", e);
-    return { hex: "", npub: "", nprofile: "" };
-  }
-}
-
-/**
  * nsec形式の秘密鍵が有効かチェックする
  * @param key チェック対象の文字列
  * @returns 有効な場合true

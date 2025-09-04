@@ -1,4 +1,5 @@
 import type { NostrLoginAuth } from './keyManager';
+import { nip19 } from "nostr-tools";
 
 export interface NostrLoginOptions {
     theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
@@ -132,61 +133,16 @@ export class NostrLoginManager {
 
     private async npubToPubkey(npub: string): Promise<string> {
         try {
-            const { generatePublicKeyFormats } = await import('./utils');
-            const pubkeyData = generatePublicKeyFormats(npub);
-            return pubkeyData.hex || '';
+            // nostr-toolsのnip19でnpubをデコードしてhexを取得
+            const decoded = nip19.decode(npub);
+            if (decoded.type === "npub") {
+                // npubのdataはhex文字列
+                return decoded.data as string;
+            }
+            return '';
         } catch (error) {
             console.error('npubのデコードエラー:', error);
             return '';
-        }
-    }
-
-    async checkAuthState(): Promise<NostrLoginAuth | null> {
-        if (!this._ensureInitialized()) return null;
-
-        try {
-            // nostr-loginの実際の認証状態を取得
-            const authEvent = new CustomEvent('nlCheckAuth');
-
-            return new Promise((resolve) => {
-                const handleAuthCheck = (event: Event) => {
-                    document.removeEventListener('nlAuthResponse', handleAuthCheck);
-                    const detail = (event as CustomEvent).detail;
-
-                    if (detail && detail.pubkey) {
-                        resolve({
-                            type: 'login',
-                            pubkey: detail.pubkey,
-                            npub: detail.npub
-                        });
-                    } else {
-                        resolve(null);
-                    }
-                };
-
-                // タイムアウト設定
-                const timeout = setTimeout(() => {
-                    document.removeEventListener('nlAuthResponse', handleAuthCheck);
-                    resolve(null);
-                }, 1000);
-
-                document.addEventListener('nlAuthResponse', handleAuthCheck);
-                document.dispatchEvent(authEvent);
-            });
-        } catch (error) {
-            console.error('nostr-login認証状態チェックエラー:', error);
-            return null;
-        }
-    }
-
-    // より確実な認証状態チェック（nostr-loginの内部状態を直接確認）
-    isLoggedIn(): boolean {
-        try {
-            // nostr-loginの内部状態を確認する方法
-            const nlData = (window as any).nostrLogin;
-            return !!(nlData && nlData.pubkey);
-        } catch (error) {
-            return false;
         }
     }
 
