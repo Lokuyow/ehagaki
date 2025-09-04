@@ -147,7 +147,6 @@
         color: var(--text);
         width: 100%;
         max-width: 500px;
-        max-height: 90svh;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -158,6 +157,7 @@
         flex-direction: column;
         align-items: center;
         width: 100%;
+        max-height: 85svh;
         padding: 16px;
         box-sizing: border-box;
     }
