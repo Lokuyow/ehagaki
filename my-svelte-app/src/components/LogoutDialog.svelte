@@ -10,6 +10,7 @@
 
 <Dialog
     {show}
+    useHistory={true}
     {onClose}
     ariaLabel={$_("logout_confirmation")}
     className="logout-dialog"

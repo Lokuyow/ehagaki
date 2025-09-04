@@ -159,6 +159,7 @@
 
 <Dialog
     {show}
+    useHistory={true}
     {onClose}
     ariaLabel={$_("settings") || "設定"}
     className="settings-dialog"

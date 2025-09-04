@@ -410,6 +410,7 @@
 
     {#if $showLoginDialogStore}
       <LoginDialog
+        show={$showLoginDialogStore}
         bind:secretKey
         onClose={closeLoginDialog}
         onSave={saveSecretKey}

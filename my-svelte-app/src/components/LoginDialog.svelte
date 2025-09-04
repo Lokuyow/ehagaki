@@ -5,6 +5,7 @@
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
+    export let show: boolean; // デフォルト値を削除
     export let secretKey: string;
     export let onClose: () => void;
     export let onSave: () => void;
@@ -104,7 +105,8 @@
 {/if}
 
 <Dialog
-    show={true}
+    {show}
+    useHistory={true}
     {onClose}
     ariaLabel={$_("input_secret")}
     className="login-dialog"
