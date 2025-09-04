@@ -1,10 +1,12 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
+    import Button from "./Button.svelte";
 
     export let show: boolean = false;
     export let onClose: () => void;
     export let ariaLabel: string = "Dialog";
     export let className: string = "";
+    export let showFooter: boolean = false;
 
     // --- history連動用 ---
     let pushedHistory = false; // このコンポーネントが pushState したか
@@ -104,6 +106,22 @@
             }}
         >
             <slot />
+            {#if showFooter}
+                <div class="dialog-footer">
+                    <slot name="footer">
+                        <Button
+                            className="modal-close btn-circle"
+                            on:click={closeViaHistory}
+                            ariaLabel="閉じる"
+                        >
+                            <div
+                                class="xmark-icon svg-icon"
+                                aria-label="閉じる"
+                            ></div>
+                        </Button>
+                    </slot>
+                </div>
+            {/if}
         </div>
     </div>
 {/if}
@@ -132,5 +150,26 @@
         flex-direction: column;
         align-items: center;
         padding: 16px;
+    }
+
+    .dialog-footer {
+        width: 100%;
+        height: 48px;
+        border-top: 1px solid var(--border-hr);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+
+        :global(.modal-close) {
+            background-color: transparent;
+            border: none;
+            border-radius: 0;
+            width: 100%;
+            height: 47px;
+
+            .xmark-icon {
+                mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
+            }
+        }
     }
 </style>

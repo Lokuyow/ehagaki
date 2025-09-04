@@ -43,6 +43,7 @@ a {
   text-decoration: inherit;
   -webkit-tap-highlight-color: transparent;
   text-decoration: none;
+  border-radius: 6px;
 
   &:active {
     opacity: 1;
@@ -126,7 +127,7 @@ select {
     --border: var(--light-gray);
     --border-hr: hsl(0, 0%, 84%);
 
-    --text: #3d3d3d;
+    --text: hsl(0, 0%, 24%);
     --text-light: hsl(0, 0%, 46%);
     --text-red: hsl(0, 99%, 45%);
     --text-r: #e6e6e6;
@@ -137,7 +138,8 @@ select {
     --dialog: hsl(0, 0%, 98%);
     --dialog-overlay: rgba(0, 0, 0, 0.4);
 
-    --svg: #525252;
+    --svg: hsl(0, 0%, 32%);
+    --svg-light: var(--text-light);
     --shadow: rgba(0, 0, 0, 0.1);
     --hagaki: #e63a3a;
     --hashtag-text: #106BC7;
@@ -147,7 +149,9 @@ select {
   }
 
   @media (min-width: 601px) {
-    button:hover:not(:disabled) {
+
+    button:hover:not(:disabled),
+    & a:hover {
       background-color: color-mix(in srgb, var(--btn-bg), black 8%);
     }
   }
@@ -179,6 +183,8 @@ select {
     --dialog-overlay: rgba(0, 0, 0, 0.7);
 
     --svg: #f0f0f0;
+    --svg-light: var(--text-light);
+
     --shadow: rgba(255, 255, 255, 0.1);
     --hagaki: #FC8672;
     --hashtag-text: #65B1FC;
@@ -188,7 +194,9 @@ select {
   }
 
   @media (min-width: 601px) {
-    button:hover:not(:disabled) {
+
+    button:hover:not(:disabled),
+    & a:hover {
       background-color: color-mix(in srgb, var(--btn-bg), black 15%);
     }
   }

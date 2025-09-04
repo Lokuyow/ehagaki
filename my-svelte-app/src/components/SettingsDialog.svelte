@@ -163,20 +163,47 @@
     ariaLabel={$_("settings") || "設定"}
     className="settings-dialog"
     on:relays-updated={onRelaysUpdated}
+    showFooter={true}
 >
-    <div class="modal-header">
-        <span>{$_("settings") || "設定"}</span>
-        <Button
-            className="modal-close btn-circle"
-            on:click={onClose}
-            ariaLabel={$_("close") || "閉じる"}
-        >
-            <div
-                class="xmark-icon svg-icon"
-                aria-label={$_("close") || "閉じる"}
-            ></div>
-        </Button>
+    <div class="settings-header">
+        <div class="site-title">
+            <a
+                href="https://github.com/Lokuyow/ehagaki"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="GitHub Repository"
+                class="github-link"
+            >
+                <div class="github-icon svg-icon" aria-label="GitHub"></div>
+            </a>
+            <span class="site-name">eHagaki</span>
+            <span class="cache-version">{swVersion ? `v${swVersion}` : ""}</span
+            >
+        </div>
+
+        <div>
+            <div class="zap-view-btn-group">
+                <button
+                    class="zap-btn"
+                    data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
+                    data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                    data-relays="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                >
+                    Support
+                </button>
+                <button
+                    class="view-btn"
+                    data-title="Thanks for the Support!"
+                    data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                    data-zap-color-mode="true"
+                    data-relay-urls="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                >
+                    View
+                </button>
+            </div>
+        </div>
     </div>
+
     <div class="modal-body">
         <!-- 言語設定セクション -->
         <div class="setting-section">
@@ -328,52 +355,13 @@
             </div>
         {/if}
     </div>
-    <div class="settings-footer">
-        <div class="footer-left">
-            <span class="site-name">eHagaki</span>
-            <span class="cache-version">{swVersion ? `v${swVersion}` : ""}</span
-            >
-        </div>
-
-        <div>
-            <div class="zap-view-btn-group">
-                <button
-                    class="zap-btn"
-                    data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
-                    data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
-                    data-relays="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
-                >
-                    Support
-                </button>
-                <button
-                    class="view-btn"
-                    data-title="Thanks for the Support!"
-                    data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
-                    data-zap-color-mode="true"
-                    data-relay-urls="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
-                >
-                    View
-                </button>
-            </div>
-        </div>
-
-        <a
-            href="https://github.com/Lokuyow/ehagaki"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="GitHub Repository"
-            class="github-link"
-        >
-            <div class="github-icon svg-icon" aria-label="GitHub"></div>
-        </a>
-    </div>
 </Dialog>
 
 <style>
     :global(.dialog.settings-dialog) {
         padding: 0;
     }
-    .modal-header {
+    .settings-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -381,24 +369,57 @@
         font-weight: bold;
         font-size: 1.3rem;
         width: 100%;
-        padding: 8px 16px;
+        padding: 12px 0;
         border-bottom: 1px solid var(--border-hr);
     }
-    :global(.modal-close) {
-        background: none;
-        border: none;
-        padding: 0 4px;
-        line-height: 1;
+    .site-title {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-right: auto;
+        font-size: 1.3rem;
+        color: var(--text);
+        opacity: 0.8;
     }
-    .xmark-icon {
-        mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
+    .github-link {
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+        padding: 8px;
+
+        .github-icon {
+            mask-image: url("/ehagaki/icons/github-mark.svg");
+        }
+    }
+    .zap-view-btn-group {
+        display: inline-flex;
+        height: 35px;
+        margin: 0 8px;
+
+        .zap-btn,
+        .view-btn {
+            color: var(--text-light);
+            min-width: 70px;
+        }
+
+        .zap-btn {
+            border-radius: 6px 0 0 6px;
+            border-right: 1px solid var(--border);
+            padding: 0 10px 0 13px;
+        }
+
+        .view-btn {
+            border-radius: 0 6px 6px 0;
+            border-left: 1px solid var(--border);
+            padding: 0 14px 0 12px;
+        }
     }
     .modal-body {
         padding: 16px;
         font-size: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 16px;
+        gap: 24px;
         width: 100%;
         overflow-y: auto;
     }
@@ -438,23 +459,6 @@
         min-width: 200px;
         height: 50px;
     }
-    .settings-footer {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        padding: 8px 16px 12px 16px;
-        border-top: 1px solid var(--border-hr);
-        width: 100%;
-    }
-    .footer-left {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-right: auto;
-        font-size: 1rem;
-        color: var(--text);
-        opacity: 0.8;
-    }
     .site-name {
         font-weight: bold;
         letter-spacing: 0.5px;
@@ -463,16 +467,6 @@
         font-size: 0.95em;
         color: var(--text-light);
     }
-    .github-link {
-        display: inline-flex;
-        align-items: center;
-        text-decoration: none;
-        margin-left: auto;
-    }
-    .github-icon {
-        mask-image: url("/ehagaki/icons/github-mark.svg");
-    }
-
     .rotate-right-icon {
         mask-image: url("/ehagaki/icons/rotate-right-solid-full.svg");
     }
@@ -535,7 +529,7 @@
         user-select: none;
         display: flex;
         align-items: center;
-        height: 35px;
+        height: fit-content;
         gap: 6px;
         margin-right: auto;
         margin-left: 0;
@@ -574,29 +568,5 @@
     :global(.sw-update-btn:disabled) {
         --btn-bg: var(--gray);
         opacity: 0.6;
-    }
-
-    .zap-view-btn-group {
-        display: inline-flex;
-        height: 35px;
-        margin: auto;
-
-        .zap-btn,
-        .view-btn {
-            color: var(--text-light);
-            min-width: 70px;
-        }
-
-        .zap-btn {
-            border-radius: 6px 0 0 6px;
-            border-right: 1px solid var(--border);
-            padding: 0 10px 0 13px;
-        }
-
-        .view-btn {
-            border-radius: 0 6px 6px 0;
-            border-left: 1px solid var(--border);
-            padding: 0 14px 0 12px;
-        }
     }
 </style>

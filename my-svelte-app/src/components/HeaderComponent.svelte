@@ -142,6 +142,9 @@
         justify-content: center;
         height: 100%;
         width: 100%;
+        &:hover {
+            background-color: transparent;
+        }
     }
 
     .site-icon {
