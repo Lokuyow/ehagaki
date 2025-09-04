@@ -33,8 +33,8 @@
         background: var(--darker);
         border-radius: 50%;
         animation: pulse 1.5s ease-in-out infinite;
-        width: 26px;
-        height: 26px;
+        width: 46px;
+        height: 46px;
         flex-shrink: 0;
     }
     .placeholder-text {
