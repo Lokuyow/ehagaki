@@ -9,118 +9,51 @@
     export let showFooter: boolean = false;
     export let useHistory: boolean = true;
 
-    // --- history連動用 ---
-    let pushedHistory = false;
-    let ignoreNextPop = false;
-    let popHandler: ((ev: PopStateEvent) => void) | null = null;
-    let dialogId = Math.random().toString(36).substr(2, 9);
-    let isClosing = false; // 閉じる処理中フラグ
+    let isModalVisible = false;
 
-    function pushDialogState() {
-        if (!useHistory || pushedHistory) return;
-        try {
-            window.history.pushState({ ehagakiDialog: true, dialogId }, "");
-            pushedHistory = true;
-        } catch (e) {
-            pushedHistory = false;
+    function closeModal() {
+        show = false;
+        onClose?.();
+    }
+
+    function handlePopState() {
+        if (isModalVisible && window.location.hash !== "#modal") {
+            closeModal();
         }
     }
 
-    function closeViaHistory() {
-        if (isClosing) return; // 重複実行防止
-        isClosing = true;
-
-        const doClose = () => {
-            try {
-                onClose?.();
-            } finally {
-                isClosing = false;
+    $: {
+        if (typeof window !== "undefined" && useHistory) {
+            if (show) {
+                isModalVisible = true;
+                if (window.location.hash !== "#modal") {
+                    history.pushState(null, "", "#modal");
+                }
+            } else {
+                isModalVisible = false;
+                if (window.location.hash === "#modal") {
+                    history.back();
+                }
             }
-        };
-
-        if (useHistory && pushedHistory) {
-            // 自分で戻す popstate は無視しつつ、即時にUIを閉じる
-            ignoreNextPop = true;
-            pushedHistory = false;
-            try {
-                window.history.back();
-            } catch (e) {
-                // ignore
-            }
-            // 外部に閉じる通知
-            setTimeout(doClose, 0);
         } else {
-            setTimeout(doClose, 0);
+            isModalVisible = show;
         }
-    }
-
-    // showの変化を監視してhistory操作
-    $: if (show && !pushedHistory && useHistory) {
-        // ダイアログが開く時
-        pushDialogState();
-        isClosing = false;
-    } else if (!show && pushedHistory && useHistory && !isClosing) {
-        // 外部からプログラム的に閉じられた時
-        ignoreNextPop = true;
-        pushedHistory = false;
-        setTimeout(() => {
-            try {
-                window.history.back();
-            } catch (e) {
-                ignoreNextPop = false;
-            }
-        }, 0);
     }
 
     onMount(() => {
-        if (!useHistory) return;
-
-        popHandler = (ev: PopStateEvent) => {
-            if (ignoreNextPop) {
-                ignoreNextPop = false;
-                isClosing = false;
-                return;
-            }
-
-            // ブラウザ戻るなどのpopstateで開いている場合は閉じる
-            if (show && pushedHistory) {
-                pushedHistory = false;
-                isClosing = true;
-                setTimeout(() => {
-                    onClose?.();
-                    isClosing = false;
-                }, 0);
-            }
-        };
-
-        window.addEventListener("popstate", popHandler);
+        window.addEventListener("popstate", handlePopState);
     });
 
     onDestroy(() => {
-        if (popHandler) {
-            window.removeEventListener("popstate", popHandler);
-            popHandler = null;
-        }
-
-        // コンポーネント破棄時のクリーンアップ
-        if (pushedHistory && useHistory && !isClosing) {
-            ignoreNextPop = true;
-            pushedHistory = false;
-            try {
-                window.history.back();
-            } catch (e) {
-                // ignore
-            }
-        }
-        isClosing = false;
+        window.removeEventListener("popstate", handlePopState);
     });
 </script>
 
-{#if show}
+{#if isModalVisible}
     <div
         class="dialog-overlay"
         role="presentation"
-        on:click={closeViaHistory}
+        on:click={closeModal}
         aria-label={ariaLabel}
     >
         <div
@@ -130,7 +63,7 @@
             tabindex="0"
             on:click|stopPropagation
             on:keydown={(e) => {
-                if (e.key === "Escape") closeViaHistory();
+                if (e.key === "Escape") closeModal();
             }}
         >
             <div class="dialog-content">
@@ -141,7 +74,7 @@
                     <slot name="footer">
                         <Button
                             className="modal-close btn-circle"
-                            on:click={closeViaHistory}
+                            on:click={closeModal}
                             ariaLabel="閉じる"
                         >
                             <div
