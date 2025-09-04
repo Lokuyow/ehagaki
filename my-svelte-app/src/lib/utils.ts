@@ -71,7 +71,7 @@ export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string |
  */
 export function containsSecretKey(text: string): boolean {
   // nsecで始まる文字列を検出（部分的な秘密鍵でも警告）
-  return /nsec1[023456789acdefghjklmnpqrstuvwxyz]{10,}/.test(text);
+  return /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/.test(text);
 }
 
 /**
@@ -102,7 +102,7 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
  * @returns 有効な場合true
  */
 export function isValidNsec(key: string): boolean {
-  return /^nsec1[023456789acdefghjklmnpqrstuvwxyz]{58,}$/.test(key);
+  return /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58,}$/.test(key);
 }
 
 export function clamp(value: number, min: number, max: number): number {

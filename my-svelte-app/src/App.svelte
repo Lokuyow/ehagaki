@@ -411,7 +411,6 @@
     {#if $showLoginDialogStore}
       <LoginDialog
         bind:secretKey
-        {errorMessage}
         onClose={closeLoginDialog}
         onSave={saveSecretKey}
         onNostrLogin={loginWithNostrLogin}

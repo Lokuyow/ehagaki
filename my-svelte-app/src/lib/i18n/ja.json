@@ -28,6 +28,10 @@
   "logout": "ログアウト",
   "invalid_secret": "無効な秘密鍵です",
   "secret_required": "秘密鍵を入力してください",
+  "secret_must_start_nsec1": "秘密鍵は「nsec1」で始まる必要があります",
+  "secret_invalid_chars": "秘密鍵に使用できない文字が含まれています",
+  "secret_too_short": "秘密鍵が短すぎます（63文字必要です）",
+  "secret_too_long": "秘密鍵が長すぎます（63文字以内で入力してください）",
   "uploading": "アップロード中",
   "failed": "失敗",
   "data_size": "送信サイズ",
@@ -48,5 +52,6 @@
   "update_app": "アプリを更新",
   "updating": "更新中...",
   "toggle_write_relays_list": "投稿先リレーの表示切替",
-  "no_relay_info": "リレー情報なし"
+  "no_relay_info": "リレー情報なし",
+  "hint_input_secret": "nsec1から始まる秘密鍵を入力"
 }

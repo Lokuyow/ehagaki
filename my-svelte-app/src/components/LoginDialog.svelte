@@ -6,7 +6,6 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     export let secretKey: string;
-    export let errorMessage: string = "";
     export let onClose: () => void;
     export let onSave: () => void;
     export let onNostrLogin: () => void;
@@ -15,11 +14,18 @@
     // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
 
+    // --- エラーメッセージ管理 ---
+    let inputEl: HTMLInputElement | null = null;
+
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $: if (secretKey !== undefined) {
         publicKeyState.setNsec(secretKey);
-        // 入力または programmatic な変更があったらエラーメッセージを消す
-        errorMessage = "";
+        // 入力値が空の場合のみエラーをクリア
+        if (inputEl) {
+            if (!secretKey) {
+                inputEl.setCustomValidity("");
+            }
+        }
     }
 
     // --- 公開鍵状態のサブスクライブ ---
@@ -32,28 +38,70 @@
 
     // --- UIイベントハンドラ ---
     function handleSave() {
-        if (!secretKey) {
-            // 未入力時は新しいメッセージキーをセット
-            errorMessage = "secret_required";
-            return;
+        if (inputEl) {
+            const validity = inputEl.validity;
+            const value = inputEl.value ?? "";
+
+            // バリデーションはsave時のみ
+            if (validity.valueMissing) {
+                inputEl.setCustomValidity($_("secret_required"));
+                inputEl.reportValidity();
+                return;
+            }
+
+            // nsec1で始まるかチェック
+            if (!value.startsWith("nsec1")) {
+                inputEl.setCustomValidity($_("secret_must_start_nsec1"));
+                inputEl.reportValidity();
+                return;
+            }
+
+            // 長さのチェック
+            if (value.length !== 63) {
+                if (value.length < 63) {
+                    inputEl.setCustomValidity($_("secret_too_short"));
+                } else {
+                    inputEl.setCustomValidity($_("secret_too_long"));
+                }
+                inputEl.reportValidity();
+                return;
+            }
+
+            // PublicKeyStateの検証結果をチェック
+            if (!isValid) {
+                inputEl.setCustomValidity($_("invalid_secret"));
+                inputEl.reportValidity();
+                return;
+            }
+
+            inputEl.setCustomValidity("");
         }
-        if (!isValid) {
-            errorMessage = "invalid_secret";
-            return;
-        }
-        errorMessage = ""; // 成功時はエラーを消す
         onSave?.();
     }
     function handleClear() {
         secretKey = "";
-        errorMessage = "";
+        if (inputEl) inputEl.setCustomValidity("");
     }
     function handleNostrLogin() {
-        // Nostr ログイン開始時に既存のエラーメッセージを消す
-        errorMessage = "";
         onNostrLogin?.();
     }
 </script>
+
+<!-- npubまたはnprofileのいずれかが存在する場合、1つのトースト要素でまとめて表示 -->
+{#if npubValue || nprofileValue}
+    <div class="toast npub-toast">
+        {#if npubValue}
+            <div>
+                <span style="word-break:break-all">{npubValue}</span>
+            </div>
+        {/if}
+        {#if nprofileValue}
+            <div>
+                <span style="word-break:break-all">{nprofileValue}</span>
+            </div>
+        {/if}
+    </div>
+{/if}
 
 <Dialog
     show={true}
@@ -91,49 +139,52 @@
     </div>
 
     <h3>{$_("input_secret")}</h3>
-    <input
-        type="password"
-        bind:value={secretKey}
-        placeholder="nsec1…"
-        class="secret-input"
-        id="secretKey"
-        name="secretKey"
-        autocomplete="current-password"
-        required
-        on:input={() => (errorMessage = "")}
-        on:keydown={(e) => {
-            if (e.key === "Enter") handleSave();
-        }}
-    />
+    <form on:submit|preventDefault={handleSave}>
+        <input
+            type="password"
+            bind:value={secretKey}
+            placeholder="nsec1…"
+            class="secret-input"
+            id="secretKey"
+            name="secretKey"
+            autocomplete="current-password"
+            required
+            minlength="63"
+            maxlength="63"
+            bind:this={inputEl}
+            title={$_("hint_input_secret")}
+            on:keydown={(e) => {
+                if (e.key === "Enter") handleSave();
+            }}
+            on:input={() => {
+                // 入力時はエラーをクリアするだけ
+                if (inputEl) inputEl.setCustomValidity("");
+            }}
+        />
 
-    <div class="dialog-info">
-        {#if npubValue}
-            <span class="pubkey-value" style="word-break:break-all"
-                >{npubValue}</span
+        <div class="dialog-buttons">
+            <Button
+                type="button"
+                on:click={handleClear}
+                className="clear-btn btn-angular">{$_("clear")}</Button
             >
-        {/if}
-        {#if nprofileValue}
-            <span class="profilekey-value" style="word-break:break-all"
-                >{nprofileValue}</span
+            <Button type="submit" className="save-btn btn-angular"
+                >{$_("save")}</Button
             >
-        {/if}
-        {#if errorMessage}
-            <p class="error-message">{$_(errorMessage)}</p>
-        {/if}
-    </div>
-    <div class="dialog-buttons">
-        <Button on:click={handleClear} className="clear-btn btn-angular"
-            >{$_("clear")}</Button
-        >
-        <Button on:click={handleSave} className="save-btn btn-angular"
-            >{$_("save")}</Button
-        >
-    </div>
+        </div>
+    </form>
 </Dialog>
 
 <style>
     h3 {
         margin: 0 0 16px 0;
+    }
+    form {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
     }
     .dialog-buttons {
         display: flex;
@@ -164,18 +215,38 @@
         width: 100%;
     }
 
-    .error-message {
-        font-size: 1.2rem;
-        font-weight: 500;
-        color: var(--text-red);
-        margin-top: 0.5rem;
+    /* トースト用スタイル */
+    .toast {
+        position: fixed;
+        top: 0px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 100%;
+        max-width: 500px;
+        background: var(--dialog);
+        color: var(--text-light);
+        padding: 4px 10px 10px 10px;
+        border-radius: 0 0 6px 6px;
+        z-index: 101;
+        font-size: 0.96rem;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+        opacity: 0.8;
+        margin-bottom: 8px;
+        word-break: break-all;
+        animation: toast-fadein 0.3s;
     }
-
-    .pubkey-value,
-    .profilekey-value {
-        align-self: flex-start;
-        margin: 0;
-        font-size: 0.85rem;
+    @keyframes toast-fadein {
+        from {
+            opacity: 0;
+            transform: translateX(-50%) translateY(-10px);
+        }
+        to {
+            opacity: 0.98;
+            transform: translateX(-50%) translateY(0);
+        }
     }
 
     .secret-input {
@@ -186,18 +257,6 @@
         border: 1px solid var(--btn-border);
         width: 100%;
         height: 60px;
-    }
-
-    .dialog-info {
-        width: 100%;
-        margin: 20px 0;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        justify-content: center;
-        min-height: 86px;
-        box-sizing: border-box;
-        gap: 4px;
     }
 
     :global(.nostr-login-button) {

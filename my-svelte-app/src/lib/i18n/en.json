@@ -28,6 +28,10 @@
   "logout": "Logout",
   "invalid_secret": "Invalid secret key",
   "secret_required": "Please enter your secret key",
+  "secret_must_start_nsec1": "Secret key must start with 'nsec1'",
+  "secret_invalid_chars": "Secret key contains invalid characters",
+  "secret_too_short": "Secret key is too short (must be 63 characters)",
+  "secret_too_long": "Secret key is too long (must be 63 characters or less)",
   "uploading": "Uploading",
   "failed": "Failed",
   "data_size": "Transmission size",
@@ -48,5 +52,6 @@
   "update_app": "Update app",
   "updating": "Updating...",
   "toggle_write_relays_list": "Toggle write relays list",
-  "no_relay_info": "No relay info"
+  "no_relay_info": "No relay info",
+  "hint_input_secret": "Enter a secret key starting with nsec1"
 }
