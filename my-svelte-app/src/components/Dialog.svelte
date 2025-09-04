@@ -12,12 +12,13 @@
     let pushedHistory = false; // このコンポーネントが pushState したか
     let ignoreNextPop = false; // programmatic に閉じるために次の pop を無視するフラグ
     let popHandler: (ev: PopStateEvent) => void;
+    let dialogId = Math.random().toString(36).substr(2, 9); // ダイアログの一意識別子
 
     const externalOnClose = onClose; // 参照保存（親からの関数）
 
     function pushDialogState() {
         try {
-            window.history.pushState({ ehagakiDialog: true }, "");
+            window.history.pushState({ ehagakiDialog: true, dialogId }, "");
             pushedHistory = true;
         } catch (e) {
             // pushState が使えない環境では何もしない
@@ -30,16 +31,8 @@
         // popstate 側で externalOnClose を発火させる（ブラウザ戻ると同等の挙動）
         if (pushedHistory && window.history.length > 0) {
             ignoreNextPop = false; // ユーザー操作由来の close の場合は ignore しない
+            pushedHistory = false; // 先にフラグを更新
             window.history.back();
-            // 万一 pop が発生しない場合のタイムアウトフォールバック
-            setTimeout(() => {
-                if (show) {
-                    // pop が来ずまだ開いているなら直接閉じる
-                    ignoreNextPop = true;
-                    externalOnClose?.();
-                    pushedHistory = false;
-                }
-            }, 400);
         } else {
             // 履歴エントリを作っていない場合は直接閉じる
             externalOnClose?.();
@@ -51,14 +44,16 @@
     $: if (!show && pushedHistory) {
         // programmatic close -> ignore the upcoming pop
         ignoreNextPop = true;
-        try {
-            window.history.back();
-        } catch (e) {
-            // fallback: 直接呼ぶ
-            ignoreNextPop = false;
-            externalOnClose?.();
-            pushedHistory = false;
-        }
+        pushedHistory = false;
+        // 少し遅延させて他のダイアログの開く処理と競合しないようにする
+        setTimeout(() => {
+            try {
+                window.history.back();
+            } catch (e) {
+                // fallback: 直接呼ぶ
+                ignoreNextPop = false;
+            }
+        }, 0);
     }
 
     onMount(() => {
@@ -66,10 +61,11 @@
             // 履歴戻しが来たらダイアログを閉じる（ただしフラグで制御）
             if (ignoreNextPop) {
                 ignoreNextPop = false;
-                pushedHistory = false;
                 return;
             }
-            if (pushedHistory) {
+
+            // 現在のダイアログが開いている状態で、履歴エントリがある場合のみ処理
+            if (show && pushedHistory) {
                 pushedHistory = false;
                 // pop による戻り（ユーザーの戻る操作） → ダイアログを閉じる
                 externalOnClose?.();
@@ -80,10 +76,20 @@
 
     onDestroy(() => {
         if (popHandler) window.removeEventListener("popstate", popHandler);
+        // コンポーネント破棄時に履歴エントリが残っている場合はクリーンアップ
+        if (pushedHistory && show) {
+            ignoreNextPop = true;
+            pushedHistory = false;
+            try {
+                window.history.back();
+            } catch (e) {
+                // ignore
+            }
+        }
     });
 
     // ダイアログが開くたびに履歴エントリを追加
-    $: if (show) {
+    $: if (show && !pushedHistory) {
         pushDialogState();
     }
 </script>
