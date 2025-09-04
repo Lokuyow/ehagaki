@@ -31,7 +31,7 @@
     function closeViaHistory() {
         if (isClosing) return; // 重複実行防止
         isClosing = true;
-        
+
         if (useHistory && pushedHistory) {
             ignoreNextPop = false;
             pushedHistory = false;
@@ -73,7 +73,7 @@
 
     onMount(() => {
         if (!useHistory) return;
-        
+
         popHandler = (ev: PopStateEvent) => {
             if (ignoreNextPop) {
                 ignoreNextPop = false;
@@ -92,7 +92,7 @@
                 }, 0);
             }
         };
-        
+
         window.addEventListener("popstate", popHandler);
     });
 
@@ -101,7 +101,7 @@
             window.removeEventListener("popstate", popHandler);
             popHandler = null;
         }
-        
+
         // コンポーネント破棄時のクリーンアップ
         if (pushedHistory && useHistory && !isClosing) {
             ignoreNextPop = true;
@@ -207,6 +207,7 @@
 
             .xmark-icon {
                 mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
+                pointer-events: none;
             }
         }
     }
