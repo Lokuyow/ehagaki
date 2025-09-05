@@ -162,45 +162,13 @@ export class AuthService {
      */
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
         try {
-            // nostr-loginの初期化と認証チェック
+            // nostr-loginの初期化
             await nostrLoginManager.init(this.nostrLoginOptions);
 
-            // --- リトライ回数・間隔を短縮 ---
-            let retries = 10; // 20→10
-            let currentUser = null;
-            while (retries-- > 0) {
-                currentUser = nostrLoginManager.getCurrentUser();
-                if (currentUser?.pubkey) break;
-                await new Promise(resolve => setTimeout(resolve, 50)); // 100ms→50ms
-            }
-            // --- ここまで ---
-
-            // --- localStorageから直接復元 ---
-            if (!currentUser?.pubkey) {
-                try {
-                    const nip46Raw = localStorage.getItem('__nostrlogin_nip46');
-                    if (nip46Raw) {
-                        const nip46 = JSON.parse(nip46Raw);
-                        if (nip46?.pubkey) {
-                            // window.nostrLoginがセットされるまでさらに待つ
-                            let waitNostrLogin = 5; // 10→5
-                            while (waitNostrLogin-- > 0) {
-                                currentUser = nostrLoginManager.getCurrentUser();
-                                if (currentUser?.pubkey) break;
-                                await new Promise(resolve => setTimeout(resolve, 50)); // 100ms→50ms
-                            }
-                            if (!currentUser?.pubkey) {
-                                currentUser = { pubkey: nip46.pubkey, npub: undefined };
-                            }
-                        }
-                    }
-                } catch (e) {
-                    // ignore
-                }
-            }
-            // --- ここまで ---
-
+            // 1. まずwindow.nostrLoginから即時取得
+            const currentUser = nostrLoginManager.getCurrentUser();
             if (currentUser?.pubkey) {
+                debugLog('[initializeAuth] nostr-login認証成功', { pubkey: currentUser.pubkey });
                 this.publicKeyState.setNostrLoginAuth({
                     type: 'login',
                     pubkey: currentUser.pubkey,
@@ -212,6 +180,30 @@ export class AuthService {
                     isNostrLogin: true
                 };
             }
+
+            // 2. localStorage復元
+            const nip46Raw = localStorage.getItem('__nostrlogin_nip46');
+            if (nip46Raw) {
+                try {
+                    const nip46 = JSON.parse(nip46Raw);
+                    debugLog('[initializeAuth] localStorageからnip46取得', { nip46 });
+                    if (nip46?.pubkey) {
+                        this.publicKeyState.setNostrLoginAuth({
+                            type: 'login',
+                            pubkey: nip46.pubkey,
+                            npub: nip46.npub
+                        });
+                        return {
+                            hasAuth: true,
+                            pubkeyHex: nip46.pubkey,
+                            isNostrLogin: true
+                        };
+                    }
+                } catch (e) {
+                    debugLog('[initializeAuth] localStorage復元中に例外', e);
+                    // ignore
+                }
+            }
         } catch (error) {
             console.error('nostr-login初期化失敗:', error);
         }
@@ -219,10 +211,12 @@ export class AuthService {
         // nostr-loginでの認証がない場合、ストレージからnsecをチェック
         const storedKey = keyManager.loadFromStorage();
         if (storedKey) {
+            debugLog('[initializeAuth] nsecストレージキーを検出', { storedKey });
             this.publicKeyState.setNsec(storedKey);
             try {
                 const derived = keyManager.derivePublicKey(storedKey);
                 if (derived.hex) {
+                    debugLog('[initializeAuth] nsecからpubkey導出成功', { hex: derived.hex });
                     setNsecAuth(derived.hex, derived.npub, derived.nprofile);
                     return {
                         hasAuth: true,
@@ -231,10 +225,12 @@ export class AuthService {
                     };
                 }
             } catch (error) {
+                debugLog('[initializeAuth] ストレージキーの処理中にエラー', error);
                 console.error('ストレージキーの処理中にエラー:', error);
             }
         }
 
+        debugLog('[initializeAuth] 認証情報なし');
         return { hasAuth: false };
     }
 
