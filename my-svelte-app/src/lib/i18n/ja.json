@@ -70,6 +70,18 @@
   "balloonMessage": {
     "post_success": "投稿した",
     "post_error": "投稿エラー",
-    "hello": "ハロー"
+    "hello": "ハロー",
+    "hello2": "なんや？",
+    "welcome": "いらっしゃい",
+    "waited": "待っとったで",
+    "relax": "ゆっくりしていき",
+    "good_weather": "ええ天気やな",
+    "Thwomp": "エ゛ッウ゛ウ゛ウ゛ン！",
+    "sleep_on_floor": "床で寝る",
+    "home_here": "ここが家",
+    "donai": "どない？",
+    "kita_na": "来たな！",
+    "sent": "送った",
+    "to_everyone": "みんなに届け"
   }
 }

@@ -70,6 +70,18 @@
   "balloonMessage": {
     "post_success": "Posted",
     "post_error": "Post error",
-    "hello": "Hello"
+    "hello": "Hello",
+    "hello2": "What's up?",
+    "welcome": "Welcome",
+    "waited": "Been waitin' for ya",
+    "relax": "Make yourself at home",
+    "good_weather": "Nice weather, huh?",
+    "Thwomp": "URGH! ... THUD!",
+    "sleep_on_floor": "Sleeping on the floor",
+    "home_here": "This is home",
+    "donai": "How ya doin'?",
+    "kita_na": "There ya are!",
+    "sent": "Sent it!",
+    "to_everyone": "Delivered to everyone"
   }
 }

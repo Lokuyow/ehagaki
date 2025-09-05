@@ -378,10 +378,36 @@
   }
 
   // --- サイトアクセス時バルーン表示用 ---
+  function getRandomHeaderBalloon() {
+    const keys = [
+      "balloonMessage.hello",
+      "balloonMessage.hello2",
+      "balloonMessage.welcome",
+      "balloonMessage.waited",
+      "balloonMessage.relax",
+      "balloonMessage.good_weather",
+      "balloonMessage.surprised",
+      "balloonMessage.sleep_on_floor",
+      "balloonMessage.home_here",
+      "balloonMessage.donai",
+      "balloonMessage.kita_na",
+      "balloonMessage.sent",
+      "balloonMessage.to_everyone"
+    ];
+    const idx = Math.floor(Math.random() * keys.length);
+    return $_(keys[idx]);
+  }
   let showHeaderBalloon = true;
-  setTimeout(() => {
-    showHeaderBalloon = false;
-  }, 3000);
+  let headerBalloonMessage = "";
+
+  // localeInitializedがtrueになったタイミングでメッセージをセット
+  $: if (localeInitialized) {
+    headerBalloonMessage = getRandomHeaderBalloon();
+    showHeaderBalloon = true;
+    setTimeout(() => {
+      showHeaderBalloon = false;
+    }, 3000);
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -391,8 +417,8 @@
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onSubmitPost={() => postComponentRef?.submitPost()}
         onResetPostContent={handleResetPostContent}
-        balloonMessage={showHeaderBalloon
-          ? { type: "info", message: $_("balloonMessage.hello") }
+        balloonMessage={showHeaderBalloon && headerBalloonMessage
+          ? { type: "info", message: headerBalloonMessage }
           : null}
       />
       <PostComponent

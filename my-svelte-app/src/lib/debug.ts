@@ -154,3 +154,33 @@ if (import.meta.env.MODE === "development") {
         console.log("SW更新ダイアログを強制表示しました");
     };
 }
+
+// --- dev用: post success/error強制表示デバッグ ---
+// editorState をここでimport
+import { editorState } from "./editor/store";
+if (import.meta.env.MODE === "development") {
+    (window as any).showPostSuccessDebug = () => {
+        editorState.update((state) => ({
+            ...state,
+            postStatus: {
+                ...state.postStatus,
+                success: true,
+                error: false,
+                message: "post_success",
+                completed: true // ← これを追加
+            },
+        }));
+    };
+    (window as any).showPostErrorDebug = () => {
+        editorState.update((state) => ({
+            ...state,
+            postStatus: {
+                ...state.postStatus,
+                success: false,
+                error: true,
+                message: "post_error",
+                completed: false // ← これも明示的に
+            },
+        }));
+    };
+}

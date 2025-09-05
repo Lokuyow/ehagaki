@@ -37,35 +37,35 @@
         }, 3000);
     }
 
-    $: if (postStatus.success && postStatus.completed) {
+    // 投稿完了時のバルーンメッセージ候補
+    const postSuccessMessages = [
+        "balloonMessage.post_success",
+        "balloonMessage.sent",
+        "balloonMessage.to_everyone",
+    ];
+
+    // 投稿成功時にランダムでメッセージを選択（1回だけ）
+    let postSuccessBalloonMessage = "";
+    let hasShownRandomSuccessBalloon = false;
+    $: if (
+        postStatus.success &&
+        postStatus.completed &&
+        !hasShownRandomSuccessBalloon
+    ) {
+        // completedになったタイミングでランダムメッセージをセット
+        const idx = Math.floor(Math.random() * postSuccessMessages.length);
+        postSuccessBalloonMessage = postSuccessMessages[idx];
+        hasShownRandomSuccessBalloon = true;
         showSuccessMessage();
+    }
+    // 投稿がリセットされたらフラグもリセット
+    $: if (!postStatus.success || !postStatus.completed) {
+        hasShownRandomSuccessBalloon = false;
+        postSuccessBalloonMessage = "";
     }
 
     // --- dev用: post success/error強制表示デバッグ ---
     if (import.meta.env.MODE === "development") {
-        (window as any).showPostSuccessDebug = () => {
-            editorState.update((state) => ({
-                ...state,
-                postStatus: {
-                    ...state.postStatus,
-                    success: true,
-                    error: false,
-                    message: "post_success",
-                },
-            }));
-        };
-        (window as any).showPostErrorDebug = () => {
-            editorState.update((state) => ({
-                ...state,
-                postStatus: {
-                    ...state.postStatus,
-                    success: false,
-                    error: true,
-                    message: "post_error",
-                },
-            }));
-        };
-        // infoバルーン表示コマンド
         (window as any).showInfoBalloonDebug = (msg: string) => {
             infoBalloonStore.set({ message: msg });
         };
@@ -100,14 +100,15 @@
                 type={balloonMessage.type}
                 message={balloonMessage.message}
             />
-        {:else if postStatus.error || postStatus.success}
+        {:else if postStatus.error}
             <BalloonMessage
-                type={postStatus.error ? "error" : "success"}
-                message={$_(
-                    postStatus.error
-                        ? "balloonMessage.post_error"
-                        : "balloonMessage.post_success"
-                )}
+                type="error"
+                message={$_("balloonMessage.post_error")}
+            />
+        {:else if postStatus.success && postStatus.completed && postSuccessBalloonMessage}
+            <BalloonMessage
+                type="success"
+                message={$_(postSuccessBalloonMessage)}
             />
         {/if}
     </div>
