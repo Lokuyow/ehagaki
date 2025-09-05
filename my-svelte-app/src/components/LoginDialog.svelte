@@ -128,7 +128,7 @@
     >
         {#if isLoadingNostrLogin}
             <LoadingPlaceholder
-                text={$_("loginDialog.loading")}
+                text=""
                 showImage={false}
                 showSpinner={true}
                 customClass="nostr-login-placeholder"

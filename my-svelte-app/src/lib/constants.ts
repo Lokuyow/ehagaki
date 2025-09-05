@@ -71,10 +71,10 @@ export const uploadEndpoints = [
 // 圧縮設定候補を返す関数（i18n対応）
 export function getCompressionLevels($_: (key: string) => string | undefined) {
     return [
-        { label: $_("compression_none") || "無圧縮", value: "none" },
-        { label: $_("compression_low") || "低圧縮", value: "low" },
-        { label: $_("compression_medium") || "中圧縮", value: "medium" },
-        { label: $_("compression_high") || "高圧縮", value: "high" },
+        { label: $_("settingsDialog.compression_none") || "無圧縮", value: "none" },
+        { label: $_("settingsDialog.compression_low") || "低圧縮", value: "low" },
+        { label: $_("settingsDialog.compression_medium") || "中圧縮", value: "medium" },
+        { label: $_("settingsDialog.compression_high") || "高圧縮", value: "high" },
     ];
 }
 
