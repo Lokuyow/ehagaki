@@ -386,7 +386,7 @@
       "balloonMessage.waited",
       "balloonMessage.relax",
       "balloonMessage.good_weather",
-      "balloonMessage.surprised",
+      "balloonMessage.thwomp",
       "balloonMessage.sleep_on_floor",
       "balloonMessage.home_here",
       "balloonMessage.donai",
