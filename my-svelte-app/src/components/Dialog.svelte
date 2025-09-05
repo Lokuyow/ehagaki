@@ -10,6 +10,7 @@
     export let useHistory: boolean = true;
 
     let isModalVisible = false;
+    let historyStateId: string | null = null;
 
     // スロットプロップで提供する閉じる関数
     const closeModal = () => {
@@ -17,9 +18,9 @@
     };
 
     // popstateイベント（戻る/進むボタン）のハンドラ
-    const handlePopState = () => {
-        // URLに#modalがなければ、モーダルを閉じる
-        if (isModalVisible && window.location.hash !== "#modal") {
+    const handlePopState = (event: PopStateEvent) => {
+        // 現在のモーダルの履歴IDと一致しない場合、モーダルを閉じる
+        if (isModalVisible && event.state?.modalId !== historyStateId) {
             closeModal();
         }
     };
@@ -30,17 +31,21 @@
             if (show) {
                 // モーダルを開く処理
                 isModalVisible = true;
-                // URLに#modalがなければ追加する
-                if (window.location.hash !== "#modal") {
-                    history.pushState(null, "", "#modal");
-                }
+                // 一意のIDを生成して履歴に追加
+                historyStateId = `modal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                history.pushState(
+                    { modalId: historyStateId },
+                    "",
+                    window.location.href,
+                );
             } else {
                 // モーダルを閉じる処理
                 isModalVisible = false;
-                // URLに#modalがあれば履歴を戻して削除する
-                if (window.location.hash === "#modal") {
+                // 現在の履歴状態が自分のモーダルの場合のみ戻る
+                if (history.state?.modalId === historyStateId) {
                     history.back();
                 }
+                historyStateId = null;
                 // onCloseコールバックを実行
                 onClose?.();
             }
@@ -54,14 +59,18 @@
     }
 
     onMount(() => {
-        window.addEventListener("popstate", handlePopState);
+        if (useHistory) {
+            window.addEventListener("popstate", handlePopState);
+        }
     });
 
     onDestroy(() => {
-        window.removeEventListener("popstate", handlePopState);
-        // コンポーネント破棄時にURLから#modalを除去
-        if (isModalVisible && window.location.hash === "#modal") {
-            history.back();
+        if (useHistory) {
+            window.removeEventListener("popstate", handlePopState);
+            // コンポーネント破棄時の履歴操作（現在の状態が自分のモーダルの場合のみ）
+            if (isModalVisible && history.state?.modalId === historyStateId) {
+                history.back();
+            }
         }
     });
 </script>
