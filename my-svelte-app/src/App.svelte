@@ -391,6 +391,19 @@
       "balloonMessage.home_here",
       "balloonMessage.donai",
       "balloonMessage.kita_na",
+      "balloonMessage.no_licking",
+      "balloonMessage.not_thwomp",
+      "balloonMessage.kitte_origin",
+      "balloonMessage.normal_stamp",
+      "balloonMessage.backside_curious",
+      "balloonMessage.corner_weapon",
+      "balloonMessage.square_peace",
+      // 追加分
+      "balloonMessage.how_much_stamp",
+      "balloonMessage.cancellation_done",
+      "balloonMessage.want_to_roll",
+      "balloonMessage.want_candy",
+      "balloonMessage.tetris_gone",
     ];
     const idx = Math.floor(Math.random() * keys.length);
     return $_(keys[idx]);
