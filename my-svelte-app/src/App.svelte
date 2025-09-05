@@ -259,62 +259,76 @@
   const sharedImageAlreadyProcessed =
     localStorage.getItem("sharedImageProcessed") === "1";
 
-  onMount(async () => {
-    const storedLocale = localStorage.getItem("locale");
-    if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
-    await waitLocale();
-    localeInitialized = true;
+  onMount(() => {
+    // Define an inner async function for initialization
+    const init = async () => {
+      const storedLocale = localStorage.getItem("locale");
+      if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
+      await waitLocale();
+      localeInitialized = true;
 
-    // プレースホルダーテキストを初期化
-    const initialPlaceholder =
-      $_("postComponent.enter_your_text") || "テキストを入力してください";
-    placeholderTextStore.set(initialPlaceholder);
+      // プレースホルダーテキストを初期化
+      const initialPlaceholder =
+        $_("postComponent.enter_your_text") || "テキストを入力してください";
+      placeholderTextStore.set(initialPlaceholder);
 
-    // 認証サービスの認証ハンドラーを先にセット
-    authService.setNostrLoginHandler(handleNostrLoginAuth);
+      // 認証サービスの認証ハンドラーを先にセット
+      authService.setNostrLoginHandler(handleNostrLoginAuth);
 
-    // --- ここから: initializeAuthをawaitせずに早期実行 ---
-    (async () => {
-      const authResult = await authService.initializeAuth();
-      if (authResult.hasAuth && authResult.pubkeyHex) {
-        await initializeNostr(authResult.pubkeyHex);
-        await loadProfileForPubkey(authResult.pubkeyHex);
-      } else {
-        await initializeNostr();
-      }
-      isLoadingProfileStore.set(false);
-      authService.markAuthInitialized();
-    })();
-    // --- ここまで ---
-
-    // 共有画像取得: 取得済みならスキップ
-    if (
-      FileUploadManager.checkIfOpenedFromShare() &&
-      !sharedImageAlreadyProcessed
-    ) {
-      try {
-        const shared =
-          await FileUploadManager.getSharedImageFromServiceWorker();
-        if (shared?.image) {
-          sharedImageStore.set({
-            file: shared.image,
-            metadata: shared.metadata,
-            received: true,
-          });
-          // 取得済みフラグをセット
-          localStorage.setItem("sharedImageProcessed", "1");
+      // --- ここから: initializeAuthをawaitせずに早期実行 ---
+      (async () => {
+        const authResult = await authService.initializeAuth();
+        if (authResult.hasAuth && authResult.pubkeyHex) {
+          await initializeNostr(authResult.pubkeyHex);
+          await loadProfileForPubkey(authResult.pubkeyHex);
+        } else {
+          await initializeNostr();
         }
-      } catch (error) {
-        console.error("共有画像の処理中にエラー:", error);
+        isLoadingProfileStore.set(false);
+        authService.markAuthInitialized();
+      })();
+      // --- ここまで ---
+
+      // 共有画像取得: 取得済みならスキップ
+      if (
+        FileUploadManager.checkIfOpenedFromShare() &&
+        !sharedImageAlreadyProcessed
+      ) {
+        try {
+          const shared =
+            await FileUploadManager.getSharedImageFromServiceWorker();
+          if (shared?.image) {
+            sharedImageStore.set({
+              file: shared.image,
+              metadata: shared.metadata,
+              received: true,
+            });
+            // 取得済みフラグをセット
+            localStorage.setItem("sharedImageProcessed", "1");
+          }
+        } catch (error) {
+          console.error("共有画像の処理中にエラー:", error);
+        }
       }
-    }
-    if (import.meta.env.MODE === "development") {
-      window.showSwUpdateModalDebug = () => {
-        swNeedRefresh.set(true);
-        console.log("SW更新ダイアログを強制表示しました");
-      };
-    }
-    debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
+      if (import.meta.env.MODE === "development") {
+        window.showSwUpdateModalDebug = () => {
+          swNeedRefresh.set(true);
+          console.log("SW更新ダイアログを強制表示しました");
+        };
+      }
+      debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
+    };
+
+    // Call the async initializer
+    init();
+
+    // visibilitychangeイベントリスナー追加
+    wasHidden = document.visibilityState === "hidden";
+    document.addEventListener("visibilitychange", showBalloonOnActive);
+    return () => {
+      // visibilitychangeイベントリスナー削除
+      document.removeEventListener("visibilitychange", showBalloonOnActive);
+    };
   });
 
   $: if (
@@ -418,6 +432,26 @@
     setTimeout(() => {
       showHeaderBalloon = false;
     }, 3000);
+  }
+
+  // --- 追加: visibilitychangeでアクティブ時のみバルーン表示 ---
+  let wasHidden = false;
+  function showBalloonOnActive() {
+    // 「非アクティブ→アクティブ」になった瞬間のみ
+    if (
+      document.visibilityState === "visible" &&
+      wasHidden &&
+      localeInitialized
+    ) {
+      if (!showHeaderBalloon) {
+        headerBalloonMessage = getRandomHeaderBalloon();
+        showHeaderBalloon = true;
+        setTimeout(() => {
+          showHeaderBalloon = false;
+        }, 3000);
+      }
+    }
+    wasHidden = document.visibilityState === "hidden";
   }
 </script>
 
