@@ -391,8 +391,6 @@
       "balloonMessage.home_here",
       "balloonMessage.donai",
       "balloonMessage.kita_na",
-      "balloonMessage.sent",
-      "balloonMessage.to_everyone"
     ];
     const idx = Math.floor(Math.random() * keys.length);
     return $_(keys[idx]);
