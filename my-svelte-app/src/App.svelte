@@ -449,7 +449,7 @@
           />
         {:else if !$isLoadingProfileStore && !isAuthenticated}
           <Button className="login-btn btn-round" on:click={showLoginDialog}>
-            {$_("login")}
+            {$_("app.login")}
           </Button>
         {/if}
       {/if}

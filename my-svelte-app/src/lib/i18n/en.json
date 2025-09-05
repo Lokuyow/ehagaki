@@ -1,4 +1,7 @@
 {
+  "app": {
+    "login": "Login"
+  },
   "postComponent": {
     "enter_your_text": "What's happening?",
     "post": "Post",
@@ -56,7 +59,6 @@
     "loading": "Loading..."
   },
   "global": {
-    "login": "Login",
     "close": "Close",
     "error_saving": "Error saving the key",
     "login_required": "Login required",
