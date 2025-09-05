@@ -11,9 +11,9 @@
     /* --- カラープロパティ定義 --- */
     :root {
         /* success */
-        --balloon-success-bg: hsl(240, 39%, 99%);
-        --balloon-success-color: hsl(240, 50%, 38%);
-        --balloon-success-border: hsl(240, 39%, 70%);
+        --balloon-success-bg: hsl(200, 39%, 96%);
+        --balloon-success-color: hsl(210, 60%, 40%);
+        --balloon-success-border: hsl(210, 48%, 70%);
         /* error */
         --balloon-error-bg: hsl(351, 99%, 96%);
         --balloon-error-color: hsl(351, 99%, 32%);
@@ -41,9 +41,12 @@
         max-width: 150px;
         height: fit-content;
         padding: 6px 8px;
-        font-size: 0.96rem;
+        font-size: 1.125rem;
         color: #333;
         margin: auto 0 auto 8px;
+    }
+    .balloon-message-wrapper.info .balloon-message {
+        font-size: 0.875rem;
     }
     /* --- ここから二重線しっぽ --- */
     .balloon-message::after {
