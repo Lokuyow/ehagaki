@@ -73,18 +73,17 @@
                 class="site-icon"
             />
         </a>
-        <div class="post-status-wrapper">
-            {#if postStatus.error}
-                <div class="post-status error">
+        {#if postStatus.error || postStatus.success}
+            <div
+                class="kitten-balloon-wrapper {postStatus.error
+                    ? 'error'
+                    : 'success'}"
+            >
+                <div class="kitten-balloon">
                     {$_(postStatus.message)}
                 </div>
-            {/if}
-            {#if postStatus.success}
-                <div class="post-status success">
-                    {$_(postStatus.message)}
-                </div>
-            {/if}
-        </div>
+            </div>
+        {/if}
     </div>
     <div class="post-actions">
         <div class="buttons-container">
@@ -180,6 +179,15 @@
         padding: 0;
     }
 
+    :global(.image-button) {
+        width: 54px;
+        border: 1px solid var(--hagaki);
+    }
+    :global(.clear-button) {
+        width: 54px;
+        border: 1px solid var(--hagaki);
+    }
+
     .plane-icon {
         mask-image: url("/ehagaki/icons/paper-plane-solid-full.svg");
         width: 30px;
@@ -196,38 +204,56 @@
         height: 30px;
     }
 
-    .post-status-wrapper {
+    .kitten-balloon-wrapper {
         position: absolute;
-        top: 25px;
-        left: 68px;
+        left: 66px;
         display: flex;
         align-items: center;
-        justify-content: center;
+        max-width: 150px;
+        height: 100%;
+        z-index: 2;
+        pointer-events: none;
+    }
+    .kitten-balloon {
+        position: relative;
+        background: #fff;
+        border: 2px solid #e0e0e0;
+        border-radius: 16px;
+        padding: 8px 10px;
+        font-size: 1rem;
+        color: #333;
+        margin: auto 0 auto 8px;
         white-space: nowrap;
     }
-
-    .post-status {
-        padding: 5px 8px;
-        border-radius: 4px;
-        font-size: 0.95rem;
-    }
-
-    .post-status.error {
-        background-color: #ffebee;
+    .kitten-balloon-wrapper.error .kitten-balloon {
+        background: #ffebee;
         color: #c62828;
+        border-color: #ffcdd2;
     }
-
-    .post-status.success {
-        background-color: hsl(125, 39%, 90%);
-        color: hsl(123, 46%, 30%);
+    .kitten-balloon-wrapper.success .kitten-balloon {
+        background: hsl(125, 39%, 92%);
+        color: hsl(123, 46%, 28%);
+        border-color: hsl(125, 39%, 80%);
     }
-
-    :global(.image-button) {
-        width: 54px;
-        border: 1px solid var(--hagaki);
+    .kitten-balloon::after {
+        content: "";
+        position: absolute;
+        left: -16px;
+        top: 12px;
+        transform: rotate(-8deg);
+        width: 0;
+        height: 0;
+        border: 8px solid transparent;
+        border-right: 12px solid #fff;
+        filter: drop-shadow(-1px 0 0 #e0e0e0);
+        z-index: 1;
     }
-    :global(.clear-button) {
-        width: 54px;
-        border: 1px solid var(--hagaki);
+    .kitten-balloon-wrapper.error .kitten-balloon::after {
+        border-right: 12px solid #ffebee;
+        filter: drop-shadow(-1px 0 0 #ffcdd2);
+    }
+    .kitten-balloon-wrapper.success .kitten-balloon::after {
+        border-right: 12px solid hsl(125, 39%, 90%);
+        filter: drop-shadow(-1px 0 0 hsl(125, 39%, 80%));
     }
 </style>
