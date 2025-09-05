@@ -53,5 +53,6 @@
   "updating": "更新中...",
   "toggle_write_relays_list": "投稿先リレーの表示切替",
   "no_relay_info": "リレー情報なし",
-  "hint_input_secret": "nsec1から始まる秘密鍵を入力"
+  "hint_input_secret": "nsec1から始まる秘密鍵を入力",
+  "hello": "ハロー"
 }

@@ -375,6 +375,12 @@
       await loadProfileForPubkey($authState.pubkey, { forceRemote: true });
     }
   }
+
+  // --- サイトアクセス時バルーン表示用 ---
+  let showHeaderBalloon = true;
+  setTimeout(() => {
+    showHeaderBalloon = false;
+  }, 3000);
 </script>
 
 {#if $locale && localeInitialized}
@@ -384,6 +390,9 @@
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onSubmitPost={() => postComponentRef?.submitPost()}
         onResetPostContent={handleResetPostContent}
+        balloonMessage={showHeaderBalloon
+          ? { type: "info", message: $_("hello") }
+          : null}
       />
       <PostComponent
         bind:this={postComponentRef}

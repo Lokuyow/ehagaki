@@ -53,5 +53,6 @@
   "updating": "Updating...",
   "toggle_write_relays_list": "Toggle write relays list",
   "no_relay_info": "No relay info",
-  "hint_input_secret": "Enter a secret key starting with nsec1"
+  "hint_input_secret": "Enter a secret key starting with nsec1",
+  "hello": "Hello"
 }

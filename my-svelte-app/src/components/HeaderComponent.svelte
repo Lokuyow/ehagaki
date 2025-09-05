@@ -8,6 +8,15 @@
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
     export let onResetPostContent: () => void;
+    export let balloonMessage: {
+        type: "success" | "error" | "info";
+        message: string;
+    } | null = null;
+
+    // --- infoバルーンデバッグ用 ---
+    import { onDestroy } from "svelte";
+    import { writable } from "svelte/store";
+    const infoBalloonStore = writable<{ message: string } | null>(null);
 
     $: postStatus = $editorState.postStatus;
     $: hasStoredKey = $authState.isAuthenticated;
@@ -56,14 +65,24 @@
                 },
             }));
         };
+        // infoバルーン表示コマンド
+        (window as any).showInfoBalloonDebug = (msg: string) => {
+            infoBalloonStore.set({ message: msg });
+        };
+        (window as any).hideInfoBalloonDebug = () => {
+            infoBalloonStore.set(null);
+        };
     }
+
+    onDestroy(() => {
+        // infoBalloonTimeout削除
+    });
 </script>
 
 <div class="header-container">
     <div class="header-left">
         <a
             href="https://lokuyow.github.io/ehagaki/"
-            target="_blank"
             rel="noopener noreferrer"
             class="site-icon-link"
             aria-label="ehagaki"
@@ -74,7 +93,14 @@
                 class="site-icon"
             />
         </a>
-        {#if postStatus.error || postStatus.success}
+        {#if $infoBalloonStore}
+            <BalloonMessage type="info" message={$infoBalloonStore.message} />
+        {:else if balloonMessage}
+            <BalloonMessage
+                type={balloonMessage.type}
+                message={balloonMessage.message}
+            />
+        {:else if postStatus.error || postStatus.success}
             <BalloonMessage
                 type={postStatus.error ? "error" : "success"}
                 message={$_(postStatus.message)}
@@ -124,19 +150,16 @@
     }
 
     .header-left {
-        position: relative;
         display: flex;
         align-items: center;
         height: 100%;
-        width: auto;
+        width: 100%;
     }
 
     .site-icon-link {
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 100%;
-        width: 100%;
         &:hover {
             background-color: transparent;
         }
@@ -152,8 +175,9 @@
         display: flex;
         justify-content: flex-end;
         align-items: center;
-        width: 100%;
+        width: fit-content;
         height: 100%;
+        margin-left: auto;
     }
 
     .buttons-container {
