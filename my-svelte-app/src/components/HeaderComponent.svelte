@@ -3,6 +3,7 @@
     import { editorState } from "../lib/editor/store";
     import { authState } from "../lib/stores";
     import Button from "./Button.svelte";
+    import BalloonMessage from "./BalloonMessage.svelte"; // 追加
 
     export let onUploadImage: () => void;
     export let onSubmitPost: () => void;
@@ -74,15 +75,10 @@
             />
         </a>
         {#if postStatus.error || postStatus.success}
-            <div
-                class="kitten-balloon-wrapper {postStatus.error
-                    ? 'error'
-                    : 'success'}"
-            >
-                <div class="kitten-balloon">
-                    {$_(postStatus.message)}
-                </div>
-            </div>
+            <BalloonMessage
+                type={postStatus.error ? "error" : "success"}
+                message={$_(postStatus.message)}
+            />
         {/if}
     </div>
     <div class="post-actions">
@@ -202,58 +198,5 @@
         mask-image: url("/icons/trash-solid-full.svg");
         width: 30px;
         height: 30px;
-    }
-
-    .kitten-balloon-wrapper {
-        position: absolute;
-        left: 66px;
-        display: flex;
-        align-items: center;
-        max-width: 150px;
-        height: 100%;
-        z-index: 2;
-        pointer-events: none;
-    }
-    .kitten-balloon {
-        position: relative;
-        background: #fff;
-        border: 2px solid #e0e0e0;
-        border-radius: 16px;
-        padding: 8px 10px;
-        font-size: 1rem;
-        color: #333;
-        margin: auto 0 auto 8px;
-        white-space: nowrap;
-    }
-    .kitten-balloon-wrapper.error .kitten-balloon {
-        background: #ffebee;
-        color: #c62828;
-        border-color: #ffcdd2;
-    }
-    .kitten-balloon-wrapper.success .kitten-balloon {
-        background: hsl(125, 39%, 92%);
-        color: hsl(123, 46%, 28%);
-        border-color: hsl(125, 39%, 80%);
-    }
-    .kitten-balloon::after {
-        content: "";
-        position: absolute;
-        left: -16px;
-        top: 12px;
-        transform: rotate(-8deg);
-        width: 0;
-        height: 0;
-        border: 8px solid transparent;
-        border-right: 12px solid #fff;
-        filter: drop-shadow(-1px 0 0 #e0e0e0);
-        z-index: 1;
-    }
-    .kitten-balloon-wrapper.error .kitten-balloon::after {
-        border-right: 12px solid #ffebee;
-        filter: drop-shadow(-1px 0 0 #ffcdd2);
-    }
-    .kitten-balloon-wrapper.success .kitten-balloon::after {
-        border-right: 12px solid hsl(125, 39%, 90%);
-        filter: drop-shadow(-1px 0 0 hsl(125, 39%, 80%));
     }
 </style>
