@@ -213,9 +213,11 @@
                 <Button className="lang-btn btn" on:click={toggleLanguage}>
                     <div
                         class="lang-icon-btn svg-icon"
-                        aria-label={$_("change") || "変更"}
+                        aria-label={$_("settingsDialog.change") || "変更"}
                     ></div>
-                    <span class="btn-text">{$_("change") || "変更"}</span>
+                    <span class="btn-text"
+                        >{$_("settingsDialog.change") || "変更"}</span
+                    >
                 </Button>
             </div>
         </div>
@@ -223,7 +225,8 @@
         <!-- 画像圧縮設定セクション -->
         <div class="setting-section">
             <span class="setting-label"
-                >{$_("compression_setting") || "画像圧縮設定"}</span
+                >{$_("settingsDialog.compression_setting") ||
+                    "画像圧縮設定"}</span
             >
             <div class="setting-control">
                 <select
@@ -240,7 +243,8 @@
         <!-- アップロード先設定セクション -->
         <div class="setting-section">
             <span class="setting-label"
-                >{$_("upload_destination") || "アップロード先"}</span
+                >{$_("settingsDialog.upload_destination") ||
+                    "アップロード先"}</span
             >
             <div class="setting-control">
                 <select id="endpoint-select" bind:value={selectedEndpoint}>
@@ -254,7 +258,7 @@
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
             <span class="setting-label"
-                >{$_("client_tag_label") ||
+                >{$_("settingsDialog.client_tag_label") ||
                     "投稿詳細にクライアント名をつける（Client tag）"}</span
             >
             <div class="setting-control">
@@ -272,7 +276,7 @@
         <!-- リレー・プロフィール再取得セクション -->
         <div class="setting-section">
             <span class="setting-label"
-                >{$_("refresh_relays_and_profile") ||
+                >{$_("settingsDialog.refresh_relays_and_profile") ||
                     "リレーリスト・プロフィール再取得"}</span
             >
             <div class="setting-control">
@@ -281,13 +285,17 @@
                     on:click={() =>
                         onRefreshRelaysAndProfile &&
                         onRefreshRelaysAndProfile()}
-                    ariaLabel={$_("refresh_relays_and_profile") || "再取得"}
+                    ariaLabel={$_(
+                        "settingsDialog.refresh_relays_and_profile",
+                    ) || "再取得"}
                 >
                     <div
                         class="rotate-right-icon svg-icon"
-                        aria-label={$_("refresh") || "更新"}
+                        aria-label={$_("settingsDialog.refresh") || "更新"}
                     ></div>
-                    <span class="btn-text">{$_("refresh") || "更新"}</span>
+                    <span class="btn-text"
+                        >{$_("settingsDialog.refresh") || "更新"}</span
+                    >
                 </Button>
             </div>
 
@@ -298,7 +306,7 @@
                     class="relay-toggle-label"
                     on:click={() => (showRelays = !showRelays)}
                     aria-pressed={showRelays}
-                    aria-label={$_("toggle_write_relays_list") ||
+                    aria-label={$_("settingsDialog.toggle_write_relays_list") ||
                         "投稿先リレーの表示切替"}
                     style="cursor:pointer; background:none; border:none; padding:0; font: inherit;"
                 >
@@ -309,7 +317,8 @@
                             ▶
                         {/if}
                     </span>
-                    {$_("write_relays_list") || "書き込み先リレーリスト"}
+                    {$_("settingsDialog.write_relays_list") ||
+                        "書き込み先リレーリスト"}
                 </button>
                 {#if showRelays}
                     <div class="setting-control relay-list">
@@ -321,7 +330,8 @@
                             </ul>
                         {:else}
                             <span style="color: #888;"
-                                >{$_("no_relay_info") || "リレー情報なし"}</span
+                                >{$_("settingsDialog.no_relay_info") ||
+                                    "リレー情報なし"}</span
                             >
                         {/if}
                     </div>
@@ -333,23 +343,25 @@
         {#if $swNeedRefresh}
             <div class="setting-section sw-update-section">
                 <span class="setting-label sw-update-label">
-                    {$_("sw_update_available") || "アプリの更新があります"}
+                    {$_("settingsDialog.sw_update_available") ||
+                        "アプリの更新があります"}
                 </span>
                 <div class="setting-control">
                     <Button
                         className="btn sw-update-btn"
                         on:click={handleSwRefresh}
                         disabled={isUpdating}
-                        ariaLabel={$_("update_app") || "アプリを更新"}
+                        ariaLabel={$_("settingsDialog.update_app") ||
+                            "アプリを更新"}
                     >
                         <div
                             class="rotate-right-icon svg-icon"
-                            aria-label={$_("refresh") || "更新"}
+                            aria-label={$_("settingsDialog.refresh") || "更新"}
                         ></div>
                         <span class="btn-text">
                             {isUpdating
-                                ? $_("updating") || "更新中..."
-                                : $_("update_app") || "更新"}
+                                ? $_("settingsDialog.updating") || "更新中..."
+                                : $_("settingsDialog.update_app") || "更新"}
                         </span>
                     </Button>
                 </div>

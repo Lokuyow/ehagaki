@@ -90,9 +90,9 @@
     {#if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">
             <div class="progress-text">
-                {$_("uploading")}: {uploadProgress.completed}/{uploadProgress.total}
+                {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
                 {#if uploadProgress.failed > 0}
-                    ({$_("failed")}: {uploadProgress.failed})
+                    ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
                 {/if}
             </div>
             <div class="progress-bar">
@@ -110,7 +110,7 @@
         </div>
     {:else if imageSizeInfoVisible && imageSizeInfo && imageSizeInfo.wasCompressed}
         <div class="image-size-info">
-            <div class="size-label">{$_("data_size")}:</div>
+            <div class="size-label">{$_("footerInfoDisplay.data_size")}:</div>
             <div class="size-details">
                 {imageSizeInfo.originalSize} → {imageSizeInfo.compressedSize} ({imageSizeInfo.compressionRatio}%)
             </div>

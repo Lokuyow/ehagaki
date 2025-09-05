@@ -16,18 +16,18 @@
     bind:show
     useHistory={true}
     {onClose}
-    ariaLabel={$_("logout_confirmation")}
+    ariaLabel={$_("logoutDialog.logout_confirmation")}
     className="logout-dialog"
     let:close
 >
-    <h2>{$_("logout_confirmation")}</h2>
-    <p>{$_("logout_warning")}</p>
+    <h2>{$_("logoutDialog.logout_confirmation")}</h2>
+    <p>{$_("logoutDialog.logout_warning")}</p>
     <div class="dialog-buttons">
         <Button on:click={close} className="cancel-btn btn-angular"
-            >{$_("cancel")}</Button
+            >{$_("logoutDialog.cancel")}</Button
         >
         <Button on:click={handleLogout} className="logout-btn btn-angular"
-            >{$_("logout")}</Button
+            >{$_("logoutDialog.logout")}</Button
         >
     </div>
 </Dialog>

@@ -71,7 +71,7 @@
 
   onMount(() => {
     const initialPlaceholder =
-      $_("enter_your_text") || "テキストを入力してください";
+      $_("postComponent.enter_your_text") || "テキストを入力してください";
     editor = createEditorStore(initialPlaceholder);
 
     // エディター状態の購読
@@ -156,7 +156,7 @@
               fileArray[0],
             );
             if (!validation.isValid) {
-              showUploadError($_(validation.errorMessage || "upload_failed"));
+              showUploadError($_(validation.errorMessage || "postComponent.upload_failed"));
               return null;
             }
             return [
@@ -199,7 +199,7 @@
       if (failedResults.length)
         showUploadError(
           failedResults.length === 1
-            ? failedResults[0].error || $_("upload_failed")
+            ? failedResults[0].error || $_("postComponent.upload_failed")
             : `${failedResults.length}個のファイルのアップロードに失敗しました`,
           5000,
         );
@@ -238,7 +238,7 @@
           sending: false,
           success: true,
           error: false,
-          message: "post_success",
+          message: "postComponent.post_success",
           completed: true,
         });
         // 投稿成功時にエディター内容をクリア
@@ -251,7 +251,7 @@
           sending: false,
           success: false,
           error: true,
-          message: result.error || "post_error",
+          message: result.error || "postComponent.post_error",
           completed: false,
         });
       }
@@ -260,7 +260,7 @@
         sending: false,
         success: false,
         error: true,
-        message: "post_error",
+        message: "postComponent.post_error",
         completed: false,
       });
       console.error("投稿処理でエラーが発生:", error);
@@ -481,19 +481,19 @@
 
 <Dialog
   bind:show={showSecretKeyDialog}
-  ariaLabel={$_("warning")}
+  ariaLabel={$_("postComponent.warning")}
   onClose={cancelSendWithSecretKey}
 >
   <div class="secretkey-dialog-content">
     <div class="secretkey-dialog-message">
-      {$_("secret_key_detected")}
+      {$_("postComponent.secret_key_detected")}
     </div>
     <div class="secretkey-dialog-buttons">
       <Button className="btn cancel" on:click={cancelSendWithSecretKey}>
-        {$_("cancel")}
+        {$_("postComponent.cancel")}
       </Button>
       <Button className="btn danger" on:click={confirmSendWithSecretKey}>
-        {$_("post")}
+        {$_("postComponent.post")}
       </Button>
     </div>
   </div>

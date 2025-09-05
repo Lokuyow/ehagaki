@@ -248,7 +248,8 @@
 
   // locale変更時にプレースホルダーを更新
   $: if ($locale) {
-    const text = $_("enter_your_text") || "テキストを入力してください";
+    const text =
+      $_("postComponent.enter_your_text") || "テキストを入力してください";
     placeholderTextStore.set(text);
   }
 
@@ -266,7 +267,7 @@
 
     // プレースホルダーテキストを初期化
     const initialPlaceholder =
-      $_("enter_your_text") || "テキストを入力してください";
+      $_("postComponent.enter_your_text") || "テキストを入力してください";
     placeholderTextStore.set(initialPlaceholder);
 
     // 認証サービスの認証ハンドラーを先にセット
@@ -391,7 +392,7 @@
         onSubmitPost={() => postComponentRef?.submitPost()}
         onResetPostContent={handleResetPostContent}
         balloonMessage={showHeaderBalloon
-          ? { type: "info", message: $_("hello") }
+          ? { type: "info", message: $_("balloonMessage.hello") }
           : null}
       />
       <PostComponent

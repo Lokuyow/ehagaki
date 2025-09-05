@@ -103,7 +103,11 @@
         {:else if postStatus.error || postStatus.success}
             <BalloonMessage
                 type={postStatus.error ? "error" : "success"}
-                message={$_(postStatus.message)}
+                message={$_(
+                    postStatus.error
+                        ? "balloonMessage.post_error"
+                        : "balloonMessage.post_success"
+                )}
             />
         {/if}
     </div>
@@ -113,7 +117,7 @@
                 className="clear-button btn-angular"
                 disabled={!canPost || postStatus.sending || isUploading}
                 on:click={onResetPostContent}
-                ariaLabel={$_("clear_editor")}
+                ariaLabel={$_("postComponent.clear_editor")}
             >
                 <div class="trash-icon svg-icon"></div>
             </Button>
@@ -121,7 +125,7 @@
                 className="image-button btn-angular"
                 disabled={!hasStoredKey || postStatus.sending || isUploading}
                 on:click={onUploadImage}
-                ariaLabel={$_("upload_image")}
+                ariaLabel={$_("postComponent.upload_image")}
             >
                 <div class="image-icon svg-icon"></div>
             </Button>
@@ -129,7 +133,7 @@
                 className="post-button btn-angular"
                 disabled={!canPost || postStatus.sending || !hasStoredKey}
                 on:click={onSubmitPost}
-                ariaLabel={$_("post")}
+                ariaLabel={$_("postComponent.post")}
             >
                 <div class="plane-icon svg-icon"></div>
             </Button>

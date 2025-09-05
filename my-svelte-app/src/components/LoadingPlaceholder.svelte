@@ -6,7 +6,7 @@
     export let customClass: string = "";
 
     // デフォルトテキストを国際化対応で設定
-    $: displayText = text || $_("loading");
+    $: displayText = text || $_("loadingPlaceholder.loading");
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>

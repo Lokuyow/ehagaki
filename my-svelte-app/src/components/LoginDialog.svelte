@@ -45,14 +45,16 @@
 
             // バリデーションはsave時のみ
             if (validity.valueMissing) {
-                inputEl.setCustomValidity($_("secret_required"));
+                inputEl.setCustomValidity($_("loginDialog.secret_required"));
                 inputEl.reportValidity();
                 return;
             }
 
             // nsec1で始まるかチェック
             if (!value.startsWith("nsec1")) {
-                inputEl.setCustomValidity($_("secret_must_start_nsec1"));
+                inputEl.setCustomValidity(
+                    $_("loginDialog.secret_must_start_nsec1"),
+                );
                 inputEl.reportValidity();
                 return;
             }
@@ -60,9 +62,13 @@
             // 長さのチェック
             if (value.length !== 63) {
                 if (value.length < 63) {
-                    inputEl.setCustomValidity($_("secret_too_short"));
+                    inputEl.setCustomValidity(
+                        $_("loginDialog.secret_too_short"),
+                    );
                 } else {
-                    inputEl.setCustomValidity($_("secret_too_long"));
+                    inputEl.setCustomValidity(
+                        $_("loginDialog.secret_too_long"),
+                    );
                 }
                 inputEl.reportValidity();
                 return;
@@ -70,7 +76,7 @@
 
             // PublicKeyStateの検証結果をチェック
             if (!isValid) {
-                inputEl.setCustomValidity($_("invalid_secret"));
+                inputEl.setCustomValidity($_("loginDialog.invalid_secret"));
                 inputEl.reportValidity();
                 return;
             }
@@ -108,7 +114,7 @@
     bind:show
     useHistory={true}
     {onClose}
-    ariaLabel={$_("input_secret")}
+    ariaLabel={$_("loginDialog.input_secret")}
     className="login-dialog"
     showFooter={true}
     let:close
@@ -122,7 +128,7 @@
     >
         {#if isLoadingNostrLogin}
             <LoadingPlaceholder
-                text={$_("loading")}
+                text={$_("loginDialog.loading")}
                 showImage={false}
                 showSpinner={true}
                 customClass="nostr-login-placeholder"
@@ -138,10 +144,10 @@
     </Button>
 
     <div class="divider">
-        <span>{$_("or")}</span>
+        <span>{$_("loginDialog.or")}</span>
     </div>
 
-    <h3>{$_("input_secret")}</h3>
+    <h3>{$_("loginDialog.input_secret")}</h3>
     <form on:submit|preventDefault={handleSave}>
         <input
             type="password"
@@ -155,7 +161,7 @@
             minlength="63"
             maxlength="63"
             bind:this={inputEl}
-            title={$_("hint_input_secret")}
+            title={$_("loginDialog.hint_input_secret")}
             on:keydown={(e) => {
                 if (e.key === "Enter") handleSave();
             }}
@@ -169,10 +175,11 @@
             <Button
                 type="button"
                 on:click={handleClear}
-                className="clear-btn btn-angular">{$_("clear")}</Button
+                className="clear-btn btn-angular"
+                >{$_("loginDialog.clear")}</Button
             >
             <Button type="submit" className="save-btn btn-angular"
-                >{$_("save")}</Button
+                >{$_("loginDialog.save")}</Button
             >
         </div>
     </form>
