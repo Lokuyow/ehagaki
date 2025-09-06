@@ -28,26 +28,109 @@ export class FileUploadManager {
     return { ...opt, preserveExif: false };
   }
 
-  private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean }> {
+  // 追加: WebP の品質指定サポート検出（結果をキャッシュ）
+  private static _webpQualitySupport?: boolean;
+  private static async canEncodeWebpWithQuality(): Promise<boolean> {
+    if (this._webpQualitySupport !== undefined) return this._webpQualitySupport;
+    try {
+      // DOM が無い（SSR 等）や Canvas 非対応なら不可
+      if (typeof document === "undefined") return (this._webpQualitySupport = false);
+      const canvas = document.createElement("canvas");
+      canvas.width = 2; canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return (this._webpQualitySupport = false);
+      // 適当な内容を書いて size 差で quality 反映を推定
+      ctx.fillStyle = "#f00"; ctx.fillRect(0, 0, 2, 2);
+      const qLow = canvas.toDataURL("image/webp", 0.2);
+      const qHigh = canvas.toDataURL("image/webp", 0.9);
+      const ok = qLow.startsWith("data:image/webp") && qHigh.startsWith("data:image/webp") && qLow.length !== qHigh.length;
+      this._webpQualitySupport = ok;
+      return ok;
+    } catch {
+      this._webpQualitySupport = false;
+      return false;
+    }
+  }
+
+  // 追加: MIMEタイプが Canvas エンコード可能かの簡易判定（結果をキャッシュ）
+  private static _mimeSupportCache: Record<string, boolean> = {};
+  private static canEncodeMimeType(mime: string): boolean {
+    if (!mime) return false;
+    if (mime in this._mimeSupportCache) return this._mimeSupportCache[mime];
+    try {
+      if (typeof document === "undefined") return (this._mimeSupportCache[mime] = false);
+      const canvas = document.createElement("canvas");
+      canvas.width = 2; canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return (this._mimeSupportCache[mime] = false);
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 2, 2);
+      const url = canvas.toDataURL(mime);
+      const ok = typeof url === "string" && url.startsWith(`data:${mime}`);
+      this._mimeSupportCache[mime] = ok;
+      return ok;
+    } catch {
+      this._mimeSupportCache[mime] = false;
+      return false;
+    }
+  }
+
+  // 追加: MIME から拡張子を決めてファイル名を付け直す
+  private static renameByMime(filename: string, mime: string): string {
+    const map: Record<string, string> = {
+      "image/webp": ".webp",
+      "image/jpeg": ".jpg",
+      "image/png": ".png",
+      "image/gif": ".gif",
+      "image/avif": ".avif",
+      "image/bmp": ".bmp"
+    };
+    const ext = map[mime];
+    if (!ext) return filename;
+    const base = filename.replace(/\.[^.]+$/, "");
+    return `${base}${ext}`;
+  }
+
+  private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
     const options = this.getCompressionOptions();
     if (!options) {
-      // 無圧縮
-      return { file, wasCompressed: false };
+      // 無圧縮設定
+      return { file, wasCompressed: false, wasSkipped: true };
     }
-    try {
-      const compressed = await imageCompression(file, options);
-      // fileType指定がある場合のみ拡張子・typeを変換
-      let outFile: File;
-      if (options.fileType && file.type !== options.fileType) {
-        outFile = new File(
-          [compressed],
-          file.name.replace(/\.[^.]+$/, "") + ".webp",
-          { type: "image/webp" }
-        );
-      } else {
-        outFile = new File([compressed], file.name, { type: file.type });
+
+    // WebP 品質制御が不可な環境では WebP 変換をやめる（元タイプで圧縮）
+    let usedOptions: any = { ...options };
+    if (usedOptions.fileType === "image/webp") {
+      const webpOk = await this.canEncodeWebpWithQuality();
+      if (!webpOk) {
+        delete usedOptions.fileType;
       }
+    }
+
+    // ターゲット MIME を決定してエンコード可否を確認
+    let targetMime: string = usedOptions.fileType || file.type;
+    if (usedOptions.fileType && !this.canEncodeMimeType(usedOptions.fileType)) {
+      // 指定タイプがエンコード不可なら指定を外す（フォールバックを回避）
+      delete usedOptions.fileType;
+      targetMime = file.type;
+    }
+    // 元タイプ自体がエンコード不可な環境（iOS Safari など）。PNG へフォールバックしてサイズ増になるのを避けるためスキップ
+    if (!this.canEncodeMimeType(targetMime)) {
+      return { file, wasCompressed: false, wasSkipped: true };
+    }
+
+    try {
+      const compressed = await imageCompression(file, usedOptions);
+
+      // 圧縮後にサイズが縮まらなければ採用しない（サイズ増防止）
+      if ((compressed as File).size >= file.size) {
+        return { file, wasCompressed: false };
+      }
+
+      // 実際の出力 MIME に基づきファイル名を設定
+      const outType = (compressed as File).type || targetMime || file.type;
+      const outName = this.renameByMime(file.name, outType);
+      const outFile = new File([compressed], outName, { type: outType });
 
       // --- devモード時のみ: 圧縮後画像を新しいウィンドウで表示 ---
       if (import.meta.env.MODE === "development") {
@@ -73,7 +156,7 @@ export class FileUploadManager {
 
       return { file: outFile, wasCompressed: true };
     } catch {
-      return { file, wasCompressed: false };
+      return { file, wasCompressed: false, wasSkipped: true };
     }
   }
 
@@ -152,15 +235,20 @@ export class FileUploadManager {
     try {
       if (!file) return { success: false, error: "No file selected" };
       const originalSize = file.size;
-      const { file: uploadFile, wasCompressed } = await this.compressImage(file);
+      const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressImage(file);
       const compressedSize = uploadFile.size;
-      // --- ファイル名情報を追加 ---
+
+      // 圧縮設定が有効な場合、または実際に変化があった場合は表示対象とする
+      const options = this.getCompressionOptions();
+      const hasCompressionSettings = options !== null;
+
       const sizeInfo = createFileSizeInfo(
         originalSize,
         compressedSize,
-        wasCompressed,
+        hasCompressionSettings || wasCompressed,
         file.name,
-        uploadFile.name
+        uploadFile.name,
+        wasSkipped
       );
       const finalUrl = this.getUploadEndpoint(apiUrl);
       const authHeader = await this.buildAuthHeader(finalUrl, "POST");

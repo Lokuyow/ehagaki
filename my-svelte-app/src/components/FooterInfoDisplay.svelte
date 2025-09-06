@@ -131,7 +131,7 @@
                 ></div>
             </div>
         </div>
-    {:else if imageSizeInfoVisible && imageSizeInfo && imageSizeInfo.wasCompressed}
+    {:else if imageSizeInfoVisible && imageSizeInfo}
         <div class="image-size-info">
             <div class="size-label">{$_("footerInfoDisplay.data_size")}:</div>
             <div class="size-details">
@@ -139,8 +139,15 @@
                     {getExtension(imageSizeInfo.originalFilename)}
                     {imageSizeInfo.originalSize}<br />
                     → {getExtension(imageSizeInfo.compressedFilename)}
-                    {imageSizeInfo.compressedSize}
-                    ({imageSizeInfo.compressionRatio}%)
+                    {#if imageSizeInfo.wasSkipped}
+                        {$_("footerInfoDisplay.no_compression") || "圧縮なし"}
+                    {:else if imageSizeInfo.wasCompressed}
+                        {imageSizeInfo.compressedSize}
+                        ({imageSizeInfo.compressionRatio}%)
+                    {:else}
+                        {imageSizeInfo.compressedSize}
+                        ({imageSizeInfo.compressionRatio}%)
+                    {/if}
                 {/if}
             </div>
         </div>

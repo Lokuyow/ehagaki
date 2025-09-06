@@ -32,6 +32,7 @@ export interface FileSizeInfo {
     sizeReduction: string;
     originalFilename?: string;      // 追加
     compressedFilename?: string;    // 追加
+    wasSkipped?: boolean; // 圧縮処理をスキップしたかどうか
 }
 
 export interface SizeDisplayInfo {
@@ -41,6 +42,7 @@ export interface SizeDisplayInfo {
     compressionRatio: number;
     originalFilename?: string;      // 追加
     compressedFilename?: string;    // 追加
+    wasSkipped?: boolean; // 圧縮処理をスキップしたかどうか
 }
 
 export interface PublicKeyData {

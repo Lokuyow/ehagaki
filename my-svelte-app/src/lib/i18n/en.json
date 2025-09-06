@@ -53,7 +53,8 @@
   "footerInfoDisplay": {
     "uploading": "Uploading",
     "failed": "Failed",
-    "data_size": "Transmission size"
+    "data_size": "Transmission size",
+    "no_compression": "No compression"
   },
   "loadingPlaceholder": {
     "loading": "Loading..."

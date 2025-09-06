@@ -19,6 +19,7 @@ export function formatFileSize(bytes: number): string {
  * @param wasCompressed 圧縮されたかどうか
  * @param originalFilename 元ファイル名（省略可）
  * @param compressedFilename 圧縮後ファイル名（省略可）
+ * @param wasSkipped 圧縮処理をスキップしたかどうか（省略可）
  * @returns ファイルサイズ情報
  */
 export function createFileSizeInfo(
@@ -26,7 +27,8 @@ export function createFileSizeInfo(
   compressedSize: number,
   wasCompressed: boolean,
   originalFilename?: string,
-  compressedFilename?: string
+  compressedFilename?: string,
+  wasSkipped?: boolean
 ): FileSizeInfo {
   const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
   const sizeReduction = `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
@@ -38,25 +40,35 @@ export function createFileSizeInfo(
     compressionRatio,
     sizeReduction,
     originalFilename,
-    compressedFilename
+    compressedFilename,
+    wasSkipped
   };
 }
 
 /**
  * サイズ情報から表示用の構造化データを生成
  * @param sizeInfo ファイルサイズ情報
- * @returns 表示用構造化データ、または圧縮されていない場合はnull
+ * @returns 表示用構造化データ、または表示する必要がない場合はnull
  */
 export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisplayInfo | null {
-  if (!sizeInfo || !sizeInfo.wasCompressed) return null;
+  if (!sizeInfo) return null;
+  
+  // wasCompressed フラグがtrueか、ファイル名やサイズに変化がある場合、またはスキップされた場合に表示
+  const hasChanges = sizeInfo.wasCompressed || 
+                    (sizeInfo.originalFilename !== sizeInfo.compressedFilename) ||
+                    (sizeInfo.originalSize !== sizeInfo.compressedSize) ||
+                    sizeInfo.wasSkipped;
+  
+  if (!hasChanges) return null;
 
   return {
-    wasCompressed: true,
+    wasCompressed: sizeInfo.wasCompressed,
     originalSize: formatFileSize(sizeInfo.originalSize),
     compressedSize: formatFileSize(sizeInfo.compressedSize),
     compressionRatio: sizeInfo.compressionRatio,
-    originalFilename: sizeInfo.originalFilename,         // 追加
-    compressedFilename: sizeInfo.compressedFilename      // 追加
+    originalFilename: sizeInfo.originalFilename,
+    compressedFilename: sizeInfo.compressedFilename,
+    wasSkipped: sizeInfo.wasSkipped
   };
 }
 
