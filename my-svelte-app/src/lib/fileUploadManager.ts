@@ -25,7 +25,7 @@ export class FileUploadManager {
     const level = (localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
     const opt = COMPRESSION_OPTIONS_MAP[level];
     if (opt && 'skip' in opt && (opt as { skip: boolean }).skip) return null;
-    return opt;
+    return { ...opt, preserveExif: false };
   }
 
   private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean }> {
@@ -48,6 +48,29 @@ export class FileUploadManager {
       } else {
         outFile = new File([compressed], file.name, { type: file.type });
       }
+
+      // --- devモード時のみ: 圧縮後画像を新しいウィンドウで表示 ---
+      if (import.meta.env.MODE === "development") {
+        try {
+          const blobUrl = URL.createObjectURL(outFile);
+          const win = window.open(blobUrl, "_blank");
+          // メモリリーク防止: ウィンドウが閉じられたらURLを解放
+          if (win) {
+            const revoke = () => {
+              URL.revokeObjectURL(blobUrl);
+              win.removeEventListener("beforeunload", revoke);
+            };
+            win.addEventListener("beforeunload", revoke);
+          } else {
+            // 失敗時も解放
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+          }
+        } catch (e) {
+          // noop
+        }
+      }
+      // --- ここまで ---
+
       return { file: outFile, wasCompressed: true };
     } catch {
       return { file, wasCompressed: false };
