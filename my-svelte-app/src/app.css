@@ -1,6 +1,7 @@
 :root {
   --theme: hsl(152, 74%, 43%);
-  --nostr: #7c3aed;
+  --text-black: hsl(0, 0%, 24%);
+  --nostr-bg: hsl(270, 100%, 98%);
   --white: #ffffff;
   --yellow: #ffd600;
   --red: hsl(0, 75%, 51%);

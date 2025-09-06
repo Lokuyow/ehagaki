@@ -246,7 +246,6 @@
         opacity: 0.8;
         margin-bottom: 8px;
         word-break: break-all;
-        animation: toast-fadein 0.3s;
     }
     @keyframes toast-fadein {
         from {
@@ -269,26 +268,30 @@
         height: 60px;
     }
 
-    :global(.nostr-login-button) {
-        color: var(--text-light);
-        height: 65px;
+    :global(.btn.nostr-login-button) {
+        height: 74px;
         margin-top: 44px;
         margin-bottom: 16px;
-        font-size: 1.1rem;
+        padding: 12px 24px 12px 22px;
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 8px;
         position: relative;
         overflow: hidden;
-    }
 
-    .nostr-login-icon {
-        width: 32px;
-        height: 32px;
-        margin-right: 4px;
-        flex-shrink: 0;
-        display: inline-block;
+        .nostr-login-icon {
+            width: 34px;
+            height: 34px;
+            margin-right: 4px;
+            flex-shrink: 0;
+            display: inline-block;
+        }
+
+        .btn-text {
+            color: var(--text);
+            font-size: 1.125rem;
+        }
     }
 
     :global(.nostr-login-button.loading) {
