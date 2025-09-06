@@ -477,7 +477,7 @@
         letter-spacing: 0.5px;
     }
     .cache-version {
-        font-size: 0.95em;
+        font-size: 0.9375rem;
         color: var(--text-light);
     }
     .rotate-right-icon {
