@@ -10,6 +10,9 @@
   export let showLogoutDialog: () => void;
   export let isLoadingProfile: boolean = false;
 
+  // プロフィール画像読み込みエラー状態
+  let imageLoadError = false;
+
   // プロフィール画像のaltテキスト取得
   const getProfileAlt = () =>
     profileData?.name
@@ -26,18 +29,15 @@
         ? profileData.npub
         : "User";
 
-  // プロフィール画像のpreload処理
-  function preloadProfileImage(src: string) {
-    if (!src) return;
-
-    // プロフィール画像のプリロード（Service Workerでキャッシュされる）
-    const img = new Image();
-    img.src = src;
+  // 画像読み込みエラーハンドラ
+  function handleImageError(event: Event) {
+    console.log('プロフィール画像の読み込みに失敗しました:', event);
+    imageLoadError = true;
   }
 
-  // プロフィールデータが変更された時にプリロード
+  // プロフィールデータが変更されたら画像エラー状態をリセット
   $: if (profileData?.picture) {
-    preloadProfileImage(profileData.picture);
+    imageLoadError = false;
   }
 </script>
 
@@ -52,12 +52,15 @@
     {#if isLoadingProfile}
       <LoadingPlaceholder text={$_("loading")} showImage={true} />
     {:else}
-      {#if profileData?.picture}
+      {#if profileData?.picture && !imageLoadError}
         <img
           src={profileData.picture}
           alt={getProfileAlt()}
           class="profile-picture"
           loading="lazy"
+          crossorigin="anonymous"
+          referrerpolicy="no-referrer"
+          on:error={handleImageError}
         />
       {:else}
         <div class="profile-picture default svg-icon" aria-label="User"></div>

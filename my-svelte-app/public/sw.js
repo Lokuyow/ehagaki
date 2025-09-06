@@ -87,6 +87,14 @@ self.addEventListener('message', (event) => {
             event.ports?.[0]?.postMessage({ success: false, error: err.message });
         });
     }
+    if (event.data?.action === 'cleanupDuplicateProfileCache') {
+        cleanupDuplicateProfileCache().then(() => {
+            event.ports?.[0]?.postMessage({ success: true });
+        }).catch(err => {
+            console.error('重複キャッシュクリーンアップエラー:', err);
+            event.ports?.[0]?.postMessage({ success: false, error: err.message });
+        });
+    }
 });
 
 // アップロードリクエスト判定
@@ -205,25 +213,107 @@ function isProfileImageRequest(request) {
 async function handleProfileImageRequest(request) {
     try {
         const cache = await caches.open(PROFILE_CACHE_NAME);
-        const cached = await cache.match(request);
+        
+        // ベースURL（クエリパラメータなし）を作成
+        const urlWithoutQuery = new URL(request.url);
+        const baseUrl = `${urlWithoutQuery.origin}${urlWithoutQuery.pathname}`;
+        const baseRequest = new Request(baseUrl, {
+            method: request.method,
+            headers: new Headers({
+                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
+            }),
+            mode: 'cors',
+            credentials: 'omit'
+        });
 
+        // 1. ベースURLでキャッシュを検索
+        const cachedBase = await cache.match(baseRequest);
+        if (cachedBase) {
+            console.log('プロフィール画像をキャッシュから返却（ベースURL）:', baseUrl);
+            return cachedBase;
+        }
+
+        // 2. 念のため元のURLでも検索（既存キャッシュとの互換性）
+        const cached = await cache.match(request);
         if (cached) {
-            console.log('プロフィール画像をキャッシュから返却:', request.url);
+            console.log('プロフィール画像をキャッシュから返却（元URL）:', request.url);
             return cached;
         }
 
-        const response = await fetch(request);
-        if (response.ok) {
-            // レスポンスをクローンしてキャッシュに保存
-            await cache.put(request, response.clone());
-            console.log('プロフィール画像をキャッシュに保存:', request.url);
+        // 3. ネットワークから取得を試行
+        if (navigator.onLine !== false) {
+            try {
+                // CORS設定を修正したリクエストを作成
+                const corsRequest = new Request(request.url, {
+                    method: 'GET',
+                    headers: new Headers({
+                        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+                        'Cache-Control': 'no-cache'
+                    }),
+                    mode: 'cors',
+                    credentials: 'omit',
+                    cache: 'no-cache'
+                });
+
+                const response = await fetch(corsRequest);
+
+                if (response.ok && response.status === 200) {
+                    // ベースURLのみでキャッシュに保存（重複を防ぐ）
+                    const responseClone = response.clone();
+                    await cache.put(baseRequest, responseClone);
+                    console.log('プロフィール画像をキャッシュに保存（ベースURL）:', baseUrl);
+
+                    return response;
+                }
+            } catch (networkError) {
+                console.log('ネットワークエラー:', networkError.message);
+            }
         }
 
-        return response;
+        // 4. フォールバック: 透明な1x1ピクセル画像を返す
+        const fallbackImage = new Response(
+            new Uint8Array([
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+                0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+                0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+                0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+                0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+            ]),
+            {
+                status: 200,
+                statusText: 'OK',
+                headers: {
+                    'Content-Type': 'image/png',
+                    'Cache-Control': 'max-age=31536000',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            }
+        );
+
+        console.log('フォールバック画像を返却:', request.url);
+        return fallbackImage;
+
     } catch (error) {
         console.error('プロフィール画像処理エラー:', error);
-        // エラー時はネットワークからの取得を試行
-        return fetch(request);
+        // エラー時も透明画像を返す
+        return new Response(
+            new Uint8Array([
+                0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
+                0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+                0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+                0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+                0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+                0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+            ]),
+            {
+                status: 200,
+                headers: { 
+                    'Content-Type': 'image/png',
+                    'Access-Control-Allow-Origin': '*'
+                }
+            }
+        );
     }
 }
 
@@ -235,6 +325,51 @@ async function clearProfileImageCache() {
         return deleted;
     } catch (error) {
         console.error('プロフィール画像キャッシュクリアエラー:', error);
+        throw error;
+    }
+}
+
+// 重複プロフィール画像キャッシュのクリーンアップ
+async function cleanupDuplicateProfileCache() {
+    try {
+        const cache = await caches.open(PROFILE_CACHE_NAME);
+        const keys = await cache.keys();
+        
+        const baseUrls = new Set();
+        const duplicateKeys = [];
+        
+        // ベースURLとクエリ付きURLを識別
+        keys.forEach(request => {
+            const url = new URL(request.url);
+            const baseUrl = `${url.origin}${url.pathname}`;
+            
+            if (url.search) {
+                // クエリパラメータ付きのURLは重複候補
+                duplicateKeys.push(request);
+            } else {
+                // ベースURLを記録
+                baseUrls.add(baseUrl);
+            }
+        });
+        
+        // 重複するキャッシュエントリを削除
+        let deletedCount = 0;
+        for (const duplicateKey of duplicateKeys) {
+            const url = new URL(duplicateKey.url);
+            const baseUrl = `${url.origin}${url.pathname}`;
+            
+            // ベースURLが既にキャッシュされている場合、クエリ付きを削除
+            if (baseUrls.has(baseUrl)) {
+                await cache.delete(duplicateKey);
+                deletedCount++;
+                console.log('重複キャッシュを削除:', duplicateKey.url);
+            }
+        }
+        
+        console.log(`重複プロフィールキャッシュクリーンアップ完了: ${deletedCount}件削除`);
+        return true;
+    } catch (error) {
+        console.error('重複キャッシュクリーンアップエラー:', error);
         throw error;
     }
 }

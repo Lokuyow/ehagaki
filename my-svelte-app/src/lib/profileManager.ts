@@ -28,16 +28,45 @@ export class ProfileManager {
     }
   }
 
+  // プロフィール画像にマーカーを追加（改良版）
+  private addProfileMarker(imageUrl: string, forceRemote = false): string {
+    if (!imageUrl) return imageUrl;
+    try {
+      const url = new URL(imageUrl);
+      
+      // プロフィール画像であることを示すクエリパラメータを追加
+      url.searchParams.set('profile', 'true');
+      
+      // forceRemoteの場合のみキャッシュバスターを追加
+      // オフライン時やキャッシュ優先時は削除してキャッシュヒット率を向上
+      if (forceRemote && navigator.onLine) {
+        // 既存のキャッシュバスターがある場合は更新
+        if (url.searchParams.has('cb')) {
+          url.searchParams.set('cb', Date.now().toString());
+        }
+      } else {
+        // キャッシュ優先の場合はキャッシュバスターを削除
+        url.searchParams.delete('cb');
+      }
+      
+      return url.toString();
+    } catch {
+      // URLが不正な場合はそのまま返す
+      return imageUrl;
+    }
+  }
+
   // ProfileData生成時にキャッシュバスターを適用
   private createProfileDataWithCacheBuster(content: any, pubkeyHex: string, forceRemote = false): ProfileData {
     let picture = content?.picture || "";
-    if (picture && forceRemote) {
-      picture = this.addCacheBuster(picture);
-    }
     
     // プロフィール画像にマーカーを追加
     if (picture) {
-      picture = this.addProfileMarker(picture);
+      // forceRemoteの場合のみキャッシュバスターを追加
+      if (forceRemote) {
+        picture = this.addCacheBuster(picture);
+      }
+      picture = this.addProfileMarker(picture, forceRemote);
     }
     
     return {
@@ -45,20 +74,6 @@ export class ProfileManager {
       picture,
       npub: content?.name ? undefined : toNpub(pubkeyHex)
     };
-  }
-
-  // プロフィール画像にマーカーを追加
-  private addProfileMarker(imageUrl: string): string {
-    if (!imageUrl) return imageUrl;
-    try {
-      const url = new URL(imageUrl);
-      // プロフィール画像であることを示すクエリパラメータを追加
-      url.searchParams.set('profile', 'true');
-      return url.toString();
-    } catch {
-      // URLが不正な場合はそのまま返す
-      return imageUrl;
-    }
   }
 
   saveToLocalStorage(pubkeyHex: string, profile: ProfileData | null): void {
@@ -79,12 +94,9 @@ export class ProfileManager {
       const profile = localStorage.getItem(`nostr-profile-${pubkeyHex}`);
       if (!profile) return null;
       const parsed = JSON.parse(profile);
-      const profileData = this.createProfileDataWithCacheBuster(parsed, pubkeyHex);
       
-      // ローカルストレージから取得時もプロフィールマーカーを追加
-      if (profileData.picture) {
-        profileData.picture = this.addProfileMarker(profileData.picture);
-      }
+      // ローカルストレージから取得時は常にキャッシュ優先
+      const profileData = this.createProfileDataWithCacheBuster(parsed, pubkeyHex, false);
       
       return profileData;
     } catch (e) {

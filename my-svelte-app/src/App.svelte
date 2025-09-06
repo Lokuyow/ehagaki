@@ -119,11 +119,6 @@
       if (!relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
         relayManager.setBootstrapRelays();
       }
-      const profile = await profileManager.fetchProfileData(pubkeyHex);
-      if (profile) {
-        profileDataStore.set(profile);
-        profileLoadedStore.set(true);
-      }
     } else {
       relayManager.setBootstrapRelays();
     }
