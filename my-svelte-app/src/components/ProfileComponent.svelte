@@ -73,7 +73,7 @@
 <style>
   /* プロフィール表示のスタイル */
   :global(.profile-display) {
-    gap: 4px;
+    gap: 6px;
     padding: 0 10px 0 4px;
     z-index: 10;
     border: none;
