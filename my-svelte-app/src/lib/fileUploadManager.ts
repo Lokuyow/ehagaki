@@ -154,7 +154,14 @@ export class FileUploadManager {
       const originalSize = file.size;
       const { file: uploadFile, wasCompressed } = await this.compressImage(file);
       const compressedSize = uploadFile.size;
-      const sizeInfo = createFileSizeInfo(originalSize, compressedSize, wasCompressed);
+      // --- ファイル名情報を追加 ---
+      const sizeInfo = createFileSizeInfo(
+        originalSize,
+        compressedSize,
+        wasCompressed,
+        file.name,
+        uploadFile.name
+      );
       const finalUrl = this.getUploadEndpoint(apiUrl);
       const authHeader = await this.buildAuthHeader(finalUrl, "POST");
 

@@ -6,6 +6,12 @@
 
     let copied = false;
 
+    // --- ストア値をリアクティブに参照 ---
+    // $: devLogValue = get(devLog);
+    // $: isDevValue = get(isDev);
+    // ↓ Svelteのストア自動購読を利用
+    // $devLog, $isDev を直接使う
+
     // スマホ対応: タップ時に明示的に選択→コピー（Clipboard API優先、失敗時はtextareaフォールバック）
     async function handleDevLogCopy(e?: Event) {
         try {
@@ -37,6 +43,22 @@
     // ストアから画像サイズ情報を取得
     $: imageSizeInfo = $imageSizeInfoStore.info;
     $: imageSizeInfoVisible = $imageSizeInfoStore.visible;
+
+    // --- 追加: 拡張子取得用関数（大文字で返す＋HEIC→HEIF変換） ---
+    function getExtension(filename: string | undefined): string {
+        if (!filename) return "";
+        const match = filename.match(/\.([a-zA-Z0-9]+)$/);
+        if (!match) return "";
+        const ext = match[1].toUpperCase();
+        return ext === "HEIC" ? "HEIF" : ext;
+    }
+    // 画像サイズ情報から拡張子を取得
+    $: originalExt = imageSizeInfo?.originalFilename
+        ? getExtension(imageSizeInfo.originalFilename)
+        : "";
+    $: compressedExt = imageSizeInfo?.compressedFilename
+        ? getExtension(imageSizeInfo.compressedFilename)
+        : "";
 
     /**
      * 進捗情報の更新
@@ -70,23 +92,24 @@
     }
 </script>
 
+{#if $isDev && $devLog.length}
+    <button
+        type="button"
+        class="floating-dev-console-log"
+        on:click={handleDevLogCopy}
+        on:touchend|preventDefault={handleDevLogCopy}
+        title="タップで全コピー"
+        aria-label="開発者ログをコピー"
+    >
+        <ul>
+            {#each [...$devLog].reverse() as log, i}
+                <li>{log}</li>
+            {/each}
+        </ul>
+    </button>
+{/if}
+
 <div class="footer-center">
-    {#if $isDev && $devLog.length}
-        <button
-            type="button"
-            class="dev-console-log"
-            on:click={handleDevLogCopy}
-            on:touchend|preventDefault={handleDevLogCopy}
-            title="タップで全コピー"
-            aria-label="開発者ログをコピー"
-        >
-            <ul>
-                {#each [...$devLog].reverse() as log, i}
-                    <li>{log}</li>
-                {/each}
-            </ul>
-        </button>
-    {/if}
     {#if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">
             <div class="progress-text">
@@ -112,7 +135,13 @@
         <div class="image-size-info">
             <div class="size-label">{$_("footerInfoDisplay.data_size")}:</div>
             <div class="size-details">
-                {imageSizeInfo.originalSize} → {imageSizeInfo.compressedSize} ({imageSizeInfo.compressionRatio}%)
+                {#if imageSizeInfo.originalFilename && imageSizeInfo.compressedFilename}
+                    {getExtension(imageSizeInfo.originalFilename)}
+                    {imageSizeInfo.originalSize}<br />
+                    → {getExtension(imageSizeInfo.compressedFilename)}
+                    {imageSizeInfo.compressedSize}
+                    ({imageSizeInfo.compressionRatio}%)
+                {/if}
             </div>
         </div>
     {/if}
@@ -124,45 +153,6 @@
         display: flex;
         justify-content: flex-start;
         height: 100%;
-        .dev-console-log {
-            font-size: 0.6rem;
-            color: #c00;
-            background: #fff0f0;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            height: 100%;
-            width: 100%;
-            cursor: pointer; /* 追加: コピー可能を示す */
-            user-select: text;
-            border: none;
-            text-align: left;
-            padding: 0;
-            margin: 0;
-            outline: none;
-            box-shadow: none;
-            appearance: none;
-            border-radius: 0;
-        }
-        .dev-console-log:active,
-        .dev-console-log:focus {
-            background: #ffe0e0;
-        }
-        .dev-console-log ul {
-            margin: 0;
-            padding: 0 0 0 0.4rem;
-            list-style: disc inside;
-            overflow-y: auto;
-        }
-        .dev-console-log li {
-            margin: 0;
-            padding: 0;
-            word-break: break-all;
-        }
-    }
-    .dev-console-log li {
-        margin: 0;
-        padding: 0;
-        word-break: break-all;
     }
 
     .image-size-info {
@@ -217,5 +207,54 @@
         height: 100%;
         background-color: var(--theme);
         transition: width 0.3s ease;
+    }
+
+    /* 統合: dev-console-logをフッターの上に浮かせる＋dev-console-log本体 */
+    .floating-dev-console-log {
+        position: fixed;
+        right: 0;
+        bottom: 66px;
+        z-index: 1000;
+        min-width: 240px;
+        width: 100%;
+        max-height: 10vh;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+        border: 1px solid #fbb;
+        border-radius: 8px;
+        background: #fff0f0;
+        overflow-y: auto;
+        opacity: 0.6;
+        pointer-events: auto;
+        touch-action: manipulation;
+        font-size: 0.6rem;
+        color: #c00;
+        white-space: pre-wrap;
+        height: 100%;
+        cursor: pointer;
+        user-select: text;
+        border: none;
+        text-align: left;
+        outline: none;
+        box-shadow: none;
+        appearance: none;
+        border-radius: 0;
+    }
+    .floating-dev-console-log:active,
+    .floating-dev-console-log:focus {
+        background: #ffe0e0;
+    }
+    .floating-dev-console-log ul {
+        margin: 0;
+        padding: 0 0 0 0.4rem;
+        list-style: disc inside;
+        overflow-y: auto;
+    }
+    .floating-dev-console-log li {
+        margin: 0;
+        padding: 0;
+        word-break: break-all;
+    }
+    .floating-dev-console-log:active {
+        transform: scale(0.97);
     }
 </style>

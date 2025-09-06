@@ -17,12 +17,16 @@ export function formatFileSize(bytes: number): string {
  * @param originalSize 元のファイルサイズ（バイト）
  * @param compressedSize 圧縮後のファイルサイズ（バイト）
  * @param wasCompressed 圧縮されたかどうか
+ * @param originalFilename 元ファイル名（省略可）
+ * @param compressedFilename 圧縮後ファイル名（省略可）
  * @returns ファイルサイズ情報
  */
 export function createFileSizeInfo(
   originalSize: number,
   compressedSize: number,
-  wasCompressed: boolean
+  wasCompressed: boolean,
+  originalFilename?: string,
+  compressedFilename?: string
 ): FileSizeInfo {
   const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
   const sizeReduction = `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
@@ -32,7 +36,9 @@ export function createFileSizeInfo(
     compressedSize,
     wasCompressed,
     compressionRatio,
-    sizeReduction
+    sizeReduction,
+    originalFilename,
+    compressedFilename
   };
 }
 
@@ -48,7 +54,9 @@ export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisp
     wasCompressed: true,
     originalSize: formatFileSize(sizeInfo.originalSize),
     compressedSize: formatFileSize(sizeInfo.compressedSize),
-    compressionRatio: sizeInfo.compressionRatio
+    compressionRatio: sizeInfo.compressionRatio,
+    originalFilename: sizeInfo.originalFilename,         // 追加
+    compressedFilename: sizeInfo.compressedFilename      // 追加
   };
 }
 

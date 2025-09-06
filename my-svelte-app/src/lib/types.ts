@@ -30,6 +30,8 @@ export interface FileSizeInfo {
     wasCompressed: boolean;
     compressionRatio: number;
     sizeReduction: string;
+    originalFilename?: string;      // 追加
+    compressedFilename?: string;    // 追加
 }
 
 export interface SizeDisplayInfo {
@@ -37,6 +39,8 @@ export interface SizeDisplayInfo {
     originalSize: string;
     compressedSize: string;
     compressionRatio: number;
+    originalFilename?: string;      // 追加
+    compressedFilename?: string;    // 追加
 }
 
 export interface PublicKeyData {
