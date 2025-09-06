@@ -44,12 +44,13 @@
     $: imageSizeInfo = $imageSizeInfoStore.info;
     $: imageSizeInfoVisible = $imageSizeInfoStore.visible;
 
-    // --- 追加: 拡張子取得用関数（大文字で返す） ---
+    // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
     function getExtension(filename: string | undefined): string {
         if (!filename) return "";
         const match = filename.match(/\.([a-zA-Z0-9]+)$/);
         if (!match) return "";
-        return match[1].toUpperCase();
+        const ext = match[1].toUpperCase();
+        return ext === "JPEG" ? "JPG" : ext;
     }
     // 画像サイズ情報から拡張子を取得
     $: originalExt = imageSizeInfo?.originalFilename
