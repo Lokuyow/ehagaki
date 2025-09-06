@@ -92,6 +92,11 @@ export class FileUploadManager {
 
   private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
+    // --- ここから追加: 20KB以下は圧縮スキップ ---
+    if (file.size <= 20 * 1024) {
+      return { file, wasCompressed: false, wasSkipped: true };
+    }
+    // --- ここまで追加 ---
     const options = this.getCompressionOptions();
     if (!options) {
       // 無圧縮設定
