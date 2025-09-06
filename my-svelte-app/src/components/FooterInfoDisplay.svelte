@@ -44,13 +44,12 @@
     $: imageSizeInfo = $imageSizeInfoStore.info;
     $: imageSizeInfoVisible = $imageSizeInfoStore.visible;
 
-    // --- 追加: 拡張子取得用関数（大文字で返す＋HEIC→HEIF変換） ---
+    // --- 追加: 拡張子取得用関数（大文字で返す） ---
     function getExtension(filename: string | undefined): string {
         if (!filename) return "";
         const match = filename.match(/\.([a-zA-Z0-9]+)$/);
         if (!match) return "";
-        const ext = match[1].toUpperCase();
-        return ext === "HEIC" ? "HEIF" : ext;
+        return match[1].toUpperCase();
     }
     // 画像サイズ情報から拡張子を取得
     $: originalExt = imageSizeInfo?.originalFilename
