@@ -139,19 +139,22 @@ export async function debugLogUploadResponse(response: Response) {
 
 // デバッグ用の関数やモックデータなどもここに追加可能
 
-// SW更新ダイアログを強制表示するデバッグ関数型
+// --- showSwUpdateModalDebug: 設定ボタンランプとSettingsDialog内の更新ボタンを強制表示するデバッグ関数型 ---
 declare global {
     interface Window {
         showSwUpdateModalDebug?: () => void;
     }
 }
 
-// --- ここから追加: SW更新ダイアログ強制表示デバッグ機能 ---
+// --- ここから修正: SW更新ボタン強制表示デバッグ機能 ---
+// 以前は「モーダル」だったが、現在は設定ボタンランプとSettingsDialog内の更新ボタン表示用
 import { swNeedRefresh } from "./stores";
-if (import.meta.env.MODE === "development") {
+// --- SW更新ボタン強制表示デバッグ機能 ---
+// 必ずグローバルwindowに生やす（import後に実行）
+if (typeof window !== "undefined") {
     window.showSwUpdateModalDebug = () => {
         swNeedRefresh.set(true);
-        console.log("SW更新ダイアログを強制表示しました");
+        console.log("SW更新ボタンを強制表示しました（設定ボタンランプ＋SettingsDialog内）");
     };
 }
 

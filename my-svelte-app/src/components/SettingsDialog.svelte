@@ -554,7 +554,6 @@
 
     .sw-update-section {
         border-radius: 8px;
-        padding: 12px;
         background: rgba(var(--theme-rgb), 0.05);
     }
 

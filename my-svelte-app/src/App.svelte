@@ -305,12 +305,6 @@
           console.error("共有画像の処理中にエラー:", error);
         }
       }
-      if (import.meta.env.MODE === "development") {
-        window.showSwUpdateModalDebug = () => {
-          swNeedRefresh.set(true);
-          console.log("SW更新ダイアログを強制表示しました");
-        };
-      }
       debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
     };
 
