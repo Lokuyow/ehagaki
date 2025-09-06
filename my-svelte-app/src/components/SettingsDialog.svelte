@@ -206,6 +206,35 @@
     </div>
 
     <div class="modal-body">
+        <!-- SW更新セクション -->
+        {#if $swNeedRefresh}
+            <div class="setting-section sw-update-section">
+                <span class="setting-label sw-update-label">
+                    {$_("settingsDialog.sw_update_available") ||
+                        "アプリの更新があります"}
+                </span>
+                <div class="setting-control">
+                    <Button
+                        className="btn sw-update-btn"
+                        on:click={handleSwRefresh}
+                        disabled={isUpdating}
+                        ariaLabel={$_("settingsDialog.update_app") ||
+                            "アプリを更新"}
+                    >
+                        <div
+                            class="rotate-right-icon svg-icon"
+                            aria-label={$_("settingsDialog.refresh") || "更新"}
+                        ></div>
+                        <span class="btn-text">
+                            {isUpdating
+                                ? $_("settingsDialog.updating") || "更新中..."
+                                : $_("settingsDialog.update_app") || "更新"}
+                        </span>
+                    </Button>
+                </div>
+            </div>
+        {/if}
+
         <!-- 言語設定セクション -->
         <div class="setting-section">
             <span class="setting-label"> Language/言語 </span>
@@ -338,35 +367,6 @@
                 {/if}
             </div>
         </div>
-
-        <!-- SW更新セクション -->
-        {#if $swNeedRefresh}
-            <div class="setting-section sw-update-section">
-                <span class="setting-label sw-update-label">
-                    {$_("settingsDialog.sw_update_available") ||
-                        "アプリの更新があります"}
-                </span>
-                <div class="setting-control">
-                    <Button
-                        className="btn sw-update-btn"
-                        on:click={handleSwRefresh}
-                        disabled={isUpdating}
-                        ariaLabel={$_("settingsDialog.update_app") ||
-                            "アプリを更新"}
-                    >
-                        <div
-                            class="rotate-right-icon svg-icon"
-                            aria-label={$_("settingsDialog.refresh") || "更新"}
-                        ></div>
-                        <span class="btn-text">
-                            {isUpdating
-                                ? $_("settingsDialog.updating") || "更新中..."
-                                : $_("settingsDialog.update_app") || "更新"}
-                        </span>
-                    </Button>
-                </div>
-            </div>
-        {/if}
     </div>
 </Dialog>
 
@@ -553,7 +553,6 @@
     }
 
     .sw-update-section {
-        border: 1px solid var(--theme);
         border-radius: 8px;
         padding: 12px;
         background: rgba(var(--theme-rgb), 0.05);
@@ -568,13 +567,14 @@
         --btn-bg: var(--theme);
         color: white;
         min-width: 120px;
+        border: none;
 
         :global(.svg-icon) {
             background-color: white;
         }
 
         :global(.btn-text) {
-            color: white;
+            color: whitesmoke;
         }
     }
 
