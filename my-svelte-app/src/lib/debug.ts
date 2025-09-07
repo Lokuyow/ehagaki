@@ -13,8 +13,12 @@ function logToDevFooter(...args: any[]) {
     devLog.update((logs) => [entry, ...logs].slice(0, 250)); // 50→250に変更
 }
 
+// --- dev用: console.logフック有効/無効切り替え ---
+export const ENABLE_DEV_LOG_HOOK = false; // ← ここに移動
+
 // --- 開発時のみconsole.logをフック ---
-if (import.meta.env.MODE === "development") {
+// ↓ ENABLE_DEV_LOG_HOOK で切り替え
+if (import.meta.env.MODE === "development" && ENABLE_DEV_LOG_HOOK) {
     const origLog = console.log;
     // すでにフック済みなら再度フックしない
     if (!(window as any).__devLogHooked) {
