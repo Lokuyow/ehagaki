@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.2.3';
+const PRECACHE_VERSION = '1.2.4';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -213,7 +213,7 @@ function isProfileImageRequest(request) {
 async function handleProfileImageRequest(request) {
     try {
         const cache = await caches.open(PROFILE_CACHE_NAME);
-        
+
         // ベースURL（クエリパラメータなし）を作成
         const urlWithoutQuery = new URL(request.url);
         const baseUrl = `${urlWithoutQuery.origin}${urlWithoutQuery.pathname}`;
@@ -308,7 +308,7 @@ async function handleProfileImageRequest(request) {
             ]),
             {
                 status: 200,
-                headers: { 
+                headers: {
                     'Content-Type': 'image/png',
                     'Access-Control-Allow-Origin': '*'
                 }
@@ -334,15 +334,15 @@ async function cleanupDuplicateProfileCache() {
     try {
         const cache = await caches.open(PROFILE_CACHE_NAME);
         const keys = await cache.keys();
-        
+
         const baseUrls = new Set();
         const duplicateKeys = [];
-        
+
         // ベースURLとクエリ付きURLを識別
         keys.forEach(request => {
             const url = new URL(request.url);
             const baseUrl = `${url.origin}${url.pathname}`;
-            
+
             if (url.search) {
                 // クエリパラメータ付きのURLは重複候補
                 duplicateKeys.push(request);
@@ -351,13 +351,13 @@ async function cleanupDuplicateProfileCache() {
                 baseUrls.add(baseUrl);
             }
         });
-        
+
         // 重複するキャッシュエントリを削除
         let deletedCount = 0;
         for (const duplicateKey of duplicateKeys) {
             const url = new URL(duplicateKey.url);
             const baseUrl = `${url.origin}${url.pathname}`;
-            
+
             // ベースURLが既にキャッシュされている場合、クエリ付きを削除
             if (baseUrls.has(baseUrl)) {
                 await cache.delete(duplicateKey);
@@ -365,7 +365,7 @@ async function cleanupDuplicateProfileCache() {
                 console.log('重複キャッシュを削除:', duplicateKey.url);
             }
         }
-        
+
         console.log(`重複プロフィールキャッシュクリーンアップ完了: ${deletedCount}件削除`);
         return true;
     } catch (error) {
