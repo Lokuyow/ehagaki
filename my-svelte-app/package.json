@@ -11,13 +11,13 @@
     "deploy": "gh-pages -d dist"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^6.1.0",
+    "@sveltejs/vite-plugin-svelte": "^6.1.4",
     "@tsconfig/svelte": "^5.0.4",
     "@types/dompurify": "^3.0.5",
     "@types/node": "^24.2.0",
     "gh-pages": "^6.3.0",
-    "svelte": "^5.35.5",
-    "svelte-check": "^4.2.2",
+    "svelte": "^5.38.7",
+    "svelte-check": "^4.3.1",
     "typescript": "~5.8.3",
     "vite": "^7.0.6",
     "vite-plugin-pwa": "^1.0.2"
