@@ -158,10 +158,50 @@ export class AuthService {
     }
 
     /**
+     * 外部認証オブジェクト（window.nostrなど）の利用可能性を待機
+     */
+    private async waitForExternalAuth(timeoutMs: number = 5000): Promise<boolean> {
+        const startTime = Date.now();
+        const pollInterval = 100;
+
+        return new Promise((resolve) => {
+            const checkAuth = () => {
+                // window.nostrの存在チェック
+                if (typeof window !== 'undefined' &&
+                    typeof (window as any).nostr === 'object' &&
+                    (window as any).nostr !== null &&
+                    typeof (window as any).nostr.getPublicKey === 'function') {
+                    debugLog('[waitForExternalAuth] window.nostr利用可能');
+                    resolve(true);
+                    return;
+                }
+
+                // タイムアウトチェック
+                if (Date.now() - startTime >= timeoutMs) {
+                    debugLog('[waitForExternalAuth] タイムアウト');
+                    resolve(false);
+                    return;
+                }
+
+                // 次回チェックをスケジュール
+                setTimeout(checkAuth, pollInterval);
+            };
+
+            checkAuth();
+        });
+    }
+
+    /**
      * 初期化時の認証状態チェック
      */
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
         try {
+            // 外部認証オブジェクトの待機（非ブロッキング）
+            const hasExternalAuth = await this.waitForExternalAuth(100);
+            if (hasExternalAuth) {
+                debugLog('[initializeAuth] 外部認証オブジェクト検出済み');
+            }
+
             // nostr-loginの初期化
             await nostrLoginManager.init(this.nostrLoginOptions);
 
@@ -202,6 +242,30 @@ export class AuthService {
                 } catch (e) {
                     debugLog('[initializeAuth] localStorage復元中に例外', e);
                     // ignore
+                }
+            }
+
+            // 3. 外部認証オブジェクトが利用可能な場合、追加チェック
+            if (hasExternalAuth) {
+                try {
+                    const result = await keyManager.getPublicKeyFromWindowNostr();
+                    if (result.success && result.pubkey) {
+                        debugLog('[initializeAuth] window.nostrから公開鍵取得成功', { pubkey: result.pubkey });
+                        // window.nostrからの認証情報をnostr-login形式で処理
+                        const npub = keyManager.pubkeyToNpub(result.pubkey);
+                        this.publicKeyState.setNostrLoginAuth({
+                            type: 'login',
+                            pubkey: result.pubkey,
+                            npub: npub
+                        });
+                        return {
+                            hasAuth: true,
+                            pubkeyHex: result.pubkey,
+                            isNostrLogin: true
+                        };
+                    }
+                } catch (error) {
+                    debugLog('[initializeAuth] window.nostr認証チェック中にエラー', error);
                 }
             }
         } catch (error) {

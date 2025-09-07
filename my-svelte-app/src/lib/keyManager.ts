@@ -131,6 +131,17 @@ export const keyManager = {
   isValidNsec,
   derivePublicKey: derivePublicKeyFromNsec,
 
+  // --- 公開鍵をnpubに変換 ---
+  pubkeyToNpub(pubkey: string): string {
+    try {
+      if (!pubkey) return '';
+      return nip19.npubEncode(pubkey);
+    } catch (error) {
+      console.error('pubkeyからnpubへの変換エラー:', error);
+      return '';
+    }
+  },
+
   // --- 秘密鍵をストレージに保存 ---
   saveToStorage(key: string): { success: boolean; error?: KeyManagerError } {
     if (!key?.trim()) {

@@ -250,17 +250,23 @@
       // 認証サービスの認証ハンドラーを先にセット
       authService.setNostrLoginHandler(handleNostrLoginAuth);
 
-      // --- ここから: initializeAuthをawaitせずに早期実行 ---
+      // --- 修正: initializeAuthの処理を改善 ---
       (async () => {
-        const authResult = await authService.initializeAuth();
-        if (authResult.hasAuth && authResult.pubkeyHex) {
-          await initializeNostr(authResult.pubkeyHex);
-          await loadProfileForPubkey(authResult.pubkeyHex);
-        } else {
+        try {
+          const authResult = await authService.initializeAuth();
+          if (authResult.hasAuth && authResult.pubkeyHex) {
+            await initializeNostr(authResult.pubkeyHex);
+            await loadProfileForPubkey(authResult.pubkeyHex);
+          } else {
+            await initializeNostr();
+          }
+        } catch (error) {
+          console.error("認証初期化中にエラー:", error);
           await initializeNostr();
+        } finally {
+          isLoadingProfileStore.set(false);
+          authService.markAuthInitialized();
         }
-        isLoadingProfileStore.set(false);
-        authService.markAuthInitialized();
       })();
       // --- ここまで ---
 
