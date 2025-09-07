@@ -196,6 +196,29 @@ export class AuthService {
      */
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
         try {
+            // --- まずnsecストレージキーを優先的にチェック ---
+            const storedKey = keyManager.loadFromStorage();
+            if (storedKey) {
+                debugLog('[initializeAuth] nsecストレージキーを検出', { storedKey });
+                this.publicKeyState.setNsec(storedKey);
+                try {
+                    const derived = keyManager.derivePublicKey(storedKey);
+                    if (derived.hex) {
+                        debugLog('[initializeAuth] nsecからpubkey導出成功', { hex: derived.hex });
+                        setNsecAuth(derived.hex, derived.npub, derived.nprofile);
+                        return {
+                            hasAuth: true,
+                            pubkeyHex: derived.hex,
+                            isNostrLogin: false
+                        };
+                    }
+                } catch (error) {
+                    debugLog('[initializeAuth] ストレージキーの処理中にエラー', error);
+                    console.error('ストレージキーの処理中にエラー:', error);
+                }
+            }
+
+            // --- nsecがなければ外部認証やnostr-loginをチェック ---
             // 外部認証オブジェクトの待機（非ブロッキング）
             const hasExternalAuth = await this.waitForExternalAuth(100);
             if (hasExternalAuth) {
@@ -270,28 +293,6 @@ export class AuthService {
             }
         } catch (error) {
             console.error('nostr-login初期化失敗:', error);
-        }
-
-        // nostr-loginでの認証がない場合、ストレージからnsecをチェック
-        const storedKey = keyManager.loadFromStorage();
-        if (storedKey) {
-            debugLog('[initializeAuth] nsecストレージキーを検出', { storedKey });
-            this.publicKeyState.setNsec(storedKey);
-            try {
-                const derived = keyManager.derivePublicKey(storedKey);
-                if (derived.hex) {
-                    debugLog('[initializeAuth] nsecからpubkey導出成功', { hex: derived.hex });
-                    setNsecAuth(derived.hex, derived.npub, derived.nprofile);
-                    return {
-                        hasAuth: true,
-                        pubkeyHex: derived.hex,
-                        isNostrLogin: false
-                    };
-                }
-            } catch (error) {
-                debugLog('[initializeAuth] ストレージキーの処理中にエラー', error);
-                console.error('ストレージキーの処理中にエラー:', error);
-            }
         }
 
         debugLog('[initializeAuth] 認証情報なし');
