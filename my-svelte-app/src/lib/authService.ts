@@ -218,14 +218,13 @@ export class AuthService {
                 }
             }
 
-            // --- nsecがなければ外部認証やnostr-loginをチェック ---
-            // 外部認証オブジェクトの待機（非ブロッキング）
+            // --- nsecがなければ外部認証やnostr-loginをチェック（起動しない範囲のみ） ---
             const hasExternalAuth = await this.waitForExternalAuth(100);
             if (hasExternalAuth) {
                 debugLog('[initializeAuth] 外部認証オブジェクト検出済み');
             }
 
-            // nostr-loginの初期化
+            // nostr-loginの初期化（UIは起動しない）
             await nostrLoginManager.init(this.nostrLoginOptions);
 
             // 1. まずwindow.nostrLoginから即時取得
@@ -268,29 +267,6 @@ export class AuthService {
                 }
             }
 
-            // 3. 外部認証オブジェクトが利用可能な場合、追加チェック
-            if (hasExternalAuth) {
-                try {
-                    const result = await keyManager.getPublicKeyFromWindowNostr();
-                    if (result.success && result.pubkey) {
-                        debugLog('[initializeAuth] window.nostrから公開鍵取得成功', { pubkey: result.pubkey });
-                        // window.nostrからの認証情報をnostr-login形式で処理
-                        const npub = keyManager.pubkeyToNpub(result.pubkey);
-                        this.publicKeyState.setNostrLoginAuth({
-                            type: 'login',
-                            pubkey: result.pubkey,
-                            npub: npub
-                        });
-                        return {
-                            hasAuth: true,
-                            pubkeyHex: result.pubkey,
-                            isNostrLogin: true
-                        };
-                    }
-                } catch (error) {
-                    debugLog('[initializeAuth] window.nostr認証チェック中にエラー', error);
-                }
-            }
         } catch (error) {
             console.error('nostr-login初期化失敗:', error);
         }
