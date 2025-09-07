@@ -5,18 +5,15 @@
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
   import { ProfileManager } from "./lib/profileManager";
-  import ProfileComponent from "./components/ProfileComponent.svelte";
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
-  import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { FileUploadManager } from "./lib/fileUploadManager";
   import { authService } from "./lib/authService";
-  import Button from "./components/Button.svelte";
-  import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
   import HeaderComponent from "./components/HeaderComponent.svelte";
+  import FooterComponent from "./components/FooterComponent.svelte";
   import {
     authState,
     sharedImageStore,
@@ -89,6 +86,7 @@
   let isLoadingNostrLogin = false;
   let footerInfoDisplay: any;
   let postComponentRef: any;
+  let footerComponentRef: any;
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
@@ -326,15 +324,15 @@
 
   function handleUploadProgress(progress: UploadProgress): void {
     // 型を利用
-    if (footerInfoDisplay) {
-      footerInfoDisplay.updateProgress(progress);
+    if (footerComponentRef) {
+      footerComponentRef.updateProgress(progress);
     }
   }
 
   function handlePostSuccess() {
     // 投稿成功時にfooter情報を全て削除
-    if (footerInfoDisplay?.reset) {
-      footerInfoDisplay.reset();
+    if (footerComponentRef?.reset) {
+      footerComponentRef.reset();
     }
     // 共有画像フラグをクリア
     localStorage.removeItem("sharedImageProcessed");
@@ -387,7 +385,6 @@
       "balloonMessage.backside_curious",
       "balloonMessage.corner_weapon",
       "balloonMessage.square_peace",
-      // 追加分
       "balloonMessage.how_much_stamp",
       "balloonMessage.cancellation_done",
       "balloonMessage.want_to_roll",
@@ -450,64 +447,18 @@
         onUploadProgress={handleUploadProgress}
       />
     </div>
-    <div class="footer-bar">
-      {#if !isAuthInitialized}
-        <!-- 初期化前はローディングのみ表示 -->
-        <Button
-          shape="pill"
-          className="profile-display loading"
-          disabled={true}
-        >
-          <LoadingPlaceholder text="" showImage={true} />
-        </Button>
-      {:else}
-        <!-- 初期化後: 通常の認証状態に従う -->
-        {#if isAuthenticated && $isLoadingProfileStore}
-          <!-- 認証済みかつプロフィール読み込み中 -->
-          <Button
-            shape="pill"
-            className="profile-display loading"
-            disabled={true}
-          >
-            <LoadingPlaceholder text="" showImage={true} />
-          </Button>
-        {:else if isAuthenticated && ($profileLoadedStore || $isLoadingProfileStore)}
-          <!-- 認証済みかつプロフィール読み込み済み or 読み込み中 -->
-          <ProfileComponent
-            profileData={$profileDataStore}
-            hasStoredKey={isAuthenticated}
-            isLoadingProfile={$isLoadingProfileStore}
-            showLogoutDialog={openLogoutDialog}
-          />
-        {:else if !$isLoadingProfileStore && !isAuthenticated}
-          <!-- 未認証かつ読み込み中でない -->
-          <Button
-            className="login-btn"
-            variant="primary"
-            shape="pill"
-            on:click={showLoginDialog}
-          >
-            {$_("app.login")}
-          </Button>
-        {/if}
-      {/if}
-
-      <FooterInfoDisplay bind:this={footerInfoDisplay} />
-
-      <Button
-        variant="default"
-        shape="circle"
-        className="settings-btn {$swNeedRefresh ? 'has-update' : ''}"
-        on:click={openSettingsDialog}
-        ariaLabel="設定"
-      >
-        <div class="settings-icon svg-icon" aria-label="Settings"></div>
-        {#if $swNeedRefresh}
-          <div class="update-indicator"></div>
-        {/if}
-      </Button>
-    </div>
-
+    <FooterComponent
+      bind:this={footerComponentRef}
+      {isAuthenticated}
+      {isAuthInitialized}
+      isLoadingProfile={$isLoadingProfileStore}
+      profileLoaded={$profileLoadedStore}
+      profileData={$profileDataStore}
+      swNeedRefresh={$swNeedRefresh}
+      onShowLoginDialog={showLoginDialog}
+      onOpenSettingsDialog={openSettingsDialog}
+      onOpenLogoutDialog={openLogoutDialog}
+    />
     {#if $showLoginDialogStore}
       <LoginDialog
         bind:show={$showLoginDialogStore}
@@ -518,7 +469,6 @@
         {isLoadingNostrLogin}
       />
     {/if}
-
     {#if $showLogoutDialogStore}
       <LogoutDialog
         bind:show={$showLogoutDialogStore}
@@ -526,7 +476,6 @@
         onLogout={logout}
       />
     {/if}
-
     <SettingsDialog
       show={$showSettingsDialogStore}
       onClose={closeSettingsDialog}
@@ -552,59 +501,5 @@
     width: 100%;
     height: calc(100% - 78px);
     overflow: hidden;
-  }
-
-  .footer-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    max-width: 800px;
-    height: 66px;
-    gap: 8px;
-    margin: auto;
-    padding: 8px;
-    background: var(--bg-footer);
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    box-shadow: 0 -2px 8px var(--shadow);
-    z-index: 99;
-  }
-
-  :global(.login-btn) {
-    width: 140px;
-    font-size: 1.1rem;
-  }
-
-  .settings-icon {
-    mask-image: url("/ehagaki/icons/gear-solid-full.svg");
-  }
-
-  :global(.settings-btn.has-update) {
-    position: relative;
-  }
-
-  .update-indicator {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    width: 10px;
-    height: 10px;
-    background: var(--theme);
-    border-radius: 50%;
-    animation: pulse 2500ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  @keyframes pulse {
-    50% {
-      opacity: 0.3;
-    }
-  }
-
-  :global(.profile-display.loading) {
-    opacity: 0.7;
-    gap: 2px;
   }
 </style>
