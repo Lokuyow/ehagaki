@@ -215,7 +215,9 @@
                 </span>
                 <div class="setting-control">
                     <Button
-                        className="btn sw-update-btn"
+                        variant="primary"
+                        shape="rounded"
+                        className="sw-update-btn"
                         on:click={handleSwRefresh}
                         disabled={isUpdating}
                         ariaLabel={$_("settingsDialog.update_app") ||
@@ -239,7 +241,12 @@
         <div class="setting-section">
             <span class="setting-label"> Language/言語 </span>
             <div class="setting-control">
-                <Button className="lang-btn btn" on:click={toggleLanguage}>
+                <Button
+                    variant="default"
+                    shape="rounded"
+                    className="lang-btn"
+                    on:click={toggleLanguage}
+                >
                     <div
                         class="lang-icon-btn svg-icon"
                         aria-label={$_("settingsDialog.change") || "変更"}
@@ -310,7 +317,9 @@
             >
             <div class="setting-control">
                 <Button
-                    className="btn refresh-relays-profile-btn"
+                    variant="default"
+                    shape="rounded"
+                    className="refresh-relays-profile-btn"
                     on:click={() =>
                         onRefreshRelaysAndProfile &&
                         onRefreshRelaysAndProfile()}
@@ -562,23 +571,7 @@
         font-weight: 600;
     }
 
-    :global(.btn.sw-update-btn) {
-        --btn-bg: var(--theme);
-        color: white;
-        min-width: 120px;
-        border: none;
-
-        :global(.svg-icon) {
-            background-color: white;
-        }
-
-        :global(.btn-text) {
-            color: whitesmoke;
-        }
-    }
-
     :global(.sw-update-btn:disabled) {
-        --btn-bg: var(--gray);
         opacity: 0.6;
     }
 </style>

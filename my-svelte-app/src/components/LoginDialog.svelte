@@ -120,9 +120,9 @@
     let:close
 >
     <Button
-        className="nostr-login-button btn {isLoadingNostrLogin
-            ? 'loading'
-            : ''}"
+        variant="default"
+        shape="rounded"
+        className="nostr-login-button {isLoadingNostrLogin ? 'loading' : ''}"
         on:click={handleNostrLogin}
         disabled={isLoadingNostrLogin}
     >
@@ -173,13 +173,17 @@
 
         <div class="dialog-buttons">
             <Button
+                variant="warning"
+                shape="square"
                 type="button"
                 on:click={handleClear}
-                className="clear-btn btn-angular"
-                >{$_("loginDialog.clear")}</Button
+                className="clear-btn">{$_("loginDialog.clear")}</Button
             >
-            <Button type="submit" className="save-btn btn-angular"
-                >{$_("loginDialog.save")}</Button
+            <Button
+                variant="primary"
+                shape="square"
+                type="submit"
+                className="save-btn">{$_("loginDialog.save")}</Button
             >
         </div>
     </form>
@@ -201,30 +205,12 @@
         justify-content: flex-end;
         gap: 8px;
         width: 100%;
-        height: 50px;
-    }
+        height: 54px;
 
-    :global(.cancel-btn) {
-        --btn-bg: var(--white);
-        border: 1px solid hsl(0, 0%, 92%);
-        color: #3d3d3d;
-        width: 100%;
+        :global(button) {
+            flex: 1;
+        }
     }
-
-    :global(.clear-btn) {
-        --btn-bg: hsl(58, 99%, 68%);
-        border: none;
-        color: #3d3d3d;
-        width: 100%;
-    }
-
-    :global(.save-btn) {
-        --btn-bg: var(--theme);
-        color: white;
-        border: none;
-        width: 100%;
-    }
-
     /* トースト用スタイル */
     .toast {
         position: fixed;
@@ -268,7 +254,7 @@
         height: 60px;
     }
 
-    :global(.btn.nostr-login-button) {
+    :global(.nostr-login-button) {
         height: 74px;
         margin-top: 44px;
         margin-bottom: 16px;
@@ -279,13 +265,10 @@
         gap: 8px;
         position: relative;
         overflow: hidden;
-
         .nostr-login-icon {
             width: 34px;
             height: 34px;
             margin-right: 4px;
-            flex-shrink: 0;
-            display: inline-block;
         }
 
         .btn-text {

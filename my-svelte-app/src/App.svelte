@@ -453,16 +453,26 @@
     <div class="footer-bar">
       {#if !isAuthInitialized}
         <!-- 初期化前はローディングのみ表示 -->
-        <Button className="profile-display btn-round loading" disabled={true}>
+        <Button
+          shape="pill"
+          className="profile-display loading"
+          disabled={true}
+        >
           <LoadingPlaceholder text="" showImage={true} />
         </Button>
       {:else}
         <!-- 初期化後: 通常の認証状態に従う -->
         {#if isAuthenticated && $isLoadingProfileStore}
-          <Button className="profile-display btn-round loading" disabled={true}>
+          <!-- 認証済みかつプロフィール読み込み中 -->
+          <Button
+            shape="pill"
+            className="profile-display loading"
+            disabled={true}
+          >
             <LoadingPlaceholder text="" showImage={true} />
           </Button>
         {:else if isAuthenticated && ($profileLoadedStore || $isLoadingProfileStore)}
+          <!-- 認証済みかつプロフィール読み込み済み or 読み込み中 -->
           <ProfileComponent
             profileData={$profileDataStore}
             hasStoredKey={isAuthenticated}
@@ -470,7 +480,13 @@
             showLogoutDialog={openLogoutDialog}
           />
         {:else if !$isLoadingProfileStore && !isAuthenticated}
-          <Button className="login-btn btn-round" on:click={showLoginDialog}>
+          <!-- 未認証かつ読み込み中でない -->
+          <Button
+            className="login-btn"
+            variant="primary"
+            shape="pill"
+            on:click={showLoginDialog}
+          >
             {$_("app.login")}
           </Button>
         {/if}
@@ -479,7 +495,9 @@
       <FooterInfoDisplay bind:this={footerInfoDisplay} />
 
       <Button
-        className="settings-btn btn-circle {$swNeedRefresh ? 'has-update' : ''}"
+        variant="default"
+        shape="circle"
+        className="settings-btn {$swNeedRefresh ? 'has-update' : ''}"
         on:click={openSettingsDialog}
         ariaLabel="設定"
       >
@@ -556,13 +574,8 @@
   }
 
   :global(.login-btn) {
-    --btn-bg: var(--theme);
     width: 140px;
-    border: none;
-    color: #fff;
-    font-weight: 500;
     font-size: 1.1rem;
-    z-index: 10;
   }
 
   .settings-icon {

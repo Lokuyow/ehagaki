@@ -99,7 +99,7 @@
                 <div class="dialog-footer">
                     <slot name="footer" close={closeModal}>
                         <Button
-                            className="modal-close btn-circle"
+                            className="modal-close"
                             on:click={closeModal}
                             ariaLabel="閉じる"
                         >

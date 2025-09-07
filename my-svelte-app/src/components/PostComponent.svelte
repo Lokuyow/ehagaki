@@ -156,7 +156,9 @@
               fileArray[0],
             );
             if (!validation.isValid) {
-              showUploadError($_(validation.errorMessage || "postComponent.upload_failed"));
+              showUploadError(
+                $_(validation.errorMessage || "postComponent.upload_failed"),
+              );
               return null;
             }
             return [
@@ -489,11 +491,21 @@
       {$_("postComponent.secret_key_detected")}
     </div>
     <div class="secretkey-dialog-buttons">
-      <Button className="btn cancel" on:click={cancelSendWithSecretKey}>
-        {$_("postComponent.cancel")}
-      </Button>
-      <Button className="btn danger" on:click={confirmSendWithSecretKey}>
+      <Button
+        className="btn-confirm"
+        variant="danger"
+        shape="square"
+        on:click={confirmSendWithSecretKey}
+      >
         {$_("postComponent.post")}
+      </Button>
+      <Button
+        className="btn-cancel"
+        variant="secondary"
+        shape="square"
+        on:click={cancelSendWithSecretKey}
+      >
+        {$_("postComponent.cancel")}
       </Button>
     </div>
   </div>
@@ -617,7 +629,7 @@
     text-align: center;
   }
   .secretkey-dialog-message {
-    margin: 28px 0 58px 0;
+    margin: 46px 0;
     color: var(--text);
     font-size: 1.2rem;
     font-weight: bold;
@@ -626,17 +638,12 @@
     display: flex;
     justify-content: center;
     height: 60px;
-    gap: 16px;
-  }
+    gap: 8px;
 
-  :global(.btn.cancel) {
-    width: 100%;
-  }
-  :global(.btn.danger) {
-    background: #c62828;
-    color: #fff;
-    border: none;
-    width: 100%;
+    :global(button) {
+      flex: 1;
+      font-size: 1.2rem;
+    }
   }
 
   /* ドロップゾーンのフェードアウトアニメーション（改善版） */

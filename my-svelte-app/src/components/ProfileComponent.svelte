@@ -31,7 +31,7 @@
 
   // 画像読み込みエラーハンドラ
   function handleImageError(event: Event) {
-    console.log('プロフィール画像の読み込みに失敗しました:', event);
+    console.log("プロフィール画像の読み込みに失敗しました:", event);
     imageLoadError = true;
   }
 
@@ -43,7 +43,9 @@
 
 {#if hasStoredKey}
   <Button
-    className={`profile-display btn-round${isLoadingProfile ? " loading" : ""}`}
+    variant="default"
+    shape="pill"
+    className={`profile-display${isLoadingProfile ? " loading" : ""}`}
     disabled={isLoadingProfile}
     on:click={() => {
       if (!isLoadingProfile) showLogoutDialog();
@@ -72,7 +74,7 @@
 
 <style>
   /* プロフィール表示のスタイル */
-  :global(.profile-display) {
+  :global(.default.pill.profile-display) {
     gap: 6px;
     padding: 0 10px 0 4px;
     z-index: 10;

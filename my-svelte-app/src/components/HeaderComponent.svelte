@@ -115,7 +115,9 @@
     <div class="post-actions">
         <div class="buttons-container">
             <Button
-                className="clear-button btn-angular"
+                variant="default"
+                shape="square"
+                className="clear-button"
                 disabled={!canPost || postStatus.sending || isUploading}
                 on:click={onResetPostContent}
                 ariaLabel={$_("postComponent.clear_editor")}
@@ -123,7 +125,9 @@
                 <div class="trash-icon svg-icon"></div>
             </Button>
             <Button
-                className="image-button btn-angular"
+                variant="default"
+                shape="square"
+                className="image-button"
                 disabled={!hasStoredKey || postStatus.sending || isUploading}
                 on:click={onUploadImage}
                 ariaLabel={$_("postComponent.upload_image")}
@@ -131,7 +135,9 @@
                 <div class="image-icon svg-icon"></div>
             </Button>
             <Button
-                className="post-button btn-angular"
+                variant="default"
+                shape="square"
+                className="post-button"
                 disabled={!canPost || postStatus.sending || !hasStoredKey}
                 on:click={onSubmitPost}
                 ariaLabel={$_("postComponent.post")}
@@ -192,25 +198,13 @@
         height: 100%;
     }
 
-    :global(.post-button) {
-        font-size: 1.1rem;
-        font-weight: bold;
+    :global(
+            .default.post-button,
+            .default.image-button,
+            .default.clear-button
+        ) {
         border: 1px solid var(--hagaki);
         width: 54px;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-    }
-
-    :global(.image-button) {
-        width: 54px;
-        border: 1px solid var(--hagaki);
-    }
-    :global(.clear-button) {
-        width: 54px;
-        border: 1px solid var(--hagaki);
     }
 
     .plane-icon {
