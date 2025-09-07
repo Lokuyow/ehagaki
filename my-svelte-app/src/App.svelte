@@ -432,7 +432,6 @@
     <div class="main-content">
       <HeaderComponent
         onUploadImage={() => postComponentRef?.openFileDialog()}
-        onSubmitPost={() => postComponentRef?.submitPost()}
         onResetPostContent={handleResetPostContent}
         balloonMessage={showHeaderBalloon && headerBalloonMessage
           ? { type: "info", message: headerBalloonMessage }

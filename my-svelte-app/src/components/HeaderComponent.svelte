@@ -1,12 +1,11 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { editorState } from "../lib/editor/store";
+    import { editorState, submitPost } from "../lib/editor/store";
     import { authState } from "../lib/stores";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte"; // 追加
 
     export let onUploadImage: () => void;
-    export let onSubmitPost: () => void;
     export let onResetPostContent: () => void;
     export let balloonMessage: {
         type: "success" | "error" | "info";
@@ -139,7 +138,7 @@
                 shape="square"
                 className="post-button"
                 disabled={!canPost || postStatus.sending || !hasStoredKey}
-                on:click={onSubmitPost}
+                on:click={submitPost}
                 ariaLabel={$_("postComponent.post")}
             >
                 <div class="plane-icon svg-icon"></div>

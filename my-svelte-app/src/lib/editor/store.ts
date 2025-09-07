@@ -259,3 +259,16 @@ export function extractHashtagsFromContent(content: string): string[] {
 
     return hashtags;
 }
+
+// PostComponentのsubmitPostへの参照を保持
+let postComponentSubmit: (() => Promise<void>) | undefined = undefined;
+
+export function setPostSubmitter(submitter: () => Promise<void>) {
+    postComponentSubmit = submitter;
+}
+
+export async function submitPost() {
+    if (postComponentSubmit) {
+        await postComponentSubmit();
+    }
+}

@@ -23,6 +23,7 @@
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
+  import { setPostSubmitter } from "../lib/editor/store";
 
   export let rxNostr: any;
   export let hasStoredKey: boolean;
@@ -102,6 +103,8 @@
       "image-fullscreen-request",
       handleImageFullscreenRequest as EventListener,
     );
+
+    setPostSubmitter(submitPost);
 
     return () => {
       window.removeEventListener(
