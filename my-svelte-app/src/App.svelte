@@ -13,7 +13,6 @@
   import LoginDialog from "./components/LoginDialog.svelte";
   import FooterInfoDisplay from "./components/FooterInfoDisplay.svelte";
   import { FileUploadManager } from "./lib/fileUploadManager";
-  import { useRegisterSW } from "virtual:pwa-register/svelte";
   import { authService } from "./lib/authService";
   import Button from "./components/Button.svelte";
   import LoadingPlaceholder from "./components/LoadingPlaceholder.svelte";
@@ -40,25 +39,6 @@
   import { placeholderTextStore } from "./lib/editor/store";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
-
-  const { needRefresh } = useRegisterSW({
-    onRegistered(r) {
-      console.log("SW registered:", r);
-    },
-    onRegisterError(error) {
-      console.log("SW registration error", error);
-    },
-    onNeedRefresh() {
-      console.log("SW needs refresh - showing prompt");
-    },
-  });
-
-  $: {
-    console.log("SW states:", {
-      needRefresh: $needRefresh,
-      showModal: $needRefresh,
-    });
-  }
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = "";
