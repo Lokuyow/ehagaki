@@ -6,7 +6,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     interface Props {
-        show: boolean; // デフォルト値を削除
+        show: boolean;
         secretKey: string;
         onClose: () => void;
         onSave: () => void;
@@ -15,7 +15,7 @@
     }
 
     let {
-        show = $bindable(),
+        show,
         secretKey = $bindable(),
         onClose,
         onSave,
@@ -138,7 +138,7 @@
 {/if}
 
 <Dialog
-    bind:show
+    show={show}
     useHistory={true}
     {onClose}
     ariaLabel={$_("loginDialog.input_secret")}

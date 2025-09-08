@@ -4,12 +4,12 @@
     import Button from "./Button.svelte";
 
     interface Props {
-        show?: boolean;
+        show: boolean;
         onClose: () => void;
         onLogout: () => void;
     }
 
-    let { show = $bindable(false), onClose, onLogout }: Props = $props();
+    let { show, onClose, onLogout }: Props = $props();
 
     function handleLogout() {
         onLogout?.();
@@ -17,7 +17,7 @@
 </script>
 
 <Dialog
-    bind:show
+    show={show}
     useHistory={true}
     {onClose}
     ariaLabel={$_("logoutDialog.logout_confirmation")}

@@ -477,7 +477,7 @@
     />
     {#if showLoginDialogStore.value}
       <LoginDialog
-        bind:show={showLoginDialogStore.value}
+        show={showLoginDialogStore.value}
         bind:secretKey
         onClose={closeLoginDialog}
         onSave={saveSecretKey}
@@ -487,7 +487,7 @@
     {/if}
     {#if showLogoutDialogStore.value}
       <LogoutDialog
-        bind:show={showLogoutDialogStore.value}
+        show={showLogoutDialogStore.value}
         onClose={closeLogoutDialog}
         onLogout={logout}
       />
