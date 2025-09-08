@@ -115,7 +115,9 @@
                 if (e.key === "Escape") closeModal();
             }}
         >
-            {@render children?.({ close: closeModal })}
+            <div class="dialog-content">
+                {@render children?.({ close: closeModal })}
+            </div>
             {#if showFooter}
                 <div class="dialog-footer">
                     {#if footer}{@render footer({ close: closeModal })}{:else}
