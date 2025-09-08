@@ -6,7 +6,7 @@
   import { FileUploadManager } from "../lib/fileUploadManager";
   import type { UploadInfoCallbacks } from "../lib/types";
   import { containsSecretKey } from "../lib/utils";
-  import { createEditorStore } from "../lib/editor/stores/editorStore";
+  import { createEditorStore } from "../lib/editor/stores/editorStore.svelte";
   import {
     insertImagesToEditor,
     extractContentWithImages,
@@ -19,11 +19,11 @@
     updateUploadState,
     resetEditorState,
     resetPostStatus, // 追加
-  } from "../lib/editor/stores/editorStore";
+  } from "../lib/editor/stores/editorStore.svelte";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
-  import { setPostSubmitter } from "../lib/editor/stores/editorStore";
+  import { setPostSubmitter } from "../lib/editor/stores/editorStore.svelte";
 
   interface Props {
     rxNostr: any;

@@ -33,7 +33,7 @@
     isLoadingProfileStore,
     isUploadingStore,
   } from "./lib/appStores";
-  import { placeholderTextStore } from "./lib/editor/stores/editorStore";
+  import { placeholderTextStore } from "./lib/editor/stores/editorStore.svelte";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
 

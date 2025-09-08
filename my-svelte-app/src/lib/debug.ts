@@ -164,7 +164,7 @@ if (typeof window !== "undefined") {
 
 // --- dev用: post success/error強制表示デバッグ ---
 // editorState をここでimport
-import { editorState } from "./editor/stores/editorStore";
+import { editorState } from "./editor/stores/editorStore.svelte";
 if (import.meta.env.MODE === "development") {
     (window as any).showPostSuccessDebug = () => {
         editorState.update((state) => ({
