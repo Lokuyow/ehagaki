@@ -629,7 +629,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.1s ease;
+        transition: background 0.2s ease;
         z-index: 10001;
     }
 
