@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { preventDefault } from "svelte/legacy";
-
     import { _ } from "svelte-i18n";
     import { imageSizeInfoStore } from "../lib/appStores";
     import type { UploadProgress } from "../lib/types";
@@ -109,7 +107,7 @@
         type="button"
         class="floating-dev-console-log"
         onclick={handleDevLogCopy}
-        ontouchend={preventDefault(handleDevLogCopy)}
+        ontouchend={handleDevLogCopy}
         title="タップで全コピー"
         aria-label="開発者ログをコピー"
     >

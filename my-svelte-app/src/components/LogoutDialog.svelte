@@ -28,13 +28,13 @@
         <p>{$_("logoutDialog.logout_warning")}</p>
         <div class="dialog-buttons">
             <Button
-                on:click={handleLogout}
+                onClick={handleLogout}
                 className="logout-btn"
                 variant="danger"
                 shape="square">{$_("logoutDialog.logout")}</Button
             >
             <Button
-                on:click={close}
+                onClick={close}
                 className="cancel-btn"
                 variant="secondary"
                 shape="square">{$_("logoutDialog.cancel")}</Button

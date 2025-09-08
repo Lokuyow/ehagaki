@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { createEventDispatcher } from "svelte";
-    
     interface Props {
         className?: string;
         disabled?: boolean;
@@ -13,9 +11,9 @@
         | "danger"
         | "secondary"
         | "warning";
-        // shapeプロパティ追加
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import('svelte').Snippet;
+        onClick?: (event: MouseEvent) => void; // 追加
     }
 
     let {
@@ -26,13 +24,12 @@
         style = "",
         variant = "default",
         shape = "rounded",
-        children
+        children,
+        onClick = undefined // 追加
     }: Props = $props();
 
-    const dispatch = createEventDispatcher();
-
     function handleClick(event: MouseEvent) {
-        dispatch("click", event);
+        if (onClick) onClick(event);
     }
 </script>
 

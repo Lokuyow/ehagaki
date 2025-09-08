@@ -1,6 +1,4 @@
 <script lang="ts">
-  // import { run } from "svelte/legacy"; // 削除
-
   import { _ } from "svelte-i18n";
   import type { ProfileData } from "../lib/profileManager";
   import Button from "./Button.svelte";
@@ -60,7 +58,7 @@
     shape="pill"
     className={`profile-display${isLoadingProfile ? " loading" : ""}`}
     disabled={isLoadingProfile}
-    on:click={() => {
+    onClick={() => {
       if (!isLoadingProfile) showLogoutDialog();
     }}
   >

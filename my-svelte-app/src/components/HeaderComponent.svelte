@@ -131,7 +131,7 @@
                 shape="square"
                 className="clear-button"
                 disabled={!canPost || postStatus.sending || isUploading}
-                on:click={onResetPostContent}
+                onClick={onResetPostContent}
                 ariaLabel={$_("postComponent.clear_editor")}
             >
                 <div class="trash-icon svg-icon"></div>
@@ -141,7 +141,7 @@
                 shape="square"
                 className="image-button"
                 disabled={!hasStoredKey || postStatus.sending || isUploading}
-                on:click={onUploadImage}
+                onClick={onUploadImage}
                 ariaLabel={$_("postComponent.upload_image")}
             >
                 <div class="image-icon svg-icon"></div>
@@ -151,7 +151,7 @@
                 shape="square"
                 className="post-button"
                 disabled={!canPost || postStatus.sending || !hasStoredKey}
-                on:click={submitPost}
+                onClick={submitPost}
                 ariaLabel={$_("postComponent.post")}
             >
                 <div class="plane-icon svg-icon"></div>

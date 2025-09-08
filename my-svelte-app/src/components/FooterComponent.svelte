@@ -69,7 +69,7 @@
             className="login-btn"
             variant="primary"
             shape="pill"
-            on:click={onShowLoginDialog}
+            onClick={onShowLoginDialog}
         >
             {$_("app.login")}
         </Button>
@@ -81,7 +81,7 @@
         variant="default"
         shape="circle"
         className="settings-btn {swNeedRefresh ? 'has-update' : ''}"
-        on:click={onOpenSettingsDialog}
+        onClick={onOpenSettingsDialog}
         ariaLabel="設定"
     >
         <div class="settings-icon svg-icon" aria-label="Settings"></div>

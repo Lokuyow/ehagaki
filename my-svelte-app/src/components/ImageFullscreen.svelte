@@ -1,7 +1,4 @@
 <script lang="ts">
-    // import { run } from "svelte/legacy"; // 削除
-    import { createEventDispatcher } from "svelte";
-
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import {
@@ -134,9 +131,7 @@
     }
 
     // メイン操作関数
-    const dispatch = createEventDispatcher();
     function close() {
-        dispatch("close");
         resetAllStates();
         show = false;
         onClose();

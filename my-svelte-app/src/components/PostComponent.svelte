@@ -514,7 +514,7 @@
         className="btn-confirm"
         variant="danger"
         shape="square"
-        on:click={confirmSendWithSecretKey}
+        onClick={confirmSendWithSecretKey}
       >
         {$_("postComponent.post")}
       </Button>
@@ -522,7 +522,7 @@
         className="btn-cancel"
         variant="secondary"
         shape="square"
-        on:click={cancelSendWithSecretKey}
+        onClick={cancelSendWithSecretKey}
       >
         {$_("postComponent.cancel")}
       </Button>
@@ -534,7 +534,7 @@
   bind:show={showImageFullscreen}
   src={fullscreenImageSrc}
   alt={fullscreenImageAlt}
-  on:close={handleImageFullscreenClose}
+  onClose={handleImageFullscreenClose}
 />
 
 <style>

@@ -238,7 +238,7 @@
                         variant="primary"
                         shape="rounded"
                         className="sw-update-btn"
-                        on:click={handleSwRefresh}
+                        onClick={handleSwRefresh}
                         disabled={isUpdating}
                         ariaLabel={$_("settingsDialog.update_app") ||
                             "アプリを更新"}
@@ -265,7 +265,7 @@
                     variant="default"
                     shape="rounded"
                     className="lang-btn"
-                    on:click={toggleLanguage}
+                    onClick={toggleLanguage}
                 >
                     <div
                         class="lang-icon-btn svg-icon"
@@ -340,7 +340,7 @@
                     variant="default"
                     shape="rounded"
                     className="refresh-relays-profile-btn"
-                    on:click={() =>
+                    onClick={() =>
                         onRefreshRelaysAndProfile &&
                         onRefreshRelaysAndProfile()}
                     ariaLabel={$_(

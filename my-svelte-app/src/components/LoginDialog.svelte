@@ -1,6 +1,4 @@
 <script lang="ts">
-    import { run, preventDefault } from "svelte/legacy";
-
     import { _ } from "svelte-i18n";
     import { PublicKeyState } from "../lib/keyManager";
     import Dialog from "./Dialog.svelte";
@@ -32,7 +30,7 @@
     let inputEl: HTMLInputElement | null = $state(null);
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
-    run(() => {
+    $effect(() => {
         if (secretKey !== undefined) {
             publicKeyState.setNsec(secretKey);
             // 入力値が空の場合のみエラーをクリア
@@ -51,13 +49,13 @@
 
     let nprofileValue = $state("");
 
-    run(() => {
+    $effect(() => {
         publicKeyState.isValid.subscribe((val) => (isValid = val));
     });
-    run(() => {
+    $effect(() => {
         publicKeyState.npub.subscribe((val) => (npubValue = val));
     });
-    run(() => {
+    $effect(() => {
         publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
     });
 
@@ -116,6 +114,11 @@
     function handleNostrLogin() {
         onNostrLogin?.();
     }
+    // 新しいフォームsubmit用ハンドラ
+    function handleFormSubmit(event: Event) {
+        event.preventDefault();
+        handleSave();
+    }
 </script>
 
 <!-- npubまたはnprofileのいずれかが存在する場合、1つのトースト要素でまとめて表示 -->
@@ -149,7 +152,7 @@
             className="nostr-login-button {isLoadingNostrLogin
                 ? 'loading'
                 : ''}"
-            on:click={handleNostrLogin}
+            onClick={handleNostrLogin}
             disabled={isLoadingNostrLogin}
         >
             {#if isLoadingNostrLogin}
@@ -174,7 +177,7 @@
         </div>
 
         <h3>{$_("loginDialog.input_secret")}</h3>
-        <form onsubmit={preventDefault(handleSave)}>
+        <form onsubmit={handleFormSubmit}>
             <input
                 type="password"
                 bind:value={secretKey}
@@ -202,7 +205,7 @@
                     variant="warning"
                     shape="square"
                     type="button"
-                    on:click={handleClear}
+                    onClick={handleClear}
                     className="clear-btn">{$_("loginDialog.clear")}</Button
                 >
                 <Button
