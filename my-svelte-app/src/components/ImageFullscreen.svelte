@@ -16,7 +16,7 @@
         type TransformState,
         type DragState,
         type PinchState,
-    } from "../lib/editor/stores/transformStore";
+    } from "../lib/editor/stores/transformStore.svelte";
 
     interface Props {
         // Props
@@ -39,7 +39,7 @@
     let imageContainerElement: HTMLDivElement | undefined = $state();
 
     // 状態管理
-    let transformState: TransformState;
+    let transformState: TransformState = transformStore.state;
     let dragState: DragState = createDragState();
     let pinchState: PinchState = createPinchState();
     let animationFrameId: number | null = null;
@@ -51,9 +51,9 @@
     let tapTimeoutId: number | null = null;
     let lastTapPosition: { x: number; y: number } | null = null;
 
-    // ストアの購読
-    const unsubscribe = transformStore.subscribe((value) => {
-        transformState = value;
+    $effect(() => {
+        // transformStateをtransformStore.stateで常に参照
+        transformState = transformStore.state;
         if (imageContainerElement) {
             updateTransform();
         }
@@ -539,7 +539,6 @@
     });
 
     onDestroy(() => {
-        unsubscribe();
         clearBodyStyles();
 
         if (animationFrameId !== null) {
