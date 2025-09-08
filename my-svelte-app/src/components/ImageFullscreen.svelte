@@ -569,8 +569,10 @@
             type="button"
             class="close-button"
             onclick={close}
-            aria-label="Close fullscreen image">×</button
+            aria-label="Close fullscreen image"
         >
+            <span class="svg-icon close-icon"></span>
+        </button>
         <div class="image-container" bind:this={imageContainerElement}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -612,8 +614,9 @@
 
     .close-button {
         position: absolute;
-        top: 20px;
-        right: 20px;
+        bottom: 20px;
+        right: 50%;
+        transform: translateX(50%);
         background-color: rgba(0, 0, 0, 0.6);
         backdrop-filter: blur(4px);
         border: none;
@@ -626,12 +629,19 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.2s ease;
+        transition: background 0.1s ease;
         z-index: 10001;
     }
 
     .close-button:hover {
         background: rgba(25, 25, 25, 0.6);
+    }
+
+    .svg-icon {
+        mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
+        background-color: whitesmoke;
+        width: 32px;
+        height: 32px;
     }
 
     .image-container {
