@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { run } from "svelte/legacy";
+  // import { run } from "svelte/legacy"; // 削除
 
   import { _ } from "svelte-i18n";
   import type { ProfileData } from "../lib/profileManager";
@@ -47,7 +47,7 @@
   }
 
   // プロフィールデータが変更されたら画像エラー状態をリセット
-  run(() => {
+  $effect(() => {
     if (profileData?.picture) {
       imageLoadError = false;
     }

@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { run } from "svelte/legacy";
-
   import { onMount } from "svelte";
   import { createRxNostr } from "rx-nostr";
   import { verifier } from "@rx-nostr/crypto";
@@ -43,12 +41,12 @@
   let errorMessage = $state("");
   let secretKey = $state("");
   const publicKeyState = authService.getPublicKeyState();
-  run(() => {
+  $effect(() => {
     publicKeyState.setNsec(secretKey);
   });
 
   // --- 追加: ログインダイアログが開かれたら前の入力をクリア ---
-  run(() => {
+  $effect(() => {
     if ($showLoginDialogStore) {
       secretKey = "";
       errorMessage = "";
@@ -83,7 +81,7 @@
     initialAuthChecked = true;
   }
 
-  run(() => {
+  $effect(() => {
     debugAuthState("Auth state changed", $authState);
   });
 
@@ -225,12 +223,12 @@
     }
   }
 
-  run(() => {
+  $effect(() => {
     if ($locale) localStorage.setItem("locale", $locale);
   });
 
   // locale変更時にプレースホルダーを更新
-  run(() => {
+  $effect(() => {
     if ($locale) {
       const text =
         $_("postComponent.enter_your_text") || "テキストを入力してください";
@@ -316,7 +314,7 @@
     };
   });
 
-  run(() => {
+  $effect(() => {
     if (
       $sharedImageStore.received &&
       $sharedImageStore.file &&
@@ -416,7 +414,7 @@
   let headerBalloonMessage = $state("");
 
   // localeInitializedがtrueになったタイミングでメッセージをセット
-  run(() => {
+  $effect(() => {
     if (localeInitialized) {
       headerBalloonMessage = getRandomHeaderBalloon();
       showHeaderBalloon = true;

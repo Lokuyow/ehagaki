@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { run } from "svelte/legacy";
-
   import { _ } from "svelte-i18n";
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
@@ -62,7 +60,7 @@
   let uploadErrorMessage = $derived($editorState.uploadErrorMessage);
 
   // --- PostManager初期化 ---
-  run(() => {
+  $effect(() => {
     if (rxNostr) {
       if (!postManager) {
         postManager = new PostManager(rxNostr);
@@ -427,7 +425,7 @@
   }
 
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
-  run(() => {
+  $effect(() => {
     if (
       currentEditor &&
       extractContentWithImages(currentEditor) !== $editorState.content
@@ -437,7 +435,7 @@
       }
     }
   });
-  run(() => {
+  $effect(() => {
     if ($placeholderTextStore && editor) {
       setTimeout(() => {
         if (editor.updatePlaceholder) {

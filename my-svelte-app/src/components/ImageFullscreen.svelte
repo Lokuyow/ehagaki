@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { run } from "svelte/legacy";
+    // import { run } from "svelte/legacy"; // 削除
     import { createEventDispatcher } from "svelte";
 
     import { onMount, onDestroy } from "svelte";
@@ -512,7 +512,7 @@
     }
 
     // リアクティブ文
-    run(() => {
+    $effect(() => {
         if (show) {
             resetAllStates();
             setBodyStyle("overflow", "hidden");

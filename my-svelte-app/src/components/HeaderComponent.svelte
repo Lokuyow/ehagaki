@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { run } from "svelte/legacy";
+    // import { run } from "svelte/legacy"; // 削除
 
     import { _ } from "svelte-i18n";
     import { editorState, submitPost } from "../lib/editor/stores/editorStore";
@@ -55,7 +55,7 @@
     // 投稿成功時にランダムでメッセージを選択（1回だけ）
     let postSuccessBalloonMessage = $state("");
     let hasShownRandomSuccessBalloon = $state(false);
-    run(() => {
+    $effect(() => {
         if (
             postStatus.success &&
             postStatus.completed &&
@@ -69,7 +69,7 @@
         }
     });
     // 投稿がリセットされたらフラグもリセット
-    run(() => {
+    $effect(() => {
         if (!postStatus.success || !postStatus.completed) {
             hasShownRandomSuccessBalloon = false;
             postSuccessBalloonMessage = "";
