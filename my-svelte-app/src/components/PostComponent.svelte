@@ -8,7 +8,7 @@
   import { FileUploadManager } from "../lib/fileUploadManager";
   import type { UploadInfoCallbacks } from "../lib/types";
   import { containsSecretKey } from "../lib/utils";
-  import { createEditorStore } from "../lib/editor/store";
+  import { createEditorStore } from "../lib/editor/stores/editorStore";
   import {
     insertImagesToEditor,
     extractContentWithImages,
@@ -21,11 +21,11 @@
     updateUploadState,
     resetEditorState,
     resetPostStatus, // 追加
-  } from "../lib/editor/store";
+  } from "../lib/editor/stores/editorStore";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
-  import { setPostSubmitter } from "../lib/editor/store";
+  import { setPostSubmitter } from "../lib/editor/stores/editorStore";
 
   interface Props {
     rxNostr: any;

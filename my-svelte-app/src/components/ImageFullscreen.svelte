@@ -19,7 +19,7 @@
         type TransformState,
         type DragState,
         type PinchState,
-    } from "../lib/stores/transformStore";
+    } from "../lib/editor/stores/transformStore";
 
     interface Props {
         // Props

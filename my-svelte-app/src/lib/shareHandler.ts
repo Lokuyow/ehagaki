@@ -1,4 +1,4 @@
-import { sharedImageStore } from './stores';
+import { sharedImageStore } from './appStores';
 
 /**
  * 共有画像データ型

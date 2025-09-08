@@ -1,7 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo } from "./utils";
-import { showImageSizeInfo } from "./stores";
+import { showImageSizeInfo } from "./appStores";
 import imageCompression from "browser-image-compression";
 import type { SharedImageData } from "./shareHandler";
 import type {

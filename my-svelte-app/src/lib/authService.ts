@@ -1,6 +1,6 @@
 import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
-import { setAuthInitialized, setNsecAuth, clearAuthState } from './stores';
+import { setAuthInitialized, setNsecAuth, clearAuthState } from './appStores';
 import { debugLog } from './debug';
 
 export interface AuthResult {

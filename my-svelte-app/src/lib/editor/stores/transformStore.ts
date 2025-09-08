@@ -1,6 +1,6 @@
 import { writable } from 'svelte/store';
-import { ZOOM_CONFIG } from '../constants';
-import { clamp, isNearScale } from '../utils';
+import { ZOOM_CONFIG } from '../../constants';
+import { clamp, isNearScale } from '../../utils';
 
 export interface Position {
     x: number;

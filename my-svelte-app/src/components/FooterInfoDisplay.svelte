@@ -2,7 +2,7 @@
     import { preventDefault } from "svelte/legacy";
 
     import { _ } from "svelte-i18n";
-    import { imageSizeInfoStore } from "../lib/stores";
+    import { imageSizeInfoStore } from "../lib/appStores";
     import type { UploadProgress } from "../lib/types";
     import { isDev, devLog, copyDevLogWithFallback } from "../lib/debug";
 

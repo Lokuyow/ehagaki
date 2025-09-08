@@ -2,8 +2,8 @@
     import { run } from "svelte/legacy";
 
     import { _ } from "svelte-i18n";
-    import { editorState, submitPost } from "../lib/editor/store";
-    import { authState } from "../lib/stores";
+    import { editorState, submitPost } from "../lib/editor/stores/editorStore";
+    import { authState } from "../lib/appStores";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte"; // 追加
 

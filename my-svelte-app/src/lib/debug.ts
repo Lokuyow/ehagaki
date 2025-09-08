@@ -152,7 +152,7 @@ declare global {
 
 // --- ここから修正: SW更新ボタン強制表示デバッグ機能 ---
 // 以前は「モーダル」だったが、現在は設定ボタンランプとSettingsDialog内の更新ボタン表示用
-import { swNeedRefresh } from "./stores";
+import { swNeedRefresh } from "./appStores";
 // --- SW更新ボタン強制表示デバッグ機能 ---
 // 必ずグローバルwindowに生やす（import後に実行）
 if (typeof window !== "undefined") {
@@ -164,7 +164,7 @@ if (typeof window !== "undefined") {
 
 // --- dev用: post success/error強制表示デバッグ ---
 // editorState をここでimport
-import { editorState } from "./editor/store";
+import { editorState } from "./editor/stores/editorStore";
 if (import.meta.env.MODE === "development") {
     (window as any).showPostSuccessDebug = () => {
         editorState.update((state) => ({

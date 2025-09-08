@@ -34,8 +34,8 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
-  } from "./lib/stores";
-  import { placeholderTextStore } from "./lib/editor/store";
+  } from "./lib/appStores";
+  import { placeholderTextStore } from "./lib/editor/stores/editorStore";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
 

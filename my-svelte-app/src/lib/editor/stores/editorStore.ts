@@ -4,13 +4,13 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
-import SvelteImageNode from '../../components/SvelteImageNode.svelte';
-import { validateAndNormalizeUrl } from './editorUtils';
-import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '.';
-import { GapCursorNewlineExtension } from './gapCursorNewline';
+import SvelteImageNode from '../../../components/SvelteImageNode.svelte';
+import { validateAndNormalizeUrl } from '../editorUtils';
+import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '..';
+import { GapCursorNewlineExtension } from '../gapCursorNewline';
 import { writable } from 'svelte/store';
-import type { PostStatus, EditorState } from '../types'; // 型定義をtypes.tsからインポート
-import { HASHTAG_REGEX } from '../constants';
+import type { PostStatus, EditorState } from '../../types'; // 型定義をtypes.tsからインポート
+import { HASHTAG_REGEX } from '../../constants';
 
 // ハッシュタグデータ用ストア
 export const hashtagDataStore = writable<{ content: string; hashtags: string[]; tags: [string, string][] }>({

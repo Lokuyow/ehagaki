@@ -2,8 +2,8 @@ import { createRxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { get } from "svelte/store";
-import { authState } from "./stores";
-import { hashtagDataStore } from "./editor/store";
+import { authState } from "./appStores";
+import { hashtagDataStore } from "./editor/stores/editorStore";
 
 // 投稿結果の型定義
 export interface PostResult {

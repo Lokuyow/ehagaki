@@ -10,7 +10,7 @@
         fetchSwVersion,
         swNeedRefresh,
         handleSwUpdate,
-    } from "../lib/stores";
+    } from "../lib/appStores";
     import { get } from "svelte/store";
     import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
     import { nostrZapView } from "nostr-zap-view";
