@@ -1,4 +1,4 @@
-import { sharedImageStore } from './appStores';
+import { sharedImageStore } from './appStores.svelte';
 
 /**
  * 共有画像データ型
@@ -52,12 +52,10 @@ export class ShareHandler {
     if (data?.image) {
       this.sharedImageFile = data.image;
       this.sharedImageMetadata = data.metadata || null;
-      // Storeを更新
-      sharedImageStore.set({
-        file: this.sharedImageFile,
-        metadata: this.sharedImageMetadata ?? undefined,
-        received: true
-      });
+      // Storeを更新（runes記法）
+      sharedImageStore.file = this.sharedImageFile;
+      sharedImageStore.metadata = this.sharedImageMetadata ?? undefined;
+      sharedImageStore.received = true;
     }
 
     if (requestId && this.requestCallbacks.has(requestId)) {

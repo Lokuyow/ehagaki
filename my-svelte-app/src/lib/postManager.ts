@@ -1,8 +1,7 @@
 import { createRxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
-import { get } from "svelte/store";
-import { authState } from "./appStores";
+import { authState } from "./appStores.svelte";
 import { hashtagDataStore } from "./editor/stores/editorStore.svelte";
 
 // 投稿結果の型定義
@@ -37,7 +36,7 @@ export class PostManager {
   validatePost(content: string): { valid: boolean; error?: string } {
     if (!content.trim()) return { valid: false, error: "empty_content" };
     if (!this.rxNostr) return { valid: false, error: "nostr_not_ready" };
-    const auth = get(authState);
+    const auth = authState.value;
     if (!auth.isAuthenticated) return { valid: false, error: "login_required" };
     return { valid: true };
   }
@@ -45,7 +44,7 @@ export class PostManager {
   // 投稿イベント生成（共通化）
   private async buildEvent(content: string, pubkey?: string) {
     // ストアからハッシュタグを取得
-    const { hashtags } = get(hashtagDataStore);
+    const { hashtags } = hashtagDataStore;
     const tags = hashtags.map((hashtag: string) => ["t", hashtag]);
     // Client tagを追加（オプトアウト対応）
     let clientTagEnabled = true;
@@ -123,7 +122,7 @@ export class PostManager {
 
     try {
       // ストアから認証状態を取得
-      const auth = get(authState);
+      const auth = authState.value;
       const isNostrLoginAuth = auth.type === 'nostr-login';
 
       // nostr-login認証の場合のみwindow.nostrを使用

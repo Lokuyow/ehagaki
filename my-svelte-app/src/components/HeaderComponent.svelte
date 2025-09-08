@@ -2,8 +2,12 @@
     // import { run } from "svelte/legacy"; // 削除
 
     import { _ } from "svelte-i18n";
-    import { editorState, submitPost } from "../lib/editor/stores/editorStore.svelte";
-    import { authState } from "../lib/appStores";
+    import {
+        editorState,
+        submitPost,
+        updatePostStatus,
+    } from "../lib/editor/stores/editorStore.svelte";
+    import { authState } from "../lib/appStores.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte"; // 追加
 
@@ -26,22 +30,27 @@
     }: Props = $props();
     const infoBalloonStore = writable<{ message: string } | null>(null);
 
-    let postStatus = $derived($editorState.postStatus);
-    let hasStoredKey = $derived($authState.isAuthenticated);
-    let isUploading = $derived($editorState.isUploading);
-    let canPost = $derived($editorState.canPost || $editorState.hasImage); // 修正
+    // --- authState購読用 ---
+    let hasStoredKey = $state(false);
+    $effect(() => {
+        const unsubscribe = authState.subscribe((val) => {
+            hasStoredKey = val && val.isAuthenticated;
+        });
+        return unsubscribe;
+    });
+
+    let postStatus = $derived(editorState.postStatus);
+    let isUploading = $derived(editorState.isUploading);
+    let canPost = $derived(editorState.canPost || editorState.hasImage); // 修正
 
     function showSuccessMessage() {
         setTimeout(() => {
-            editorState.update((state) => ({
-                ...state,
-                postStatus: {
-                    ...state.postStatus,
-                    success: false,
-                    message: "",
-                    completed: false,
-                },
-            }));
+            updatePostStatus({
+                ...editorState.postStatus,
+                success: false,
+                message: "",
+                completed: false,
+            });
         }, 3000);
     }
 

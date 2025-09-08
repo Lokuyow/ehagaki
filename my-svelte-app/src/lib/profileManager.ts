@@ -1,5 +1,6 @@
 import type { createRxNostr } from 'rx-nostr';
 import { createRxForwardReq } from 'rx-nostr';
+import { nip19 } from "nostr-tools";
 
 export interface ProfileData {
   name: string;
@@ -9,7 +10,11 @@ export interface ProfileData {
 
 // npub変換関数
 function toNpub(pubkeyHex: string): string {
-  return `npub1${pubkeyHex.slice(0, 10)}...`;
+  try {
+    return nip19.npubEncode(pubkeyHex);
+  } catch {
+    return `npub1${pubkeyHex.slice(0, 10)}...`;
+  }
 }
 
 export class ProfileManager {
@@ -72,7 +77,7 @@ export class ProfileManager {
     return {
       name: content?.name || "",
       picture,
-      npub: content?.name ? undefined : toNpub(pubkeyHex)
+      npub: toNpub(pubkeyHex)
     };
   }
 

@@ -32,8 +32,11 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
-  } from "./lib/appStores";
-  import { placeholderTextStore } from "./lib/editor/stores/editorStore.svelte";
+  } from "./lib/appStores.svelte";
+  import {
+    placeholderTextStore,
+    updatePlaceholderText,
+  } from "./lib/editor/stores/editorStore.svelte";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
 
@@ -47,14 +50,14 @@
 
   // --- 追加: ログインダイアログが開かれたら前の入力をクリア ---
   $effect(() => {
-    if ($showLoginDialogStore) {
+    if (showLoginDialogStore.value) {
       secretKey = "";
       errorMessage = "";
     }
   });
 
-  let isAuthenticated = $derived($authState.isAuthenticated);
-  let isAuthInitialized = $derived($authState.isInitialized);
+  let isAuthenticated = $derived(authState.value.isAuthenticated);
+  let isAuthInitialized = $derived(authState.value.isInitialized);
 
   // --- 追加: 初回レンダリング時にローカルストレージで即時認証判定 ---
   let initialAuthChecked = false;
@@ -82,7 +85,7 @@
   }
 
   $effect(() => {
-    debugAuthState("Auth state changed", $authState);
+    debugAuthState("Auth state changed", authState);
   });
 
   let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
@@ -119,8 +122,8 @@
     if (result.pubkeyHex) {
       isLoadingNostrLogin = true;
       isLoadingProfileStore.set(true);
-      // bind:showで管理されているので、storeを直接更新
-      showLoginDialogStore.set(false);
+      // ダイアログを閉じる
+      closeLoginDialog();
 
       try {
         await initializeNostr();
@@ -164,8 +167,8 @@
       return;
     }
     isLoadingProfileStore.set(true);
-    // bind:showで管理されているので、storeを直接更新
-    showLoginDialogStore.set(false);
+    // ダイアログを閉じる
+    closeLoginDialog();
     errorMessage = "";
 
     try {
@@ -199,8 +202,8 @@
       });
     }
     hideImageSizeInfo();
-    // bind:showで管理されているので、storeを直接更新
-    showLogoutDialogStore.set(false);
+    // ダイアログを閉じる
+    closeLogoutDialog();
 
     // --- 追加: ログアウト時にも入力をクリアしておく ---
     secretKey = "";
@@ -232,7 +235,7 @@
     if ($locale) {
       const text =
         $_("postComponent.enter_your_text") || "テキストを入力してください";
-      placeholderTextStore.set(text);
+      updatePlaceholderText(text);
     }
   });
 
@@ -253,7 +256,7 @@
       // プレースホルダーテキストを初期化
       const initialPlaceholder =
         $_("postComponent.enter_your_text") || "テキストを入力してください";
-      placeholderTextStore.set(initialPlaceholder);
+      updatePlaceholderText(initialPlaceholder);
 
       // 認証サービスの認証ハンドラーを先にセット
       authService.setNostrLoginHandler(handleNostrLoginAuth);
@@ -287,11 +290,9 @@
           const shared =
             await FileUploadManager.getSharedImageFromServiceWorker();
           if (shared?.image) {
-            sharedImageStore.set({
-              file: shared.image,
-              metadata: shared.metadata,
-              received: true,
-            });
+            sharedImageStore.file = shared.image;
+            sharedImageStore.metadata = shared.metadata;
+            sharedImageStore.received = true;
             // 取得済みフラグをセット
             localStorage.setItem("sharedImageProcessed", "1");
           }
@@ -316,16 +317,14 @@
 
   $effect(() => {
     if (
-      $sharedImageStore.received &&
-      $sharedImageStore.file &&
+      sharedImageStore.received &&
+      sharedImageStore.file &&
       postComponentRef
     ) {
-      postComponentRef.uploadFiles([$sharedImageStore.file]);
-      sharedImageStore.set({
-        file: null,
-        metadata: undefined,
-        received: false,
-      });
+      postComponentRef.uploadFiles([sharedImageStore.file]);
+      sharedImageStore.file = null;
+      sharedImageStore.metadata = undefined;
+      sharedImageStore.received = false;
       // 取得済みフラグをセット
       localStorage.setItem("sharedImageProcessed", "1");
       // 受信直後に一度クリア（次回共有のため）
@@ -361,22 +360,22 @@
 
   // --- 追加: 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
   async function handleRefreshRelaysAndProfile() {
-    if (!isAuthenticated || !$authState.pubkey) return;
+    if (!isAuthenticated || !authState.value.pubkey) return;
     if (!relayManager || !profileManager) {
-      await initializeNostr($authState.pubkey);
+      await initializeNostr(authState.value.pubkey);
     }
     // ローカルストレージのキャッシュを使わず必ずリモート取得
     // 1. リレーリスト再取得
     if (relayManager) {
-      await relayManager.fetchUserRelays($authState.pubkey, {
+      await relayManager.fetchUserRelays(authState.value.pubkey, {
         forceRemote: true,
       });
     }
     // 2. プロフィール再取得
     if (profileManager) {
       // プロフィールキャッシュ削除
-      profileManager.saveToLocalStorage($authState.pubkey, null);
-      await loadProfileForPubkey($authState.pubkey, { forceRemote: true });
+      profileManager.saveToLocalStorage(authState.value.pubkey, null);
+      await loadProfileForPubkey(authState.value.pubkey, { forceRemote: true });
     }
   }
 
@@ -468,17 +467,17 @@
       bind:this={footerComponentRef}
       {isAuthenticated}
       {isAuthInitialized}
-      isLoadingProfile={$isLoadingProfileStore}
-      profileLoaded={$profileLoadedStore}
-      profileData={$profileDataStore}
+      isLoadingProfile={isLoadingProfileStore.value}
+      profileLoaded={profileLoadedStore.value}
+      profileData={profileDataStore.value}
       swNeedRefresh={$swNeedRefresh}
       onShowLoginDialog={showLoginDialog}
       onOpenSettingsDialog={openSettingsDialog}
       onOpenLogoutDialog={openLogoutDialog}
     />
-    {#if $showLoginDialogStore}
+    {#if showLoginDialogStore.value}
       <LoginDialog
-        bind:show={$showLoginDialogStore}
+        bind:show={showLoginDialogStore.value}
         bind:secretKey
         onClose={closeLoginDialog}
         onSave={saveSecretKey}
@@ -486,15 +485,15 @@
         {isLoadingNostrLogin}
       />
     {/if}
-    {#if $showLogoutDialogStore}
+    {#if showLogoutDialogStore.value}
       <LogoutDialog
-        bind:show={$showLogoutDialogStore}
+        bind:show={showLogoutDialogStore.value}
         onClose={closeLogoutDialog}
         onLogout={logout}
       />
     {/if}
     <SettingsDialog
-      show={$showSettingsDialogStore}
+      show={showSettingsDialogStore.value}
       onClose={closeSettingsDialog}
       onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
     />

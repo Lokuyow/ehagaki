@@ -152,7 +152,7 @@ declare global {
 
 // --- ここから修正: SW更新ボタン強制表示デバッグ機能 ---
 // 以前は「モーダル」だったが、現在は設定ボタンランプとSettingsDialog内の更新ボタン表示用
-import { swNeedRefresh } from "./appStores";
+import { swNeedRefresh } from "./appStores.svelte";
 // --- SW更新ボタン強制表示デバッグ機能 ---
 // 必ずグローバルwindowに生やす（import後に実行）
 if (typeof window !== "undefined") {
@@ -167,27 +167,22 @@ if (typeof window !== "undefined") {
 import { editorState } from "./editor/stores/editorStore.svelte";
 if (import.meta.env.MODE === "development") {
     (window as any).showPostSuccessDebug = () => {
-        editorState.update((state) => ({
-            ...state,
-            postStatus: {
-                ...state.postStatus,
-                success: true,
-                error: false,
-                message: "post_success",
-                completed: true // ← これを追加
-            },
-        }));
+        // editorStateは$stateストアなのでプロパティ単位で代入
+        editorState.postStatus = {
+            ...editorState.postStatus,
+            success: true,
+            error: false,
+            message: "post_success",
+            completed: true // ← これを追加
+        };
     };
     (window as any).showPostErrorDebug = () => {
-        editorState.update((state) => ({
-            ...state,
-            postStatus: {
-                ...state.postStatus,
-                success: false,
-                error: true,
-                message: "post_error",
-                completed: false // ← これも明示的に
-            },
-        }));
+        editorState.postStatus = {
+            ...editorState.postStatus,
+            success: false,
+            error: true,
+            message: "post_error",
+            completed: false // ← これも明示的に
+        };
     };
 }

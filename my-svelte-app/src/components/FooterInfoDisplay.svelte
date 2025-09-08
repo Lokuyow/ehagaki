@@ -1,16 +1,10 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { imageSizeInfoStore } from "../lib/appStores";
+    import { imageSizeInfoStore } from "../lib/appStores.svelte";
     import type { UploadProgress } from "../lib/types";
     import { isDev, devLog, copyDevLogWithFallback } from "../lib/debug";
 
-    let copied = false;
-
-    // --- ストア値をリアクティブに参照 ---
-    // $: devLogValue = get(devLog);
-    // $: isDevValue = get(isDev);
-    // ↓ Svelteのストア自動購読を利用
-    // $devLog, $isDev を直接使う
+    let copied = $state(false);
 
     // スマホ対応: タップ時に明示的に選択→コピー（Clipboard API優先、失敗時はtextareaフォールバック）
     async function handleDevLogCopy(e?: Event) {
@@ -47,8 +41,8 @@
     }: Props = $props();
 
     // ストアから画像サイズ情報を取得
-    let imageSizeInfo = $derived($imageSizeInfoStore.info);
-    let imageSizeInfoVisible = $derived($imageSizeInfoStore.visible);
+    let imageSizeInfo = $derived(imageSizeInfoStore.value.info);
+    let imageSizeInfoVisible = $derived(imageSizeInfoStore.value.visible);
 
     // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
     function getExtension(filename: string | undefined): string {

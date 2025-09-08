@@ -1,4 +1,3 @@
-import { writable } from 'svelte/store';
 import type { SizeDisplayInfo } from './types';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 
@@ -32,10 +31,15 @@ export interface HashtagData {
 }
 
 // --- ストア定義 ---
-export const imageSizeInfoStore = writable<{ info: SizeDisplayInfo | null; visible: boolean }>({
+let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
     info: null,
     visible: false
 });
+
+export const imageSizeInfoStore = {
+    get value() { return imageSizeInfo; },
+    set: (value: { info: SizeDisplayInfo | null; visible: boolean }) => { imageSizeInfo = value; }
+};
 
 // --- 認証状態ストアと操作関数 ---
 const initialAuthState: AuthState = {
@@ -48,30 +52,40 @@ const initialAuthState: AuthState = {
     isInitialized: false,
     isExtensionLogin: false // 追加
 };
-export const authState = writable<AuthState>(initialAuthState);
+
+let authStateValue = $state<AuthState>(initialAuthState);
+
+export const authState = {
+    get value() { return authStateValue; },
+    subscribe: (callback: (value: AuthState) => void) => {
+        // Svelte 5では$effectでreactivityを実現
+        $effect(() => {
+            callback(authStateValue);
+        });
+    }
+};
 
 // --- 認証状態の更新 ---
 export function updateAuthState(newState: Partial<AuthState>): void {
-    authState.update(current => {
-        const updated = { ...current, ...newState };
-        updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
-        // Extensionログイン判定: 認証済みかつ nostr-login かつ window.nostrが存在し、window.nostr.signEventがfunction
-        updated.isExtensionLogin =
-            updated.isAuthenticated &&
-            updated.type === 'nostr-login' &&
-            typeof window !== 'undefined' &&
-            typeof (window as any).nostr === 'object' &&
-            typeof (window as any).nostr.signEvent === 'function';
-        return updated;
-    });
+    const current = authStateValue;
+    const updated = { ...current, ...newState };
+    updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
+    // Extensionログイン判定: 認証済みかつ nostr-login かつ window.nostrが存在し、window.nostr.signEventがfunction
+    updated.isExtensionLogin =
+        updated.isAuthenticated &&
+        updated.type === 'nostr-login' &&
+        typeof window !== 'undefined' &&
+        typeof (window as any).nostr === 'object' &&
+        typeof (window as any).nostr.signEvent === 'function';
+    authStateValue = updated;
 }
 
 // --- 認証状態のクリア ---
 export function clearAuthState(preserveInitialized: boolean = true): void {
-    authState.update(current => ({
+    authStateValue = {
         ...initialAuthState,
-        isInitialized: preserveInitialized ? current.isInitialized : false
-    }));
+        isInitialized: preserveInitialized ? authStateValue.isInitialized : false
+    };
 }
 
 // --- nsec認証セット ---
@@ -97,36 +111,113 @@ export function setAuthInitialized(): void {
     updateAuthState({ isInitialized: true });
 }
 
-export const sharedImageStore = writable<SharedImageStoreState>({
+export const sharedImageStore = $state<SharedImageStoreState>({
     file: null,
     metadata: undefined,
     received: false
 });
 
-export const showLoginDialogStore = writable(false);
-export const showLogoutDialogStore = writable(false);
-export const showSettingsDialogStore = writable(false);
+let showLogin = $state(false);
+let showLogout = $state(false);
+let showSettings = $state(false);
+
+export const showLoginDialogStore = {
+    get value() { return showLogin; },
+    set: (value: boolean) => { showLogin = value; }
+};
+
+export const showLogoutDialogStore = {
+    get value() { return showLogout; },
+    set: (value: boolean) => { showLogout = value; }
+};
+
+export const showSettingsDialogStore = {
+    get value() { return showSettings; },
+    set: (value: boolean) => { showSettings = value; }
+};
 
 const swRegister = useRegisterSW({
     onRegistered(r) { console.log("SW registered:", r); },
     onRegisterError(error) { console.log("SW registration error", error); },
     onNeedRefresh() { console.log("SW needs refresh - showing prompt"); },
+    // typeプロパティは指定しない（undefinedを渡さない）
 });
 export const swNeedRefresh = swRegister.needRefresh;
 export const swUpdateServiceWorker = swRegister.updateServiceWorker;
 
-export const profileDataStore = writable<ProfileData>({ name: "", picture: "" });
-export const profileLoadedStore = writable(false);
-export const isLoadingProfileStore = writable(false);
-export const isUploadingStore = writable(false);
+let profileData = $state<ProfileData>({ name: "", picture: "" });
+let profileLoaded = $state(false);
+let isLoadingProfile = $state(false);
+let isUploading = $state(false);
 
-export const hashtagDataStore = writable<HashtagData>({
+export const profileDataStore = {
+    get value() { return profileData; },
+    set: (value: ProfileData) => { profileData = value; },
+    subscribe: (callback: (value: ProfileData) => void) => {
+        $effect(() => {
+            callback(profileData);
+        });
+    }
+};
+
+export const profileLoadedStore = {
+    get value() { return profileLoaded; },
+    set: (value: boolean) => { profileLoaded = value; },
+    subscribe: (callback: (value: boolean) => void) => {
+        $effect(() => {
+            callback(profileLoaded);
+        });
+    }
+};
+
+export const isLoadingProfileStore = {
+    get value() { return isLoadingProfile; },
+    set: (value: boolean) => { isLoadingProfile = value; },
+    subscribe: (callback: (value: boolean) => void) => {
+        $effect(() => {
+            callback(isLoadingProfile);
+        });
+    }
+};
+
+export const isUploadingStore = {
+    get value() { return isUploading; },
+    set: (value: boolean) => { isUploading = value; },
+    subscribe: (callback: (value: boolean) => void) => {
+        $effect(() => {
+            callback(isUploading);
+        });
+    }
+};
+
+let hashtagData = $state<HashtagData>({
     content: '',
     hashtags: [],
     tags: []
 });
 
-export const swVersionStore = writable<string | null>(null);
+export const hashtagDataStore = {
+    get value() { return hashtagData; },
+    set: (value: HashtagData) => { hashtagData = value; },
+    update: (updater: (value: HashtagData) => HashtagData) => { hashtagData = updater(hashtagData); },
+    subscribe: (callback: (value: HashtagData) => void) => {
+        $effect(() => {
+            callback(hashtagData);
+        });
+    }
+};
+
+let swVersion = $state<string | null>(null);
+
+export const swVersionStore = {
+    get value() { return swVersion; },
+    set: (value: string | null) => { swVersion = value; },
+    subscribe: (callback: (value: string | null) => void) => {
+        $effect(() => {
+            callback(swVersion);
+        });
+    }
+};
 
 // --- 画像サイズ情報表示 ---
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
@@ -155,7 +246,17 @@ export function handleSwUpdate() {
 }
 
 // --- リレーリスト更新通知ストア ---
-export const relayListUpdatedStore = writable<number>(0);
+let relayListUpdated = $state<number>(0);
+
+export const relayListUpdatedStore = {
+    get value() { return relayListUpdated; },
+    set: (value: number) => { relayListUpdated = value; },
+    subscribe: (callback: (value: number) => void) => {
+        $effect(() => {
+            callback(relayListUpdated);
+        });
+    }
+};
 
 export async function fetchSwVersion(): Promise<string | null> {
     if (!navigator.serviceWorker?.controller) return null;

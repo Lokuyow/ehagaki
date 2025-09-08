@@ -10,8 +10,7 @@
         fetchSwVersion,
         swNeedRefresh,
         handleSwUpdate,
-    } from "../lib/appStores";
-    import { get } from "svelte/store";
+    } from "../lib/appStores.svelte";
     import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
@@ -62,7 +61,7 @@
     }
 
     function loadWriteRelays() {
-        const pubkeyHex = get(authState).pubkey;
+        const pubkeyHex = authState.value.pubkey;
         if (!pubkeyHex) {
             writeRelays = [];
             return;

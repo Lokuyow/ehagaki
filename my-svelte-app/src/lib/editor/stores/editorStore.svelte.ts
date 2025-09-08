@@ -8,12 +8,11 @@ import SvelteImageNode from '../../../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from '../editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '..';
 import { GapCursorNewlineExtension } from '../gapCursorNewline';
-import { writable } from 'svelte/store';
 import type { PostStatus, EditorState } from '../../types'; // 型定義をtypes.tsからインポート
 import { HASHTAG_REGEX } from '../../constants';
 
-// ハッシュタグデータ用ストア
-export const hashtagDataStore = writable<{ content: string; hashtags: string[]; tags: [string, string][] }>({
+// ハッシュタグデータ用ストア（runes記法）
+export const hashtagDataStore = $state<{ content: string; hashtags: string[]; tags: [string, string][] }>({
     content: '',
     hashtags: [],
     tags: []
@@ -151,11 +150,11 @@ export function createEditorStore(placeholderText: string) {
 }
 
 // --- エディタ関連のストアと関数を移動 ---
-// プレースホルダーテキスト用ストア
-export const placeholderTextStore = writable<string>('');
+// プレースホルダーテキスト用ストア（runes記法）
+export let placeholderTextStore = $state({ value: '' });
 
-// エディタ状態管理用ストア
-export const editorState = writable<EditorState>({
+// エディタ状態管理用ストア（runes記法）
+export let editorState = $state<EditorState>({
     content: '',
     canPost: false,
     isUploading: false,
@@ -175,60 +174,48 @@ function canPostByContent(content: string, hasImage: boolean): boolean {
 }
 
 export function updateEditorContent(content: string, hasImage: boolean = false): void {
-    editorState.update(state => ({
-        ...state,
-        content,
-        hasImage,
-        canPost: canPostByContent(content, hasImage)
-    }));
+    editorState.content = content;
+    editorState.hasImage = hasImage;
+    editorState.canPost = canPostByContent(content, hasImage);
 }
 
 export function updatePostStatus(postStatus: PostStatus): void {
-    editorState.update(state => ({ ...state, postStatus }));
+    editorState.postStatus = postStatus;
 }
 
 export function updateUploadState(isUploading: boolean, errorMessage: string = ''): void {
-    editorState.update(state => ({
-        ...state,
-        isUploading,
-        uploadErrorMessage: errorMessage
-    }));
+    editorState.isUploading = isUploading;
+    editorState.uploadErrorMessage = errorMessage;
 }
 
 export function resetEditorState(): void {
-    editorState.update(state => ({
-        ...state,
-        content: '',
-        canPost: false,
-        uploadErrorMessage: '',
-        postStatus: {
-            sending: false,
-            success: false,
-            error: false,
-            message: '',
-            completed: false
-        },
-        hasImage: false
-    }));
+    editorState.content = '';
+    editorState.canPost = false;
+    editorState.uploadErrorMessage = '';
+    editorState.postStatus = {
+        sending: false,
+        success: false,
+        error: false,
+        message: '',
+        completed: false
+    };
+    editorState.hasImage = false;
 }
 
 // 投稿ステータスのみをリセット（コンテンツはそのまま）
 export function resetPostStatus(): void {
-    editorState.update(state => ({
-        ...state,
-        postStatus: {
-            sending: false,
-            success: false,
-            error: false,
-            message: '',
-            completed: false
-        }
-    }));
+    editorState.postStatus = {
+        sending: false,
+        success: false,
+        error: false,
+        message: '',
+        completed: false
+    };
 }
 
 // プレースホルダーテキスト更新用関数
 export function updatePlaceholderText(text: string): void {
-    placeholderTextStore.set(text);
+    placeholderTextStore.value = text;
 }
 
 // --- ハッシュタグデータ更新 ---
@@ -237,11 +224,9 @@ export function updateHashtagData(content: string): void {
     // "t"タグの値を小文字化 → extractHashtagsFromContentで小文字化済み
     const tags: [string, string][] = hashtags.map(hashtag => ["t", hashtag]);
 
-    hashtagDataStore.set({
-        content,
-        hashtags,
-        tags
-    });
+    hashtagDataStore.content = content;
+    hashtagDataStore.hashtags = hashtags;
+    hashtagDataStore.tags = tags;
 }
 
 // --- ハッシュタグ処理関数（内部使用） ---

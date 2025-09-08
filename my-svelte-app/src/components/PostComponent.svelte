@@ -56,8 +56,8 @@
   let fullscreenImageAlt = $state("");
 
   // ストアから状態を取得
-  let postStatus = $derived($editorState.postStatus);
-  let uploadErrorMessage = $derived($editorState.uploadErrorMessage);
+  let postStatus = $derived(editorState.postStatus);
+  let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
 
   // --- PostManager初期化 ---
   $effect(() => {
@@ -154,8 +154,8 @@
   }
 
   function showUploadError(message: string, duration = 3000) {
-    updateUploadState($editorState.isUploading, message);
-    setTimeout(() => updateUploadState($editorState.isUploading, ""), duration);
+    updateUploadState(editorState.isUploading, message);
+    setTimeout(() => updateUploadState(editorState.isUploading, ""), duration);
   }
 
   export async function uploadFiles(files: File[] | FileList) {
@@ -428,7 +428,7 @@
   $effect(() => {
     if (
       currentEditor &&
-      extractContentWithImages(currentEditor) !== $editorState.content
+      extractContentWithImages(currentEditor) !== editorState.content
     ) {
       if (postStatus.error) {
         updatePostStatus({ ...postStatus, error: false, message: "" });
@@ -436,10 +436,10 @@
     }
   });
   $effect(() => {
-    if ($placeholderTextStore && editor) {
+    if (placeholderTextStore.value && editor) {
       setTimeout(() => {
         if (editor.updatePlaceholder) {
-          editor.updatePlaceholder($placeholderTextStore);
+          editor.updatePlaceholder(placeholderTextStore.value);
         }
       }, 0);
     }
