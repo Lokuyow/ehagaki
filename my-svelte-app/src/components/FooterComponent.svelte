@@ -5,17 +5,31 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { _ } from "svelte-i18n";
 
-    export let isAuthenticated: boolean;
-    export let isAuthInitialized: boolean;
-    export let isLoadingProfile: boolean;
-    export let profileLoaded: boolean;
-    export let profileData: any;
-    export let swNeedRefresh: boolean;
-    export let onShowLoginDialog: () => void;
-    export let onOpenSettingsDialog: () => void;
-    export let onOpenLogoutDialog: () => void;
+    interface Props {
+        isAuthenticated: boolean;
+        isAuthInitialized: boolean;
+        isLoadingProfile: boolean;
+        profileLoaded: boolean;
+        profileData: any;
+        swNeedRefresh: boolean;
+        onShowLoginDialog: () => void;
+        onOpenSettingsDialog: () => void;
+        onOpenLogoutDialog: () => void;
+    }
 
-    let footerInfoDisplayRef: any;
+    let {
+        isAuthenticated,
+        isAuthInitialized,
+        isLoadingProfile,
+        profileLoaded,
+        profileData,
+        swNeedRefresh,
+        onShowLoginDialog,
+        onOpenSettingsDialog,
+        onOpenLogoutDialog,
+    }: Props = $props();
+
+    let footerInfoDisplayRef: any = $state();
 
     // 外部から呼び出せるようにメソッドをexport
     export function updateProgress(progress: number) {

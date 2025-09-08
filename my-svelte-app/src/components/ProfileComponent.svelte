@@ -1,17 +1,28 @@
 <script lang="ts">
+  import { run } from "svelte/legacy";
+
   import { _ } from "svelte-i18n";
   import type { ProfileData } from "../lib/profileManager";
   import Button from "./Button.svelte";
   import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
-  export let profileData: ProfileData | null = null;
   export const profileLoaded = false;
-  export let hasStoredKey = false;
-  export let showLogoutDialog: () => void;
-  export let isLoadingProfile: boolean = false;
+  interface Props {
+    profileData?: ProfileData | null;
+    hasStoredKey?: boolean;
+    showLogoutDialog: () => void;
+    isLoadingProfile?: boolean;
+  }
+
+  let {
+    profileData = null,
+    hasStoredKey = false,
+    showLogoutDialog,
+    isLoadingProfile = false,
+  }: Props = $props();
 
   // プロフィール画像読み込みエラー状態
-  let imageLoadError = false;
+  let imageLoadError = $state(false);
 
   // プロフィール画像のaltテキスト取得
   const getProfileAlt = () =>
@@ -36,9 +47,11 @@
   }
 
   // プロフィールデータが変更されたら画像エラー状態をリセット
-  $: if (profileData?.picture) {
-    imageLoadError = false;
-  }
+  run(() => {
+    if (profileData?.picture) {
+      imageLoadError = false;
+    }
+  });
 </script>
 
 {#if hasStoredKey}
@@ -62,7 +75,7 @@
           loading="lazy"
           crossorigin="anonymous"
           referrerpolicy="no-referrer"
-          on:error={handleImageError}
+          onerror={handleImageError}
         />
       {:else}
         <div class="profile-picture default svg-icon" aria-label="User"></div>

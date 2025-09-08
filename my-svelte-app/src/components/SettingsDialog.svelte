@@ -16,23 +16,31 @@
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
 
-    export let show = false;
-    export let onClose: () => void;
-    export let onRefreshRelaysAndProfile: () => void = () => {};
+    interface Props {
+        show?: boolean;
+        onClose: () => void;
+        onRefreshRelaysAndProfile?: () => void;
+    }
+
+    let {
+        show = false,
+        onClose,
+        onRefreshRelaysAndProfile = () => {},
+    }: Props = $props();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
-    $: compressionLevels = getCompressionLevels($_);
+    let compressionLevels = $derived(getCompressionLevels($_));
 
-    let selectedEndpoint: string;
-    let clientTagEnabled = true;
-    let selectedCompression: string;
+    let selectedEndpoint: string = $state("");
+    let clientTagEnabled = $state(true);
+    let selectedCompression: string = $state("");
 
     // swVersion from store
-    let swVersion: string | null = null;
+    let swVersion: string | null = $state(null);
     swVersionStore.subscribe((v) => (swVersion = v));
 
     // SW更新状態
-    let isUpdating = false;
+    let isUpdating = $state(false);
 
     function handleSwRefresh() {
         isUpdating = true;
@@ -44,8 +52,8 @@
     }
 
     // 投稿先リレー表示用
-    let writeRelays: string[] = [];
-    let showRelays = false;
+    let writeRelays: string[] = $state([]);
+    let showRelays = $state(false);
 
     function getDefaultEndpoint(loc: string | null | undefined) {
         return loc === "ja"
@@ -112,37 +120,49 @@
     });
 
     // showがtrueのたびにリレーリストを再取得
-    $: if (show) loadWriteRelays();
+    $effect(() => {
+        if (show) loadWriteRelays();
+    });
     // showがtrueのたびにnostr-zap-viewを再初期化（tickでDOM描画後に呼ぶ）
-    $: if (show) {
-        // DOM描画完了を待つ
-        (async () => {
-            await tick();
-            nostrZapView();
-            // nostr-zapのボタンも初期化
-            if (window.nostrZap) {
-                window.nostrZap.initTargets();
-            }
-        })();
-    }
-
+    $effect(() => {
+        if (show) {
+            (async () => {
+                await tick();
+                nostrZapView();
+                // nostr-zapのボタンも初期化
+                if (window.nostrZap) {
+                    window.nostrZap.initTargets();
+                }
+            })();
+        }
+    });
     // showがfalseになったらリレーリストの折り畳みも閉じる
-    $: if (!show) showRelays = false;
-
+    $effect(() => {
+        if (!show) showRelays = false;
+    });
     // $locale変更時、保存がなければデフォルトエンドポイントを再設定
-    $: if ($locale && !localStorage.getItem("uploadEndpoint")) {
-        selectedEndpoint = getDefaultEndpoint($locale);
-    }
-
+    $effect(() => {
+        if ($locale && !localStorage.getItem("uploadEndpoint")) {
+            selectedEndpoint = getDefaultEndpoint($locale);
+        }
+    });
     // 設定変更時にlocalStorageへ保存
-    $: selectedEndpoint &&
-        localStorage.setItem("uploadEndpoint", selectedEndpoint);
-    $: localStorage.setItem(
-        "clientTagEnabled",
-        clientTagEnabled ? "true" : "false",
-    );
-    $: selectedCompression &&
-        localStorage.setItem("imageCompressionLevel", selectedCompression);
+    $effect(() => {
+        if (selectedEndpoint) {
+            localStorage.setItem("uploadEndpoint", selectedEndpoint);
+        }
+    });
+    $effect(() => {
+        localStorage.setItem(
+            "clientTagEnabled",
+            clientTagEnabled ? "true" : "false",
+        );
+    });
+    $effect(() => {
+        if (selectedCompression) {
+            localStorage.setItem("imageCompressionLevel", selectedCompression);
+        }
+    });
 
     function toggleLanguage() {
         locale.set($locale === "ja" ? "en" : "ja");
@@ -342,7 +362,7 @@
                 <button
                     type="button"
                     class="relay-toggle-label"
-                    on:click={() => (showRelays = !showRelays)}
+                    onclick={() => (showRelays = !showRelays)}
                     aria-pressed={showRelays}
                     aria-label={$_("settingsDialog.toggle_write_relays_list") ||
                         "投稿先リレーの表示切替"}

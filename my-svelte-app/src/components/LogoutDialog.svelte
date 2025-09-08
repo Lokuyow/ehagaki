@@ -3,9 +3,13 @@
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
 
-    export let show = false;
-    export let onClose: () => void;
-    export let onLogout: () => void;
+    interface Props {
+        show?: boolean;
+        onClose: () => void;
+        onLogout: () => void;
+    }
+
+    let { show = $bindable(false), onClose, onLogout }: Props = $props();
 
     function handleLogout() {
         onLogout?.();
@@ -18,24 +22,25 @@
     {onClose}
     ariaLabel={$_("logoutDialog.logout_confirmation")}
     className="logout-dialog"
-    let:close
 >
-    <h2>{$_("logoutDialog.logout_confirmation")}</h2>
-    <p>{$_("logoutDialog.logout_warning")}</p>
-    <div class="dialog-buttons">
-        <Button
-            on:click={handleLogout}
-            className="logout-btn"
-            variant="danger"
-            shape="square">{$_("logoutDialog.logout")}</Button
-        >
-        <Button
-            on:click={close}
-            className="cancel-btn"
-            variant="secondary"
-            shape="square">{$_("logoutDialog.cancel")}</Button
-        >
-    </div>
+    {#snippet children({ close })}
+        <h2>{$_("logoutDialog.logout_confirmation")}</h2>
+        <p>{$_("logoutDialog.logout_warning")}</p>
+        <div class="dialog-buttons">
+            <Button
+                on:click={handleLogout}
+                className="logout-btn"
+                variant="danger"
+                shape="square">{$_("logoutDialog.logout")}</Button
+            >
+            <Button
+                on:click={close}
+                className="cancel-btn"
+                variant="secondary"
+                shape="square">{$_("logoutDialog.cancel")}</Button
+            >
+        </div>
+    {/snippet}
 </Dialog>
 
 <style>

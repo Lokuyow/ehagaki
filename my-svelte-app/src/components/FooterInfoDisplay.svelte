@@ -1,4 +1,6 @@
 <script lang="ts">
+    import { preventDefault } from "svelte/legacy";
+
     import { _ } from "svelte-i18n";
     import { imageSizeInfoStore } from "../lib/stores";
     import type { UploadProgress } from "../lib/types";
@@ -33,16 +35,22 @@
         }
     }
 
-    export let uploadProgress: UploadProgress = {
-        total: 0,
-        completed: 0,
-        failed: 0,
-        inProgress: false,
-    };
+    interface Props {
+        uploadProgress?: UploadProgress;
+    }
+
+    let {
+        uploadProgress = $bindable({
+            total: 0,
+            completed: 0,
+            failed: 0,
+            inProgress: false,
+        }),
+    }: Props = $props();
 
     // ストアから画像サイズ情報を取得
-    $: imageSizeInfo = $imageSizeInfoStore.info;
-    $: imageSizeInfoVisible = $imageSizeInfoStore.visible;
+    let imageSizeInfo = $derived($imageSizeInfoStore.info);
+    let imageSizeInfoVisible = $derived($imageSizeInfoStore.visible);
 
     // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
     function getExtension(filename: string | undefined): string {
@@ -53,12 +61,16 @@
         return ext === "JPEG" ? "JPG" : ext;
     }
     // 画像サイズ情報から拡張子を取得
-    $: originalExt = imageSizeInfo?.originalFilename
-        ? getExtension(imageSizeInfo.originalFilename)
-        : "";
-    $: compressedExt = imageSizeInfo?.compressedFilename
-        ? getExtension(imageSizeInfo.compressedFilename)
-        : "";
+    let originalExt = $derived(
+        imageSizeInfo?.originalFilename
+            ? getExtension(imageSizeInfo.originalFilename)
+            : "",
+    );
+    let compressedExt = $derived(
+        imageSizeInfo?.compressedFilename
+            ? getExtension(imageSizeInfo.compressedFilename)
+            : "",
+    );
 
     /**
      * 進捗情報の更新
@@ -96,8 +108,8 @@
     <button
         type="button"
         class="floating-dev-console-log"
-        on:click={handleDevLogCopy}
-        on:touchend|preventDefault={handleDevLogCopy}
+        onclick={handleDevLogCopy}
+        ontouchend={preventDefault(handleDevLogCopy)}
         title="タップで全コピー"
         aria-label="開発者ログをコピー"
     >

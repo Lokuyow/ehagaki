@@ -1,4 +1,7 @@
 <script lang="ts">
+    import { run } from "svelte/legacy";
+    import { createEventDispatcher } from "svelte";
+
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import {
@@ -8,8 +11,6 @@
         calculateViewportInfo,
         calculateZoomFromEvent,
         calculateDragDelta,
-        calculatePinchInfo,
-        calculatePinchZoomParams,
     } from "../lib/utils";
     import {
         transformStore,
@@ -20,16 +21,25 @@
         type PinchState,
     } from "../lib/stores/transformStore";
 
-    // Props
-    export let src: string = "";
-    export let alt: string = "";
-    export let show: boolean = false;
-    export let onClose: () => void = () => {};
+    interface Props {
+        // Props
+        src?: string;
+        alt?: string;
+        show?: boolean;
+        onClose?: () => void;
+    }
+
+    let {
+        src = "",
+        alt = "",
+        show = $bindable(false),
+        onClose = () => {},
+    }: Props = $props();
 
     // DOM要素の参照
-    let imageElement: HTMLImageElement;
-    let containerElement: HTMLDivElement;
-    let imageContainerElement: HTMLDivElement;
+    let imageElement: HTMLImageElement | undefined = $state();
+    let containerElement: HTMLDivElement | undefined = $state();
+    let imageContainerElement: HTMLDivElement | undefined = $state();
 
     // 状態管理
     let transformState: TransformState;
@@ -124,7 +134,9 @@
     }
 
     // メイン操作関数
-    function close(): void {
+    const dispatch = createEventDispatcher();
+    function close() {
+        dispatch("close");
         resetAllStates();
         show = false;
         onClose();
@@ -191,7 +203,9 @@
                 transformStore.reset();
             } else {
                 const viewport =
-                    clientX !== undefined && clientY !== undefined
+                    clientX !== undefined &&
+                    clientY !== undefined &&
+                    containerElement
                         ? calculateViewportInfo(
                               containerElement,
                               clientX,
@@ -321,6 +335,7 @@
                 );
 
                 // コンテナの中心座標を取得
+                if (!containerElement) return;
                 const rect = containerElement.getBoundingClientRect();
                 const containerCenterX = rect.width / 2;
                 const containerCenterY = rect.height / 2;
@@ -497,14 +512,16 @@
     }
 
     // リアクティブ文
-    $: if (show) {
-        resetAllStates();
-        setBodyStyle("overflow", "hidden");
-        pushHistoryState();
-    } else {
-        setBodyStyle("overflow", "");
-        clearHistoryState();
-    }
+    run(() => {
+        if (show) {
+            resetAllStates();
+            setBodyStyle("overflow", "hidden");
+            pushHistoryState();
+        } else {
+            setBodyStyle("overflow", "");
+            clearHistoryState();
+        }
+    });
 
     // ライフサイクル
     onMount(() => {
@@ -540,36 +557,39 @@
     });
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
 {#if show}
     <div
         class="fullscreen-overlay"
         bind:this={containerElement}
-        on:click={handleBackdropClick}
-        on:keydown={handleKeydown}
-        on:wheel={handleWheel}
+        onclick={handleBackdropClick}
+        onkeydown={handleKeydown}
+        onwheel={handleWheel}
         tabindex="0"
         role="dialog"
         aria-label="画像全画面表示"
     >
-        <button class="close-button" on:click={close} aria-label="閉じる">
-            <span class="svg-icon close-icon"></span>
-        </button>
-
+        <!-- Add your close button or logic here -->
+        <button
+            type="button"
+            class="close-button"
+            onclick={close}
+            aria-label="Close fullscreen image">×</button
+        >
         <div class="image-container" bind:this={imageContainerElement}>
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
             <img
                 bind:this={imageElement}
                 {src}
                 {alt}
                 class="fullscreen-image"
-                on:mousedown={handleMouseDown}
-                on:dblclick={handleDoubleClick}
-                on:touchstart={handleTouchStart}
-                on:touchmove={handleTouchMove}
-                on:touchend={handleTouchEnd}
+                onmousedown={handleMouseDown}
+                ondblclick={handleDoubleClick}
+                ontouchstart={handleTouchStart}
+                ontouchmove={handleTouchMove}
+                ontouchend={handleTouchEnd}
                 draggable="false"
             />
         </div>
@@ -618,11 +638,6 @@
 
     .close-button:hover {
         background: rgba(25, 25, 25, 0.6);
-    }
-
-    .close-icon {
-        mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
-        background-color: whitesmoke;
     }
 
     .image-container {

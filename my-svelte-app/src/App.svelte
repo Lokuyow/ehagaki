@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from "svelte/legacy";
+
   import { onMount } from "svelte";
   import { createRxNostr } from "rx-nostr";
   import { verifier } from "@rx-nostr/crypto";
@@ -38,19 +40,23 @@
   import type { UploadProgress } from "./lib/types"; // 追加
 
   // --- 秘密鍵入力・保存・認証 ---
-  let errorMessage = "";
-  let secretKey = "";
+  let errorMessage = $state("");
+  let secretKey = $state("");
   const publicKeyState = authService.getPublicKeyState();
-  $: publicKeyState.setNsec(secretKey);
+  run(() => {
+    publicKeyState.setNsec(secretKey);
+  });
 
   // --- 追加: ログインダイアログが開かれたら前の入力をクリア ---
-  $: if ($showLoginDialogStore) {
-    secretKey = "";
-    errorMessage = "";
-  }
+  run(() => {
+    if ($showLoginDialogStore) {
+      secretKey = "";
+      errorMessage = "";
+    }
+  });
 
-  $: isAuthenticated = $authState.isAuthenticated;
-  $: isAuthInitialized = $authState.isInitialized;
+  let isAuthenticated = $derived($authState.isAuthenticated);
+  let isAuthInitialized = $derived($authState.isInitialized);
 
   // --- 追加: 初回レンダリング時にローカルストレージで即時認証判定 ---
   let initialAuthChecked = false;
@@ -77,16 +83,18 @@
     initialAuthChecked = true;
   }
 
-  $: debugAuthState("Auth state changed", $authState);
+  run(() => {
+    debugAuthState("Auth state changed", $authState);
+  });
 
-  let rxNostr: ReturnType<typeof createRxNostr>;
+  let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
   let profileManager: ProfileManager;
   let relayManager: RelayManager;
   let sharedImageReceived = false;
-  let isLoadingNostrLogin = false;
+  let isLoadingNostrLogin = $state(false);
   let footerInfoDisplay: any;
-  let postComponentRef: any;
-  let footerComponentRef: any;
+  let postComponentRef: any = $state();
+  let footerComponentRef: any = $state();
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
@@ -217,16 +225,20 @@
     }
   }
 
-  $: if ($locale) localStorage.setItem("locale", $locale);
+  run(() => {
+    if ($locale) localStorage.setItem("locale", $locale);
+  });
 
   // locale変更時にプレースホルダーを更新
-  $: if ($locale) {
-    const text =
-      $_("postComponent.enter_your_text") || "テキストを入力してください";
-    placeholderTextStore.set(text);
-  }
+  run(() => {
+    if ($locale) {
+      const text =
+        $_("postComponent.enter_your_text") || "テキストを入力してください";
+      placeholderTextStore.set(text);
+    }
+  });
 
-  let localeInitialized = false;
+  let localeInitialized = $state(false);
 
   // 共有画像取得済みフラグ
   const sharedImageAlreadyProcessed =
@@ -304,18 +316,24 @@
     };
   });
 
-  $: if (
-    $sharedImageStore.received &&
-    $sharedImageStore.file &&
-    postComponentRef
-  ) {
-    postComponentRef.uploadFiles([$sharedImageStore.file]);
-    sharedImageStore.set({ file: null, metadata: undefined, received: false });
-    // 取得済みフラグをセット
-    localStorage.setItem("sharedImageProcessed", "1");
-    // 受信直後に一度クリア（次回共有のため）
-    setTimeout(() => localStorage.removeItem("sharedImageProcessed"), 500);
-  }
+  run(() => {
+    if (
+      $sharedImageStore.received &&
+      $sharedImageStore.file &&
+      postComponentRef
+    ) {
+      postComponentRef.uploadFiles([$sharedImageStore.file]);
+      sharedImageStore.set({
+        file: null,
+        metadata: undefined,
+        received: false,
+      });
+      // 取得済みフラグをセット
+      localStorage.setItem("sharedImageProcessed", "1");
+      // 受信直後に一度クリア（次回共有のため）
+      setTimeout(() => localStorage.removeItem("sharedImageProcessed"), 500);
+    }
+  });
 
   function handleUploadStatusChange(uploading: boolean) {
     isUploadingStore.set(uploading);
@@ -394,17 +412,19 @@
     const idx = Math.floor(Math.random() * keys.length);
     return $_(keys[idx]);
   }
-  let showHeaderBalloon = true;
-  let headerBalloonMessage = "";
+  let showHeaderBalloon = $state(true);
+  let headerBalloonMessage = $state("");
 
   // localeInitializedがtrueになったタイミングでメッセージをセット
-  $: if (localeInitialized) {
-    headerBalloonMessage = getRandomHeaderBalloon();
-    showHeaderBalloon = true;
-    setTimeout(() => {
-      showHeaderBalloon = false;
-    }, 3000);
-  }
+  run(() => {
+    if (localeInitialized) {
+      headerBalloonMessage = getRandomHeaderBalloon();
+      showHeaderBalloon = true;
+      setTimeout(() => {
+        showHeaderBalloon = false;
+      }, 3000);
+    }
+  });
 
   // --- 追加: visibilitychangeでアクティブ時のみバルーン表示 ---
   let wasHidden = false;

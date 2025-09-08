@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { run } from "svelte/legacy";
+
   import { _ } from "svelte-i18n";
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
@@ -25,38 +27,50 @@
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import { setPostSubmitter } from "../lib/editor/store";
 
-  export let rxNostr: any;
-  export let hasStoredKey: boolean;
-  export let onPostSuccess: (() => void) | undefined;
-  export let onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
-  export let onUploadProgress: ((progress: any) => void) | undefined;
+  interface Props {
+    rxNostr: any;
+    hasStoredKey: boolean;
+    onPostSuccess: (() => void) | undefined;
+    onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
+    onUploadProgress: ((progress: any) => void) | undefined;
+  }
 
-  let editor: any;
-  let currentEditor: any = null;
-  let dragOver = false;
-  let fileInput: HTMLInputElement;
+  let {
+    rxNostr,
+    hasStoredKey,
+    onPostSuccess,
+    onUploadStatusChange,
+    onUploadProgress,
+  }: Props = $props();
 
-  let postManager: PostManager;
-  let showSecretKeyDialog = false;
+  let editor: any = $state();
+  let currentEditor: any = $state(null);
+  let dragOver = $state(false);
+  let fileInput: HTMLInputElement | undefined = $state();
+
+  let postManager: PostManager | undefined = $state();
+  let showSecretKeyDialog = $state(false);
   let pendingPost = "";
 
   // 全画面表示用の状態
-  let showImageFullscreen = false;
-  let fullscreenImageSrc = "";
-  let fullscreenImageAlt = "";
+  let showImageFullscreen = $state(false);
+  let fullscreenImageSrc = $state("");
+  let fullscreenImageAlt = $state("");
 
   // ストアから状態を取得
-  $: postStatus = $editorState.postStatus;
-  $: uploadErrorMessage = $editorState.uploadErrorMessage;
+  let postStatus = $derived($editorState.postStatus);
+  let uploadErrorMessage = $derived($editorState.uploadErrorMessage);
 
   // --- PostManager初期化 ---
-  $: if (rxNostr) {
-    if (!postManager) {
-      postManager = new PostManager(rxNostr);
-    } else {
-      postManager.setRxNostr(rxNostr);
+  run(() => {
+    if (rxNostr) {
+      if (!postManager) {
+        postManager = new PostManager(rxNostr);
+      } else {
+        postManager.setRxNostr(rxNostr);
+      }
     }
-  }
+  });
 
   // --- Editor初期化・クリーンアップ ---
   // 画像ノードが含まれているか判定する共通関数
@@ -413,21 +427,25 @@
   }
 
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
-  $: if (
-    currentEditor &&
-    extractContentWithImages(currentEditor) !== $editorState.content
-  ) {
-    if (postStatus.error) {
-      updatePostStatus({ ...postStatus, error: false, message: "" });
-    }
-  }
-  $: if ($placeholderTextStore && editor) {
-    setTimeout(() => {
-      if (editor.updatePlaceholder) {
-        editor.updatePlaceholder($placeholderTextStore);
+  run(() => {
+    if (
+      currentEditor &&
+      extractContentWithImages(currentEditor) !== $editorState.content
+    ) {
+      if (postStatus.error) {
+        updatePostStatus({ ...postStatus, error: false, message: "" });
       }
-    }, 0);
-  }
+    }
+  });
+  run(() => {
+    if ($placeholderTextStore && editor) {
+      setTimeout(() => {
+        if (editor.updatePlaceholder) {
+          editor.updatePlaceholder($placeholderTextStore);
+        }
+      }, 0);
+    }
+  });
 
   // 外部からアクセスできるプロパティを公開
   export function openFileDialog() {
@@ -455,12 +473,12 @@
   <div
     class="editor-container"
     class:drag-over={dragOver}
-    on:keydown={handleEditorKeydown}
-    on:dragover={handleDragOver}
-    on:dragleave={handleDragLeave}
-    on:drop={handleDrop}
-    on:touchmove={handleTouchMove}
-    on:touchend={handleTouchEnd}
+    onkeydown={handleEditorKeydown}
+    ondragover={handleDragOver}
+    ondragleave={handleDragLeave}
+    ondrop={handleDrop}
+    ontouchmove={handleTouchMove}
+    ontouchend={handleTouchEnd}
     aria-label="テキスト入力エリア"
     role="textbox"
     tabindex="0"
@@ -474,7 +492,7 @@
     type="file"
     accept="image/*"
     multiple
-    on:change={handleFileSelect}
+    onchange={handleFileSelect}
     bind:this={fileInput}
     style="display: none;"
   />

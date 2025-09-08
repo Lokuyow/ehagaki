@@ -1,6 +1,10 @@
 <script lang="ts">
-    export let type: "success" | "error" | "info" = "success"; // infoを追加
-    export let message: string = "";
+    interface Props {
+        type?: "success" | "error" | "info"; // infoを追加
+        message?: string;
+    }
+
+    let { type = "success", message = "" }: Props = $props();
 </script>
 
 <div class="balloon-message-wrapper {type}">

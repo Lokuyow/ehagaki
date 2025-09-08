@@ -1,12 +1,21 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    export let text: string = "";
-    export let showImage: boolean = true;
-    export let showSpinner: boolean = false;
-    export let customClass: string = "";
+    interface Props {
+        text?: string;
+        showImage?: boolean;
+        showSpinner?: boolean;
+        customClass?: string;
+    }
+
+    let {
+        text = "",
+        showImage = true,
+        showSpinner = false,
+        customClass = "",
+    }: Props = $props();
 
     // デフォルトテキストを国際化対応で設定
-    $: displayText = text || $_("loadingPlaceholder.loading");
+    let displayText = $derived(text || $_("loadingPlaceholder.loading"));
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>

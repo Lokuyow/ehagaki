@@ -1,41 +1,65 @@
 <script lang="ts">
+    import { run, preventDefault } from "svelte/legacy";
+
     import { _ } from "svelte-i18n";
     import { PublicKeyState } from "../lib/keyManager";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
-    export let show: boolean; // デフォルト値を削除
-    export let secretKey: string;
-    export let onClose: () => void;
-    export let onSave: () => void;
-    export let onNostrLogin: () => void;
-    export let isLoadingNostrLogin: boolean = false;
+    interface Props {
+        show: boolean; // デフォルト値を削除
+        secretKey: string;
+        onClose: () => void;
+        onSave: () => void;
+        onNostrLogin: () => void;
+        isLoadingNostrLogin?: boolean;
+    }
+
+    let {
+        show = $bindable(),
+        secretKey = $bindable(),
+        onClose,
+        onSave,
+        onNostrLogin,
+        isLoadingNostrLogin = false,
+    }: Props = $props();
 
     // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
 
     // --- エラーメッセージ管理 ---
-    let inputEl: HTMLInputElement | null = null;
+    let inputEl: HTMLInputElement | null = $state(null);
 
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
-    $: if (secretKey !== undefined) {
-        publicKeyState.setNsec(secretKey);
-        // 入力値が空の場合のみエラーをクリア
-        if (inputEl) {
-            if (!secretKey) {
-                inputEl.setCustomValidity("");
+    run(() => {
+        if (secretKey !== undefined) {
+            publicKeyState.setNsec(secretKey);
+            // 入力値が空の場合のみエラーをクリア
+            if (inputEl) {
+                if (!secretKey) {
+                    inputEl.setCustomValidity("");
+                }
             }
         }
-    }
+    });
 
     // --- 公開鍵状態のサブスクライブ ---
-    $: isValid = false;
-    $: npubValue = "";
-    $: nprofileValue = "";
-    $: publicKeyState.isValid.subscribe((val) => (isValid = val));
-    $: publicKeyState.npub.subscribe((val) => (npubValue = val));
-    $: publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
+    let isValid = $state(false);
+
+    let npubValue = $state("");
+
+    let nprofileValue = $state("");
+
+    run(() => {
+        publicKeyState.isValid.subscribe((val) => (isValid = val));
+    });
+    run(() => {
+        publicKeyState.npub.subscribe((val) => (npubValue = val));
+    });
+    run(() => {
+        publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
+    });
 
     // --- UIイベントハンドラ ---
     function handleSave() {
@@ -117,76 +141,79 @@
     ariaLabel={$_("loginDialog.input_secret")}
     className="login-dialog"
     showFooter={true}
-    let:close
 >
-    <Button
-        variant="default"
-        shape="rounded"
-        className="nostr-login-button {isLoadingNostrLogin ? 'loading' : ''}"
-        on:click={handleNostrLogin}
-        disabled={isLoadingNostrLogin}
-    >
-        {#if isLoadingNostrLogin}
-            <LoadingPlaceholder
-                text=""
-                showImage={false}
-                showSpinner={true}
-                customClass="nostr-login-placeholder"
-            />
-        {:else}
-            <img
-                src="/ehagaki/icons/nostr-login.svg"
-                alt="nostr-login"
-                class="nostr-login-icon"
-            />
-            <span class="btn-text">Nostr Login</span>
-        {/if}
-    </Button>
+    {#snippet children()}
+        <Button
+            variant="default"
+            shape="rounded"
+            className="nostr-login-button {isLoadingNostrLogin
+                ? 'loading'
+                : ''}"
+            on:click={handleNostrLogin}
+            disabled={isLoadingNostrLogin}
+        >
+            {#if isLoadingNostrLogin}
+                <LoadingPlaceholder
+                    text=""
+                    showImage={false}
+                    showSpinner={true}
+                    customClass="nostr-login-placeholder"
+                />
+            {:else}
+                <img
+                    src="/ehagaki/icons/nostr-login.svg"
+                    alt="nostr-login"
+                    class="nostr-login-icon"
+                />
+                <span class="btn-text">Nostr Login</span>
+            {/if}
+        </Button>
 
-    <div class="divider">
-        <span>{$_("loginDialog.or")}</span>
-    </div>
-
-    <h3>{$_("loginDialog.input_secret")}</h3>
-    <form on:submit|preventDefault={handleSave}>
-        <input
-            type="password"
-            bind:value={secretKey}
-            placeholder="nsec1…"
-            class="secret-input"
-            id="secretKey"
-            name="secretKey"
-            autocomplete="current-password"
-            required
-            minlength="63"
-            maxlength="63"
-            bind:this={inputEl}
-            title={$_("loginDialog.hint_input_secret")}
-            on:keydown={(e) => {
-                if (e.key === "Enter") handleSave();
-            }}
-            on:input={() => {
-                // 入力時はエラーをクリアするだけ
-                if (inputEl) inputEl.setCustomValidity("");
-            }}
-        />
-
-        <div class="dialog-buttons">
-            <Button
-                variant="warning"
-                shape="square"
-                type="button"
-                on:click={handleClear}
-                className="clear-btn">{$_("loginDialog.clear")}</Button
-            >
-            <Button
-                variant="primary"
-                shape="square"
-                type="submit"
-                className="save-btn">{$_("loginDialog.save")}</Button
-            >
+        <div class="divider">
+            <span>{$_("loginDialog.or")}</span>
         </div>
-    </form>
+
+        <h3>{$_("loginDialog.input_secret")}</h3>
+        <form onsubmit={preventDefault(handleSave)}>
+            <input
+                type="password"
+                bind:value={secretKey}
+                placeholder="nsec1…"
+                class="secret-input"
+                id="secretKey"
+                name="secretKey"
+                autocomplete="current-password"
+                required
+                minlength="63"
+                maxlength="63"
+                bind:this={inputEl}
+                title={$_("loginDialog.hint_input_secret")}
+                onkeydown={(e) => {
+                    if (e.key === "Enter") handleSave();
+                }}
+                oninput={() => {
+                    // 入力時はエラーをクリアするだけ
+                    if (inputEl) inputEl.setCustomValidity("");
+                }}
+            />
+
+            <div class="dialog-buttons">
+                <Button
+                    variant="warning"
+                    shape="square"
+                    type="button"
+                    on:click={handleClear}
+                    className="clear-btn">{$_("loginDialog.clear")}</Button
+                >
+                <Button
+                    variant="primary"
+                    shape="square"
+                    type="submit"
+                    className="save-btn">{$_("loginDialog.save")}</Button
+                >
+            </div>
+        </form>
+    {/snippet}
 </Dialog>
 
 <style>

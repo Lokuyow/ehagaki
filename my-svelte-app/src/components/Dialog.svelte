@@ -2,15 +2,32 @@
     import { onMount, onDestroy } from "svelte";
     import Button from "./Button.svelte";
 
-    export let show: boolean = false;
-    export let onClose: () => void;
-    export let ariaLabel: string = "Dialog";
-    export let className: string = "";
-    export let showFooter: boolean = false;
-    export let useHistory: boolean = true;
+    interface Props {
+        show?: boolean;
+        onClose: () => void;
+        ariaLabel?: string;
+        className?: string;
+        // 'class' prop is not explicitly accepted; use className or $$restProps instead
+        showFooter?: boolean;
+        useHistory?: boolean;
+        children?: import("svelte").Snippet<[any]>;
+        footer?: import("svelte").Snippet<[any]>;
+        [evt: string]: any; // Svelteイベント用
+    }
 
-    let isModalVisible = false;
-    let historyStateId: string | null = null;
+    let {
+        show = $bindable(false),
+        onClose,
+        ariaLabel = "Dialog",
+        className = "",
+        showFooter = false,
+        useHistory = true,
+        children,
+        footer,
+    }: Props = $props();
+
+    let isModalVisible = $state(false);
+    let historyStateId: string | null = $state(null);
 
     // スロットプロップで提供する閉じる関数
     const closeModal = () => {
@@ -25,38 +42,43 @@
         }
     };
 
-    // showプロパティの変更を監視する
-    $: {
-        if (typeof window !== "undefined" && useHistory) {
-            if (show) {
-                // モーダルを開く処理
-                isModalVisible = true;
-                // 一意のIDを生成して履歴に追加
-                historyStateId = `modal-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // showプロパティの変更を監視する（開閉の遷移時のみ履歴操作）
+    $effect(() => {
+        if (typeof window === "undefined") {
+            isModalVisible = show;
+            if (!show) onClose?.();
+            return;
+        }
+
+        if (!useHistory) {
+            isModalVisible = show;
+            if (!show) onClose?.();
+            return;
+        }
+
+        // 開く遷移（false -> true）の時だけpushState
+        if (show && !isModalVisible) {
+            isModalVisible = true;
+            if (!historyStateId) {
+                historyStateId = `modal-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
                 history.pushState(
                     { modalId: historyStateId },
                     "",
                     window.location.href,
                 );
-            } else {
-                // モーダルを閉じる処理
-                isModalVisible = false;
-                // 現在の履歴状態が自分のモーダルの場合のみ戻る
-                if (history.state?.modalId === historyStateId) {
-                    history.back();
-                }
-                historyStateId = null;
-                // onCloseコールバックを実行
-                onClose?.();
             }
-        } else {
-            isModalVisible = show;
-            // useHistoryがfalseの場合でもonCloseは実行
-            if (!show && onClose) {
-                onClose();
-            }
+            return;
         }
-    }
+
+        // 閉じる遷移（true -> false）の時だけback
+        if (!show && isModalVisible) {
+            const shouldGoBack = history.state?.modalId === historyStateId;
+            isModalVisible = false;
+            historyStateId = null;
+            if (shouldGoBack) history.back();
+            onClose?.();
+        }
+    });
 
     onMount(() => {
         if (useHistory) {
@@ -79,25 +101,24 @@
     <div
         class="dialog-overlay"
         role="presentation"
-        on:click={closeModal}
+        onclick={closeModal}
         aria-label={ariaLabel}
     >
         <div
-            class="dialog {className} {$$props.class || ''}"
+            class="dialog {className}"
+            class:dialog={true}
             role="dialog"
             aria-modal="true"
             tabindex="0"
-            on:click|stopPropagation
-            on:keydown={(e) => {
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => {
                 if (e.key === "Escape") closeModal();
             }}
         >
-            <div class="dialog-content">
-                <slot close={closeModal} />
-            </div>
+            {@render children?.({ close: closeModal })}
             {#if showFooter}
                 <div class="dialog-footer">
-                    <slot name="footer" close={closeModal}>
+                    {#if footer}{@render footer({ close: closeModal })}{:else}
                         <Button
                             className="modal-close"
                             on:click={closeModal}
@@ -108,7 +129,7 @@
                                 aria-label="閉じる"
                             ></div>
                         </Button>
-                    </slot>
+                    {/if}
                 </div>
             {/if}
         </div>

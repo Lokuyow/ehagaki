@@ -1,26 +1,35 @@
 <script lang="ts">
+    import { run } from "svelte/legacy";
+
     import { _ } from "svelte-i18n";
     import { editorState, submitPost } from "../lib/editor/store";
     import { authState } from "../lib/stores";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte"; // 追加
 
-    export let onUploadImage: () => void;
-    export let onResetPostContent: () => void;
-    export let balloonMessage: {
-        type: "success" | "error" | "info";
-        message: string;
-    } | null = null;
-
     // --- infoバルーンデバッグ用 ---
     import { onDestroy } from "svelte";
     import { writable } from "svelte/store";
+    interface Props {
+        onUploadImage: () => void;
+        onResetPostContent: () => void;
+        balloonMessage?: {
+            type: "success" | "error" | "info";
+            message: string;
+        } | null;
+    }
+
+    let {
+        onUploadImage,
+        onResetPostContent,
+        balloonMessage = null,
+    }: Props = $props();
     const infoBalloonStore = writable<{ message: string } | null>(null);
 
-    $: postStatus = $editorState.postStatus;
-    $: hasStoredKey = $authState.isAuthenticated;
-    $: isUploading = $editorState.isUploading;
-    $: canPost = $editorState.canPost || $editorState.hasImage; // 修正
+    let postStatus = $derived($editorState.postStatus);
+    let hasStoredKey = $derived($authState.isAuthenticated);
+    let isUploading = $derived($editorState.isUploading);
+    let canPost = $derived($editorState.canPost || $editorState.hasImage); // 修正
 
     function showSuccessMessage() {
         setTimeout(() => {
@@ -44,24 +53,28 @@
     ];
 
     // 投稿成功時にランダムでメッセージを選択（1回だけ）
-    let postSuccessBalloonMessage = "";
-    let hasShownRandomSuccessBalloon = false;
-    $: if (
-        postStatus.success &&
-        postStatus.completed &&
-        !hasShownRandomSuccessBalloon
-    ) {
-        // completedになったタイミングでランダムメッセージをセット
-        const idx = Math.floor(Math.random() * postSuccessMessages.length);
-        postSuccessBalloonMessage = postSuccessMessages[idx];
-        hasShownRandomSuccessBalloon = true;
-        showSuccessMessage();
-    }
+    let postSuccessBalloonMessage = $state("");
+    let hasShownRandomSuccessBalloon = $state(false);
+    run(() => {
+        if (
+            postStatus.success &&
+            postStatus.completed &&
+            !hasShownRandomSuccessBalloon
+        ) {
+            // completedになったタイミングでランダムメッセージをセット
+            const idx = Math.floor(Math.random() * postSuccessMessages.length);
+            postSuccessBalloonMessage = postSuccessMessages[idx];
+            hasShownRandomSuccessBalloon = true;
+            showSuccessMessage();
+        }
+    });
     // 投稿がリセットされたらフラグもリセット
-    $: if (!postStatus.success || !postStatus.completed) {
-        hasShownRandomSuccessBalloon = false;
-        postSuccessBalloonMessage = "";
-    }
+    run(() => {
+        if (!postStatus.success || !postStatus.completed) {
+            hasShownRandomSuccessBalloon = false;
+            postSuccessBalloonMessage = "";
+        }
+    });
 
     // --- dev用: post success/error強制表示デバッグ ---
     if (import.meta.env.MODE === "development") {

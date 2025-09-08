@@ -1,18 +1,33 @@
 <script lang="ts">
     import { createEventDispatcher } from "svelte";
-    export let className: string = "";
-    export let disabled: boolean = false;
-    export let type: "button" | "submit" | "reset" = "button";
-    export let ariaLabel: string = "";
-    export let style: string = "";
-    export let variant:
+    
+    interface Props {
+        className?: string;
+        disabled?: boolean;
+        type?: "button" | "submit" | "reset";
+        ariaLabel?: string;
+        style?: string;
+        variant?: 
         | "default"
         | "primary"
         | "danger"
         | "secondary"
-        | "warning" = "default";
-    // shapeプロパティ追加
-    export let shape: "square" | "rounded" | "pill" | "circle" = "rounded";
+        | "warning";
+        // shapeプロパティ追加
+        shape?: "square" | "rounded" | "pill" | "circle";
+        children?: import('svelte').Snippet;
+    }
+
+    let {
+        className = "",
+        disabled = false,
+        type = "button",
+        ariaLabel = "",
+        style = "",
+        variant = "default",
+        shape = "rounded",
+        children
+    }: Props = $props();
 
     const dispatch = createEventDispatcher();
 
@@ -27,9 +42,9 @@
     {disabled}
     aria-label={ariaLabel}
     {style}
-    on:click={handleClick}
+    onclick={handleClick}
 >
-    <slot />
+    {@render children?.()}
 </button>
 
 <style>

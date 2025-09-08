@@ -4,11 +4,15 @@
     import { onDestroy } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
 
-    export let node: NodeViewProps["node"];
-    export let selected: boolean;
-    export let getPos: NodeViewProps["getPos"];
+    interface Props {
+        node: NodeViewProps["node"];
+        selected: boolean;
+        getPos: NodeViewProps["getPos"];
+    }
 
-    let isDragging = false;
+    let { node, selected, getPos }: Props = $props();
+
+    let isDragging = $state(false);
     let touchStartPos = { x: 0, y: 0 };
     let dragPreview: HTMLElement | null = null;
 
@@ -340,23 +344,23 @@
         class="editor-image-button"
         data-selected={selected}
         data-dragging={isDragging}
-        on:click={handleClick}
+        onclick={handleClick}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
         draggable="true"
-        on:dragstart={handleDragStart}
-        on:dragend={handleDragEnd}
-        on:touchstart={handleTouchStart}
-        on:touchmove={handleTouchMove}
-        on:touchend={handleTouchEnd}
-        on:contextmenu={handleContextMenu}
+        ondragstart={handleDragStart}
+        ondragend={handleDragEnd}
+        ontouchstart={handleTouchStart}
+        ontouchmove={handleTouchMove}
+        ontouchend={handleTouchEnd}
+        oncontextmenu={handleContextMenu}
     >
         <img
             src={node.attrs.src}
             alt={node.attrs.alt || ""}
             class="editor-image"
             draggable="false"
-            on:contextmenu={handleContextMenu}
+            oncontextmenu={handleContextMenu}
         />
     </button>
 </NodeViewWrapper>
