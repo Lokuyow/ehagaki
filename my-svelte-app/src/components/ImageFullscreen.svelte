@@ -14,8 +14,6 @@
         createDragState,
         createPinchState,
         type TransformState,
-        type DragState,
-        type PinchState,
     } from "../lib/editor/stores/transformStore.svelte";
 
     interface Props {
@@ -46,52 +44,59 @@
     let tapTimeoutId: number | null = null;
     let lastTapPosition: { x: number; y: number } | null = null;
 
-    $effect(() => {
-        transformState = transformStore.state;
-        if (imageContainerElement) updateTransform();
-    });
-
-    function updateTransform() {
+    // --- Utility functions ---
+    function setImageContainerStyle({
+        scale,
+        translate,
+        useTransition,
+    }: TransformState) {
         if (!imageContainerElement) return;
-        const { scale, translate, useTransition } = transformState;
         imageContainerElement.style.transition = useTransition
             ? `transform ${TIMING.TRANSITION_DURATION} ease`
             : "none";
-        imageContainerElement.style.transform = `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`;
+        imageContainerElement.style.transform = `scale(${scale}) translate(${
+            translate.x / scale
+        }px, ${translate.y / scale}px)`;
         imageContainerElement.style.transformOrigin = "center";
     }
-
-    function updateTransformDirect(
+    function setImageContainerTransformDirect(
         scale: number,
         translateX: number,
         translateY: number,
     ) {
         if (!imageContainerElement) return;
         imageContainerElement.style.transition = "none";
-        imageContainerElement.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+        imageContainerElement.style.transform = `scale(${scale}) translate(${
+            translateX / scale
+        }px, ${translateY / scale}px)`;
     }
-
-    function setImageCursor() {
+    function setImageCursorByScale(scale: number) {
         if (!imageContainerElement) return;
         imageContainerElement.style.cursor =
-            transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE
-                ? "grab"
-                : "default";
+            scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
     }
-
-    const setTransition = (enable: boolean) =>
+    function setTransition(enable: boolean) {
         transformStore.setTransition(enable);
-
+    }
+    function clearTapTimer() {
+        if (tapTimeoutId !== null) {
+            clearTimeout(tapTimeoutId);
+            tapTimeoutId = null;
+        }
+    }
+    function clearAllBodyStylesAndTimers() {
+        clearBodyStyles();
+        clearTapTimer();
+    }
     function pushHistoryState() {
         if (!historyPushed) {
             history.pushState({ imageFullscreen: true }, "", "");
             historyPushed = true;
         }
     }
-    const clearHistoryState = () => {
+    function clearHistoryState() {
         historyPushed = false;
-    };
-
+    }
     function resetAllStates() {
         if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
         if (pinchAnimationFrameId !== null)
@@ -106,35 +111,13 @@
         clearBodyStyles();
     }
 
-    function close() {
-        resetAllStates();
-        show = false;
-        onClose();
-        if (historyPushed) {
-            clearHistoryState();
-            history.back();
-        }
-        focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
-    }
+    // --- Transform effect ---
+    $effect(() => {
+        transformState = transformStore.state;
+        setImageContainerStyle(transformState);
+    });
 
-    function handlePopState(event: PopStateEvent) {
-        if (show && historyPushed) {
-            event.preventDefault();
-            resetAllStates();
-            clearHistoryState();
-            show = false;
-            onClose();
-        }
-    }
-
-    const handleKeydown = (event: KeyboardEvent) => {
-        if (event.key === "Escape") close();
-    };
-
-    const handleBackdropClick = (event: MouseEvent) => {
-        if (event.target === containerElement) close();
-    };
-
+    // --- Zoom/Drag/Pinch Handlers ---
     function handleWheel(event: WheelEvent) {
         event.preventDefault();
         if (!imageContainerElement || !containerElement) return;
@@ -151,9 +134,8 @@
             newScale,
         );
         transformStore.zoom(zoomParams);
-        setImageCursor();
+        setImageCursorByScale(transformState.scale);
     }
-
     function executeZoomToggle(clientX?: number, clientY?: number) {
         setTransition(true);
         setTimeout(() => {
@@ -176,16 +158,13 @@
                     viewport.offsetY,
                 );
             }
-            setImageCursor();
+            setImageCursorByScale(transformState.scale);
         }, 100);
     }
-
     function handleDoubleClick(event: MouseEvent) {
-        if (!imageContainerElement || !containerElement) return;
         stopDragIfActive();
         executeZoomToggle(event.clientX, event.clientY);
     }
-
     function startDrag(clientX: number, clientY: number) {
         dragState.isDragging = true;
         dragState.start = { x: clientX, y: clientY };
@@ -197,7 +176,6 @@
         setBodyStyle("user-select", "none");
         setBodyStyle("-webkit-user-select", "none");
     }
-
     function updateDrag(clientX: number, clientY: number) {
         if (!dragState.isDragging) return;
         if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
@@ -209,7 +187,6 @@
             transformStore.drag(delta.x, delta.y, dragState.startTranslate);
         });
     }
-
     function stopDrag() {
         if (!dragState.isDragging) return;
         dragState.isDragging = false;
@@ -217,15 +194,14 @@
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
         }
-        setImageCursor();
+        setImageCursorByScale(transformState.scale);
         setTimeout(() => setTransition(true), 50);
         setBodyStyle("user-select", "");
         setBodyStyle("-webkit-user-select", "");
     }
-    const stopDragIfActive = () => {
+    function stopDragIfActive() {
         if (dragState.isDragging) stopDrag();
-    };
-
+    }
     function startPinch(event: TouchEvent) {
         const [touch1, touch2] = [event.touches[0], event.touches[1]];
         const dx = touch1.clientX - touch2.clientX;
@@ -240,7 +216,6 @@
             setTransition(false);
         }
     }
-
     function updatePinch(event: TouchEvent) {
         if (!pinchState.isPinching || !containerElement) return;
         if (pinchAnimationFrameId !== null)
@@ -274,11 +249,14 @@
                 const newTranslateY =
                     transformState.translate.y * actualScaleRatio -
                     offsetY * (actualScaleRatio - 1);
-                updateTransformDirect(newScale, newTranslateX, newTranslateY);
+                setImageContainerTransformDirect(
+                    newScale,
+                    newTranslateX,
+                    newTranslateY,
+                );
             }
         });
     }
-
     function stopPinch() {
         if (!pinchState.isPinching) return;
         if (pinchAnimationFrameId !== null) {
@@ -306,9 +284,10 @@
             }
         }
         setTransition(true);
-        setImageCursor();
+        setImageCursorByScale(transformState.scale);
     }
 
+    // --- Tap/Pointer Handlers ---
     function handleTap(clientX: number, clientY: number) {
         const currentTime = Date.now();
         if (currentTime - lastTapTime < 300 && tapTimeoutId !== null) {
@@ -329,14 +308,6 @@
             }, 300),
         );
     }
-
-    function clearTapTimer() {
-        if (tapTimeoutId !== null) {
-            clearTimeout(tapTimeoutId);
-            tapTimeoutId = null;
-        }
-    }
-
     function handlePointerStart(
         clientX: number,
         clientY: number,
@@ -346,11 +317,14 @@
         if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE)
             startDrag(clientX, clientY);
     }
-    const handlePointerMove = (clientX: number, clientY: number) => {
+    function handlePointerMove(clientX: number, clientY: number) {
         if (dragState.isDragging) updateDrag(clientX, clientY);
-    };
-    const handlePointerEnd = () => stopDrag();
+    }
+    function handlePointerEnd() {
+        stopDrag();
+    }
 
+    // --- Event Handlers ---
     function handleTouchStart(event: TouchEvent) {
         event.preventDefault();
         if (event.touches.length === 1) {
@@ -362,7 +336,6 @@
             startPinch(event);
         }
     }
-
     function handleTouchMove(event: TouchEvent) {
         event.preventDefault();
         if (event.touches.length === 1 && dragState.isDragging) {
@@ -374,7 +347,6 @@
             updatePinch(event);
         }
     }
-
     function handleTouchEnd(event: TouchEvent) {
         event.preventDefault();
         if (event.touches.length === 0) {
@@ -384,7 +356,6 @@
             stopPinch();
         }
     }
-
     function handleMouseDown(event: MouseEvent) {
         handlePointerStart(event.clientX, event.clientY);
     }
@@ -394,8 +365,36 @@
             handlePointerMove(event.clientX, event.clientY);
         }
     }
-    const handleMouseUp = () => handlePointerEnd();
+    function handleMouseUp() {
+        handlePointerEnd();
+    }
+    function handleBackdropClick(event: MouseEvent) {
+        if (event.target === containerElement) close();
+    }
+    function handleKeydown(event: KeyboardEvent) {
+        if (event.key === "Escape") close();
+    }
+    function handlePopState(event: PopStateEvent) {
+        if (show && historyPushed) {
+            event.preventDefault();
+            resetAllStates();
+            clearHistoryState();
+            show = false;
+            onClose();
+        }
+    }
+    function close() {
+        resetAllStates();
+        show = false;
+        onClose();
+        if (historyPushed) {
+            clearHistoryState();
+            history.back();
+        }
+        focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
+    }
 
+    // --- Effect: show/hide ---
     $effect(() => {
         if (show) {
             resetAllStates();
@@ -407,6 +406,7 @@
         }
     });
 
+    // --- Mount/Unmount ---
     onMount(() => {
         const eventHandlers = [
             { event: "mousemove", handler: handleMouseMove, target: document },
@@ -423,11 +423,9 @@
             clearTapTimer();
         };
     });
-
     onDestroy(() => {
-        clearBodyStyles();
+        clearAllBodyStylesAndTimers();
         if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
-        clearTapTimer();
         clearHistoryState();
         lastTapPosition = null;
     });
