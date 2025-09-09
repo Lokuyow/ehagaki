@@ -89,10 +89,6 @@
             tapTimeoutId = null;
         }
     }
-    function clearAllBodyStylesAndTimers() {
-        clearBodyStyles();
-        clearTapTimer();
-    }
     function pushHistoryState() {
         if (!historyPushed) {
             history.pushState({ imageFullscreen: true }, "", "");
