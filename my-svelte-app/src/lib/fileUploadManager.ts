@@ -152,7 +152,7 @@ export class FileUploadManager {
 
   // --- nip98認証ヘッダー生成 ---
   private static async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
-    const storedKey = keyManager.loadFromStorage();
+    const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
     let signFunc: (event: any) => Promise<any>;
     if (storedKey) {
       signFunc = (event) => seckeySigner(storedKey).signEvent(event);

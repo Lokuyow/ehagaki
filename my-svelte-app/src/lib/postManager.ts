@@ -142,7 +142,7 @@ export class PostManager {
       }
 
       // ローカルキーを使用（秘密鍵直入れの場合）
-      const storedKey = keyManager.loadFromStorage();
+      const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
       if (!storedKey) return { success: false, error: "key_not_found" };
       const event = await this.buildEvent(content);
       const signer = seckeySigner(storedKey);

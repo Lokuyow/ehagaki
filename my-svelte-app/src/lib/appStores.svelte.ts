@@ -219,6 +219,19 @@ export const swVersionStore = {
     }
 };
 
+// --- 秘密鍵ストア ---
+let secretKey = $state<string | null>(null);
+
+export const secretKeyStore = {
+    get value() { return secretKey; },
+    set: (value: string | null) => { secretKey = value; },
+    subscribe: (callback: (value: string | null) => void) => {
+        $effect(() => {
+            callback(secretKey);
+        });
+    }
+};
+
 // --- 画像サイズ情報表示 ---
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
     if (info === null) {

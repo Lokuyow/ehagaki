@@ -1,6 +1,6 @@
 import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
-import { setAuthInitialized, setNsecAuth, clearAuthState } from './appStores.svelte';
+import { setAuthInitialized, setNsecAuth, clearAuthState, secretKeyStore } from './appStores.svelte';
 import { debugLog } from './debug';
 
 export interface AuthResult {
@@ -144,6 +144,9 @@ export class AuthService {
         this.publicKeyState.clear();
         clearAuthState(true);
 
+        // 秘密鍵ストアもクリア
+        secretKeyStore.set(null);
+
         // nostr-loginからもログアウト
         if (nostrLoginManager.isInitialized) {
             nostrLoginManager.logout();
@@ -216,9 +219,7 @@ export class AuthService {
                     debugLog('[initializeAuth] ストレージキーの処理中にエラー', error);
                     console.error('ストレージキーの処理中にエラー:', error);
                 }
-            }
-
-            // --- nsecがなければ外部認証やnostr-loginをチェック（起動しない範囲のみ） ---
+            }            // --- nsecがなければ外部認証やnostr-loginをチェック（起動しない範囲のみ） ---
             const hasExternalAuth = await this.waitForExternalAuth(100);
             if (hasExternalAuth) {
                 debugLog('[initializeAuth] 外部認証オブジェクト検出済み');

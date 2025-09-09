@@ -1,5 +1,5 @@
 import { writable, derived, type Readable, get } from "svelte/store";
-import { setNostrLoginAuth, clearAuthState } from "./appStores.svelte";
+import { setNostrLoginAuth, clearAuthState, secretKeyStore } from "./appStores.svelte";
 import { derivePublicKeyFromNsec, isValidNsec } from "./utils";
 import type { PublicKeyData } from "./types";
 import { nip19 } from "nostr-tools";
@@ -151,7 +151,9 @@ export const keyManager = {
       };
     }
     try {
-      localStorage.setItem("nostr-secret-key", key.trim());
+      const trimmedKey = key.trim();
+      localStorage.setItem("nostr-secret-key", trimmedKey);
+      secretKeyStore.set(trimmedKey);
       return { success: true };
     } catch (error) {
       const keyError: KeyManagerError = {
@@ -166,12 +168,26 @@ export const keyManager = {
 
   // --- 秘密鍵をストレージから取得 ---
   loadFromStorage(): string | null {
+    // まずストアから取得を試行
+    let key = secretKeyStore.value;
+    if (key) return key;
+
+    // ストアが空の場合はローカルストレージから取得してストアに保存
     try {
-      return localStorage.getItem("nostr-secret-key");
+      key = localStorage.getItem("nostr-secret-key");
+      if (key) {
+        secretKeyStore.set(key);
+      }
+      return key;
     } catch (error) {
       console.error("鍵の読み込みに失敗:", error);
       return null;
     }
+  },
+
+  // --- ストアから直接秘密鍵を取得 ---
+  getFromStore(): string | null {
+    return secretKeyStore.value;
   },
 
   // --- 秘密鍵が保存されているか判定 ---
