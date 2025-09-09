@@ -54,7 +54,10 @@ export const transformStore = {
     },
 
     setDirectState: (newState: TransformState) => {
-        transform = newState;
+        // オブジェクトを丸ごと置き換えず、既存の reactive state のプロパティを直接更新する
+        transform.scale = newState.scale;
+        transform.translate = { x: newState.translate.x, y: newState.translate.y };
+        transform.useTransition = newState.useTransition ?? transform.useTransition;
     },
 
     zoom: (params: ZoomParams) => {
