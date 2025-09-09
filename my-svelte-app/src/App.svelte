@@ -211,6 +211,9 @@
 
     // --- 追加: sharedImageProcessedも削除 ---
     localStorage.removeItem("sharedImageProcessed");
+
+    // --- 追加: 設定ダイアログの画像圧縮設定をデフォルトに戻す ---
+    selectedCompression = "medium";
   }
 
   async function loginWithNostrLogin() {
@@ -442,6 +445,13 @@
     }
     wasHidden = document.visibilityState === "hidden";
   }
+
+  // --- 追加: 設定ダイアログの画像圧縮設定を管理 ---
+  let selectedCompression = $state("medium");
+
+  function handleSelectedCompressionChange(value: string) {
+    selectedCompression = value;
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -496,6 +506,8 @@
       show={showSettingsDialogStore.value}
       onClose={closeSettingsDialog}
       onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
+      {selectedCompression}
+      onSelectedCompressionChange={handleSelectedCompressionChange}
     />
   </main>
 {/if}

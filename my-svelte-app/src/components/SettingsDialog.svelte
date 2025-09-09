@@ -19,12 +19,16 @@
         show?: boolean;
         onClose: () => void;
         onRefreshRelaysAndProfile?: () => void;
+        selectedCompression?: string;
+        onSelectedCompressionChange?: (value: string) => void;
     }
 
     let {
         show = false,
         onClose,
         onRefreshRelaysAndProfile = () => {},
+        selectedCompression = "medium",
+        onSelectedCompressionChange = undefined,
     }: Props = $props();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
@@ -32,7 +36,22 @@
 
     let selectedEndpoint: string = $state("");
     let clientTagEnabled = $state(true);
-    let selectedCompression: string = $state("");
+    // selectedCompressionはpropsから受け取る
+    $effect(() => {
+        if (selectedCompression !== undefined && selectedCompression !== "") {
+            _selectedCompression = selectedCompression;
+        }
+    });
+    let _selectedCompression: string = $state(selectedCompression);
+
+    $effect(() => {
+        if (
+            onSelectedCompressionChange &&
+            _selectedCompression !== selectedCompression
+        ) {
+            onSelectedCompressionChange(_selectedCompression);
+        }
+    });
 
     // swVersion from store
     let swVersion: string | null = $state(null);
@@ -111,8 +130,10 @@
         }
 
         // 圧縮設定の初期化
-        selectedCompression =
-            localStorage.getItem("imageCompressionLevel") || "medium";
+        _selectedCompression =
+            selectedCompression ||
+            localStorage.getItem("imageCompressionLevel") ||
+            "medium";
 
         loadWriteRelays();
         fetchSwVersion();
@@ -158,8 +179,8 @@
         );
     });
     $effect(() => {
-        if (selectedCompression) {
-            localStorage.setItem("imageCompressionLevel", selectedCompression);
+        if (_selectedCompression) {
+            localStorage.setItem("imageCompressionLevel", _selectedCompression);
         }
     });
 
@@ -286,7 +307,7 @@
             <div class="setting-control">
                 <select
                     id="compression-select"
-                    bind:value={selectedCompression}
+                    bind:value={_selectedCompression}
                 >
                     {#each compressionLevels as level}
                         <option value={level.value}>{level.label}</option>
