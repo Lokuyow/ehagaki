@@ -78,6 +78,11 @@
     function setTransition(enable: boolean) {
         transformStore.setTransition(enable);
     }
+    function setBodyUserSelect(enable: boolean) {
+        const value = enable ? "" : "none";
+        setBodyStyle("user-select", value);
+        setBodyStyle("-webkit-user-select", value);
+    }
     function clearTapTimer() {
         if (tapTimeoutId !== null) {
             clearTimeout(tapTimeoutId);
@@ -173,8 +178,7 @@
             imageContainerElement.style.cursor = "grabbing";
             setTransition(false);
         }
-        setBodyStyle("user-select", "none");
-        setBodyStyle("-webkit-user-select", "none");
+        setBodyUserSelect(false);
     }
     function updateDrag(clientX: number, clientY: number) {
         if (!dragState.isDragging) return;
@@ -196,8 +200,7 @@
         }
         setImageCursorByScale(transformState.scale);
         setTimeout(() => setTransition(true), 50);
-        setBodyStyle("user-select", "");
-        setBodyStyle("-webkit-user-select", "");
+        setBodyUserSelect(true);
     }
     function stopDragIfActive() {
         if (dragState.isDragging) stopDrag();
@@ -407,25 +410,36 @@
     });
 
     // --- Mount/Unmount ---
-    onMount(() => {
-        const eventHandlers = [
+    function attachGlobalHandlers() {
+        const handlers = [
             { event: "mousemove", handler: handleMouseMove, target: document },
             { event: "mouseup", handler: handleMouseUp, target: document },
             { event: "popstate", handler: handlePopState, target: window },
         ];
-        eventHandlers.forEach(({ event, handler, target }) => {
-            target.addEventListener(event, handler as EventListener);
-        });
+        handlers.forEach(({ event, handler, target }) =>
+            target.addEventListener(event, handler as EventListener),
+        );
+        return handlers;
+    }
+
+    function detachGlobalHandlers(
+        handlers: { event: string; handler: Function; target: EventTarget }[],
+    ) {
+        handlers.forEach(({ event, handler, target }) =>
+            target.removeEventListener(event, handler as EventListener),
+        );
+    }
+
+    onMount(() => {
+        const handlers = attachGlobalHandlers();
         return () => {
-            eventHandlers.forEach(({ event, handler, target }) => {
-                target.removeEventListener(event, handler as EventListener);
-            });
+            detachGlobalHandlers(handlers);
             clearTapTimer();
         };
     });
+
     onDestroy(() => {
-        clearAllBodyStylesAndTimers();
-        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+        resetAllStates();
         clearHistoryState();
         lastTapPosition = null;
     });
