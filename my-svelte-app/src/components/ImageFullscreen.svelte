@@ -367,9 +367,6 @@
     function handleMouseUp() {
         handlePointerEnd();
     }
-    function handleBackdropClick(event: MouseEvent) {
-        if (event.target === containerElement) close();
-    }
     function handleKeydown(event: KeyboardEvent) {
         if (event.key === "Escape") close();
     }
@@ -447,7 +444,6 @@
     <div
         class="fullscreen-overlay"
         bind:this={containerElement}
-        onclick={handleBackdropClick}
         onkeydown={handleKeydown}
         onwheel={handleWheel}
         tabindex="0"
@@ -543,8 +539,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 100%;
-        height: 100%;
+        width: fit-content;
+        height: fit-content;
         overflow: hidden;
         /* ブラウザ標準のピンチズームを無効化して独自実装を使用 */
         touch-action: none;
