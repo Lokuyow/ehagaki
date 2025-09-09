@@ -446,15 +446,16 @@
         role="dialog"
         aria-label="画像全画面表示"
     >
-        <!-- Add your close button or logic here -->
-        <button
-            type="button"
-            class="close-button"
-            onclick={close}
-            aria-label="Close fullscreen image"
-        >
-            <span class="svg-icon close-icon"></span>
-        </button>
+        <div class="close-button-container">
+            <button
+                type="button"
+                class="close-button"
+                onclick={close}
+                aria-label="Close fullscreen image"
+            >
+                <span class="svg-icon close-icon"></span>
+            </button>
+        </div>
         <div class="image-container" bind:this={imageContainerElement}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -494,13 +495,18 @@
         touch-action: none;
     }
 
-    .close-button {
+    .close-button-container {
         position: absolute;
         bottom: 20px;
         right: 50%;
         transform: translateX(50%);
+        z-index: 10001;
+    }
+
+    .close-button {
         background-color: rgba(0, 0, 0, 0.6);
         backdrop-filter: blur(4px);
+        opacity: 0.8;
         border: none;
         color: white;
         font-size: 24px;
@@ -512,7 +518,6 @@
         align-items: center;
         justify-content: center;
         transition: background 0.2s ease;
-        z-index: 10001;
     }
 
     .close-button:hover {
