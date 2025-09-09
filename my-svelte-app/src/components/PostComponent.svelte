@@ -118,6 +118,26 @@
 
     setPostSubmitter(submitPost);
 
+    // --- クリップボード画像貼り付け対応 ---
+    const handlePaste = (event: ClipboardEvent) => {
+      if (!event.clipboardData) return;
+      const files: File[] = [];
+      for (const item of event.clipboardData.items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        event.preventDefault();
+        uploadFiles(files);
+      }
+    };
+    const editorContainer = document.querySelector(".editor-container");
+    if (editorContainer) {
+      editorContainer.addEventListener("paste", handlePaste as EventListener);
+    }
+
     return () => {
       window.removeEventListener(
         "editor-content-changed",
@@ -127,6 +147,12 @@
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
       );
+      if (editorContainer) {
+        editorContainer.removeEventListener(
+          "paste",
+          handlePaste as EventListener,
+        );
+      }
       try {
         unsubscribe();
         if (currentEditor && typeof currentEditor.destroy === "function") {
