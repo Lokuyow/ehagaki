@@ -544,8 +544,8 @@
     }
 
     .fullscreen-image {
-        max-width: 95vw;
-        max-height: 85vh;
+        max-width: 100vw;
+        max-height: 100svh;
         object-fit: contain;
         user-select: none;
         -webkit-user-select: none;
