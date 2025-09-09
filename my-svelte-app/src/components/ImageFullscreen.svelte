@@ -19,7 +19,6 @@
     } from "../lib/editor/stores/transformStore.svelte";
 
     interface Props {
-        // Props
         src?: string;
         alt?: string;
         show?: boolean;
@@ -33,59 +32,46 @@
         onClose = () => {},
     }: Props = $props();
 
-    // DOM要素の参照
     let imageElement: HTMLImageElement | undefined = $state();
     let containerElement: HTMLDivElement | undefined = $state();
     let imageContainerElement: HTMLDivElement | undefined = $state();
 
-    // 状態管理
     let transformState: TransformState = transformStore.state;
-    let dragState: DragState = createDragState();
-    let pinchState: PinchState = createPinchState();
+    let dragState = createDragState();
+    let pinchState = createPinchState();
     let animationFrameId: number | null = null;
-    let pinchAnimationFrameId: number | null = null; // ピンチ専用のrequestAnimationFrame
+    let pinchAnimationFrameId: number | null = null;
     let historyPushed = false;
-
-    // タップ検出用の状態
     let lastTapTime = 0;
     let tapTimeoutId: number | null = null;
     let lastTapPosition: { x: number; y: number } | null = null;
 
     $effect(() => {
-        // transformStateをtransformStore.stateで常に参照
         transformState = transformStore.state;
-        if (imageContainerElement) {
-            updateTransform();
-        }
+        if (imageContainerElement) updateTransform();
     });
 
-    // DOM操作関数
-    function updateTransform(): void {
+    function updateTransform() {
         if (!imageContainerElement) return;
-
         const { scale, translate, useTransition } = transformState;
-
         imageContainerElement.style.transition = useTransition
             ? `transform ${TIMING.TRANSITION_DURATION} ease`
             : "none";
-
         imageContainerElement.style.transform = `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`;
         imageContainerElement.style.transformOrigin = "center";
     }
 
-    // ピンチ操作中の直接DOM更新（ストア更新なし）
     function updateTransformDirect(
         scale: number,
         translateX: number,
         translateY: number,
-    ): void {
+    ) {
         if (!imageContainerElement) return;
-
         imageContainerElement.style.transition = "none";
         imageContainerElement.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
     }
 
-    function setImageCursor(): void {
+    function setImageCursor() {
         if (!imageContainerElement) return;
         imageContainerElement.style.cursor =
             transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE
@@ -93,59 +79,45 @@
                 : "default";
     }
 
-    function setTransition(enable: boolean): void {
+    const setTransition = (enable: boolean) =>
         transformStore.setTransition(enable);
-    }
 
-    // 履歴管理
-    function pushHistoryState(): void {
+    function pushHistoryState() {
         if (!historyPushed) {
             history.pushState({ imageFullscreen: true }, "", "");
             historyPushed = true;
         }
     }
-
-    function clearHistoryState(): void {
+    const clearHistoryState = () => {
         historyPushed = false;
-    }
+    };
 
-    // 状態リセット
-    function resetAllStates(): void {
-        if (animationFrameId !== null) {
-            cancelAnimationFrame(animationFrameId);
-            animationFrameId = null;
-        }
-
-        if (pinchAnimationFrameId !== null) {
+    function resetAllStates() {
+        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+        if (pinchAnimationFrameId !== null)
             cancelAnimationFrame(pinchAnimationFrameId);
-            pinchAnimationFrameId = null;
-        }
-
+        animationFrameId = null;
+        pinchAnimationFrameId = null;
         transformStore.reset();
         dragState.isDragging = false;
         pinchState.isPinching = false;
-
         lastTapTime = 0;
         clearTapTimer();
         clearBodyStyles();
     }
 
-    // メイン操作関数
     function close() {
         resetAllStates();
         show = false;
         onClose();
-
         if (historyPushed) {
             clearHistoryState();
             history.back();
         }
-
         focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
     }
 
-    // イベントハンドラー - ナビゲーション
-    function handlePopState(event: PopStateEvent): void {
+    function handlePopState(event: PopStateEvent) {
         if (show && historyPushed) {
             event.preventDefault();
             resetAllStates();
@@ -155,29 +127,22 @@
         }
     }
 
-    function handleKeydown(event: KeyboardEvent): void {
-        if (event.key === "Escape") {
-            close();
-        }
-    }
+    const handleKeydown = (event: KeyboardEvent) => {
+        if (event.key === "Escape") close();
+    };
 
-    function handleBackdropClick(event: MouseEvent): void {
-        if (event.target === containerElement) {
-            close();
-        }
-    }
+    const handleBackdropClick = (event: MouseEvent) => {
+        if (event.target === containerElement) close();
+    };
 
-    // ズーム操作
-    function handleWheel(event: WheelEvent): void {
+    function handleWheel(event: WheelEvent) {
         event.preventDefault();
         if (!imageContainerElement || !containerElement) return;
-
         const delta =
             event.deltaY > 0
                 ? ZOOM_CONFIG.ZOOM_DELTA.OUT
                 : ZOOM_CONFIG.ZOOM_DELTA.IN;
         const newScale = transformState.scale * delta;
-
         const zoomParams = calculateZoomFromEvent(
             event,
             containerElement,
@@ -185,14 +150,12 @@
             transformState.translate,
             newScale,
         );
-
         transformStore.zoom(zoomParams);
         setImageCursor();
     }
 
-    function executeZoomToggle(clientX?: number, clientY?: number): void {
+    function executeZoomToggle(clientX?: number, clientY?: number) {
         setTransition(true);
-
         setTimeout(() => {
             if (transformState.scale >= ZOOM_CONFIG.RESET_THRESHOLD) {
                 transformStore.reset();
@@ -207,7 +170,6 @@
                               clientY,
                           )
                         : { offsetX: 0, offsetY: 0, centerX: 0, centerY: 0 };
-
                 transformStore.zoomToPoint(
                     ZOOM_CONFIG.DOUBLE_CLICK_SCALE,
                     viewport.offsetX,
@@ -218,107 +180,76 @@
         }, 100);
     }
 
-    function handleDoubleClick(event: MouseEvent): void {
+    function handleDoubleClick(event: MouseEvent) {
         if (!imageContainerElement || !containerElement) return;
-
         stopDragIfActive();
         executeZoomToggle(event.clientX, event.clientY);
     }
 
-    // 統一されたポインター操作
-    function startDrag(clientX: number, clientY: number): void {
+    function startDrag(clientX: number, clientY: number) {
         dragState.isDragging = true;
         dragState.start = { x: clientX, y: clientY };
         dragState.startTranslate = { ...transformState.translate };
-
         if (imageContainerElement) {
             imageContainerElement.style.cursor = "grabbing";
             setTransition(false);
         }
-
         setBodyStyle("user-select", "none");
         setBodyStyle("-webkit-user-select", "none");
     }
 
-    function updateDrag(clientX: number, clientY: number): void {
+    function updateDrag(clientX: number, clientY: number) {
         if (!dragState.isDragging) return;
-
-        if (animationFrameId !== null) {
-            cancelAnimationFrame(animationFrameId);
-        }
-
+        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
         animationFrameId = requestAnimationFrame(() => {
             const delta = calculateDragDelta(
                 { x: clientX, y: clientY },
                 dragState.start,
             );
-
             transformStore.drag(delta.x, delta.y, dragState.startTranslate);
         });
     }
 
-    function stopDrag(): void {
+    function stopDrag() {
         if (!dragState.isDragging) return;
-
         dragState.isDragging = false;
-
         if (animationFrameId !== null) {
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
         }
-
         setImageCursor();
-
-        setTimeout(() => {
-            setTransition(true);
-        }, 50);
-
+        setTimeout(() => setTransition(true), 50);
         setBodyStyle("user-select", "");
         setBodyStyle("-webkit-user-select", "");
     }
+    const stopDragIfActive = () => {
+        if (dragState.isDragging) stopDrag();
+    };
 
-    function stopDragIfActive(): void {
-        if (dragState.isDragging) {
-            stopDrag();
-        }
-    }
-
-    // ピンチ操作
-    function startPinch(event: TouchEvent): void {
-        const touch1 = event.touches[0];
-        const touch2 = event.touches[1];
-
+    function startPinch(event: TouchEvent) {
+        const [touch1, touch2] = [event.touches[0], event.touches[1]];
         const dx = touch1.clientX - touch2.clientX;
         const dy = touch1.clientY - touch2.clientY;
         const distance = Math.sqrt(dx * dx + dy * dy);
-
         if (distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
             pinchState.isPinching = true;
             pinchState.initialDistance = distance;
             pinchState.initialScale = transformState.scale;
             pinchState.centerX = (touch1.clientX + touch2.clientX) / 2;
             pinchState.centerY = (touch1.clientY + touch2.clientY) / 2;
-
             setTransition(false);
         }
     }
 
-    function updatePinch(event: TouchEvent): void {
+    function updatePinch(event: TouchEvent) {
         if (!pinchState.isPinching || !containerElement) return;
-
-        // 既存のアニメーションフレームをキャンセル
-        if (pinchAnimationFrameId !== null) {
+        if (pinchAnimationFrameId !== null)
             cancelAnimationFrame(pinchAnimationFrameId);
-        }
-
         pinchAnimationFrameId = requestAnimationFrame(() => {
-            const touch1 = event.touches[0];
-            const touch2 = event.touches[1];
-
+            const [touch1, touch2] = [event.touches[0], event.touches[1]];
             const dx = touch1.clientX - touch2.clientX;
             const dy = touch1.clientY - touch2.clientY;
             const distance = Math.sqrt(dx * dx + dy * dy);
-
             if (distance > ZOOM_CONFIG.PINCH_MIN_DISTANCE) {
                 const scaleRatio = distance / pinchState.initialDistance;
                 const newScale = Math.max(
@@ -328,20 +259,14 @@
                         pinchState.initialScale * scaleRatio,
                     ),
                 );
-
-                // コンテナの中心座標を取得
                 if (!containerElement) return;
                 const rect = containerElement.getBoundingClientRect();
                 const containerCenterX = rect.width / 2;
                 const containerCenterY = rect.height / 2;
-
-                // ピンチ中心からコンテナ中心への相対位置
                 const offsetX =
                     pinchState.centerX - rect.left - containerCenterX;
                 const offsetY =
                     pinchState.centerY - rect.top - containerCenterY;
-
-                // スケール変化に応じた座標調整
                 const actualScaleRatio = newScale / transformState.scale;
                 const newTranslateX =
                     transformState.translate.x * actualScaleRatio -
@@ -349,39 +274,30 @@
                 const newTranslateY =
                     transformState.translate.y * actualScaleRatio -
                     offsetY * (actualScaleRatio - 1);
-
-                // 直接DOM更新（ストア更新なし）
                 updateTransformDirect(newScale, newTranslateX, newTranslateY);
             }
         });
     }
 
-    function stopPinch(): void {
+    function stopPinch() {
         if (!pinchState.isPinching) return;
-
-        // アニメーションフレームをキャンセル
         if (pinchAnimationFrameId !== null) {
             cancelAnimationFrame(pinchAnimationFrameId);
             pinchAnimationFrameId = null;
         }
-
         pinchState.isPinching = false;
-
-        // 最終状態をストアに反映
         if (imageContainerElement) {
             const transform = imageContainerElement.style.transform;
-            const scaleMatch = transform.match(/scale\(([\d.]+)\)/);
+            const scaleMatch = transform.match(/scale\(([^)]+)\)/);
             const translateMatch = transform.match(
-                /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/,
+                /translate\(([^,]+)px,\s*([^)]+)px\)/,
             );
-
             if (scaleMatch && translateMatch) {
                 const finalScale = parseFloat(scaleMatch[1]);
                 const finalTranslateX =
                     parseFloat(translateMatch[1]) * finalScale;
                 const finalTranslateY =
                     parseFloat(translateMatch[2]) * finalScale;
-
                 transformStore.setDirectState({
                     scale: finalScale,
                     translate: { x: finalTranslateX, y: finalTranslateY },
@@ -389,29 +305,23 @@
                 });
             }
         }
-
         setTransition(true);
         setImageCursor();
     }
 
-    // タップ検出
-    function handleTap(clientX: number, clientY: number): void {
+    function handleTap(clientX: number, clientY: number) {
         const currentTime = Date.now();
-
         if (currentTime - lastTapTime < 300 && tapTimeoutId !== null) {
             clearTapTimer();
             stopDragIfActive();
-            // ダブルタップ時は記録された座標を使用
             executeZoomToggle(clientX, clientY);
             lastTapTime = 0;
             lastTapPosition = null;
             return;
         }
-
         lastTapTime = currentTime;
         lastTapPosition = { x: clientX, y: clientY };
         clearTapTimer();
-
         tapTimeoutId = Number(
             setTimeout(() => {
                 tapTimeoutId = null;
@@ -420,42 +330,29 @@
         );
     }
 
-    function clearTapTimer(): void {
+    function clearTapTimer() {
         if (tapTimeoutId !== null) {
             clearTimeout(tapTimeoutId);
             tapTimeoutId = null;
         }
     }
 
-    // 統一されたイベントハンドラー
     function handlePointerStart(
         clientX: number,
         clientY: number,
         isTouch = false,
-    ): void {
-        if (isTouch) {
-            handleTap(clientX, clientY);
-        }
-
-        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
+    ) {
+        if (isTouch) handleTap(clientX, clientY);
+        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE)
             startDrag(clientX, clientY);
-        }
     }
+    const handlePointerMove = (clientX: number, clientY: number) => {
+        if (dragState.isDragging) updateDrag(clientX, clientY);
+    };
+    const handlePointerEnd = () => stopDrag();
 
-    function handlePointerMove(clientX: number, clientY: number): void {
-        if (dragState.isDragging) {
-            updateDrag(clientX, clientY);
-        }
-    }
-
-    function handlePointerEnd(): void {
-        stopDrag();
-    }
-
-    // タッチイベントハンドラー
-    function handleTouchStart(event: TouchEvent): void {
+    function handleTouchStart(event: TouchEvent) {
         event.preventDefault();
-
         if (event.touches.length === 1) {
             const touch = event.touches[0];
             handlePointerStart(touch.clientX, touch.clientY, true);
@@ -466,9 +363,8 @@
         }
     }
 
-    function handleTouchMove(event: TouchEvent): void {
+    function handleTouchMove(event: TouchEvent) {
         event.preventDefault();
-
         if (event.touches.length === 1 && dragState.isDragging) {
             handlePointerMove(
                 event.touches[0].clientX,
@@ -479,9 +375,8 @@
         }
     }
 
-    function handleTouchEnd(event: TouchEvent): void {
+    function handleTouchEnd(event: TouchEvent) {
         event.preventDefault();
-
         if (event.touches.length === 0) {
             handlePointerEnd();
             stopPinch();
@@ -490,23 +385,17 @@
         }
     }
 
-    // マウスイベントハンドラー
-    function handleMouseDown(event: MouseEvent): void {
+    function handleMouseDown(event: MouseEvent) {
         handlePointerStart(event.clientX, event.clientY);
     }
-
-    function handleMouseMove(event: MouseEvent): void {
+    function handleMouseMove(event: MouseEvent) {
         if (dragState.isDragging) {
             event.preventDefault();
             handlePointerMove(event.clientX, event.clientY);
         }
     }
+    const handleMouseUp = () => handlePointerEnd();
 
-    function handleMouseUp(): void {
-        handlePointerEnd();
-    }
-
-    // リアクティブ文
     $effect(() => {
         if (show) {
             resetAllStates();
@@ -518,18 +407,15 @@
         }
     });
 
-    // ライフサイクル
     onMount(() => {
         const eventHandlers = [
             { event: "mousemove", handler: handleMouseMove, target: document },
             { event: "mouseup", handler: handleMouseUp, target: document },
             { event: "popstate", handler: handlePopState, target: window },
         ];
-
         eventHandlers.forEach(({ event, handler, target }) => {
             target.addEventListener(event, handler as EventListener);
         });
-
         return () => {
             eventHandlers.forEach(({ event, handler, target }) => {
                 target.removeEventListener(event, handler as EventListener);
@@ -540,11 +426,7 @@
 
     onDestroy(() => {
         clearBodyStyles();
-
-        if (animationFrameId !== null) {
-            cancelAnimationFrame(animationFrameId);
-        }
-
+        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
         clearTapTimer();
         clearHistoryState();
         lastTapPosition = null;
