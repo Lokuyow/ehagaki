@@ -48,7 +48,7 @@ let transform = $state<TransformState>({
 let boundaryConstraints: BoundaryConstraints | null = null;
 
 function applyBoundaryConstraints(translate: Position, scale: number): Position {
-    if (!boundaryConstraints || scale <= ZOOM_CONFIG.DEFAULT_SCALE) {
+    if (!boundaryConstraints) {
         return translate;
     }
 
@@ -59,7 +59,7 @@ function applyBoundaryConstraints(translate: Position, scale: number): Position 
     let x = translate.x;
     let y = translate.y;
 
-    // 横方向の制限
+    // 横方向の制限 - 常に適用
     if (scaledImageWidth > containerWidth) {
         const maxX = (scaledImageWidth - containerWidth) / 2;
         const minX = -maxX;
@@ -68,13 +68,10 @@ function applyBoundaryConstraints(translate: Position, scale: number): Position 
         x = 0;
     }
 
-    // 縦方向の制限 - 画像がコンテナより小さい場合は現在位置を維持
-    if (scaledImageHeight > containerHeight) {
-        const maxY = (scaledImageHeight - containerHeight) / 2;
-        const minY = -maxY;
-        y = clamp(y, minY, maxY);
-    }
-    // 縦方向で画像がコンテナより小さい場合は位置を変更しない
+    // 縦方向の制限 - 常に適用（画像の中心まで見切れても良いように緩い制限）
+    const maxY = scaledImageHeight / 2;
+    const minY = -maxY;
+    y = clamp(y, minY, maxY);
 
     return { x, y };
 }
