@@ -1,6 +1,7 @@
 import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
 import { setAuthInitialized, setNsecAuth, clearAuthState, secretKeyStore } from './appStores.svelte';
+import { getDefaultEndpoint } from './constants';
 import { debugLog } from './debug';
 
 export interface AuthResult {
@@ -131,14 +132,20 @@ export class AuthService {
 
         // ローカルストレージから特定の値を保持
         const localeValue = localStorage.getItem('locale');
-        const uploadEndpointValue = localStorage.getItem('uploadEndpoint');
 
         // ストレージをクリア
         localStorage.clear();
 
         // 保持すべき値を復元
-        if (localeValue !== null) localStorage.setItem('locale', localeValue);
-        if (uploadEndpointValue !== null) localStorage.setItem('uploadEndpoint', uploadEndpointValue);
+        if (localeValue !== null) {
+            localStorage.setItem('locale', localeValue);
+
+            // 画像圧縮設定をデフォルトに戻す
+            localStorage.setItem('imageCompressionLevel', 'medium');
+
+            // アップロード先設定をロケールに応じたデフォルトに戻す
+            localStorage.setItem('uploadEndpoint', getDefaultEndpoint(localeValue));
+        }
 
         // 状態をクリア（初期化状態は保持）
         this.publicKeyState.clear();

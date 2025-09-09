@@ -11,7 +11,11 @@
         swNeedRefresh,
         handleSwUpdate,
     } from "../lib/appStores.svelte";
-    import { uploadEndpoints, getCompressionLevels } from "../lib/constants";
+    import {
+        uploadEndpoints,
+        getCompressionLevels,
+        getDefaultEndpoint,
+    } from "../lib/constants";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
 
@@ -21,6 +25,8 @@
         onRefreshRelaysAndProfile?: () => void;
         selectedCompression?: string;
         onSelectedCompressionChange?: (value: string) => void;
+        selectedEndpoint?: string;
+        onSelectedEndpointChange?: (value: string) => void;
     }
 
     let {
@@ -29,12 +35,13 @@
         onRefreshRelaysAndProfile = () => {},
         selectedCompression = "medium",
         onSelectedCompressionChange = undefined,
+        selectedEndpoint = "",
+        onSelectedEndpointChange = undefined,
     }: Props = $props();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
 
-    let selectedEndpoint: string = $state("");
     let clientTagEnabled = $state(true);
     // selectedCompressionはpropsから受け取る
     $effect(() => {
@@ -50,6 +57,23 @@
             _selectedCompression !== selectedCompression
         ) {
             onSelectedCompressionChange(_selectedCompression);
+        }
+    });
+
+    // selectedEndpointはpropsから受け取る
+    $effect(() => {
+        if (selectedEndpoint !== undefined && selectedEndpoint !== "") {
+            _selectedEndpoint = selectedEndpoint;
+        }
+    });
+    let _selectedEndpoint: string = $state(selectedEndpoint);
+
+    $effect(() => {
+        if (
+            onSelectedEndpointChange &&
+            _selectedEndpoint !== selectedEndpoint
+        ) {
+            onSelectedEndpointChange(_selectedEndpoint);
         }
     });
 
@@ -72,12 +96,6 @@
     // 投稿先リレー表示用
     let writeRelays: string[] = $state([]);
     let showRelays = $state(false);
-
-    function getDefaultEndpoint(loc: string | null | undefined) {
-        return loc === "ja"
-            ? "https://yabu.me/api/v2/media"
-            : "https://nostrcheck.me/api/v2/media";
-    }
 
     function loadWriteRelays() {
         const pubkeyHex = authState.value.pubkey;
@@ -116,10 +134,11 @@
             storedLocale ||
             (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
         const saved = localStorage.getItem("uploadEndpoint");
-        selectedEndpoint =
-            saved && uploadEndpoints.some((ep) => ep.url === saved)
+        _selectedEndpoint =
+            selectedEndpoint ||
+            (saved && uploadEndpoints.some((ep) => ep.url === saved)
                 ? saved
-                : getDefaultEndpoint(effectiveLocale);
+                : getDefaultEndpoint(effectiveLocale));
 
         // client tag設定の初期化
         const clientTagSetting = localStorage.getItem("clientTagEnabled");
@@ -163,13 +182,13 @@
     // $locale変更時、保存がなければデフォルトエンドポイントを再設定
     $effect(() => {
         if ($locale && !localStorage.getItem("uploadEndpoint")) {
-            selectedEndpoint = getDefaultEndpoint($locale);
+            _selectedEndpoint = getDefaultEndpoint($locale);
         }
     });
     // 設定変更時にlocalStorageへ保存
     $effect(() => {
-        if (selectedEndpoint) {
-            localStorage.setItem("uploadEndpoint", selectedEndpoint);
+        if (_selectedEndpoint) {
+            localStorage.setItem("uploadEndpoint", _selectedEndpoint);
         }
     });
     $effect(() => {
@@ -323,7 +342,7 @@
                     "アップロード先"}</span
             >
             <div class="setting-control">
-                <select id="endpoint-select" bind:value={selectedEndpoint}>
+                <select id="endpoint-select" bind:value={_selectedEndpoint}>
                     {#each uploadEndpoints as ep}
                         <option value={ep.url}>{ep.label}</option>
                     {/each}

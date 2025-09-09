@@ -39,6 +39,7 @@
   } from "./lib/editor/stores/editorStore.svelte";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
+  import { getDefaultEndpoint } from "./lib/constants";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -212,8 +213,9 @@
     // --- 追加: sharedImageProcessedも削除 ---
     localStorage.removeItem("sharedImageProcessed");
 
-    // --- 追加: 設定ダイアログの画像圧縮設定をデフォルトに戻す ---
+    // --- 追加: 設定ダイアログの設定値をリセット ---
     selectedCompression = "medium";
+    selectedEndpoint = getDefaultEndpoint($locale);
   }
 
   async function loginWithNostrLogin() {
@@ -452,6 +454,14 @@
   function handleSelectedCompressionChange(value: string) {
     selectedCompression = value;
   }
+
+  // --- 追加: 設定ダイアログのアップロード先設定を管理 ---
+
+  let selectedEndpoint = $state(getDefaultEndpoint($locale));
+
+  function handleSelectedEndpointChange(value: string) {
+    selectedEndpoint = value;
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -508,6 +518,8 @@
       onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
       {selectedCompression}
       onSelectedCompressionChange={handleSelectedCompressionChange}
+      {selectedEndpoint}
+      onSelectedEndpointChange={handleSelectedEndpointChange}
     />
   </main>
 {/if}
