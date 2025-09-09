@@ -32,11 +32,52 @@ export interface ZoomParams {
     offsetY: number;
 }
 
+export interface BoundaryConstraints {
+    imageWidth: number;
+    imageHeight: number;
+    containerWidth: number;
+    containerHeight: number;
+}
+
 let transform = $state<TransformState>({
     scale: ZOOM_CONFIG.DEFAULT_SCALE,
     translate: { x: 0, y: 0 },
     useTransition: true
 });
+
+let boundaryConstraints: BoundaryConstraints | null = null;
+
+function applyBoundaryConstraints(translate: Position, scale: number): Position {
+    if (!boundaryConstraints || scale <= ZOOM_CONFIG.DEFAULT_SCALE) {
+        return translate;
+    }
+
+    const { imageWidth, imageHeight, containerWidth, containerHeight } = boundaryConstraints;
+    const scaledImageWidth = imageWidth * scale;
+    const scaledImageHeight = imageHeight * scale;
+
+    let x = translate.x;
+    let y = translate.y;
+
+    // 横方向の制限
+    if (scaledImageWidth > containerWidth) {
+        const maxX = (scaledImageWidth - containerWidth) / 2;
+        const minX = -maxX;
+        x = clamp(x, minX, maxX);
+    } else {
+        x = 0;
+    }
+
+    // 縦方向の制限 - 画像がコンテナより小さい場合は現在位置を維持
+    if (scaledImageHeight > containerHeight) {
+        const maxY = (scaledImageHeight - containerHeight) / 2;
+        const minY = -maxY;
+        y = clamp(y, minY, maxY);
+    }
+    // 縦方向で画像がコンテナより小さい場合は位置を変更しない
+
+    return { x, y };
+}
 
 export const transformStore = {
     get state() {
@@ -74,11 +115,16 @@ export const transformStore = {
         transform.scale = targetScale;
     },
     drag(deltaX: number, deltaY: number, startTranslate: Position) {
-        transform.translate.x = startTranslate.x + deltaX;
-        transform.translate.y = startTranslate.y + deltaY;
+        const newTranslate = { x: startTranslate.x + deltaX, y: startTranslate.y + deltaY };
+        const constrainedTranslate = applyBoundaryConstraints(newTranslate, transform.scale);
+        transform.translate.x = constrainedTranslate.x;
+        transform.translate.y = constrainedTranslate.y;
     },
     setTransition(useTransition: boolean) {
         transform.useTransition = useTransition;
+    },
+    setBoundaryConstraints(constraints: BoundaryConstraints | null) {
+        boundaryConstraints = constraints;
     }
 };
 

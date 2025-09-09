@@ -14,6 +14,7 @@
         createDragState,
         createPinchState,
         type TransformState,
+        type BoundaryConstraints,
     } from "../lib/editor/stores/transformStore.svelte";
 
     interface Props {
@@ -98,6 +99,20 @@
     function clearHistoryState() {
         historyPushed = false;
     }
+    function updateBoundaryConstraints() {
+        if (imageElement && containerElement) {
+            const imageRect = imageElement.getBoundingClientRect();
+            const containerRect = containerElement.getBoundingClientRect();
+            const constraints: BoundaryConstraints = {
+                imageWidth: imageRect.width,
+                imageHeight: imageRect.height,
+                containerWidth: containerRect.width,
+                containerHeight: containerRect.height,
+            };
+            transformStore.setBoundaryConstraints(constraints);
+        }
+    }
+
     function resetAllStates() {
         if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
         if (pinchAnimationFrameId !== null)
@@ -105,6 +120,7 @@
         animationFrameId = null;
         pinchAnimationFrameId = null;
         transformStore.reset();
+        transformStore.setBoundaryConstraints(null);
         dragState.isDragging = false;
         pinchState.isPinching = false;
         lastTapTime = 0;
@@ -396,6 +412,10 @@
             resetAllStates();
             setBodyStyle("overflow", "hidden");
             pushHistoryState();
+            // 画像が読み込まれた後に境界制限を設定
+            if (imageElement && imageElement.complete) {
+                updateBoundaryConstraints();
+            }
         } else {
             setBodyStyle("overflow", "");
             clearHistoryState();
@@ -473,6 +493,7 @@
                 ontouchstart={handleTouchStart}
                 ontouchmove={handleTouchMove}
                 ontouchend={handleTouchEnd}
+                onload={updateBoundaryConstraints}
                 draggable="false"
             />
         </div>
