@@ -76,6 +76,11 @@
         imageContainerElement.style.cursor =
             scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
     }
+    function setOverlayCursorByScale(scale: number) {
+        if (!containerElement) return;
+        containerElement.style.cursor =
+            scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
+    }
     function setTransition(enable: boolean) {
         transformStore.setTransition(enable);
     }
@@ -152,6 +157,7 @@
         );
         transformStore.zoom(zoomParams);
         setImageCursorByScale(transformState.scale);
+        setOverlayCursorByScale(transformState.scale);
     }
     function executeZoomToggle(clientX?: number, clientY?: number) {
         setTransition(true);
@@ -190,6 +196,9 @@
             imageContainerElement.style.cursor = "grabbing";
             setTransition(false);
         }
+        if (containerElement) {
+            containerElement.style.cursor = "grabbing";
+        }
         setBodyUserSelect(false);
     }
     function updateDrag(clientX: number, clientY: number) {
@@ -211,6 +220,7 @@
             animationFrameId = null;
         }
         setImageCursorByScale(transformState.scale);
+        setOverlayCursorByScale(transformState.scale);
         setTimeout(() => setTransition(true), 50);
         setBodyUserSelect(true);
     }
@@ -329,8 +339,8 @@
         isTouch = false,
     ) {
         if (isTouch) handleTap(clientX, clientY);
-        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE)
-            startDrag(clientX, clientY);
+        // 拡大時は画面全体でドラッグを開始
+        startDrag(clientX, clientY);
     }
     function handlePointerMove(clientX: number, clientY: number) {
         if (dragState.isDragging) updateDrag(clientX, clientY);
@@ -341,6 +351,10 @@
 
     // --- Event Handlers ---
     function handleTouchStart(event: TouchEvent) {
+        // close-buttonのタッチを妨げないように
+        if ((event.target as Element)?.closest(".close-button-container")) {
+            return;
+        }
         event.preventDefault();
         if (event.touches.length === 1) {
             const touch = event.touches[0];
@@ -372,6 +386,10 @@
         }
     }
     function handleMouseDown(event: MouseEvent) {
+        // close-buttonのクリックを妨げないように
+        if ((event.target as Element)?.closest(".close-button-container")) {
+            return;
+        }
         handlePointerStart(event.clientX, event.clientY);
     }
     function handleMouseMove(event: MouseEvent) {
@@ -466,6 +484,10 @@
         bind:this={containerElement}
         onkeydown={handleKeydown}
         onwheel={handleWheel}
+        onmousedown={handleMouseDown}
+        ontouchstart={handleTouchStart}
+        ontouchmove={handleTouchMove}
+        ontouchend={handleTouchEnd}
         tabindex="0"
         role="dialog"
         aria-label="画像全画面表示"
@@ -475,6 +497,11 @@
                 type="button"
                 class="close-button"
                 onclick={close}
+                ontouchstart={(e) => e.stopPropagation()}
+                ontouchend={(e) => {
+                    e.stopPropagation();
+                    close();
+                }}
                 aria-label="Close fullscreen image"
             >
                 <span class="svg-icon close-icon"></span>
@@ -488,11 +515,7 @@
                 {src}
                 {alt}
                 class="fullscreen-image"
-                onmousedown={handleMouseDown}
                 ondblclick={handleDoubleClick}
-                ontouchstart={handleTouchStart}
-                ontouchmove={handleTouchMove}
-                ontouchend={handleTouchEnd}
                 onload={updateBoundaryConstraints}
                 draggable="false"
             />
@@ -525,7 +548,7 @@
         bottom: 20px;
         right: 50%;
         transform: translateX(50%);
-        z-index: 10001;
+        z-index: 10002;
     }
 
     .close-button {
@@ -543,6 +566,7 @@
         align-items: center;
         justify-content: center;
         transition: background 0.2s ease;
+        z-index: 10001;
     }
 
     .close-button:hover {
