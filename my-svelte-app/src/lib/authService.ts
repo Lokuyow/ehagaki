@@ -1,7 +1,6 @@
 import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
-import { setAuthInitialized, setNsecAuth, clearAuthState, secretKeyStore } from './appStores.svelte';
-import { getDefaultEndpoint } from './constants';
+import { setAuthInitialized, setNsecAuth } from './appStores.svelte';
 import { debugLog } from './debug';
 
 export interface AuthResult {
@@ -130,29 +129,8 @@ export class AuthService {
     logout(): void {
         debugLog('ログアウト処理開始');
 
-        // ローカルストレージから特定の値を保持
-        const localeValue = localStorage.getItem('locale');
-
         // ストレージをクリア
         localStorage.clear();
-
-        // 保持すべき値を復元
-        if (localeValue !== null) {
-            localStorage.setItem('locale', localeValue);
-
-            // 画像圧縮設定をデフォルトに戻す
-            localStorage.setItem('imageCompressionLevel', 'medium');
-
-            // アップロード先設定をロケールに応じたデフォルトに戻す
-            localStorage.setItem('uploadEndpoint', getDefaultEndpoint(localeValue));
-        }
-
-        // 状態をクリア（初期化状態は保持）
-        this.publicKeyState.clear();
-        clearAuthState(true);
-
-        // 秘密鍵ストアもクリア
-        secretKeyStore.set(null);
 
         // nostr-loginからもログアウト
         if (nostrLoginManager.isInitialized) {
@@ -165,6 +143,11 @@ export class AuthService {
         });
 
         debugLog('ログアウト処理完了');
+
+        // ページをリロード（遅延させて確実に反映）
+        setTimeout(() => {
+            window.location.replace(window.location.pathname);
+        }, 500);
     }
 
     /**

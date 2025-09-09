@@ -3,14 +3,18 @@ import { register, init, getLocaleFromNavigator, locale } from "svelte-i18n";
 register("ja", () => import("./lib/i18n/ja.json"));
 register("en", () => import("./lib/i18n/en.json"));
 
-const storedLocale = localStorage.getItem("locale");
-const navLocale = getLocaleFromNavigator();
-const initialLocale =
-  storedLocale && (storedLocale === "ja" || storedLocale === "en")
+// ロケール判定ロジックを関数として抽出
+export function determineInitialLocale(): string {
+  const storedLocale = localStorage.getItem("locale");
+  const navLocale = getLocaleFromNavigator();
+  return storedLocale && (storedLocale === "ja" || storedLocale === "en")
     ? storedLocale
     : navLocale && navLocale.startsWith("ja")
       ? "ja"
       : "en";
+}
+
+const initialLocale = determineInitialLocale();
 
 // 同期的に初期化を完了
 init({

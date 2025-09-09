@@ -33,10 +33,7 @@
     isLoadingProfileStore,
     isUploadingStore,
   } from "./lib/appStores.svelte";
-  import {
-    placeholderTextStore,
-    updatePlaceholderText,
-  } from "./lib/editor/stores/editorStore.svelte";
+  import { updatePlaceholderText } from "./lib/editor/stores/editorStore.svelte";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
   import { getDefaultEndpoint } from "./lib/constants";
@@ -206,16 +203,9 @@
     // ダイアログを閉じる
     closeLogoutDialog();
 
-    // --- 追加: ログアウト時にも入力をクリアしておく ---
+    // ログアウト時にも入力をクリアしておく
     secretKey = "";
     errorMessage = "";
-
-    // --- 追加: sharedImageProcessedも削除 ---
-    localStorage.removeItem("sharedImageProcessed");
-
-    // --- 追加: 設定ダイアログの設定値をリセット ---
-    selectedCompression = "medium";
-    selectedEndpoint = getDefaultEndpoint($locale);
   }
 
   async function loginWithNostrLogin() {
