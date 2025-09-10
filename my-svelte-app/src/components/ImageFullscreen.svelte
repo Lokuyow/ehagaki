@@ -545,7 +545,7 @@
 
     .close-button-container {
         position: absolute;
-        bottom: 20px;
+        bottom: 40px;
         right: 50%;
         transform: translateX(50%);
         z-index: 10002;
