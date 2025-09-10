@@ -99,7 +99,7 @@
         width: 100%;
         max-width: 800px;
         height: 66px;
-        gap: 8px;
+        gap: 12px;
         margin: auto;
         padding: 8px;
         background: var(--bg-footer);
