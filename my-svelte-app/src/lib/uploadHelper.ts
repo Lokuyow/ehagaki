@@ -1,6 +1,8 @@
 import { FileUploadManager } from "./fileUploadManager";
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./imeta";
 import { tick } from "svelte";
+import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse } from "./types";
+import type { Editor as TipTapEditor } from "@tiptap/core";
 
 export async function uploadHelper({
     files,
@@ -10,23 +12,10 @@ export async function uploadHelper({
     showUploadError,
     updateUploadState,
     devMode,
-}: {
-    files: File[] | FileList;
-    currentEditor: any;
-    fileInput: HTMLInputElement | undefined;
-    uploadCallbacks: any;
-    showUploadError: (msg: string, duration?: number) => void;
-    updateUploadState: (isUploading: boolean, message?: string) => void;
-    devMode: boolean;
-}) {
+}: UploadHelperParams): Promise<UploadHelperResult> {
     const fileArray = Array.from(files);
     const endpoint = localStorage.getItem("uploadEndpoint") || "";
-    const placeholderMap: {
-        file: File;
-        placeholderId: string;
-        blurhash?: string;
-        ox?: string;
-    }[] = [];
+    const placeholderMap: PlaceholderEntry[] = [];
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
@@ -56,7 +45,8 @@ export async function uploadHelper({
         const placeholderId = `placeholder-${Date.now()}-${index}`;
         const ox = oxResults[index]?.ox;
         if (currentEditor) {
-            currentEditor.chain().focus().setImage({ src: placeholderId, isPlaceholder: true }).run();
+            // currentEditor は TipTap Editor 型。存在チェックをしてコマンドを使う。
+            (currentEditor as TipTapEditor).chain?.().focus?.().setImage?.({ src: placeholderId })?.run?.();
         }
         placeholderMap.push({ file, placeholderId, ox });
         if (devMode) {
@@ -72,15 +62,15 @@ export async function uploadHelper({
                 item.blurhash = blurhash;
                 if (currentEditor) {
                     // プレースホルダー更新
-                    const { state } = currentEditor;
-                    const { doc } = state;
+                    const state = (currentEditor as TipTapEditor).state;
+                    const doc = state.doc;
                     doc.descendants((node: any, pos: number) => {
                         if (node.type?.name === "image" && node.attrs?.src === item.placeholderId) {
-                            const tr = state.tr.setNodeMarkup(pos, null, {
+                            const tr = state.tr.setNodeMarkup(pos, undefined, {
                                 ...node.attrs,
                                 blurhash,
                             });
-                            currentEditor.view.dispatch(tr);
+                            (currentEditor as TipTapEditor).view.dispatch(tr);
                             return false;
                         }
                     });
@@ -95,10 +85,11 @@ export async function uploadHelper({
             }
         }
     });
-    Promise.all(blurhashPromises);
+    // 並列処理開始（待機は任意だがここでは開始のみ）
+    void Promise.all(blurhashPromises);
 
     // アップロード
-    let results: any[] | null = null;
+    let results: FileUploadResponse[] | null = null;
     try {
         updateUploadState(true, "");
         if (fileArray.length === 1) {
@@ -126,15 +117,15 @@ export async function uploadHelper({
     await tick();
 
     // プレースホルダー置換・失敗時削除
-    const failedResults = [];
+    const failedResults: FileUploadResponse[] = [];
     let errorMessage = "";
     if (results && placeholderMap.length > 0) {
         for (const result of results) {
             if (result.success && result.url) {
-                let matched = null;
+                let matched: PlaceholderEntry | undefined = undefined;
                 if (result.sizeInfo && result.sizeInfo.originalFilename) {
                     matched = placeholderMap.find(
-                        (p) => p.file.name === result.sizeInfo.originalFilename,
+                        (p) => p.file.name === result.sizeInfo!.originalFilename,
                     );
                 }
                 if (!matched) {
@@ -145,17 +136,17 @@ export async function uploadHelper({
                 }
                 if (matched && currentEditor) {
                     // 置換
-                    const { state } = currentEditor;
-                    const { doc } = state;
+                    const state = (currentEditor as TipTapEditor).state;
+                    const doc = state.doc;
                     doc.descendants((node: any, pos: number) => {
-                        if (node.type?.name === "image" && node.attrs?.src === matched.placeholderId) {
-                            const tr = state.tr.setNodeMarkup(pos, null, {
+                        if (node.type?.name === "image" && node.attrs?.src === matched!.placeholderId) {
+                            const tr = state.tr.setNodeMarkup(pos, undefined, {
                                 ...node.attrs,
                                 src: result.url,
                                 isPlaceholder: false,
-                                blurhash: matched.blurhash ?? undefined,
+                                blurhash: matched!.blurhash ?? undefined,
                             });
-                            currentEditor.view.dispatch(tr);
+                            (currentEditor as TipTapEditor).view.dispatch(tr);
                             return false;
                         }
                     });
@@ -181,12 +172,12 @@ export async function uploadHelper({
                 const failed = placeholderMap.shift();
                 if (failed && currentEditor) {
                     // プレースホルダー削除
-                    const { state } = currentEditor;
-                    const { doc } = state;
+                    const state = (currentEditor as TipTapEditor).state;
+                    const doc = state.doc;
                     doc.descendants((node: any, pos: number) => {
                         if (node.type?.name === "image" && node.attrs?.src === failed.placeholderId) {
                             const tr = state.tr.delete(pos, pos + node.nodeSize);
-                            currentEditor.view.dispatch(tr);
+                            (currentEditor as TipTapEditor).view.dispatch(tr);
                             return false;
                         }
                     });

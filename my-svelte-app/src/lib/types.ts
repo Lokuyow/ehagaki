@@ -1,3 +1,5 @@
+import type { RxNostr } from "rx-nostr";
+
 export interface PostStatus {
     sending: boolean;
     success: boolean;
@@ -59,15 +61,12 @@ export interface FileUploadResponse {
     sizeInfo?: FileSizeInfo;
 }
 
-export interface MultipleUploadProgress {
-    completed: number;
-    failed: number;
-    total: number;
-    inProgress: boolean;
-}
+// MultipleUploadProgress を UploadProgress のエイリアスに統一
+export type MultipleUploadProgress = UploadProgress;
 
 export interface UploadInfoCallbacks {
-    onProgress?: (progress: MultipleUploadProgress) => void;
+    // 統一された UploadProgress 型を使用
+    onProgress?: (progress: UploadProgress) => void;
 }
 
 export interface FileValidationResult {
@@ -87,9 +86,36 @@ declare global {
 
 // --- PostComponent用Props型 ---
 export interface Props {
-    rxNostr: any;
+    rxNostr?: RxNostr; // rx-nostr の型参照を使用
     hasStoredKey: boolean;
-    onPostSuccess?: (() => void) | undefined;
-    onUploadStatusChange?: ((isUploading: boolean) => void) | undefined;
-    onUploadProgress?: ((progress: any) => void) | undefined;
+    onPostSuccess?: () => void;
+    onUploadStatusChange?: (isUploading: boolean) => void;
+    onUploadProgress?: (progress: UploadProgress) => void;
+}
+
+// uploadHelper 用の型定義を追加
+export interface PlaceholderEntry {
+    file: File;
+    placeholderId: string;
+    blurhash?: string;
+    ox?: string;
+}
+
+export interface UploadHelperParams {
+    files: File[] | FileList;
+    currentEditor: import("@tiptap/core").Editor | null;
+    fileInput?: HTMLInputElement | undefined;
+    uploadCallbacks?: UploadInfoCallbacks | undefined;
+    showUploadError: (msg: string, duration?: number) => void;
+    updateUploadState: (isUploading: boolean, message?: string) => void;
+    devMode: boolean;
+}
+
+export interface UploadHelperResult {
+    placeholderMap: PlaceholderEntry[];
+    results: FileUploadResponse[] | null;
+    imageOxMap: Record<string, string>;
+    imageXMap: Record<string, string>;
+    failedResults: FileUploadResponse[];
+    errorMessage: string;
 }

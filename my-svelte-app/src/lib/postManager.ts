@@ -1,4 +1,4 @@
-import { createRxNostr } from "rx-nostr";
+import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { authState } from "./appStores.svelte";
@@ -20,16 +20,18 @@ export interface PostStatus {
 }
 
 export class PostManager {
-  private rxNostr: ReturnType<typeof createRxNostr> | null = null;
+  // 型を RxNostr に変更
+  private rxNostr: RxNostr | null = null;
 
-  constructor(rxNostr?: ReturnType<typeof createRxNostr>) {
+  // コンストラクタの型を RxNostr に変更
+  constructor(rxNostr?: RxNostr) {
     if (rxNostr) {
       this.rxNostr = rxNostr;
     }
   }
 
-  // rxNostrインスタンスを更新するメソッド
-  setRxNostr(rxNostr: ReturnType<typeof createRxNostr>) {
+  // setRxNostr の型を RxNostr に変更
+  setRxNostr(rxNostr: RxNostr) {
     this.rxNostr = rxNostr;
   }
 

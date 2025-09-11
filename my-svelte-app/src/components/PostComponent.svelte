@@ -7,6 +7,11 @@
   import type { Props } from "../lib/types"; // 追加: Props型をtypes.tsからimport
   import { containsSecretKey } from "../lib/utils";
   import { uploadHelper } from "../lib/uploadHelper"; // 追加
+  import type { Readable } from "svelte/store";
+  import type { Editor as TipTapEditor } from "@tiptap/core";
+  import type { Node as PMNode } from "prosemirror-model";
+  import type { RxNostr } from "rx-nostr";
+  import type { UploadHelperResult, UploadHelperParams } from "../lib/types";
 
   // editorStore からの import を一箇所に統合（重複削除）
   import {
@@ -30,8 +35,15 @@
   let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
     $props();
 
-  let editor: any = $state();
-  let currentEditor: any = $state(null);
+  // EditorStore は createEditorStore が返すストア（subscribe を持ち、updatePlaceholder 等のメソッドを持つ可能性がある）
+  type EditorStore = Readable<TipTapEditor | null> & {
+    updatePlaceholder?: (s: string) => void;
+    // 他に必要なメソッドがあれば追加可能
+  };
+
+  // ストアと実エディターを分けて保持
+  let editor: EditorStore | null = $state(null); // createEditorStore の戻り値（ストア）
+  let currentEditor: TipTapEditor | null = $state(null); // 実際の Editor インスタンス
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
 
@@ -56,20 +68,22 @@
   $effect(() => {
     if (rxNostr) {
       if (!postManager) {
-        postManager = new PostManager(rxNostr);
+        // rxNostr は Props で RxNostr 型になったためそのまま渡す
+        postManager = new PostManager(rxNostr as RxNostr);
       } else {
-        postManager.setRxNostr(rxNostr);
+        postManager.setRxNostr(rxNostr as RxNostr);
       }
     }
   });
 
   // --- Editor初期化・クリーンアップ ---
   // 画像ノードが含まれているか判定する共通関数
-  function hasImageInDoc(doc: any): boolean {
+  function hasImageInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
     if (doc) {
-      doc.descendants((node: any) => {
-        if (node.type?.name === "image") found = true;
+      // ProseMirror の Node を想定して型を使う
+      doc.descendants((node: PMNode) => {
+        if ((node as any).type?.name === "image") found = true;
       });
     }
     return found;
@@ -78,25 +92,32 @@
   onMount(() => {
     const initialPlaceholder =
       $_("postComponent.enter_your_text") || "テキストを入力してください";
-    editor = createEditorStore(initialPlaceholder);
+    // createEditorStore の戻り値を EditorStore として扱う
+    editor = createEditorStore(initialPlaceholder) as EditorStore;
 
-    // エディター状態の購読
-    const unsubscribe = editor.subscribe((editorInstance: any) => {
-      currentEditor = editorInstance;
-    });
+    // ストアから Editor インスタンスを購読して currentEditor に格納
+    const unsubscribe = editor.subscribe(
+      (editorInstance: TipTapEditor | null) => {
+        currentEditor = editorInstance;
+      },
+    );
 
-    const handleContentUpdate = (event: CustomEvent) => {
+    const handleContentUpdate = (event: CustomEvent<{ plainText: string }>) => {
       const plainText = event.detail.plainText;
       let hasImage = false;
       if (currentEditor) {
-        hasImage = hasImageInDoc(currentEditor.state?.doc);
+        hasImage = hasImageInDoc(
+          currentEditor.state?.doc as PMNode | undefined,
+        );
       }
       updateEditorContent(plainText, hasImage);
     };
 
-    const handleImageFullscreenRequest = (event: CustomEvent) => {
+    const handleImageFullscreenRequest = (
+      event: CustomEvent<{ src: string; alt?: string }>,
+    ) => {
       fullscreenImageSrc = event.detail.src;
-      fullscreenImageAlt = event.detail.alt;
+      fullscreenImageAlt = event.detail.alt || "";
       showImageFullscreen = true;
     };
 
@@ -147,31 +168,36 @@
   }
 
   // --- ファイルアップロード関連 ---
-  const uploadCallbacks: UploadInfoCallbacks = { onProgress: onUploadProgress };
+  // onUploadProgress が未定義の場合は callbacks 自体を undefined にする
+  const uploadCallbacks: UploadInfoCallbacks | undefined = onUploadProgress
+    ? { onProgress: onUploadProgress as (p: import("../lib/types").UploadProgress) => void }
+    : undefined;
 
   function showUploadError(message: string, duration = 3000) {
     updateUploadState(editorState.isUploading, message);
     setTimeout(() => updateUploadState(editorState.isUploading, ""), duration);
   }
 
+  // uploadHelper 呼び出し時は currentEditor をそのまま渡す（戻り型は UploadHelperResult）
   export async function uploadFiles(files: File[] | FileList) {
     const devMode = import.meta.env.MODE === "development";
     if (!files || files.length === 0) return;
-    // uploadHelper にアップロード処理を委譲
-    const {
-      imageOxMap: newImageOxMap,
-      imageXMap: newImageXMap,
-      failedResults,
-      errorMessage,
-    } = await uploadHelper({
+    const result: UploadHelperResult = await uploadHelper({
       files,
-      currentEditor,
+      currentEditor: currentEditor as TipTapEditor | null,
       fileInput,
       uploadCallbacks,
       showUploadError,
       updateUploadState,
       devMode,
     });
+
+    const {
+      imageOxMap: newImageOxMap,
+      imageXMap: newImageXMap,
+      failedResults,
+      errorMessage,
+    } = result;
 
     // 結果を state に反映
     Object.assign(imageOxMap, newImageOxMap);
@@ -193,7 +219,8 @@
   // --- 投稿処理 ---
   export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
-    const postContent = extractContentWithImages(currentEditor) || "";
+    const postContent =
+      extractContentWithImages(currentEditor as TipTapEditor | null) || "";
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
@@ -202,13 +229,17 @@
     await executePost(postContent);
   }
 
+  // executePost 内で ProseMirror doc 取得時の型注釈
   async function executePost(content?: string) {
     if (!postManager) return console.error("PostManager is not initialized");
     const postContent =
-      content || extractContentWithImages(currentEditor) || "";
+      content ||
+      extractContentWithImages(currentEditor as TipTapEditor | null) ||
+      "";
 
-    // 画像URLとblurhashのマッピングを取得
-    const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
+    const rawImageBlurhashMap = extractImageBlurhashMap(
+      currentEditor as TipTapEditor | null,
+    );
     const imageBlurhashMap: Record<
       string,
       {
@@ -455,10 +486,11 @@
       }
     }
   });
+  // placeholder 更新処理: editor がストアで updatePlaceholder がある場合に呼ぶ
   $effect(() => {
     if (placeholderTextStore.value && editor) {
       setTimeout(() => {
-        if (editor.updatePlaceholder) {
+        if (editor && editor.updatePlaceholder) {
           editor.updatePlaceholder(placeholderTextStore.value);
         }
       }, 0);
@@ -500,7 +532,8 @@
     tabindex="0"
   >
     {#if editor && currentEditor}
-      <EditorContent editor={currentEditor} class="editor-content" />
+      <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
+      <EditorContent editor={currentEditor as any} class="editor-content" />
     {/if}
   </div>
 
