@@ -7,6 +7,7 @@
   import type { UploadInfoCallbacks } from "../lib/types";
   import type { Props } from "../lib/types"; // 追加: Props型をtypes.tsからimport
   import { containsSecretKey } from "../lib/utils";
+  import { uploadHelper } from "../lib/uploadHelper"; // 追加
 
   // editorStore からの import を一箇所に統合（重複削除）
   import {
@@ -199,79 +200,6 @@
   }
 
   // --- 画像ノード操作のラッパー関数群 ---
-  function insertImageWithBlurhash(
-    editor: any,
-    src: string,
-    blurhash?: string,
-    alt?: string,
-  ) {
-    if (!editor) return;
-    const imageAttrs: any = { src };
-    if (blurhash) imageAttrs.blurhash = blurhash;
-    if (alt) imageAttrs.alt = alt;
-    editor.chain().focus().setImage(imageAttrs).run();
-  }
-  function insertPlaceholderImage(
-    editor: any,
-    placeholderSrc: string,
-    blurhash?: string,
-  ) {
-    if (!editor) return;
-    const imageAttrs: any = { src: placeholderSrc, isPlaceholder: true };
-    if (blurhash) imageAttrs.blurhash = blurhash;
-    editor.chain().focus().setImage(imageAttrs).run();
-    if (import.meta.env.MODE === "development") {
-      const { doc } = editor.state;
-      doc.descendants((node: any, pos: number) => {
-        if (node.type?.name === "image") {
-          console.log("[insertPlaceholderImage] after insert", {
-            pos,
-            src: node.attrs?.src,
-            node,
-          });
-        }
-      });
-    }
-  }
-  function updatePlaceholderImage(
-    editor: any,
-    placeholderSrc: string,
-    blurhash: string,
-  ) {
-    updateImageNodeAttrs(
-      editor,
-      placeholderSrc,
-      { blurhash },
-      "updatePlaceholderImage",
-    );
-  }
-  function replaceImagePlaceholder(
-    editor: any,
-    placeholderSrc: string,
-    actualSrc: string,
-    blurhash?: string,
-  ) {
-    const newAttrs: any = { src: actualSrc, isPlaceholder: false };
-    if (blurhash) newAttrs.blurhash = blurhash;
-    updateImageNodeAttrs(
-      editor,
-      placeholderSrc,
-      newAttrs,
-      "replaceImagePlaceholder",
-    );
-  }
-  function removePlaceholderImage(editor: any, placeholderSrc: string) {
-    if (!editor) return;
-    const { state } = editor;
-    const { doc } = state;
-    doc.descendants((node: any, pos: number) => {
-      if (node.type?.name === "image" && node.attrs?.src === placeholderSrc) {
-        const tr = state.tr.delete(pos, pos + node.nodeSize);
-        editor.view.dispatch(tr);
-        return false;
-      }
-    });
-  }
 
   // --- 投稿成功時のエディタクリア ---
   function clearEditorContent() {
@@ -283,18 +211,6 @@
   // --- ファイルアップロード関連 ---
   const uploadCallbacks: UploadInfoCallbacks = { onProgress: onUploadProgress };
 
-  async function withUploadState<T>(uploadPromise: Promise<T>): Promise<T> {
-    updateUploadState(true);
-    onUploadStatusChange?.(true);
-    try {
-      const result = await uploadPromise;
-      return result;
-    } finally {
-      updateUploadState(false);
-      onUploadStatusChange?.(false);
-    }
-  }
-
   function showUploadError(message: string, duration = 3000) {
     updateUploadState(editorState.isUploading, message);
     setTimeout(() => updateUploadState(editorState.isUploading, ""), duration);
@@ -302,256 +218,35 @@
 
   export async function uploadFiles(files: File[] | FileList) {
     const devMode = import.meta.env.MODE === "development";
-    const fileArray = Array.from(files);
-    if (!fileArray.length) return;
-    const endpoint = localStorage.getItem("uploadEndpoint") || "";
-
-    // --- ファイルごとにfile, placeholderId, blurhash, oxをマッピングで保持 ---
-    const placeholderMap: {
-      file: File;
-      placeholderId: string;
-      blurhash?: string;
-      ox?: string;
-    }[] = [];
-
-    // ox計算を並列で行う
-    const oxPromises = fileArray.map(async (file, index) => {
-      let ox: string | undefined = undefined;
-      try {
-        // fileUploadManager.tsのcalculateSHA256Hexと同じ実装
-        const arrayBuffer = await file.arrayBuffer();
-        const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
-        ox = Array.from(new Uint8Array(hashBuffer))
-          .map((b) => b.toString(16).padStart(2, "0"))
-          .join("");
-      } catch (e) {
-        ox = undefined;
-      }
-      return { file, index, ox };
-    });
-    const oxResults = await Promise.all(oxPromises);
-
-    // まず即座にプレースホルダーを挿入
-    fileArray.forEach((file, index) => {
-      const validation = FileUploadManager.validateImageFile(file);
-      if (!validation.isValid) {
-        showUploadError(
-          $_(validation.errorMessage || "postComponent.upload_failed"),
-        );
-        return;
-      }
-      const placeholderId = `placeholder-${Date.now()}-${index}`;
-      const ox = oxResults[index]?.ox;
-      insertPlaceholderImage(currentEditor, placeholderId);
-      placeholderMap.push({ file, placeholderId, ox });
-      if (devMode) {
-        console.log("[uploadFiles] insertPlaceholderImage immediately", {
-          placeholderId,
-          file,
-          ox,
-        });
-      }
+    if (!files || files.length === 0) return;
+    // uploadHelper にアップロード処理を委譲
+    const {
+      imageOxMap: newImageOxMap,
+      imageXMap: newImageXMap,
+      failedResults,
+      errorMessage,
+    } = await uploadHelper({
+      files,
+      currentEditor,
+      fileInput,
+      uploadCallbacks,
+      showUploadError,
+      updateUploadState,
+      devMode,
     });
 
-    // 並行してblurhashを生成し、プレースホルダーを更新
-    const blurhashPromises = placeholderMap.map(async (item, index) => {
-      try {
-        const blurhash = await FileUploadManager.generateBlurhashForFile(
-          item.file,
-        );
-        if (blurhash) {
-          item.blurhash = blurhash;
-          updatePlaceholderImage(currentEditor, item.placeholderId, blurhash);
-          if (devMode) {
-            console.log("[uploadFiles] updated placeholder with blurhash", {
-              placeholderId: item.placeholderId,
-              blurhash,
-              file: item.file,
-            });
-          }
-        }
-      } catch (error) {
-        if (devMode) {
-          console.warn("[uploadFiles] blurhash generation failed", {
-            file: item.file,
-            error,
-          });
-        }
-      }
-    });
+    // 結果を state に反映
+    Object.assign(imageOxMap, newImageOxMap);
+    Object.assign(imageXMap, newImageXMap);
 
-    // blurhash生成を並行実行（待機しない）
-    Promise.all(blurhashPromises);
-
-    // --- アップロード開始 ---
-    const results = await withUploadState(
-      (async () => {
-        updateUploadState(true, "");
-        try {
-          if (fileArray.length === 1) {
-            return [
-              await FileUploadManager.uploadFileWithCallbacks(
-                fileArray[0],
-                endpoint,
-                uploadCallbacks,
-              ),
-            ];
-          }
-          return await FileUploadManager.uploadMultipleFilesWithCallbacks(
-            fileArray,
-            endpoint,
-            uploadCallbacks,
-          );
-        } catch (error) {
-          showUploadError(
-            error instanceof Error ? error.message : String(error),
-            5000,
-          );
-          return null;
-        }
-      })(),
-    );
-
-    // --- ここでエディタの状態更新を待つ ---
-    await tick();
-    if (devMode) {
-      // tick後の全画像ノードをログ
-      const { doc } = currentEditor.state;
-      doc.descendants((node: any, pos: number) => {
-        if (node.type?.name === "image") {
-          console.log("[uploadFiles] after tick", {
-            pos,
-            src: node.attrs?.src,
-            node,
-          });
-        }
-      });
-    }
-
-    // --- アップロード結果を処理し、fileとurlで正しく置き換え ---
-    if (results && placeholderMap.length > 0) {
-      const failedResults = [];
-      for (const result of results) {
-        // 成功した場合のみfile名でマッチするplaceholderを探す
-        if (result.success && result.url) {
-          // result.sizeInfo?.originalName でfile名が取れる場合はそれでマッチ
-          let matched = null;
-          if (result.sizeInfo && result.sizeInfo.originalFilename) {
-            matched = placeholderMap.find(
-              (p) => p.file.name === result.sizeInfo!.originalFilename,
-            );
-          }
-          // fallback: 1対1順序でマッチ
-          if (!matched) {
-            matched = placeholderMap.shift();
-          } else {
-            // マッチしたものはマッピングから除外
-            const idx = placeholderMap.indexOf(matched);
-            if (idx !== -1) placeholderMap.splice(idx, 1);
-          }
-          if (matched) {
-            if (devMode) {
-              // 置換直前の全画像ノードをログ
-              const { doc } = currentEditor.state;
-              doc.descendants((node: any, pos: number) => {
-                if (node.type?.name === "image") {
-                  console.log("[uploadFiles] before replace", {
-                    pos,
-                    src: node.attrs?.src,
-                    node,
-                  });
-                }
-              });
-            }
-            replaceImagePlaceholder(
-              currentEditor,
-              matched.placeholderId,
-              result.url,
-              matched.blurhash ?? undefined,
-            );
-            if (matched.ox && result.url) {
-              imageOxMap[result.url] = matched.ox;
-            }
-            if (result.url) {
-              (async () => {
-                try {
-                  const { calculateImageHash } = await import("../lib/imeta");
-                  if (typeof result.url === "string") {
-                    const x = await calculateImageHash(result.url);
-                    if (x) {
-                      imageXMap[result.url] = x;
-                      if (devMode) {
-                        console.log(
-                          "[uploadFiles] calculated x hash for uploaded image",
-                          { url: result.url, x },
-                        );
-                      }
-                    }
-                  }
-                } catch (error) {
-                  if (devMode) {
-                    console.warn("[uploadFiles] failed to calculate x hash", {
-                      url: result.url,
-                      error,
-                    });
-                  }
-                }
-              })();
-            }
-          }
-        } else if (!result.success) {
-          failedResults.push(result);
-          const failed = placeholderMap.shift();
-          if (failed) {
-            removePlaceholderImage(currentEditor, failed.placeholderId);
-          }
-        }
-      }
-
-      if (failedResults.length) {
-        showUploadError(
-          failedResults.length === 1
+    if (failedResults?.length) {
+      showUploadError(
+        errorMessage ||
+          (failedResults.length === 1
             ? failedResults[0].error || $_("postComponent.upload_failed")
-            : `${failedResults.length}個のファイルのアップロードに失敗しました`,
-          5000,
-        );
-      }
-    }
-
-    // --- devモード: 画像ノードがURLに置き換わった時点でimetaタグを出力 ---
-    if (import.meta.env.MODE === "development") {
-      try {
-        // imeta.tsのAPIのみ利用
-        const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
-        // x計算をPromise.allで待つ
-        await Promise.all(
-          Object.keys(rawImageBlurhashMap).map(async (url) => {
-            if (!imageXMap[url]) {
-              const x = await calculateImageHash(url);
-              if (x) imageXMap[url] = x;
-              if (import.meta.env.MODE === "development") {
-                console.log("[dev] x計算Promise.all: url, x", { url, x });
-              }
-            }
-          }),
-        );
-        // imetaタグ生成
-        const imetaTags = await Promise.all(
-          Object.entries(rawImageBlurhashMap).map(async ([url, blurhash]) => {
-            const m = getMimeTypeFromUrl(url);
-            const ox = imageOxMap[url];
-            const x = imageXMap[url];
-            const tag = await createImetaTag({ url, m, blurhash, ox, x });
-            if (import.meta.env.MODE === "development") {
-              console.log("[dev] imeta生成後: url, tag", { url, tag });
-            }
-            return tag;
-          }),
-        );
-        console.log("[dev] 画像アップロード直後imetaタグまとめ", imetaTags);
-      } catch (e) {
-        console.warn("[dev] imetaタグ生成失敗", e);
-      }
+            : `${failedResults.length}個のファイルのアップロードに失敗しました`),
+        5000,
+      );
     }
 
     if (fileInput) fileInput.value = "";
