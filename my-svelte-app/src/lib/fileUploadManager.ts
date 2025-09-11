@@ -18,6 +18,7 @@ import {
 import { getToken } from "nostr-tools/nip98";
 import { debugLogUploadResponse } from "./debug";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./imeta";
+import { showCompressedImagePreview } from "./debug";
 
 // --- 画像のSHA-256ハッシュ計算 ---
 async function calculateSHA256Hex(file: File): Promise<string> {
@@ -124,22 +125,8 @@ export class FileUploadManager {
       const outName = this.renameByMime(file.name, outType);
       const outFile = new File([compressed], outName, { type: outType });
 
-      // devモード時のみ圧縮画像表示
-      if (import.meta.env.MODE === "development") {
-        try {
-          const blobUrl = URL.createObjectURL(outFile);
-          const win = window.open(blobUrl, "_blank");
-          if (win) {
-            const revoke = () => {
-              URL.revokeObjectURL(blobUrl);
-              win.removeEventListener("beforeunload", revoke);
-            };
-            win.addEventListener("beforeunload", revoke);
-          } else {
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
-          }
-        } catch { }
-      }
+      // 圧縮画像プレビュー表示（debug.tsに移動）
+      showCompressedImagePreview(outFile);
       return { file: outFile, wasCompressed: true };
     } catch {
       return { file, wasCompressed: false, wasSkipped: true };

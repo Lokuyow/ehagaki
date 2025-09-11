@@ -186,3 +186,26 @@ if (import.meta.env.MODE === "development") {
         };
     };
 }
+
+// 圧縮画像プレビュー表示（dev用デバッグ）
+const ENABLE_COMPRESSED_IMAGE_PREVIEW = false; // trueで有効、falseで無効
+export function showCompressedImagePreview(file: File) {
+    if (
+        import.meta.env.MODE === "development" &&
+        ENABLE_COMPRESSED_IMAGE_PREVIEW
+    ) {
+        try {
+            const blobUrl = URL.createObjectURL(file);
+            const win = window.open(blobUrl, "_blank");
+            if (win) {
+                const revoke = () => {
+                    URL.revokeObjectURL(blobUrl);
+                    win.removeEventListener("beforeunload", revoke);
+                };
+                win.addEventListener("beforeunload", revoke);
+            } else {
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+            }
+        } catch { }
+    }
+}
