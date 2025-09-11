@@ -84,3 +84,12 @@ declare global {
         };
     }
 }
+
+// --- PostComponent用Props型 ---
+export interface Props {
+    rxNostr: any;
+    hasStoredKey: boolean;
+    onPostSuccess?: (() => void) | undefined;
+    onUploadStatusChange?: ((isUploading: boolean) => void) | undefined;
+    onUploadProgress?: ((progress: any) => void) | undefined;
+}

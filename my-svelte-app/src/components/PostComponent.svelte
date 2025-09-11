@@ -5,6 +5,7 @@
   import { PostManager } from "../lib/postManager";
   import { FileUploadManager } from "../lib/fileUploadManager";
   import type { UploadInfoCallbacks } from "../lib/types";
+  import type { Props } from "../lib/types"; // 追加: Props型をtypes.tsからimport
   import { containsSecretKey } from "../lib/utils";
 
   // editorStore からの import を一箇所に統合（重複削除）
@@ -31,14 +32,6 @@
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import { tick } from "svelte";
-
-  interface Props {
-    rxNostr: any;
-    hasStoredKey: boolean;
-    onPostSuccess: (() => void) | undefined;
-    onUploadStatusChange: ((isUploading: boolean) => void) | undefined;
-    onUploadProgress: ((progress: any) => void) | undefined;
-  }
 
   let {
     rxNostr,
