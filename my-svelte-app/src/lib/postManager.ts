@@ -3,6 +3,7 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { authState } from "./appStores.svelte";
 import { hashtagDataStore } from "./editor/stores/editorStore.svelte";
+import { createImetaTag } from "./imeta";
 
 // 投稿結果の型定義
 export interface PostResult {
@@ -42,7 +43,7 @@ export class PostManager {
   }
 
   // 投稿イベント生成（共通化）
-  private async buildEvent(content: string, pubkey?: string) {
+  private async buildEvent(content: string, pubkey?: string, imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>) {
     // ストアからハッシュタグを取得
     const { hashtags } = hashtagDataStore;
     const tags = hashtags.map((hashtag: string) => ["t", hashtag]);
@@ -59,6 +60,15 @@ export class PostManager {
         "31990:ec42c765418b3db9c85abff3a88f4a3bbe57535eebbdc54522041fa5328c0600:1754918316480",
         "wss://relay.nostr.band"
       ]);
+    }
+    // 画像imetaタグ追加
+    if (imageImetaMap) {
+      for (const [url, meta] of Object.entries(imageImetaMap)) {
+        if (url && meta && meta.m) {
+          const imetaTag = await createImetaTag({ url, ...meta });
+          tags.push(imetaTag);
+        }
+      }
     }
     const event: any = {
       kind: 1,
@@ -116,7 +126,7 @@ export class PostManager {
   }
 
   // 投稿を送信する（純粋な投稿処理のみ）
-  async submitPost(content: string): Promise<PostResult> {
+  async submitPost(content: string, imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>): Promise<PostResult> {
     const validation = this.validatePost(content);
     if (!validation.valid) return { success: false, error: validation.error };
 
@@ -131,7 +141,7 @@ export class PostManager {
           const pubkey = auth.pubkey;
           if (!pubkey) return { success: false, error: "pubkey_not_found" };
 
-          const event = await this.buildEvent(content, pubkey);
+          const event = await this.buildEvent(content, pubkey, imageImetaMap);
           const signedEvent = await (window.nostr as any).signEvent(event);
           console.log("署名済みイベント:", signedEvent);
           return await this.sendEvent(signedEvent);
@@ -144,7 +154,7 @@ export class PostManager {
       // ローカルキーを使用（秘密鍵直入れの場合）
       const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
       if (!storedKey) return { success: false, error: "key_not_found" };
-      const event = await this.buildEvent(content);
+      const event = await this.buildEvent(content, undefined, imageImetaMap);
       const signer = seckeySigner(storedKey);
       return await this.sendEvent(event, signer);
 

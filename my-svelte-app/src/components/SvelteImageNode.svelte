@@ -1,8 +1,9 @@
 <script lang="ts">
     import type { NodeViewProps } from "@tiptap/core";
     import { NodeViewWrapper } from "svelte-tiptap";
-    import { onDestroy } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
+    import { renderBlurhashToCanvas } from "../lib/imeta";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -19,10 +20,114 @@
     let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
     let touchStartTarget: HTMLElement | null = null;
 
+    // blurhash関連の状態
+    let isImageLoaded = $state(false);
+    let blurhashFadeOut = $state(false);
+    let canvasRef: HTMLCanvasElement | undefined = $state();
+    let isPlaceholder = $derived(
+        node.attrs.isPlaceholder === true ||
+            (node.attrs.src && node.attrs.src.startsWith("placeholder-")),
+    );
+    let showActualImage = $derived(
+        !isPlaceholder &&
+            node.attrs.src &&
+            !node.attrs.src.startsWith("placeholder-"),
+    );
+    let showBlurhash = $derived(
+        node.attrs.blurhash &&
+            (isPlaceholder || !isImageLoaded || blurhashFadeOut),
+    );
+
+    const devMode = import.meta.env.MODE === "development";
+
+    // blurhashをcanvasに描画
+    function renderBlurhash() {
+        if (!node.attrs.blurhash || !canvasRef) {
+            if (devMode) {
+                console.log(
+                    "[blurhash] renderBlurhash: blurhash or canvasRef missing",
+                    {
+                        blurhash: node.attrs.blurhash,
+                        canvasRef: !!canvasRef,
+                        isPlaceholder,
+                        showBlurhash,
+                    },
+                );
+            }
+            return;
+        }
+
+        // プレースホルダーの場合は適切なサイズで描画
+        const width = isPlaceholder ? 200 : 100;
+        const height = isPlaceholder ? 150 : 100;
+
+        canvasRef.width = width;
+        canvasRef.height = height;
+
+        if (devMode) {
+            console.log("[blurhash] renderBlurhash: rendering", {
+                blurhash: node.attrs.blurhash,
+                width,
+                height,
+                isPlaceholder,
+            });
+        }
+
+        const success = renderBlurhashToCanvas(
+            node.attrs.blurhash,
+            canvasRef,
+            width,
+            height,
+        );
+        if (devMode) {
+            console.log("[blurhash] renderBlurhash: result", success);
+        }
+    } // 画像読み込み完了時の処理
+    function handleImageLoad() {
+        isImageLoaded = true;
+        // blurhashキャンバスをフェードアウト
+        blurhashFadeOut = true;
+        setTimeout(() => {
+            blurhashFadeOut = false;
+        }, 400); // CSSアニメーションと合わせる
+    }
+
+    // 画像読み込みエラー時の処理
+    function handleImageError() {
+        isImageLoaded = false;
+    }
+
+    onMount(() => {
+        if (node.attrs.blurhash && canvasRef) {
+            renderBlurhash();
+        }
+    });
+
+    // blurhashが変更された時の再描画
+    $effect(() => {
+        if (devMode) {
+            console.log(
+                "[blurhash] $effect: blurhash=",
+                node.attrs.blurhash,
+                "canvasRef=",
+                !!canvasRef,
+            );
+        }
+        if (node.attrs.blurhash && canvasRef) {
+            renderBlurhash();
+        }
+    });
+
     // 画像クリック時の例（必要に応じて拡張）
     function handleClick(event: MouseEvent) {
         // ドラッグ中の場合はクリックを無視
         if (isDragging) {
+            event.preventDefault();
+            return;
+        }
+
+        // プレースホルダーの場合は全画面表示を無効化
+        if (isPlaceholder) {
             event.preventDefault();
             return;
         }
@@ -295,10 +400,20 @@
 
     // ドラッグプレビューを作成
     function createDragPreview(element: HTMLElement, x: number, y: number) {
-        const img = element.querySelector("img");
-        if (!img) return;
+        if (isPlaceholder) {
+            // プレースホルダーの場合はcanvasを使用
+            const canvas = element.querySelector("canvas");
+            if (!canvas) return;
 
-        dragPreview = img.cloneNode(true) as HTMLElement;
+            dragPreview = canvas.cloneNode(true) as HTMLElement;
+        } else {
+            // 通常の画像の場合
+            const img = element.querySelector("img");
+            if (!img) return;
+
+            dragPreview = img.cloneNode(true) as HTMLElement;
+        }
+
         dragPreview.classList.add("image-drag-preview"); // クラスを追加
 
         updateDragPreview(x, y);
@@ -355,13 +470,31 @@
         ontouchend={handleTouchEnd}
         oncontextmenu={handleContextMenu}
     >
-        <img
-            src={node.attrs.src}
-            alt={node.attrs.alt || ""}
-            class="editor-image"
-            draggable="false"
-            oncontextmenu={handleContextMenu}
-        />
+        {#if showBlurhash}
+            <canvas
+                bind:this={canvasRef}
+                width={isPlaceholder ? 200 : 100}
+                height={isPlaceholder ? 150 : 100}
+                class="blurhash-canvas"
+                class:is-placeholder={isPlaceholder}
+                class:fade-out={isImageLoaded &&
+                    blurhashFadeOut &&
+                    showActualImage}
+            ></canvas>
+        {/if}
+        {#if showActualImage}
+            <img
+                src={node.attrs.src}
+                alt={node.attrs.alt || ""}
+                class="editor-image"
+                class:image-loading={!isImageLoaded}
+                draggable="false"
+                onload={handleImageLoad}
+                onerror={handleImageError}
+                oncontextmenu={handleContextMenu}
+                style="z-index:2; position:relative;"
+            />
+        {/if}
     </button>
 </NodeViewWrapper>
 
@@ -427,6 +560,55 @@
         transition: all 0.2s ease;
     }
 
+    /* プレースホルダー選択時の状態制御 */
+    .editor-image-button[data-selected="true"] .blurhash-canvas.is-placeholder {
+        outline: 2px solid var(--theme, #2196f3);
+        outline-offset: -1px;
+    }
+    .editor-image-button[data-dragging="true"] .blurhash-canvas.is-placeholder {
+        opacity: 0.3;
+        outline: 2px solid var(--theme, #2196f3);
+        outline-offset: -1px;
+        transform: scale(0.95);
+        transition: all 0.2s ease;
+    }
+
+    /* blurhashキャンバス */
+    .blurhash-canvas {
+        border-radius: 6px;
+        object-fit: cover;
+        z-index: 1;
+        opacity: 0.8;
+        filter: blur(1px);
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* 実際の画像に重なるblurhashキャンバス */
+    .blurhash-canvas:not(.is-placeholder) {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    .blurhash-canvas.fade-out {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* プレースホルダー時のblurhashキャンバス */
+    .blurhash-canvas.is-placeholder {
+        position: relative;
+        width: 200px;
+        height: 150px;
+        border: 1px solid var(--border);
+        margin: 8px 0;
+        opacity: 1;
+        filter: blur(0.5px);
+    }
+
     /* 画像要素 */
     img.editor-image {
         display: block;
@@ -441,6 +623,19 @@
         -webkit-user-select: none;
         user-select: none;
         margin: 8px 0;
+        position: relative;
+        z-index: 2;
+    }
+
+    /* 画像ローディング状態 */
+    img.editor-image.image-loading {
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+
+    /* 画像がロードされた時のフェードイン */
+    img.editor-image:not(.image-loading) {
+        opacity: 1;
     }
 
     /* タッチデバイス用 */

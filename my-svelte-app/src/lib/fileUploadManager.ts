@@ -17,6 +17,16 @@ import {
 } from "./constants";
 import { getToken } from "nostr-tools/nip98";
 import { debugLogUploadResponse } from "./debug";
+import { generateBlurhashForFile, createPlaceholderUrl } from "./imeta";
+
+// --- 画像のSHA-256ハッシュ計算 ---
+async function calculateSHA256Hex(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 // ファイルアップロード専用マネージャークラス
 // 責務: ファイルの圧縮・アップロード処理、進捗管理
@@ -143,6 +153,21 @@ export class FileUploadManager {
     return { isValid: true };
   }
 
+  // --- blurhash生成 ---
+  public static async generateBlurhashForFile(file: File): Promise<string | null> {
+    return await generateBlurhashForFile(file);
+  }
+
+  // --- 画像からプレースホルダーURL生成 ---
+  public static async createPlaceholderUrl(file: File): Promise<string | null> {
+    try {
+      const url = URL.createObjectURL(file);
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
   // --- アップロードエンドポイント取得 ---
   private static getUploadEndpoint(apiUrl: string): string {
     const stored = localStorage.getItem("uploadEndpoint");
@@ -199,6 +224,13 @@ export class FileUploadManager {
   ): Promise<FileUploadResponse> {
     try {
       if (!file) return { success: false, error: "No file selected" };
+      // --- ox計算（圧縮・変換前） ---
+      let ox: string | undefined = undefined;
+      try {
+        ox = await calculateSHA256Hex(file);
+      } catch (e) {
+        ox = undefined;
+      }
       const originalSize = file.size;
       const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressImage(file);
       const compressedSize = uploadFile.size;
@@ -217,6 +249,8 @@ export class FileUploadManager {
       const formData = new FormData();
       formData.append('file', uploadFile);
       formData.append('uploadtype', 'media');
+      // --- oxをformDataに追加（APIが対応していれば） ---
+      if (ox) formData.append('ox', ox);
       const response = await fetch(finalUrl, {
         method: 'POST',
         headers: { 'Authorization': authHeader },

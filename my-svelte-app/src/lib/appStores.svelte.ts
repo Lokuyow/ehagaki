@@ -295,3 +295,27 @@ export async function fetchSwVersion(): Promise<string | null> {
         setTimeout(() => resolve(null), 2000); // タイムアウト
     });
 }
+
+// imeta情報の一時保存ストア
+export interface ImageImetaMap {
+    [url: string]: {
+        m: string; // MIME type (必須)
+        blurhash?: string;
+        dim?: string;
+        alt?: string;
+        ox?: string; // オリジナルファイルのSHA-256ハッシュを追加
+        [key: string]: any;
+    };
+}
+
+let imageImetaMap = $state<ImageImetaMap>({});
+export const imageImetaMapStore = {
+    get value() { return imageImetaMap; },
+    set: (value: ImageImetaMap) => { imageImetaMap = value; },
+    update: (updater: (value: ImageImetaMap) => ImageImetaMap) => { imageImetaMap = updater(imageImetaMap); },
+    subscribe: (callback: (value: ImageImetaMap) => void) => {
+        $effect(() => {
+            callback(imageImetaMap);
+        });
+    }
+};

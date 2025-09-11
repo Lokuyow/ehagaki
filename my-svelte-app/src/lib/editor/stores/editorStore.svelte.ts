@@ -58,6 +58,13 @@ export function createEditorStore(placeholderText: string) {
                 },
                 allowBase64: false,
             }).extend({
+                addAttributes() {
+                    return {
+                        src: { default: null },
+                        blurhash: { default: null },
+                        isPlaceholder: { default: false },
+                    };
+                },
                 addNodeView() {
                     return SvelteNodeViewRenderer(SvelteImageNode);
                 },
