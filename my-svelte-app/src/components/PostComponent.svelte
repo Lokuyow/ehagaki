@@ -3,7 +3,6 @@
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
   import { PostManager } from "../lib/postManager";
-  import { FileUploadManager } from "../lib/fileUploadManager";
   import type { UploadInfoCallbacks } from "../lib/types";
   import type { Props } from "../lib/types"; // 追加: Props型をtypes.tsからimport
   import { containsSecretKey } from "../lib/utils";
@@ -23,24 +22,13 @@
   } from "../lib/editor/stores/editorStore.svelte";
 
   import { extractContentWithImages } from "../lib/editor/editorUtils";
-  import {
-    extractImageBlurhashMap,
-    createImetaTag,
-    getMimeTypeFromUrl,
-    calculateImageHash,
-  } from "../lib/imeta";
+  import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/imeta";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
-  import { tick } from "svelte";
 
-  let {
-    rxNostr,
-    hasStoredKey,
-    onPostSuccess,
-    onUploadStatusChange,
-    onUploadProgress,
-  }: Props = $props();
+  let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
+    $props();
 
   let editor: any = $state();
   let currentEditor: any = $state(null);
@@ -168,38 +156,6 @@
       }
     };
   });
-
-  // --- 画像ノード操作の共通関数 ---
-  function updateImageNodeAttrs(
-    editor: any,
-    matchSrc: string,
-    newAttrs: Record<string, any>,
-    logLabel?: string,
-  ) {
-    if (!editor) return;
-    const { state } = editor;
-    const { doc } = state;
-    let found = false;
-    doc.descendants((node: any, pos: number) => {
-      if (node.type?.name === "image" && node.attrs?.src === matchSrc) {
-        if (import.meta.env.MODE === "development" && logLabel) {
-          console.log(`[${logLabel}]`, { pos, matchSrc, node, newAttrs });
-        }
-        const tr = state.tr.setNodeMarkup(pos, null, {
-          ...node.attrs,
-          ...newAttrs,
-        });
-        editor.view.dispatch(tr);
-        found = true;
-        return false;
-      }
-    });
-    if (!found && import.meta.env.MODE === "development" && logLabel) {
-      console.warn(`[${logLabel}] ノードが見つかりません`, { matchSrc });
-    }
-  }
-
-  // --- 画像ノード操作のラッパー関数群 ---
 
   // --- 投稿成功時のエディタクリア ---
   function clearEditorContent() {
