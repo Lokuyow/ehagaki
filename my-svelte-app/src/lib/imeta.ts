@@ -91,6 +91,7 @@ export async function createImetaTagAsync(fields: ImetaField): Promise<string[]>
     return createImetaTag({ ...fields, dim });
 }
 
+// 既にblurhash生成・プレースホルダーURL生成の関数はこのファイルに実装済み
 /**
  * 画像ファイルからblurhashを生成
  * @param file 画像ファイル

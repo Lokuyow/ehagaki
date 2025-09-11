@@ -147,12 +147,7 @@ export class FileUploadManager {
 
   // --- 画像からプレースホルダーURL生成 ---
   public static async createPlaceholderUrl(file: File): Promise<string | null> {
-    try {
-      const url = URL.createObjectURL(file);
-      return url;
-    } catch {
-      return null;
-    }
+    return await createPlaceholderUrl(file);
   }
 
   // --- アップロードエンドポイント取得 ---
