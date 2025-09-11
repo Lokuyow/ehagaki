@@ -6,22 +6,25 @@
   import { FileUploadManager } from "../lib/fileUploadManager";
   import type { UploadInfoCallbacks } from "../lib/types";
   import { containsSecretKey } from "../lib/utils";
-  import { createEditorStore } from "../lib/editor/stores/editorStore.svelte";
-  import { extractContentWithImages } from "../lib/editor/editorUtils";
-  import { extractImageBlurhashMap } from "../lib/imeta";
+
+  // editorStore からの import を一箇所に統合（重複削除）
   import {
+    createEditorStore,
     placeholderTextStore,
     editorState,
     updateEditorContent,
     updatePostStatus,
     updateUploadState,
     resetEditorState,
-    resetPostStatus, // 追加
+    resetPostStatus,
+    setPostSubmitter,
   } from "../lib/editor/stores/editorStore.svelte";
+
+  import { extractContentWithImages } from "../lib/editor/editorUtils";
+  import { extractImageBlurhashMap } from "../lib/imeta";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
-  import { setPostSubmitter } from "../lib/editor/stores/editorStore.svelte";
   import { tick } from "svelte";
 
   interface Props {
@@ -520,12 +523,8 @@
     // --- devモード: 画像ノードがURLに置き換わった時点でimetaタグを出力 ---
     if (import.meta.env.MODE === "development") {
       try {
-        const {
-          extractImageBlurhashMap,
-          createImetaTag,
-          getMimeTypeFromUrl,
-          calculateImageHash,
-        } = await import("../lib/imeta");
+        const { createImetaTag, getMimeTypeFromUrl, calculateImageHash } =
+          await import("../lib/imeta");
         const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
         const imageBlurhashMap: Record<
           string,
