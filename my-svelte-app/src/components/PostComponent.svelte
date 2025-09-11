@@ -21,7 +21,12 @@
   } from "../lib/editor/stores/editorStore.svelte";
 
   import { extractContentWithImages } from "../lib/editor/editorUtils";
-  import { extractImageBlurhashMap } from "../lib/imeta";
+  import {
+    extractImageBlurhashMap,
+    createImetaTag,
+    getMimeTypeFromUrl,
+    calculateImageHash,
+  } from "../lib/imeta";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
@@ -523,21 +528,9 @@
     // --- devモード: 画像ノードがURLに置き換わった時点でimetaタグを出力 ---
     if (import.meta.env.MODE === "development") {
       try {
-        const { createImetaTag, getMimeTypeFromUrl, calculateImageHash } =
-          await import("../lib/imeta");
+        // imeta.tsのAPIのみ利用
         const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
-        const imageBlurhashMap: Record<
-          string,
-          {
-            m: string;
-            blurhash?: string;
-            dim?: string;
-            alt?: string;
-            ox?: string;
-            x?: string;
-          }
-        > = {};
-        // まず全URLのx計算をPromise.allで待つ
+        // x計算をPromise.allで待つ
         await Promise.all(
           Object.keys(rawImageBlurhashMap).map(async (url) => {
             if (!imageXMap[url]) {
@@ -549,39 +542,13 @@
             }
           }),
         );
-        for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
-          const mimeType = getMimeTypeFromUrl(url);
-          let ox: string | undefined = undefined;
-          if (results) {
-            for (let i = 0; i < results.length; i++) {
-              const result = results[i];
-              if (result.success && result.url === url) {
-                const originalIndex = fileArray.findIndex(
-                  (file, idx) =>
-                    result.sizeInfo &&
-                    file.name === result.sizeInfo.originalFilename,
-                );
-                if (originalIndex >= 0 && oxResults[originalIndex]) {
-                  ox = oxResults[originalIndex].ox;
-                  break;
-                }
-              }
-            }
-          }
-          const x = imageXMap[url];
-          if (import.meta.env.MODE === "development") {
-            console.log("[dev] imeta生成前: url, ox, x, blurhash", {
-              url,
-              ox,
-              x,
-              blurhash,
-            });
-          }
-          imageBlurhashMap[url] = { m: mimeType, blurhash, ox, x };
-        }
+        // imetaタグ生成
         const imetaTags = await Promise.all(
-          Object.entries(imageBlurhashMap).map(async ([url, meta]) => {
-            const tag = await createImetaTag({ url, ...meta });
+          Object.entries(rawImageBlurhashMap).map(async ([url, blurhash]) => {
+            const m = getMimeTypeFromUrl(url);
+            const ox = imageOxMap[url];
+            const x = imageXMap[url];
+            const tag = await createImetaTag({ url, m, blurhash, ox, x });
             if (import.meta.env.MODE === "development") {
               console.log("[dev] imeta生成後: url, tag", { url, tag });
             }
@@ -615,7 +582,6 @@
       content || extractContentWithImages(currentEditor) || "";
 
     // 画像URLとblurhashのマッピングを取得
-    // 型エラー回避: 必要な型に変換
     const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
     const imageBlurhashMap: Record<
       string,
@@ -625,15 +591,15 @@
         blurhash?: string;
         dim?: string;
         alt?: string;
+        ox?: string;
+        x?: string;
       }
     > = {};
-    // getMimeTypeFromUrlをimportして使用
-    const { getMimeTypeFromUrl } = await import("../lib/imeta");
     for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
-      const mimeType = getMimeTypeFromUrl(url);
-      const ox = imageOxMap[url]; // 保存しておいたoxを取得
-      const x = imageXMap[url]; // 保存しておいたxを取得
-      imageBlurhashMap[url] = { m: mimeType, blurhash, ox, x };
+      const m = getMimeTypeFromUrl(url);
+      const ox = imageOxMap[url];
+      const x = imageXMap[url];
+      imageBlurhashMap[url] = { m, blurhash, ox, x };
     }
 
     updatePostStatus({
