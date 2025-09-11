@@ -439,7 +439,7 @@
   }
 
   // --- 追加: 設定ダイアログの画像圧縮設定を管理 ---
-  let selectedCompression = $state("medium");
+  let selectedCompression = $state(localStorage.getItem("imageCompressionLevel") || "medium");
 
   function handleSelectedCompressionChange(value: string) {
     selectedCompression = value;
@@ -447,7 +447,7 @@
 
   // --- 追加: 設定ダイアログのアップロード先設定を管理 ---
 
-  let selectedEndpoint = $state(getDefaultEndpoint($locale));
+  let selectedEndpoint = $state(localStorage.getItem("uploadEndpoint") || getDefaultEndpoint($locale));
 
   function handleSelectedEndpointChange(value: string) {
     selectedEndpoint = value;

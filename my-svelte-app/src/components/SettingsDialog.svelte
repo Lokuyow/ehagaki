@@ -133,12 +133,15 @@
         const effectiveLocale =
             storedLocale ||
             (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
-        const saved = localStorage.getItem("uploadEndpoint");
-        _selectedEndpoint =
-            selectedEndpoint ||
-            (saved && uploadEndpoints.some((ep) => ep.url === saved)
-                ? saved
-                : getDefaultEndpoint(effectiveLocale));
+        // localStorageの値があればそれを優先
+        const savedEndpoint = localStorage.getItem("uploadEndpoint");
+        if (savedEndpoint && uploadEndpoints.some((ep) => ep.url === savedEndpoint)) {
+            _selectedEndpoint = savedEndpoint;
+        } else if (selectedEndpoint) {
+            _selectedEndpoint = selectedEndpoint;
+        } else {
+            _selectedEndpoint = getDefaultEndpoint(effectiveLocale);
+        }
 
         // client tag設定の初期化
         const clientTagSetting = localStorage.getItem("clientTagEnabled");
@@ -149,10 +152,14 @@
         }
 
         // 圧縮設定の初期化
-        _selectedCompression =
-            selectedCompression ||
-            localStorage.getItem("imageCompressionLevel") ||
-            "medium";
+        const savedCompression = localStorage.getItem("imageCompressionLevel");
+        if (savedCompression) {
+            _selectedCompression = savedCompression;
+        } else if (selectedCompression) {
+            _selectedCompression = selectedCompression;
+        } else {
+            _selectedCompression = "medium";
+        }
 
         loadWriteRelays();
         fetchSwVersion();
