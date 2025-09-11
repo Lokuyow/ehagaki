@@ -111,26 +111,6 @@
 
     setPostSubmitter(submitPost);
 
-    // --- クリップボード画像貼り付け対応 ---
-    const handlePaste = (event: ClipboardEvent) => {
-      if (!event.clipboardData) return;
-      const files: File[] = [];
-      for (const item of event.clipboardData.items) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
-      }
-      if (files.length > 0) {
-        event.preventDefault();
-        uploadFiles(files);
-      }
-    };
-    const editorContainer = document.querySelector(".editor-container");
-    if (editorContainer) {
-      editorContainer.addEventListener("paste", handlePaste as EventListener);
-    }
-
     return () => {
       window.removeEventListener(
         "editor-content-changed",
@@ -140,12 +120,6 @@
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
       );
-      if (editorContainer) {
-        editorContainer.removeEventListener(
-          "paste",
-          handlePaste as EventListener,
-        );
-      }
       try {
         unsubscribe();
         if (currentEditor && typeof currentEditor.destroy === "function") {
@@ -161,6 +135,14 @@
   function clearEditorContent() {
     if (currentEditor) {
       currentEditor.chain().clearContent().run();
+    }
+  }
+
+  // --- ファイル選択時の処理 ---
+  function handleFileSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (input?.files && input.files.length > 0) {
+      uploadFiles(input.files);
     }
   }
 
@@ -311,118 +293,155 @@
     pendingPost = "";
   }
 
-  // --- UIイベントハンドラ ---
-  function handleFileSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input?.files && input.files.length > 0) {
-      uploadFiles(input.files);
+  // --- Svelte Actions 定義 ---
+  function fileDropAction(node: HTMLElement) {
+    function handleDragOver(event: DragEvent) {
+      event.preventDefault();
+      // データ転送の types に内部ノード用の MIME type が含まれている場合は内部ドラッグと判断
+      const dt = event.dataTransfer;
+      const isInternalDrag =
+        !!dt &&
+        Array.from(dt.types || []).some(
+          (t) => t === "application/x-tiptap-node",
+        );
+      if (!isInternalDrag) {
+        dragOver = true;
+      } else {
+        // 内部ドラッグの場合は dragOver を有効にしない（既に true の場合は解除）
+        dragOver = false;
+      }
     }
-  }
-
-  function handleDragOver(event: DragEvent) {
-    event.preventDefault();
-    const dt = event.dataTransfer;
-    // データ転送の types に内部ノード用の MIME type が含まれている場合は内部ドラッグと判断
-    const isInternalDrag =
-      !!dt &&
-      Array.from(dt.types || []).some((t) => t === "application/x-tiptap-node");
-    if (!isInternalDrag) {
-      dragOver = true;
-    } else {
-      // 内部ドラッグの場合は dragOver を有効にしない（既に true の場合は解除）
+    function handleDragLeave(event: DragEvent) {
+      event.preventDefault();
+      const dt = event.dataTransfer;
+      const isInternalDrag =
+        !!dt &&
+        Array.from(dt.types || []).some(
+          (t) => t === "application/x-tiptap-node",
+        );
+      if (!isInternalDrag) {
+        dragOver = false;
+      }
+    }
+    async function handleDrop(event: DragEvent) {
+      event.preventDefault();
       dragOver = false;
+      const dragData = event.dataTransfer?.getData("application/x-tiptap-node");
+      if (dragData) return;
+      if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+        await uploadFiles(event.dataTransfer.files);
+      }
     }
+    node.addEventListener("dragover", handleDragOver);
+    node.addEventListener("dragleave", handleDragLeave);
+    node.addEventListener("drop", handleDrop);
+    return {
+      destroy() {
+        node.removeEventListener("dragover", handleDragOver);
+        node.removeEventListener("dragleave", handleDragLeave);
+        node.removeEventListener("drop", handleDrop);
+      },
+    };
   }
 
-  function handleDragLeave(event: DragEvent) {
-    event.preventDefault();
-    const dt = event.dataTransfer;
-    const isInternalDrag =
-      !!dt &&
-      Array.from(dt.types || []).some((t) => t === "application/x-tiptap-node");
-    if (!isInternalDrag) {
-      dragOver = false;
+  function pasteAction(node: HTMLElement) {
+    function handlePaste(event: ClipboardEvent) {
+      if (!event.clipboardData) return;
+      const files: File[] = [];
+      for (const item of event.clipboardData.items) {
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) files.push(file);
+        }
+      }
+      if (files.length > 0) {
+        event.preventDefault();
+        uploadFiles(files);
+      }
     }
-    // 内部ドラッグなら何もしない（エディター内の移動と見なす）
+    node.addEventListener("paste", handlePaste as EventListener);
+    return {
+      destroy() {
+        node.removeEventListener("paste", handlePaste as EventListener);
+      },
+    };
   }
 
-  async function handleDrop(event: DragEvent) {
-    event.preventDefault();
-    dragOver = false;
+  function touchAction(node: HTMLElement) {
+    function handleTouchMove(event: TouchEvent) {
+      const target = event.target as HTMLElement;
+      if (
+        target &&
+        target.closest('.editor-image-button[data-dragging="true"]')
+      ) {
+        const touch = event.touches[0];
+        const scrollThreshold = 120; // ImageDragDropExtensionと同じ値に更新
 
-    // エディター内での画像移動の場合はエディター側で処理
-    const dragData = event.dataTransfer?.getData("application/x-tiptap-node");
-    if (dragData) {
-      // エディター内部の画像移動なので、ここでは何もしない
-      return;
-    }
+        // エディター境界を取得
+        const tiptapEditor = document.querySelector(
+          ".tiptap-editor",
+        ) as HTMLElement;
+        if (tiptapEditor) {
+          const editorRect = tiptapEditor.getBoundingClientRect();
+          const isNearTop = touch.clientY < editorRect.top + scrollThreshold;
+          const isNearBottom =
+            touch.clientY > editorRect.bottom - scrollThreshold;
 
-    // 外部ファイルドロップの場合のみファイルアップロード処理
-    if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-      await uploadFiles(event.dataTransfer.files);
-    }
-  }
-
-  function handleTouchMove(event: TouchEvent) {
-    const target = event.target as HTMLElement;
-    if (
-      target &&
-      target.closest('.editor-image-button[data-dragging="true"]')
-    ) {
-      // ドラッグ中の画像の場合、自動スクロール境界外ではスクロールを防止
-      const touch = event.touches[0];
-      const scrollThreshold = 120; // ImageDragDropExtensionと同じ値に更新
-
-      // エディター境界を取得
-      const tiptapEditor = document.querySelector(
-        ".tiptap-editor",
-      ) as HTMLElement;
-      if (tiptapEditor) {
-        const editorRect = tiptapEditor.getBoundingClientRect();
-        const isNearTop = touch.clientY < editorRect.top + scrollThreshold;
-        const isNearBottom =
-          touch.clientY > editorRect.bottom - scrollThreshold;
-
-        // 境界近くでない場合のみスクロールを防止
-        if (!isNearTop && !isNearBottom) {
-          event.preventDefault();
-          return false;
+          // 境界近くでない場合のみスクロールを防止
+          if (!isNearTop && !isNearBottom) {
+            event.preventDefault();
+            return false;
+          }
         }
       }
     }
-    // その他の場合は通常のスクロールを許可
-  }
+    function handleTouchEnd(event: TouchEvent) {
+      dragOver = false;
 
-  function handleTouchEnd(event: TouchEvent) {
-    dragOver = false;
-
-    // ドロップゾーンのクリーンアップ（改善版）
-    const dropZones = document.querySelectorAll(".drop-zone-indicator");
-    dropZones.forEach((zone) => {
-      // ホバー状態をクリア
-      zone.classList.remove("drop-zone-hover");
-      zone.classList.add("drop-zone-fade-out");
-    });
-
-    // フェードアウト後に削除
-    setTimeout(() => {
+      // ドロップゾーンのクリーンアップ（改善版）
+      const dropZones = document.querySelectorAll(".drop-zone-indicator");
       dropZones.forEach((zone) => {
-        if (zone.parentNode) {
-          zone.parentNode.removeChild(zone);
-        }
+        // ホバー状態をクリア
+        zone.classList.remove("drop-zone-hover");
+        zone.classList.add("drop-zone-fade-out");
       });
-    }, 300);
+
+      // フェードアウト後に削除
+      setTimeout(() => {
+        dropZones.forEach((zone) => {
+          if (zone.parentNode) {
+            zone.parentNode.removeChild(zone);
+          }
+        });
+      }, 300);
+    }
+    node.addEventListener("touchmove", handleTouchMove as EventListener);
+    node.addEventListener("touchend", handleTouchEnd as EventListener);
+    return {
+      destroy() {
+        node.removeEventListener("touchmove", handleTouchMove as EventListener);
+        node.removeEventListener("touchend", handleTouchEnd as EventListener);
+      },
+    };
   }
 
-  function handleEditorKeydown(event: KeyboardEvent) {
-    if (
-      (event.ctrlKey || event.metaKey) &&
-      (event.key === "Enter" || event.key === "NumpadEnter")
-    ) {
-      event.preventDefault();
-      const content = extractContentWithImages(currentEditor) || "";
-      if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
+  function keydownAction(node: HTMLElement) {
+    function handleEditorKeydown(event: KeyboardEvent) {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        (event.key === "Enter" || event.key === "NumpadEnter")
+      ) {
+        event.preventDefault();
+        const content = extractContentWithImages(currentEditor) || "";
+        if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
+      }
     }
+    node.addEventListener("keydown", handleEditorKeydown);
+    return {
+      destroy() {
+        node.removeEventListener("keydown", handleEditorKeydown);
+      },
+    };
   }
 
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
@@ -472,12 +491,10 @@
   <div
     class="editor-container"
     class:drag-over={dragOver}
-    onkeydown={handleEditorKeydown}
-    ondragover={handleDragOver}
-    ondragleave={handleDragLeave}
-    ondrop={handleDrop}
-    ontouchmove={handleTouchMove}
-    ontouchend={handleTouchEnd}
+    use:fileDropAction
+    use:pasteAction
+    use:touchAction
+    use:keydownAction
     aria-label="テキスト入力エリア"
     role="textbox"
     tabindex="0"
