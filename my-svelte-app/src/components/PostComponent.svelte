@@ -167,22 +167,6 @@
     };
   });
 
-  // --- blurhash付き画像挿入関数 ---
-  function insertImageWithBlurhash(
-    editor: any,
-    src: string,
-    blurhash?: string,
-    alt?: string,
-  ) {
-    if (!editor) return;
-
-    const imageAttrs: any = { src };
-    if (blurhash) imageAttrs.blurhash = blurhash;
-    if (alt) imageAttrs.alt = alt;
-
-    editor.chain().focus().setImage(imageAttrs).run();
-  }
-
   // --- 画像ノード操作の共通関数 ---
   function updateImageNodeAttrs(
     editor: any,
@@ -213,14 +197,25 @@
     }
   }
 
-  // --- プレースホルダー画像挿入関数（blurhashのみ） ---
+  // --- 画像ノード操作のラッパー関数群 ---
+  function insertImageWithBlurhash(
+    editor: any,
+    src: string,
+    blurhash?: string,
+    alt?: string,
+  ) {
+    if (!editor) return;
+    const imageAttrs: any = { src };
+    if (blurhash) imageAttrs.blurhash = blurhash;
+    if (alt) imageAttrs.alt = alt;
+    editor.chain().focus().setImage(imageAttrs).run();
+  }
   function insertPlaceholderImage(
     editor: any,
     placeholderSrc: string,
     blurhash?: string,
   ) {
     if (!editor) return;
-
     const imageAttrs: any = { src: placeholderSrc, isPlaceholder: true };
     if (blurhash) imageAttrs.blurhash = blurhash;
     editor.chain().focus().setImage(imageAttrs).run();
@@ -237,8 +232,6 @@
       });
     }
   }
-
-  // --- プレースホルダー画像をblurhashで更新 ---
   function updatePlaceholderImage(
     editor: any,
     placeholderSrc: string,
@@ -251,8 +244,6 @@
       "updatePlaceholderImage",
     );
   }
-
-  // --- プレースホルダー画像を実際の画像URLで置き換え ---
   function replaceImagePlaceholder(
     editor: any,
     placeholderSrc: string,
@@ -268,8 +259,6 @@
       "replaceImagePlaceholder",
     );
   }
-
-  // --- プレースホルダー画像ノードを削除 ---
   function removePlaceholderImage(editor: any, placeholderSrc: string) {
     if (!editor) return;
     const { state } = editor;
