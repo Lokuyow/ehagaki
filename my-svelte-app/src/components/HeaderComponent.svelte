@@ -41,7 +41,7 @@
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
-    let canPost = $derived(editorState.canPost || editorState.hasImage); // 修正
+    let canPost = $derived(editorState.canPost); // 修正: editorState.canPost のみ参照
 
     function showSuccessMessage() {
         setTimeout(() => {

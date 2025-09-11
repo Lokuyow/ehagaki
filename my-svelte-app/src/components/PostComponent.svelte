@@ -183,6 +183,36 @@
     editor.chain().focus().setImage(imageAttrs).run();
   }
 
+  // --- 画像ノード操作の共通関数 ---
+  function updateImageNodeAttrs(
+    editor: any,
+    matchSrc: string,
+    newAttrs: Record<string, any>,
+    logLabel?: string,
+  ) {
+    if (!editor) return;
+    const { state } = editor;
+    const { doc } = state;
+    let found = false;
+    doc.descendants((node: any, pos: number) => {
+      if (node.type?.name === "image" && node.attrs?.src === matchSrc) {
+        if (import.meta.env.MODE === "development" && logLabel) {
+          console.log(`[${logLabel}]`, { pos, matchSrc, node, newAttrs });
+        }
+        const tr = state.tr.setNodeMarkup(pos, null, {
+          ...node.attrs,
+          ...newAttrs,
+        });
+        editor.view.dispatch(tr);
+        found = true;
+        return false;
+      }
+    });
+    if (!found && import.meta.env.MODE === "development" && logLabel) {
+      console.warn(`[${logLabel}] ノードが見つかりません`, { matchSrc });
+    }
+  }
+
   // --- プレースホルダー画像挿入関数（blurhashのみ） ---
   function insertPlaceholderImage(
     editor: any,
@@ -191,16 +221,10 @@
   ) {
     if (!editor) return;
 
-    const imageAttrs: any = {
-      src: placeholderSrc,
-      isPlaceholder: true, // プレースホルダーフラグを追加
-    };
+    const imageAttrs: any = { src: placeholderSrc, isPlaceholder: true };
     if (blurhash) imageAttrs.blurhash = blurhash;
-    // alt属性は渡さない
-
     editor.chain().focus().setImage(imageAttrs).run();
     if (import.meta.env.MODE === "development") {
-      // 挿入直後の全画像ノードをログ
       const { doc } = editor.state;
       doc.descendants((node: any, pos: number) => {
         if (node.type?.name === "image") {
@@ -220,39 +244,12 @@
     placeholderSrc: string,
     blurhash: string,
   ) {
-    if (!editor) return;
-
-    const { state } = editor;
-    const { doc } = state;
-    let found = false;
-    doc.descendants((node: any, pos: number) => {
-      if (node.type?.name === "image" && node.attrs?.src === placeholderSrc) {
-        const newAttrs = {
-          ...node.attrs,
-          blurhash: blurhash,
-        };
-        if (import.meta.env.MODE === "development") {
-          console.log("[updatePlaceholderImage] blurhash更新", {
-            pos,
-            placeholderSrc,
-            blurhash,
-            node,
-            newAttrs,
-          });
-        }
-        // 画像ノードを更新
-        const tr = state.tr.setNodeMarkup(pos, null, newAttrs);
-        editor.view.dispatch(tr);
-        found = true;
-        return false; // 最初にマッチしたものだけを更新
-      }
-    });
-    if (!found && import.meta.env.MODE === "development") {
-      console.warn(
-        "[updatePlaceholderImage] プレースホルダーが見つかりません",
-        { placeholderSrc },
-      );
-    }
+    updateImageNodeAttrs(
+      editor,
+      placeholderSrc,
+      { blurhash },
+      "updatePlaceholderImage",
+    );
   }
 
   // --- プレースホルダー画像を実際の画像URLで置き換え ---
@@ -262,48 +259,34 @@
     actualSrc: string,
     blurhash?: string,
   ) {
-    if (!editor) return;
+    const newAttrs: any = { src: actualSrc, isPlaceholder: false };
+    if (blurhash) newAttrs.blurhash = blurhash;
+    updateImageNodeAttrs(
+      editor,
+      placeholderSrc,
+      newAttrs,
+      "replaceImagePlaceholder",
+    );
+  }
 
+  // --- プレースホルダー画像ノードを削除 ---
+  function removePlaceholderImage(editor: any, placeholderSrc: string) {
+    if (!editor) return;
     const { state } = editor;
     const { doc } = state;
-    let found = false;
     doc.descendants((node: any, pos: number) => {
       if (node.type?.name === "image" && node.attrs?.src === placeholderSrc) {
-        const newAttrs = {
-          ...node.attrs,
-          src: actualSrc,
-          isPlaceholder: false, // プレースホルダーフラグを削除
-        };
-        if (blurhash) newAttrs.blurhash = blurhash;
-        if (import.meta.env.MODE === "development") {
-          console.log("[replaceImagePlaceholder] 置換対象ノード発見", {
-            pos,
-            node,
-            newAttrs,
-          });
-        }
-        // 画像ノードを更新
-        const tr = state.tr.setNodeMarkup(pos, null, newAttrs);
+        const tr = state.tr.delete(pos, pos + node.nodeSize);
         editor.view.dispatch(tr);
-        found = true;
-        return false; // 最初にマッチしたものだけを置き換え
+        return false;
       }
     });
-    if (!found && import.meta.env.MODE === "development") {
-      console.warn(
-        "[replaceImagePlaceholder] プレースホルダーが見つかりません",
-        { placeholderSrc },
-      );
-      // エディタ内の全画像ノードをログ出力
-      doc.descendants((node: any, pos: number) => {
-        if (node.type?.name === "image") {
-          console.log("[replaceImagePlaceholder] image node", {
-            pos,
-            src: node.attrs?.src,
-            node,
-          });
-        }
-      });
+  }
+
+  // --- 投稿成功時のエディタクリア ---
+  function clearEditorContent() {
+    if (currentEditor) {
+      currentEditor.chain().clearContent().run();
     }
   }
 
@@ -367,17 +350,10 @@
         );
         return;
       }
-
-      // 一意のプレースホルダーIDを生成
       const placeholderId = `placeholder-${Date.now()}-${index}`;
-
-      // oxを取得
       const ox = oxResults[index]?.ox;
-
-      // blurhashなしで即座にプレースホルダーを挿入
       insertPlaceholderImage(currentEditor, placeholderId);
       placeholderMap.push({ file, placeholderId, ox });
-
       if (devMode) {
         console.log("[uploadFiles] insertPlaceholderImage immediately", {
           placeholderId,
@@ -395,7 +371,6 @@
         );
         if (blurhash) {
           item.blurhash = blurhash;
-          // プレースホルダー画像をblurhash付きに更新
           updatePlaceholderImage(currentEditor, item.placeholderId, blurhash);
           if (devMode) {
             console.log("[uploadFiles] updated placeholder with blurhash", {
@@ -504,11 +479,9 @@
               result.url,
               matched.blurhash ?? undefined,
             );
-            // oxをimageOxMapに保存
             if (matched.ox && result.url) {
               imageOxMap[result.url] = matched.ox;
             }
-            // アップロード後の画像URLからx（SHA-256ハッシュ）を計算
             if (result.url) {
               (async () => {
                 try {
@@ -520,10 +493,7 @@
                       if (devMode) {
                         console.log(
                           "[uploadFiles] calculated x hash for uploaded image",
-                          {
-                            url: result.url,
-                            x,
-                          },
+                          { url: result.url, x },
                         );
                       }
                     }
@@ -541,22 +511,9 @@
           }
         } else if (!result.success) {
           failedResults.push(result);
-          // 失敗した場合はplaceholderMapから順に削除し、ノードも削除
           const failed = placeholderMap.shift();
           if (failed) {
-            // プレースホルダー画像ノードを削除する処理
-            const { state } = currentEditor;
-            const { doc } = state;
-            doc.descendants((node: any, pos: number) => {
-              if (
-                node.type?.name === "image" &&
-                node.attrs?.src === failed.placeholderId
-              ) {
-                const tr = state.tr.delete(pos, pos + node.nodeSize);
-                currentEditor.view.dispatch(tr);
-                return false;
-              }
-            });
+            removePlaceholderImage(currentEditor, failed.placeholderId);
           }
         }
       }
@@ -711,10 +668,7 @@
           message: "postComponent.post_success",
           completed: true,
         });
-        // 投稿成功時にエディター内容をクリア
-        if (currentEditor) {
-          currentEditor.chain().clearContent().run();
-        }
+        clearEditorContent();
         onPostSuccess?.();
       } else {
         updatePostStatus({
@@ -739,16 +693,12 @@
 
   export function resetPostContent() {
     resetEditorState();
-    if (currentEditor) {
-      currentEditor.chain().clearContent().run();
-    }
+    clearEditorContent();
   }
 
   // 投稿成功後のコンテンツクリア（遅延実行）
   export function clearContentAfterSuccess() {
-    if (currentEditor) {
-      currentEditor.chain().clearContent().run();
-    }
+    clearEditorContent();
     resetPostStatus();
   }
 
