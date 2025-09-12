@@ -1,8 +1,10 @@
-import { FileUploadManager } from "./fileUploadManager";
+import { FileUploadManager, getImageDimensions } from "./fileUploadManager";
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./imeta";
 import { tick } from "svelte";
 import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import { imageSizeMapStore } from "./appStores.svelte";
+import type { ImageDimensions } from "./imageUtils";
 
 export async function uploadHelper({
     files,
@@ -19,38 +21,84 @@ export async function uploadHelper({
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
-    // ox計算
-    const oxPromises = fileArray.map(async (file, index) => {
+    // ox計算とサイズ計算を並列実行
+    const fileProcessingPromises = fileArray.map(async (file, index) => {
         let ox: string | undefined = undefined;
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
-            ox = Array.from(new Uint8Array(hashBuffer))
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join("");
-        } catch (e) {
-            ox = undefined;
-        }
-        return { file, index, ox };
-    });
-    const oxResults = await Promise.all(oxPromises);
+        let dimensions: ImageDimensions | null = null;
 
-    // プレースホルダー挿入
+        // 並列でox計算とサイズ計算を実行
+        const [oxResult, dimensionsResult] = await Promise.all([
+            // ox計算
+            (async () => {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+                    return Array.from(new Uint8Array(hashBuffer))
+                        .map((b) => b.toString(16).padStart(2, "0"))
+                        .join("");
+                } catch (e) {
+                    return undefined;
+                }
+            })(),
+            // サイズ計算
+            getImageDimensions(file)
+        ]);
+
+        return { file, index, ox: oxResult, dimensions: dimensionsResult };
+    });
+    const fileProcessingResults = await Promise.all(fileProcessingPromises);
+
+    // プレースホルダー挿入（サイズ情報付き）
     fileArray.forEach((file, index) => {
         const validation = FileUploadManager.validateImageFile(file);
         if (!validation.isValid) {
             showUploadError(validation.errorMessage || "postComponent.upload_failed");
             return;
         }
+
         const placeholderId = `placeholder-${Date.now()}-${index}`;
-        const ox = oxResults[index]?.ox;
+        const processingResult = fileProcessingResults[index];
+        const ox = processingResult?.ox;
+        const dimensions = processingResult?.dimensions;
+
         if (currentEditor) {
-            // currentEditor は TipTap Editor 型。存在チェックをしてコマンドを使う。
-            (currentEditor as TipTapEditor).chain?.().focus?.().setImage?.({ src: placeholderId })?.run?.();
+            // プレースホルダー挿入時にサイズ情報も含める
+            const imageAttrs: any = {
+                src: placeholderId,
+                isPlaceholder: true
+            };
+
+            // サイズ情報があればdim属性として追加
+            if (dimensions) {
+                imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
+
+                // サイズマップストアに保存
+                imageSizeMapStore.update(map => ({
+                    ...map,
+                    [placeholderId]: dimensions
+                }));
+
+                if (devMode) {
+                    console.log("[uploadHelper] calculated dimensions for placeholder", {
+                        placeholderId,
+                        dimensions,
+                        file: file.name
+                    });
+                }
+            }
+
+            (currentEditor as TipTapEditor).chain?.().focus?.().setImage?.(imageAttrs)?.run?.();
         }
-        placeholderMap.push({ file, placeholderId, ox });
+
+        placeholderMap.push({ file, placeholderId, ox, dimensions: dimensions ?? undefined });
+
         if (devMode) {
-            console.log("[uploadHelper] insertPlaceholderImage", { placeholderId, file, ox });
+            console.log("[uploadHelper] insertPlaceholderImage", {
+                placeholderId,
+                file: file.name,
+                ox,
+                dimensions
+            });
         }
     });
 
@@ -76,12 +124,19 @@ export async function uploadHelper({
                     });
                 }
                 if (devMode) {
-                    console.log("[uploadHelper] updated placeholder with blurhash", { placeholderId: item.placeholderId, blurhash, file: item.file });
+                    console.log("[uploadHelper] updated placeholder with blurhash", {
+                        placeholderId: item.placeholderId,
+                        blurhash,
+                        file: item.file.name
+                    });
                 }
             }
         } catch (error) {
             if (devMode) {
-                console.warn("[uploadHelper] blurhash generation failed", { file: item.file, error });
+                console.warn("[uploadHelper] blurhash generation failed", {
+                    file: item.file.name,
+                    error
+                });
             }
         }
     });
@@ -135,21 +190,37 @@ export async function uploadHelper({
                     if (idx !== -1) placeholderMap.splice(idx, 1);
                 }
                 if (matched && currentEditor) {
-                    // 置換
+                    // 置換時にサイズ情報も移行
                     const state = (currentEditor as TipTapEditor).state;
                     const doc = state.doc;
                     doc.descendants((node: any, pos: number) => {
                         if (node.type?.name === "image" && node.attrs?.src === matched!.placeholderId) {
-                            const tr = state.tr.setNodeMarkup(pos, undefined, {
+                            const newAttrs: any = {
                                 ...node.attrs,
                                 src: result.url,
                                 isPlaceholder: false,
                                 blurhash: matched!.blurhash ?? undefined,
-                            });
+                            };
+
+                            // サイズ情報があれば保持
+                            if (matched!.dimensions) {
+                                newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
+
+                                // サイズマップストアを更新（古いキーを削除して新しいキーを追加）
+                                imageSizeMapStore.update(map => {
+                                    const newMap = { ...map };
+                                    delete newMap[matched!.placeholderId];
+                                    newMap[result.url!] = matched!.dimensions!;
+                                    return newMap;
+                                });
+                            }
+
+                            const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
                             (currentEditor as TipTapEditor).view.dispatch(tr);
                             return false;
                         }
                     });
+
                     if (matched.ox && result.url) {
                         imageOxMap[result.url] = matched.ox;
                     }
@@ -158,11 +229,17 @@ export async function uploadHelper({
                             const x = await calculateImageHash(result.url);
                             if (x) imageXMap[result.url] = x;
                             if (devMode) {
-                                console.log("[uploadHelper] calculated x hash for uploaded image", { url: result.url, x });
+                                console.log("[uploadHelper] calculated x hash for uploaded image", {
+                                    url: result.url,
+                                    x
+                                });
                             }
                         } catch (error) {
                             if (devMode) {
-                                console.warn("[uploadHelper] failed to calculate x hash", { url: result.url, error });
+                                console.warn("[uploadHelper] failed to calculate x hash", {
+                                    url: result.url,
+                                    error
+                                });
                             }
                         }
                     }
@@ -171,6 +248,13 @@ export async function uploadHelper({
                 failedResults.push(result);
                 const failed = placeholderMap.shift();
                 if (failed && currentEditor) {
+                    // プレースホルダー削除時にサイズマップからも削除
+                    imageSizeMapStore.update(map => {
+                        const newMap = { ...map };
+                        delete newMap[failed.placeholderId];
+                        return newMap;
+                    });
+
                     // プレースホルダー削除
                     const state = (currentEditor as TipTapEditor).state;
                     const doc = state.doc;

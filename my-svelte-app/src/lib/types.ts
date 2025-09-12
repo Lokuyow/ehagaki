@@ -1,4 +1,5 @@
 import type { RxNostr } from "rx-nostr";
+import type { ImageDimensions } from './imageUtils';
 
 export interface PostStatus {
     sending: boolean;
@@ -99,6 +100,7 @@ export interface PlaceholderEntry {
     placeholderId: string;
     blurhash?: string;
     ox?: string;
+    dimensions?: ImageDimensions; // 新規追加
 }
 
 export interface UploadHelperParams {

@@ -2,6 +2,10 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { renderBlurhashToCanvas } from "../lib/imeta";
+    import {
+        getPlaceholderDefaultSize,
+        type ImageDimensions,
+    } from "../lib/imageUtils";
 
     interface Props {
         blurhash?: string;
@@ -9,22 +13,44 @@
         height?: number;
         alt?: string;
         showLoadingIndicator?: boolean;
+        dimensions?: ImageDimensions; // 新規追加
     }
 
     let {
         blurhash = "",
-        width = 200,
-        height = 150,
+        width,
+        height,
         showLoadingIndicator = true,
+        dimensions, // 新規追加
     }: Props = $props();
 
     let canvasRef: HTMLCanvasElement | undefined = $state();
+
+    // 使用するサイズを決定
+    const finalDimensions = $derived(() => {
+        if (dimensions) return dimensions;
+        if (width && height) {
+            return {
+                width,
+                height,
+                displayWidth: width,
+                displayHeight: height,
+            };
+        }
+        return getPlaceholderDefaultSize();
+    });
 
     // blurhashをデコードしてcanvasに描画
     function renderBlurhash() {
         if (!blurhash || !canvasRef) return;
 
-        renderBlurhashToCanvas(blurhash, canvasRef, width, height);
+        const dims = finalDimensions();
+        renderBlurhashToCanvas(
+            blurhash,
+            canvasRef,
+            dims.displayWidth,
+            dims.displayHeight,
+        );
     }
 
     onMount(() => {
@@ -43,17 +69,26 @@
     onDestroy(() => {
         // キャンバスのクリーンアップ
         if (canvasRef) {
+            const dims = finalDimensions();
             const ctx = canvasRef.getContext("2d");
             if (ctx) {
-                ctx.clearRect(0, 0, width, height);
+                ctx.clearRect(0, 0, dims.displayWidth, dims.displayHeight);
             }
         }
     });
 </script>
 
-<div class="image-placeholder" style="width: {width}px; height: {height}px;">
+<div
+    class="image-placeholder"
+    style="width: {finalDimensions().displayWidth}px; height: {finalDimensions()
+        .displayHeight}px;"
+>
     {#if blurhash}
-        <canvas bind:this={canvasRef} {width} {height} class="blurhash-canvas"
+        <canvas
+            bind:this={canvasRef}
+            width={finalDimensions().displayWidth}
+            height={finalDimensions().displayHeight}
+            class="blurhash-canvas"
         ></canvas>
     {/if}
 
@@ -75,11 +110,13 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        max-width: 100%;
+        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
     }
 
     .blurhash-canvas {
-        width: 100%;
-        height: 100%;
+        max-width: 100%;
+        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
         object-fit: cover;
         filter: blur(1px);
         opacity: 0.8;

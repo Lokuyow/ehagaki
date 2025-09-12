@@ -19,6 +19,7 @@ import { getToken } from "nostr-tools/nip98";
 import { debugLogUploadResponse } from "./debug";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./imeta";
 import { showCompressedImagePreview } from "./debug";
+import { calculateImageDisplaySize, type ImageDimensions } from "./imageUtils";
 
 // --- 画像のSHA-256ハッシュ計算 ---
 async function calculateSHA256Hex(file: File): Promise<string> {
@@ -27,6 +28,32 @@ async function calculateSHA256Hex(file: File): Promise<string> {
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+// --- 画像サイズ取得関数を追加 ---
+export async function getImageDimensions(file: File): Promise<ImageDimensions | null> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith('image/')) {
+      resolve(null);
+      return;
+    }
+
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+
+    img.onload = () => {
+      const dimensions = calculateImageDisplaySize(img.naturalWidth, img.naturalHeight);
+      URL.revokeObjectURL(url);
+      resolve(dimensions);
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+
+    img.src = url;
+  });
 }
 
 // ファイルアップロード専用マネージャークラス

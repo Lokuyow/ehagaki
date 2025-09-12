@@ -308,7 +308,19 @@ export interface ImageImetaMap {
     };
 }
 
+// 画像サイズ情報マップストア（新規追加）
+export interface ImageSizeMap {
+    [url: string]: {
+        width: number;
+        height: number;
+        displayWidth: number;
+        displayHeight: number;
+    };
+}
+
 let imageImetaMap = $state<ImageImetaMap>({});
+let imageSizeMap = $state<ImageSizeMap>({}); // 新規追加
+
 export const imageImetaMapStore = {
     get value() { return imageImetaMap; },
     set: (value: ImageImetaMap) => { imageImetaMap = value; },
@@ -316,6 +328,18 @@ export const imageImetaMapStore = {
     subscribe: (callback: (value: ImageImetaMap) => void) => {
         $effect(() => {
             callback(imageImetaMap);
+        });
+    }
+};
+
+// 新規追加: 画像サイズマップストア
+export const imageSizeMapStore = {
+    get value() { return imageSizeMap; },
+    set: (value: ImageSizeMap) => { imageSizeMap = value; },
+    update: (updater: (value: ImageSizeMap) => ImageSizeMap) => { imageSizeMap = updater(imageSizeMap); },
+    subscribe: (callback: (value: ImageSizeMap) => void) => {
+        $effect(() => {
+            callback(imageSizeMap);
         });
     }
 };

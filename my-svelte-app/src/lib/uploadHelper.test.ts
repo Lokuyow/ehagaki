@@ -1,4 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+// ここを追加
+vi.mock("./appStores.svelte", () => {
+    return {
+        imageSizeMapStore: {
+            update: vi.fn(),
+        },
+    };
+});
+
 import { uploadHelper } from "./uploadHelper";
 import { FileUploadManager } from "./fileUploadManager";
 import * as imeta from "./imeta";
@@ -11,6 +21,8 @@ vi.mock("./fileUploadManager", () => {
             uploadFileWithCallbacks: vi.fn(),
             uploadMultipleFilesWithCallbacks: vi.fn(),
         },
+        // ここを追加
+        getImageDimensions: vi.fn(async () => ({ width: 100, height: 200 })),
     };
 });
 

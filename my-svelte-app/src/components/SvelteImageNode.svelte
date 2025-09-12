@@ -4,6 +4,13 @@
     import { onDestroy, onMount } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
     import { renderBlurhashToCanvas } from "../lib/imeta";
+    import {
+        calculateImageDisplaySize,
+        parseDimString,
+        getPlaceholderDefaultSize,
+        type ImageDimensions,
+    } from "../lib/imageUtils";
+    import { imageSizeMapStore } from "../lib/appStores.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -38,7 +45,42 @@
             (isPlaceholder || !isImageLoaded || blurhashFadeOut),
     );
 
+    // 画像サイズ関連の状態
+    let imageDimensions = $state<ImageDimensions | null>(null);
+
     const devMode = import.meta.env.MODE === "development";
+
+    // 画像サイズを計算・取得
+    $effect(() => {
+        const imageUrl = node.attrs.src;
+        if (!imageUrl) return;
+
+        // ストアから既存のサイズ情報を確認
+        const storedSize = imageSizeMapStore.value[imageUrl];
+        if (storedSize) {
+            imageDimensions = storedSize;
+            return;
+        }
+
+        // dimストリングから元画像サイズを取得
+        const dimParsed = parseDimString(node.attrs.dim);
+        if (dimParsed) {
+            const calculated = calculateImageDisplaySize(
+                dimParsed.width,
+                dimParsed.height,
+            );
+            imageDimensions = calculated;
+
+            // ストアに保存
+            imageSizeMapStore.update((map) => ({
+                ...map,
+                [imageUrl]: calculated,
+            }));
+        } else if (isPlaceholder) {
+            // プレースホルダーの場合はデフォルトサイズ
+            imageDimensions = getPlaceholderDefaultSize();
+        }
+    });
 
     // blurhashをcanvasに描画
     function renderBlurhash() {
@@ -57,9 +99,10 @@
             return;
         }
 
-        // プレースホルダーの場合は適切なサイズで描画
-        const width = isPlaceholder ? 200 : 100;
-        const height = isPlaceholder ? 150 : 100;
+        // 計算されたサイズまたはデフォルトサイズを使用
+        const dimensions = imageDimensions || getPlaceholderDefaultSize();
+        const width = dimensions.displayWidth;
+        const height = dimensions.displayHeight;
 
         canvasRef.width = width;
         canvasRef.height = height;
@@ -473,8 +516,10 @@
         {#if showBlurhash}
             <canvas
                 bind:this={canvasRef}
-                width={isPlaceholder ? 200 : 100}
-                height={isPlaceholder ? 150 : 100}
+                width={imageDimensions?.displayWidth ||
+                    getPlaceholderDefaultSize().displayWidth}
+                height={imageDimensions?.displayHeight ||
+                    getPlaceholderDefaultSize().displayHeight}
                 class="blurhash-canvas"
                 class:is-placeholder={isPlaceholder}
                 class:fade-out={isImageLoaded &&
@@ -492,7 +537,9 @@
                 onload={handleImageLoad}
                 onerror={handleImageError}
                 oncontextmenu={handleContextMenu}
-                style="z-index:2; position:relative;"
+                style="z-index:2; position:relative; {imageDimensions
+                    ? `width: ${imageDimensions.displayWidth}px; height: ${imageDimensions.displayHeight}px;`
+                    : ''}"
             />
         {/if}
     </button>
@@ -502,7 +549,7 @@
     /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
     :global([data-node-view-wrapper]) {
         display: block;
-        width: fit-content;
+        width: 100%;
         padding: 0;
         pointer-events: none;
     }
@@ -511,10 +558,11 @@
     :global(.node-image),
     :global(.node-image.svelte-renderer) {
         display: block;
-        width: fit-content;
+        max-width: 100%;
+        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
         line-height: 0;
         pointer-events: none;
-        margin: 3px 0;
+        margin: 8px 0;
     }
 
     /* ボタンを画像サイズに完全に合わせる */
@@ -530,8 +578,8 @@
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
-        width: auto;
-        height: auto;
+        max-width: 100%;
+        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
         line-height: 0;
         vertical-align: top;
         pointer-events: auto;
@@ -581,6 +629,8 @@
         opacity: 0.8;
         filter: blur(1px);
         transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        max-width: 100%;
+        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
     }
 
     /* 実際の画像に重なるblurhashキャンバス */
@@ -601,10 +651,7 @@
     /* プレースホルダー時のblurhashキャンバス */
     .blurhash-canvas.is-placeholder {
         position: relative;
-        width: 200px;
-        height: 150px;
         border: 1px solid var(--border);
-        margin: 8px 0;
         opacity: 1;
         filter: blur(0.5px);
     }
@@ -613,7 +660,8 @@
     img.editor-image {
         display: block;
         max-width: 100%;
-        max-height: 240px;
+        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
+        width: auto;
         border: 1px solid var(--border);
         border-radius: 6px;
         cursor: pointer;
@@ -622,7 +670,6 @@
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
-        margin: 8px 0;
         position: relative;
         z-index: 2;
     }

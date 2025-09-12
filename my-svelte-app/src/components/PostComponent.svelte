@@ -39,6 +39,7 @@
     touchAction,
     keydownAction,
   } from "../lib/editor/editorDomActions";
+  import { getPlaceholderDefaultSize } from "../lib/imageUtils";
 
   // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {
@@ -62,6 +63,7 @@
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
+  const placeholderDimensions = getPlaceholderDefaultSize();
 
   // --- PostManager初期化 ---
   $effect(() => {
@@ -332,8 +334,7 @@
     {#if !editorState.content && !editorState.hasImage}
       <ImagePlaceholder
         blurhash=""
-        width={200}
-        height={150}
+        dimensions={placeholderDimensions}
         alt={$_("postComponent.enter_your_text") ||
           "テキストを入力してください"}
         showLoadingIndicator={false}
