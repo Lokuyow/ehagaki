@@ -421,8 +421,6 @@
     outline: none;
     background: var(--bg-input);
     overflow: hidden;
-    /* タッチスクロール最適化 */
-    -webkit-overflow-scrolling: touch;
     touch-action: pan-y; /* 縦スクロールのみ許可 */
     /* ドラッグ中のスクロール制御を改善 */
     overscroll-behavior: contain;
@@ -455,7 +453,6 @@
     overflow-x: hidden;
     /* スクロール最適化 */
     scroll-behavior: auto;
-    -webkit-overflow-scrolling: touch;
     /* GPU加速を有効化 */
     will-change: scroll-position;
     transform: translateZ(0);
@@ -548,7 +545,6 @@
       -webkit-transform: translateZ(0);
       transform: translateZ(0);
       backface-visibility: hidden;
-      perspective: 1000;
     }
   }
 
