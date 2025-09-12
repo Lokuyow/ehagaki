@@ -31,6 +31,7 @@
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
+  import ImagePlaceholder from "./ImagePlaceholder.svelte"; // 追加
   // actionsをインポート
   import {
     fileDropAction,
@@ -416,6 +417,17 @@
       <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
       <EditorContent editor={currentEditor as any} class="editor-content" />
     {/if}
+    <!-- プレースホルダー表示をImagePlaceholderに置き換え -->
+    {#if !editorState.content && !editorState.hasImage}
+      <ImagePlaceholder
+        blurhash=""
+        width={200}
+        height={150}
+        alt={$_("postComponent.enter_your_text") ||
+          "テキストを入力してください"}
+        showLoadingIndicator={false}
+      />
+    {/if}
   </div>
 
   <input
@@ -537,17 +549,6 @@
     transform: translateZ(0);
     /* タッチデバイスでのフォーカス処理改善 */
     -webkit-tap-highlight-color: transparent;
-  }
-
-  /* プレースホルダースタイル */
-  :global(.tiptap-editor .is-editor-empty:first-child::before) {
-    content: attr(data-placeholder);
-    color: var(--text);
-    pointer-events: none;
-    height: 0;
-    float: left;
-    font-size: 1.25rem;
-    opacity: 0.4;
   }
 
   /* エディタ内の要素スタイル */

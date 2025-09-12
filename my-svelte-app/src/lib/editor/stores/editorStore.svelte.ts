@@ -24,8 +24,8 @@ export const hashtagDataStore = $state<{ content: string; hashtags: string[]; ta
 export function createEditorStore(placeholderText: string) {
     let placeholderExtension = Placeholder.configure({
         placeholder: placeholderText,
-        emptyEditorClass: 'is-editor-empty',
-        showOnlyWhenEditable: true,
+        emptyEditorClass: '', // ← プレースホルダー用クラスを無効化
+        showOnlyWhenEditable: false, // ← 外部で制御するためfalse
         showOnlyCurrent: false,
         includeChildren: true,
     });
