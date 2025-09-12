@@ -11,7 +11,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { Node as PMNode } from "prosemirror-model";
   import type { RxNostr } from "rx-nostr";
-  import type { UploadHelperResult, UploadHelperParams } from "../lib/types";
+  import type { UploadHelperResult } from "../lib/types";
 
   // editorStore からの import を一箇所に統合（重複削除）
   import {
@@ -31,6 +31,13 @@
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
+  // actionsをインポート
+  import {
+    fileDropAction,
+    pasteAction,
+    touchAction,
+    keydownAction,
+  } from "../lib/editor/editorDomActions";
 
   let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
     $props();
@@ -89,6 +96,9 @@
     return found;
   }
 
+  // editor-containerノード参照
+  let editorContainerEl: HTMLElement | null = null;
+
   onMount(() => {
     const initialPlaceholder =
       $_("postComponent.enter_your_text") || "テキストを入力してください";
@@ -132,6 +142,15 @@
 
     setPostSubmitter(submitPost);
 
+    // editor-containerノードにuploadFiles等をセット
+    if (editorContainerEl) {
+      (editorContainerEl as any).__uploadFiles = uploadFiles;
+      (editorContainerEl as any).__currentEditor = () => currentEditor;
+      (editorContainerEl as any).__hasStoredKey = () => hasStoredKey;
+      (editorContainerEl as any).__postStatus = () => postStatus;
+      (editorContainerEl as any).__submitPost = submitPost;
+    }
+
     return () => {
       window.removeEventListener(
         "editor-content-changed",
@@ -148,6 +167,14 @@
         }
       } catch (e) {
         console.warn("Editor cleanup failed:", e);
+      }
+
+      if (editorContainerEl) {
+        delete (editorContainerEl as any).__uploadFiles;
+        delete (editorContainerEl as any).__currentEditor;
+        delete (editorContainerEl as any).__hasStoredKey;
+        delete (editorContainerEl as any).__postStatus;
+        delete (editorContainerEl as any).__submitPost;
       }
     };
   });
@@ -170,7 +197,11 @@
   // --- ファイルアップロード関連 ---
   // onUploadProgress が未定義の場合は callbacks 自体を undefined にする
   const uploadCallbacks: UploadInfoCallbacks | undefined = onUploadProgress
-    ? { onProgress: onUploadProgress as (p: import("../lib/types").UploadProgress) => void }
+    ? {
+        onProgress: onUploadProgress as (
+          p: import("../lib/types").UploadProgress,
+        ) => void,
+      }
     : undefined;
 
   function showUploadError(message: string, duration = 3000) {
@@ -324,157 +355,6 @@
     pendingPost = "";
   }
 
-  // --- Svelte Actions 定義 ---
-  function fileDropAction(node: HTMLElement) {
-    function handleDragOver(event: DragEvent) {
-      event.preventDefault();
-      // データ転送の types に内部ノード用の MIME type が含まれている場合は内部ドラッグと判断
-      const dt = event.dataTransfer;
-      const isInternalDrag =
-        !!dt &&
-        Array.from(dt.types || []).some(
-          (t) => t === "application/x-tiptap-node",
-        );
-      if (!isInternalDrag) {
-        dragOver = true;
-      } else {
-        // 内部ドラッグの場合は dragOver を有効にしない（既に true の場合は解除）
-        dragOver = false;
-      }
-    }
-    function handleDragLeave(event: DragEvent) {
-      event.preventDefault();
-      const dt = event.dataTransfer;
-      const isInternalDrag =
-        !!dt &&
-        Array.from(dt.types || []).some(
-          (t) => t === "application/x-tiptap-node",
-        );
-      if (!isInternalDrag) {
-        dragOver = false;
-      }
-    }
-    async function handleDrop(event: DragEvent) {
-      event.preventDefault();
-      dragOver = false;
-      const dragData = event.dataTransfer?.getData("application/x-tiptap-node");
-      if (dragData) return;
-      if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
-        await uploadFiles(event.dataTransfer.files);
-      }
-    }
-    node.addEventListener("dragover", handleDragOver);
-    node.addEventListener("dragleave", handleDragLeave);
-    node.addEventListener("drop", handleDrop);
-    return {
-      destroy() {
-        node.removeEventListener("dragover", handleDragOver);
-        node.removeEventListener("dragleave", handleDragLeave);
-        node.removeEventListener("drop", handleDrop);
-      },
-    };
-  }
-
-  function pasteAction(node: HTMLElement) {
-    function handlePaste(event: ClipboardEvent) {
-      if (!event.clipboardData) return;
-      const files: File[] = [];
-      for (const item of event.clipboardData.items) {
-        if (item.kind === "file" && item.type.startsWith("image/")) {
-          const file = item.getAsFile();
-          if (file) files.push(file);
-        }
-      }
-      if (files.length > 0) {
-        event.preventDefault();
-        uploadFiles(files);
-      }
-    }
-    node.addEventListener("paste", handlePaste as EventListener);
-    return {
-      destroy() {
-        node.removeEventListener("paste", handlePaste as EventListener);
-      },
-    };
-  }
-
-  function touchAction(node: HTMLElement) {
-    function handleTouchMove(event: TouchEvent) {
-      const target = event.target as HTMLElement;
-      if (
-        target &&
-        target.closest('.editor-image-button[data-dragging="true"]')
-      ) {
-        const touch = event.touches[0];
-        const scrollThreshold = 120; // ImageDragDropExtensionと同じ値に更新
-
-        // エディター境界を取得
-        const tiptapEditor = document.querySelector(
-          ".tiptap-editor",
-        ) as HTMLElement;
-        if (tiptapEditor) {
-          const editorRect = tiptapEditor.getBoundingClientRect();
-          const isNearTop = touch.clientY < editorRect.top + scrollThreshold;
-          const isNearBottom =
-            touch.clientY > editorRect.bottom - scrollThreshold;
-
-          // 境界近くでない場合のみスクロールを防止
-          if (!isNearTop && !isNearBottom) {
-            event.preventDefault();
-            return false;
-          }
-        }
-      }
-    }
-    function handleTouchEnd(event: TouchEvent) {
-      dragOver = false;
-
-      // ドロップゾーンのクリーンアップ（改善版）
-      const dropZones = document.querySelectorAll(".drop-zone-indicator");
-      dropZones.forEach((zone) => {
-        // ホバー状態をクリア
-        zone.classList.remove("drop-zone-hover");
-        zone.classList.add("drop-zone-fade-out");
-      });
-
-      // フェードアウト後に削除
-      setTimeout(() => {
-        dropZones.forEach((zone) => {
-          if (zone.parentNode) {
-            zone.parentNode.removeChild(zone);
-          }
-        });
-      }, 300);
-    }
-    node.addEventListener("touchmove", handleTouchMove as EventListener);
-    node.addEventListener("touchend", handleTouchEnd as EventListener);
-    return {
-      destroy() {
-        node.removeEventListener("touchmove", handleTouchMove as EventListener);
-        node.removeEventListener("touchend", handleTouchEnd as EventListener);
-      },
-    };
-  }
-
-  function keydownAction(node: HTMLElement) {
-    function handleEditorKeydown(event: KeyboardEvent) {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        (event.key === "Enter" || event.key === "NumpadEnter")
-      ) {
-        event.preventDefault();
-        const content = extractContentWithImages(currentEditor) || "";
-        if (!postStatus.sending && content.trim() && hasStoredKey) submitPost();
-      }
-    }
-    node.addEventListener("keydown", handleEditorKeydown);
-    return {
-      destroy() {
-        node.removeEventListener("keydown", handleEditorKeydown);
-      },
-    };
-  }
-
   // --- リアクティブ: エディタ・プレースホルダー・エラー ---
   $effect(() => {
     if (
@@ -530,6 +410,7 @@
     aria-label="テキスト入力エリア"
     role="textbox"
     tabindex="0"
+    bind:this={editorContainerEl}
   >
     {#if editor && currentEditor}
       <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
