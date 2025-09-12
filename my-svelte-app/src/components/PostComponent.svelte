@@ -3,17 +3,18 @@
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
   import { PostManager } from "../lib/postManager";
-  import type { UploadInfoCallbacks } from "../lib/types";
-  import type { Props } from "../lib/types"; // 追加: Props型をtypes.tsからimport
+  import type {
+    UploadInfoCallbacks,
+    Props,
+    UploadHelperResult,
+  } from "../lib/types";
   import { containsSecretKey } from "../lib/utils";
-  import { uploadHelper } from "../lib/uploadHelper"; // 追加
+  import { uploadHelper } from "../lib/uploadHelper";
   import type { Readable } from "svelte/store";
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { Node as PMNode } from "prosemirror-model";
   import type { RxNostr } from "rx-nostr";
-  import type { UploadHelperResult } from "../lib/types";
 
-  // editorStore からの import を一箇所に統合（重複削除）
   import {
     createEditorStore,
     placeholderTextStore,
@@ -31,8 +32,7 @@
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
-  import ImagePlaceholder from "./ImagePlaceholder.svelte"; // 追加
-  // actionsをインポート
+  import ImagePlaceholder from "./ImagePlaceholder.svelte";
   import {
     fileDropAction,
     pasteAction,
@@ -40,97 +40,68 @@
     keydownAction,
   } from "../lib/editor/editorDomActions";
 
-  let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
-    $props();
-
-  // EditorStore は createEditorStore が返すストア（subscribe を持ち、updatePlaceholder 等のメソッドを持つ可能性がある）
+  // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {
     updatePlaceholder?: (s: string) => void;
-    // 他に必要なメソッドがあれば追加可能
   };
 
-  // ストアと実エディターを分けて保持
-  let editor: EditorStore | null = $state(null); // createEditorStore の戻り値（ストア）
-  let currentEditor: TipTapEditor | null = $state(null); // 実際の Editor インスタンス
+  let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
+    $props();
+  let editor: EditorStore | null = $state(null);
+  let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
-
   let postManager: PostManager | undefined = $state();
   let showSecretKeyDialog = $state(false);
   let pendingPost = "";
-
-  // 全画面表示用の状態
   let showImageFullscreen = $state(false);
   let fullscreenImageSrc = $state("");
   let fullscreenImageAlt = $state("");
-
-  // 画像URLとox、xのマッピングを保持
   let imageOxMap: Record<string, string> = $state({});
-  let imageXMap: Record<string, string> = $state({}); // アップロード後画像のSHA-256ハッシュ
-
-  // ストアから状態を取得
+  let imageXMap: Record<string, string> = $state({});
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
+  let editorContainerEl: HTMLElement | null = null;
 
   // --- PostManager初期化 ---
   $effect(() => {
     if (rxNostr) {
-      if (!postManager) {
-        // rxNostr は Props で RxNostr 型になったためそのまま渡す
-        postManager = new PostManager(rxNostr as RxNostr);
-      } else {
-        postManager.setRxNostr(rxNostr as RxNostr);
-      }
+      if (!postManager) postManager = new PostManager(rxNostr as RxNostr);
+      else postManager.setRxNostr(rxNostr as RxNostr);
     }
   });
 
   // --- Editor初期化・クリーンアップ ---
-  // 画像ノードが含まれているか判定する共通関数
   function hasImageInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
-    if (doc) {
-      // ProseMirror の Node を想定して型を使う
-      doc.descendants((node: PMNode) => {
-        if ((node as any).type?.name === "image") found = true;
-      });
-    }
+    doc?.descendants((node: PMNode) => {
+      if ((node as any).type?.name === "image") found = true;
+    });
     return found;
   }
-
-  // editor-containerノード参照
-  let editorContainerEl: HTMLElement | null = null;
 
   onMount(() => {
     const initialPlaceholder =
       $_("postComponent.enter_your_text") || "テキストを入力してください";
-    // createEditorStore の戻り値を EditorStore として扱う
     editor = createEditorStore(initialPlaceholder) as EditorStore;
-
-    // ストアから Editor インスタンスを購読して currentEditor に格納
     const unsubscribe = editor.subscribe(
-      (editorInstance: TipTapEditor | null) => {
-        currentEditor = editorInstance;
-      },
+      (editorInstance) => (currentEditor = editorInstance),
     );
 
-    const handleContentUpdate = (event: CustomEvent<{ plainText: string }>) => {
+    function handleContentUpdate(event: CustomEvent<{ plainText: string }>) {
       const plainText = event.detail.plainText;
-      let hasImage = false;
-      if (currentEditor) {
-        hasImage = hasImageInDoc(
-          currentEditor.state?.doc as PMNode | undefined,
-        );
-      }
+      let hasImage = currentEditor
+        ? hasImageInDoc(currentEditor.state?.doc as PMNode | undefined)
+        : false;
       updateEditorContent(plainText, hasImage);
-    };
-
-    const handleImageFullscreenRequest = (
+    }
+    function handleImageFullscreenRequest(
       event: CustomEvent<{ src: string; alt?: string }>,
-    ) => {
+    ) {
       fullscreenImageSrc = event.detail.src;
       fullscreenImageAlt = event.detail.alt || "";
       showImageFullscreen = true;
-    };
+    }
 
     window.addEventListener(
       "editor-content-changed",
@@ -140,16 +111,16 @@
       "image-fullscreen-request",
       handleImageFullscreenRequest as EventListener,
     );
-
     setPostSubmitter(submitPost);
 
-    // editor-containerノードにuploadFiles等をセット
     if (editorContainerEl) {
-      (editorContainerEl as any).__uploadFiles = uploadFiles;
-      (editorContainerEl as any).__currentEditor = () => currentEditor;
-      (editorContainerEl as any).__hasStoredKey = () => hasStoredKey;
-      (editorContainerEl as any).__postStatus = () => postStatus;
-      (editorContainerEl as any).__submitPost = submitPost;
+      Object.assign(editorContainerEl, {
+        __uploadFiles: uploadFiles,
+        __currentEditor: () => currentEditor,
+        __hasStoredKey: () => hasStoredKey,
+        __postStatus: () => postStatus,
+        __submitPost: submitPost,
+      });
     }
 
     return () => {
@@ -161,15 +132,8 @@
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
       );
-      try {
-        unsubscribe();
-        if (currentEditor && typeof currentEditor.destroy === "function") {
-          currentEditor.destroy();
-        }
-      } catch (e) {
-        console.warn("Editor cleanup failed:", e);
-      }
-
+      unsubscribe();
+      currentEditor?.destroy?.();
       if (editorContainerEl) {
         delete (editorContainerEl as any).__uploadFiles;
         delete (editorContainerEl as any).__currentEditor;
@@ -180,23 +144,15 @@
     };
   });
 
-  // --- 投稿成功時のエディタクリア ---
   function clearEditorContent() {
-    if (currentEditor) {
-      currentEditor.chain().clearContent().run();
-    }
+    currentEditor?.chain().clearContent().run();
   }
 
-  // --- ファイル選択時の処理 ---
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (input?.files && input.files.length > 0) {
-      uploadFiles(input.files);
-    }
+    if (input?.files?.length) uploadFiles(input.files);
   }
 
-  // --- ファイルアップロード関連 ---
-  // onUploadProgress が未定義の場合は callbacks 自体を undefined にする
   const uploadCallbacks: UploadInfoCallbacks | undefined = onUploadProgress
     ? {
         onProgress: onUploadProgress as (
@@ -210,49 +166,34 @@
     setTimeout(() => updateUploadState(editorState.isUploading, ""), duration);
   }
 
-  // uploadHelper 呼び出し時は currentEditor をそのまま渡す（戻り型は UploadHelperResult）
   export async function uploadFiles(files: File[] | FileList) {
-    const devMode = import.meta.env.MODE === "development";
     if (!files || files.length === 0) return;
     const result: UploadHelperResult = await uploadHelper({
       files,
-      currentEditor: currentEditor as TipTapEditor | null,
+      currentEditor,
       fileInput,
       uploadCallbacks,
       showUploadError,
       updateUploadState,
-      devMode,
+      devMode: import.meta.env.MODE === "development",
     });
-
-    const {
-      imageOxMap: newImageOxMap,
-      imageXMap: newImageXMap,
-      failedResults,
-      errorMessage,
-    } = result;
-
-    // 結果を state に反映
-    Object.assign(imageOxMap, newImageOxMap);
-    Object.assign(imageXMap, newImageXMap);
-
-    if (failedResults?.length) {
+    Object.assign(imageOxMap, result.imageOxMap);
+    Object.assign(imageXMap, result.imageXMap);
+    if (result.failedResults?.length) {
       showUploadError(
-        errorMessage ||
-          (failedResults.length === 1
-            ? failedResults[0].error || $_("postComponent.upload_failed")
-            : `${failedResults.length}個のファイルのアップロードに失敗しました`),
+        result.errorMessage ||
+          (result.failedResults.length === 1
+            ? result.failedResults[0].error || $_("postComponent.upload_failed")
+            : `${result.failedResults.length}個のファイルのアップロードに失敗しました`),
         5000,
       );
     }
-
     if (fileInput) fileInput.value = "";
   }
 
-  // --- 投稿処理 ---
   export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
-    const postContent =
-      extractContentWithImages(currentEditor as TipTapEditor | null) || "";
+    const postContent = extractContentWithImages(currentEditor) || "";
     if (containsSecretKey(postContent)) {
       pendingPost = postContent;
       showSecretKeyDialog = true;
@@ -261,36 +202,20 @@
     await executePost(postContent);
   }
 
-  // executePost 内で ProseMirror doc 取得時の型注釈
   async function executePost(content?: string) {
     if (!postManager) return console.error("PostManager is not initialized");
     const postContent =
-      content ||
-      extractContentWithImages(currentEditor as TipTapEditor | null) ||
-      "";
-
-    const rawImageBlurhashMap = extractImageBlurhashMap(
-      currentEditor as TipTapEditor | null,
-    );
-    const imageBlurhashMap: Record<
-      string,
-      {
-        [key: string]: any;
-        m: string;
-        blurhash?: string;
-        dim?: string;
-        alt?: string;
-        ox?: string;
-        x?: string;
-      }
-    > = {};
+      content || extractContentWithImages(currentEditor) || "";
+    const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
+    const imageBlurhashMap: Record<string, any> = {};
     for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
-      const m = getMimeTypeFromUrl(url);
-      const ox = imageOxMap[url];
-      const x = imageXMap[url];
-      imageBlurhashMap[url] = { m, blurhash, ox, x };
+      imageBlurhashMap[url] = {
+        m: getMimeTypeFromUrl(url),
+        blurhash,
+        ox: imageOxMap[url],
+        x: imageXMap[url],
+      };
     }
-
     updatePostStatus({
       sending: true,
       success: false,
@@ -339,13 +264,11 @@
     clearEditorContent();
   }
 
-  // 投稿成功後のコンテンツクリア（遅延実行）
   export function clearContentAfterSuccess() {
     clearEditorContent();
     resetPostStatus();
   }
 
-  // --- シークレットキー警告ダイアログ ---
   async function confirmSendWithSecretKey() {
     showSecretKeyDialog = false;
     await executePost(pendingPost);
@@ -356,29 +279,24 @@
     pendingPost = "";
   }
 
-  // --- リアクティブ: エディタ・プレースホルダー・エラー ---
   $effect(() => {
     if (
       currentEditor &&
-      extractContentWithImages(currentEditor) !== editorState.content
+      extractContentWithImages(currentEditor) !== editorState.content &&
+      postStatus.error
     ) {
-      if (postStatus.error) {
-        updatePostStatus({ ...postStatus, error: false, message: "" });
-      }
+      updatePostStatus({ ...postStatus, error: false, message: "" });
     }
   });
-  // placeholder 更新処理: editor がストアで updatePlaceholder がある場合に呼ぶ
   $effect(() => {
-    if (placeholderTextStore.value && editor) {
-      setTimeout(() => {
-        if (editor && editor.updatePlaceholder) {
-          editor.updatePlaceholder(placeholderTextStore.value);
-        }
-      }, 0);
+    if (placeholderTextStore.value && editor?.updatePlaceholder) {
+      setTimeout(
+        () => editor && editor.updatePlaceholder?.(placeholderTextStore.value),
+        0,
+      );
     }
   });
 
-  // 外部からアクセスできるプロパティを公開
   export function openFileDialog() {
     fileInput?.click();
   }
@@ -387,15 +305,8 @@
     showImageFullscreen = false;
     fullscreenImageSrc = "";
     fullscreenImageAlt = "";
-
-    // 全画面表示を閉じた後、エディターにフォーカスを戻す
     setTimeout(() => {
-      const editorElement = document.querySelector(
-        ".tiptap-editor",
-      ) as HTMLElement;
-      if (editorElement) {
-        editorElement.focus();
-      }
+      document.querySelector<HTMLElement>(".tiptap-editor")?.focus();
     }, 150);
   }
 </script>
