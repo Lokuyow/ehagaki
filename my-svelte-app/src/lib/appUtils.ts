@@ -52,13 +52,13 @@ export function createFileSizeInfo(
  */
 export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisplayInfo | null {
   if (!sizeInfo) return null;
-  
+
   // wasCompressed フラグがtrueか、ファイル名やサイズに変化がある場合、またはスキップされた場合に表示
-  const hasChanges = sizeInfo.wasCompressed || 
-                    (sizeInfo.originalFilename !== sizeInfo.compressedFilename) ||
-                    (sizeInfo.originalSize !== sizeInfo.compressedSize) ||
-                    sizeInfo.wasSkipped;
-  
+  const hasChanges = sizeInfo.wasCompressed ||
+    (sizeInfo.originalFilename !== sizeInfo.compressedFilename) ||
+    (sizeInfo.originalSize !== sizeInfo.compressedSize) ||
+    sizeInfo.wasSkipped;
+
   if (!hasChanges) return null;
 
   return {

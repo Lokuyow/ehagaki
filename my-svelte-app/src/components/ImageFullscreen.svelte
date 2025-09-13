@@ -8,7 +8,7 @@
         calculateViewportInfo,
         calculateZoomFromEvent,
         calculateDragDelta,
-    } from "../lib/utils";
+    } from "../lib/appUtils";
     import {
         transformStore,
         createDragState,
