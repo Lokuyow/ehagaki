@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// ここを追加
-vi.mock("./appStores.svelte", () => {
+// ここを修正
+vi.mock("./tags/tags.svelte", () => {
     return {
         imageSizeMapStore: {
             update: vi.fn(),
@@ -11,7 +11,7 @@ vi.mock("./appStores.svelte", () => {
 
 import { uploadHelper } from "./uploadHelper";
 import { FileUploadManager } from "./fileUploadManager";
-import * as imeta from "./tags/imeta";
+import * as imeta from "./tags/imetaTag";
 
 vi.mock("./fileUploadManager", () => {
     return {

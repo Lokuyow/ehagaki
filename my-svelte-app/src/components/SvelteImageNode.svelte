@@ -3,14 +3,14 @@
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onDestroy, onMount } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
-    import { renderBlurhashToCanvas } from "../lib/tags/imeta";
+    import { renderBlurhashToCanvas } from "../lib/tags/imetaTag";
     import {
         calculateImageDisplaySize,
         parseDimString,
         getPlaceholderDefaultSize,
         type ImageDimensions,
     } from "../lib/imageUtils";
-    import { imageSizeMapStore } from "../lib/appStores.svelte";
+    import { imageSizeMapStore } from "../lib/tags/tags.svelte";
 
     interface Props {
         node: NodeViewProps["node"];

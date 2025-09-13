@@ -3,7 +3,7 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { authState } from "./appStores.svelte";
 import { hashtagDataStore } from "./tags/tags.svelte";
-import { createImetaTag } from "./tags/imeta";
+import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
 
 // 投稿結果の型定義

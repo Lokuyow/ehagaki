@@ -28,7 +28,7 @@
   } from "../lib/editor/stores/editorStore.svelte";
 
   import { extractContentWithImages } from "../lib/editor/editorUtils";
-  import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imeta";
+  import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
