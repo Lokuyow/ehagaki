@@ -453,29 +453,68 @@
 
     // ドラッグプレビューを作成
     function createDragPreview(element: HTMLElement, x: number, y: number) {
+        // 既存のプレビューがあれば削除
+        removeDragPreview();
+
+        const rect = element.getBoundingClientRect();
+        // プレビューの最大サイズ（CSS に合わせる）
+        const MAX_PREVIEW = 140;
+        const previewWidth = Math.min(MAX_PREVIEW, rect.width || MAX_PREVIEW);
+        const previewHeight =
+            rect.width > 0
+                ? Math.round((rect.height / rect.width) * previewWidth)
+                : previewWidth;
+
+        let previewEl: HTMLElement | null = null;
+
         if (isPlaceholder) {
-            // プレースホルダーの場合はcanvasを使用
-            const canvas = element.querySelector("canvas");
-            if (!canvas) return;
-
-            dragPreview = canvas.cloneNode(true) as HTMLElement;
+            // 元のキャンバスのピクセルをコピーして新しい canvas を作る（cloneNode では描画内容が維持されないため）
+            const origCanvas = element.querySelector(
+                "canvas",
+            ) as HTMLCanvasElement | null;
+            if (!origCanvas) return;
+            const newCanvas = document.createElement("canvas");
+            // キャンバスの内部解像度をコピー
+            newCanvas.width = origCanvas.width;
+            newCanvas.height = origCanvas.height;
+            // 描画内容を転写
+            const ctx = newCanvas.getContext("2d");
+            if (ctx) {
+                ctx.drawImage(origCanvas, 0, 0);
+            }
+            previewEl = newCanvas;
         } else {
-            // 通常の画像の場合
-            const img = element.querySelector("img");
-            if (!img) return;
-
-            dragPreview = img.cloneNode(true) as HTMLElement;
+            // 画像要素は src をコピーした新しい img を作る（セキュアに表示するため）
+            const origImg = element.querySelector(
+                "img",
+            ) as HTMLImageElement | null;
+            if (!origImg) return;
+            const newImg = document.createElement("img");
+            newImg.src = origImg.src;
+            newImg.alt = origImg.alt || "";
+            previewEl = newImg;
         }
 
-        dragPreview.classList.add("image-drag-preview"); // クラスを追加
+        // クラスを付与して静的なスタイルを適用
+        previewEl.classList.add("drag-preview");
 
-        updateDragPreview(x, y);
+        // 動的な値は引き続きJSで設定
+        previewEl.style.width = `${previewWidth}px`;
+        previewEl.style.height = `${previewHeight}px`;
+        previewEl.style.left = `${x - previewWidth / 2}px`;
+        previewEl.style.top = `${y - previewHeight / 2}px`;
+        previewEl.style.transformOrigin = "center center";
+        previewEl.style.transition = "transform 120ms ease, opacity 120ms ease";
+
+        dragPreview = previewEl;
+
         document.body.appendChild(dragPreview);
 
-        // プレビュー作成直後にアニメーション効果
+        // 作成直後の小さなアニメーション
         requestAnimationFrame(() => {
             if (dragPreview) {
-                dragPreview.style.transform = "scale(0.9) rotate(0deg)";
+                dragPreview.style.transform = "scale(0.8) rotate(0deg)";
+                dragPreview.style.opacity = "0.95";
             }
         });
     }
@@ -484,8 +523,13 @@
     function updateDragPreview(x: number, y: number) {
         if (!dragPreview) return;
 
-        dragPreview.style.left = `${x - 70}px`; // 中央に配置
-        dragPreview.style.top = `${y - 70}px`;
+        const rect = dragPreview.getBoundingClientRect();
+        const w = rect.width || 100;
+        const h = rect.height || 100;
+
+        // 中央に配置する（以前の固定 -70px を廃止）
+        dragPreview.style.left = `${x - w / 2}px`;
+        dragPreview.style.top = `${y - h / 2}px`;
     }
 
     // ドラッグプレビューを削除
@@ -745,17 +789,19 @@
         box-shadow: 0 0 0 3px var(--yellow);
     }
 
-    :global(.image-drag-preview) {
+    /* ドラッグプレビュー用のクラス */
+    :global(.drag-preview) {
         position: fixed;
         pointer-events: none;
-        z-index: 10000;
-        opacity: 0.7;
-        transform: scale(0.9) rotate(3deg);
-        border-radius: 8px;
-        max-width: 140px;
-        max-height: 140px;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        border: 2px solid var(--theme, #2196f3);
-        transition: none;
+        z-index: 9999;
+        /* width, height, left, top, transform, opacity はJSで動的に設定 */
+        /* transform-origin, transition もJSで上書きされるが、念のため記述 */
+        transform-origin: center center;
+        transition:
+            transform 120ms ease,
+            opacity 120ms ease;
+        border-radius: 6px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+        background: white;
     }
 </style>
