@@ -21,6 +21,9 @@ export async function uploadHelper({
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
+    // サーバーが返した nip94 タグ内の blurhash を保持するマップ
+    const imageServerBlurhashMap: Record<string, string> = {};
+
     // ox計算とサイズ計算を並列実行
     const fileProcessingPromises = fileArray.map(async (file, index) => {
         let ox: string | undefined = undefined;
@@ -223,6 +226,11 @@ export async function uploadHelper({
 
                     // --- ここから: サーバー返却の nip94 を優先 ---
                     const nip94 = result.nip94 || {};
+                    // サーバーが返した blurhash を優先的に保持（キー名のバリエーションに対応）
+                    const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
+                    if (serverBlurhash && result.url) {
+                        imageServerBlurhashMap[result.url] = serverBlurhash;
+                    }
                     const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
                     const xFromServer = nip94['x'] ?? undefined;
 
@@ -295,8 +303,10 @@ export async function uploadHelper({
     if (devMode && currentEditor) {
         try {
             const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
+            // サーバー提供の blurhash を優先するため、URL の集合を作る
+            const urls = new Set<string>([...Object.keys(rawImageBlurhashMap), ...Object.keys(imageServerBlurhashMap)]);
             await Promise.all(
-                Object.keys(rawImageBlurhashMap).map(async (url) => {
+                Array.from(urls).map(async (url) => {
                     if (!imageXMap[url]) {
                         const x = await calculateImageHash(url);
                         if (x) imageXMap[url] = x;
@@ -307,13 +317,15 @@ export async function uploadHelper({
                 }),
             );
             const imetaTags = await Promise.all(
-                Object.entries(rawImageBlurhashMap).map(async ([url, blurhash]) => {
+                Array.from(urls).map(async (url) => {
+                    // サーバーが返した blurhash があればそちらを優先、なければエディタ内の blurhash を使う
+                    const blurhash = imageServerBlurhashMap[url] ?? rawImageBlurhashMap[url];
                     const m = getMimeTypeFromUrl(url);
                     const ox = imageOxMap[url];
                     const x = imageXMap[url];
                     const tag = await createImetaTag({ url, m, blurhash, ox, x });
                     if (devMode) {
-                        console.log("[dev] imeta生成後: url, tag", { url, tag });
+                        console.log("[dev] imeta生成後: url, tag, usedBlurhashSource", { url, tag, usedBlurhash: blurhash ? 'server' : (rawImageBlurhashMap[url] ? 'client' : 'none') });
                     }
                     return tag;
                 }),
