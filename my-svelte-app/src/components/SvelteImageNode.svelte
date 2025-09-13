@@ -92,6 +92,41 @@
         }
     });
 
+    // フォーカス解除処理を関数化
+    function blurEditorAndBody() {
+        try {
+            const active = document.activeElement as HTMLElement | null;
+            if (active) {
+                const isEditor =
+                    active.classList?.contains?.("tiptap-editor") ||
+                    active.closest?.(".tiptap-editor");
+                const isFormControl =
+                    ["INPUT", "TEXTAREA"].includes(active.tagName) ||
+                    active.isContentEditable;
+                if (isEditor || isFormControl) {
+                    active.blur?.();
+                    (document.body as HTMLElement)?.focus?.();
+                }
+            }
+        } catch (e) {
+            /* noop */
+        }
+    }
+
+    // 画像全画面表示イベント発火処理を関数化
+    function requestFullscreenImage() {
+        blurEditorAndBody();
+        const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
+            detail: {
+                src: node.attrs.src,
+                alt: node.attrs.alt || "Image",
+            },
+            bubbles: true,
+            cancelable: true,
+        });
+        window.dispatchEvent(fullscreenEvent);
+    }
+
     // blurhashをcanvasに描画
     function renderBlurhash() {
         if (!node.attrs.blurhash || !canvasRef) {
@@ -204,25 +239,7 @@
         }
 
         // 既に選択済みなら従来どおり全画面表示
-        // エディターからフォーカスを外す（キーボードを隠す）
-        const editorElement = document.querySelector(
-            ".tiptap-editor",
-        ) as HTMLElement;
-        if (editorElement) {
-            editorElement.blur();
-        }
-        document.body.focus();
-
-        const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
-            detail: {
-                src: node.attrs.src,
-                alt: node.attrs.alt || "Image",
-            },
-            bubbles: true,
-            cancelable: true,
-        });
-
-        window.dispatchEvent(fullscreenEvent);
+        requestFullscreenImage();
         event.preventDefault();
         event.stopPropagation();
     }
@@ -310,31 +327,9 @@
         // 長押しタイマーをセット
         longPressTimeout = setTimeout(() => {
             // 長押しとして確定
-            // 追加: 長押しでドラッグ開始する直前にエディタ等のフォーカスを外してキーボードを閉じる
-            try {
-                const active = document.activeElement as HTMLElement | null;
-                if (active) {
-                    // tiptap のエディタや input/textarea、contentEditable の場合にフォーカスを外す
-                    const isEditor =
-                        active.classList?.contains?.("tiptap-editor") ||
-                        active.closest?.(".tiptap-editor");
-                    const isFormControl =
-                        ["INPUT", "TEXTAREA"].includes(active.tagName) || active.isContentEditable;
-                    if (isEditor || isFormControl) {
-                        active.blur?.();
-                        // iOS 等で確実にキーボードを閉じるために body にフォーカスを移す
-                        (document.body as HTMLElement)?.focus?.();
-                    }
-                }
-            } catch (e) {
-                // 無害なフォールバック
-                /* noop */
-            }
-
+            blurEditorAndBody();
             isDragging = true;
             dispatchDragStart();
-
-            // 実際のドラッグプレビュー作成
             if (touchStartTarget) {
                 createDragPreview(
                     touchStartTarget,
@@ -429,27 +424,8 @@
             // - 選択済みなら全画面表示
             if (!isDragging) {
                 if (selected) {
-                    // 選択済みなら全画面表示（従来の処理）
-                    const editorElement = document.querySelector(
-                        ".tiptap-editor",
-                    ) as HTMLElement;
-                    if (editorElement) {
-                        editorElement.blur();
-                    }
-                    document.body.focus();
-
-                    const fullscreenEvent = new CustomEvent(
-                        "image-fullscreen-request",
-                        {
-                            detail: {
-                                src: node.attrs.src,
-                                alt: node.attrs.alt || "Image",
-                            },
-                            bubbles: true,
-                            cancelable: true,
-                        },
-                    );
-                    window.dispatchEvent(fullscreenEvent);
+                    // 選択済みなら全画面表示
+                    requestFullscreenImage();
                     event.preventDefault();
                     event.stopPropagation();
                 } else {
