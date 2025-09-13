@@ -4,6 +4,7 @@ import { keyManager } from "./keyManager";
 import { authState } from "./appStores.svelte";
 import { hashtagDataStore } from "./tags/tags.svelte";
 import { createImetaTag } from "./tags/imeta";
+import { getClientTag } from "./tags/clientTag";
 
 // 投稿結果の型定義
 export interface PostResult {
@@ -52,20 +53,13 @@ export class PostManager {
     const tags: string[][] = Array.isArray(storedTags) && storedTags.length
       ? [...storedTags]
       : (Array.isArray(hashtags) ? hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]) : []);
-    // Client tagを追加（オプトアウト対応）
-    let clientTagEnabled = true;
-    try {
-      const stored = localStorage.getItem("clientTagEnabled");
-      if (stored !== null) clientTagEnabled = stored === "true";
-    } catch { }
-    if (clientTagEnabled) {
-      tags.push([
-        "client",
-        "eHagaki",
-        "31990:ec42c765418b3db9c85abff3a88f4a3bbe57535eebbdc54522041fa5328c0600:1754918316480",
-        "wss://relay.nostr.band"
-      ]);
+
+    // Client tag は clientTag モジュールへ移譲
+    const clientTag = getClientTag();
+    if (clientTag) {
+      tags.push(clientTag);
     }
+
     // 画像imetaタグ追加
     if (imageImetaMap) {
       for (const [url, meta] of Object.entries(imageImetaMap)) {
