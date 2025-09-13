@@ -24,6 +24,11 @@
     let touchStartPos = { x: 0, y: 0 };
     let dragPreview: HTMLElement | null = null;
 
+    // Detect if the device is touch-capable
+    const isTouchDevice =
+        typeof window !== "undefined" &&
+        ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+
     let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
     let touchStartTarget: HTMLElement | null = null;
 
@@ -246,6 +251,11 @@
     // ドラッグ開始処理
     function handleDragStart(event: DragEvent) {
         if (!event.dataTransfer) return;
+        // スマホでは標準ドラッグを無効化
+        if (isTouchDevice) {
+            event.preventDefault();
+            return;
+        }
 
         // ドラッグデータにノード情報と位置を設定
         event.dataTransfer.setData(
@@ -505,9 +515,13 @@
         onclick={handleClick}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
-        draggable="true"
-        ondragstart={handleDragStart}
-        ondragend={handleDragEnd}
+        draggable={!isTouchDevice}
+        ondragstart={isTouchDevice
+            ? (e) => e.preventDefault()
+            : handleDragStart}
+        ondragend={isTouchDevice ? undefined : handleDragEnd}
+        ondragover={isTouchDevice ? (e) => e.preventDefault() : undefined}
+        ondrop={isTouchDevice ? (e) => e.preventDefault() : undefined}
         ontouchstart={handleTouchStart}
         ontouchmove={handleTouchMove}
         ontouchend={handleTouchEnd}

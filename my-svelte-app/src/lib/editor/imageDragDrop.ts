@@ -4,6 +4,16 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { moveImageNode, setDraggingFalse } from './editorUtils';
 import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
 
+// デバイス判定ヘルパー
+function isTouchDevice() {
+    return (
+        typeof window !== "undefined" &&
+        ("ontouchstart" in window ||
+            (navigator && navigator.maxTouchPoints > 0) ||
+            (navigator && navigator.userAgent.match(/Android|iPhone|iPad|iPod|Mobile/i)))
+    );
+}
+
 export const ImageDragDropExtension = Extension.create({
     name: 'imageDragDrop',
 
@@ -56,6 +66,29 @@ export const ImageDragDropExtension = Extension.create({
                             }
                         }
                         return false;
+                    },
+                    handleDOMEvents: {
+                        dragstart: (_view, event) => {
+                            if (isTouchDevice()) {
+                                event.preventDefault();
+                                return true;
+                            }
+                            return false;
+                        },
+                        dragover: (_view, event) => {
+                            if (isTouchDevice()) {
+                                event.preventDefault();
+                                return true;
+                            }
+                            return false;
+                        },
+                        drop: (_view, event) => {
+                            if (isTouchDevice()) {
+                                event.preventDefault();
+                                return true;
+                            }
+                            return false;
+                        }
                     }
                 },
                 view: (editorView) => {
