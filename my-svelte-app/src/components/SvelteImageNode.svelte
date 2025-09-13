@@ -32,6 +32,11 @@
     let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
     let touchStartTarget: HTMLElement | null = null;
 
+    // 追加: タッチで選択要求を出した直後に発生する click を抑止するフラグ
+    let justSelected = $state(false);
+    let justSelectedTimeout: ReturnType<typeof setTimeout> | null = null;
+    const JUST_SELECTED_DURATION = 400; // ms
+
     // blurhash関連の状態
     let isImageLoaded = $state(false);
     let blurhashFadeOut = $state(false);
@@ -168,6 +173,14 @@
 
     // 画像クリック時の例（必要に応じて拡張）
     function handleClick(event: MouseEvent) {
+        // 追加: 直前のタッチで選択要求を出した場合はこの click を抑止して即時全画面化を防ぐ
+        if (justSelected) {
+            // 抑止期間中は何もしない（選択は既にエディタ側で処理されている）
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
         // ドラッグ中の場合はクリックを無視
         if (isDragging) {
             event.preventDefault();
@@ -180,6 +193,17 @@
             return;
         }
 
+        // ノードが選択されていない場合は、エディタ側に選択要求イベントを送る
+        if (!selected) {
+            const pos = getPos();
+            window.dispatchEvent(
+                new CustomEvent("select-image-node", { detail: { pos } }),
+            );
+            // 選択はエディタ側で行うためここでは伝播を妨げない（必要ならpreventDefault）
+            return;
+        }
+
+        // 既に選択済みなら従来どおり全画面表示
         // エディターからフォーカスを外す（キーボードを隠す）
         const editorElement = document.querySelector(
             ".tiptap-editor",
@@ -187,11 +211,8 @@
         if (editorElement) {
             editorElement.blur();
         }
-
-        // body要素にフォーカスを移す（より確実にキーボードを隠す）
         document.body.focus();
 
-        // 全画面表示イベントを発火
         const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
             detail: {
                 src: node.attrs.src,
@@ -382,15 +403,53 @@
             longPressTimeout = null;
             touchStartTarget = null;
 
-            // 長押しでない通常のタップの場合、エディターのフォーカスを外す
+            // 長押しでない通常のタップの場合:
+            // - 未選択なら選択要求イベントを送る（エディタ側が選択してくれる）
+            // - 選択済みなら全画面表示
             if (!isDragging) {
-                const editorElement = document.querySelector(
-                    ".tiptap-editor",
-                ) as HTMLElement;
-                if (editorElement) {
-                    editorElement.blur();
+                if (selected) {
+                    // 選択済みなら全画面表示（従来の処理）
+                    const editorElement = document.querySelector(
+                        ".tiptap-editor",
+                    ) as HTMLElement;
+                    if (editorElement) {
+                        editorElement.blur();
+                    }
+                    document.body.focus();
+
+                    const fullscreenEvent = new CustomEvent(
+                        "image-fullscreen-request",
+                        {
+                            detail: {
+                                src: node.attrs.src,
+                                alt: node.attrs.alt || "Image",
+                            },
+                            bubbles: true,
+                            cancelable: true,
+                        },
+                    );
+                    window.dispatchEvent(fullscreenEvent);
+                    event.preventDefault();
+                    event.stopPropagation();
+                } else {
+                    // 未選択なら選択要求イベントを発火
+                    const pos = getPos();
+                    window.dispatchEvent(
+                        new CustomEvent("select-image-node", {
+                            detail: { pos },
+                        }),
+                    );
+                    // 直後に発生する click による全画面表示を防ぐためフラグを立てる
+                    if (justSelectedTimeout) {
+                        clearTimeout(justSelectedTimeout);
+                        justSelectedTimeout = null;
+                    }
+                    justSelected = true;
+                    justSelectedTimeout = setTimeout(() => {
+                        justSelected = false;
+                        justSelectedTimeout = null;
+                    }, JUST_SELECTED_DURATION);
                 }
-                document.body.focus();
             }
         }
 
@@ -546,6 +605,10 @@
             clearTimeout(longPressTimeout);
             longPressTimeout = null;
         }
+        if (justSelectedTimeout) {
+            clearTimeout(justSelectedTimeout);
+            justSelectedTimeout = null;
+        }
         removeDragPreview();
     });
 </script>
@@ -649,7 +712,8 @@
             outline: none;
         }
         &:active {
-            transform: scale(0.98);
+            transform: scale(0.99);
+            transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
         }
     }
 

@@ -14,6 +14,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { Node as PMNode } from "prosemirror-model";
   import type { RxNostr } from "rx-nostr";
+  import { NodeSelection } from "prosemirror-state"; // 追加
 
   import {
     createEditorStore,
@@ -105,6 +106,25 @@
       showImageFullscreen = true;
     }
 
+    // 追加: 画像ノード選択要求を受け取り、エディタをフォーカスして NodeSelection をセットする
+    function handleSelectImageNode(e: CustomEvent<{ pos: number }>) {
+      const pos = e?.detail?.pos;
+      if (pos == null) return;
+      if (!currentEditor || !currentEditor.view) return;
+      try {
+        // フォーカスして選択を設定
+        currentEditor.view.focus();
+        const sel = NodeSelection.create(
+          currentEditor.state.doc,
+          pos,
+        );
+        currentEditor.view.dispatch(currentEditor.state.tr.setSelection(sel).scrollIntoView());
+      } catch (err) {
+        // ignore
+        console.warn("select-image-node handler failed:", err);
+      }
+    }
+
     window.addEventListener(
       "editor-content-changed",
       handleContentUpdate as EventListener,
@@ -113,6 +133,11 @@
       "image-fullscreen-request",
       handleImageFullscreenRequest as EventListener,
     );
+    window.addEventListener(
+      "select-image-node",
+      handleSelectImageNode as EventListener,
+    );
+
     setPostSubmitter(submitPost);
 
     if (editorContainerEl) {
@@ -133,6 +158,10 @@
       window.removeEventListener(
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
+      );
+      window.removeEventListener(
+        "select-image-node",
+        handleSelectImageNode as EventListener,
       );
       unsubscribe();
       currentEditor?.destroy?.();
