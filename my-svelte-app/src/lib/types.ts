@@ -60,6 +60,9 @@ export interface FileUploadResponse {
     url?: string;
     error?: string;
     sizeInfo?: FileSizeInfo;
+    // サーバーが返す NIP-94 / nip94_event のタグをそのまま参照できるようにする
+    // 例: { x: '...', ox: '...', m: 'image/jpeg', dim: '800x600', url: '...' }
+    nip94?: Record<string, string> | null;
 }
 
 // MultipleUploadProgress を UploadProgress のエイリアスに統一

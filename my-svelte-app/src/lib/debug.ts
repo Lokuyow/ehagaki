@@ -128,16 +128,52 @@ export function debugAuthState(label: string, authState: any) {
 export async function debugLogUploadResponse(response: Response) {
     if (import.meta.env.MODE !== "development") return;
     try {
+        // 常に clone して安全に読み取る
         const cloned = response.clone();
-        const text = await cloned.text();
-        console.log("[UPLOAD RESPONSE]", {
-            status: response.status,
-            statusText: response.statusText,
-            url: response.url,
-            body: text
-        });
+
+        // ステータスが200の場合はまずJSONを試みてオブジェクトでログ出力（可読性向上）
+        if (response.status === 200) {
+            try {
+                const json = await cloned.json();
+                console.log("[UPLOAD RESPONSE]", {
+                    status: response.status,
+                    statusText: response.statusText,
+                    url: response.url,
+                    body: json
+                });
+                return;
+            } catch {
+                // JSONパースに失敗したらテキストにフォールバックしてログ出力する
+                try {
+                    const text = await cloned.text();
+                    console.log("[UPLOAD RESPONSE]", {
+                        status: response.status,
+                        statusText: response.statusText,
+                        url: response.url,
+                        body: text
+                    });
+                    return;
+                } catch (e) {
+                    console.log("[UPLOAD RESPONSE] (failed to read body)", e);
+                    return;
+                }
+            }
+        }
+
+        // 200以外は従来どおりテキストを読み取ってログ出力
+        try {
+            const text = await cloned.text();
+            console.log("[UPLOAD RESPONSE]", {
+                status: response.status,
+                statusText: response.statusText,
+                url: response.url,
+                body: text
+            });
+        } catch (e) {
+            console.log("[UPLOAD RESPONSE] (failed to read body)", e);
+        }
     } catch (e) {
-        console.log("[UPLOAD RESPONSE] (failed to read body)", e);
+        console.log("[UPLOAD RESPONSE] (unexpected error)", e);
     }
 }
 

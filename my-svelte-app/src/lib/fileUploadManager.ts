@@ -215,13 +215,39 @@ export class FileUploadManager {
         headers: { Authorization: authHeader }
       });
       if (!response.ok) throw new Error(`Unexpected status code ${response.status} while polling processing_url`);
-      if (response.status === 201) return await response.json();
-      const processingStatus = await response.json();
-      if (processingStatus.status === "processing") {
+
+      // 応答ボディをパースしてステータスを確認（processing / success / error 等）
+      let processingStatus: any = null;
+      try {
+        processingStatus = await response.json();
+      } catch {
+        processingStatus = null;
+      }
+
+      // 201 は多くの実装で「created / processing complete を示す」場合があるためそのまま返す
+      if (response.status === 201 && processingStatus) return processingStatus;
+
+      // processing中なら待機してリトライ
+      if (processingStatus?.status === "processing") {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         continue;
       }
-      if (processingStatus.status === "error") throw new Error("File processing failed");
+
+      // 処理成功ならその結果を返す（nip94_event 等を含む想定）
+      if (processingStatus?.status === "success") {
+        return processingStatus;
+      }
+
+      // エラーなら例外
+      if (processingStatus?.status === "error") {
+        throw new Error(processingStatus?.message || "File processing failed");
+      }
+
+      // フォールバック: サーバーが 200 で最終結果を返している場合はそのボディを返す
+      if (response.status === 200) {
+        return processingStatus;
+      }
+
       throw new Error("Unexpected processing status");
     }
   }
@@ -283,11 +309,23 @@ export class FileUploadManager {
         }
       }
 
+      // --- nip94_event.tags を優先してパースして返す ---
+      const parsedNip94: Record<string, string> = {};
+      if (data?.nip94_event?.tags && Array.isArray(data.nip94_event.tags)) {
+        for (const tag of data.nip94_event.tags) {
+          if (!Array.isArray(tag) || tag.length < 2) continue;
+          const key = String(tag[0]);
+          const value = tag.slice(1).join(' ');
+          // 同一キーが複数出る場合は先に存在しない場合のみセット（上書きはしない）
+          if (!(key in parsedNip94)) parsedNip94[key] = value;
+        }
+      }
+
       if (data.status === 'success' && data.nip94_event?.tags) {
         const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === 'url');
-        if (urlTag?.[1]) return { success: true, url: urlTag[1], sizeInfo };
+        if (urlTag?.[1]) return { success: true, url: urlTag[1], sizeInfo, nip94: parsedNip94 };
       }
-      return { success: false, error: data.message || 'Could not extract URL from response', sizeInfo };
+      return { success: false, error: data.message || 'Could not extract URL from response', sizeInfo, nip94: Object.keys(parsedNip94).length ? parsedNip94 : null };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }

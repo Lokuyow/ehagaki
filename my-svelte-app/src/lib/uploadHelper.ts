@@ -221,28 +221,43 @@ export async function uploadHelper({
                         }
                     });
 
-                    if (matched.ox && result.url) {
+                    // --- ここから: サーバー返却の nip94 を優先 ---
+                    const nip94 = result.nip94 || {};
+                    const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
+                    const xFromServer = nip94['x'] ?? undefined;
+
+                    if (oxFromServer && result.url) {
+                        imageOxMap[result.url] = oxFromServer;
+                    } else if (matched.ox && result.url) {
+                        // 旧来のローカル計算値を補完として使う
                         imageOxMap[result.url] = matched.ox;
                     }
+
                     if (result.url) {
-                        try {
-                            const x = await calculateImageHash(result.url);
-                            if (x) imageXMap[result.url] = x;
-                            if (devMode) {
-                                console.log("[uploadHelper] calculated x hash for uploaded image", {
-                                    url: result.url,
-                                    x
-                                });
-                            }
-                        } catch (error) {
-                            if (devMode) {
-                                console.warn("[uploadHelper] failed to calculate x hash", {
-                                    url: result.url,
-                                    error
-                                });
+                        if (xFromServer) {
+                            imageXMap[result.url] = xFromServer;
+                        } else {
+                            // サーバーに x がなければフォールバックでクライアント側で計算（ダウンロードしてハッシュ）
+                            try {
+                                const x = await calculateImageHash(result.url);
+                                if (x) imageXMap[result.url] = x;
+                                if (devMode) {
+                                    console.log("[uploadHelper] calculated x hash for uploaded image (fallback)", {
+                                        url: result.url,
+                                        x
+                                    });
+                                }
+                            } catch (error) {
+                                if (devMode) {
+                                    console.warn("[uploadHelper] failed to calculate x hash (fallback)", {
+                                        url: result.url,
+                                        error
+                                    });
+                                }
                             }
                         }
                     }
+                    // --- ここまで ---
                 }
             } else if (!result.success) {
                 failedResults.push(result);
