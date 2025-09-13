@@ -20,21 +20,26 @@
 
     let { node, selected, getPos }: Props = $props();
 
-    let isDragging = $state(false);
-    let touchStartPos = { x: 0, y: 0 };
-    let dragPreview: HTMLElement | null = null;
+    // 状態管理の統合
+    let dragState = $state({
+        isDragging: false,
+        startPos: { x: 0, y: 0 },
+        longPressTimeout: null as ReturnType<typeof setTimeout> | null,
+        startTarget: null as HTMLElement | null,
+        preview: null as HTMLElement | null,
+    });
+
+    // 選択状態管理の統合
+    let selectionState = $state({
+        justSelected: false,
+        justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
+    });
 
     // Detect if the device is touch-capable
     const isTouchDevice =
         typeof window !== "undefined" &&
         ("ontouchstart" in window || navigator.maxTouchPoints > 0);
 
-    let longPressTimeout: ReturnType<typeof setTimeout> | null = null;
-    let touchStartTarget: HTMLElement | null = null;
-
-    // 追加: タッチで選択要求を出した直後に発生する click を抑止するフラグ
-    let justSelected = $state(false);
-    let justSelectedTimeout: ReturnType<typeof setTimeout> | null = null;
     const JUST_SELECTED_DURATION = 400; // ms
 
     // blurhash関連の状態
@@ -92,7 +97,7 @@
         }
     });
 
-    // フォーカス解除処理を関数化
+    // 統合されたユーティリティ関数
     function blurEditorAndBody() {
         try {
             const active = document.activeElement as HTMLElement | null;
@@ -113,7 +118,6 @@
         }
     }
 
-    // 画像全画面表示イベント発火処理を関数化
     function requestFullscreenImage() {
         blurEditorAndBody();
         const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
@@ -127,7 +131,118 @@
         window.dispatchEvent(fullscreenEvent);
     }
 
-    // blurhashをcanvasに描画
+    function requestNodeSelection() {
+        const pos = getPos();
+        window.dispatchEvent(
+            new CustomEvent("select-image-node", { detail: { pos } }),
+        );
+
+        // 直後のクリックイベントを抑制
+        if (selectionState.justSelectedTimeout) {
+            clearTimeout(selectionState.justSelectedTimeout);
+        }
+        selectionState.justSelected = true;
+        selectionState.justSelectedTimeout = setTimeout(() => {
+            selectionState.justSelected = false;
+            selectionState.justSelectedTimeout = null;
+        }, JUST_SELECTED_DURATION);
+    }
+
+    // 統合されたタップ/クリック処理
+    function handleInteraction(
+        event: MouseEvent | TouchEvent,
+        isTouch = false,
+    ) {
+        // ドラッグ中やプレースホルダーの場合は何もしない
+        if (dragState.isDragging || isPlaceholder) {
+            event.preventDefault();
+            return;
+        }
+
+        // 直前の選択による抑制期間中はクリックを無視
+        if (selectionState.justSelected && !isTouch) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if (selected) {
+            // 既に選択済みなら全画面表示
+            requestFullscreenImage();
+        } else {
+            // 未選択なら選択要求
+            requestNodeSelection();
+        }
+
+        event.preventDefault();
+        if (!isTouch) {
+            event.stopPropagation();
+        }
+    }
+
+    // ドラッグ関連の統合処理
+    function dispatchDragEvent(type: "start" | "move" | "end", details?: any) {
+        const eventMap = {
+            start: "touch-image-drag-start",
+            move: "touch-image-drag-move",
+            end: "touch-image-drop",
+        };
+
+        const eventDetails = {
+            start: { nodePos: getPos() },
+            move: details,
+            end: {
+                nodeData: { type: "image", attrs: node.attrs, pos: getPos() },
+                dropX: 0,
+                dropY: 0,
+                target: null,
+                dropPosition: null,
+                ...details,
+            },
+        };
+
+        const customEvent = new CustomEvent(eventMap[type], {
+            detail: eventDetails[type],
+            bubbles: true,
+            cancelable: true,
+        });
+
+        window.dispatchEvent(customEvent);
+        document.dispatchEvent(
+            new CustomEvent(eventMap[type], { detail: customEvent.detail }),
+        );
+    }
+
+    function clearLongPress() {
+        if (dragState.longPressTimeout) {
+            clearTimeout(dragState.longPressTimeout);
+            dragState.longPressTimeout = null;
+        }
+        dragState.startTarget = null;
+    }
+
+    function startLongPress(element: HTMLElement, x: number, y: number) {
+        clearLongPress();
+        dragState.startPos = { x, y };
+        dragState.startTarget = element;
+
+        dragState.longPressTimeout = setTimeout(() => {
+            blurEditorAndBody();
+            dragState.isDragging = true;
+            dispatchDragEvent("start");
+            createDragPreview(element, x, y);
+        }, LONG_PRESS_DELAY);
+    }
+
+    function checkMoveThreshold(x: number, y: number): boolean {
+        const dx = x - dragState.startPos.x;
+        const dy = y - dragState.startPos.y;
+        return (
+            dx * dx + dy * dy > MOVE_CANCEL_THRESHOLD * MOVE_CANCEL_THRESHOLD
+        );
+    }
+
+    // blurhash関数
     function renderBlurhash() {
         if (!node.attrs.blurhash || !canvasRef) {
             if (devMode) {
@@ -170,7 +285,9 @@
         if (devMode) {
             console.log("[blurhash] renderBlurhash: result", success);
         }
-    } // 画像読み込み完了時の処理
+    }
+
+    // 画像読み込み完了時の処理
     function handleImageLoad() {
         isImageLoaded = true;
         // blurhashキャンバスをフェードアウト
@@ -183,6 +300,212 @@
     // 画像読み込みエラー時の処理
     function handleImageError() {
         isImageLoaded = false;
+    }
+
+    // イベントハンドラー
+    function handleClick(event: MouseEvent) {
+        handleInteraction(event, false);
+    }
+
+    function handleDragStart(event: DragEvent) {
+        if (!event.dataTransfer) return;
+        if (isTouchDevice) {
+            event.preventDefault();
+            return;
+        }
+
+        event.dataTransfer.setData(
+            "application/x-tiptap-node",
+            JSON.stringify({
+                type: "image",
+                attrs: node.attrs,
+                pos: getPos(),
+            }),
+        );
+        event.dataTransfer.effectAllowed = "move";
+        dragState.isDragging = true;
+        dispatchDragEvent("start");
+    }
+
+    function handleDragEnd() {
+        dragState.isDragging = false;
+        removeDragPreview();
+        dispatchDragEvent("end");
+    }
+
+    function handleTouchStart(event: TouchEvent) {
+        if (event.touches.length !== 1) return;
+
+        const touch = event.touches[0];
+        startLongPress(
+            event.currentTarget as HTMLElement,
+            touch.clientX,
+            touch.clientY,
+        );
+    }
+
+    function handleTouchMove(event: TouchEvent) {
+        if (event.touches.length !== 1) {
+            clearLongPress();
+            return;
+        }
+
+        const touch = event.touches[0];
+
+        // 長押し前で移動距離が閾値を超えたらキャンセル
+        if (!dragState.isDragging && dragState.longPressTimeout) {
+            if (checkMoveThreshold(touch.clientX, touch.clientY)) {
+                clearLongPress();
+                return;
+            }
+        }
+
+        if (!dragState.isDragging) return;
+
+        event.preventDefault();
+        updateDragPreview(touch.clientX, touch.clientY);
+        highlightDropZoneAtPosition(touch.clientX, touch.clientY);
+
+        dispatchDragEvent("move", {
+            touchX: touch.clientX,
+            touchY: touch.clientY,
+            nodePos: getPos(),
+        });
+    }
+
+    function handleTouchEnd(event: TouchEvent) {
+        if (dragState.longPressTimeout) {
+            clearLongPress();
+            if (!dragState.isDragging) {
+                // 通常のタップ処理
+                handleInteraction(event, true);
+                return;
+            }
+        }
+
+        if (!dragState.isDragging) return;
+
+        event.preventDefault();
+        const touch = event.changedTouches[0];
+        const elementBelow = document.elementFromPoint(
+            touch.clientX,
+            touch.clientY,
+        );
+
+        if (elementBelow) {
+            const dropZone = elementBelow.closest(".drop-zone-indicator");
+            const targetDropPos = dropZone?.getAttribute("data-drop-pos");
+
+            dispatchDragEvent("end", {
+                dropX: touch.clientX,
+                dropY: touch.clientY,
+                target: elementBelow,
+                dropPosition: targetDropPos
+                    ? parseInt(targetDropPos, 10)
+                    : null,
+            });
+        }
+
+        dragState.isDragging = false;
+        removeDragPreview();
+    }
+
+    function handleContextMenu(event: Event) {
+        event.preventDefault();
+    }
+
+    // ドロップゾーンのホバーハイライト処理
+    function highlightDropZoneAtPosition(x: number, y: number) {
+        // 既存のハイライトをクリア
+        document.querySelectorAll(".drop-zone-indicator").forEach((zone) => {
+            zone.classList.remove("drop-zone-hover");
+        });
+
+        // カーソル位置の要素を取得
+        const elementBelow = document.elementFromPoint(x, y);
+        if (elementBelow) {
+            const dropZone = elementBelow.closest(".drop-zone-indicator");
+            if (dropZone) {
+                dropZone.classList.add("drop-zone-hover");
+            }
+        }
+    }
+
+    // ドラッグプレビューを作成
+    function createDragPreview(element: HTMLElement, x: number, y: number) {
+        removeDragPreview();
+
+        const rect = element.getBoundingClientRect();
+        const MAX_PREVIEW = 140;
+        const previewWidth = Math.min(MAX_PREVIEW, rect.width || MAX_PREVIEW);
+        const previewHeight =
+            rect.width > 0
+                ? Math.round((rect.height / rect.width) * previewWidth)
+                : previewWidth;
+
+        let previewEl: HTMLElement | null = null;
+
+        if (isPlaceholder) {
+            const origCanvas = element.querySelector(
+                "canvas",
+            ) as HTMLCanvasElement | null;
+            if (!origCanvas) return;
+            const newCanvas = document.createElement("canvas");
+            newCanvas.width = origCanvas.width;
+            newCanvas.height = origCanvas.height;
+            const ctx = newCanvas.getContext("2d");
+            if (ctx) {
+                ctx.drawImage(origCanvas, 0, 0);
+            }
+            previewEl = newCanvas;
+        } else {
+            const origImg = element.querySelector(
+                "img",
+            ) as HTMLImageElement | null;
+            if (!origImg) return;
+            const newImg = document.createElement("img");
+            newImg.src = origImg.src;
+            newImg.alt = origImg.alt || "";
+            previewEl = newImg;
+        }
+
+        previewEl.classList.add("drag-preview");
+        previewEl.style.width = `${previewWidth}px`;
+        previewEl.style.height = `${previewHeight}px`;
+        previewEl.style.left = `${x - previewWidth / 2}px`;
+        previewEl.style.top = `${y - previewHeight / 2}px`;
+        previewEl.style.transformOrigin = "center center";
+        previewEl.style.transition = "transform 120ms ease, opacity 120ms ease";
+
+        dragState.preview = previewEl;
+        document.body.appendChild(dragState.preview);
+
+        requestAnimationFrame(() => {
+            if (dragState.preview) {
+                dragState.preview.style.transform = "scale(0.8) rotate(0deg)";
+                dragState.preview.style.opacity = "0.95";
+            }
+        });
+    }
+
+    // ドラッグプレビューの位置を更新
+    function updateDragPreview(x: number, y: number) {
+        if (!dragState.preview) return;
+
+        const rect = dragState.preview.getBoundingClientRect();
+        const w = rect.width || 100;
+        const h = rect.height || 100;
+
+        dragState.preview.style.left = `${x - w / 2}px`;
+        dragState.preview.style.top = `${y - h / 2}px`;
+    }
+
+    // ドラッグプレビューを削除
+    function removeDragPreview() {
+        if (dragState.preview?.parentNode) {
+            dragState.preview.parentNode.removeChild(dragState.preview);
+            dragState.preview = null;
+        }
     }
 
     onMount(() => {
@@ -206,405 +529,11 @@
         }
     });
 
-    // 画像クリック時の例（必要に応じて拡張）
-    function handleClick(event: MouseEvent) {
-        // 追加: 直前のタッチで選択要求を出した場合はこの click を抑止して即時全画面化を防ぐ
-        if (justSelected) {
-            // 抑止期間中は何もしない（選択は既にエディタ側で処理されている）
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        }
-
-        // ドラッグ中の場合はクリックを無視
-        if (isDragging) {
-            event.preventDefault();
-            return;
-        }
-
-        // プレースホルダーの場合は全画面表示を無効化
-        if (isPlaceholder) {
-            event.preventDefault();
-            return;
-        }
-
-        // ノードが選択されていない場合は、エディタ側に選択要求イベントを送る
-        if (!selected) {
-            const pos = getPos();
-            window.dispatchEvent(
-                new CustomEvent("select-image-node", { detail: { pos } }),
-            );
-            // 選択はエディタ側で行うためここでは伝播を妨げない（必要ならpreventDefault）
-            return;
-        }
-
-        // 既に選択済みなら従来どおり全画面表示
-        requestFullscreenImage();
-        event.preventDefault();
-        event.stopPropagation();
-    }
-
-    // ドラッグ開始イベント発火
-    function dispatchDragStart() {
-        const startEvent = new CustomEvent("touch-image-drag-start", {
-            detail: { nodePos: getPos() },
-            bubbles: true,
-            cancelable: true,
-        });
-
-        window.dispatchEvent(startEvent);
-        document.dispatchEvent(
-            new CustomEvent("touch-image-drag-start", {
-                detail: startEvent.detail,
-            }),
-        );
-    }
-
-    // ドラッグ終了イベント発火
-    function dispatchDragEnd() {
-        const endEvent = new CustomEvent("touch-image-drop", {
-            detail: {
-                nodeData: {
-                    type: "image",
-                    attrs: node.attrs,
-                    pos: getPos(),
-                },
-                dropX: 0,
-                dropY: 0,
-                target: null,
-                dropPosition: null,
-            },
-            bubbles: true,
-            cancelable: true,
-        });
-
-        window.dispatchEvent(endEvent);
-        document.dispatchEvent(
-            new CustomEvent("touch-image-drop", {
-                detail: endEvent.detail,
-            }),
-        );
-    }
-
-    // ドラッグ開始処理
-    function handleDragStart(event: DragEvent) {
-        if (!event.dataTransfer) return;
-        // スマホでは標準ドラッグを無効化
-        if (isTouchDevice) {
-            event.preventDefault();
-            return;
-        }
-
-        // ドラッグデータにノード情報と位置を設定
-        event.dataTransfer.setData(
-            "application/x-tiptap-node",
-            JSON.stringify({
-                type: "image",
-                attrs: node.attrs,
-                pos: getPos(),
-            }),
-        );
-        event.dataTransfer.effectAllowed = "move";
-        isDragging = true;
-        dispatchDragStart();
-    }
-
-    function handleDragEnd() {
-        isDragging = false;
-        removeDragPreview();
-        dispatchDragEnd();
-    }
-
-    // タッチ開始処理
-    function handleTouchStart(event: TouchEvent) {
-        // PC/スマホ問わず1本指タッチで発火
-        if (event.touches.length !== 1) return;
-
-        const touch = event.touches[0];
-        touchStartPos = { x: touch.clientX, y: touch.clientY };
-        touchStartTarget = event.currentTarget as HTMLElement;
-
-        // 長押しタイマーをセット
-        longPressTimeout = setTimeout(() => {
-            // 長押しとして確定
-            blurEditorAndBody();
-            isDragging = true;
-            dispatchDragStart();
-            if (touchStartTarget) {
-                createDragPreview(
-                    touchStartTarget,
-                    touch.clientX,
-                    touch.clientY,
-                );
-            }
-        }, LONG_PRESS_DELAY);
-    }
-
-    // タッチ移動処理
-    function handleTouchMove(event: TouchEvent) {
-        // PC/スマホ問わず1本指タッチで発火
-        if (event.touches.length !== 1) {
-            // 複数タッチならキャンセル
-            if (longPressTimeout) {
-                clearTimeout(longPressTimeout);
-                longPressTimeout = null;
-            }
-            return;
-        }
-
-        const touch = event.touches[0];
-        // 長押し前で一定距離移動したら長押しをキャンセル
-        if (!isDragging && longPressTimeout) {
-            const dx = touch.clientX - touchStartPos.x;
-            const dy = touch.clientY - touchStartPos.y;
-            const distSq = dx * dx + dy * dy;
-            if (distSq > MOVE_CANCEL_THRESHOLD * MOVE_CANCEL_THRESHOLD) {
-                clearTimeout(longPressTimeout);
-                longPressTimeout = null;
-                touchStartTarget = null;
-                return;
-            }
-        }
-
-        if (!isDragging) return;
-
-        // ドラッグ中はスクロールを防止してプレビューを移動
-        event.preventDefault();
-        updateDragPreview(touch.clientX, touch.clientY);
-
-        // ホバー中のドロップゾーンをハイライト
-        highlightDropZoneAtPosition(touch.clientX, touch.clientY);
-
-        // 自動スクロール用のイベントを発火
-        const moveEvent = new CustomEvent("touch-image-drag-move", {
-            detail: {
-                touchX: touch.clientX,
-                touchY: touch.clientY,
-                nodePos: getPos(),
-            },
-            bubbles: true,
-            cancelable: true,
-        });
-
-        window.dispatchEvent(moveEvent);
-        document.dispatchEvent(
-            new CustomEvent("touch-image-drag-move", {
-                detail: moveEvent.detail,
-            }),
-        );
-    }
-
-    // ドロップゾーンのホバーハイライト処理
-    function highlightDropZoneAtPosition(x: number, y: number) {
-        // 既存のハイライトをクリア
-        document.querySelectorAll(".drop-zone-indicator").forEach((zone) => {
-            zone.classList.remove("drop-zone-hover");
-        });
-
-        // カーソル位置の要素を取得
-        const elementBelow = document.elementFromPoint(x, y);
-        if (elementBelow) {
-            const dropZone = elementBelow.closest(".drop-zone-indicator");
-            if (dropZone) {
-                dropZone.classList.add("drop-zone-hover");
-            }
-        }
-    }
-
-    // タッチ終了処理
-    function handleTouchEnd(event: TouchEvent) {
-        // 長押しタイマーが残っていればクリア
-        if (longPressTimeout) {
-            clearTimeout(longPressTimeout);
-            longPressTimeout = null;
-            touchStartTarget = null;
-
-            // 長押しでない通常のタップの場合:
-            // - 未選択なら選択要求イベントを送る（エディタ側が選択してくれる）
-            // - 選択済みなら全画面表示
-            if (!isDragging) {
-                if (selected) {
-                    // 選択済みなら全画面表示
-                    requestFullscreenImage();
-                    event.preventDefault();
-                    event.stopPropagation();
-                } else {
-                    // 未選択なら選択要求イベントを発火
-                    const pos = getPos();
-                    window.dispatchEvent(
-                        new CustomEvent("select-image-node", {
-                            detail: { pos },
-                        }),
-                    );
-                    // 直後に発生する click による全画面表示を防ぐためフラグを立てる
-                    if (justSelectedTimeout) {
-                        clearTimeout(justSelectedTimeout);
-                        justSelectedTimeout = null;
-                    }
-                    justSelected = true;
-                    justSelectedTimeout = setTimeout(() => {
-                        justSelected = false;
-                        justSelectedTimeout = null;
-                    }, JUST_SELECTED_DURATION);
-                }
-            }
-        }
-
-        // ドラッグしていた場合はドロップ処理を行う
-        if (!isDragging) {
-            return;
-        }
-
-        event.preventDefault();
-        const touch = event.changedTouches[0];
-
-        const elementBelow = document.elementFromPoint(
-            touch.clientX,
-            touch.clientY,
-        );
-
-        if (elementBelow) {
-            // ドロップゾーンかその子要素を探す
-            const dropZone = elementBelow.closest(".drop-zone-indicator");
-            let targetDropPos = null;
-
-            if (dropZone) {
-                // ドロップゾーンの位置を取得
-                const dropPosAttr = dropZone.getAttribute("data-drop-pos");
-                targetDropPos = dropPosAttr ? parseInt(dropPosAttr, 10) : null;
-            }
-
-            const touchDropEvent = new CustomEvent("touch-image-drop", {
-                detail: {
-                    nodeData: {
-                        type: "image",
-                        attrs: node.attrs,
-                        pos: getPos(),
-                    },
-                    dropX: touch.clientX,
-                    dropY: touch.clientY,
-                    target: elementBelow,
-                    dropPosition: targetDropPos,
-                },
-                bubbles: true,
-                cancelable: true,
-            });
-
-            window.dispatchEvent(touchDropEvent);
-            document.dispatchEvent(
-                new CustomEvent("touch-image-drop", {
-                    detail: touchDropEvent.detail,
-                }),
-            );
-        }
-
-        isDragging = false;
-        removeDragPreview();
-    }
-
-    // コンテキストメニュー抑制
-    function handleContextMenu(event: Event) {
-        event.preventDefault();
-    }
-
-    // ドラッグプレビューを作成
-    function createDragPreview(element: HTMLElement, x: number, y: number) {
-        // 既存のプレビューがあれば削除
-        removeDragPreview();
-
-        const rect = element.getBoundingClientRect();
-        // プレビューの最大サイズ（CSS に合わせる）
-        const MAX_PREVIEW = 140;
-        const previewWidth = Math.min(MAX_PREVIEW, rect.width || MAX_PREVIEW);
-        const previewHeight =
-            rect.width > 0
-                ? Math.round((rect.height / rect.width) * previewWidth)
-                : previewWidth;
-
-        let previewEl: HTMLElement | null = null;
-
-        if (isPlaceholder) {
-            // 元のキャンバスのピクセルをコピーして新しい canvas を作る（cloneNode では描画内容が維持されないため）
-            const origCanvas = element.querySelector(
-                "canvas",
-            ) as HTMLCanvasElement | null;
-            if (!origCanvas) return;
-            const newCanvas = document.createElement("canvas");
-            // キャンバスの内部解像度をコピー
-            newCanvas.width = origCanvas.width;
-            newCanvas.height = origCanvas.height;
-            // 描画内容を転写
-            const ctx = newCanvas.getContext("2d");
-            if (ctx) {
-                ctx.drawImage(origCanvas, 0, 0);
-            }
-            previewEl = newCanvas;
-        } else {
-            // 画像要素は src をコピーした新しい img を作る（セキュアに表示するため）
-            const origImg = element.querySelector(
-                "img",
-            ) as HTMLImageElement | null;
-            if (!origImg) return;
-            const newImg = document.createElement("img");
-            newImg.src = origImg.src;
-            newImg.alt = origImg.alt || "";
-            previewEl = newImg;
-        }
-
-        // クラスを付与して静的なスタイルを適用
-        previewEl.classList.add("drag-preview");
-
-        // 動的な値は引き続きJSで設定
-        previewEl.style.width = `${previewWidth}px`;
-        previewEl.style.height = `${previewHeight}px`;
-        previewEl.style.left = `${x - previewWidth / 2}px`;
-        previewEl.style.top = `${y - previewHeight / 2}px`;
-        previewEl.style.transformOrigin = "center center";
-        previewEl.style.transition = "transform 120ms ease, opacity 120ms ease";
-
-        dragPreview = previewEl;
-
-        document.body.appendChild(dragPreview);
-
-        // 作成直後の小さなアニメーション
-        requestAnimationFrame(() => {
-            if (dragPreview) {
-                dragPreview.style.transform = "scale(0.8) rotate(0deg)";
-                dragPreview.style.opacity = "0.95";
-            }
-        });
-    }
-
-    // ドラッグプレビューの位置を更新
-    function updateDragPreview(x: number, y: number) {
-        if (!dragPreview) return;
-
-        const rect = dragPreview.getBoundingClientRect();
-        const w = rect.width || 100;
-        const h = rect.height || 100;
-
-        // 中央に配置する（以前の固定 -70px を廃止）
-        dragPreview.style.left = `${x - w / 2}px`;
-        dragPreview.style.top = `${y - h / 2}px`;
-    }
-
-    // ドラッグプレビューを削除
-    function removeDragPreview() {
-        if (dragPreview && dragPreview.parentNode) {
-            dragPreview.parentNode.removeChild(dragPreview);
-            dragPreview = null;
-        }
-    }
-
     // コンポーネント破棄時のクリーンアップ
     onDestroy(() => {
-        if (longPressTimeout) {
-            clearTimeout(longPressTimeout);
-            longPressTimeout = null;
-        }
-        if (justSelectedTimeout) {
-            clearTimeout(justSelectedTimeout);
-            justSelectedTimeout = null;
+        clearLongPress();
+        if (selectionState.justSelectedTimeout) {
+            clearTimeout(selectionState.justSelectedTimeout);
         }
         removeDragPreview();
     });
@@ -615,7 +544,7 @@
         type="button"
         class="editor-image-button"
         data-selected={selected}
-        data-dragging={isDragging}
+        data-dragging={dragState.isDragging}
         onclick={handleClick}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
