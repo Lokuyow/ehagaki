@@ -2,31 +2,15 @@ import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from './editorUtils';
-import { HASHTAG_REGEX } from '../constants';
-import { updateHashtagData } from '../tags/hashtagManager';
+import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
 
 // ハッシュタグのデコレーション（装飾）を生成する関数
-interface HashtagMatch extends RegExpExecArray {
-    1: string; // The hashtag text (without #)
-}
-
 function getHashtagDecorations(doc: import('@tiptap/pm/model').Node): DecorationSet {
     const decorations: Decoration[] = [];
-    doc.descendants((node: import('@tiptap/pm/model').Node, pos: number) => {
-        if (!node.isText || !node.text) return;
-        const text: string = node.text;
-        const hashtagRegex: RegExp = new RegExp(HASHTAG_REGEX.source, 'g');
-        let match: HashtagMatch | null;
-        while ((match = hashtagRegex.exec(text) as HashtagMatch | null) !== null) {
-            const hashIndex: number = match[0].indexOf('#');
-            if (hashIndex === -1) continue;
-            const start: number = pos + match.index + hashIndex;
-            const end: number = start + 1 + match[1].length;
-            decorations.push(
-                Decoration.inline(start, end, { class: 'hashtag' })
-            );
-        }
-    });
+    const ranges = getHashtagRangesFromDoc(doc);
+    for (const r of ranges) {
+        decorations.push(Decoration.inline(r.from, r.to, { class: 'hashtag' }));
+    }
     return DecorationSet.create(doc, decorations);
 }
 
@@ -142,7 +126,8 @@ export const ContentTrackingExtension = Extension.create({
                             this.storage.updateTimeout && clearTimeout(this.storage.updateTimeout);
                             this.storage.updateTimeout = setTimeout(() => {
                                 const plainText = tr.doc.textContent;
-                                updateHashtagData(plainText);
+                                // doc を渡して、エディター内の検出ロジックと同じ方法でハッシュタグを抽出する
+                                updateHashtagData(tr.doc);
                                 window.dispatchEvent(new CustomEvent('editor-content-changed', {
                                     detail: { plainText }
                                 }));

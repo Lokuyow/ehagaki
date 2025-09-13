@@ -30,11 +30,11 @@ describe('hashtagManager', () => {
 	});
 
 	describe('extractHashtagsFromContent', () => {
-		it('英字・アンダースコアを含むハッシュタグを抽出して小文字化する', () => {
+		it('英字・アンダースコアを含むハッシュタグを抽出して原文のまま返す', () => {
 			const content = 'Hello #Test_Tag and #Another123!';
 			const result = extractHashtagsFromContent(content);
-			// 末尾の感嘆符を含めたまま受け入れる
-			expect(result).toEqual(['test_tag', 'another123!']);
+			// 実装は大文字小文字を保持して返す
+			expect(result).toEqual(['Test_Tag', 'Another123!']);
 		});
 
 		it('日本語ハッシュタグを抽出する', () => {
@@ -52,18 +52,20 @@ describe('hashtagManager', () => {
 		it('句読点付きでも正しく抽出する', () => {
 			const content = 'Check: #one, #two. #Three!';
 			const result = extractHashtagsFromContent(content);
-			// 末尾の句読点を含めたまま受け入れる
-			expect(result).toEqual(['one,', 'two.', 'three!']);
+			// 実装は末尾の句読点や大文字小文字を保持する
+			expect(result).toEqual(['one,', 'two.', 'Three!']);
 		});
 	});
 
 	describe('updateHashtagData', () => {
-		it('ストアの content, hashtags, tags を正しく更新する', () => {
+		it('ストアの content, hashtags, tags を実装どおりに更新する', () => {
 			const content = 'Mix #Vue #Svelte #日本語';
 			updateHashtagData(content);
 
 			expect(mockedStore.content).toBe(content);
-			expect(mockedStore.hashtags).toEqual(['vue', 'svelte', '日本語']);
+			// hashtags は原文のまま保持される
+			expect(mockedStore.hashtags).toEqual(['Vue', 'Svelte', '日本語']);
+			// 投稿用 tags は英字部分を小文字化して格納される
 			expect(mockedStore.tags).toEqual([['t', 'vue'], ['t', 'svelte'], ['t', '日本語']]);
 		});
 	});

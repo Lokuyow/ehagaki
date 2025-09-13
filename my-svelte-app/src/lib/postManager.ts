@@ -46,9 +46,12 @@ export class PostManager {
 
   // 投稿イベント生成（共通化）
   private async buildEvent(content: string, pubkey?: string, imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>) {
-    // ストアからハッシュタグを取得
-    const { hashtags } = hashtagDataStore;
-    const tags = hashtags.map((hashtag: string) => ["t", hashtag]);
+    // ストアからハッシュタグ／既存の tags を取得
+    const { hashtags, tags: storedTags } = hashtagDataStore;
+    // 既にストアに tags が作られていればそれをコピー、なければ hashtags から小文字化して作成
+    const tags: string[][] = Array.isArray(storedTags) && storedTags.length
+      ? [...storedTags]
+      : (Array.isArray(hashtags) ? hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]) : []);
     // Client tagを追加（オプトアウト対応）
     let clientTagEnabled = true;
     try {
