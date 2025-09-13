@@ -61,7 +61,7 @@ export function createEditorStore(placeholderText: string) {
                     };
                 },
                 addNodeView() {
-                    return SvelteNodeViewRenderer(SvelteImageNode);
+                    return SvelteNodeViewRenderer(SvelteImageNode as any);
                 },
             }),
             ContentTrackingExtension.configure({

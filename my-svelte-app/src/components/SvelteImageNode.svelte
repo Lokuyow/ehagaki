@@ -3,7 +3,6 @@
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onDestroy, onMount } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
-    import { renderBlurhashToCanvas } from "../lib/tags/imetaTag";
     import {
         calculateImageDisplaySize,
         parseDimString,
@@ -11,6 +10,12 @@
         type ImageDimensions,
     } from "../lib/imageUtils";
     import { imageSizeMapStore } from "../lib/tags/tags.svelte";
+    import {
+        blurEditorAndBody as blurEditorAndBodyUtil,
+        requestFullscreenImage as requestFullscreenImageUtil,
+        requestNodeSelection as requestNodeSelectionUtil,
+        renderBlurhash as renderBlurhashUtil,
+    } from "../lib/editor/editorUtils";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -97,57 +102,6 @@
         }
     });
 
-    // 統合されたユーティリティ関数
-    function blurEditorAndBody() {
-        try {
-            const active = document.activeElement as HTMLElement | null;
-            if (active) {
-                const isEditor =
-                    active.classList?.contains?.("tiptap-editor") ||
-                    active.closest?.(".tiptap-editor");
-                const isFormControl =
-                    ["INPUT", "TEXTAREA"].includes(active.tagName) ||
-                    active.isContentEditable;
-                if (isEditor || isFormControl) {
-                    active.blur?.();
-                    (document.body as HTMLElement)?.focus?.();
-                }
-            }
-        } catch (e) {
-            /* noop */
-        }
-    }
-
-    function requestFullscreenImage() {
-        blurEditorAndBody();
-        const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
-            detail: {
-                src: node.attrs.src,
-                alt: node.attrs.alt || "Image",
-            },
-            bubbles: true,
-            cancelable: true,
-        });
-        window.dispatchEvent(fullscreenEvent);
-    }
-
-    function requestNodeSelection() {
-        const pos = getPos();
-        window.dispatchEvent(
-            new CustomEvent("select-image-node", { detail: { pos } }),
-        );
-
-        // 直後のクリックイベントを抑制
-        if (selectionState.justSelectedTimeout) {
-            clearTimeout(selectionState.justSelectedTimeout);
-        }
-        selectionState.justSelected = true;
-        selectionState.justSelectedTimeout = setTimeout(() => {
-            selectionState.justSelected = false;
-            selectionState.justSelectedTimeout = null;
-        }, JUST_SELECTED_DURATION);
-    }
-
     // 統合されたタップ/クリック処理
     function handleInteraction(
         event: MouseEvent | TouchEvent,
@@ -168,10 +122,21 @@
 
         if (selected) {
             // 既に選択済みなら全画面表示
-            requestFullscreenImage();
+            requestFullscreenImageUtil(
+                node.attrs.src,
+                node.attrs.alt || "Image",
+            );
         } else {
             // 未選択なら選択要求
-            requestNodeSelection();
+            requestNodeSelectionUtil(getPos);
+            if (selectionState.justSelectedTimeout) {
+                clearTimeout(selectionState.justSelectedTimeout);
+            }
+            selectionState.justSelected = true;
+            selectionState.justSelectedTimeout = setTimeout(() => {
+                selectionState.justSelected = false;
+                selectionState.justSelectedTimeout = null;
+            }, JUST_SELECTED_DURATION);
         }
 
         event.preventDefault();
@@ -227,7 +192,7 @@
         dragState.startTarget = element;
 
         dragState.longPressTimeout = setTimeout(() => {
-            blurEditorAndBody();
+            blurEditorAndBodyUtil();
             dragState.isDragging = true;
             dispatchDragEvent("start");
             createDragPreview(element, x, y);
@@ -242,55 +207,9 @@
         );
     }
 
-    // blurhash関数
-    function renderBlurhash() {
-        if (!node.attrs.blurhash || !canvasRef) {
-            if (devMode) {
-                console.log(
-                    "[blurhash] renderBlurhash: blurhash or canvasRef missing",
-                    {
-                        blurhash: node.attrs.blurhash,
-                        canvasRef: !!canvasRef,
-                        isPlaceholder,
-                        showBlurhash,
-                    },
-                );
-            }
-            return;
-        }
-
-        // 計算されたサイズまたはデフォルトサイズを使用
-        const dimensions = imageDimensions || getPlaceholderDefaultSize();
-        const width = dimensions.displayWidth;
-        const height = dimensions.displayHeight;
-
-        canvasRef.width = width;
-        canvasRef.height = height;
-
-        if (devMode) {
-            console.log("[blurhash] renderBlurhash: rendering", {
-                blurhash: node.attrs.blurhash,
-                width,
-                height,
-                isPlaceholder,
-            });
-        }
-
-        const success = renderBlurhashToCanvas(
-            node.attrs.blurhash,
-            canvasRef,
-            width,
-            height,
-        );
-        if (devMode) {
-            console.log("[blurhash] renderBlurhash: result", success);
-        }
-    }
-
     // 画像読み込み完了時の処理
     function handleImageLoad() {
         isImageLoaded = true;
-        // blurhashキャンバスをフェードアウト
         blurhashFadeOut = true;
         setTimeout(() => {
             blurhashFadeOut = false;
@@ -510,11 +429,16 @@
 
     onMount(() => {
         if (node.attrs.blurhash && canvasRef) {
-            renderBlurhash();
+            renderBlurhashUtil(
+                node.attrs.blurhash,
+                canvasRef,
+                imageDimensions || getPlaceholderDefaultSize(),
+                isPlaceholder,
+                devMode,
+            );
         }
     });
 
-    // blurhashが変更された時の再描画
     $effect(() => {
         if (devMode) {
             console.log(
@@ -525,11 +449,16 @@
             );
         }
         if (node.attrs.blurhash && canvasRef) {
-            renderBlurhash();
+            renderBlurhashUtil(
+                node.attrs.blurhash,
+                canvasRef,
+                imageDimensions || getPlaceholderDefaultSize(),
+                isPlaceholder,
+                devMode,
+            );
         }
     });
 
-    // コンポーネント破棄時のクリーンアップ
     onDestroy(() => {
         clearLongPress();
         if (selectionState.justSelectedTimeout) {

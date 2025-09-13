@@ -297,3 +297,85 @@ export function cleanUrlEnd(url: string): { cleanUrl: string; actualLength: numb
         actualLength: cleanUrl.length
     };
 }
+
+/**
+ * エディタやフォームコントロールのフォーカスを外し、bodyにフォーカスを移す
+ */
+export function blurEditorAndBody() {
+    try {
+        const active = document.activeElement as HTMLElement | null;
+        if (active) {
+            const isEditor =
+                active.classList?.contains?.("tiptap-editor") ||
+                active.closest?.(".tiptap-editor");
+            const isFormControl =
+                ["INPUT", "TEXTAREA"].includes(active.tagName) ||
+                active.isContentEditable;
+            if (isEditor || isFormControl) {
+                active.blur?.();
+                (document.body as HTMLElement)?.focus?.();
+            }
+        }
+    } catch (e) {
+        /* noop */
+    }
+}
+
+/**
+ * 画像の全画面表示リクエストを発火
+ */
+export function requestFullscreenImage(src: string, alt: string = "Image") {
+    blurEditorAndBody();
+    const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
+        detail: { src, alt },
+        bubbles: true,
+        cancelable: true,
+    });
+    window.dispatchEvent(fullscreenEvent);
+}
+
+/**
+ * 画像ノードの選択リクエストを発火
+ */
+export function requestNodeSelection(getPos: () => number) {
+    const pos = getPos();
+    window.dispatchEvent(
+        new CustomEvent("select-image-node", { detail: { pos } }),
+    );
+}
+
+/**
+ * blurhashをcanvasに描画する共通関数
+ */
+export function renderBlurhash(
+    blurhash: string,
+    canvasRef: HTMLCanvasElement,
+    dimensions: { displayWidth: number; displayHeight: number },
+    isPlaceholder: boolean,
+    devMode: boolean = false
+) {
+    if (!blurhash || !canvasRef) {
+        if (devMode) {
+            console.log(
+                "[blurhash] renderBlurhash: blurhash or canvasRef missing",
+                { blurhash, canvasRef: !!canvasRef, isPlaceholder }
+            );
+        }
+        return;
+    }
+    const width = dimensions.displayWidth;
+    const height = dimensions.displayHeight;
+    canvasRef.width = width;
+    canvasRef.height = height;
+    if (devMode) {
+        console.log("[blurhash] renderBlurhash: rendering", {
+            blurhash, width, height, isPlaceholder
+        });
+    }
+    // 必要に応じて import { renderBlurhashToCanvas } from "../tags/imetaTag";
+    // ここで呼び出し
+    // @ts-ignore
+    import("../tags/imetaTag").then(({ renderBlurhashToCanvas }) => {
+        renderBlurhashToCanvas(blurhash, canvasRef, width, height);
+    });
+}
