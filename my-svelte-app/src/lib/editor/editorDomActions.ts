@@ -1,49 +1,83 @@
 import { extractContentWithImages } from "./editorUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
+// ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定
+function isInternalTiptapDrag(dt: DataTransfer | null | undefined): boolean {
+    if (!dt || !dt.types) return false;
+    try {
+        return Array.from(dt.types as string[]).some((t) => t === "application/x-tiptap-node");
+    } catch {
+        return false;
+    }
+}
+function hasExternalFiles(dt: DataTransfer | null | undefined): boolean {
+    if (!dt) return false;
+    // types に "Files" が含まれるか、実際に files が存在するかで判定
+    try {
+        const types = Array.from(dt.types as any);
+        return types.includes("Files") || (dt.files && dt.files.length > 0);
+    } catch {
+        return !!(dt.files && dt.files.length > 0);
+    }
+}
+
 // fileDropAction
 export function fileDropAction(node: HTMLElement) {
     let dragOver = false;
     function handleDragOver(event: DragEvent) {
-        event.preventDefault();
         const dt = event.dataTransfer;
-        const isInternalDrag =
-            !!dt &&
-            Array.from(dt.types || []).some(
-                (t) => t === "application/x-tiptap-node",
-            );
-        if (!isInternalDrag) {
-            dragOver = true;
-            node.classList.add("drag-over");
+        const internal = isInternalTiptapDrag(dt);
+        const externalFiles = hasExternalFiles(dt);
+
+        // 内部ドラッグ（エディタ内ノード移動）はエディタ側に委譲するため preventDefaultしない
+        if (externalFiles && !internal) {
+            // 外部ファイルがあるドラッグのみ許可してビジュアルを出す
+            event.preventDefault();
+            if (!dragOver) {
+                dragOver = true;
+                node.classList.add("drag-over");
+            }
         } else {
-            dragOver = false;
-            node.classList.remove("drag-over");
+            // 内部ドラッグやファイルが無ければ drag-over を消す（何も阻害しない）
+            if (dragOver) {
+                dragOver = false;
+                node.classList.remove("drag-over");
+            }
         }
     }
     function handleDragLeave(event: DragEvent) {
-        event.preventDefault();
         const dt = event.dataTransfer;
-        const isInternalDrag =
-            !!dt &&
-            Array.from(dt.types || []).some(
-                (t) => t === "application/x-tiptap-node",
-            );
-        if (!isInternalDrag) {
-            dragOver = false;
-            node.classList.remove("drag-over");
+        const internal = isInternalTiptapDrag(dt);
+        const externalFiles = hasExternalFiles(dt);
+
+        // 外部ファイルのドラッグ離脱時のみクラスを消す
+        if (!externalFiles || internal) {
+            if (dragOver) {
+                dragOver = false;
+                node.classList.remove("drag-over");
+            }
         }
     }
     async function handleDrop(event: DragEvent) {
-        event.preventDefault();
+        // 常に drag-over をリセット
         dragOver = false;
         node.classList.remove("drag-over");
-        const dragData = event.dataTransfer?.getData("application/x-tiptap-node");
-        if (dragData) return;
-        if (event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
+
+        const dt = event.dataTransfer;
+        // 内部ドラッグ（エディタ内ノード）なら何もしない — ProseMirror が処理する
+        if (isInternalTiptapDrag(dt)) {
+            return;
+        }
+
+        // 外部のファイルがあればアップロード処理を呼ぶ
+        if (dt?.files && dt.files.length > 0) {
             // node.__uploadFilesが関数なら呼び出す
             if (typeof (node as any).__uploadFiles === "function") {
-                (node as any).__uploadFiles(event.dataTransfer.files);
+                event.preventDefault(); // 外部ファイルドロップは preventDefault して処理を受け取る
+                (node as any).__uploadFiles(dt.files);
             }
+        } else {
+            // もし text/uri-list などの URL ドロップを検出したい場合はここで処理を追加
         }
     }
     node.addEventListener("dragover", handleDragOver);

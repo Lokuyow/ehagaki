@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
-
     fileDropAction,
     pasteAction,
     touchAction,
     keydownAction,
 } from "./editorDomActions";
+
+// extractContentWithImages をモック
+vi.mock("./editorUtils", () => ({
+    extractContentWithImages: vi.fn(),
+}));
+
+import { extractContentWithImages } from "./editorUtils";
 
 // Helper to create a mock HTMLElement
 function createMockNode(): HTMLElement {
@@ -42,22 +48,33 @@ describe("fileDropAction", () => {
             cancelable: true,
         });
         Object.defineProperty(event, "dataTransfer", {
-            value: { types: ["text/plain"] },
+            value: { types: ["Files"] }, // "Files" を含める
         });
         node.dispatchEvent(event);
         expect(node.classList.contains("drag-over")).toBe(true);
     });
 
     it("removes drag-over class on dragleave", () => {
-        node.classList.add("drag-over");
-        const event = new DragEvent("dragleave", {
+        // まず dragover で drag-over クラスを付与
+        const dragOverEvent = new DragEvent("dragover", {
             bubbles: true,
             cancelable: true,
         });
-        Object.defineProperty(event, "dataTransfer", {
-            value: { types: ["text/plain"] },
+        Object.defineProperty(dragOverEvent, "dataTransfer", {
+            value: { types: ["Files"] },
         });
-        node.dispatchEvent(event);
+        node.dispatchEvent(dragOverEvent);
+        expect(node.classList.contains("drag-over")).toBe(true);
+
+        // 次に dragleave で types: []（外部ファイルが無い状態）を渡す
+        const dragLeaveEvent = new DragEvent("dragleave", {
+            bubbles: true,
+            cancelable: true,
+        });
+        Object.defineProperty(dragLeaveEvent, "dataTransfer", {
+            value: { types: [] },
+        });
+        node.dispatchEvent(dragLeaveEvent);
         expect(node.classList.contains("drag-over")).toBe(false);
     });
 
@@ -226,6 +243,8 @@ describe("keydownAction", () => {
     beforeEach(() => {
         node = createMockNode();
         destroy = keydownAction(node).destroy;
+        // デフォルトは空文字列
+        (extractContentWithImages as any).mockReturnValue("");
     });
 
     afterEach(() => {
@@ -233,10 +252,8 @@ describe("keydownAction", () => {
     });
 
     it("calls __submitPost on Ctrl+Enter if conditions met", () => {
-        // Mock extractContentWithImages to return non-empty string
-        vi.mock("./editorUtils", () => ({
-            extractContentWithImages: () => "content",
-        }));
+        // extractContentWithImages を非空に
+        (extractContentWithImages as any).mockReturnValue("content");
 
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
@@ -251,6 +268,7 @@ describe("keydownAction", () => {
     it("does not call __submitPost if postStatus.sending is true", () => {
         // @ts-ignore
         node.__postStatus = { sending: true };
+        (extractContentWithImages as any).mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -264,6 +282,7 @@ describe("keydownAction", () => {
     it("does not call __submitPost if content is empty", () => {
         // @ts-ignore
         node.__currentEditor = undefined;
+        (extractContentWithImages as any).mockReturnValue("");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
