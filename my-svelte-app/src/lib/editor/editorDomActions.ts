@@ -176,9 +176,18 @@ export function keydownAction(node: HTMLElement) {
             (event.key === "Enter" || event.key === "NumpadEnter")
         ) {
             event.preventDefault();
-            const currentEditor = (node as any).__currentEditor as TipTapEditor | undefined;
-            const hasStoredKey = (node as any).__hasStoredKey as boolean | undefined;
-            const postStatus = (node as any).__postStatus as { sending: boolean } | undefined;
+
+            // node.__currentEditor 等はコンポーネント側で関数ラッパーとして渡されることがあるため、
+            // 関数なら実行して実体を取得する
+            const rawCurrentEditor = (node as any).__currentEditor;
+            const currentEditor = typeof rawCurrentEditor === 'function' ? rawCurrentEditor() : rawCurrentEditor as TipTapEditor | undefined;
+
+            const rawHasStoredKey = (node as any).__hasStoredKey;
+            const hasStoredKey = typeof rawHasStoredKey === 'function' ? rawHasStoredKey() : rawHasStoredKey as boolean | undefined;
+
+            const rawPostStatus = (node as any).__postStatus;
+            const postStatus = typeof rawPostStatus === 'function' ? rawPostStatus() : rawPostStatus as { sending: boolean } | undefined;
+
             const content = currentEditor ? extractContentWithImages(currentEditor) : "";
             if (!postStatus?.sending && content.trim() && hasStoredKey) {
                 (node as any).__submitPost?.();

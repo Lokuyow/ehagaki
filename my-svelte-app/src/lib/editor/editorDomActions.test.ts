@@ -89,7 +89,7 @@ describe("fileDropAction", () => {
             value: {
                 getData: vi.fn().mockReturnValue(""),
                 files,
-                types: [],
+                types: ["Files"], // 修正: types: [] → types: ["Files"]
             },
         });
         node.dispatchEvent(event);
@@ -291,5 +291,85 @@ describe("keydownAction", () => {
         node.dispatchEvent(event);
         // @ts-ignore
         expect(node.__submitPost).not.toHaveBeenCalled();
+    });
+
+    it("calls __submitPost on Meta+Enter if conditions met", () => {
+        (extractContentWithImages as any).mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            metaKey: true,
+            key: "Enter",
+        });
+        node.dispatchEvent(event);
+        // @ts-ignore
+        expect(node.__submitPost).toHaveBeenCalled();
+    });
+
+    it("calls __submitPost on Ctrl+NumpadEnter if conditions met", () => {
+        (extractContentWithImages as any).mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            ctrlKey: true,
+            key: "NumpadEnter",
+        });
+        node.dispatchEvent(event);
+        // @ts-ignore
+        expect(node.__submitPost).toHaveBeenCalled();
+    });
+
+    it("does not call __submitPost if hasStoredKey is false", () => {
+        // @ts-ignore
+        node.__hasStoredKey = false;
+        (extractContentWithImages as any).mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+        node.dispatchEvent(event);
+        // @ts-ignore
+        expect(node.__submitPost).not.toHaveBeenCalled();
+    });
+
+    it("does not call __submitPost if content is whitespace", () => {
+        (extractContentWithImages as any).mockReturnValue("   ");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+        node.dispatchEvent(event);
+        // @ts-ignore
+        expect(node.__submitPost).not.toHaveBeenCalled();
+    });
+
+    it("supports function wrappers for __currentEditor, __hasStoredKey, __postStatus", () => {
+        // @ts-ignore
+        node.__currentEditor = vi.fn(() => ({}));
+        // @ts-ignore
+        node.__hasStoredKey = vi.fn(() => true);
+        // @ts-ignore
+        node.__postStatus = vi.fn(() => ({ sending: false }));
+        (extractContentWithImages as any).mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+        node.dispatchEvent(event);
+        // @ts-ignore
+        expect(node.__submitPost).toHaveBeenCalled();
+    });
+
+    it("does not call __submitPost if __submitPost is not defined", () => {
+        // @ts-ignore
+        node.__submitPost = undefined;
+        (extractContentWithImages as any).mockReturnValue("content");
+        const event = new KeyboardEvent("keydown", {
+            bubbles: true,
+            ctrlKey: true,
+            key: "Enter",
+        });
+        expect(() => node.dispatchEvent(event)).not.toThrow();
     });
 });

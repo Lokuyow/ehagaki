@@ -172,19 +172,28 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
 export function extractContentWithImages(editor: any): string {
     if (!editor) return '';
 
-    const doc = editor.state.doc;
+    // editor が関数でラップされている場合に対応し、
+    // editor.state または editor.view.state いずれからでも doc を取得するようにする
+    let doc: any | undefined;
+    try {
+        const resolved = typeof editor === 'function' ? editor() : editor;
+        doc = resolved?.state?.doc ?? resolved?.view?.state?.doc;
+    } catch {
+        doc = undefined;
+    }
+
+    if (!doc) return '';
+
     const fragments: string[] = [];
 
     doc.descendants((node: any) => {
         if (node.type.name === 'paragraph') {
-            // パラグラフ内のテキストを取得
             const textContent = node.textContent;
             if (textContent.trim()) {
                 fragments.push(textContent);
             }
         } else if (node.type.name === 'image') {
-            // 画像ノードからURLを抽出
-            const src = node.attrs.src;
+            const src = node.attrs?.src;
             if (src) {
                 fragments.push(src);
             }
