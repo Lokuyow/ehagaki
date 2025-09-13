@@ -310,6 +310,27 @@
         // 長押しタイマーをセット
         longPressTimeout = setTimeout(() => {
             // 長押しとして確定
+            // 追加: 長押しでドラッグ開始する直前にエディタ等のフォーカスを外してキーボードを閉じる
+            try {
+                const active = document.activeElement as HTMLElement | null;
+                if (active) {
+                    // tiptap のエディタや input/textarea、contentEditable の場合にフォーカスを外す
+                    const isEditor =
+                        active.classList?.contains?.("tiptap-editor") ||
+                        active.closest?.(".tiptap-editor");
+                    const isFormControl =
+                        ["INPUT", "TEXTAREA"].includes(active.tagName) || active.isContentEditable;
+                    if (isEditor || isFormControl) {
+                        active.blur?.();
+                        // iOS 等で確実にキーボードを閉じるために body にフォーカスを移す
+                        (document.body as HTMLElement)?.focus?.();
+                    }
+                }
+            } catch (e) {
+                // 無害なフォールバック
+                /* noop */
+            }
+
             isDragging = true;
             dispatchDragStart();
 
