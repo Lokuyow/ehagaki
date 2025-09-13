@@ -16,6 +16,11 @@
         requestNodeSelection as requestNodeSelectionUtil,
         renderBlurhash as renderBlurhashUtil,
     } from "../lib/editor/editorUtils";
+    import {
+        imageDragState,
+        imageSelectionState,
+        imageLoadState,
+    } from "../lib/editor/stores/editorStore.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -25,20 +30,10 @@
 
     let { node, selected, getPos }: Props = $props();
 
-    // 状態管理の統合
-    let dragState = $state({
-        isDragging: false,
-        startPos: { x: 0, y: 0 },
-        longPressTimeout: null as ReturnType<typeof setTimeout> | null,
-        startTarget: null as HTMLElement | null,
-        preview: null as HTMLElement | null,
-    });
-
-    // 選択状態管理の統合
-    let selectionState = $state({
-        justSelected: false,
-        justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
-    });
+    let dragState = imageDragState;
+    let selectionState = imageSelectionState;
+    let isImageLoaded = imageLoadState.isImageLoaded;
+    let blurhashFadeOut = imageLoadState.blurhashFadeOut;
 
     // Detect if the device is touch-capable
     const isTouchDevice =
@@ -48,9 +43,6 @@
     const JUST_SELECTED_DURATION = 400; // ms
 
     // blurhash関連の状態
-    let isImageLoaded = $state(false);
-    let blurhashFadeOut = $state(false);
-    let canvasRef: HTMLCanvasElement | undefined = $state();
     let isPlaceholder = $derived(
         node.attrs.isPlaceholder === true ||
             (node.attrs.src && node.attrs.src.startsWith("placeholder-")),
@@ -209,16 +201,16 @@
 
     // 画像読み込み完了時の処理
     function handleImageLoad() {
-        isImageLoaded = true;
-        blurhashFadeOut = true;
+        imageLoadState.isImageLoaded = true;
+        imageLoadState.blurhashFadeOut = true;
         setTimeout(() => {
-            blurhashFadeOut = false;
+            imageLoadState.blurhashFadeOut = false;
         }, 400); // CSSアニメーションと合わせる
     }
 
     // 画像読み込みエラー時の処理
     function handleImageError() {
-        isImageLoaded = false;
+        imageLoadState.isImageLoaded = false;
     }
 
     // イベントハンドラー
@@ -428,10 +420,10 @@
     }
 
     onMount(() => {
-        if (node.attrs.blurhash && canvasRef) {
+        if (node.attrs.blurhash && imageLoadState.canvasRef) {
             renderBlurhashUtil(
                 node.attrs.blurhash,
-                canvasRef,
+                imageLoadState.canvasRef,
                 imageDimensions || getPlaceholderDefaultSize(),
                 isPlaceholder,
                 devMode,
@@ -445,13 +437,13 @@
                 "[blurhash] $effect: blurhash=",
                 node.attrs.blurhash,
                 "canvasRef=",
-                !!canvasRef,
+                !!imageLoadState.canvasRef,
             );
         }
-        if (node.attrs.blurhash && canvasRef) {
+        if (node.attrs.blurhash && imageLoadState.canvasRef) {
             renderBlurhashUtil(
                 node.attrs.blurhash,
-                canvasRef,
+                imageLoadState.canvasRef,
                 imageDimensions || getPlaceholderDefaultSize(),
                 isPlaceholder,
                 devMode,
@@ -465,6 +457,17 @@
             clearTimeout(selectionState.justSelectedTimeout);
         }
         removeDragPreview();
+
+        // 状態ストアの値は必要に応じて初期化
+        imageDragState.isDragging = false;
+        imageDragState.longPressTimeout = null;
+        imageDragState.startTarget = null;
+        imageDragState.preview = null;
+        imageSelectionState.justSelected = false;
+        imageSelectionState.justSelectedTimeout = null;
+        imageLoadState.isImageLoaded = false;
+        imageLoadState.blurhashFadeOut = false;
+        imageLoadState.canvasRef = undefined;
     });
 </script>
 
@@ -491,15 +494,15 @@
     >
         {#if showBlurhash}
             <canvas
-                bind:this={canvasRef}
+                bind:this={imageLoadState.canvasRef}
                 width={imageDimensions?.displayWidth ||
                     getPlaceholderDefaultSize().displayWidth}
                 height={imageDimensions?.displayHeight ||
                     getPlaceholderDefaultSize().displayHeight}
                 class="blurhash-canvas"
                 class:is-placeholder={isPlaceholder}
-                class:fade-out={isImageLoaded &&
-                    blurhashFadeOut &&
+                class:fade-out={imageLoadState.isImageLoaded &&
+                    imageLoadState.blurhashFadeOut &&
                     showActualImage}
             ></canvas>
         {/if}
@@ -508,7 +511,7 @@
                 src={node.attrs.src}
                 alt={node.attrs.alt || ""}
                 class="editor-image"
-                class:image-loading={!isImageLoaded}
+                class:image-loading={!imageLoadState.isImageLoaded}
                 draggable="false"
                 onload={handleImageLoad}
                 onerror={handleImageError}

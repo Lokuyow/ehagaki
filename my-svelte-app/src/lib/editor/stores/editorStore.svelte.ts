@@ -232,3 +232,26 @@ export async function submitPost() {
         await postComponentSubmit();
     }
 }
+
+// --- SvelteImageNode用 状態管理ストア ---
+// 画像ドラッグ状態
+export const imageDragState = $state({
+    isDragging: false,
+    startPos: { x: 0, y: 0 },
+    longPressTimeout: null as ReturnType<typeof setTimeout> | null,
+    startTarget: null as HTMLElement | null,
+    preview: null as HTMLElement | null,
+});
+
+// 選択状態
+export const imageSelectionState = $state({
+    justSelected: false,
+    justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
+});
+
+// 画像ロード状態
+export const imageLoadState = $state({
+    isImageLoaded: false,
+    blurhashFadeOut: false,
+    canvasRef: undefined as HTMLCanvasElement | undefined,
+});
