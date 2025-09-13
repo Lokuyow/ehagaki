@@ -17,7 +17,7 @@ import {
 } from "./constants";
 import { getToken } from "nostr-tools/nip98";
 import { debugLogUploadResponse } from "./debug";
-import { generateBlurhashForFile, createPlaceholderUrl } from "./imeta";
+import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imeta";
 import { showCompressedImagePreview } from "./debug";
 import { calculateImageDisplaySize, type ImageDimensions } from "./imageUtils";
 

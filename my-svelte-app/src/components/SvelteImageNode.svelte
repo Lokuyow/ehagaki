@@ -3,7 +3,7 @@
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onDestroy, onMount } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
-    import { renderBlurhashToCanvas } from "../lib/imeta";
+    import { renderBlurhashToCanvas } from "../lib/tags/imeta";
     import {
         calculateImageDisplaySize,
         parseDimString,

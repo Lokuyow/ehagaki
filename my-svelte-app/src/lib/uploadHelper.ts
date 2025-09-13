@@ -1,5 +1,5 @@
 import { FileUploadManager, getImageDimensions } from "./fileUploadManager";
-import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./imeta";
+import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imeta";
 import { tick } from "svelte";
 import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";

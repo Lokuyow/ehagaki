@@ -1,7 +1,7 @@
 <!-- filepath: d:\ドキュメント\GitHub\ehagaki\my-svelte-app\src\components\ImagePlaceholder.svelte -->
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { renderBlurhashToCanvas } from "../lib/imeta";
+    import { renderBlurhashToCanvas } from "../lib/tags/imeta";
     import {
         getPlaceholderDefaultSize,
         type ImageDimensions,

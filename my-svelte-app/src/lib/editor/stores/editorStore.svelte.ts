@@ -9,14 +9,9 @@ import { validateAndNormalizeUrl } from '../editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '..';
 import { GapCursorNewlineExtension } from '../gapCursorNewline';
 import type { PostStatus, EditorState } from '../../types'; // 型定義をtypes.tsからインポート
-import { HASHTAG_REGEX } from '../../constants';
 
-// ハッシュタグデータ用ストア（runes記法）
-export const hashtagDataStore = $state<{ content: string; hashtags: string[]; tags: [string, string][] }>({
-    content: '',
-    hashtags: [],
-    tags: []
-});
+// ハッシュタグは別ファイルへ移動
+import { updateHashtagData } from '../../tags/hashtagManager';
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -225,34 +220,7 @@ export function updatePlaceholderText(text: string): void {
     placeholderTextStore.value = text;
 }
 
-// --- ハッシュタグデータ更新 ---
-export function updateHashtagData(content: string): void {
-    const hashtags = extractHashtagsFromContent(content);
-    // "t"タグの値を小文字化 → extractHashtagsFromContentで小文字化済み
-    const tags: [string, string][] = hashtags.map(hashtag => ["t", hashtag]);
-
-    hashtagDataStore.content = content;
-    hashtagDataStore.hashtags = hashtags;
-    hashtagDataStore.tags = tags;
-}
-
-// --- ハッシュタグ処理関数（内部使用） ---
-export function extractHashtagsFromContent(content: string): string[] {
-    const hashtags: string[] = [];
-    HASHTAG_REGEX.lastIndex = 0;
-    let match: RegExpExecArray | null;
-
-    while ((match = HASHTAG_REGEX.exec(content)) !== null) {
-        const hashtag = match[1];
-        if (hashtag && hashtag.trim()) {
-            hashtags.push(hashtag.toLowerCase());
-        }
-    }
-
-    return hashtags;
-}
-
-// PostComponentのsubmitPostへの参照を保持
+// --- PostComponentのsubmitPostへの参照を保持 ---
 let postComponentSubmit: (() => Promise<void>) | undefined = undefined;
 
 export function setPostSubmitter(submitter: () => Promise<void>) {

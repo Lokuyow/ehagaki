@@ -11,7 +11,7 @@ vi.mock("./appStores.svelte", () => {
 
 import { uploadHelper } from "./uploadHelper";
 import { FileUploadManager } from "./fileUploadManager";
-import * as imeta from "./imeta";
+import * as imeta from "./tags/imeta";
 
 vi.mock("./fileUploadManager", () => {
     return {

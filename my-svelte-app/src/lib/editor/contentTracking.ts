@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from './editorUtils';
 import { HASHTAG_REGEX } from '../constants';
-import { updateHashtagData } from './stores/editorStore.svelte';
+import { updateHashtagData } from '../tags/hashtagManager';
 
 // ハッシュタグのデコレーション（装飾）を生成する関数
 interface HashtagMatch extends RegExpExecArray {
