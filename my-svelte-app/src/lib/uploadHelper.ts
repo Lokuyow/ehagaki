@@ -150,12 +150,27 @@ export async function uploadHelper({
     let results: FileUploadResponse[] | null = null;
     try {
         updateUploadState(true, "");
+        // prepare metadata per-file according to NIP-96
+        const metadataList = fileArray.map((f) => {
+            return {
+                caption: f.name,               // 緩い説明
+                expiration: "",               // 空文字 = 永続希望
+                size: f.size,                 // バイトサイズ
+                alt: f.name,                  // アクセシビリティ用の説明（簡易）
+                media_type: undefined,        // 必要なら識別してセット可能（avatar/banner）
+                content_type: f.type || "",   // mime type のヒント
+                no_transform: "true"          // 変換を避けたい場合
+            } as Record<string, string | number | undefined>;
+        });
+
         if (fileArray.length === 1) {
             results = [
                 await FileUploadManager.uploadFileWithCallbacks(
                     fileArray[0],
                     endpoint,
                     uploadCallbacks,
+                    devMode,
+                    metadataList[0],
                 ),
             ];
         } else {
@@ -163,6 +178,7 @@ export async function uploadHelper({
                 fileArray,
                 endpoint,
                 uploadCallbacks,
+                metadataList,
             );
         }
     } catch (error) {

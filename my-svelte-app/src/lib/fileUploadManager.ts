@@ -255,7 +255,9 @@ export class FileUploadManager {
   // --- ファイルアップロード ---
   public static async uploadFile(
     file: File,
-    apiUrl: string = DEFAULT_API_URL
+    apiUrl: string = DEFAULT_API_URL,
+    devMode: boolean = false,
+    metadata?: Record<string, string | number | undefined>
   ): Promise<FileUploadResponse> {
     try {
       if (!file) return { success: false, error: "No file selected" };
@@ -281,11 +283,44 @@ export class FileUploadManager {
       );
       const finalUrl = this.getUploadEndpoint(apiUrl);
       const authHeader = await this.buildAuthHeader(finalUrl, "POST");
+
       const formData = new FormData();
       formData.append('file', uploadFile);
-      formData.append('uploadtype', 'media');
-      // --- oxをformDataに追加（APIが対応していれば） ---
-      if (ox) formData.append('ox', ox);
+
+      // NIP-96 に従い可能なフィールドを追加
+      // caption: 緩い説明
+      if (metadata?.caption) formData.append('caption', String(metadata.caption));
+      // expiration: UNIX秒タイムスタンプ もしくは 空文字(永続)
+      if (metadata?.expiration !== undefined) formData.append('expiration', String(metadata.expiration));
+      // size: アップロードするファイルのバイト数（サーバーの早期拒否のため）
+      formData.append('size', String(uploadFile.size));
+      // alt: アクセシビリティ用の厳密な説明
+      if (metadata?.alt) formData.append('alt', String(metadata.alt));
+      // media_type: "avatar" | "banner" など
+      if (metadata?.media_type) formData.append('media_type', String(metadata.media_type));
+      // content_type: mime type のヒント
+      formData.append('content_type', metadata?.content_type ? String(metadata.content_type) : uploadFile.type || '');
+      // no_transform: 要求（既存の挙動を尊重）
+      formData.append('no_transform', metadata?.no_transform ? String(metadata.no_transform) : 'true');
+
+      // デバッグ: devMode のときは送る FormData の中身をコンソールに出力
+      if (devMode) {
+        try {
+          const entries: any[] = [];
+          for (const entry of (formData as any).entries()) {
+            const [k, v] = entry;
+            if (v instanceof File) {
+              entries.push({ key: k, filename: v.name, size: v.size, type: v.type });
+            } else {
+              entries.push({ key: k, value: String(v) });
+            }
+          }
+          console.log("[dev] FormData to be sent to server:", entries);
+        } catch (e) {
+          console.log("[dev] Failed to enumerate FormData for debug", e);
+        }
+      }
+
       const response = await fetch(finalUrl, {
         method: 'POST',
         headers: { 'Authorization': authHeader },
@@ -335,7 +370,9 @@ export class FileUploadManager {
   public static async uploadMultipleFiles(
     files: File[],
     apiUrl: string = DEFAULT_API_URL,
-    onProgress?: (progress: MultipleUploadProgress) => void
+    onProgress?: (progress: MultipleUploadProgress) => void,
+    devMode: boolean = false,
+    metadataList?: Array<Record<string, string | number | undefined> | undefined>
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
     const results: FileUploadResponse[] = new Array(files.length);
@@ -346,7 +383,8 @@ export class FileUploadManager {
     updateProgress();
     await Promise.all(files.map(async (file, index) => {
       try {
-        const result = await this.uploadFile(file, apiUrl);
+        const meta = metadataList ? metadataList[index] : undefined;
+        const result = await this.uploadFile(file, apiUrl, devMode, meta);
         results[index] = result;
         result.success ? completed++ : failed++;
         updateProgress();
@@ -362,11 +400,13 @@ export class FileUploadManager {
   public static async uploadFileWithCallbacks(
     file: File,
     apiUrl: string = DEFAULT_API_URL,
-    callbacks?: UploadInfoCallbacks
+    callbacks?: UploadInfoCallbacks,
+    devMode: boolean = false,
+    metadata?: Record<string, string | number | undefined>
   ): Promise<FileUploadResponse> {
     callbacks?.onProgress?.({ completed: 0, failed: 0, total: 1, inProgress: true });
     try {
-      const result = await this.uploadFile(file, apiUrl);
+      const result = await this.uploadFile(file, apiUrl, devMode, metadata);
       callbacks?.onProgress?.({
         completed: result.success ? 1 : 0,
         failed: result.success ? 0 : 1,
@@ -387,10 +427,11 @@ export class FileUploadManager {
   public static async uploadMultipleFilesWithCallbacks(
     files: File[],
     apiUrl: string = DEFAULT_API_URL,
-    callbacks?: UploadInfoCallbacks
+    callbacks?: UploadInfoCallbacks,
+    metadataList?: Array<Record<string, string | number | undefined> | undefined>
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
-    const results = await this.uploadMultipleFiles(files, apiUrl, callbacks?.onProgress);
+    const results = await this.uploadMultipleFiles(files, apiUrl, callbacks?.onProgress, import.meta.env.MODE === "development", metadataList);
     const firstSuccess = results.find(r => r.success && r.sizeInfo);
     if (firstSuccess?.sizeInfo) {
       const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
