@@ -7,17 +7,19 @@ const isTestEnv = (
 ) || (typeof window !== 'undefined' && typeof (window as any).vitest !== 'undefined');
 
 // Svelte環境では$stateを使用、テスト環境では通常のオブジェクトを使用
-export const hashtagDataStore = isTestEnv
-    ? {
-        content: '',
-        hashtags: [] as string[],
-        tags: [] as [string, string][]
-    }
-    : $state<{ content: string; hashtags: string[]; tags: [string, string][] }>({
-        content: '',
-        hashtags: [],
-        tags: []
-    });
+const testHashtagDataStore = {
+    content: '',
+    hashtags: [] as string[],
+    tags: [] as [string, string][]
+};
+
+const svelteHashtagDataStore = $state<{ content: string; hashtags: string[]; tags: [string, string][] }>({
+    content: '',
+    hashtags: [],
+    tags: []
+});
+
+export const hashtagDataStore = isTestEnv ? testHashtagDataStore : svelteHashtagDataStore;
 
 // --- imeta情報の一時保存ストア ---
 export interface ImageImetaMap {
@@ -41,8 +43,14 @@ export interface ImageSizeMap {
     };
 }
 
-let imageImetaMap = isTestEnv ? {} : $state<ImageImetaMap>({});
-let imageSizeMap = isTestEnv ? {} : $state<ImageSizeMap>({});
+const testImageImetaMap: ImageImetaMap = {};
+const testImageSizeMap: ImageSizeMap = {};
+
+const svelteImageImetaMap = $state<ImageImetaMap>({});
+const svelteImageSizeMap = $state<ImageSizeMap>({});
+
+let imageImetaMap = isTestEnv ? testImageImetaMap : svelteImageImetaMap;
+let imageSizeMap = isTestEnv ? testImageSizeMap : svelteImageSizeMap;
 
 export const imageImetaMapStore = {
     get value() { return imageImetaMap; },
