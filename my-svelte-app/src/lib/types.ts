@@ -108,6 +108,39 @@ export interface PlaceholderEntry {
     dimensions?: ImageDimensions; // 新規追加
 }
 
+export interface UploadHelperDependencies {
+    localStorage: Storage;
+    crypto: SubtleCrypto;
+    tick: () => Promise<void>;
+    FileUploadManager: new () => FileUploadManagerInterface;
+    getImageDimensions: (file: File) => Promise<ImageDimensions | null>;
+    extractImageBlurhashMap: (editor: any) => Record<string, string>;
+    calculateImageHash: (url: string) => Promise<string | null>;
+    getMimeTypeFromUrl: (url: string) => string;
+    createImetaTag: (params: any) => Promise<string>;
+    imageSizeMapStore: {
+        update: (updater: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void;
+    };
+}
+
+export interface FileUploadManagerInterface {
+    validateImageFile: (file: File) => FileValidationResult;
+    generateBlurhashForFile: (file: File) => Promise<string | null>;
+    uploadFileWithCallbacks: (
+        file: File,
+        endpoint: string,
+        callbacks?: UploadInfoCallbacks,
+        devMode?: boolean,
+        metadata?: Record<string, string | number | undefined>
+    ) => Promise<FileUploadResponse>;
+    uploadMultipleFilesWithCallbacks: (
+        files: File[],
+        endpoint: string,
+        callbacks?: UploadInfoCallbacks,
+        metadataList?: Array<Record<string, string | number | undefined> | undefined>
+    ) => Promise<FileUploadResponse[]>;
+}
+
 export interface UploadHelperParams {
     files: File[] | FileList;
     currentEditor: import("@tiptap/core").Editor | null;
@@ -116,6 +149,7 @@ export interface UploadHelperParams {
     showUploadError: (msg: string, duration?: number) => void;
     updateUploadState: (isUploading: boolean, message?: string) => void;
     devMode: boolean;
+    dependencies?: UploadHelperDependencies; // 新規追加
 }
 
 export interface UploadHelperResult {
