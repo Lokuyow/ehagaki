@@ -141,7 +141,7 @@ export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string |
  * nsec形式の正規表現パターン
  */
 export const NSEC_PATTERN = /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/;
-export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58,}$/;
+export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/;
 
 /**
  * 秘密鍵(nsec)が含まれているかチェック
