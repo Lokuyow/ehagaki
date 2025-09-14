@@ -24,7 +24,7 @@
         imageDragState,
         imageSelectionState,
         imageLoadState,
-    } from "../lib/editor/stores/editorStore.svelte";
+    } from "../stores/editorStore.svelte";
 
     interface Props {
         node: NodeViewProps["node"];

@@ -26,7 +26,7 @@
     resetEditorState,
     resetPostStatus,
     setPostSubmitter,
-  } from "../lib/editor/stores/editorStore.svelte";
+  } from "../stores/editorStore.svelte";
 
   import { extractContentWithImages } from "../lib/editor/editorUtils";
   import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";

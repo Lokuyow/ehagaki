@@ -1,5 +1,5 @@
-import { ZOOM_CONFIG } from '../../constants';
-import { clamp, isNearScale } from '../../appUtils';
+import { ZOOM_CONFIG } from '../lib/constants';
+import { clamp, isNearScale } from '../lib/appUtils';
 
 export interface Position {
     x: number;

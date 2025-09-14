@@ -15,7 +15,7 @@
         createPinchState,
         type TransformState,
         type BoundaryConstraints,
-    } from "../lib/editor/stores/transformStore.svelte";
+    } from "../stores/transformStore.svelte";
 
     interface Props {
         src?: string;

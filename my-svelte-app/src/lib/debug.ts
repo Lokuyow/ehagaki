@@ -200,7 +200,7 @@ if (typeof window !== "undefined") {
 
 // --- dev用: post success/error強制表示デバッグ ---
 // editorState をここでimport
-import { editorState } from "./editor/stores/editorStore.svelte";
+import { editorState } from "../stores/editorStore.svelte";
 if (import.meta.env.MODE === "development") {
     (window as any).showPostSuccessDebug = () => {
         // editorStateは$stateストアなのでプロパティ単位で代入
