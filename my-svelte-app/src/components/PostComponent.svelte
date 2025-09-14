@@ -28,7 +28,7 @@
     setPostSubmitter,
   } from "../stores/editorStore.svelte";
 
-  import { extractContentWithImages } from "../lib/editor/editorUtils";
+  import { extractContentWithImages } from "../lib/utils/editorUtils";
   import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";

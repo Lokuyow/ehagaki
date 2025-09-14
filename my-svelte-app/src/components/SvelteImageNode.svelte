@@ -19,7 +19,7 @@
         removeDragPreview,
         checkMoveThreshold,
         handleImageInteraction,
-    } from "../lib/editor/editorUtils";
+    } from "../lib/utils/editorUtils";
     import {
         imageDragState,
         imageSelectionState,

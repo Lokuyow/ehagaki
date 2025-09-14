@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { moveImageNode, setDraggingFalse } from './editorUtils';
+import { moveImageNode, setDraggingFalse } from '../utils/editorUtils';
 import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
 
 // デバイス判定ヘルパー

@@ -5,7 +5,7 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
-import { validateAndNormalizeUrl } from '../lib/editor/editorUtils';
+import { validateAndNormalizeUrl } from '../lib/utils/editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState } from '../lib/types'; // 型定義をtypes.tsからインポート

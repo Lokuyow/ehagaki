@@ -11,7 +11,7 @@ vi.mock("./editorUtils", () => ({
     extractContentWithImages: vi.fn(),
 }));
 
-import { extractContentWithImages } from "./editorUtils";
+import { extractContentWithImages } from "../utils/editorUtils";
 
 // Helper to create a mock HTMLElement
 function createMockNode(): HTMLElement {

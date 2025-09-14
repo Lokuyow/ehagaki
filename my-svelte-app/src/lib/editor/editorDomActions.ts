@@ -1,4 +1,4 @@
-import { extractContentWithImages } from "./editorUtils";
+import { extractContentWithImages } from "../utils/editorUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
 // ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定

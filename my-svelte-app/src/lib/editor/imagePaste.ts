@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { validateAndNormalizeImageUrl } from './editorUtils';
+import { validateAndNormalizeImageUrl } from '../utils/editorUtils';
 
 // 画像URLリストをテキストから抽出
 function extractImageUrls(text: string): string[] {
