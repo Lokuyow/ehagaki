@@ -6,7 +6,7 @@ export interface PostStatus {
     success: boolean;
     error: boolean;
     message: string;
-    completed?: boolean; // 投稿完了フラグを追加
+    completed?: boolean;
 }
 
 export interface EditorState {
@@ -33,19 +33,21 @@ export interface FileSizeInfo {
     wasCompressed: boolean;
     compressionRatio: number;
     sizeReduction: string;
-    originalFilename?: string;      // 追加
-    compressedFilename?: string;    // 追加
-    wasSkipped?: boolean; // 圧縮処理をスキップしたかどうか
+    originalFilename?: string;
+    compressedFilename?: string;
+    wasSkipped?: boolean;
 }
+
+export type PartialFileSizeInfo = Partial<FileSizeInfo>;
 
 export interface SizeDisplayInfo {
     wasCompressed: boolean;
     originalSize: string;
     compressedSize: string;
     compressionRatio: number;
-    originalFilename?: string;      // 追加
-    compressedFilename?: string;    // 追加
-    wasSkipped?: boolean; // 圧縮処理をスキップしたかどうか
+    originalFilename?: string;
+    compressedFilename?: string;
+    wasSkipped?: boolean;
 }
 
 export interface PublicKeyData {

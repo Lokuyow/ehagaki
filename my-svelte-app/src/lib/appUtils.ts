@@ -1,5 +1,6 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "./types";
+import { BALLOON_MESSAGE_KEYS } from "./constants";
 
 // =============================================================================
 // File Size Utilities
@@ -393,4 +394,20 @@ export function calculatePinchZoom(
       y: currentTranslate.y * actualScaleRatio - offsetY * (actualScaleRatio - 1)
     }
   };
+}
+
+// =============================================================================
+// Balloon Message Utilities
+// =============================================================================
+
+/**
+ * ランダムなバルーンメッセージを取得
+ * @param $_ svelte-i18nの$_関数
+ */
+export function getRandomHeaderBalloon(
+  $_: (key: string) => string | undefined
+): string {
+  const keys: readonly string[] = BALLOON_MESSAGE_KEYS;
+  const idx: number = Math.floor(Math.random() * keys.length);
+  return $_(keys[idx]) ?? "";
 }

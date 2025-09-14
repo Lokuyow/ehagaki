@@ -37,6 +37,7 @@
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
   import { getDefaultEndpoint } from "./lib/constants";
+  import { getRandomHeaderBalloon } from "./lib/appUtils"; // 追加
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -374,43 +375,13 @@
     }
   }
 
-  // --- サイトアクセス時バルーン表示用 ---
-  function getRandomHeaderBalloon() {
-    const keys = [
-      "balloonMessage.hello",
-      "balloonMessage.hello2",
-      "balloonMessage.welcome",
-      "balloonMessage.waited",
-      "balloonMessage.relax",
-      "balloonMessage.good_weather",
-      "balloonMessage.thwomp",
-      "balloonMessage.sleep_on_floor",
-      "balloonMessage.home_here",
-      "balloonMessage.donai",
-      "balloonMessage.kita_na",
-      "balloonMessage.no_licking",
-      "balloonMessage.not_thwomp",
-      "balloonMessage.kitte_origin",
-      "balloonMessage.normal_stamp",
-      "balloonMessage.backside_curious",
-      "balloonMessage.corner_weapon",
-      "balloonMessage.square_peace",
-      "balloonMessage.how_much_stamp",
-      "balloonMessage.cancellation_done",
-      "balloonMessage.want_to_roll",
-      "balloonMessage.want_candy",
-      "balloonMessage.tetris_gone",
-    ];
-    const idx = Math.floor(Math.random() * keys.length);
-    return $_(keys[idx]);
-  }
   let showHeaderBalloon = $state(true);
   let headerBalloonMessage = $state("");
 
   // localeInitializedがtrueになったタイミングでメッセージをセット
   $effect(() => {
     if (localeInitialized) {
-      headerBalloonMessage = getRandomHeaderBalloon();
+      headerBalloonMessage = getRandomHeaderBalloon($_);
       showHeaderBalloon = true;
       setTimeout(() => {
         showHeaderBalloon = false;
@@ -428,7 +399,7 @@
       localeInitialized
     ) {
       if (!showHeaderBalloon) {
-        headerBalloonMessage = getRandomHeaderBalloon();
+        headerBalloonMessage = getRandomHeaderBalloon($_);
         showHeaderBalloon = true;
         setTimeout(() => {
           showHeaderBalloon = false;
@@ -439,7 +410,9 @@
   }
 
   // --- 追加: 設定ダイアログの画像圧縮設定を管理 ---
-  let selectedCompression = $state(localStorage.getItem("imageCompressionLevel") || "medium");
+  let selectedCompression = $state(
+    localStorage.getItem("imageCompressionLevel") || "medium",
+  );
 
   function handleSelectedCompressionChange(value: string) {
     selectedCompression = value;
@@ -447,7 +420,9 @@
 
   // --- 追加: 設定ダイアログのアップロード先設定を管理 ---
 
-  let selectedEndpoint = $state(localStorage.getItem("uploadEndpoint") || getDefaultEndpoint($locale));
+  let selectedEndpoint = $state(
+    localStorage.getItem("uploadEndpoint") || getDefaultEndpoint($locale),
+  );
 
   function handleSelectedEndpointChange(value: string) {
     selectedEndpoint = value;

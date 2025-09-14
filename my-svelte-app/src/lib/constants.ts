@@ -109,3 +109,30 @@ export const TIMING = {
 export const SELECTORS = {
     EDITOR: ".tiptap-editor",
 } as const;
+
+// --- バルーンメッセージ用キー配列 ---
+export const BALLOON_MESSAGE_KEYS: readonly string[] = [
+    "balloonMessage.hello",
+    "balloonMessage.hello2",
+    "balloonMessage.welcome",
+    "balloonMessage.waited",
+    "balloonMessage.relax",
+    "balloonMessage.good_weather",
+    "balloonMessage.thwomp",
+    "balloonMessage.sleep_on_floor",
+    "balloonMessage.home_here",
+    "balloonMessage.donai",
+    "balloonMessage.kita_na",
+    "balloonMessage.no_licking",
+    "balloonMessage.not_thwomp",
+    "balloonMessage.kitte_origin",
+    "balloonMessage.normal_stamp",
+    "balloonMessage.backside_curious",
+    "balloonMessage.corner_weapon",
+    "balloonMessage.square_peace",
+    "balloonMessage.how_much_stamp",
+    "balloonMessage.cancellation_done",
+    "balloonMessage.want_to_roll",
+    "balloonMessage.want_candy",
+    "balloonMessage.tetris_gone",
+];
