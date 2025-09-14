@@ -1,10 +1,12 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "./types";
 
+// =============================================================================
+// File Size Utilities
+// =============================================================================
+
 /**
  * ファイルサイズを人間に読みやすい形式に変換
- * @param bytes バイト数
- * @returns 読みやすい形式の文字列
  */
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0KB';
@@ -13,14 +15,21 @@ export function formatFileSize(bytes: number): string {
 }
 
 /**
+ * 圧縮率を計算
+ */
+export function calculateCompressionRatio(originalSize: number, compressedSize: number): number {
+  return originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
+}
+
+/**
+ * サイズ削減表示文字列を生成
+ */
+export function createSizeReductionText(originalSize: number, compressedSize: number): string {
+  return `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
+}
+
+/**
  * ファイルサイズ情報を生成
- * @param originalSize 元のファイルサイズ（バイト）
- * @param compressedSize 圧縮後のファイルサイズ（バイト）
- * @param wasCompressed 圧縮されたかどうか
- * @param originalFilename 元ファイル名（省略可）
- * @param compressedFilename 圧縮後ファイル名（省略可）
- * @param wasSkipped 圧縮処理をスキップしたかどうか（省略可）
- * @returns ファイルサイズ情報
  */
 export function createFileSizeInfo(
   originalSize: number,
@@ -30,15 +39,12 @@ export function createFileSizeInfo(
   compressedFilename?: string,
   wasSkipped?: boolean
 ): FileSizeInfo {
-  const compressionRatio = originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
-  const sizeReduction = `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
-
   return {
     originalSize,
     compressedSize,
     wasCompressed,
-    compressionRatio,
-    sizeReduction,
+    compressionRatio: calculateCompressionRatio(originalSize, compressedSize),
+    sizeReduction: createSizeReductionText(originalSize, compressedSize),
     originalFilename,
     compressedFilename,
     wasSkipped
@@ -46,20 +52,22 @@ export function createFileSizeInfo(
 }
 
 /**
- * サイズ情報から表示用の構造化データを生成
- * @param sizeInfo ファイルサイズ情報
- * @returns 表示用構造化データ、または表示する必要がない場合はnull
+ * ファイルサイズ情報に変化があるかチェック
  */
-export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisplayInfo | null {
-  if (!sizeInfo) return null;
-
-  // wasCompressed フラグがtrueか、ファイル名やサイズに変化がある場合、またはスキップされた場合に表示
-  const hasChanges = sizeInfo.wasCompressed ||
+export function hasFileSizeChanges(sizeInfo: FileSizeInfo): boolean {
+  return sizeInfo.wasCompressed ||
     (sizeInfo.originalFilename !== sizeInfo.compressedFilename) ||
     (sizeInfo.originalSize !== sizeInfo.compressedSize) ||
-    sizeInfo.wasSkipped;
+    !!sizeInfo.wasSkipped;
+}
 
-  if (!hasChanges) return null;
+/**
+ * サイズ情報から表示用の構造化データを生成
+ */
+export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisplayInfo | null {
+  if (!sizeInfo || !hasFileSizeChanges(sizeInfo)) {
+    return null;
+  }
 
   return {
     wasCompressed: sizeInfo.wasCompressed,
@@ -73,31 +81,56 @@ export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisp
 }
 
 /**
- * サイズ情報からHTML表示用の文字列を生成
- * @param sizeInfo ファイルサイズ情報
- * @returns 表示用HTML文字列、または圧縮されていない場合はnull
+ * @deprecated 後方互換性のために保持
  */
 export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string | null {
-  // 後方互換性のために保持（廃止予定）
   if (!sizeInfo || !sizeInfo.wasCompressed) return null;
-
   return `データサイズ:<br>${sizeInfo.sizeReduction} （${sizeInfo.compressionRatio}%）`;
 }
 
+// =============================================================================
+// Nostr Key Utilities
+// =============================================================================
+
 /**
- * 秘密鍵(nsec)が含まれているかチェックする関数
- * @param text チェック対象のテキスト
- * @returns 秘密鍵が含まれている場合true
+ * nsec形式の正規表現パターン
+ */
+export const NSEC_PATTERN = /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/;
+export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58,}$/;
+
+/**
+ * 秘密鍵(nsec)が含まれているかチェック
  */
 export function containsSecretKey(text: string): boolean {
-  // nsecで始まる文字列を検出（部分的な秘密鍵でも警告）
-  return /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/.test(text);
+  return NSEC_PATTERN.test(text);
+}
+
+/**
+ * nsec形式の秘密鍵が有効かチェック
+ */
+export function isValidNsec(key: string): boolean {
+  return NSEC_FULL_PATTERN.test(key);
+}
+
+/**
+ * nsecから公開鍵のhex形式を導出
+ */
+export function derivePublicKeyHex(nsecData: Uint8Array): string {
+  return getPublicKey(nsecData);
+}
+
+/**
+ * 公開鍵のhex形式からnpubとnprofileを生成
+ */
+export function createPublicKeyFormats(hex: string): { npub: string; nprofile: string } {
+  return {
+    npub: nip19.npubEncode(hex),
+    nprofile: nip19.nprofileEncode({ pubkey: hex, relays: [] })
+  };
 }
 
 /**
  * nsec形式の秘密鍵から公開鍵情報を導出する
- * @param nsec nsec形式の秘密鍵
- * @returns 公開鍵データ（hex, npub, nprofile）
  */
 export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
   try {
@@ -106,9 +139,10 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
       console.warn("無効なnsec形式です");
       return { hex: "", npub: "", nprofile: "" };
     }
-    const hex = getPublicKey(data as Uint8Array);
-    const npub = nip19.npubEncode(hex);
-    const nprofile = nip19.nprofileEncode({ pubkey: hex, relays: [] });
+
+    const hex = derivePublicKeyHex(data as Uint8Array);
+    const { npub, nprofile } = createPublicKeyFormats(hex);
+
     return { hex, npub, nprofile };
   } catch (e) {
     console.error("公開鍵の導出に失敗:", e);
@@ -116,14 +150,9 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
   }
 }
 
-/**
- * nsec形式の秘密鍵が有効かチェックする
- * @param key チェック対象の文字列
- * @returns 有効な場合true
- */
-export function isValidNsec(key: string): boolean {
-  return /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58,}$/.test(key);
-}
+// =============================================================================
+// Math Utilities
+// =============================================================================
 
 export function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -133,8 +162,38 @@ export function isNearScale(scale: number, target: number, threshold: number): b
   return Math.abs(scale - target) < threshold;
 }
 
+/**
+ * 2点間の距離を計算
+ */
+export function calculateDistance(touch1: Touch, touch2: Touch): number {
+  const dx = touch1.clientX - touch2.clientX;
+  const dy = touch1.clientY - touch2.clientY;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// =============================================================================
+// DOM Utilities (副作用のある関数)
+// =============================================================================
+
+/**
+ * DOM要素のstyleプロパティを設定（テスト時にモック可能）
+ */
+export const domUtils = {
+  setBodyStyle(property: string, value: string): void {
+    document.body.style.setProperty(property, value);
+  },
+
+  querySelector(selector: string): HTMLElement | null {
+    return document.querySelector(selector) as HTMLElement;
+  },
+
+  focusElement(element: HTMLElement): void {
+    element.focus();
+  }
+};
+
 export function setBodyStyle(property: string, value: string): void {
-  document.body.style.setProperty(property, value);
+  domUtils.setBodyStyle(property, value);
 }
 
 export function clearBodyStyles(): void {
@@ -145,12 +204,16 @@ export function clearBodyStyles(): void {
 
 export function focusEditor(selector: string, delay: number): void {
   setTimeout(() => {
-    const editorElement = document.querySelector(selector) as HTMLElement;
+    const editorElement = domUtils.querySelector(selector);
     if (editorElement) {
-      editorElement.focus();
+      domUtils.focusElement(editorElement);
     }
   }, delay);
 }
+
+// =============================================================================
+// Type Definitions
+// =============================================================================
 
 export interface MousePosition {
   x: number;
@@ -180,46 +243,15 @@ export interface PinchInfo {
   centerY: number;
 }
 
-// 統合されたズーム計算関数
-export function calculateZoomFromEvent(
-  event: MouseEvent | WheelEvent,
-  containerElement: HTMLElement,
-  currentScale: number,
-  currentTranslate: MousePosition,
-  targetScale: number
-): { scale: number; offsetX: number; offsetY: number } {
-  const rect = containerElement.getBoundingClientRect();
-  const centerX = rect.width / 2;
-  const centerY = rect.height / 2;
-  const offsetX = event.clientX - rect.left - centerX;
-  const offsetY = event.clientY - rect.top - centerY;
-
-  return {
-    scale: targetScale,
-    offsetX,
-    offsetY
-  };
+export interface ZoomParams {
+  scale: number;
+  offsetX: number;
+  offsetY: number;
 }
 
-// ピンチズーム用の計算を簡素化
-export function calculatePinchZoomParams(
-  currentScale: number,
-  scaleRatio: number,
-  centerX: number,
-  centerY: number,
-  containerElement: HTMLElement
-): { scale: number; offsetX: number; offsetY: number } {
-  const rect = containerElement.getBoundingClientRect();
-  const offsetX = centerX - rect.left - rect.width / 2;
-  const offsetY = centerY - rect.top - rect.height / 2;
-  const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
-
-  return {
-    scale: newScale,
-    offsetX,
-    offsetY
-  };
-}
+// =============================================================================
+// Coordinate and Zoom Utilities
+// =============================================================================
 
 /**
  * マウスイベントから相対座標を取得
@@ -232,6 +264,16 @@ export function getMousePosition(event: MouseEvent): MousePosition {
 }
 
 /**
+ * 要素の矩形情報から中心座標を計算
+ */
+export function calculateElementCenter(rect: DOMRect): MousePosition {
+  return {
+    x: rect.width / 2,
+    y: rect.height / 2
+  };
+}
+
+/**
  * 要素の中心からのオフセットを計算
  */
 export function calculateViewportInfo(
@@ -240,14 +282,13 @@ export function calculateViewportInfo(
   mouseY: number
 ): ViewportInfo {
   const rect = element.getBoundingClientRect();
-  const centerX = rect.width / 2;
-  const centerY = rect.height / 2;
+  const center = calculateElementCenter(rect);
 
   return {
-    centerX,
-    centerY,
-    offsetX: mouseX - rect.left - centerX,
-    offsetY: mouseY - rect.top - centerY
+    centerX: center.x,
+    centerY: center.y,
+    offsetX: mouseX - rect.left - center.x,
+    offsetY: mouseY - rect.top - center.y
   };
 }
 
@@ -262,15 +303,6 @@ export function calculateDragDelta(
     x: currentMouse.x - startMouse.x,
     y: currentMouse.y - startMouse.y
   };
-}
-
-/**
- * 2点間の距離を計算
- */
-export function calculateDistance(touch1: Touch, touch2: Touch): number {
-  const dx = touch1.clientX - touch2.clientX;
-  const dy = touch1.clientY - touch2.clientY;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**
@@ -295,6 +327,49 @@ export function calculatePinchInfo(touch1: Touch, touch2: Touch): PinchInfo {
   };
 }
 
+/**
+ * イベントとコンテナ要素からズームパラメータを計算
+ */
+export function calculateZoomFromEvent(
+  event: MouseEvent | WheelEvent,
+  containerElement: HTMLElement,
+  currentScale: number,
+  currentTranslate: MousePosition,
+  targetScale: number
+): ZoomParams {
+  const rect = containerElement.getBoundingClientRect();
+  const center = calculateElementCenter(rect);
+
+  return {
+    scale: targetScale,
+    offsetX: event.clientX - rect.left - center.x,
+    offsetY: event.clientY - rect.top - center.y
+  };
+}
+
+/**
+ * ピンチズーム用のパラメータを計算
+ */
+export function calculatePinchZoomParams(
+  currentScale: number,
+  scaleRatio: number,
+  centerX: number,
+  centerY: number,
+  containerElement: HTMLElement
+): ZoomParams {
+  const rect = containerElement.getBoundingClientRect();
+  const center = calculateElementCenter(rect);
+
+  return {
+    scale: clamp(currentScale * scaleRatio, 0.5, 5),
+    offsetX: centerX - rect.left - center.x,
+    offsetY: centerY - rect.top - center.y
+  };
+}
+
+/**
+ * ピンチズームの詳細な計算
+ */
 export function calculatePinchZoom(
   currentScale: number,
   currentTranslate: MousePosition,
@@ -304,8 +379,9 @@ export function calculatePinchZoom(
   containerElement: HTMLElement
 ): ZoomCalculation {
   const rect = containerElement.getBoundingClientRect();
-  const offsetX = centerX - rect.left - rect.width / 2;
-  const offsetY = centerY - rect.top - rect.height / 2;
+  const center = calculateElementCenter(rect);
+  const offsetX = centerX - rect.left - center.x;
+  const offsetY = centerY - rect.top - center.y;
 
   const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
   const actualScaleRatio = newScale / currentScale;
