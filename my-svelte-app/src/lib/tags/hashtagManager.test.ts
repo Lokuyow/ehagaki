@@ -1,26 +1,26 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// テスト環境用のモックストア
-const mockHashtagDataStore = {
-    content: '',
-    hashtags: [] as string[],
-    tags: [] as [string, string][]
-};
-
+// vi.mockファクトリ内で完結するモック設定
 vi.mock('./tagsStore.svelte', () => {
-    return {
-        hashtagDataStore: mockHashtagDataStore
-    };
+	const mockStore = {
+		content: '',
+		hashtags: [] as string[],
+		tags: [] as [string, string][]
+	};
+	return {
+		hashtagDataStore: mockStore
+	};
 });
 
 import { extractHashtagsFromContent, updateHashtagData } from './hashtagManager';
+import { hashtagDataStore } from './tagsStore.svelte';
 
 describe('hashtagManager', () => {
 	beforeEach(() => {
 		// ストアの初期化
-		mockHashtagDataStore.content = '';
-		mockHashtagDataStore.hashtags.length = 0;
-		mockHashtagDataStore.tags.length = 0;
+		hashtagDataStore.content = '';
+		hashtagDataStore.hashtags.length = 0;
+		hashtagDataStore.tags.length = 0;
 	});
 
 	describe('extractHashtagsFromContent', () => {
@@ -56,11 +56,11 @@ describe('hashtagManager', () => {
 			const content = 'Mix #Vue #Svelte #日本語';
 			updateHashtagData(content);
 
-			expect(mockHashtagDataStore.content).toBe(content);
+			expect(hashtagDataStore.content).toBe(content);
 			// hashtags は原文のまま保持される
-			expect(mockHashtagDataStore.hashtags).toEqual(['Vue', 'Svelte', '日本語']);
+			expect(hashtagDataStore.hashtags).toEqual(['Vue', 'Svelte', '日本語']);
 			// 投稿用 tags は英字部分を小文字化して格納される
-			expect(mockHashtagDataStore.tags).toEqual([['t', 'vue'], ['t', 'svelte'], ['t', '日本語']]);
+			expect(hashtagDataStore.tags).toEqual([['t', 'vue'], ['t', 'svelte'], ['t', '日本語']]);
 		});
 	});
 });
