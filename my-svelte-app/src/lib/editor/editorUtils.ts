@@ -238,12 +238,199 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number) {
 }
 
 /**
- * ドラッグ状態を解除する共通関数
+ * ドラッグイベントを発火する共通関数
  */
-export function setDraggingFalse(viewOrEditorView: any) {
-    viewOrEditorView.dispatch(
-        viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
+export function dispatchDragEvent(type: "start" | "move" | "end", details?: any, getPos?: () => number) {
+    const eventMap = {
+        start: "touch-image-drag-start",
+        move: "touch-image-drag-move",
+        end: "touch-image-drop",
+    };
+
+    const eventDetails = {
+        start: { nodePos: getPos?.() },
+        move: details,
+        end: {
+            nodeData: details?.nodeData || { pos: getPos?.() },
+            dropX: 0,
+            dropY: 0,
+            target: null,
+            dropPosition: null,
+            ...details,
+        },
+    };
+
+    const customEvent = new CustomEvent(eventMap[type], {
+        detail: eventDetails[type],
+        bubbles: true,
+        cancelable: true,
+    });
+
+    window.dispatchEvent(customEvent);
+    document.dispatchEvent(
+        new CustomEvent(eventMap[type], { detail: customEvent.detail }),
     );
+}
+
+/**
+ * ドロップゾーンのホバーハイライト処理
+ */
+export function highlightDropZoneAtPosition(x: number, y: number) {
+    // 既存のハイライトをクリア
+    document.querySelectorAll(".drop-zone-indicator").forEach((zone) => {
+        zone.classList.remove("drop-zone-hover");
+    });
+
+    // カーソル位置の要素を取得
+    const elementBelow = document.elementFromPoint(x, y);
+    if (elementBelow) {
+        const dropZone = elementBelow.closest(".drop-zone-indicator");
+        if (dropZone) {
+            dropZone.classList.add("drop-zone-hover");
+        }
+    }
+}
+
+/**
+ * ドラッグプレビューを作成
+ */
+export function createDragPreview(
+    element: HTMLElement,
+    x: number,
+    y: number,
+    isPlaceholder: boolean = false
+): HTMLElement | null {
+    const rect = element.getBoundingClientRect();
+    const MAX_PREVIEW = 140;
+    const previewWidth = Math.min(MAX_PREVIEW, rect.width || MAX_PREVIEW);
+    const previewHeight =
+        rect.width > 0
+            ? Math.round((rect.height / rect.width) * previewWidth)
+            : previewWidth;
+
+    let previewEl: HTMLElement | null = null;
+
+    if (isPlaceholder) {
+        const origCanvas = element.querySelector(
+            "canvas",
+        ) as HTMLCanvasElement | null;
+        if (!origCanvas) return null;
+        const newCanvas = document.createElement("canvas");
+        newCanvas.width = origCanvas.width;
+        newCanvas.height = origCanvas.height;
+        const ctx = newCanvas.getContext("2d");
+        if (ctx) {
+            ctx.drawImage(origCanvas, 0, 0);
+        }
+        previewEl = newCanvas;
+    } else {
+        const origImg = element.querySelector(
+            "img",
+        ) as HTMLImageElement | null;
+        if (!origImg) return null;
+        const newImg = document.createElement("img");
+        newImg.src = origImg.src;
+        newImg.alt = origImg.alt || "";
+        previewEl = newImg;
+    }
+
+    previewEl.classList.add("drag-preview");
+    previewEl.style.width = `${previewWidth}px`;
+    previewEl.style.height = `${previewHeight}px`;
+    previewEl.style.left = `${x - previewWidth / 2}px`;
+    previewEl.style.top = `${y - previewHeight / 2}px`;
+    previewEl.style.transformOrigin = "center center";
+    previewEl.style.transition = "transform 120ms ease, opacity 120ms ease";
+
+    document.body.appendChild(previewEl);
+
+    requestAnimationFrame(() => {
+        previewEl!.style.transform = "scale(0.8) rotate(0deg)";
+        previewEl!.style.opacity = "0.95";
+    });
+
+    return previewEl;
+}
+
+/**
+ * ドラッグプレビューの位置を更新
+ */
+export function updateDragPreview(previewElement: HTMLElement | null, x: number, y: number) {
+    if (!previewElement) return;
+
+    const rect = previewElement.getBoundingClientRect();
+    const w = rect.width || 100;
+    const h = rect.height || 100;
+
+    previewElement.style.left = `${x - w / 2}px`;
+    previewElement.style.top = `${y - h / 2}px`;
+}
+
+/**
+ * ドラッグプレビューを削除
+ */
+export function removeDragPreview(previewElement: HTMLElement | null): void {
+    if (previewElement?.parentNode) {
+        previewElement.parentNode.removeChild(previewElement);
+    }
+}
+
+/**
+ * 移動距離の閾値チェック
+ */
+export function checkMoveThreshold(
+    currentX: number,
+    currentY: number,
+    startX: number,
+    startY: number,
+    threshold: number
+): boolean {
+    const dx = currentX - startX;
+    const dy = currentY - startY;
+    return dx * dx + dy * dy > threshold * threshold;
+}
+
+/**
+ * 統合されたタップ/クリック処理
+ */
+export function handleImageInteraction(
+    event: MouseEvent | TouchEvent,
+    isTouch: boolean,
+    isDragging: boolean,
+    isPlaceholder: boolean,
+    selected: boolean,
+    justSelected: boolean,
+    imageSrc: string,
+    imageAlt: string,
+    getPos: () => number
+) {
+    // ドラッグ中やプレースホルダーの場合は何もしない
+    if (isDragging || isPlaceholder) {
+        event.preventDefault();
+        return false;
+    }
+
+    // 直前の選択による抑制期間中はクリックを無視
+    if (justSelected && !isTouch) {
+        event.preventDefault();
+        event.stopPropagation();
+        return false;
+    }
+
+    if (selected) {
+        // 既に選択済みなら全画面表示
+        requestFullscreenImage(imageSrc, imageAlt);
+    } else {
+        // 未選択なら選択要求
+        requestNodeSelection(getPos);
+    }
+
+    event.preventDefault();
+    if (!isTouch) {
+        event.stopPropagation();
+    }
+
+    return true;
 }
 
 // エディタ周りに特化した URL 検証/正規化関数をここに移動
@@ -341,6 +528,15 @@ export function requestNodeSelection(getPos: () => number) {
     const pos = getPos();
     window.dispatchEvent(
         new CustomEvent("select-image-node", { detail: { pos } }),
+    );
+}
+
+/**
+ * ドラッグ状態を解除する共通関数
+ */
+export function setDraggingFalse(viewOrEditorView: any) {
+    viewOrEditorView.dispatch(
+        viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
     );
 }
 
