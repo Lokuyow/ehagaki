@@ -1,7 +1,7 @@
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
 import type { NodeData, DragEvent, CleanUrlResult } from "../types";
 
-// === URL検証・正規化（純粋関数） ===
+// === URL検証・正規関数） ===
 export function normalizeUrl(url: string): string {
     return encodeURI(url.trim());
 }
@@ -533,6 +533,16 @@ export function blurEditorAndBody() {
     } catch (e) {
         /* noop */
     }
+}
+
+// === デバイス判定（純粋関数） ===
+export function isTouchDevice(): boolean {
+    return (
+        typeof window !== "undefined" &&
+        ("ontouchstart" in window ||
+            (navigator && navigator.maxTouchPoints > 0) ||
+            (navigator && !!navigator.userAgent.match(/Android|iPhone|iPad|iPod|Mobile/i)))
+    );
 }
 
 // === 画像インタラクション ===

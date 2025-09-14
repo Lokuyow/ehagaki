@@ -19,6 +19,7 @@
         removeDragPreview,
         checkMoveThreshold,
         handleImageInteraction,
+        isTouchDevice,
     } from "../lib/utils/editorUtils";
     import {
         imageDragState,
@@ -42,10 +43,10 @@
     // 個別のcanvas要素参照（グローバルストアではなくローカル）
     let localCanvasRef: HTMLCanvasElement | undefined = $state();
 
-    // Detect if the device is touch-capable
-    const isTouchDevice =
-        typeof window !== "undefined" &&
-        ("ontouchstart" in window || navigator.maxTouchPoints > 0);
+    // buttonElementの参照を追加
+    let buttonElement: HTMLButtonElement | undefined = $state();
+
+    const isTouchCapable = isTouchDevice();
 
     const JUST_SELECTED_DURATION = 400; // ms
 
@@ -183,8 +184,8 @@
     function handleDragRelatedEvent(type: "start" | "end", event?: Event) {
         if (type === "start") {
             const dragEvent = event as DragEvent;
-            if (!dragEvent?.dataTransfer && !isTouchDevice) return;
-            if (isTouchDevice) {
+            if (!dragEvent?.dataTransfer && !isTouchCapable) return;
+            if (isTouchCapable) {
                 event?.preventDefault();
                 return;
             }
@@ -209,7 +210,8 @@
         }
     }
 
-    function handleTouchStart(event: TouchEvent) {
+    // タッチイベントハンドラー（能動的なイベントリスナーで処理）
+    function handleTouchStartActive(event: TouchEvent) {
         if (event.touches.length !== 1) return;
 
         const touch = event.touches[0];
@@ -220,7 +222,7 @@
         );
     }
 
-    function handleTouchMove(event: TouchEvent) {
+    function handleTouchMoveActive(event: TouchEvent) {
         if (event.touches.length !== 1) {
             clearLongPress();
             return;
@@ -257,7 +259,7 @@
         });
     }
 
-    function handleTouchEnd(event: TouchEvent) {
+    function handleTouchEndActive(event: TouchEvent) {
         if (dragState.longPressTimeout) {
             clearLongPress();
             if (!dragState.isDragging) {
@@ -310,6 +312,21 @@
                 devMode,
             );
         }
+
+        // タッチデバイスの場合は能動的なイベントリスナーを追加
+        if (isTouchCapable && buttonElement) {
+            buttonElement.addEventListener(
+                "touchstart",
+                handleTouchStartActive,
+                { passive: false },
+            );
+            buttonElement.addEventListener("touchmove", handleTouchMoveActive, {
+                passive: false,
+            });
+            buttonElement.addEventListener("touchend", handleTouchEndActive, {
+                passive: false,
+            });
+        }
     });
 
     $effect(() => {
@@ -345,6 +362,19 @@
         }
         removeDragPreview(dragState.preview);
 
+        // タッチイベントリスナーを削除
+        if (isTouchCapable && buttonElement) {
+            buttonElement.removeEventListener(
+                "touchstart",
+                handleTouchStartActive,
+            );
+            buttonElement.removeEventListener(
+                "touchmove",
+                handleTouchMoveActive,
+            );
+            buttonElement.removeEventListener("touchend", handleTouchEndActive);
+        }
+
         // 状態ストア初期化
         Object.assign(imageDragState, {
             isDragging: false,
@@ -366,6 +396,7 @@
 
 <NodeViewWrapper>
     <button
+        bind:this={buttonElement}
         type="button"
         class="editor-image-button"
         data-highlighted={selected}
@@ -373,14 +404,11 @@
         onclick={handleClick}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
-        draggable={!isTouchDevice}
+        draggable={!isTouchCapable}
         ondragstart={(e) => handleDragRelatedEvent("start", e)}
         ondragend={() => handleDragRelatedEvent("end")}
-        ondragover={isTouchDevice ? (e) => e.preventDefault() : undefined}
-        ondrop={isTouchDevice ? (e) => e.preventDefault() : undefined}
-        ontouchstart={handleTouchStart}
-        ontouchmove={handleTouchMove}
-        ontouchend={handleTouchEnd}
+        ondragover={isTouchCapable ? (e) => e.preventDefault() : undefined}
+        ondrop={isTouchCapable ? (e) => e.preventDefault() : undefined}
         oncontextmenu={preventContextMenu}
     >
         {#if showBlurhash}

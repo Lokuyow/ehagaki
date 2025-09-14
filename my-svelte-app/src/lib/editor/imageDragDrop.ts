@@ -1,18 +1,8 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { moveImageNode, setDraggingFalse } from '../utils/editorUtils';
+import { moveImageNode, setDraggingFalse, isTouchDevice } from '../utils/editorUtils';
 import { SCROLL_THRESHOLD, SCROLL_BASE_SPEED, SCROLL_MAX_SPEED } from '../constants';
-
-// デバイス判定ヘルパー
-function isTouchDevice() {
-    return (
-        typeof window !== "undefined" &&
-        ("ontouchstart" in window ||
-            (navigator && navigator.maxTouchPoints > 0) ||
-            (navigator && navigator.userAgent.match(/Android|iPhone|iPad|iPod|Mobile/i)))
-    );
-}
 
 export const ImageDragDropExtension = Extension.create({
     name: 'imageDragDrop',
