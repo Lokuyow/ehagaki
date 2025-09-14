@@ -1,7 +1,7 @@
 import { HASHTAG_REGEX } from '../constants';
 
 // ストアは tags.svelte.ts (Svelte rune ファイル) に移動
-import { hashtagDataStore } from './tags.svelte';
+import { hashtagDataStore } from './tagsStore.svelte';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 // 追加: ドキュメント走査でハッシュタグの位置情報を返す型とユーティリティ

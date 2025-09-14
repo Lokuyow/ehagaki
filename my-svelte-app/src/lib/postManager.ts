@@ -2,7 +2,7 @@ import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { authState } from "./appStores.svelte";
-import { hashtagDataStore } from "./tags/tags.svelte";
+import { hashtagDataStore } from "./tags/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
 

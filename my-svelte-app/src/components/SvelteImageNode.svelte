@@ -9,7 +9,7 @@
         getPlaceholderDefaultSize,
         type ImageDimensions,
     } from "../lib/imageUtils";
-    import { imageSizeMapStore } from "../lib/tags/tags.svelte";
+    import { imageSizeMapStore } from "../lib/tags/tagsStore.svelte";
     import {
         blurEditorAndBody as blurEditorAndBodyUtil,
         requestFullscreenImage as requestFullscreenImageUtil,

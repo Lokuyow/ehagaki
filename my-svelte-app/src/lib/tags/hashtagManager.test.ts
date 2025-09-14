@@ -1,32 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
-// vi.mock の工場関数内でストアを生成（トップレベル変数を参照しない）
-vi.mock('./tags.svelte', () => {
-	const store = {
-		content: '',
-		hashtags: [] as string[],
-		tags: [] as [string, string][],
-	};
-	return { hashtagDataStore: store };
-});
-
-// モックモジュールをインポートしてストア参照を取得（トップレベル await を使用）
-const tagsModule = await import('./tags.svelte');
-const mockedStore = (tagsModule as any).hashtagDataStore as {
-	content: string;
-	hashtags: string[];
-	tags: [string, string][];
-};
-
-// テスト対象をインポート（モック確定後に行う）
+// テスト環境のストアを直接インポート
+import { hashtagDataStore } from './tagsStore.svelte';
 import { extractHashtagsFromContent, updateHashtagData } from './hashtagManager';
 
 describe('hashtagManager', () => {
 	beforeEach(() => {
-		// モックの初期化
-		mockedStore.content = '';
-		mockedStore.hashtags.length = 0;
-		mockedStore.tags.length = 0;
+		// ストアの初期化
+		hashtagDataStore.content = '';
+		hashtagDataStore.hashtags.length = 0;
+		hashtagDataStore.tags.length = 0;
 	});
 
 	describe('extractHashtagsFromContent', () => {
@@ -62,11 +45,11 @@ describe('hashtagManager', () => {
 			const content = 'Mix #Vue #Svelte #日本語';
 			updateHashtagData(content);
 
-			expect(mockedStore.content).toBe(content);
+			expect(hashtagDataStore.content).toBe(content);
 			// hashtags は原文のまま保持される
-			expect(mockedStore.hashtags).toEqual(['Vue', 'Svelte', '日本語']);
+			expect(hashtagDataStore.hashtags).toEqual(['Vue', 'Svelte', '日本語']);
 			// 投稿用 tags は英字部分を小文字化して格納される
-			expect(mockedStore.tags).toEqual([['t', 'vue'], ['t', 'svelte'], ['t', '日本語']]);
+			expect(hashtagDataStore.tags).toEqual([['t', 'vue'], ['t', 'svelte'], ['t', '日本語']]);
 		});
 	});
 });
