@@ -1,6 +1,6 @@
 import { createRxForwardReq } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
-import { relayListUpdatedStore } from "../stores/appStores.svelte";
+import { relayListUpdatedStore } from "../stores/appStore.svelte";
 
 type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
 

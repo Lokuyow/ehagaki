@@ -13,7 +13,7 @@
         writeRelaysStore,
         showRelaysStore,
         isSwUpdatingStore,
-    } from "../stores/appStores.svelte";
+    } from "../stores/appStore.svelte";
     import {
         uploadEndpoints,
         getCompressionLevels,

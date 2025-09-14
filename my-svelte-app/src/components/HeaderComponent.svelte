@@ -7,7 +7,7 @@
         submitPost,
         updatePostStatus,
     } from "../stores/editorStore.svelte";
-    import { authState } from "../stores/appStores.svelte";
+    import { authState } from "../stores/appStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte"; // 追加
 

@@ -1,7 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo } from "./appUtils";
-import { showImageSizeInfo } from "../stores/appStores.svelte";
+import { showImageSizeInfo } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
 import type { SharedImageData } from "./shareHandler";
 import type {
