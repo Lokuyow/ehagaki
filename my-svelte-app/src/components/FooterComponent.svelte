@@ -128,11 +128,11 @@
         height: 10px;
         background: var(--theme);
         border-radius: 50%;
-        animation: pulse 2500ms cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        animation: pulse 2500ms cubic-bezier(0.3, 1, 0.5, 1) infinite;
     }
     @keyframes pulse {
         50% {
-            opacity: 0.3;
+            opacity: 0;
         }
     }
     :global(.profile-display.loading) {
