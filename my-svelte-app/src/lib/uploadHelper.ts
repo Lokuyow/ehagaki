@@ -20,7 +20,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     imageSizeMapStore,
 });
 
-// 純粋関数: ファイル処理とプレースホルダー作成
+// 純粹関数: ファイル処理とプレースホルダー作成
 export async function processFilesForUpload(
     files: File[],
     dependencies: UploadHelperDependencies
@@ -98,31 +98,35 @@ export function insertPlaceholdersIntoEditor(
             }
 
             try {
-                // 修正: Tiptapエディターのスキーマに適した方法で画像を挿入
+                // 修正: 適切な挿入ポジションを計算し、不要な改行を避ける
+                const { state } = currentEditor;
+                const docIsEmpty = state.doc.content.size <= 2; // 空のparagraphは2文字
+
                 if (index === 0) {
                     // 最初の画像：現在の位置またはエディターの末尾に画像を挿入
-                    const docIsEmpty = currentEditor.state.doc.content.size <= 2; // 空のparagraphは2文字
-
                     if (docIsEmpty) {
                         // 空のドキュメントの場合、直接画像を設定
                         currentEditor.chain().focus().setImage(imageAttrs).run();
                     } else {
-                        // テキストがある場合、末尾に改行して画像を挿入
-                        currentEditor.chain()
-                            .focus()
-                            .setTextSelection(currentEditor.state.doc.content.size - 1)
-                            .insertContent('\n')
-                            .setImage(imageAttrs)
-                            .run();
+                        // テキストがある場合、カーソル位置に画像を挿入
+                        currentEditor.chain().focus().setImage(imageAttrs).run();
                     }
                 } else {
-                    // 2番目以降の画像：改行してから画像を挿入
-                    currentEditor.chain()
-                        .focus()
-                        .setTextSelection(currentEditor.state.doc.content.size - 1)
-                        .insertContent('\n')
-                        .setImage(imageAttrs)
-                        .run();
+                    // 2番目以降の画像：前の画像の直後に挿入（改行なし）
+                    const docSize = currentEditor.state.doc.content.size;
+                    // 最後のノードの位置を取得
+                    let insertPos = docSize;
+
+                    // 最後のノードがparagraphの場合は、その直後に挿入
+                    currentEditor.state.doc.descendants((node, pos) => {
+                        if (pos + node.nodeSize === docSize) {
+                            insertPos = pos + node.nodeSize;
+                        }
+                    });
+
+                    // 位置を指定して画像を挿入
+                    const tr = currentEditor.state.tr.insert(insertPos, currentEditor.state.schema.nodes.image.create(imageAttrs));
+                    currentEditor.view.dispatch(tr);
                 }
 
                 if (devMode) {
