@@ -34,7 +34,7 @@
     let selectionState = imageSelectionState;
     let isImageLoaded = imageLoadState.isImageLoaded;
     let blurhashFadeOut = imageLoadState.blurhashFadeOut;
-    
+
     // 個別のcanvas要素参照（グローバルストアではなくローカル）
     let localCanvasRef: HTMLCanvasElement | undefined = $state();
 
@@ -65,11 +65,17 @@
 
     // canvasサイズを動的に計算
     let canvasWidth = $derived(() => {
-        return imageDimensions?.displayWidth || getPlaceholderDefaultSize().displayWidth;
+        return (
+            imageDimensions?.displayWidth ||
+            getPlaceholderDefaultSize().displayWidth
+        );
     });
-    
+
     let canvasHeight = $derived(() => {
-        return imageDimensions?.displayHeight || getPlaceholderDefaultSize().displayHeight;
+        return (
+            imageDimensions?.displayHeight ||
+            getPlaceholderDefaultSize().displayHeight
+        );
     });
 
     const devMode = import.meta.env.MODE === "development";
@@ -445,20 +451,24 @@
 
     $effect(() => {
         if (devMode) {
+            // Svelteのconsole_log_state警告・rune_outside_svelteエラーを回避
+            // imageDimensionsは$stateなのでJSON変換でプレーン化
             console.log(
-                "[blurhash] $effect: blurhash=",
+                "[snapshot] [blurhash] $effect: blurhash=",
                 node.attrs.blurhash,
                 "canvasRef=",
                 !!localCanvasRef,
                 "dimensions=",
-                imageDimensions,
+                imageDimensions
+                    ? JSON.parse(JSON.stringify(imageDimensions))
+                    : imageDimensions,
             );
         }
         if (node.attrs.blurhash && localCanvasRef) {
             // canvasサイズを設定してからblurhashを描画
             localCanvasRef.width = canvasWidth();
             localCanvasRef.height = canvasHeight();
-            
+
             renderBlurhashUtil(
                 node.attrs.blurhash,
                 localCanvasRef,
