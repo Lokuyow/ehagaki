@@ -49,7 +49,7 @@ export async function processFilesForUpload(
     return await Promise.all(fileProcessingPromises);
 }
 
-// 純粋関数: プレースホルダー挿入
+// 純粹関数: プレースホルダー挿入
 export function insertPlaceholdersIntoEditor(
     fileArray: File[],
     fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
@@ -60,6 +60,7 @@ export function insertPlaceholdersIntoEditor(
 ): PlaceholderEntry[] {
     const placeholderMap: PlaceholderEntry[] = [];
     const fileUploadManager = new dependencies.FileUploadManager();
+    const timestamp = Date.now();
 
     fileArray.forEach((file, index) => {
         const validation = fileUploadManager.validateImageFile(file);
@@ -68,7 +69,8 @@ export function insertPlaceholdersIntoEditor(
             return;
         }
 
-        const placeholderId = `placeholder-${Date.now()}-${index}`;
+        // プレースホルダーIDを一意にするため、タイムスタンプ＋インデックス＋ランダム値を使用
+        const placeholderId = `placeholder-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`;
         const processingResult = fileProcessingResults[index];
         const ox = processingResult?.ox;
         const dimensions = processingResult?.dimensions;
@@ -95,7 +97,55 @@ export function insertPlaceholdersIntoEditor(
                 }
             }
 
-            currentEditor.chain?.().focus?.().setImage?.(imageAttrs)?.run?.();
+            try {
+                // 修正: Tiptapエディターのスキーマに適した方法で画像を挿入
+                if (index === 0) {
+                    // 最初の画像：現在の位置またはエディターの末尾に画像を挿入
+                    const docIsEmpty = currentEditor.state.doc.content.size <= 2; // 空のparagraphは2文字
+
+                    if (docIsEmpty) {
+                        // 空のドキュメントの場合、直接画像を設定
+                        currentEditor.chain().focus().setImage(imageAttrs).run();
+                    } else {
+                        // テキストがある場合、末尾に改行して画像を挿入
+                        currentEditor.chain()
+                            .focus()
+                            .setTextSelection(currentEditor.state.doc.content.size - 1)
+                            .insertContent('\n')
+                            .setImage(imageAttrs)
+                            .run();
+                    }
+                } else {
+                    // 2番目以降の画像：改行してから画像を挿入
+                    currentEditor.chain()
+                        .focus()
+                        .setTextSelection(currentEditor.state.doc.content.size - 1)
+                        .insertContent('\n')
+                        .setImage(imageAttrs)
+                        .run();
+                }
+
+                if (devMode) {
+                    console.log("[uploadHelper] inserted image node", {
+                        placeholderId,
+                        file: file.name,
+                        index,
+                        totalFiles: fileArray.length,
+                        method: index === 0 ? 'first' : 'subsequent',
+                        docSize: currentEditor.state.doc.content.size
+                    });
+                }
+            } catch (error) {
+                if (devMode) {
+                    console.error("[uploadHelper] failed to insert image node", {
+                        placeholderId,
+                        file: file.name,
+                        error
+                    });
+                }
+                showUploadError("画像の挿入に失敗しました");
+                return;
+            }
         }
 
         placeholderMap.push({ file, placeholderId, ox, dimensions });
@@ -162,7 +212,7 @@ export async function generateBlurhashesForPlaceholders(
     await Promise.all(blurhashPromises);
 }
 
-// 純粋関数: メタデータ準備
+// 純粹関数: メタデータ準備
 export function prepareMetadataList(fileArray: File[]): Array<Record<string, string | number | undefined>> {
     return fileArray.map((f) => ({
         caption: f.name,
@@ -175,7 +225,7 @@ export function prepareMetadataList(fileArray: File[]): Array<Record<string, str
     }));
 }
 
-// 純粋関数: プレースホルダー置換処理
+// 純粹関数: プレースホルダー置換処理
 export async function replacePlaceholdersWithResults(
     results: FileUploadResponse[],
     placeholderMap: PlaceholderEntry[],
@@ -189,21 +239,38 @@ export async function replacePlaceholdersWithResults(
     const imageServerBlurhashMap: Record<string, string> = {};
     let errorMessage = "";
 
-    for (const result of results) {
+    // プレースホルダーマップのコピーを作成（順序を保持）
+    const remainingPlaceholders = [...placeholderMap];
+
+    for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+
         if (result.success && result.url) {
+            // 対応するプレースホルダーを見つける
             let matched: PlaceholderEntry | undefined = undefined;
+            let matchedIndex = -1;
+
+            // 1. ファイル名でのマッチングを試行
             if (result.sizeInfo && result.sizeInfo.originalFilename) {
-                matched = placeholderMap.find(
+                matchedIndex = remainingPlaceholders.findIndex(
                     (p) => p.file.name === result.sizeInfo!.originalFilename,
                 );
+                if (matchedIndex !== -1) {
+                    matched = remainingPlaceholders[matchedIndex];
+                }
             }
-            if (!matched) {
-                matched = placeholderMap.shift();
-            } else {
-                const idx = placeholderMap.indexOf(matched);
-                if (idx !== -1) placeholderMap.splice(idx, 1);
+
+            // 2. ファイル名マッチングが失敗した場合、順序でマッチング
+            if (!matched && remainingPlaceholders.length > 0) {
+                matched = remainingPlaceholders[0];
+                matchedIndex = 0;
             }
-            if (matched && currentEditor) {
+
+            // マッチしたプレースホルダーを処理
+            if (matched && matchedIndex !== -1 && currentEditor) {
+                // リストから削除
+                remainingPlaceholders.splice(matchedIndex, 1);
+
                 const state = currentEditor.state;
                 const doc = state.doc;
                 doc.descendants((node: any, pos: number) => {
@@ -268,10 +335,19 @@ export async function replacePlaceholdersWithResults(
                         }
                     }
                 }
+
+                if (devMode) {
+                    console.log("[uploadHelper] replaced placeholder with result", {
+                        placeholderId: matched.placeholderId,
+                        url: result.url,
+                        fileName: matched.file.name
+                    });
+                }
             }
         } else if (!result.success) {
             failedResults.push(result);
-            const failed = placeholderMap.shift();
+            // 失敗したファイルに対応するプレースホルダーを削除
+            const failed = remainingPlaceholders.shift();
             if (failed && currentEditor) {
                 dependencies.imageSizeMapStore.update(map => {
                     const newMap = { ...map };
@@ -287,6 +363,42 @@ export async function replacePlaceholdersWithResults(
                         currentEditor.view.dispatch(tr);
                         return false;
                     }
+                });
+
+                if (devMode) {
+                    console.log("[uploadHelper] removed failed placeholder", {
+                        placeholderId: failed.placeholderId,
+                        fileName: failed.file.name,
+                        error: result.error
+                    });
+                }
+            }
+        }
+    }
+
+    // 残ったプレースホルダーがあれば削除（サーバーから想定より少ない結果が返った場合）
+    for (const remaining of remainingPlaceholders) {
+        if (currentEditor) {
+            dependencies.imageSizeMapStore.update(map => {
+                const newMap = { ...map };
+                delete newMap[remaining.placeholderId];
+                return newMap;
+            });
+
+            const state = currentEditor.state;
+            const doc = state.doc;
+            doc.descendants((node: any, pos: number) => {
+                if (node.type?.name === "image" && node.attrs?.src === remaining.placeholderId) {
+                    const tr = state.tr.delete(pos, pos + node.nodeSize);
+                    currentEditor.view.dispatch(tr);
+                    return false;
+                }
+            });
+
+            if (devMode) {
+                console.log("[uploadHelper] removed unmatched placeholder", {
+                    placeholderId: remaining.placeholderId,
+                    fileName: remaining.file.name
                 });
             }
         }
@@ -320,7 +432,7 @@ export async function uploadHelper({
     const fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
 
     // プレースホルダー挿入
-    const placeholderMap = insertPlaceholdersIntoEditor(
+    let placeholderMap = insertPlaceholdersIntoEditor(
         fileArray,
         fileProcessingResults,
         currentEditor as TipTapEditor | null,
@@ -328,6 +440,21 @@ export async function uploadHelper({
         dependencies,
         devMode
     );
+
+    // 有効ファイルがない場合は早期リターン
+    if (placeholderMap.length === 0) {
+        return {
+            placeholderMap: [],
+            results: null,
+            imageOxMap,
+            imageXMap,
+            failedResults: [],
+            errorMessage: "",
+        };
+    }
+
+    // アップロード状態を更新
+    updateUploadState(true, "");
 
     // Blurhash生成
     await generateBlurhashesForPlaceholders(
@@ -337,26 +464,28 @@ export async function uploadHelper({
         devMode
     );
 
+    // アップロード対象のファイルを抽出（有効ファイルのみ）
+    const validFiles = placeholderMap.map(entry => entry.file);
+
     // アップロード
     let results: FileUploadResponse[] | null = null;
     try {
-        updateUploadState(true, "");
-        const metadataList = prepareMetadataList(fileArray);
+        const metadataList = prepareMetadataList(validFiles);
         const fileUploadManager = new dependencies.FileUploadManager();
 
-        if (fileArray.length === 1) {
+        if (validFiles.length === 1) {
             results = [
                 await fileUploadManager.uploadFileWithCallbacks(
-                    fileArray[0],
+                    validFiles[0],
                     endpoint,
                     uploadCallbacks,
                     devMode,
                     metadataList[0],
                 ),
             ];
-        } else {
+        } else if (validFiles.length > 1) {
             results = await fileUploadManager.uploadMultipleFilesWithCallbacks(
-                fileArray,
+                validFiles,
                 endpoint,
                 uploadCallbacks,
                 metadataList,
@@ -389,6 +518,9 @@ export async function uploadHelper({
         failedResults.push(...replacementResult.failedResults);
         errorMessage = replacementResult.errorMessage;
         imageServerBlurhashMap = replacementResult.imageServerBlurhashMap;
+
+        // 置換処理後、placeholderMapをクリア
+        placeholderMap = [];
     }
 
     // dev: imetaタグ出力

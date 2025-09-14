@@ -75,6 +75,16 @@
         const imageUrl = node.attrs.src;
         if (!imageUrl) return;
 
+        // デバッグ: 画像ノードの重複作成を検知
+        if (devMode) {
+            console.log("[SvelteImageNode] effect triggered", {
+                imageUrl,
+                isPlaceholder,
+                nodeAttrs: node.attrs,
+                timestamp: Date.now(),
+            });
+        }
+
         // ストアから既存のサイズ情報を確認
         const storedSize = imageSizeMapStore.value[imageUrl];
         if (storedSize) {
@@ -327,6 +337,15 @@
                 passive: false,
             });
         }
+
+        if (devMode) {
+            console.log("[SvelteImageNode] mounted", {
+                src: node.attrs.src,
+                isPlaceholder,
+                dimensions: imageDimensions,
+                timestamp: Date.now(),
+            });
+        }
     });
 
     $effect(() => {
@@ -391,6 +410,14 @@
             blurhashFadeOut: false,
         });
         localCanvasRef = undefined;
+
+        if (devMode) {
+            console.log("[SvelteImageNode] destroyed", {
+                src: node.attrs.src,
+                isPlaceholder,
+                timestamp: Date.now(),
+            });
+        }
     });
 </script>
 
