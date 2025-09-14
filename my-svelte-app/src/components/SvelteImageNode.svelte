@@ -34,6 +34,9 @@
     let selectionState = imageSelectionState;
     let isImageLoaded = imageLoadState.isImageLoaded;
     let blurhashFadeOut = imageLoadState.blurhashFadeOut;
+    
+    // 個別のcanvas要素参照（グローバルストアではなくローカル）
+    let localCanvasRef: HTMLCanvasElement | undefined = $state();
 
     // Detect if the device is touch-capable
     const isTouchDevice =
@@ -59,6 +62,15 @@
 
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
+
+    // canvasサイズを動的に計算
+    let canvasWidth = $derived(() => {
+        return imageDimensions?.displayWidth || getPlaceholderDefaultSize().displayWidth;
+    });
+    
+    let canvasHeight = $derived(() => {
+        return imageDimensions?.displayHeight || getPlaceholderDefaultSize().displayHeight;
+    });
 
     const devMode = import.meta.env.MODE === "development";
 
@@ -420,10 +432,10 @@
     }
 
     onMount(() => {
-        if (node.attrs.blurhash && imageLoadState.canvasRef) {
+        if (node.attrs.blurhash && localCanvasRef) {
             renderBlurhashUtil(
                 node.attrs.blurhash,
-                imageLoadState.canvasRef,
+                localCanvasRef,
                 imageDimensions || getPlaceholderDefaultSize(),
                 isPlaceholder,
                 devMode,
@@ -437,13 +449,19 @@
                 "[blurhash] $effect: blurhash=",
                 node.attrs.blurhash,
                 "canvasRef=",
-                !!imageLoadState.canvasRef,
+                !!localCanvasRef,
+                "dimensions=",
+                imageDimensions,
             );
         }
-        if (node.attrs.blurhash && imageLoadState.canvasRef) {
+        if (node.attrs.blurhash && localCanvasRef) {
+            // canvasサイズを設定してからblurhashを描画
+            localCanvasRef.width = canvasWidth();
+            localCanvasRef.height = canvasHeight();
+            
             renderBlurhashUtil(
                 node.attrs.blurhash,
-                imageLoadState.canvasRef,
+                localCanvasRef,
                 imageDimensions || getPlaceholderDefaultSize(),
                 isPlaceholder,
                 devMode,
@@ -467,7 +485,8 @@
         imageSelectionState.justSelectedTimeout = null;
         imageLoadState.isImageLoaded = false;
         imageLoadState.blurhashFadeOut = false;
-        imageLoadState.canvasRef = undefined;
+        // グローバルcanvasRefは削除しない（他のノードが使用中の可能性があるため）
+        localCanvasRef = undefined;
     });
 </script>
 
@@ -494,11 +513,9 @@
     >
         {#if showBlurhash}
             <canvas
-                bind:this={imageLoadState.canvasRef}
-                width={imageDimensions?.displayWidth ||
-                    getPlaceholderDefaultSize().displayWidth}
-                height={imageDimensions?.displayHeight ||
-                    getPlaceholderDefaultSize().displayHeight}
+                bind:this={localCanvasRef}
+                width={canvasWidth()}
+                height={canvasHeight()}
                 class="blurhash-canvas"
                 class:is-placeholder={isPlaceholder}
                 class:fade-out={imageLoadState.isImageLoaded &&
