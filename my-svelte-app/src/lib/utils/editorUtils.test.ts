@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as editorUtils from '../utils/editorUtils';
+import * as editorUtils from './editorUtils';
 
 // モック設定
 vi.mock('../constants', () => ({

@@ -7,7 +7,7 @@ import {
 } from "./editorDomActions";
 
 // extractContentWithImages をモック
-vi.mock("./editorUtils", () => ({
+vi.mock("../utils/editorUtils", () => ({
     extractContentWithImages: vi.fn(),
 }));
 
