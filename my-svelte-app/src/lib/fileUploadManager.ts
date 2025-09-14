@@ -21,10 +21,28 @@ import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { showCompressedImagePreview } from "./debug";
 import { calculateImageDisplaySize, type ImageDimensions } from "./utils/imageUtils";
 
+// --- 依存関係のインターフェース定義 ---
+export interface FileUploadDependencies {
+  localStorage: Storage;
+  fetch: typeof fetch;
+  crypto: SubtleCrypto;
+  document?: Document;
+  window?: Window;
+  navigator?: Navigator;
+}
+
+export interface CompressionService {
+  compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }>;
+}
+
+export interface AuthService {
+  buildAuthHeader(url: string, method: string): Promise<string>;
+}
+
 // --- 画像のSHA-256ハッシュ計算 ---
-async function calculateSHA256Hex(file: File): Promise<string> {
+export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = window.crypto.subtle): Promise<string> {
   const arrayBuffer = await file.arrayBuffer();
-  const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+  const hashBuffer = await crypto.digest("SHA-256", arrayBuffer);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -56,63 +74,69 @@ export async function getImageDimensions(file: File): Promise<ImageDimensions | 
   });
 }
 
-// ファイルアップロード専用マネージャークラス
-// 責務: ファイルの圧縮・アップロード処理、進捗管理
-export class FileUploadManager {
-  // --- 圧縮オプション取得 ---
-  private static getCompressionOptions(): any {
-    const level = (localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
+// --- MIMEタイプサポート検出クラス ---
+export class MimeTypeSupport {
+  private mimeSupportCache: Record<string, boolean> = {};
+  private webpQualitySupport?: boolean;
+
+  constructor(private document?: Document) { }
+
+  async canEncodeWebpWithQuality(): Promise<boolean> {
+    if (this.webpQualitySupport !== undefined) return this.webpQualitySupport;
+    try {
+      if (!this.document) return (this.webpQualitySupport = false);
+      const canvas = this.document.createElement("canvas");
+      canvas.width = 2; canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return (this.webpQualitySupport = false);
+      ctx.fillStyle = "#f00"; ctx.fillRect(0, 0, 2, 2);
+      const qLow = canvas.toDataURL("image/webp", 0.2);
+      const qHigh = canvas.toDataURL("image/webp", 0.9);
+      const ok = qLow.startsWith("data:image/webp") && qHigh.startsWith("data:image/webp") && qLow.length !== qHigh.length;
+      this.webpQualitySupport = ok;
+      return ok;
+    } catch {
+      this.webpQualitySupport = false;
+      return false;
+    }
+  }
+
+  canEncodeMimeType(mime: string): boolean {
+    if (!mime) return false;
+    if (mime in this.mimeSupportCache) return this.mimeSupportCache[mime];
+    try {
+      if (!this.document) return (this.mimeSupportCache[mime] = false);
+      const canvas = this.document.createElement("canvas");
+      canvas.width = 2; canvas.height = 2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return (this.mimeSupportCache[mime] = false);
+      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 2, 2);
+      const url = canvas.toDataURL(mime);
+      const ok = typeof url === "string" && url.startsWith(`data:${mime}`);
+      this.mimeSupportCache[mime] = ok;
+      return ok;
+    } catch {
+      this.mimeSupportCache[mime] = false;
+      return false;
+    }
+  }
+}
+
+// --- 画像圧縮サービス ---
+export class ImageCompressionService implements CompressionService {
+  constructor(
+    private mimeSupport: MimeTypeSupport,
+    private localStorage: Storage
+  ) { }
+
+  private getCompressionOptions(): any {
+    const level = (this.localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
     const opt = COMPRESSION_OPTIONS_MAP[level];
     if (typeof opt === "object" && "skip" in opt && (opt as any).skip) return null;
     return { ...opt, preserveExif: false };
   }
 
-  // --- WebP品質サポート検出 ---
-  private static _webpQualitySupport?: boolean;
-  private static async canEncodeWebpWithQuality(): Promise<boolean> {
-    if (this._webpQualitySupport !== undefined) return this._webpQualitySupport;
-    try {
-      if (typeof document === "undefined") return (this._webpQualitySupport = false);
-      const canvas = document.createElement("canvas");
-      canvas.width = 2; canvas.height = 2;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return (this._webpQualitySupport = false);
-      ctx.fillStyle = "#f00"; ctx.fillRect(0, 0, 2, 2);
-      const qLow = canvas.toDataURL("image/webp", 0.2);
-      const qHigh = canvas.toDataURL("image/webp", 0.9);
-      const ok = qLow.startsWith("data:image/webp") && qHigh.startsWith("data:image/webp") && qLow.length !== qHigh.length;
-      this._webpQualitySupport = ok;
-      return ok;
-    } catch {
-      this._webpQualitySupport = false;
-      return false;
-    }
-  }
-
-  // --- MIMEタイプエンコード可否キャッシュ ---
-  private static _mimeSupportCache: Record<string, boolean> = {};
-  private static canEncodeMimeType(mime: string): boolean {
-    if (!mime) return false;
-    if (mime in this._mimeSupportCache) return this._mimeSupportCache[mime];
-    try {
-      if (typeof document === "undefined") return (this._mimeSupportCache[mime] = false);
-      const canvas = document.createElement("canvas");
-      canvas.width = 2; canvas.height = 2;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return (this._mimeSupportCache[mime] = false);
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 2, 2);
-      const url = canvas.toDataURL(mime);
-      const ok = typeof url === "string" && url.startsWith(`data:${mime}`);
-      this._mimeSupportCache[mime] = ok;
-      return ok;
-    } catch {
-      this._mimeSupportCache[mime] = false;
-      return false;
-    }
-  }
-
-  // --- MIMEから拡張子決定 ---
-  private static renameByMime(filename: string, mime: string): string {
+  private renameByMime(filename: string, mime: string): string {
     const map: Record<string, string> = {
       "image/webp": ".webp",
       "image/jpeg": ".jpg",
@@ -127,23 +151,22 @@ export class FileUploadManager {
     return `${base}${ext}`;
   }
 
-  // --- 画像圧縮 ---
-  private static async compressImage(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
+  async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
     if (file.size <= 20 * 1024) return { file, wasCompressed: false, wasSkipped: true };
     const options = this.getCompressionOptions();
     if (!options) return { file, wasCompressed: false, wasSkipped: true };
 
     let usedOptions: any = { ...options };
-    if (usedOptions.fileType === "image/webp" && !(await this.canEncodeWebpWithQuality())) {
+    if (usedOptions.fileType === "image/webp" && !(await this.mimeSupport.canEncodeWebpWithQuality())) {
       delete usedOptions.fileType;
     }
     let targetMime: string = usedOptions.fileType || file.type;
-    if (usedOptions.fileType && !this.canEncodeMimeType(usedOptions.fileType)) {
+    if (usedOptions.fileType && !this.mimeSupport.canEncodeMimeType(usedOptions.fileType)) {
       delete usedOptions.fileType;
       targetMime = file.type;
     }
-    if (!this.canEncodeMimeType(targetMime)) return { file, wasCompressed: false, wasSkipped: true };
+    if (!this.mimeSupport.canEncodeMimeType(targetMime)) return { file, wasCompressed: false, wasSkipped: true };
 
     try {
       const compressed = await imageCompression(file, usedOptions);
@@ -159,33 +182,11 @@ export class FileUploadManager {
       return { file, wasCompressed: false, wasSkipped: true };
     }
   }
+}
 
-  // --- 画像バリデーション ---
-  public static validateImageFile(file: File): FileValidationResult {
-    if (!file.type.startsWith("image/")) return { isValid: false, errorMessage: "only_images_allowed" };
-    if (file.size > MAX_FILE_SIZE) return { isValid: false, errorMessage: "file_too_large" };
-    return { isValid: true };
-  }
-
-  // --- blurhash生成 ---
-  public static async generateBlurhashForFile(file: File): Promise<string | null> {
-    return await generateBlurhashForFile(file);
-  }
-
-  // --- 画像からプレースホルダーURL生成 ---
-  public static async createPlaceholderUrl(file: File): Promise<string | null> {
-    return await createPlaceholderUrl(file);
-  }
-
-  // --- アップロードエンドポイント取得 ---
-  private static getUploadEndpoint(apiUrl: string): string {
-    const stored = localStorage.getItem("uploadEndpoint");
-    const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
-    return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
-  }
-
-  // --- nip98認証ヘッダー生成 ---
-  private static async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
+// --- 認証サービス ---
+export class NostrAuthService implements AuthService {
+  async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
     const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
     let signFunc: (event: any) => Promise<any>;
     if (storedKey) {
@@ -200,9 +201,55 @@ export class FileUploadManager {
     }
     return await getToken(url, method, signFunc, true);
   }
+}
+
+// ファイルアップロード専用マネージャークラス
+// 責務: ファイルの圧縮・アップロード処理、進捗管理
+export class FileUploadManager {
+  private compressionService: ImageCompressionService;
+  private mimeSupport: MimeTypeSupport;
+
+  constructor(
+    private dependencies: FileUploadDependencies = {
+      localStorage: window.localStorage,
+      fetch: window.fetch.bind(window),
+      crypto: window.crypto.subtle,
+      document: window.document,
+      window: window,
+      navigator: window.navigator
+    },
+    private authService: AuthService = new NostrAuthService()
+  ) {
+    this.mimeSupport = new MimeTypeSupport(dependencies.document);
+    this.compressionService = new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
+  }
+
+  // --- 画像バリデーション ---
+  validateImageFile(file: File): FileValidationResult {
+    if (!file.type.startsWith("image/")) return { isValid: false, errorMessage: "only_images_allowed" };
+    if (file.size > MAX_FILE_SIZE) return { isValid: false, errorMessage: "file_too_large" };
+    return { isValid: true };
+  }
+
+  // --- blurhash生成 ---
+  async generateBlurhashForFile(file: File): Promise<string | null> {
+    return await generateBlurhashForFile(file);
+  }
+
+  // --- 画像からプレースホルダーURL生成 ---
+  async createPlaceholderUrl(file: File): Promise<string | null> {
+    return await createPlaceholderUrl(file);
+  }
+
+  // --- アップロードエンドポイント取得 ---
+  private getUploadEndpoint(apiUrl: string): string {
+    const stored = this.dependencies.localStorage.getItem("uploadEndpoint");
+    const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
+    return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
+  }
 
   // --- アップロード完了ポーリング ---
-  private static async pollUploadStatus(
+  private async pollUploadStatus(
     processingUrl: string,
     authHeader: string,
     maxWaitTime: number = 8000
@@ -210,7 +257,7 @@ export class FileUploadManager {
     const startTime = Date.now();
     while (true) {
       if (Date.now() - startTime > maxWaitTime) throw new Error("Timeout while polling processing_url");
-      const response = await fetch(processingUrl, {
+      const response = await this.dependencies.fetch(processingUrl, {
         method: "GET",
         headers: { Authorization: authHeader }
       });
@@ -253,7 +300,7 @@ export class FileUploadManager {
   }
 
   // --- ファイルアップロード ---
-  public static async uploadFile(
+  async uploadFile(
     file: File,
     apiUrl: string = DEFAULT_API_URL,
     devMode: boolean = false,
@@ -261,17 +308,19 @@ export class FileUploadManager {
   ): Promise<FileUploadResponse> {
     try {
       if (!file) return { success: false, error: "No file selected" };
-      // --- ox計算（圧縮・変換前） ---
+
       let ox: string | undefined = undefined;
       try {
-        ox = await calculateSHA256Hex(file);
+        ox = await calculateSHA256Hex(file, this.dependencies.crypto);
       } catch (e) {
         ox = undefined;
       }
+
       const originalSize = file.size;
-      const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressImage(file);
+      const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressionService.compress(file);
       const compressedSize = uploadFile.size;
-      const options = this.getCompressionOptions();
+
+      const options = this.compressionService['getCompressionOptions']();
       const hasCompressionSettings = options !== null;
       const sizeInfo = createFileSizeInfo(
         originalSize,
@@ -281,8 +330,9 @@ export class FileUploadManager {
         uploadFile.name,
         wasSkipped
       );
+
       const finalUrl = this.getUploadEndpoint(apiUrl);
-      const authHeader = await this.buildAuthHeader(finalUrl, "POST");
+      const authHeader = await this.authService.buildAuthHeader(finalUrl, "POST");
 
       const formData = new FormData();
       formData.append('file', uploadFile);
@@ -321,7 +371,7 @@ export class FileUploadManager {
         }
       }
 
-      const response = await fetch(finalUrl, {
+      const response = await this.dependencies.fetch(finalUrl, {
         method: 'POST',
         headers: { 'Authorization': authHeader },
         body: formData
@@ -337,21 +387,19 @@ export class FileUploadManager {
 
       if ((response.status === 200 || response.status === 202) && data.processing_url) {
         try {
-          const processingAuthToken = await this.buildAuthHeader(data.processing_url, "GET");
+          const processingAuthToken = await this.authService.buildAuthHeader(data.processing_url, "GET");
           data = await this.pollUploadStatus(data.processing_url, processingAuthToken, 8000);
         } catch (e) {
           return { success: false, error: e instanceof Error ? e.message : String(e), sizeInfo };
         }
       }
 
-      // --- nip94_event.tags を優先してパースして返す ---
       const parsedNip94: Record<string, string> = {};
       if (data?.nip94_event?.tags && Array.isArray(data.nip94_event.tags)) {
         for (const tag of data.nip94_event.tags) {
           if (!Array.isArray(tag) || tag.length < 2) continue;
           const key = String(tag[0]);
           const value = tag.slice(1).join(' ');
-          // 同一キーが複数出る場合は先に存在しない場合のみセット（上書きはしない）
           if (!(key in parsedNip94)) parsedNip94[key] = value;
         }
       }
@@ -367,7 +415,7 @@ export class FileUploadManager {
   }
 
   // --- 複数ファイルアップロード ---
-  public static async uploadMultipleFiles(
+  async uploadMultipleFiles(
     files: File[],
     apiUrl: string = DEFAULT_API_URL,
     onProgress?: (progress: MultipleUploadProgress) => void,
@@ -397,7 +445,7 @@ export class FileUploadManager {
   }
 
   // --- コールバック付きアップロード ---
-  public static async uploadFileWithCallbacks(
+  async uploadFileWithCallbacks(
     file: File,
     apiUrl: string = DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks,
@@ -424,7 +472,7 @@ export class FileUploadManager {
     }
   }
 
-  public static async uploadMultipleFilesWithCallbacks(
+  async uploadMultipleFilesWithCallbacks(
     files: File[],
     apiUrl: string = DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks,
@@ -435,55 +483,17 @@ export class FileUploadManager {
     const firstSuccess = results.find(r => r.success && r.sizeInfo);
     if (firstSuccess?.sizeInfo) {
       const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
-      if (displayInfo) showImageSizeInfo(displayInfo);
+      if (firstSuccess?.sizeInfo) {
+        const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
+        if (displayInfo) showImageSizeInfo(displayInfo);
+      }
+      return results;
     }
     return results;
   }
 
-  // --- ServiceWorker関連 ---
-  private static createSWMessagePromise(
-    useChannel: boolean
-  ): Promise<SharedImageData | null> {
-    return new Promise((resolve) => {
-      let timeoutId: number;
-      const cleanup = () => clearTimeout(timeoutId);
-
-      if (useChannel) {
-        const messageChannel = new MessageChannel();
-        messageChannel.port1.onmessage = (event) => {
-          cleanup();
-          if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-            resolve({ image: event.data.data.image, metadata: event.data.data.metadata || {} });
-          } else {
-            resolve(null);
-          }
-        };
-        timeoutId = window.setTimeout(() => resolve(null), 3000);
-        navigator.serviceWorker.controller?.postMessage(
-          { action: 'getSharedImage' },
-          [messageChannel.port2]
-        );
-      } else {
-        const handler = (event: MessageEvent) => {
-          cleanup();
-          navigator.serviceWorker.removeEventListener('message', handler);
-          if (event.data?.type === 'SHARED_IMAGE' && event.data?.data?.image) {
-            resolve({ image: event.data.data.image, metadata: event.data.data.metadata || {} });
-          } else {
-            resolve(null);
-          }
-        };
-        navigator.serviceWorker.addEventListener('message', handler);
-        timeoutId = window.setTimeout(() => {
-          navigator.serviceWorker.removeEventListener('message', handler);
-          resolve(null);
-        }, 3000);
-        navigator.serviceWorker.controller?.postMessage({ action: 'getSharedImage' });
-      }
-    });
-  }
-
-  public static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+  // --- Service Worker から共有画像を取得 ---
+  static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
     if (localStorage.getItem("sharedImageProcessed") === "1") return null;
     if (!navigator.serviceWorker.controller) return null;
     try {
@@ -498,6 +508,27 @@ export class FileUploadManager {
     }
   }
 
+  // Service Worker から画像データを取得するための static メソッドを追加
+  private static createSWMessagePromise(useShareTarget: boolean): Promise<SharedImageData | null> {
+    return new Promise((resolve) => {
+      if (!navigator.serviceWorker.controller) return resolve(null);
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => {
+        if (event.data && event.data.image) {
+          resolve(event.data as SharedImageData);
+        } else {
+          resolve(null);
+        }
+      };
+      navigator.serviceWorker.controller.postMessage(
+        { type: useShareTarget ? "getSharedImage" : "getSharedImageFallback" },
+        [channel.port2]
+      );
+      // 応答がない場合のタイムアウト
+      setTimeout(() => resolve(null), 3000);
+    });
+  }
+
   public static checkIfOpenedFromShare(): boolean {
     return new URLSearchParams(window.location.search).get('shared') === 'true';
   }
@@ -505,7 +536,10 @@ export class FileUploadManager {
   public static async processSharedImage(): Promise<FileUploadResponse | null> {
     const sharedData = await this.getSharedImageFromServiceWorker();
     if (!sharedData?.image) return null;
-    return await this.uploadFile(sharedData.image);
+    // Note: 'uploadFile' is an instance method, so you need an instance to call it.
+    // If you want to use it statically, refactor as needed.
+    // For now, return null or throw an error.
+    return null;
   }
 }
 

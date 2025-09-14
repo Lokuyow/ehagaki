@@ -53,7 +53,7 @@ export async function uploadHelper({
 
     // プレースホルダー挿入（サイズ情報付き）
     fileArray.forEach((file, index) => {
-        const validation = FileUploadManager.validateImageFile(file);
+        const validation = new FileUploadManager().validateImageFile(file);
         if (!validation.isValid) {
             showUploadError(validation.errorMessage || "postComponent.upload_failed");
             return;
@@ -108,7 +108,7 @@ export async function uploadHelper({
     // blurhash生成
     const blurhashPromises = placeholderMap.map(async (item) => {
         try {
-            const blurhash = await FileUploadManager.generateBlurhashForFile(item.file);
+            const blurhash = await new FileUploadManager().generateBlurhashForFile(item.file);
             if (blurhash) {
                 item.blurhash = blurhash;
                 if (currentEditor) {
@@ -164,8 +164,9 @@ export async function uploadHelper({
         });
 
         if (fileArray.length === 1) {
+            const fileUploadManager = new FileUploadManager();
             results = [
-                await FileUploadManager.uploadFileWithCallbacks(
+                await fileUploadManager.uploadFileWithCallbacks(
                     fileArray[0],
                     endpoint,
                     uploadCallbacks,
@@ -174,7 +175,8 @@ export async function uploadHelper({
                 ),
             ];
         } else {
-            results = await FileUploadManager.uploadMultipleFilesWithCallbacks(
+            const fileUploadManager = new FileUploadManager();
+            results = await fileUploadManager.uploadMultipleFilesWithCallbacks(
                 fileArray,
                 endpoint,
                 uploadCallbacks,
