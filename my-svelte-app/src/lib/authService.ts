@@ -2,12 +2,7 @@ import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
 import { setAuthInitialized, setNsecAuth } from './appStores.svelte';
 import { debugLog } from './debug';
-
-export interface AuthResult {
-    success: boolean;
-    error?: string;
-    pubkeyHex?: string;
-}
+import type { AuthResult } from './types'; // 型定義をtypes.tsからimport
 
 export class AuthService {
     private publicKeyState: PublicKeyState;

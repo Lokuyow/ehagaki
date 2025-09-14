@@ -126,3 +126,10 @@ export interface UploadHelperResult {
     failedResults: FileUploadResponse[];
     errorMessage: string;
 }
+
+// --- authService.ts から移動 ---
+export interface AuthResult {
+    success: boolean;
+    error?: string;
+    pubkeyHex?: string;
+}
