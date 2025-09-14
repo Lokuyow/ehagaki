@@ -1,29 +1,82 @@
-// ドキュメントが空かどうか判定（修正版）
+import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
+
+// 型定義
+interface NodeData {
+    type: string;
+    attrs?: any;
+    content?: any[];
+}
+
+interface DragEvent {
+    type: "start" | "move" | "end";
+    details?: any;
+    getPos?: () => number;
+}
+
+interface CleanUrlResult {
+    cleanUrl: string;
+    actualLength: number;
+}
+
+// URL検証/正規化関数（統合版）
+export function validateAndNormalizeUrl(url: string): string | null {
+    try {
+        const normalized = encodeURI(url.trim());
+        const u = new URL(normalized);
+        if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
+        return u.href;
+    } catch {
+        return null;
+    }
+}
+
+export function validateAndNormalizeImageUrl(url: string): string | null {
+    const baseUrl = validateAndNormalizeUrl(url);
+    if (!baseUrl) return null;
+
+    try {
+        const u = new URL(baseUrl);
+        const lower = u.pathname.toLowerCase();
+        if (!ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return null;
+        return baseUrl;
+    } catch {
+        return null;
+    }
+}
+
+// 文字/URL処理ユーティリティ
+export function isWordBoundary(char: string | undefined): boolean {
+    return !char || /[\s\n\u3000]/.test(char);
+}
+
+export function cleanUrlEnd(url: string): CleanUrlResult {
+    let cleanUrl = url;
+    const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
+    const trailingMatch = cleanUrl.match(trailingPattern);
+
+    if (trailingMatch) {
+        cleanUrl = cleanUrl.slice(0, -trailingMatch[0].length);
+    }
+
+    return { cleanUrl, actualLength: cleanUrl.length };
+}
+
+// ドキュメント状態判定
 export function isEditorDocEmpty(state: any): boolean {
-    // 子ノードが1つで、それが空のパラグラフの場合
     if (state.doc.childCount === 1) {
         const firstChild = state.doc.firstChild;
         return firstChild?.type.name === 'paragraph' && firstChild.content.size === 0;
     }
-
-    // 子ノードが0の場合も空と見なす
-    if (state.doc.childCount === 0) {
-        return true;
-    }
-
-    return false;
+    return state.doc.childCount === 0;
 }
 
-// パラグラフが実質的に画像URLのみを含んでいるか判定する新しい関数
 export function isParagraphWithOnlyImageUrl(node: any, urlLength: number): boolean {
     return node.type.name === 'paragraph' &&
         node.content.size === urlLength &&
         node.textContent.trim().length === urlLength;
 }
 
-/**
- * プレーンテキストをTiptap用のノード構造に変換
- */
+// ノード作成・変換ユーティリティ
 export function textToTiptapNodes(text: string): any {
     const lines = text.split('\n');
     const content: any[] = [];
@@ -33,24 +86,14 @@ export function textToTiptapNodes(text: string): any {
         const normalizedUrl = validateAndNormalizeImageUrl(trimmed);
 
         if (normalizedUrl) {
-            // 画像ノードを追加
             content.push({
                 type: 'image',
-                attrs: {
-                    src: normalizedUrl,
-                    alt: 'Image'
-                }
+                attrs: { src: normalizedUrl, alt: 'Image' }
             });
         } else {
-            // パラグラフノードを追加（空行でも空のパラグラフとして追加）
             content.push({
                 type: 'paragraph',
-                content: line.trim() ? [
-                    {
-                        type: 'text',
-                        text: line
-                    }
-                ] : []
+                content: line.trim() ? [{ type: 'text', text: line }] : []
             });
         }
     }
@@ -61,31 +104,25 @@ export function textToTiptapNodes(text: string): any {
     };
 }
 
-/**
- * スキーマからノードデータを作成するヘルパー関数
- */
-export function createNodeFromData(schema: any, nodeData: any): any {
+export function createNodeFromData(schema: any, nodeData: NodeData): any {
     switch (nodeData.type) {
         case 'image':
             return schema.nodes.image.create(nodeData.attrs);
         case 'paragraph':
-            if (nodeData.content && nodeData.content.length > 0) {
+            if (nodeData.content?.length) {
                 const textNodes = nodeData.content.map((textData: any) =>
                     schema.text(textData.text)
                 );
                 return schema.nodes.paragraph.create({}, textNodes);
-            } else {
-                return schema.nodes.paragraph.create();
             }
+            return schema.nodes.paragraph.create();
         default:
             return null;
     }
 }
 
-/**
- * ノードデータ配列をエディタに挿入する共通関数
- */
-function insertNodesToEditor(editor: any, nodeDataList: any[]) {
+// エディター操作ユーティリティ
+function insertNodesToEditor(editor: any, nodeDataList: NodeData[]) {
     if (!editor) return;
 
     const { state, dispatch } = editor.view;
@@ -95,9 +132,7 @@ function insertNodesToEditor(editor: any, nodeDataList: any[]) {
     const docIsEmpty = isEditorDocEmpty(state);
 
     if (docIsEmpty) {
-        const nodes = nodeDataList.map((nodeData: any) =>
-            createNodeFromData(schema, nodeData)
-        );
+        const nodes = nodeDataList.map(nodeData => createNodeFromData(schema, nodeData));
         if (nodes.length > 0) {
             const fragment = schema.nodes.doc.createAndFill({}, nodes);
             if (fragment) {
@@ -105,7 +140,7 @@ function insertNodesToEditor(editor: any, nodeDataList: any[]) {
             }
         }
     } else {
-        nodeDataList.forEach((nodeData: any) => {
+        nodeDataList.forEach(nodeData => {
             const node = createNodeFromData(schema, nodeData);
             if (node) {
                 transaction = transaction.insert(insertPos, node);
@@ -116,18 +151,12 @@ function insertNodesToEditor(editor: any, nodeDataList: any[]) {
     dispatch(transaction);
 }
 
-/**
- * テキストをエディターに挿入（ノード構造を直接作成）
- */
 export function insertTextAsNodes(editor: any, text: string) {
     if (!editor) return;
     const nodeStructure = textToTiptapNodes(text);
     insertNodesToEditor(editor, nodeStructure.content);
 }
 
-/**
- * 画像URLリストをエディターに挿入するヘルパー関数
- */
 export function insertImagesToEditor(editor: any, urls: string | string[]) {
     if (!editor) return;
 
@@ -136,27 +165,19 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
 
     editor.chain().focus().run();
 
-    // 画像ノードデータを生成
     const imageNodes = urlList
-        .map((url: string) => {
+        .map(url => {
             const normalizedUrl = validateAndNormalizeImageUrl(url.trim());
-            return normalizedUrl
-                ? { type: 'image', attrs: { src: normalizedUrl, alt: 'Uploaded image' } }
-                : null;
+            return normalizedUrl ? { type: 'image', attrs: { src: normalizedUrl, alt: 'Uploaded image' } } : null;
         })
-        .filter(Boolean);
+        .filter((node): node is { type: string; attrs: { src: string; alt: string; } } => node !== null);
 
     insertNodesToEditor(editor, imageNodes);
 }
 
-/**
- * エディターからプレーンテキストと画像URLを抽出して結合
- */
 export function extractContentWithImages(editor: any): string {
     if (!editor) return '';
 
-    // editor が関数でラップされている場合に対応し、
-    // editor.state または editor.view.state いずれからでも doc を取得するようにする
     let doc: any | undefined;
     try {
         const resolved = typeof editor === 'function' ? editor() : editor;
@@ -168,7 +189,6 @@ export function extractContentWithImages(editor: any): string {
     if (!doc) return '';
 
     const fragments: string[] = [];
-
     doc.descendants((node: any) => {
         if (node.type.name === 'paragraph') {
             const textContent = node.textContent;
@@ -186,20 +206,15 @@ export function extractContentWithImages(editor: any): string {
     return fragments.join('\n');
 }
 
-/**
- * 画像ノードの移動処理（ドラッグ＆ドロップ用）
- */
-export function moveImageNode(view: any, nodeData: any, dropPos: number) {
+// ドラッグ＆ドロップ関連ユーティリティ（統合版）
+export function moveImageNode(view: any, nodeData: any, dropPos: number): boolean {
     const { tr, schema } = view.state;
-    let transaction = tr;
     const originalPos = nodeData.pos;
 
-    // 同じ位置にドロップした場合は何もしない
-    if (dropPos === originalPos) {
-        return true;
-    }
+    if (dropPos === originalPos) return true;
 
     const imageNode = schema.nodes.image.create(nodeData.attrs);
+    let transaction = tr;
 
     try {
         if (dropPos < originalPos) {
@@ -209,9 +224,9 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number) {
             transaction = transaction.delete(originalPos, originalPos + 1);
             transaction = transaction.insert(dropPos - 1, imageNode);
         } else {
-            // 隣接位置への移動は無視
-            return true;
+            return true; // 隣接位置への移動は無視
         }
+
         view.dispatch(transaction);
         return true;
     } catch (error) {
@@ -220,10 +235,7 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number) {
     }
 }
 
-/**
- * ドラッグイベントを発火する共通関数
- */
-export function dispatchDragEvent(type: "start" | "move" | "end", details?: any, getPos?: () => number) {
+export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos?: () => number) {
     const eventMap = {
         start: "touch-image-drag-start",
         move: "touch-image-drag-move",
@@ -250,33 +262,11 @@ export function dispatchDragEvent(type: "start" | "move" | "end", details?: any,
     });
 
     window.dispatchEvent(customEvent);
-    document.dispatchEvent(
-        new CustomEvent(eventMap[type], { detail: customEvent.detail }),
-    );
+    document.dispatchEvent(new CustomEvent(eventMap[type], { detail: customEvent.detail }));
 }
 
-/**
- * ドロップゾーンのホバーハイライト処理
- */
-export function highlightDropZoneAtPosition(x: number, y: number) {
-    // 既存のハイライトをクリア
-    document.querySelectorAll(".drop-zone-indicator").forEach((zone) => {
-        zone.classList.remove("drop-zone-hover");
-    });
 
-    // カーソル位置の要素を取得
-    const elementBelow = document.elementFromPoint(x, y);
-    if (elementBelow) {
-        const dropZone = elementBelow.closest(".drop-zone-indicator");
-        if (dropZone) {
-            dropZone.classList.add("drop-zone-hover");
-        }
-    }
-}
-
-/**
- * ドラッグプレビューを作成
- */
+// ドラッグプレビュー関連（統合版）
 export function createDragPreview(
     element: HTMLElement,
     x: number,
@@ -286,45 +276,43 @@ export function createDragPreview(
     const rect = element.getBoundingClientRect();
     const MAX_PREVIEW = 140;
     const previewWidth = Math.min(MAX_PREVIEW, rect.width || MAX_PREVIEW);
-    const previewHeight =
-        rect.width > 0
-            ? Math.round((rect.height / rect.width) * previewWidth)
-            : previewWidth;
+    const previewHeight = rect.width > 0
+        ? Math.round((rect.height / rect.width) * previewWidth)
+        : previewWidth;
 
     let previewEl: HTMLElement | null = null;
 
     if (isPlaceholder) {
-        const origCanvas = element.querySelector(
-            "canvas",
-        ) as HTMLCanvasElement | null;
+        const origCanvas = element.querySelector("canvas") as HTMLCanvasElement | null;
         if (!origCanvas) return null;
+
         const newCanvas = document.createElement("canvas");
         newCanvas.width = origCanvas.width;
         newCanvas.height = origCanvas.height;
         const ctx = newCanvas.getContext("2d");
-        if (ctx) {
-            ctx.drawImage(origCanvas, 0, 0);
-        }
+        if (ctx) ctx.drawImage(origCanvas, 0, 0);
         previewEl = newCanvas;
     } else {
-        const origImg = element.querySelector(
-            "img",
-        ) as HTMLImageElement | null;
+        const origImg = element.querySelector("img") as HTMLImageElement | null;
         if (!origImg) return null;
+
         const newImg = document.createElement("img");
         newImg.src = origImg.src;
         newImg.alt = origImg.alt || "";
         previewEl = newImg;
     }
 
-    previewEl.classList.add("drag-preview");
-    previewEl.style.width = `${previewWidth}px`;
-    previewEl.style.height = `${previewHeight}px`;
-    previewEl.style.left = `${x - previewWidth / 2}px`;
-    previewEl.style.top = `${y - previewHeight / 2}px`;
-    previewEl.style.transformOrigin = "center center";
-    previewEl.style.transition = "transform 120ms ease, opacity 120ms ease";
+    // 共通スタイル設定
+    Object.assign(previewEl.style, {
+        width: `${previewWidth}px`,
+        height: `${previewHeight}px`,
+        left: `${x - previewWidth / 2}px`,
+        top: `${y - previewHeight / 2}px`,
+        transformOrigin: "center center",
+        transition: "transform 120ms ease, opacity 120ms ease"
+    });
 
+    previewEl.classList.add("drag-preview");
     document.body.appendChild(previewEl);
 
     requestAnimationFrame(() => {
@@ -335,9 +323,6 @@ export function createDragPreview(
     return previewEl;
 }
 
-/**
- * ドラッグプレビューの位置を更新
- */
 export function updateDragPreview(previewElement: HTMLElement | null, x: number, y: number) {
     if (!previewElement) return;
 
@@ -349,18 +334,20 @@ export function updateDragPreview(previewElement: HTMLElement | null, x: number,
     previewElement.style.top = `${y - h / 2}px`;
 }
 
-/**
- * ドラッグプレビューを削除
- */
 export function removeDragPreview(previewElement: HTMLElement | null): void {
-    if (previewElement?.parentNode) {
-        previewElement.parentNode.removeChild(previewElement);
-    }
+    previewElement?.parentNode?.removeChild(previewElement);
 }
 
-/**
- * 移動距離の閾値チェック
- */
+export function highlightDropZoneAtPosition(x: number, y: number) {
+    document.querySelectorAll(".drop-zone-indicator").forEach(zone => {
+        zone.classList.remove("drop-zone-hover");
+    });
+
+    const elementBelow = document.elementFromPoint(x, y);
+    const dropZone = elementBelow?.closest(".drop-zone-indicator");
+    dropZone?.classList.add("drop-zone-hover");
+}
+
 export function checkMoveThreshold(
     currentX: number,
     currentY: number,
@@ -373,9 +360,26 @@ export function checkMoveThreshold(
     return dx * dx + dy * dy > threshold * threshold;
 }
 
-/**
- * 統合されたタップ/クリック処理
- */
+// フォーカス・イベント処理ユーティリティ
+export function blurEditorAndBody() {
+    try {
+        const active = document.activeElement as HTMLElement | null;
+        if (active) {
+            const isEditor = active.classList?.contains?.("tiptap-editor") || active.closest?.(".tiptap-editor");
+            const isFormControl = ["INPUT", "TEXTAREA"].includes(active.tagName) || active.isContentEditable;
+
+            if (isEditor || isFormControl) {
+                active.blur?.();
+                (document.body as HTMLElement)?.focus?.();
+            }
+        }
+    } catch (e) {
+        /* noop */
+    }
+}
+
+
+
 export function handleImageInteraction(
     event: MouseEvent | TouchEvent,
     isTouch: boolean,
@@ -386,14 +390,12 @@ export function handleImageInteraction(
     imageSrc: string,
     imageAlt: string,
     getPos: () => number
-) {
-    // ドラッグ中やプレースホルダーの場合は何もしない
+): boolean {
     if (isDragging || isPlaceholder) {
         event.preventDefault();
         return false;
     }
 
-    // 直前の選択による抑制期間中はクリックを無視
     if (justSelected && !isTouch) {
         event.preventDefault();
         event.stopPropagation();
@@ -401,10 +403,8 @@ export function handleImageInteraction(
     }
 
     if (selected) {
-        // 既に選択済みなら全画面表示
         requestFullscreenImage(imageSrc, imageAlt);
     } else {
-        // 未選択なら選択要求
         requestNodeSelection(getPos);
     }
 
@@ -416,77 +416,23 @@ export function handleImageInteraction(
     return true;
 }
 
-// URL検証/正規化関数の重複を整理
-import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
-
-export function validateAndNormalizeUrl(url: string): string | null {
-    try {
-        const normalized = encodeURI(url.trim());
-        const u = new URL(normalized);
-        if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
-        return u.href;
-    } catch {
-        return null;
-    }
-}
-
-export function validateAndNormalizeImageUrl(url: string): string | null {
-    try {
-        const normalized = encodeURI(url.trim());
-        const u = new URL(normalized);
-        if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
-        const lower = u.pathname.toLowerCase();
-        if (!ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return null;
-        return u.href;
-    } catch {
-        return null;
-    }
-}
-
-// 文字境界判定用の共通関数
-export function isWordBoundary(char: string | undefined): boolean {
-    return !char || /[\s\n\u3000]/.test(char);
-}
-
-// URLの末尾クリーンアップ関数（より柔軟な判定）
-export function cleanUrlEnd(url: string): { cleanUrl: string; actualLength: number } {
-    let cleanUrl = url;
-
-    // 末尾の不要な文字を段階的に除去（ただし、入力中の場合は保持）
-    // 連続する句読点や括弧のみを除去し、単独の場合は保持
-    const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
-    const trailingMatch = cleanUrl.match(trailingPattern);
-    if (trailingMatch) {
-        cleanUrl = cleanUrl.slice(0, -trailingMatch[0].length);
-    }
-
-    return {
-        cleanUrl,
-        actualLength: cleanUrl.length
-    };
-}
-
-/**
- * エディタやフォームコントロールのフォーカスを外し、bodyにフォーカスを移す
- */
-export function blurEditorAndBody() {
-    try {
-        const active = document.activeElement as HTMLElement | null;
-        if (active) {
-            const isEditor =
-                active.classList?.contains?.("tiptap-editor") ||
-                active.closest?.(".tiptap-editor");
-            const isFormControl =
-                ["INPUT", "TEXTAREA"].includes(active.tagName) ||
-                active.isContentEditable;
-            if (isEditor || isFormControl) {
-                active.blur?.();
-                (document.body as HTMLElement)?.focus?.();
-            }
+// blurhash描画ユーティリティ
+try {
+    const active = document.activeElement as HTMLElement | null;
+    if (active) {
+        const isEditor =
+            active.classList?.contains?.("tiptap-editor") ||
+            active.closest?.(".tiptap-editor");
+        const isFormControl =
+            ["INPUT", "TEXTAREA"].includes(active.tagName) ||
+            active.isContentEditable;
+        if (isEditor || isFormControl) {
+            active.blur?.();
+            (document.body as HTMLElement)?.focus?.();
         }
-    } catch (e) {
-        /* noop */
     }
+} catch (e) {
+    /* noop */
 }
 
 /**
