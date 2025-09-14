@@ -10,24 +10,26 @@
         fetchSwVersion,
         swNeedRefresh,
         handleSwUpdate,
+        writeRelaysStore,
+        showRelaysStore,
+        isSwUpdatingStore,
     } from "../lib/appStores.svelte";
     import {
         uploadEndpoints,
         getCompressionLevels,
         getDefaultEndpoint,
+        STORAGE_KEYS,
+        SW_UPDATE_TIMEOUT,
+        RELAY_LIST_REFRESH_DELAY,
     } from "../lib/constants";
+    import {
+        loadWriteRelaysFromStorage,
+        initializeSettingsValues,
+        handleServiceWorkerRefresh,
+    } from "../lib/appUtils";
+    import type { SettingsDialogProps } from "../lib/types";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
-
-    interface Props {
-        show?: boolean;
-        onClose: () => void;
-        onRefreshRelaysAndProfile?: () => void;
-        selectedCompression?: string;
-        onSelectedCompressionChange?: (value: string) => void;
-        selectedEndpoint?: string;
-        onSelectedEndpointChange?: (value: string) => void;
-    }
 
     let {
         show = false,
@@ -37,7 +39,7 @@
         onSelectedCompressionChange = undefined,
         selectedEndpoint = "",
         onSelectedEndpointChange = undefined,
-    }: Props = $props();
+    }: SettingsDialogProps = $props();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
@@ -46,149 +48,91 @@
     let _selectedCompression: string = $state(selectedCompression);
     let _selectedEndpoint: string = $state(selectedEndpoint);
 
-    // 汎用的な設定値同期関数
-    function createSettingSync<T>(
-        getter: () => T,
-        setter: ((value: T) => void) | undefined,
-        localValue: () => T,
-        setLocalValue: (value: T) => void,
-    ) {
-        $effect(() => {
-            const externalValue = getter();
-            if (externalValue !== undefined && externalValue !== "") {
-                setLocalValue(externalValue);
-            }
-        });
+    // 直接同期処理（$effectを使用）
+    $effect(() => {
+        const externalValue = selectedCompression;
+        if (externalValue !== undefined && externalValue !== "") {
+            _selectedCompression = externalValue;
+        }
+    });
 
-        $effect(() => {
-            const local = localValue();
-            const external = getter();
-            if (setter && local !== external) {
-                setter(local);
-            }
-        });
-    }
+    $effect(() => {
+        if (
+            onSelectedCompressionChange &&
+            _selectedCompression !== selectedCompression
+        ) {
+            onSelectedCompressionChange(_selectedCompression);
+        }
+    });
 
-    // 汎用的なlocalStorage保存関数
-    function createLocalStorageSync(
-        key: string,
-        getValue: () => string | boolean,
-    ) {
-        $effect(() => {
-            const value = getValue();
-            if (value !== undefined && value !== "") {
-                localStorage.setItem(key, String(value));
-            }
-        });
-    }
+    $effect(() => {
+        const externalValue = selectedEndpoint;
+        if (externalValue !== undefined && externalValue !== "") {
+            _selectedEndpoint = externalValue;
+        }
+    });
 
-    // 設定値の同期処理
-    createSettingSync(
-        () => selectedCompression,
-        onSelectedCompressionChange,
-        () => _selectedCompression,
-        (value) => (_selectedCompression = value),
-    );
-
-    createSettingSync(
-        () => selectedEndpoint,
-        onSelectedEndpointChange,
-        () => _selectedEndpoint,
-        (value) => (_selectedEndpoint = value),
-    );
+    $effect(() => {
+        if (
+            onSelectedEndpointChange &&
+            _selectedEndpoint !== selectedEndpoint
+        ) {
+            onSelectedEndpointChange(_selectedEndpoint);
+        }
+    });
 
     // localStorage保存処理
-    createLocalStorageSync("imageCompressionLevel", () => _selectedCompression);
-    createLocalStorageSync("uploadEndpoint", () => _selectedEndpoint);
-    createLocalStorageSync("clientTagEnabled", () => clientTagEnabled);
+    $effect(() => {
+        if (_selectedCompression) {
+            localStorage.setItem(
+                STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL,
+                _selectedCompression,
+            );
+        }
+    });
+
+    $effect(() => {
+        if (_selectedEndpoint) {
+            localStorage.setItem(
+                STORAGE_KEYS.UPLOAD_ENDPOINT,
+                _selectedEndpoint,
+            );
+        }
+    });
+
+    $effect(() => {
+        localStorage.setItem(
+            STORAGE_KEYS.CLIENT_TAG_ENABLED,
+            clientTagEnabled ? "true" : "false",
+        );
+    });
 
     // swVersion from store
     let swVersion: string | null = $state(null);
     swVersionStore.subscribe((v) => (swVersion = v));
 
-    // SW更新状態
-    let isUpdating = $state(false);
-
     function handleSwRefresh() {
-        isUpdating = true;
-        handleSwUpdate();
-        // ページがリロードされるまで少し待つ
-        setTimeout(() => {
-            window.location.reload();
-        }, 1000);
+        handleServiceWorkerRefresh(
+            handleSwUpdate,
+            (value) => isSwUpdatingStore.set(value),
+            SW_UPDATE_TIMEOUT,
+        );
     }
-
-    // 投稿先リレー表示用
-    let writeRelays: string[] = $state([]);
-    let showRelays = $state(false);
 
     function loadWriteRelays() {
-        const pubkeyHex = authState.value.pubkey;
-        if (!pubkeyHex) {
-            writeRelays = [];
-            return;
-        }
-        const relayKey = `nostr-relays-${pubkeyHex}`;
-        try {
-            const relays = JSON.parse(localStorage.getItem(relayKey) ?? "null");
-            if (Array.isArray(relays)) {
-                writeRelays = relays;
-            } else if (relays && typeof relays === "object") {
-                writeRelays = Object.entries(relays)
-                    .filter(
-                        ([, conf]) =>
-                            conf &&
-                            typeof conf === "object" &&
-                            "write" in conf &&
-                            (conf as { write?: boolean }).write,
-                    )
-                    .map(([url]) => url);
-            } else {
-                writeRelays = [];
-            }
-        } catch {
-            writeRelays = [];
-        }
+        const relays = loadWriteRelaysFromStorage(authState.value.pubkey);
+        writeRelaysStore.set(relays);
     }
 
-    // 設定の初期化処理をまとめる
+    // 設定の初期化処理
     function initializeSettings() {
-        const storedLocale = localStorage.getItem("locale");
-        const browserLocale = navigator.language;
-        const effectiveLocale =
-            storedLocale ||
-            (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
-
-        // アップロード先設定
-        const savedEndpoint = localStorage.getItem("uploadEndpoint");
-        if (
-            savedEndpoint &&
-            uploadEndpoints.some((ep) => ep.url === savedEndpoint)
-        ) {
-            _selectedEndpoint = savedEndpoint;
-        } else if (selectedEndpoint) {
-            _selectedEndpoint = selectedEndpoint;
-        } else {
-            _selectedEndpoint = getDefaultEndpoint(effectiveLocale);
-        }
-
-        // client tag設定
-        const clientTagSetting = localStorage.getItem("clientTagEnabled");
-        clientTagEnabled =
-            clientTagSetting === null ? true : clientTagSetting === "true";
-        if (clientTagSetting === null) {
-            localStorage.setItem("clientTagEnabled", "true");
-        }
-
-        // 圧縮設定
-        const savedCompression = localStorage.getItem("imageCompressionLevel");
-        if (savedCompression) {
-            _selectedCompression = savedCompression;
-        } else if (selectedCompression) {
-            _selectedCompression = selectedCompression;
-        } else {
-            _selectedCompression = "medium";
-        }
+        const settings = initializeSettingsValues(
+            selectedEndpoint,
+            selectedCompression,
+        );
+        _selectedEndpoint = settings.endpoint;
+        clientTagEnabled = settings.clientTagEnabled;
+        _selectedCompression = settings.compression;
     }
 
     onMount(() => {
@@ -201,13 +145,12 @@
     $effect(() => {
         if (show) loadWriteRelays();
     });
-    // showがtrueのたびにnostr-zap-viewを再初期化（tickでDOM描画後に呼ぶ）
+    // showがtrueのたびにnostr-zap-viewを再初期化
     $effect(() => {
         if (show) {
             (async () => {
                 await tick();
                 nostrZapView();
-                // nostr-zapのボタンも初期化
                 if (window.nostrZap) {
                     window.nostrZap.initTargets();
                 }
@@ -216,29 +159,12 @@
     });
     // showがfalseになったらリレーリストの折り畳みも閉じる
     $effect(() => {
-        if (!show) showRelays = false;
+        if (!show) showRelaysStore.set(false);
     });
     // $locale変更時、保存がなければデフォルトエンドポイントを再設定
     $effect(() => {
-        if ($locale && !localStorage.getItem("uploadEndpoint")) {
+        if ($locale && !localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)) {
             _selectedEndpoint = getDefaultEndpoint($locale);
-        }
-    });
-    // 設定変更時にlocalStorageへ保存
-    $effect(() => {
-        if (_selectedEndpoint) {
-            localStorage.setItem("uploadEndpoint", _selectedEndpoint);
-        }
-    });
-    $effect(() => {
-        localStorage.setItem(
-            "clientTagEnabled",
-            clientTagEnabled ? "true" : "false",
-        );
-    });
-    $effect(() => {
-        if (_selectedCompression) {
-            localStorage.setItem("imageCompressionLevel", _selectedCompression);
         }
     });
 
@@ -251,8 +177,13 @@
     }
 
     relayListUpdatedStore.subscribe(() => {
-        setTimeout(loadWriteRelays, 0);
+        setTimeout(loadWriteRelays, RELAY_LIST_REFRESH_DELAY);
     });
+
+    // Store values for template
+    let writeRelays = $derived(writeRelaysStore.value);
+    let showRelays = $derived(showRelaysStore.value);
+    let isUpdating = $derived(isSwUpdatingStore.value);
 </script>
 
 <Dialog
@@ -440,7 +371,7 @@
                 <button
                     type="button"
                     class="relay-toggle-label"
-                    onclick={() => (showRelays = !showRelays)}
+                    onclick={() => showRelaysStore.set(!showRelays)}
                     aria-pressed={showRelays}
                     aria-label={$_("settingsDialog.toggle_write_relays_list") ||
                         "投稿先リレーの表示切替"}

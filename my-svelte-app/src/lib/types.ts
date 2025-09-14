@@ -133,3 +133,24 @@ export interface AuthResult {
     error?: string;
     pubkeyHex?: string;
 }
+
+// --- SettingsDialog用型定義 ---
+export interface SettingsDialogProps {
+    show?: boolean;
+    onClose: () => void;
+    onRefreshRelaysAndProfile?: () => void;
+    selectedCompression?: string;
+    onSelectedCompressionChange?: (value: string) => void;
+    selectedEndpoint?: string;
+    onSelectedEndpointChange?: (value: string) => void;
+}
+
+export interface CompressionLevel {
+    label: string;
+    value: string;
+}
+
+export interface UploadEndpoint {
+    label: string;
+    url: string;
+}

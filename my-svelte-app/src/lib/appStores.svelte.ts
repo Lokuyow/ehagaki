@@ -140,7 +140,6 @@ const swRegister = useRegisterSW({
     onRegistered(r) { console.log("SW registered:", r); },
     onRegisterError(error) { console.log("SW registration error", error); },
     onNeedRefresh() { console.log("SW needs refresh - showing prompt"); },
-    // typeプロパティは指定しない（undefinedを渡さない）
 });
 export const swNeedRefresh = swRegister.needRefresh;
 export const swUpdateServiceWorker = swRegister.updateServiceWorker;
@@ -295,3 +294,28 @@ export async function fetchSwVersion(): Promise<string | null> {
         setTimeout(() => resolve(null), 2000); // タイムアウト
     });
 }
+
+// --- SettingsDialog用ストア ---
+let writeRelays = $state<string[]>([]);
+let showRelays = $state(false);
+let isSwUpdating = $state(false);
+
+export const writeRelaysStore = {
+    get value() { return writeRelays; },
+    set: (value: string[]) => { writeRelays = value; },
+    subscribe: (callback: (value: string[]) => void) => {
+        $effect(() => {
+            callback(writeRelays);
+        });
+    }
+};
+
+export const showRelaysStore = {
+    get value() { return showRelays; },
+    set: (value: boolean) => { showRelays = value; }
+};
+
+export const isSwUpdatingStore = {
+    get value() { return isSwUpdating; },
+    set: (value: boolean) => { isSwUpdating = value; }
+};

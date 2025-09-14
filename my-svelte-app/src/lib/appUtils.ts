@@ -1,6 +1,7 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "./types";
 import { BALLOON_MESSAGE_KEYS } from "./constants";
+import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from './constants';
 
 // =============================================================================
 // File Size Utilities
@@ -410,4 +411,101 @@ export function getRandomHeaderBalloon(
   const keys: readonly string[] = BALLOON_MESSAGE_KEYS;
   const idx: number = Math.floor(Math.random() * keys.length);
   return $_(keys[idx]) ?? "";
+}
+
+// =============================================================================
+// Settings Utilities
+// =============================================================================
+
+/**
+ * 書き込み先リレーリストを取得
+ */
+export function loadWriteRelaysFromStorage(pubkeyHex: string): string[] {
+  if (!pubkeyHex) return [];
+
+  const relayKey = `${STORAGE_KEYS.NOSTR_RELAYS}${pubkeyHex}`;
+  try {
+    const relays = JSON.parse(localStorage.getItem(relayKey) ?? "null");
+    if (Array.isArray(relays)) {
+      return relays;
+    } else if (relays && typeof relays === "object") {
+      return Object.entries(relays)
+        .filter(
+          ([, conf]) =>
+            conf &&
+            typeof conf === "object" &&
+            "write" in conf &&
+            (conf as { write?: boolean }).write,
+        )
+        .map(([url]) => url);
+    }
+    return [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 設定の初期化処理
+ */
+export function initializeSettingsValues(selectedEndpoint?: string, selectedCompression?: string) {
+  const storedLocale = localStorage.getItem(STORAGE_KEYS.LOCALE);
+  const browserLocale = navigator.language;
+  const effectiveLocale =
+    storedLocale ||
+    (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
+
+  // アップロード先設定
+  let endpoint = "";
+  const savedEndpoint = localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
+  if (
+    savedEndpoint &&
+    uploadEndpoints.some((ep) => ep.url === savedEndpoint)
+  ) {
+    endpoint = savedEndpoint;
+  } else if (selectedEndpoint) {
+    endpoint = selectedEndpoint;
+  } else {
+    endpoint = getDefaultEndpoint(effectiveLocale);
+  }
+
+  // client tag設定
+  const clientTagSetting = localStorage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
+  const clientTagEnabled =
+    clientTagSetting === null ? true : clientTagSetting === "true";
+  if (clientTagSetting === null) {
+    localStorage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, "true");
+  }
+
+  // 圧縮設定
+  let compression = "";
+  const savedCompression = localStorage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL);
+  if (savedCompression) {
+    compression = savedCompression;
+  } else if (selectedCompression) {
+    compression = selectedCompression;
+  } else {
+    compression = "medium";
+  }
+
+  return {
+    endpoint,
+    clientTagEnabled,
+    compression
+  };
+}
+
+/**
+ * Service Worker更新処理
+ */
+export function handleServiceWorkerRefresh(
+  handleSwUpdate: () => void,
+  setUpdating: (value: boolean) => void,
+  timeout: number = 1000
+) {
+  setUpdating(true);
+  handleSwUpdate();
+  setTimeout(() => {
+    window.location.reload();
+  }, timeout);
 }

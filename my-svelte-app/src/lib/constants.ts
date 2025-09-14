@@ -58,6 +58,20 @@ export const SCROLL_BASE_SPEED = 1;  // px/frame, 自動スクロールの基本
 export const SCROLL_MAX_SPEED = 10;   // px/frame, 自動スクロールの最大速度
 
 // --- SettingsDialog用定数 ---
+export const DEFAULT_COMPRESSION_LEVEL = "medium";
+export const DEFAULT_CLIENT_TAG_ENABLED = true;
+
+export const STORAGE_KEYS = {
+    LOCALE: "locale",
+    UPLOAD_ENDPOINT: "uploadEndpoint",
+    CLIENT_TAG_ENABLED: "clientTagEnabled",
+    IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
+    NOSTR_RELAYS: "nostr-relays-",
+} as const;
+
+export const SW_UPDATE_TIMEOUT = 1000;
+export const RELAY_LIST_REFRESH_DELAY = 0;
+
 export const uploadEndpoints = [
     { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
     { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
