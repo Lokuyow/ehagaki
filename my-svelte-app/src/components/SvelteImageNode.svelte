@@ -221,30 +221,33 @@
         handleInteraction(event, false);
     }
 
-    function handleDragStart(event: DragEvent) {
-        if (!event.dataTransfer) return;
-        if (isTouchDevice) {
-            event.preventDefault();
-            return;
+    function handleDragRelatedEvent(type: "start" | "end", event?: Event) {
+        if (type === "start") {
+            const dragEvent = event as DragEvent;
+            if (!dragEvent?.dataTransfer && !isTouchDevice) return;
+            if (isTouchDevice) {
+                event?.preventDefault();
+                return;
+            }
+
+            if (dragEvent?.dataTransfer) {
+                dragEvent.dataTransfer.setData(
+                    "application/x-tiptap-node",
+                    JSON.stringify({
+                        type: "image",
+                        attrs: node.attrs,
+                        pos: getPos(),
+                    }),
+                );
+                dragEvent.dataTransfer.effectAllowed = "move";
+            }
+            dragState.isDragging = true;
+            dispatchDragEvent("start");
+        } else {
+            dragState.isDragging = false;
+            removeDragPreview();
+            dispatchDragEvent("end");
         }
-
-        event.dataTransfer.setData(
-            "application/x-tiptap-node",
-            JSON.stringify({
-                type: "image",
-                attrs: node.attrs,
-                pos: getPos(),
-            }),
-        );
-        event.dataTransfer.effectAllowed = "move";
-        dragState.isDragging = true;
-        dispatchDragEvent("start");
-    }
-
-    function handleDragEnd() {
-        dragState.isDragging = false;
-        removeDragPreview();
-        dispatchDragEvent("end");
     }
 
     function handleTouchStart(event: TouchEvent) {
@@ -324,7 +327,7 @@
         removeDragPreview();
     }
 
-    function handleContextMenu(event: Event) {
+    function preventContextMenu(event: Event) {
         event.preventDefault();
     }
 
@@ -467,16 +470,21 @@
         }
         removeDragPreview();
 
-        // 状態ストアの値は必要に応じて初期化
-        imageDragState.isDragging = false;
-        imageDragState.longPressTimeout = null;
-        imageDragState.startTarget = null;
-        imageDragState.preview = null;
-        imageSelectionState.justSelected = false;
-        imageSelectionState.justSelectedTimeout = null;
-        imageLoadState.isImageLoaded = false;
-        imageLoadState.blurhashFadeOut = false;
-        // グローバルcanvasRefは削除しない（他のノードが使用中の可能性があるため）
+        // 状態ストア初期化
+        Object.assign(imageDragState, {
+            isDragging: false,
+            longPressTimeout: null,
+            startTarget: null,
+            preview: null,
+        });
+        Object.assign(imageSelectionState, {
+            justSelected: false,
+            justSelectedTimeout: null,
+        });
+        Object.assign(imageLoadState, {
+            isImageLoaded: false,
+            blurhashFadeOut: false,
+        });
         localCanvasRef = undefined;
     });
 </script>
@@ -485,22 +493,20 @@
     <button
         type="button"
         class="editor-image-button"
-        data-selected={selected}
+        data-highlighted={selected}
         data-dragging={dragState.isDragging}
         onclick={handleClick}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
         draggable={!isTouchDevice}
-        ondragstart={isTouchDevice
-            ? (e) => e.preventDefault()
-            : handleDragStart}
-        ondragend={isTouchDevice ? undefined : handleDragEnd}
+        ondragstart={(e) => handleDragRelatedEvent("start", e)}
+        ondragend={() => handleDragRelatedEvent("end")}
         ondragover={isTouchDevice ? (e) => e.preventDefault() : undefined}
         ondrop={isTouchDevice ? (e) => e.preventDefault() : undefined}
         ontouchstart={handleTouchStart}
         ontouchmove={handleTouchMove}
         ontouchend={handleTouchEnd}
-        oncontextmenu={handleContextMenu}
+        oncontextmenu={preventContextMenu}
     >
         {#if showBlurhash}
             <canvas
@@ -521,7 +527,7 @@
                 draggable="false"
                 onload={handleImageLoad}
                 onerror={handleImageError}
-                oncontextmenu={handleContextMenu}
+                oncontextmenu={preventContextMenu}
                 style="z-index:2; position:relative;"
             />
         {/if}
@@ -542,7 +548,7 @@
     :global(.node-image.svelte-renderer) {
         display: block;
         max-width: 100%;
-        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
+        max-height: 240px;
         line-height: 0;
         pointer-events: none;
         margin: 8px 0;
@@ -562,11 +568,10 @@
         -webkit-user-select: none;
         user-select: none;
         max-width: 100%;
-        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
+        max-height: 240px;
         line-height: 0;
         vertical-align: top;
         pointer-events: auto;
-        /* フォーカス時のアウトラインを無効化 */
         outline: none;
         -webkit-tap-highlight-color: transparent;
 
@@ -579,33 +584,23 @@
         }
     }
 
-    /* data属性による状態制御 */
-    .editor-image-button[data-selected="true"] .editor-image {
+    /* 統合されたハイライト状態 */
+    .editor-image-button[data-highlighted="true"] .editor-image,
+    .editor-image-button[data-highlighted="true"]
+        .blurhash-canvas.is-placeholder {
         outline: 2px solid var(--theme, #2196f3);
         outline-offset: -1px;
-    }
-    .editor-image-button[data-dragging="true"] .editor-image {
-        opacity: 0.3;
-        outline: 2px solid var(--theme, #2196f3);
-        outline-offset: -1px;
-        transform: scale(0.95);
-        transition: all 0.2s ease;
     }
 
-    /* プレースホルダー選択時の状態制御 */
-    .editor-image-button[data-selected="true"] .blurhash-canvas.is-placeholder {
-        outline: 2px solid var(--theme, #2196f3);
-        outline-offset: -1px;
-    }
+    /* ドラッグ状態での追加スタイル */
+    .editor-image-button[data-dragging="true"] .editor-image,
     .editor-image-button[data-dragging="true"] .blurhash-canvas.is-placeholder {
         opacity: 0.3;
-        outline: 2px solid var(--theme, #2196f3);
-        outline-offset: -1px;
         transform: scale(0.95);
         transition: all 0.2s ease;
     }
 
-    /* blurhashキャンバス */
+    /* blurhash関連スタイル（統合済み） */
     .blurhash-canvas {
         border-radius: 6px;
         object-fit: cover;
@@ -614,37 +609,34 @@
         filter: blur(1px);
         transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         max-width: 100%;
-        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
-    }
+        max-height: 240px;
 
-    /* 実際の画像に重なるblurhashキャンバス */
-    .blurhash-canvas:not(.is-placeholder) {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-    }
+        &:not(.is-placeholder) {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
 
-    .blurhash-canvas.fade-out {
-        opacity: 0;
-        pointer-events: none;
-        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
+        &.is-placeholder {
+            position: relative;
+            border: 1px solid var(--border);
+            opacity: 1;
+            filter: blur(0.5px);
+        }
 
-    /* プレースホルダー時のblurhashキャンバス */
-    .blurhash-canvas.is-placeholder {
-        position: relative;
-        border: 1px solid var(--border);
-        opacity: 1;
-        filter: blur(0.5px);
+        &.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
     }
 
     /* 画像要素 */
     img.editor-image {
         display: block;
         max-width: 100%;
-        max-height: 240px; /* この値をimageUtils.tsの制約と一致させる */
+        max-height: 240px;
         width: auto;
         border: 1px solid var(--border);
         border-radius: 6px;
@@ -656,17 +648,15 @@
         user-select: none;
         position: relative;
         z-index: 2;
-    }
 
-    /* 画像ローディング状態 */
-    img.editor-image.image-loading {
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    }
+        &.image-loading {
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
 
-    /* 画像がロードされた時のフェードイン */
-    img.editor-image:not(.image-loading) {
-        opacity: 1;
+        &:not(.image-loading) {
+            opacity: 1;
+        }
     }
 
     /* タッチデバイス用 */
@@ -720,8 +710,6 @@
         position: fixed;
         pointer-events: none;
         z-index: 9999;
-        /* width, height, left, top, transform, opacity はJSで動的に設定 */
-        /* transform-origin, transition もJSで上書きされるが、念のため記述 */
         transform-origin: center center;
         transition:
             transform 120ms ease,
