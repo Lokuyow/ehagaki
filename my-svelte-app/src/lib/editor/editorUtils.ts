@@ -1,12 +1,25 @@
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
 import type { NodeData, DragEvent, CleanUrlResult } from "../types";
 
-// URL検証/正規化関数（統合版）
+// === URL検証・正規化（純粋関数） ===
+export function normalizeUrl(url: string): string {
+    return encodeURI(url.trim());
+}
+
+export function isValidProtocol(protocol: string): boolean {
+    return ALLOWED_PROTOCOLS.includes(protocol);
+}
+
+export function isValidImageExtension(pathname: string): boolean {
+    const lower = pathname.toLowerCase();
+    return ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
 export function validateAndNormalizeUrl(url: string): string | null {
     try {
-        const normalized = encodeURI(url.trim());
+        const normalized = normalizeUrl(url);
         const u = new URL(normalized);
-        if (!ALLOWED_PROTOCOLS.includes(u.protocol)) return null;
+        if (!isValidProtocol(u.protocol)) return null;
         return u.href;
     } catch {
         return null;
@@ -19,38 +32,47 @@ export function validateAndNormalizeImageUrl(url: string): string | null {
 
     try {
         const u = new URL(baseUrl);
-        const lower = u.pathname.toLowerCase();
-        if (!ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext))) return null;
+        if (!isValidImageExtension(u.pathname)) return null;
         return baseUrl;
     } catch {
         return null;
     }
 }
 
-// 文字/URL処理ユーティリティ
+// === 文字列処理（純粋関数） ===
 export function isWordBoundary(char: string | undefined): boolean {
     return !char || /[\s\n\u3000]/.test(char);
 }
 
-export function cleanUrlEnd(url: string): CleanUrlResult {
-    let cleanUrl = url;
+export function extractTrailingPunctuation(url: string): { cleanUrl: string; trailingChars: string } {
     const trailingPattern = /([.,;:!?）】」』〉》】\]}>）]){2,}$/;
-    const trailingMatch = cleanUrl.match(trailingPattern);
+    const trailingMatch = url.match(trailingPattern);
 
     if (trailingMatch) {
-        cleanUrl = cleanUrl.slice(0, -trailingMatch[0].length);
+        const trailingChars = trailingMatch[0];
+        const cleanUrl = url.slice(0, -trailingChars.length);
+        return { cleanUrl, trailingChars };
     }
 
+    return { cleanUrl: url, trailingChars: '' };
+}
+
+export function cleanUrlEnd(url: string): CleanUrlResult {
+    const { cleanUrl } = extractTrailingPunctuation(url);
     return { cleanUrl, actualLength: cleanUrl.length };
 }
 
-// ドキュメント状態判定
-export function isEditorDocEmpty(state: any): boolean {
-    if (state.doc.childCount === 1) {
-        const firstChild = state.doc.firstChild;
+// === ドキュメント状態判定（純粋関数） ===
+export function isDocumentEmpty(doc: any): boolean {
+    if (doc.childCount === 1) {
+        const firstChild = doc.firstChild;
         return firstChild?.type.name === 'paragraph' && firstChild.content.size === 0;
     }
-    return state.doc.childCount === 0;
+    return doc.childCount === 0;
+}
+
+export function isEditorDocEmpty(state: any): boolean {
+    return isDocumentEmpty(state.doc);
 }
 
 export function isParagraphWithOnlyImageUrl(node: any, urlLength: number): boolean {
@@ -59,31 +81,47 @@ export function isParagraphWithOnlyImageUrl(node: any, urlLength: number): boole
         node.textContent.trim().length === urlLength;
 }
 
-// ノード作成・変換ユーティリティ
-export function textToTiptapNodes(text: string): any {
+// === ノード作成（純粋関数） ===
+export function createImageNodeData(url: string, alt: string = 'Image'): NodeData | null {
+    const normalizedUrl = validateAndNormalizeImageUrl(url);
+    if (!normalizedUrl) return null;
+
+    return {
+        type: 'image',
+        attrs: { src: normalizedUrl, alt }
+    };
+}
+
+export function createParagraphNodeData(text: string): NodeData {
+    return {
+        type: 'paragraph',
+        content: text.trim() ? [{ type: 'text', text }] : []
+    };
+}
+
+export function parseTextToNodes(text: string): NodeData[] {
     const lines = text.split('\n');
-    const content: any[] = [];
+    const nodes: NodeData[] = [];
 
     for (const line of lines) {
         const trimmed = line.trim();
-        const normalizedUrl = validateAndNormalizeImageUrl(trimmed);
+        const imageNode = createImageNodeData(trimmed);
 
-        if (normalizedUrl) {
-            content.push({
-                type: 'image',
-                attrs: { src: normalizedUrl, alt: 'Image' }
-            });
+        if (imageNode) {
+            nodes.push(imageNode);
         } else {
-            content.push({
-                type: 'paragraph',
-                content: line.trim() ? [{ type: 'text', text: line }] : []
-            });
+            nodes.push(createParagraphNodeData(line));
         }
     }
 
+    return nodes;
+}
+
+export function textToTiptapNodes(text: string): any {
+    const nodes = parseTextToNodes(text);
     return {
         type: 'doc',
-        content: content.length > 0 ? content : [{ type: 'paragraph' }]
+        content: nodes.length > 0 ? nodes : [{ type: 'paragraph' }]
     };
 }
 
@@ -104,7 +142,35 @@ export function createNodeFromData(schema: any, nodeData: NodeData): any {
     }
 }
 
-// エディター操作ユーティリティ
+// === エディター操作の抽象化 ===
+export interface EditorAdapter {
+    getState(): any;
+    dispatch(transaction: any): void;
+    chain(): any;
+    focus(): any;
+}
+
+export function createEditorAdapter(editor: any): EditorAdapter {
+    return {
+        getState: () => editor.view.state,
+        dispatch: (transaction: any) => editor.view.dispatch(transaction),
+        chain: () => editor.chain(),
+        focus: () => editor.chain().focus()
+    };
+}
+
+export function calculateInsertPositions(
+    nodes: any[],
+    startPos: number
+): { node: any; position: number }[] {
+    let currentPos = startPos;
+    return nodes.map(node => {
+        const result = { node, position: currentPos };
+        currentPos += node.nodeSize;
+        return result;
+    });
+}
+
 function insertNodesToEditor(editor: any, nodeDataList: NodeData[]) {
     if (!editor) return;
 
@@ -140,6 +206,14 @@ export function insertTextAsNodes(editor: any, text: string) {
     insertNodesToEditor(editor, nodeStructure.content);
 }
 
+export function prepareImageNodes(urls: string | string[]): NodeData[] {
+    const urlList = Array.isArray(urls) ? urls : urls.split('\n').map(s => s.trim()).filter(Boolean);
+
+    return urlList
+        .map(url => createImageNodeData(url.trim(), 'Uploaded image'))
+        .filter((node): node is NodeData => node !== null);
+}
+
 export function insertImagesToEditor(editor: any, urls: string | string[]) {
     if (!editor) return;
 
@@ -147,30 +221,12 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
     if (urlList.length === 0) return;
 
     editor.chain().focus().run();
-
-    const imageNodes = urlList
-        .map(url => {
-            const normalizedUrl = validateAndNormalizeImageUrl(url.trim());
-            return normalizedUrl ? { type: 'image', attrs: { src: normalizedUrl, alt: 'Uploaded image' } } : null;
-        })
-        .filter((node): node is { type: string; attrs: { src: string; alt: string; } } => node !== null);
-
+    const imageNodes = prepareImageNodes(urlList);
     insertNodesToEditor(editor, imageNodes);
 }
 
-export function extractContentWithImages(editor: any): string {
-    if (!editor) return '';
-
-    let doc: any | undefined;
-    try {
-        const resolved = typeof editor === 'function' ? editor() : editor;
-        doc = resolved?.state?.doc ?? resolved?.view?.state?.doc;
-    } catch {
-        doc = undefined;
-    }
-
-    if (!doc) return '';
-
+// === コンテンツ抽出 ===
+export function extractFragmentsFromDoc(doc: any): string[] {
     const fragments: string[] = [];
     doc.descendants((node: any) => {
         if (node.type.name === 'paragraph') {
@@ -185,31 +241,79 @@ export function extractContentWithImages(editor: any): string {
             }
         }
     });
+    return fragments;
+}
 
+export function getDocumentFromEditor(editor: any): any | null {
+    if (!editor) return null;
+
+    try {
+        const resolved = typeof editor === 'function' ? editor() : editor;
+        return resolved?.state?.doc ?? resolved?.view?.state?.doc ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export function extractContentWithImages(editor: any): string {
+    const doc = getDocumentFromEditor(editor);
+    if (!doc) return '';
+
+    const fragments = extractFragmentsFromDoc(doc);
     return fragments.join('\n');
 }
 
-// ドラッグ＆ドロップ関連ユーティリティ（統合版）
+// === ドラッグ＆ドロップ計算 ===
+export function calculateDragPositions(
+    dropPos: number,
+    originalPos: number
+): { insertPos: number; deleteStart: number; deleteEnd: number } | null {
+    if (dropPos === originalPos) return null;
+
+    if (dropPos < originalPos) {
+        return {
+            insertPos: dropPos,
+            deleteStart: originalPos + 1,
+            deleteEnd: originalPos + 2
+        };
+    } else if (dropPos > originalPos + 1) {
+        return {
+            insertPos: dropPos - 1,
+            deleteStart: originalPos,
+            deleteEnd: originalPos + 1
+        };
+    }
+
+    return null; // 隣接位置への移動は無効
+}
+
+export function createMoveTransaction(
+    transaction: any,
+    imageNode: any,
+    positions: { insertPos: number; deleteStart: number; deleteEnd: number }
+): any {
+    if (positions.insertPos < positions.deleteStart) {
+        return transaction
+            .insert(positions.insertPos, imageNode)
+            .delete(positions.deleteStart, positions.deleteEnd);
+    } else {
+        return transaction
+            .delete(positions.deleteStart, positions.deleteEnd)
+            .insert(positions.insertPos, imageNode);
+    }
+}
+
 export function moveImageNode(view: any, nodeData: any, dropPos: number): boolean {
     const { tr, schema } = view.state;
     const originalPos = nodeData.pos;
 
-    if (dropPos === originalPos) return true;
+    const positions = calculateDragPositions(dropPos, originalPos);
+    if (!positions) return true;
 
     const imageNode = schema.nodes.image.create(nodeData.attrs);
-    let transaction = tr;
 
     try {
-        if (dropPos < originalPos) {
-            transaction = transaction.insert(dropPos, imageNode);
-            transaction = transaction.delete(originalPos + 1, originalPos + 2);
-        } else if (dropPos > originalPos + 1) {
-            transaction = transaction.delete(originalPos, originalPos + 1);
-            transaction = transaction.insert(dropPos - 1, imageNode);
-        } else {
-            return true; // 隣接位置への移動は無視
-        }
-
+        const transaction = createMoveTransaction(tr, imageNode, positions);
         view.dispatch(transaction);
         return true;
     } catch (error) {
@@ -218,13 +322,12 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number): boolea
     }
 }
 
-export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos?: () => number) {
-    const eventMap = {
-        start: "touch-image-drag-start",
-        move: "touch-image-drag-move",
-        end: "touch-image-drop",
-    };
-
+// === イベント作成 ===
+export function createDragEventDetail(
+    type: DragEvent['type'],
+    details?: any,
+    getPos?: () => number
+): any {
     const eventDetails = {
         start: { nodePos: getPos?.() },
         move: details,
@@ -238,18 +341,85 @@ export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos
         },
     };
 
-    const customEvent = new CustomEvent(eventMap[type], {
-        detail: eventDetails[type],
+    return eventDetails[type];
+}
+
+export function getEventName(type: DragEvent['type']): string {
+    const eventMap = {
+        start: "touch-image-drag-start",
+        move: "touch-image-drag-move",
+        end: "touch-image-drop",
+    };
+    return eventMap[type];
+}
+
+export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos?: () => number) {
+    const eventName = getEventName(type);
+    const eventDetail = createDragEventDetail(type, details, getPos);
+
+    const customEvent = new CustomEvent(eventName, {
+        detail: eventDetail,
         bubbles: true,
         cancelable: true,
     });
 
     window.dispatchEvent(customEvent);
-    document.dispatchEvent(new CustomEvent(eventMap[type], { detail: customEvent.detail }));
+    document.dispatchEvent(new CustomEvent(eventName, { detail: customEvent.detail }));
 }
 
+// === ドラッグプレビュー計算 ===
+export function calculatePreviewDimensions(
+    rect: DOMRect,
+    maxSize: number = 140
+): { width: number; height: number } {
+    const previewWidth = Math.min(maxSize, rect.width || maxSize);
+    const previewHeight = rect.width > 0
+        ? Math.round((rect.height / rect.width) * previewWidth)
+        : previewWidth;
 
-// ドラッグプレビュー関連（統合版）
+    return { width: previewWidth, height: previewHeight };
+}
+
+export function createCanvasPreview(originalCanvas: HTMLCanvasElement): HTMLCanvasElement | null {
+    if (!originalCanvas) return null;
+
+    const newCanvas = document.createElement("canvas");
+    newCanvas.width = originalCanvas.width;
+    newCanvas.height = originalCanvas.height;
+
+    const ctx = newCanvas.getContext("2d");
+    if (ctx) {
+        ctx.drawImage(originalCanvas, 0, 0);
+    }
+
+    return newCanvas;
+}
+
+export function createImagePreview(originalImg: HTMLImageElement): HTMLImageElement | null {
+    if (!originalImg) return null;
+
+    const newImg = document.createElement("img");
+    newImg.src = originalImg.src;
+    newImg.alt = originalImg.alt || "";
+
+    return newImg;
+}
+
+export function applyPreviewStyles(
+    element: HTMLElement,
+    dimensions: { width: number; height: number },
+    position: { x: number; y: number }
+): void {
+    Object.assign(element.style, {
+        width: `${dimensions.width}px`,
+        height: `${dimensions.height}px`,
+        left: `${position.x - dimensions.width / 2}px`,
+        top: `${position.y - dimensions.height / 2}px`,
+        transformOrigin: "center center",
+        transition: "transform 120ms ease, opacity 120ms ease"
+    });
+}
+
 export function createDragPreview(
     element: HTMLElement,
     x: number,
@@ -257,44 +427,25 @@ export function createDragPreview(
     isPlaceholder: boolean = false
 ): HTMLElement | null {
     const rect = element.getBoundingClientRect();
-    const MAX_PREVIEW = 140;
-    const previewWidth = Math.min(MAX_PREVIEW, rect.width || MAX_PREVIEW);
-    const previewHeight = rect.width > 0
-        ? Math.round((rect.height / rect.width) * previewWidth)
-        : previewWidth;
+    const dimensions = calculatePreviewDimensions(rect);
 
     let previewEl: HTMLElement | null = null;
 
     if (isPlaceholder) {
         const origCanvas = element.querySelector("canvas") as HTMLCanvasElement | null;
-        if (!origCanvas) return null;
-
-        const newCanvas = document.createElement("canvas");
-        newCanvas.width = origCanvas.width;
-        newCanvas.height = origCanvas.height;
-        const ctx = newCanvas.getContext("2d");
-        if (ctx) ctx.drawImage(origCanvas, 0, 0);
-        previewEl = newCanvas;
+        if (origCanvas) {
+            previewEl = createCanvasPreview(origCanvas);
+        }
     } else {
         const origImg = element.querySelector("img") as HTMLImageElement | null;
-        if (!origImg) return null;
-
-        const newImg = document.createElement("img");
-        newImg.src = origImg.src;
-        newImg.alt = origImg.alt || "";
-        previewEl = newImg;
+        if (origImg) {
+            previewEl = createImagePreview(origImg);
+        }
     }
 
-    // 共通スタイル設定
-    Object.assign(previewEl.style, {
-        width: `${previewWidth}px`,
-        height: `${previewHeight}px`,
-        left: `${x - previewWidth / 2}px`,
-        top: `${y - previewHeight / 2}px`,
-        transformOrigin: "center center",
-        transition: "transform 120ms ease, opacity 120ms ease"
-    });
+    if (!previewEl) return null;
 
+    applyPreviewStyles(previewEl, dimensions, { x, y });
     previewEl.classList.add("drag-preview");
     document.body.appendChild(previewEl);
 
@@ -321,14 +472,26 @@ export function removeDragPreview(previewElement: HTMLElement | null): void {
     previewElement?.parentNode?.removeChild(previewElement);
 }
 
-export function highlightDropZoneAtPosition(x: number, y: number) {
+// === ドロップゾーン処理 ===
+export function findDropZoneAtPosition(x: number, y: number): Element | null {
+    const elementBelow = document.elementFromPoint(x, y);
+    return elementBelow?.closest(".drop-zone-indicator") || null;
+}
+
+export function clearAllDropZoneHighlights(): void {
     document.querySelectorAll(".drop-zone-indicator").forEach(zone => {
         zone.classList.remove("drop-zone-hover");
     });
+}
 
-    const elementBelow = document.elementFromPoint(x, y);
-    const dropZone = elementBelow?.closest(".drop-zone-indicator");
+export function highlightDropZone(dropZone: Element | null): void {
     dropZone?.classList.add("drop-zone-hover");
+}
+
+export function highlightDropZoneAtPosition(x: number, y: number) {
+    clearAllDropZoneHighlights();
+    const dropZone = findDropZoneAtPosition(x, y);
+    highlightDropZone(dropZone);
 }
 
 export function checkMoveThreshold(
@@ -343,25 +506,46 @@ export function checkMoveThreshold(
     return dx * dx + dy * dy > threshold * threshold;
 }
 
-// フォーカス・イベント処理ユーティリティ
+// === DOM操作の抽象化 ===
+export function getActiveElement(): HTMLElement | null {
+    return document.activeElement as HTMLElement | null;
+}
+
+export function isEditorElement(element: HTMLElement): boolean {
+    return element.classList?.contains?.("tiptap-editor") || !!element.closest?.(".tiptap-editor");
+}
+
+export function isFormControl(element: HTMLElement): boolean {
+    return ["INPUT", "TEXTAREA"].includes(element.tagName) || element.isContentEditable;
+}
+
+export function blurActiveElement(): void {
+    const active = getActiveElement();
+    if (active && (isEditorElement(active) || isFormControl(active))) {
+        active.blur?.();
+        (document.body as HTMLElement)?.focus?.();
+    }
+}
+
 export function blurEditorAndBody() {
     try {
-        const active = document.activeElement as HTMLElement | null;
-        if (active) {
-            const isEditor = active.classList?.contains?.("tiptap-editor") || active.closest?.(".tiptap-editor");
-            const isFormControl = ["INPUT", "TEXTAREA"].includes(active.tagName) || active.isContentEditable;
-
-            if (isEditor || isFormControl) {
-                active.blur?.();
-                (document.body as HTMLElement)?.focus?.();
-            }
-        }
+        blurActiveElement();
     } catch (e) {
         /* noop */
     }
 }
 
-
+// === 画像インタラクション ===
+export function shouldPreventInteraction(
+    isDragging: boolean,
+    isPlaceholder: boolean,
+    justSelected: boolean,
+    isTouch: boolean
+): boolean {
+    if (isDragging || isPlaceholder) return true;
+    if (justSelected && !isTouch) return true;
+    return false;
+}
 
 export function handleImageInteraction(
     event: MouseEvent | TouchEvent,
@@ -374,14 +558,8 @@ export function handleImageInteraction(
     imageAlt: string,
     getPos: () => number
 ): boolean {
-    if (isDragging || isPlaceholder) {
+    if (shouldPreventInteraction(isDragging, isPlaceholder, justSelected, isTouch)) {
         event.preventDefault();
-        return false;
-    }
-
-    if (justSelected && !isTouch) {
-        event.preventDefault();
-        event.stopPropagation();
         return false;
     }
 
@@ -399,28 +577,7 @@ export function handleImageInteraction(
     return true;
 }
 
-// blurhash描画ユーティリティ
-try {
-    const active = document.activeElement as HTMLElement | null;
-    if (active) {
-        const isEditor =
-            active.classList?.contains?.("tiptap-editor") ||
-            active.closest?.(".tiptap-editor");
-        const isFormControl =
-            ["INPUT", "TEXTAREA"].includes(active.tagName) ||
-            active.isContentEditable;
-        if (isEditor || isFormControl) {
-            active.blur?.();
-            (document.body as HTMLElement)?.focus?.();
-        }
-    }
-} catch (e) {
-    /* noop */
-}
-
-/**
- * 画像の全画面表示リクエストを発火
- */
+// === カスタムイベント発火 ===
 export function requestFullscreenImage(src: string, alt: string = "Image") {
     blurEditorAndBody();
     const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
@@ -431,9 +588,6 @@ export function requestFullscreenImage(src: string, alt: string = "Image") {
     window.dispatchEvent(fullscreenEvent);
 }
 
-/**
- * 画像ノードの選択リクエストを発火
- */
 export function requestNodeSelection(getPos: () => number) {
     const pos = getPos();
     window.dispatchEvent(
@@ -441,18 +595,34 @@ export function requestNodeSelection(getPos: () => number) {
     );
 }
 
-/**
- * ドラッグ状態を解除する共通関数
- */
+// === エディター状態管理 ===
 export function setDraggingFalse(viewOrEditorView: any) {
     viewOrEditorView.dispatch(
         viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
     );
 }
 
-/**
- * blurhashをcanvasに描画する共通関数
- */
+// === Blurhash描画 ===
+export interface BlurhashRenderer {
+    renderBlurhashToCanvas(blurhash: string, canvas: HTMLCanvasElement, width: number, height: number): void;
+}
+
+export function validateBlurhashParams(
+    blurhash: string,
+    canvasRef: HTMLCanvasElement,
+    dimensions: { displayWidth: number; displayHeight: number }
+): boolean {
+    return !!(blurhash && canvasRef && dimensions.displayWidth > 0 && dimensions.displayHeight > 0);
+}
+
+export function setupCanvas(
+    canvasRef: HTMLCanvasElement,
+    dimensions: { displayWidth: number; displayHeight: number }
+): void {
+    canvasRef.width = dimensions.displayWidth;
+    canvasRef.height = dimensions.displayHeight;
+}
+
 export function renderBlurhash(
     blurhash: string,
     canvasRef: HTMLCanvasElement,
@@ -460,28 +630,31 @@ export function renderBlurhash(
     isPlaceholder: boolean,
     devMode: boolean = false
 ) {
-    if (!blurhash || !canvasRef) {
+    if (!validateBlurhashParams(blurhash, canvasRef, dimensions)) {
         if (devMode) {
-            console.log(
-                "[blurhash] renderBlurhash: blurhash or canvasRef missing",
-                { blurhash, canvasRef: !!canvasRef, isPlaceholder }
-            );
+            console.log("[blurhash] renderBlurhash: invalid parameters", {
+                blurhash: !!blurhash,
+                canvasRef: !!canvasRef,
+                dimensions,
+                isPlaceholder
+            });
         }
         return;
     }
-    const width = dimensions.displayWidth;
-    const height = dimensions.displayHeight;
-    canvasRef.width = width;
-    canvasRef.height = height;
+
+    setupCanvas(canvasRef, dimensions);
+
     if (devMode) {
         console.log("[blurhash] renderBlurhash: rendering", {
-            blurhash, width, height, isPlaceholder
+            blurhash,
+            width: dimensions.displayWidth,
+            height: dimensions.displayHeight,
+            isPlaceholder
         });
     }
-    // 必要に応じて import { renderBlurhashToCanvas } from "../tags/imetaTag";
-    // ここで呼び出し
+
     // @ts-ignore
     import("../tags/imetaTag").then(({ renderBlurhashToCanvas }) => {
-        renderBlurhashToCanvas(blurhash, canvasRef, width, height);
+        renderBlurhashToCanvas(blurhash, canvasRef, dimensions.displayWidth, dimensions.displayHeight);
     });
 }
