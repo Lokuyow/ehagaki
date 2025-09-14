@@ -1,11 +1,25 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// ここを修正
-vi.mock("./tags/tags.svelte", () => {
+// テスト環境用のモックストア
+vi.mock("./tags/tagsStore.svelte", () => {
     return {
-        imageSizeMapStore: {
-            update: vi.fn(),
+        hashtagDataStore: {
+            content: '',
+            hashtags: [],
+            tags: []
         },
+        imageImetaMapStore: {
+            get value() { return {}; },
+            set: vi.fn(),
+            update: vi.fn(),
+            subscribe: vi.fn(() => () => {})
+        },
+        imageSizeMapStore: {
+            get value() { return {}; },
+            set: vi.fn(),
+            update: vi.fn(),
+            subscribe: vi.fn(() => () => {})
+        }
     };
 });
 

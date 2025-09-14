@@ -1,25 +1,20 @@
 // tags専用のSvelteランストア
 
-// テスト環境かどうかを判定
-const isTestEnv = (
-    typeof globalThis !== 'undefined' &&
-    (globalThis as any).process?.env?.NODE_ENV === 'test'
-) || (typeof window !== 'undefined' && typeof (window as any).vitest !== 'undefined');
+// --- ハッシュタグデータストア ---
+interface HashtagData {
+    content: string;
+    hashtags: string[];
+    tags: [string, string][];
+}
 
-// Svelte環境では$stateを使用、テスト環境では通常のオブジェクトを使用
-const testHashtagDataStore = {
-    content: '',
-    hashtags: [] as string[],
-    tags: [] as [string, string][]
-};
-
-const svelteHashtagDataStore = $state<{ content: string; hashtags: string[]; tags: [string, string][] }>({
+// Svelte 5のrunesを使用（常に$stateを使用）
+const svelteHashtagDataStore = $state<HashtagData>({
     content: '',
     hashtags: [],
     tags: []
 });
 
-export const hashtagDataStore = isTestEnv ? testHashtagDataStore : svelteHashtagDataStore;
+export const hashtagDataStore = svelteHashtagDataStore;
 
 // --- imeta情報の一時保存ストア ---
 export interface ImageImetaMap {
@@ -43,45 +38,51 @@ export interface ImageSizeMap {
     };
 }
 
-const testImageImetaMap: ImageImetaMap = {};
-const testImageSizeMap: ImageSizeMap = {};
-
+// Svelte 5のrunesを使用
 const svelteImageImetaMap = $state<ImageImetaMap>({});
 const svelteImageSizeMap = $state<ImageSizeMap>({});
 
-let imageImetaMap = isTestEnv ? testImageImetaMap : svelteImageImetaMap;
-let imageSizeMap = isTestEnv ? testImageSizeMap : svelteImageSizeMap;
+// テスト環境判定（必要に応じて修正してください）
+const isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
 
 export const imageImetaMapStore = {
-    get value() { return imageImetaMap; },
-    set: (value: ImageImetaMap) => { imageImetaMap = value; },
-    update: (updater: (value: ImageImetaMap) => ImageImetaMap) => { imageImetaMap = updater(imageImetaMap); },
+    get value() { return svelteImageImetaMap; },
+    set: (value: ImageImetaMap) => { Object.assign(svelteImageImetaMap, value); },
+    update: (updater: (value: ImageImetaMap) => ImageImetaMap) => {
+        const newValue = updater(svelteImageImetaMap);
+        Object.assign(svelteImageImetaMap, newValue);
+    },
     subscribe: isTestEnv
         ? (callback: (value: ImageImetaMap) => void) => {
             // テスト環境では即座にコールバックを実行
-            callback(imageImetaMap);
+            callback(svelteImageImetaMap);
             return () => { }; // cleanup function
         }
         : (callback: (value: ImageImetaMap) => void) => {
             $effect(() => {
-                callback(imageImetaMap);
+                callback(svelteImageImetaMap);
             });
+            return () => { }; // cleanup function
         }
 };
 
 export const imageSizeMapStore = {
-    get value() { return imageSizeMap; },
-    set: (value: ImageSizeMap) => { imageSizeMap = value; },
-    update: (updater: (value: ImageSizeMap) => ImageSizeMap) => { imageSizeMap = updater(imageSizeMap); },
+    get value() { return svelteImageSizeMap; },
+    set: (value: ImageSizeMap) => { Object.assign(svelteImageSizeMap, value); },
+    update: (updater: (value: ImageSizeMap) => ImageSizeMap) => {
+        const newValue = updater(svelteImageSizeMap);
+        Object.assign(svelteImageSizeMap, newValue);
+    },
     subscribe: isTestEnv
         ? (callback: (value: ImageSizeMap) => void) => {
             // テスト環境では即座にコールバックを実行
-            callback(imageSizeMap);
+            callback(svelteImageSizeMap);
             return () => { }; // cleanup function
         }
         : (callback: (value: ImageSizeMap) => void) => {
             $effect(() => {
-                callback(imageSizeMap);
+                callback(svelteImageSizeMap);
             });
+            return () => { }; // cleanup function
         }
 };
