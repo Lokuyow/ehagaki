@@ -524,8 +524,6 @@
         {#if showBlurhash}
             <canvas
                 bind:this={localCanvasRef}
-                width={canvasWidth()}
-                height={canvasHeight()}
                 class="blurhash-canvas"
                 class:is-placeholder={isPlaceholder}
                 class:fade-out={imageLoadState.isImageLoaded &&
@@ -543,9 +541,7 @@
                 onload={handleImageLoad}
                 onerror={handleImageError}
                 oncontextmenu={handleContextMenu}
-                style="z-index:2; position:relative; {imageDimensions
-                    ? `width: ${imageDimensions.displayWidth}px; height: ${imageDimensions.displayHeight}px;`
-                    : ''}"
+                style="z-index:2; position:relative;"
             />
         {/if}
     </button>
