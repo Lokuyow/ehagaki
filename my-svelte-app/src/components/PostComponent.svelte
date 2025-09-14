@@ -40,7 +40,7 @@
     touchAction,
     keydownAction,
   } from "../lib/editor/editorDomActions";
-  import { getPlaceholderDefaultSize } from "../lib/imageUtils";
+  import { getPlaceholderDefaultSize } from "../lib/utils/imageUtils";
 
   // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {

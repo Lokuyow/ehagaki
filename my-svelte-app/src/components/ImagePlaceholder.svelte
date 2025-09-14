@@ -5,7 +5,7 @@
     import {
         getPlaceholderDefaultSize,
         type ImageDimensions,
-    } from "../lib/imageUtils";
+    } from "../lib/utils/imageUtils";
 
     interface Props {
         blurhash?: string;

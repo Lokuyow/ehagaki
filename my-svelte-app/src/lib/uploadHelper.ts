@@ -4,7 +4,7 @@ import { tick } from "svelte";
 import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { imageSizeMapStore } from "./tags/tagsStore.svelte";
-import type { ImageDimensions } from "./imageUtils";
+import type { ImageDimensions } from "./utils/imageUtils";
 
 export async function uploadHelper({
     files,

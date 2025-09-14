@@ -19,7 +19,7 @@ import { getToken } from "nostr-tools/nip98";
 import { debugLogUploadResponse } from "./debug";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { showCompressedImagePreview } from "./debug";
-import { calculateImageDisplaySize, type ImageDimensions } from "./imageUtils";
+import { calculateImageDisplaySize, type ImageDimensions } from "./utils/imageUtils";
 
 // --- 画像のSHA-256ハッシュ計算 ---
 async function calculateSHA256Hex(file: File): Promise<string> {

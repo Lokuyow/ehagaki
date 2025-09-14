@@ -1,5 +1,5 @@
 import type { RxNostr } from "rx-nostr";
-import type { ImageDimensions } from './imageUtils';
+import type { ImageDimensions } from './utils/imageUtils';
 
 export interface PostStatus {
     sending: boolean;
