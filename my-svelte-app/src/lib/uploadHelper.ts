@@ -98,18 +98,21 @@ export function insertPlaceholdersIntoEditor(
             }
 
             try {
-                // 修正: 適切な挿入ポジションを計算し、不要な改行を避ける
+                // 修正: フォーカスを奪わずに画像を挿入
                 const { state } = currentEditor;
                 const docIsEmpty = state.doc.content.size <= 2; // 空のparagraphは2文字
 
                 if (index === 0) {
                     // 最初の画像：現在の位置またはエディターの末尾に画像を挿入
                     if (docIsEmpty) {
-                        // 空のドキュメントの場合、直接画像を設定
-                        currentEditor.chain().focus().setImage(imageAttrs).run();
+                        // 空のドキュメントの場合、フォーカスを奪わずに画像を設定
+                        const tr = state.tr.replaceWith(0, state.doc.content.size, state.schema.nodes.image.create(imageAttrs));
+                        currentEditor.view.dispatch(tr);
                     } else {
-                        // テキストがある場合、カーソル位置に画像を挿入
-                        currentEditor.chain().focus().setImage(imageAttrs).run();
+                        // テキストがある場合、カーソル位置にフォーカスを奪わずに画像を挿入
+                        const pos = state.selection.from;
+                        const tr = state.tr.insert(pos, state.schema.nodes.image.create(imageAttrs));
+                        currentEditor.view.dispatch(tr);
                     }
                 } else {
                     // 2番目以降の画像：前の画像の直後に挿入（改行なし）
@@ -167,7 +170,7 @@ export function insertPlaceholdersIntoEditor(
     return placeholderMap;
 }
 
-// 純粋関数: Blurhash生成
+// 純粹関数: Blurhash生成
 export async function generateBlurhashesForPlaceholders(
     placeholderMap: PlaceholderEntry[],
     currentEditor: TipTapEditor | null,

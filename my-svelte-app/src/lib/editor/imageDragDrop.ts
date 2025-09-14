@@ -311,6 +311,7 @@ export const ImageDragDropExtension = Extension.create({
         return {
             moveImageNode: (view: any, nodeData: any, dropPos: number) => {
                 setDraggingFalse(view);
+                // フォーカスを奪わずに画像ノードを移動
                 return moveImageNode(view, nodeData, dropPos);
             }
         };

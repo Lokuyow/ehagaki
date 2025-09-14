@@ -506,6 +506,16 @@ export function checkMoveThreshold(
     return dx * dx + dy * dy > threshold * threshold;
 }
 
+// === デバイス判定（純粋関数） ===
+export function isTouchDevice(): boolean {
+    return (
+        typeof window !== "undefined" &&
+        ("ontouchstart" in window ||
+            (navigator && navigator.maxTouchPoints > 0) ||
+            (navigator && !!navigator.userAgent.match(/Android|iPhone|iPad|iPod|Mobile/i)))
+    );
+}
+
 // === DOM操作の抽象化 ===
 export function getActiveElement(): HTMLElement | null {
     return document.activeElement as HTMLElement | null;
@@ -530,141 +540,139 @@ export function blurActiveElement(): void {
 export function blurEditorAndBody() {
     try {
         blurActiveElement();
+        // タッチデバイスでのキーボード非表示を強化
+        if (isTouchDevice()) {
+            // エディター要素を明示的にblur
+            const editorElement = document.querySelector('.tiptap-editor') as HTMLElement;
+            if (editorElement) {
+                editorElement.blur?.();
+            }
+        }
     } catch (e) {
-        /* noop */
+        // ignore
     }
-}
-
-// === デバイス判定（純粋関数） ===
-export function isTouchDevice(): boolean {
-    return (
-        typeof window !== "undefined" &&
-        ("ontouchstart" in window ||
-            (navigator && navigator.maxTouchPoints > 0) ||
-            (navigator && !!navigator.userAgent.match(/Android|iPhone|iPad|iPod|Mobile/i)))
-    );
 }
 
 // === 画像インタラクション ===
 export function shouldPreventInteraction(
-    isDragging: boolean,
-    isPlaceholder: boolean,
-    justSelected: boolean,
-    isTouch: boolean
-): boolean {
-    if (isDragging || isPlaceholder) return true;
-    if (justSelected && !isTouch) return true;
-    return false;
-}
+                isDragging: boolean,
+                isPlaceholder: boolean,
+                justSelected: boolean,
+                isTouch: boolean
+            ): boolean {
+                    if (isDragging || isPlaceholder) return true;
+                    if (justSelected && !isTouch) return true;
+                    return false;
+                }
 
-export function handleImageInteraction(
-    event: MouseEvent | TouchEvent,
-    isTouch: boolean,
-    isDragging: boolean,
-    isPlaceholder: boolean,
-    selected: boolean,
-    justSelected: boolean,
-    imageSrc: string,
-    imageAlt: string,
-    getPos: () => number
-): boolean {
-    if (shouldPreventInteraction(isDragging, isPlaceholder, justSelected, isTouch)) {
-        event.preventDefault();
-        return false;
-    }
+            export function handleImageInteraction(
+                event: MouseEvent | TouchEvent,
+                isTouch: boolean,
+                isDragging: boolean,
+                isPlaceholder: boolean,
+                selected: boolean,
+                justSelected: boolean,
+                imageSrc: string,
+                imageAlt: string,
+                getPos: () => number
+            ): boolean {
+                if (shouldPreventInteraction(isDragging, isPlaceholder, justSelected, isTouch)) {
+                    event.preventDefault();
+                    return false;
+                }
 
-    if (selected) {
-        requestFullscreenImage(imageSrc, imageAlt);
-    } else {
-        requestNodeSelection(getPos);
-    }
+                if (selected) {
+                    requestFullscreenImage(imageSrc, imageAlt);
+                } else {
+                    requestNodeSelection(getPos);
+                }
 
-    event.preventDefault();
-    if (!isTouch) {
-        event.stopPropagation();
-    }
+                event.preventDefault();
+                if (!isTouch) {
+                    event.stopPropagation();
+                }
 
-    return true;
-}
+                return true;
+            }
 
-// === カスタムイベント発火 ===
-export function requestFullscreenImage(src: string, alt: string = "Image") {
-    blurEditorAndBody();
-    const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
-        detail: { src, alt },
-        bubbles: true,
-        cancelable: true,
-    });
-    window.dispatchEvent(fullscreenEvent);
-}
+            // === カスタムイベント発火 ===
+            export function requestFullscreenImage(src: string, alt: string = "Image") {
+                blurEditorAndBody();
+                const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
+                    detail: { src, alt },
+                    bubbles: true,
+                    cancelable: true,
+                });
+                window.dispatchEvent(fullscreenEvent);
+            }
 
-export function requestNodeSelection(getPos: () => number) {
-    const pos = getPos();
-    window.dispatchEvent(
-        new CustomEvent("select-image-node", { detail: { pos } }),
-    );
-}
+            export function requestNodeSelection(getPos: () => number) {
+                const pos = getPos();
+                window.dispatchEvent(
+                    new CustomEvent("select-image-node", { detail: { pos } }),
+                );
+            }
 
-// === エディター状態管理 ===
-export function setDraggingFalse(viewOrEditorView: any) {
-    viewOrEditorView.dispatch(
-        viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
-    );
-}
+            // === エディター状態管理 ===
+            export function setDraggingFalse(viewOrEditorView: any) {
+                viewOrEditorView.dispatch(
+                    viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
+                );
+            }
 
-// === Blurhash描画 ===
-export interface BlurhashRenderer {
-    renderBlurhashToCanvas(blurhash: string, canvas: HTMLCanvasElement, width: number, height: number): void;
-}
+            // === Blurhash描画 ===
+            export interface BlurhashRenderer {
+                renderBlurhashToCanvas(blurhash: string, canvas: HTMLCanvasElement, width: number, height: number): void;
+            }
 
-export function validateBlurhashParams(
-    blurhash: string,
-    canvasRef: HTMLCanvasElement,
-    dimensions: { displayWidth: number; displayHeight: number }
-): boolean {
-    return !!(blurhash && canvasRef && dimensions.displayWidth > 0 && dimensions.displayHeight > 0);
-}
+            export function validateBlurhashParams(
+                blurhash: string,
+                canvasRef: HTMLCanvasElement,
+                dimensions: { displayWidth: number; displayHeight: number }
+            ): boolean {
+                return !!(blurhash && canvasRef && dimensions.displayWidth > 0 && dimensions.displayHeight > 0);
+            }
 
-export function setupCanvas(
-    canvasRef: HTMLCanvasElement,
-    dimensions: { displayWidth: number; displayHeight: number }
-): void {
-    canvasRef.width = dimensions.displayWidth;
-    canvasRef.height = dimensions.displayHeight;
-}
+            export function setupCanvas(
+                canvasRef: HTMLCanvasElement,
+                dimensions: { displayWidth: number; displayHeight: number }
+            ): void {
+                canvasRef.width = dimensions.displayWidth;
+                canvasRef.height = dimensions.displayHeight;
+            }
 
-export function renderBlurhash(
-    blurhash: string,
-    canvasRef: HTMLCanvasElement,
-    dimensions: { displayWidth: number; displayHeight: number },
-    isPlaceholder: boolean,
-    devMode: boolean = false
-) {
-    if (!validateBlurhashParams(blurhash, canvasRef, dimensions)) {
-        if (devMode) {
-            console.log("[blurhash] renderBlurhash: invalid parameters", {
-                blurhash: !!blurhash,
-                canvasRef: !!canvasRef,
-                dimensions,
-                isPlaceholder
-            });
-        }
-        return;
-    }
+            export function renderBlurhash(
+                blurhash: string,
+                canvasRef: HTMLCanvasElement,
+                dimensions: { displayWidth: number; displayHeight: number },
+                isPlaceholder: boolean,
+                devMode: boolean = false
+            ) {
+                if (!validateBlurhashParams(blurhash, canvasRef, dimensions)) {
+                    if (devMode) {
+                        console.log("[blurhash] renderBlurhash: invalid parameters", {
+                            blurhash: !!blurhash,
+                            canvasRef: !!canvasRef,
+                            dimensions,
+                            isPlaceholder
+                        });
+                    }
+                    return;
+                }
 
-    setupCanvas(canvasRef, dimensions);
+                setupCanvas(canvasRef, dimensions);
 
-    if (devMode) {
-        console.log("[blurhash] renderBlurhash: rendering", {
-            blurhash,
-            width: dimensions.displayWidth,
-            height: dimensions.displayHeight,
-            isPlaceholder
-        });
-    }
+                if (devMode) {
+                    console.log("[blurhash] renderBlurhash: rendering", {
+                        blurhash,
+                        width: dimensions.displayWidth,
+                        height: dimensions.displayHeight,
+                        isPlaceholder
+                    });
+                }
 
-    // @ts-ignore
-    import("../tags/imetaTag").then(({ renderBlurhashToCanvas }) => {
-        renderBlurhashToCanvas(blurhash, canvasRef, dimensions.displayWidth, dimensions.displayHeight);
-    });
-}
+                // @ts-ignore
+                import("../tags/imetaTag").then(({ renderBlurhashToCanvas }) => {
+                    renderBlurhashToCanvas(blurhash, canvasRef, dimensions.displayWidth, dimensions.displayHeight);
+                });
+            }

@@ -224,6 +224,11 @@
     function handleTouchStartActive(event: TouchEvent) {
         if (event.touches.length !== 1) return;
 
+        // タッチ開始時にキーボードを隠す
+        import("../lib/utils/editorUtils").then(({ blurEditorAndBody }) => {
+            blurEditorAndBody();
+        });
+
         const touch = event.touches[0];
         startLongPress(
             event.currentTarget as HTMLElement,
@@ -273,7 +278,7 @@
         if (dragState.longPressTimeout) {
             clearLongPress();
             if (!dragState.isDragging) {
-                // 通常のタップ処理
+                // 通常のタップ処理（キーボードは既にblurEditorAndBodyで隠されている）
                 handleInteraction(event, true);
                 return;
             }

@@ -99,6 +99,17 @@ export function createEditorStore(placeholderText: string) {
                 let target = event.target as HTMLElement | null;
                 while (target && target !== view.dom) {
                     if (target.tagName === 'A' && target.hasAttribute('href')) {
+                        // タッチデバイスでのリンククリック時にキーボードを隠す
+                        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+                        if (isTouchDevice) {
+                            // エディターからフォーカスを外してキーボードを隠す
+                            const editorElement = view.dom as HTMLElement;
+                            if (editorElement) {
+                                editorElement.blur();
+                            }
+                            document.body.focus();
+                        }
+
                         // Ctrl（またはCmd）+クリック時のみ遷移許可
                         if (event.ctrlKey || event.metaKey) {
                             // 通常遷移

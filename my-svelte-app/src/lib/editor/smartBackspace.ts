@@ -11,6 +11,13 @@ export const SmartBackspaceExtension = Extension.create({
                     handleKeyDown(view, event) {
                         // Backspaceキーのみ
                         if (event.key !== 'Backspace') return false;
+                        
+                        // タッチデバイスでフォーカスが外れている場合は処理をスキップ
+                        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+                        if (isTouchDevice && document.activeElement !== view.dom) {
+                            return false;
+                        }
+
                         const { state } = view;
                         const { selection, doc } = state;
                         // キャレットが先頭かつパラグラフの先頭

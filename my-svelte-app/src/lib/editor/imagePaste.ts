@@ -110,7 +110,7 @@ export const ImagePasteExtension = Extension.create({
                             const emptyParagraphRange = getCurrentEmptyParagraphRange(state);
 
                             if (emptyParagraphRange && imageNodes.length > 0) {
-                                // 空のパラグラフを最初の画像で置換
+                                // 空のパラグラフを最初の画像で置換（フォーカスを維持）
                                 transaction = transaction.replaceWith(
                                     emptyParagraphRange.start,
                                     emptyParagraphRange.end,
@@ -124,17 +124,12 @@ export const ImagePasteExtension = Extension.create({
                                     insertPos += imageNodes[i].nodeSize;
                                 }
                             } else {
-                                // 通常の挿入処理
+                                // 通常の挿入処理（フォーカスを維持）
                                 let insertPos = selection.from;
 
                                 imageNodes.forEach((imageNode, idx) => {
-                                    if (idx === 0) {
-                                        transaction = transaction.insert(insertPos, imageNode);
-                                        insertPos += imageNode.nodeSize;
-                                    } else {
-                                        transaction = transaction.insert(insertPos, imageNode);
-                                        insertPos += imageNode.nodeSize;
-                                    }
+                                    transaction = transaction.insert(insertPos, imageNode);
+                                    insertPos += imageNode.nodeSize;
                                 });
                             }
 
@@ -164,7 +159,7 @@ export const ImagePasteExtension = Extension.create({
                                 // 入力されたテキストを削除
                                 transaction = transaction.delete(from, to);
 
-                                // 画像ノードを挿入
+                                // 画像ノードを挿入（フォーカスを維持）
                                 let insertPos = from;
                                 imageNodes.forEach((imageNode) => {
                                     transaction = transaction.insert(insertPos, imageNode);

@@ -90,7 +90,7 @@ describe("uploadHelper", () => {
 
     beforeEach(() => {
         mockDependencies = createMockDependencies();
-        // エディタモックを改良 - descendants メソッドを追加
+        // エディタモック - 必要なメソッドをすべて追加
         currentEditor = {
             chain: vi.fn(() => ({
                 focus: vi.fn(() => ({
@@ -117,13 +117,17 @@ describe("uploadHelper", () => {
                 tr: {
                     setNodeMarkup: vi.fn(() => ({ type: "setNodeMarkup" })),
                     delete: vi.fn(() => ({ type: "delete" })),
-                    insert: vi.fn(() => ({ type: "insert" }))
+                    insert: vi.fn(() => ({ type: "insert" })),
+                    replaceWith: vi.fn(() => ({ type: "replaceWith" }))
                 },
-                selection: { empty: true },
+                selection: { 
+                    empty: true,
+                    from: 1
+                },
                 schema: {
                     nodes: {
                         image: {
-                            create: vi.fn((attrs) => ({ type: "image", attrs }))
+                            create: vi.fn((attrs) => ({ type: "image", attrs, nodeSize: 1 }))
                         }
                     }
                 }
@@ -179,8 +183,8 @@ describe("uploadHelper", () => {
             expect(placeholderMap[0].dimensions).toEqual({ width: 100, height: 200, displayWidth: 100, displayHeight: 200 });
             expect(showUploadError).not.toHaveBeenCalled();
 
-            // エディタのチェーンメソッドが呼ばれたことを確認
-            expect(currentEditor.chain).toHaveBeenCalled();
+            // フォーカス関連のチェックを削除し、直接的なview.dispatchの呼び出しを確認
+            expect(currentEditor.view.dispatch).toHaveBeenCalled();
         });
 
         it("shows error for invalid files", () => {
@@ -453,29 +457,22 @@ describe("uploadHelper", () => {
             ];
             const showUploadError = vi.fn();
 
-            // エディタモックを動的に更新するように改善 - descendantsメソッドを含める
+            // エディタモックを動的に更新するように改善 - 必要なメソッドをすべて追加
             const mockCurrentEditor: any = {
-                chain: vi.fn(() => ({
-                    focus: vi.fn(() => ({
-                        setImage: vi.fn((attrs: any) => ({
-                            run: vi.fn(() => {
-                                // docサイズを更新してsubsequent挿入をシミュレート
-                                mockCurrentEditor.state.doc.content.size += 10;
-                                return true;
-                            })
-                        }))
-                    }))
-                })),
                 state: {
                     doc: {
                         content: { size: 2 }, // 空のparagraph
                         descendants: vi.fn((callback) => {
-                            // descendants関数のモック実装 - 2番目のファイル用に適切な戻り値を設定
+                            // descendants関数のモック実装
                             return;
                         }),
                     },
                     tr: {
-                        insert: vi.fn((pos, node) => ({ type: "insert", pos, node }))
+                        insert: vi.fn((pos, node) => ({ type: "insert", pos, node })),
+                        replaceWith: vi.fn((start, end, node) => ({ type: "replaceWith", start, end, node }))
+                    },
+                    selection: {
+                        from: 1
                     },
                     schema: {
                         nodes: {
@@ -493,7 +490,7 @@ describe("uploadHelper", () => {
             const placeholderMap = insertPlaceholdersIntoEditor(
                 [file1, file2],
                 processingResults,
-                mockCurrentEditor as any, // 型エラー回避のためanyキャストを追加
+                mockCurrentEditor,
                 showUploadError,
                 mockDependencies,
                 true // devMode
@@ -506,11 +503,12 @@ describe("uploadHelper", () => {
             expect(showUploadError).not.toHaveBeenCalled();
 
             // 修正: 実装の実際の動作に合わせた検証
-            // - 最初のファイル: chain() + setImage() を使用
-            // - 2番目以降のファイル: view.dispatch() を直接使用
-            expect(mockCurrentEditor.chain).toHaveBeenCalledTimes(1); // 最初のファイルのみ
-            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(1); // 2番目のファイル用
-            expect(mockCurrentEditor.state.schema.nodes.image.create).toHaveBeenCalledTimes(1); // 2番目のファイル用
+            // - 最初のファイル（空ドキュメント）: tr.replaceWith を使用
+            // - 2番目のファイル: tr.insert を使用
+            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(2);
+            expect(mockCurrentEditor.state.tr.replaceWith).toHaveBeenCalledTimes(1); // 最初のファイル用
+            expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(1); // 2番目のファイル用
+            expect(mockCurrentEditor.state.schema.nodes.image.create).toHaveBeenCalledTimes(2); // 両方のファイル用
         });
     });
 });
