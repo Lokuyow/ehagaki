@@ -1,22 +1,5 @@
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
-
-// 型定義
-interface NodeData {
-    type: string;
-    attrs?: any;
-    content?: any[];
-}
-
-interface DragEvent {
-    type: "start" | "move" | "end";
-    details?: any;
-    getPos?: () => number;
-}
-
-interface CleanUrlResult {
-    cleanUrl: string;
-    actualLength: number;
-}
+import type { NodeData, DragEvent, CleanUrlResult } from "../types";
 
 // URL検証/正規化関数（統合版）
 export function validateAndNormalizeUrl(url: string): string | null {

@@ -154,3 +154,21 @@ export interface UploadEndpoint {
     label: string;
     url: string;
 }
+
+// --- editorUtils.ts から移動 ---
+export interface NodeData {
+    type: string;
+    attrs?: any;
+    content?: any[];
+}
+
+export interface DragEvent {
+    type: "start" | "move" | "end";
+    details?: any;
+    getPos?: () => number;
+}
+
+export interface CleanUrlResult {
+    cleanUrl: string;
+    actualLength: number;
+}
