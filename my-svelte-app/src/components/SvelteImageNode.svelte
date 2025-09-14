@@ -63,21 +63,6 @@
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
 
-    // canvasサイズを動的に計算
-    let canvasWidth = $derived(() => {
-        return (
-            imageDimensions?.displayWidth ||
-            getPlaceholderDefaultSize().displayWidth
-        );
-    });
-
-    let canvasHeight = $derived(() => {
-        return (
-            imageDimensions?.displayHeight ||
-            getPlaceholderDefaultSize().displayHeight
-        );
-    });
-
     const devMode = import.meta.env.MODE === "development";
 
     // 画像サイズを計算・取得
@@ -465,10 +450,6 @@
             );
         }
         if (node.attrs.blurhash && localCanvasRef) {
-            // canvasサイズを設定してからblurhashを描画
-            localCanvasRef.width = canvasWidth();
-            localCanvasRef.height = canvasHeight();
-
             renderBlurhashUtil(
                 node.attrs.blurhash,
                 localCanvasRef,
