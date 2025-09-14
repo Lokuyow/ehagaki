@@ -83,24 +83,21 @@ export function createNodeFromData(schema: any, nodeData: any): any {
 }
 
 /**
- * テキストをエディターに挿入（ノード構造を直接作成）
+ * ノードデータ配列をエディタに挿入する共通関数
  */
-export function insertTextAsNodes(editor: any, text: string) {
+function insertNodesToEditor(editor: any, nodeDataList: any[]) {
     if (!editor) return;
 
-    const nodeStructure = textToTiptapNodes(text);
     const { state, dispatch } = editor.view;
     const { tr, schema } = state;
-
     let transaction = tr;
+    let insertPos = state.selection.from;
     const docIsEmpty = isEditorDocEmpty(state);
 
     if (docIsEmpty) {
-        // 空のエディタの場合は全体を置き換え
-        const nodes = nodeStructure.content.map((nodeData: any) =>
+        const nodes = nodeDataList.map((nodeData: any) =>
             createNodeFromData(schema, nodeData)
         );
-
         if (nodes.length > 0) {
             const fragment = schema.nodes.doc.createAndFill({}, nodes);
             if (fragment) {
@@ -108,10 +105,7 @@ export function insertTextAsNodes(editor: any, text: string) {
             }
         }
     } else {
-        // 既存コンテンツがある場合は挿入位置に追加
-        let insertPos = state.selection.from;
-
-        nodeStructure.content.forEach((nodeData: any) => {
+        nodeDataList.forEach((nodeData: any) => {
             const node = createNodeFromData(schema, nodeData);
             if (node) {
                 transaction = transaction.insert(insertPos, node);
@@ -119,8 +113,16 @@ export function insertTextAsNodes(editor: any, text: string) {
             }
         });
     }
-
     dispatch(transaction);
+}
+
+/**
+ * テキストをエディターに挿入（ノード構造を直接作成）
+ */
+export function insertTextAsNodes(editor: any, text: string) {
+    if (!editor) return;
+    const nodeStructure = textToTiptapNodes(text);
+    insertNodesToEditor(editor, nodeStructure.content);
 }
 
 /**
@@ -130,40 +132,21 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
     if (!editor) return;
 
     const urlList = Array.isArray(urls) ? urls : urls.split('\n').map(s => s.trim()).filter(Boolean);
-
     if (urlList.length === 0) return;
 
     editor.chain().focus().run();
 
-    const { state, dispatch } = editor.view;
-    const { tr, schema } = state;
-    let transaction = tr;
+    // 画像ノードデータを生成
+    const imageNodes = urlList
+        .map((url: string) => {
+            const normalizedUrl = validateAndNormalizeImageUrl(url.trim());
+            return normalizedUrl
+                ? { type: 'image', attrs: { src: normalizedUrl, alt: 'Uploaded image' } }
+                : null;
+        })
+        .filter(Boolean);
 
-    let insertPos = state.selection.from;
-
-    // 共通化した空判定関数を利用
-    const docIsEmpty = isEditorDocEmpty(state);
-
-    urlList.forEach((url, index) => {
-        const trimmedUrl = (typeof url === 'string') ? url.trim() : '';
-        const normalizedUrl = validateAndNormalizeImageUrl(trimmedUrl);
-        if (normalizedUrl) {
-            const imageNode = schema.nodes.image.create({
-                src: normalizedUrl,
-                alt: 'Uploaded image'
-            });
-
-            if (index === 0 && docIsEmpty) {
-                transaction = transaction.replaceWith(0, state.doc.content.size, imageNode);
-                insertPos = imageNode.nodeSize;
-            } else {
-                transaction = transaction.insert(insertPos, imageNode);
-                insertPos += imageNode.nodeSize;
-            }
-        }
-    });
-
-    dispatch(transaction);
+    insertNodesToEditor(editor, imageNodes);
 }
 
 /**
@@ -433,11 +416,10 @@ export function handleImageInteraction(
     return true;
 }
 
-// エディタ周りに特化した URL 検証/正規化関数をここに移動
+// URL検証/正規化関数の重複を整理
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
 
 export function validateAndNormalizeUrl(url: string): string | null {
-    // 軽量な正規化 + プロトコルチェック
     try {
         const normalized = encodeURI(url.trim());
         const u = new URL(normalized);
@@ -449,7 +431,6 @@ export function validateAndNormalizeUrl(url: string): string | null {
 }
 
 export function validateAndNormalizeImageUrl(url: string): string | null {
-    // 画像向けに拡張子チェックを追加
     try {
         const normalized = encodeURI(url.trim());
         const u = new URL(normalized);
