@@ -43,39 +43,64 @@
     let compressionLevels = $derived(getCompressionLevels($_));
 
     let clientTagEnabled = $state(true);
-    // selectedCompressionはpropsから受け取る
-    $effect(() => {
-        if (selectedCompression !== undefined && selectedCompression !== "") {
-            _selectedCompression = selectedCompression;
-        }
-    });
     let _selectedCompression: string = $state(selectedCompression);
-
-    $effect(() => {
-        if (
-            onSelectedCompressionChange &&
-            _selectedCompression !== selectedCompression
-        ) {
-            onSelectedCompressionChange(_selectedCompression);
-        }
-    });
-
-    // selectedEndpointはpropsから受け取る
-    $effect(() => {
-        if (selectedEndpoint !== undefined && selectedEndpoint !== "") {
-            _selectedEndpoint = selectedEndpoint;
-        }
-    });
     let _selectedEndpoint: string = $state(selectedEndpoint);
 
-    $effect(() => {
-        if (
-            onSelectedEndpointChange &&
-            _selectedEndpoint !== selectedEndpoint
-        ) {
-            onSelectedEndpointChange(_selectedEndpoint);
-        }
-    });
+    // 汎用的な設定値同期関数
+    function createSettingSync<T>(
+        getter: () => T,
+        setter: ((value: T) => void) | undefined,
+        localValue: () => T,
+        setLocalValue: (value: T) => void,
+    ) {
+        $effect(() => {
+            const externalValue = getter();
+            if (externalValue !== undefined && externalValue !== "") {
+                setLocalValue(externalValue);
+            }
+        });
+
+        $effect(() => {
+            const local = localValue();
+            const external = getter();
+            if (setter && local !== external) {
+                setter(local);
+            }
+        });
+    }
+
+    // 汎用的なlocalStorage保存関数
+    function createLocalStorageSync(
+        key: string,
+        getValue: () => string | boolean,
+    ) {
+        $effect(() => {
+            const value = getValue();
+            if (value !== undefined && value !== "") {
+                localStorage.setItem(key, String(value));
+            }
+        });
+    }
+
+    // 設定値の同期処理
+    createSettingSync(
+        () => selectedCompression,
+        onSelectedCompressionChange,
+        () => _selectedCompression,
+        (value) => (_selectedCompression = value),
+    );
+
+    createSettingSync(
+        () => selectedEndpoint,
+        onSelectedEndpointChange,
+        () => _selectedEndpoint,
+        (value) => (_selectedEndpoint = value),
+    );
+
+    // localStorage保存処理
+    createLocalStorageSync("imageCompressionLevel", () => _selectedCompression);
+    createLocalStorageSync("uploadEndpoint", () => _selectedEndpoint);
+    createLocalStorageSync("clientTagEnabled", () => clientTagEnabled);
 
     // swVersion from store
     let swVersion: string | null = $state(null);
@@ -126,16 +151,20 @@
         }
     }
 
-    onMount(() => {
-        // アップロード先
+    // 設定の初期化処理をまとめる
+    function initializeSettings() {
         const storedLocale = localStorage.getItem("locale");
         const browserLocale = navigator.language;
         const effectiveLocale =
             storedLocale ||
             (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
-        // localStorageの値があればそれを優先
+
+        // アップロード先設定
         const savedEndpoint = localStorage.getItem("uploadEndpoint");
-        if (savedEndpoint && uploadEndpoints.some((ep) => ep.url === savedEndpoint)) {
+        if (
+            savedEndpoint &&
+            uploadEndpoints.some((ep) => ep.url === savedEndpoint)
+        ) {
             _selectedEndpoint = savedEndpoint;
         } else if (selectedEndpoint) {
             _selectedEndpoint = selectedEndpoint;
@@ -143,7 +172,7 @@
             _selectedEndpoint = getDefaultEndpoint(effectiveLocale);
         }
 
-        // client tag設定の初期化
+        // client tag設定
         const clientTagSetting = localStorage.getItem("clientTagEnabled");
         clientTagEnabled =
             clientTagSetting === null ? true : clientTagSetting === "true";
@@ -151,7 +180,7 @@
             localStorage.setItem("clientTagEnabled", "true");
         }
 
-        // 圧縮設定の初期化
+        // 圧縮設定
         const savedCompression = localStorage.getItem("imageCompressionLevel");
         if (savedCompression) {
             _selectedCompression = savedCompression;
@@ -160,7 +189,10 @@
         } else {
             _selectedCompression = "medium";
         }
+    }
 
+    onMount(() => {
+        initializeSettings();
         loadWriteRelays();
         fetchSwVersion();
     });
