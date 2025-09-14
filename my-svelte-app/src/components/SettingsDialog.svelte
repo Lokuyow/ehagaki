@@ -26,7 +26,7 @@
         loadWriteRelaysFromStorage,
         initializeSettingsValues,
         handleServiceWorkerRefresh,
-    } from "../lib/appUtils";
+    } from "../lib/utils/appUtils";
     import type { SettingsDialogProps } from "../lib/types";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";

@@ -37,7 +37,7 @@
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
   import { getDefaultEndpoint } from "./lib/constants";
-  import { getRandomHeaderBalloon } from "./lib/appUtils"; // 追加
+  import { getRandomHeaderBalloon } from "./lib/utils/appUtils"; // 追加
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");

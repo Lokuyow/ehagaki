@@ -8,7 +8,7 @@
     Props,
     UploadHelperResult,
   } from "../lib/types";
-  import { containsSecretKey } from "../lib/appUtils";
+  import { containsSecretKey } from "../lib/utils/appUtils";
   import { uploadHelper } from "../lib/uploadHelper";
   import type { Readable } from "svelte/store";
   import type { Editor as TipTapEditor } from "@tiptap/core";

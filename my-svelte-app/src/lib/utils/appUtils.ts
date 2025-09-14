@@ -1,7 +1,7 @@
 import { getPublicKey, nip19 } from "nostr-tools";
-import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "./types";
-import { BALLOON_MESSAGE_KEYS } from "./constants";
-import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from './constants';
+import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "../types";
+import { BALLOON_MESSAGE_KEYS } from "../constants";
+import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from '../constants';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)
