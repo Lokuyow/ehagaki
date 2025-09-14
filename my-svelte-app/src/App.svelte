@@ -32,7 +32,7 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
-  } from "./lib/appStores.svelte";
+  } from "./stores/appStores.svelte";
   import { updatePlaceholderText } from "./stores/editorStore.svelte";
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加

@@ -1,6 +1,6 @@
 import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
-import { setAuthInitialized, setNsecAuth } from './appStores.svelte';
+import { setAuthInitialized, setNsecAuth } from '../stores/appStores.svelte';
 import { debugLog } from './debug';
 import type { AuthResult } from './types'; // 型定義をtypes.tsからimport
 

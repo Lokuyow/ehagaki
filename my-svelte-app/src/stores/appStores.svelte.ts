@@ -1,4 +1,4 @@
-import type { SizeDisplayInfo } from './types';
+import type { SizeDisplayInfo } from '../lib/types';
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 
 // --- 型定義 ---
@@ -15,7 +15,7 @@ export interface AuthState {
 
 export interface SharedImageStoreState {
     file: File | null;
-    metadata?: import('./shareHandler').SharedImageMetadata;
+    metadata?: import('../lib/shareHandler').SharedImageMetadata;
     received: boolean;
 }
 

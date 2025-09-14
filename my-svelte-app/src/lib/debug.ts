@@ -188,7 +188,7 @@ declare global {
 
 // --- ここから修正: SW更新ボタン強制表示デバッグ機能 ---
 // 以前は「モーダル」だったが、現在は設定ボタンランプとSettingsDialog内の更新ボタン表示用
-import { swNeedRefresh } from "./appStores.svelte";
+import { swNeedRefresh } from "../stores/appStores.svelte";
 // --- SW更新ボタン強制表示デバッグ機能 ---
 // 必ずグローバルwindowに生やす（import後に実行）
 if (typeof window !== "undefined") {

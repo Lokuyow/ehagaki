@@ -1,4 +1,4 @@
-import { sharedImageStore } from './appStores.svelte';
+import { sharedImageStore } from '../stores/appStores.svelte';
 
 /**
  * 共有画像データ型

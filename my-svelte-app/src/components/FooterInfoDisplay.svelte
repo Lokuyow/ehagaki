@@ -1,6 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { imageSizeInfoStore } from "../lib/appStores.svelte";
+    import { imageSizeInfoStore } from "../stores/appStores.svelte";
     import type { UploadProgress } from "../lib/types";
     import { isDev, devLog, copyDevLogWithFallback } from "../lib/debug";
 
