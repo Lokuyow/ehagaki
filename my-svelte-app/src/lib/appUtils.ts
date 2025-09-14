@@ -4,7 +4,50 @@ import { BALLOON_MESSAGE_KEYS } from "./constants";
 import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from './constants';
 
 // =============================================================================
-// File Size Utilities
+// External Dependencies (Injectable for Testing)
+// =============================================================================
+
+export interface StorageAdapter {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+export interface NavigatorAdapter {
+  language: string;
+}
+
+export interface WindowAdapter {
+  location: {
+    reload(): void;
+  };
+}
+
+export interface TimeoutAdapter {
+  setTimeout(callback: () => void, delay: number): void;
+}
+
+// Default implementations
+export const defaultStorageAdapter: StorageAdapter = {
+  getItem: (key: string) => localStorage.getItem(key),
+  setItem: (key: string, value: string) => localStorage.setItem(key, value)
+};
+
+export const defaultNavigatorAdapter: NavigatorAdapter = {
+  language: navigator.language
+};
+
+export const defaultWindowAdapter: WindowAdapter = {
+  location: {
+    reload: () => window.location.reload()
+  }
+};
+
+export const defaultTimeoutAdapter: TimeoutAdapter = {
+  setTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay)
+};
+
+// =============================================================================
+// File Size Utilities (Pure Functions)
 // =============================================================================
 
 /**
@@ -91,7 +134,7 @@ export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string |
 }
 
 // =============================================================================
-// Nostr Key Utilities
+// Nostr Key Utilities (Pure Functions)
 // =============================================================================
 
 /**
@@ -153,7 +196,7 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
 }
 
 // =============================================================================
-// Math Utilities
+// Math Utilities (Pure Functions)
 // =============================================================================
 
 export function clamp(value: number, min: number, max: number): number {
@@ -204,8 +247,8 @@ export function clearBodyStyles(): void {
   setBodyStyle("-webkit-user-select", "");
 }
 
-export function focusEditor(selector: string, delay: number): void {
-  setTimeout(() => {
+export function focusEditor(selector: string, delay: number, timeoutAdapter: TimeoutAdapter = defaultTimeoutAdapter): void {
+  timeoutAdapter.setTimeout(() => {
     const editorElement = domUtils.querySelector(selector);
     if (editorElement) {
       domUtils.focusElement(editorElement);
@@ -252,7 +295,7 @@ export interface ZoomParams {
 }
 
 // =============================================================================
-// Coordinate and Zoom Utilities
+// Coordinate and Zoom Utilities (Pure Functions)
 // =============================================================================
 
 /**
@@ -398,7 +441,7 @@ export function calculatePinchZoom(
 }
 
 // =============================================================================
-// Balloon Message Utilities
+// Balloon Message Utilities (Pure Functions)
 // =============================================================================
 
 /**
@@ -414,18 +457,21 @@ export function getRandomHeaderBalloon(
 }
 
 // =============================================================================
-// Settings Utilities
+// Settings Utilities (Refactored for Testability)
 // =============================================================================
 
 /**
  * 書き込み先リレーリストを取得
  */
-export function loadWriteRelaysFromStorage(pubkeyHex: string): string[] {
+export function loadWriteRelaysFromStorage(
+  pubkeyHex: string,
+  storage: StorageAdapter = defaultStorageAdapter
+): string[] {
   if (!pubkeyHex) return [];
 
   const relayKey = `${STORAGE_KEYS.NOSTR_RELAYS}${pubkeyHex}`;
   try {
-    const relays = JSON.parse(localStorage.getItem(relayKey) ?? "null");
+    const relays = JSON.parse(storage.getItem(relayKey) ?? "null");
     if (Array.isArray(relays)) {
       return relays;
     } else if (relays && typeof relays === "object") {
@@ -448,16 +494,30 @@ export function loadWriteRelaysFromStorage(pubkeyHex: string): string[] {
 /**
  * 設定の初期化処理
  */
-export function initializeSettingsValues(selectedEndpoint?: string, selectedCompression?: string) {
-  const storedLocale = localStorage.getItem(STORAGE_KEYS.LOCALE);
-  const browserLocale = navigator.language;
+export function initializeSettingsValues(
+  options: {
+    selectedEndpoint?: string;
+    selectedCompression?: string;
+    storage?: StorageAdapter;
+    navigator?: NavigatorAdapter;
+  } = {}
+) {
+  const {
+    selectedEndpoint,
+    selectedCompression,
+    storage = defaultStorageAdapter,
+    navigator: nav = defaultNavigatorAdapter
+  } = options;
+
+  const storedLocale = storage.getItem(STORAGE_KEYS.LOCALE);
+  const browserLocale = nav.language;
   const effectiveLocale =
     storedLocale ||
     (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
 
   // アップロード先設定
   let endpoint = "";
-  const savedEndpoint = localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
+  const savedEndpoint = storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
   if (
     savedEndpoint &&
     uploadEndpoints.some((ep) => ep.url === savedEndpoint)
@@ -470,16 +530,16 @@ export function initializeSettingsValues(selectedEndpoint?: string, selectedComp
   }
 
   // client tag設定
-  const clientTagSetting = localStorage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
+  const clientTagSetting = storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
   const clientTagEnabled =
     clientTagSetting === null ? true : clientTagSetting === "true";
   if (clientTagSetting === null) {
-    localStorage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, "true");
+    storage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, "true");
   }
 
   // 圧縮設定
   let compression = "";
-  const savedCompression = localStorage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL);
+  const savedCompression = storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL);
   if (savedCompression) {
     compression = savedCompression;
   } else if (selectedCompression) {
@@ -501,11 +561,21 @@ export function initializeSettingsValues(selectedEndpoint?: string, selectedComp
 export function handleServiceWorkerRefresh(
   handleSwUpdate: () => void,
   setUpdating: (value: boolean) => void,
-  timeout: number = 1000
+  options: {
+    timeout?: number;
+    windowAdapter?: WindowAdapter;
+    timeoutAdapter?: TimeoutAdapter;
+  } = {}
 ) {
+  const {
+    timeout = 1000,
+    windowAdapter = defaultWindowAdapter,
+    timeoutAdapter = defaultTimeoutAdapter
+  } = options;
+
   setUpdating(true);
   handleSwUpdate();
-  setTimeout(() => {
-    window.location.reload();
+  timeoutAdapter.setTimeout(() => {
+    windowAdapter.location.reload();
   }, timeout);
 }

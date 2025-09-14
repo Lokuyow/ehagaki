@@ -115,7 +115,9 @@
         handleServiceWorkerRefresh(
             handleSwUpdate,
             (value) => isSwUpdatingStore.set(value),
-            SW_UPDATE_TIMEOUT,
+            {
+                timeout: SW_UPDATE_TIMEOUT,
+            },
         );
     }
 
@@ -126,10 +128,10 @@
 
     // 設定の初期化処理
     function initializeSettings() {
-        const settings = initializeSettingsValues(
+        const settings = initializeSettingsValues({
             selectedEndpoint,
             selectedCompression,
-        );
+        });
         _selectedEndpoint = settings.endpoint;
         clientTagEnabled = settings.clientTagEnabled;
         _selectedCompression = settings.compression;
