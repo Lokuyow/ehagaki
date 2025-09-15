@@ -2,3 +2,4 @@ my-svelte-app/references
 .vscode/settings.json
 my-svelte-app/.vscode
 my-svelte-app/dev-dist
+my-svelte-app/.svelte-kit

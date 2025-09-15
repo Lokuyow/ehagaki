@@ -15,8 +15,8 @@ vi.mock("../stores/appStore.svelte.ts", () => ({
     // 必要な状態やストアのモック
 }));
 
-// imageSizeMapStoreをモック
-vi.mock("../lib/tags/tagsStore.svelte", () => ({
+// imageSizeMapStoreをモック - パスを修正
+vi.mock("../stores/tagsStore.svelte", () => ({
     imageSizeMapStore: {
         update: vi.fn()
     }

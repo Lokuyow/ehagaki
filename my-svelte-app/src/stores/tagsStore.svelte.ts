@@ -7,7 +7,7 @@ interface HashtagData {
     tags: [string, string][];
 }
 
-// ハッシュタグストアの実装（常に$stateを使用）
+// ストアの宣言（$stateを直接使用）
 let svelteHashtagDataStore = $state<HashtagData>({
     content: '',
     hashtags: [],
@@ -38,16 +38,9 @@ export interface ImageSizeMap {
     };
 }
 
-// 画像ストアの実装（常に$stateを使用）
+// 画像ストアの実装（$stateを直接使用）
 let svelteImageImetaMap = $state<ImageImetaMap>({});
 let svelteImageSizeMap = $state<ImageSizeMap>({});
-
-// テスト環境判定
-const isTestEnv = typeof globalThis !== 'undefined' &&
-    (globalThis as any).process?.env?.NODE_ENV === 'test' ||
-    typeof global !== 'undefined' &&
-    (global as any).process?.env?.NODE_ENV === 'test' ||
-    typeof window === 'undefined';
 
 export const imageImetaMapStore = {
     get value() { return svelteImageImetaMap; },
@@ -56,18 +49,12 @@ export const imageImetaMapStore = {
         const newValue = updater(svelteImageImetaMap);
         Object.assign(svelteImageImetaMap, newValue);
     },
-    subscribe: isTestEnv
-        ? (callback: (value: ImageImetaMap) => void) => {
-            // テスト環境では即座にコールバックを実行
+    subscribe: (callback: (value: ImageImetaMap) => void) => {
+        $effect(() => {
             callback(svelteImageImetaMap);
-            return () => { }; // cleanup function
-        }
-        : (callback: (value: ImageImetaMap) => void) => {
-            $effect(() => {
-                callback(svelteImageImetaMap);
-            });
-            return () => { }; // cleanup function
-        }
+        });
+        return () => { }; // cleanup function
+    }
 };
 
 export const imageSizeMapStore = {
@@ -77,16 +64,10 @@ export const imageSizeMapStore = {
         const newValue = updater(svelteImageSizeMap);
         Object.assign(svelteImageSizeMap, newValue);
     },
-    subscribe: isTestEnv
-        ? (callback: (value: ImageSizeMap) => void) => {
-            // テスト環境では即座にコールバックを実行
+    subscribe: (callback: (value: ImageSizeMap) => void) => {
+        $effect(() => {
             callback(svelteImageSizeMap);
-            return () => { }; // cleanup function
-        }
-        : (callback: (value: ImageSizeMap) => void) => {
-            $effect(() => {
-                callback(svelteImageSizeMap);
-            });
-            return () => { }; // cleanup function
-        }
+        });
+        return () => { }; // cleanup function
+    }
 };
