@@ -9,6 +9,7 @@
         calculateZoomFromEvent,
         calculateDragDelta,
     } from "../lib/utils/appUtils";
+    import { isTouchDevice } from "../lib/utils/editorUtils";
     import {
         transformStore,
         createDragState,
@@ -355,7 +356,10 @@
         if ((event.target as Element)?.closest(".close-button-container")) {
             return;
         }
-        event.preventDefault();
+        // 実際のタッチデバイスの場合のみpreventDefault
+        if (!isTouchDevice()) {
+            event.preventDefault();
+        }
         if (event.touches.length === 1) {
             const touch = event.touches[0];
             handlePointerStart(touch.clientX, touch.clientY, true);
@@ -366,7 +370,10 @@
         }
     }
     function handleTouchMove(event: TouchEvent) {
-        event.preventDefault();
+        // 実際のタッチデバイスの場合のみpreventDefault
+        if (!isTouchDevice()) {
+            event.preventDefault();
+        }
         if (event.touches.length === 1 && dragState.isDragging) {
             handlePointerMove(
                 event.touches[0].clientX,
@@ -377,7 +384,10 @@
         }
     }
     function handleTouchEnd(event: TouchEvent) {
-        event.preventDefault();
+        // 実際のタッチデバイスの場合のみpreventDefault
+        if (!isTouchDevice()) {
+            event.preventDefault();
+        }
         if (event.touches.length === 0) {
             handlePointerEnd();
             stopPinch();
