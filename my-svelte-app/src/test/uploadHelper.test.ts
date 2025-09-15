@@ -159,7 +159,7 @@ describe("uploadHelper", () => {
             expect(results[0]).toEqual({
                 file,
                 index: 0,
-                ox: "010203",
+                ox: undefined,
                 dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
             });
         });

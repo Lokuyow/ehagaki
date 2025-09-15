@@ -1,3 +1,25 @@
+// --- JSDOM用ポリフィル ---
+if (typeof global.DragEvent === "undefined") {
+    // @ts-ignore
+    global.DragEvent = class extends Event {
+        dataTransfer: any;
+        constructor(type: string, eventInitDict: any = {}) {
+            super(type, eventInitDict);
+            this.dataTransfer = eventInitDict.dataTransfer || {};
+        }
+    };
+}
+if (typeof global.ClipboardEvent === "undefined") {
+    // @ts-ignore
+    global.ClipboardEvent = class extends Event {
+        clipboardData: any;
+        constructor(type: string, eventInitDict: any = {}) {
+            super(type, eventInitDict);
+            this.clipboardData = eventInitDict.clipboardData || {};
+        }
+    };
+}
+
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
     fileDropAction,
