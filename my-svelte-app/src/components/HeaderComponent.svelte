@@ -237,7 +237,7 @@
 
     .buttons-container {
         display: flex;
-        gap: 8px;
+        gap: 6px;
         align-items: center;
         height: 100%;
     }
