@@ -10,6 +10,7 @@
     import { authState } from "../stores/appStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte"; // 追加
+    import { BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_ERROR_KEY } from "../lib/constants";
 
     // --- infoバルーンデバッグ用 ---
     import { onDestroy } from "svelte";
@@ -55,11 +56,7 @@
     }
 
     // 投稿完了時のバルーンメッセージ候補
-    const postSuccessMessages = [
-        "balloonMessage.post_success",
-        "balloonMessage.sent",
-        "balloonMessage.to_everyone",
-    ];
+    const postSuccessMessages = BALLOON_MESSAGE_SUCCESS_KEYS;
 
     // 投稿成功時にランダムでメッセージを選択（1回だけ）
     let postSuccessBalloonMessage = $state("");
@@ -124,7 +121,7 @@
         {:else if postStatus.error}
             <BalloonMessage
                 type="error"
-                message={$_("balloonMessage.post_error")}
+                message={$_(BALLOON_MESSAGE_ERROR_KEY)}
             />
         {:else if postStatus.success && postStatus.completed && postSuccessBalloonMessage}
             <BalloonMessage

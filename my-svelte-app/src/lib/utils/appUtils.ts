@@ -1,6 +1,6 @@
 import { getPublicKey, nip19 } from "nostr-tools";
 import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "../types";
-import { BALLOON_MESSAGE_KEYS } from "../constants";
+import { BALLOON_MESSAGE_INFO_KEYS } from "../constants";
 import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from '../constants';
 
 // =============================================================================
@@ -451,7 +451,7 @@ export function calculatePinchZoom(
 export function getRandomHeaderBalloon(
   $_: (key: string) => string | undefined
 ): string {
-  const keys: readonly string[] = BALLOON_MESSAGE_KEYS;
+  const keys: readonly string[] = BALLOON_MESSAGE_INFO_KEYS;
   const idx: number = Math.floor(Math.random() * keys.length);
   return $_(keys[idx]) ?? "";
 }

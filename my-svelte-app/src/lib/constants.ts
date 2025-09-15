@@ -125,28 +125,45 @@ export const SELECTORS = {
 } as const;
 
 // --- バルーンメッセージ用キー配列 ---
-export const BALLOON_MESSAGE_KEYS: readonly string[] = [
-    "balloonMessage.hello",
-    "balloonMessage.hello2",
-    "balloonMessage.welcome",
-    "balloonMessage.waited",
-    "balloonMessage.relax",
-    "balloonMessage.good_weather",
-    "balloonMessage.thwomp",
-    "balloonMessage.sleep_on_floor",
-    "balloonMessage.home_here",
-    "balloonMessage.donai",
-    "balloonMessage.kita_na",
-    "balloonMessage.no_licking",
-    "balloonMessage.not_thwomp",
-    "balloonMessage.kitte_origin",
-    "balloonMessage.normal_stamp",
-    "balloonMessage.backside_curious",
-    "balloonMessage.corner_weapon",
-    "balloonMessage.square_peace",
-    "balloonMessage.how_much_stamp",
-    "balloonMessage.cancellation_done",
-    "balloonMessage.want_to_roll",
-    "balloonMessage.want_candy",
-    "balloonMessage.tetris_gone",
+// ページ表示時などのinfoカテゴリ
+export const BALLOON_MESSAGE_INFO_KEYS: readonly string[] = [
+    "balloonMessage.info.hello",
+    "balloonMessage.info.hello2",
+    "balloonMessage.info.welcome",
+    "balloonMessage.info.waited",
+    "balloonMessage.info.relax",
+    "balloonMessage.info.good_weather",
+    "balloonMessage.info.thwomp",
+    "balloonMessage.info.sleep_on_floor",
+    "balloonMessage.info.home_here",
+    "balloonMessage.info.donai",
+    "balloonMessage.info.kita_na",
+    "balloonMessage.info.no_licking",
+    "balloonMessage.info.not_thwomp",
+    "balloonMessage.info.kitte_origin",
+    "balloonMessage.info.normal_stamp",
+    "balloonMessage.info.backside_curious",
+    "balloonMessage.info.corner_weapon",
+    "balloonMessage.info.square_peace",
+    "balloonMessage.info.how_much_stamp",
+    "balloonMessage.info.cancellation_done",
+    "balloonMessage.info.want_to_roll",
+    "balloonMessage.info.want_candy",
+    "balloonMessage.info.tetris_gone",
+    "balloonMessage.info.comfy_here",
+    "balloonMessage.info.what_did_you_eat",
+    "balloonMessage.info.go_to_bed_early",
+    "balloonMessage.info.did_you_brush_teeth",
+    "balloonMessage.info.kit-ten_ketten",
+    "balloonMessage.info.such_is_life",
 ];
+
+// 投稿成功時(successカテゴリ)
+export const BALLOON_MESSAGE_SUCCESS_KEYS: readonly string[] = [
+    "balloonMessage.success.post_success",
+    "balloonMessage.success.sent",
+    "balloonMessage.success.to_everyone",
+];
+
+// 投稿エラー時(errorカテゴリ)
+export const BALLOON_MESSAGE_ERROR_KEY = "balloonMessage.error.post_error";
