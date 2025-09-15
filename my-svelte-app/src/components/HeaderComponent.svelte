@@ -173,34 +173,34 @@
     .header-container {
         max-width: 800px;
         width: 100%;
-        height: 64px;
+        height: 66px;
         margin-bottom: 8px;
-        padding: 0 12px;
+        padding: 0 10px;
         display: flex;
         flex-direction: row;
-        align-items: flex-end;
+        align-items: center;
     }
 
     .header-left {
         display: flex;
         align-items: center;
-        height: 100%;
+        height: 66px;
         width: 100%;
     }
 
     .site-icon-link {
         display: flex;
-        align-items: center;
-        justify-content: center;
+        height: 100%;
+
         &:hover {
             background-color: transparent;
         }
     }
 
     .site-icon {
-        width: auto;
-        height: 100%;
-        object-fit: cover;
+        width: 60px;
+        height: 60px;
+        margin-top: auto;
     }
 
     .post-actions {
@@ -214,7 +214,7 @@
 
     .buttons-container {
         display: flex;
-        gap: 6px;
+        gap: 8px;
         align-items: center;
         height: 100%;
     }
@@ -225,7 +225,7 @@
             .default.clear-button
         ) {
         border: 1px solid var(--hagaki);
-        width: 54px;
+        width: 58px;
     }
 
     .plane-icon {
