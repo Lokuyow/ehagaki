@@ -16,32 +16,14 @@ export const FALLBACK_RELAYS = [
 ];
 
 // --- fileUploadManager用定数 ---
-export const DEFAULT_API_URL = "https://nostrcheck.me/api/v2/media";
+export const DEFAULT_API_URL = "https://nostr.build/api/v2/upload/files";
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 export const COMPRESSION_OPTIONS_MAP = {
-    none: {
-        // 無圧縮: 変換せずそのまま
-        skip: true
-    },
-    low: {
-        maxWidthOrHeight: 2048,
-        fileType: "image/webp" as const,
-        initialQuality: 0.95,
-        useWebWorker: true,
-    },
-    medium: {
-        maxWidthOrHeight: 1024,
-        fileType: "image/webp" as const,
-        initialQuality: 0.80,
-        useWebWorker: true,
-    },
-    high: {
-        maxWidthOrHeight: 800,
-        fileType: "image/webp" as const,
-        initialQuality: 0.40,
-        useWebWorker: true,
-    }
-};
+    skip: { skip: true },
+    low: { maxSizeMB: 5, maxWidthOrHeight: 2048, quality: 0.9 },
+    medium: { maxSizeMB: 3, maxWidthOrHeight: 1536, quality: 0.8 },
+    high: { maxSizeMB: 1.5, maxWidthOrHeight: 1024, quality: 0.7 }
+} as const;
 
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 
@@ -178,7 +160,7 @@ export const BLURHASH_CONFIG = {
 export const MIME_TYPE_SUPPORT_CACHE_TIMEOUT = 5 * 60 * 1000; // 5分
 
 export const UPLOAD_POLLING_CONFIG = {
-    MAX_WAIT_TIME: 8000,
-    RETRY_INTERVAL: 1000,
-    TIMEOUT_MESSAGE: "Timeout while polling processing_url"
+    MAX_WAIT_TIME: 15000,     // 15秒
+    RETRY_INTERVAL: 1000,     // 1秒
+    TIMEOUT_MESSAGE: "Upload processing timeout"
 } as const;
