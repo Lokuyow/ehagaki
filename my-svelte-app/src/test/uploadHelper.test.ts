@@ -29,8 +29,13 @@ vi.mock("../lib/fileUploadManager", () => ({
         generateBlurhashForFile: vi.fn(),
         uploadFileWithCallbacks: vi.fn(),
         uploadMultipleFilesWithCallbacks: vi.fn()
-    })),
-    getImageDimensions: vi.fn()
+    }))
+}));
+
+vi.mock("../lib/utils/appUtils", () => ({
+    getImageDimensions: vi.fn(),
+    calculateSHA256Hex: vi.fn(),
+    renameByMimeType: vi.fn()
 }));
 
 vi.mock("../lib/tags/imetaTag", () => ({

@@ -1,81 +1,32 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
-import { createFileSizeInfo, generateSizeDisplayInfo } from "./utils/appUtils";
+import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, getImageDimensions, renameByMimeType } from "./utils/appUtils";
 import { showImageSizeInfo } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
-import type { SharedImageData } from "./shareHandler";
 import type {
   FileUploadResponse,
-  MultipleUploadProgress,
+  UploadProgress,
   UploadInfoCallbacks,
-  FileValidationResult
+  FileValidationResult,
+  FileUploadDependencies,
+  CompressionService,
+  AuthService,
+  MimeTypeSupportInterface,
+  SharedImageData
 } from "./types";
 import {
   DEFAULT_API_URL,
   MAX_FILE_SIZE,
-  COMPRESSION_OPTIONS_MAP
+  COMPRESSION_OPTIONS_MAP,
+  UPLOAD_POLLING_CONFIG
 } from "./constants";
 import { getToken } from "nostr-tools/nip98";
 import { debugLogUploadResponse } from "./debug";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { showCompressedImagePreview } from "./debug";
-import { calculateImageDisplaySize, type ImageDimensions } from "./utils/imageUtils";
-
-// --- 依存関係のインターフェース定義 ---
-export interface FileUploadDependencies {
-  localStorage: Storage;
-  fetch: typeof fetch;
-  crypto: SubtleCrypto;
-  document?: Document;
-  window?: Window;
-  navigator?: Navigator;
-}
-
-export interface CompressionService {
-  compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }>;
-}
-
-export interface AuthService {
-  buildAuthHeader(url: string, method: string): Promise<string>;
-}
-
-// --- 画像のSHA-256ハッシュ計算 ---
-export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = window.crypto.subtle): Promise<string> {
-  const arrayBuffer = await file.arrayBuffer();
-  const hashBuffer = await crypto.digest("SHA-256", arrayBuffer);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-// --- 画像サイズ取得関数を追加 ---
-export async function getImageDimensions(file: File): Promise<ImageDimensions | null> {
-  return new Promise((resolve) => {
-    if (!file.type.startsWith('image/')) {
-      resolve(null);
-      return;
-    }
-
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-
-    img.onload = () => {
-      const dimensions = calculateImageDisplaySize(img.naturalWidth, img.naturalHeight);
-      URL.revokeObjectURL(url);
-      resolve(dimensions);
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(null);
-    };
-
-    img.src = url;
-  });
-}
 
 // --- MIMEタイプサポート検出クラス ---
-export class MimeTypeSupport {
+export class MimeTypeSupport implements MimeTypeSupportInterface {
   private mimeSupportCache: Record<string, boolean> = {};
   private webpQualitySupport?: boolean;
 
@@ -125,7 +76,7 @@ export class MimeTypeSupport {
 // --- 画像圧縮サービス ---
 export class ImageCompressionService implements CompressionService {
   constructor(
-    private mimeSupport: MimeTypeSupport,
+    private mimeSupport: MimeTypeSupportInterface,
     private localStorage: Storage
   ) { }
 
@@ -134,21 +85,6 @@ export class ImageCompressionService implements CompressionService {
     const opt = COMPRESSION_OPTIONS_MAP[level];
     if (typeof opt === "object" && "skip" in opt && (opt as any).skip) return null;
     return { ...opt, preserveExif: false };
-  }
-
-  private renameByMime(filename: string, mime: string): string {
-    const map: Record<string, string> = {
-      "image/webp": ".webp",
-      "image/jpeg": ".jpg",
-      "image/png": ".png",
-      "image/gif": ".gif",
-      "image/avif": ".avif",
-      "image/bmp": ".bmp"
-    };
-    const ext = map[mime];
-    if (!ext) return filename;
-    const base = filename.replace(/\.[^.]+$/, "");
-    return `${base}${ext}`;
   }
 
   async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
@@ -172,10 +108,9 @@ export class ImageCompressionService implements CompressionService {
       const compressed = await imageCompression(file, usedOptions);
       if ((compressed as File).size >= file.size) return { file, wasCompressed: false };
       const outType = (compressed as File).type || targetMime || file.type;
-      const outName = this.renameByMime(file.name, outType);
+      const outName = renameByMimeType(file.name, outType);
       const outFile = new File([compressed], outName, { type: outType });
 
-      // 圧縮画像プレビュー表示（debug.tsに移動）
       showCompressedImagePreview(outFile);
       return { file: outFile, wasCompressed: true };
     } catch {
@@ -204,10 +139,9 @@ export class NostrAuthService implements AuthService {
 }
 
 // ファイルアップロード専用マネージャークラス
-// 責務: ファイルの圧縮・アップロード処理、進捗管理
 export class FileUploadManager {
   private compressionService: ImageCompressionService;
-  private mimeSupport: MimeTypeSupport;
+  private mimeSupport: MimeTypeSupportInterface;
 
   constructor(
     private dependencies: FileUploadDependencies = {
@@ -224,46 +158,40 @@ export class FileUploadManager {
     this.compressionService = new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
   }
 
-  // --- 画像バリデーション ---
   validateImageFile(file: File): FileValidationResult {
     if (!file.type.startsWith("image/")) return { isValid: false, errorMessage: "only_images_allowed" };
     if (file.size > MAX_FILE_SIZE) return { isValid: false, errorMessage: "file_too_large" };
     return { isValid: true };
   }
 
-  // --- blurhash生成 ---
   async generateBlurhashForFile(file: File): Promise<string | null> {
     return await generateBlurhashForFile(file);
   }
 
-  // --- 画像からプレースホルダーURL生成 ---
   async createPlaceholderUrl(file: File): Promise<string | null> {
     return await createPlaceholderUrl(file);
   }
 
-  // --- アップロードエンドポイント取得 ---
   private getUploadEndpoint(apiUrl: string): string {
     const stored = this.dependencies.localStorage.getItem("uploadEndpoint");
     const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
     return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
   }
 
-  // --- アップロード完了ポーリング ---
   private async pollUploadStatus(
     processingUrl: string,
     authHeader: string,
-    maxWaitTime: number = 8000
+    maxWaitTime: number = UPLOAD_POLLING_CONFIG.MAX_WAIT_TIME
   ): Promise<any> {
     const startTime = Date.now();
     while (true) {
-      if (Date.now() - startTime > maxWaitTime) throw new Error("Timeout while polling processing_url");
+      if (Date.now() - startTime > maxWaitTime) throw new Error(UPLOAD_POLLING_CONFIG.TIMEOUT_MESSAGE);
       const response = await this.dependencies.fetch(processingUrl, {
         method: "GET",
         headers: { Authorization: authHeader }
       });
       if (!response.ok) throw new Error(`Unexpected status code ${response.status} while polling processing_url`);
 
-      // 応答ボディをパースしてステータスを確認（processing / success / error 等）
       let processingStatus: any = null;
       try {
         processingStatus = await response.json();
@@ -271,26 +199,21 @@ export class FileUploadManager {
         processingStatus = null;
       }
 
-      // 201 は多くの実装で「created / processing complete を示す」場合があるためそのまま返す
       if (response.status === 201 && processingStatus) return processingStatus;
 
-      // processing中なら待機してリトライ
       if (processingStatus?.status === "processing") {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLLING_CONFIG.RETRY_INTERVAL));
         continue;
       }
 
-      // 処理成功ならその結果を返す（nip94_event 等を含む想定）
       if (processingStatus?.status === "success") {
         return processingStatus;
       }
 
-      // エラーなら例外
       if (processingStatus?.status === "error") {
         throw new Error(processingStatus?.message || "File processing failed");
       }
 
-      // フォールバック: サーバーが 200 で最終結果を返している場合はそのボディを返す
       if (response.status === 200) {
         return processingStatus;
       }
@@ -299,7 +222,6 @@ export class FileUploadManager {
     }
   }
 
-  // --- ファイルアップロード ---
   async uploadFile(
     file: File,
     apiUrl: string = DEFAULT_API_URL,
@@ -320,8 +242,7 @@ export class FileUploadManager {
       const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressionService.compress(file);
       const compressedSize = uploadFile.size;
 
-      const options = this.compressionService['getCompressionOptions']();
-      const hasCompressionSettings = options !== null;
+      const hasCompressionSettings = this.compressionService['getCompressionOptions']() !== null;
       const sizeInfo = createFileSizeInfo(
         originalSize,
         compressedSize,
@@ -337,23 +258,14 @@ export class FileUploadManager {
       const formData = new FormData();
       formData.append('file', uploadFile);
 
-      // NIP-96 に従い可能なフィールドを追加
-      // caption: 緩い説明
       if (metadata?.caption) formData.append('caption', String(metadata.caption));
-      // expiration: UNIX秒タイムスタンプ もしくは 空文字(永続)
       if (metadata?.expiration !== undefined) formData.append('expiration', String(metadata.expiration));
-      // size: アップロードするファイルのバイト数（サーバーの早期拒否のため）
       formData.append('size', String(uploadFile.size));
-      // alt: アクセシビリティ用の厳密な説明
       if (metadata?.alt) formData.append('alt', String(metadata.alt));
-      // media_type: "avatar" | "banner" など
       if (metadata?.media_type) formData.append('media_type', String(metadata.media_type));
-      // content_type: mime type のヒント
       formData.append('content_type', metadata?.content_type ? String(metadata.content_type) : uploadFile.type || '');
-      // no_transform: 要求（既存の挙動を尊重）
       formData.append('no_transform', metadata?.no_transform ? String(metadata.no_transform) : 'true');
 
-      // デバッグ: devMode のときは送る FormData の中身をコンソールに出力
       if (devMode) {
         try {
           const entries: any[] = [];
@@ -388,7 +300,7 @@ export class FileUploadManager {
       if ((response.status === 200 || response.status === 202) && data.processing_url) {
         try {
           const processingAuthToken = await this.authService.buildAuthHeader(data.processing_url, "GET");
-          data = await this.pollUploadStatus(data.processing_url, processingAuthToken, 8000);
+          data = await this.pollUploadStatus(data.processing_url, processingAuthToken);
         } catch (e) {
           return { success: false, error: e instanceof Error ? e.message : String(e), sizeInfo };
         }
@@ -414,11 +326,10 @@ export class FileUploadManager {
     }
   }
 
-  // --- 複数ファイルアップロード ---
   async uploadMultipleFiles(
     files: File[],
     apiUrl: string = DEFAULT_API_URL,
-    onProgress?: (progress: MultipleUploadProgress) => void,
+    onProgress?: (progress: UploadProgress) => void,
     devMode: boolean = false,
     metadataList?: Array<Record<string, string | number | undefined> | undefined>
   ): Promise<FileUploadResponse[]> {
@@ -444,7 +355,6 @@ export class FileUploadManager {
     return results;
   }
 
-  // --- コールバック付きアップロード ---
   async uploadFileWithCallbacks(
     file: File,
     apiUrl: string = DEFAULT_API_URL,
@@ -479,15 +389,17 @@ export class FileUploadManager {
     metadataList?: Array<Record<string, string | number | undefined> | undefined>
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
-    const results = await this.uploadMultipleFiles(files, apiUrl, callbacks?.onProgress, import.meta.env.MODE === "development", metadataList);
+    const results = await this.uploadMultipleFiles(
+      files,
+      apiUrl,
+      callbacks?.onProgress,
+      import.meta.env.MODE === "development",
+      metadataList
+    );
     const firstSuccess = results.find(r => r.success && r.sizeInfo);
     if (firstSuccess?.sizeInfo) {
       const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
-      if (firstSuccess?.sizeInfo) {
-        const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
-        if (displayInfo) showImageSizeInfo(displayInfo);
-      }
-      return results;
+      if (displayInfo) showImageSizeInfo(displayInfo);
     }
     return results;
   }

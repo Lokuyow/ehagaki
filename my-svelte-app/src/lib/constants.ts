@@ -167,3 +167,18 @@ export const BALLOON_MESSAGE_SUCCESS_KEYS: readonly string[] = [
 
 // 投稿エラー時(errorカテゴリ)
 export const BALLOON_MESSAGE_ERROR_KEY = "balloonMessage.error.post_error";
+
+// --- fileUploadManager.ts から移動した定数 ---
+export const BLURHASH_CONFIG = {
+    COMPONENT_X: 4,
+    COMPONENT_Y: 4,
+    CANVAS_SIZE: 100
+} as const;
+
+export const MIME_TYPE_SUPPORT_CACHE_TIMEOUT = 5 * 60 * 1000; // 5分
+
+export const UPLOAD_POLLING_CONFIG = {
+    MAX_WAIT_TIME: 8000,
+    RETRY_INTERVAL: 1000,
+    TIMEOUT_MESSAGE: "Timeout while polling processing_url"
+} as const;

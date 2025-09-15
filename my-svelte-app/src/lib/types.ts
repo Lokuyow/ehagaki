@@ -56,15 +56,39 @@ export interface PublicKeyData {
     nprofile: string;
 }
 
-// --- fileUploadManager.ts から移動 ---
-export interface FileUploadResponse {
-    success: boolean;
+// --- fileUploadManager.ts から移動した型定義 ---
+export interface FileUploadDependencies {
+    localStorage: Storage;
+    fetch: typeof fetch;
+    crypto: SubtleCrypto;
+    document?: Document;
+    window?: Window;
+    navigator?: Navigator;
+}
+
+export interface CompressionService {
+    compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }>;
+}
+
+export interface AuthService {
+    buildAuthHeader(url: string, method: string): Promise<string>;
+}
+
+export interface MimeTypeSupportInterface {
+    canEncodeWebpWithQuality(): Promise<boolean>;
+    canEncodeMimeType(mime: string): boolean;
+}
+
+// SharedImageData型を追加（shareHandler.tsからインポートする代わりに）
+export interface SharedImageMetadata {
+    title?: string;
     url?: string;
-    error?: string;
-    sizeInfo?: FileSizeInfo;
-    // サーバーが返す NIP-94 / nip94_event のタグをそのまま参照できるようにする
-    // 例: { x: '...', ox: '...', m: 'image/jpeg', dim: '800x600', url: '...' }
-    nip94?: Record<string, string> | null;
+    files?: File[];
+}
+
+export interface SharedImageData {
+    image: File;
+    metadata?: SharedImageMetadata;
 }
 
 // MultipleUploadProgress を UploadProgress のエイリアスに統一
@@ -121,6 +145,14 @@ export interface UploadHelperDependencies {
     imageSizeMapStore: {
         update: (updater: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void;
     };
+}
+
+export interface FileUploadResponse {
+    success: boolean;
+    url?: string;
+    error?: string;
+    filename?: string;
+    [key: string]: any;
 }
 
 export interface FileUploadManagerInterface {

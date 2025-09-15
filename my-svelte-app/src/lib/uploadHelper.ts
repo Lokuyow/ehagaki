@@ -1,17 +1,18 @@
-import { FileUploadManager, getImageDimensions } from "./fileUploadManager";
+import { FileUploadManager } from "./fileUploadManager";
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { tick } from "svelte";
 import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse, UploadHelperDependencies, FileUploadManagerInterface } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import type { ImageDimensions } from "./utils/imageUtils";
+import { getImageDimensions } from "./utils/appUtils";
 
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({
     localStorage: window.localStorage,
     crypto: window.crypto.subtle,
     tick,
-    FileUploadManager: FileUploadManager as new () => FileUploadManagerInterface,
+    FileUploadManager: FileUploadManager as unknown as new () => FileUploadManagerInterface,
     getImageDimensions,
     extractImageBlurhashMap,
     calculateImageHash,
