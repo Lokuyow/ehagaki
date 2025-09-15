@@ -19,8 +19,8 @@ import { updateHashtagData } from '../lib/tags/hashtagManager';
 export function createEditorStore(placeholderText: string) {
     let placeholderExtension = Placeholder.configure({
         placeholder: placeholderText,
-        emptyEditorClass: '', // ← プレースホルダー用クラスを無効化
-        showOnlyWhenEditable: false, // ← 外部で制御するためfalse
+        emptyEditorClass: 'is-editor-empty',
+        showOnlyWhenEditable: true,
         showOnlyCurrent: false,
         includeChildren: true,
     });
@@ -92,6 +92,7 @@ export function createEditorStore(placeholderText: string) {
         editorProps: {
             attributes: {
                 class: 'tiptap-editor',
+                'data-placeholder': placeholderText,
             },
             // タッチデバイス対応のイベントハンドリング
             handleClickOn(view, _pos, _node, _nodePos, event, _direct) {
@@ -128,6 +129,42 @@ export function createEditorStore(placeholderText: string) {
         onCreate({ editor }) {
             // エディター作成時にグローバル参照を設定
             (window as any).__currentEditor = editor;
+
+            // プレースホルダー属性を設定
+            const editorElement = editor.view.dom as HTMLElement;
+            if (editorElement) {
+                editorElement.setAttribute('data-placeholder', placeholderText);
+
+                // 段落要素にもプレースホルダー属性を設定
+                const paragraphs = editorElement.querySelectorAll('p');
+                paragraphs.forEach((p: HTMLElement) => {
+                    p.setAttribute('data-placeholder', placeholderText);
+                });
+
+                // 次のフレームでも再設定（レンダリングタイミング対応）
+                setTimeout(() => {
+                    const updatedParagraphs = editorElement.querySelectorAll('p');
+                    updatedParagraphs.forEach((p: HTMLElement) => {
+                        if (!p.getAttribute('data-placeholder')) {
+                            p.setAttribute('data-placeholder', placeholderText);
+                        }
+                    });
+                }, 0);
+            }
+        },
+        onUpdate({ editor }) {
+            // 更新時にも段落要素のプレースホルダー属性を確認・設定
+            const editorElement = editor.view.dom as HTMLElement;
+            if (editorElement) {
+                const emptyParagraphs = editorElement.querySelectorAll('p.is-editor-empty, p.is-empty');
+                emptyParagraphs.forEach((p) => {
+                    const paragraph = p as HTMLElement;
+                    if (!paragraph.getAttribute('data-placeholder')) {
+                        const placeholder = editorElement.getAttribute('data-placeholder') || placeholderText;
+                        paragraph.setAttribute('data-placeholder', placeholder);
+                    }
+                });
+            }
         },
         onDestroy() {
             // エディター破棄時にグローバル参照をクリア
@@ -138,19 +175,28 @@ export function createEditorStore(placeholderText: string) {
     // プレースホルダー更新機能を修正
     const updatePlaceholder = (newPlaceholder: string) => {
         const currentEditor = (window as any).__currentEditor;
-        if (currentEditor) {
-            const editorElement = currentEditor.view.dom;
+        if (currentEditor && currentEditor.view) {
+            // エディターDOM要素のdata-placeholder属性を更新
+            const editorElement = currentEditor.view.dom as HTMLElement;
             if (editorElement) {
                 editorElement.setAttribute('data-placeholder', newPlaceholder);
+
+                // すべての段落要素のプレースホルダー属性も更新
+                const paragraphs = editorElement.querySelectorAll('p');
+                paragraphs.forEach((p: HTMLElement) => {
+                    p.setAttribute('data-placeholder', newPlaceholder);
+                });
             }
 
+            // Placeholder拡張の設定も更新
             const placeholderExt = currentEditor.extensionManager.extensions.find(
                 (ext: any) => ext.name === 'placeholder'
             );
             if (placeholderExt) {
                 placeholderExt.options.placeholder = newPlaceholder;
+                // 強制的に再描画
                 currentEditor.view.dispatch(
-                    currentEditor.state.tr.setMeta('forceUpdate', true)
+                    currentEditor.state.tr.setMeta('addToHistory', false)
                 );
             }
         }

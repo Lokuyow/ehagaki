@@ -306,7 +306,7 @@ describe("keydownAction", () => {
 
     it("does not call __submitPost if content is empty", () => {
         // @ts-ignore
-        node.__currentEditor = undefined;
+        node.__currentEditor = () => undefined;
         mockedExtractContentWithImages.mockReturnValue("");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
@@ -344,7 +344,7 @@ describe("keydownAction", () => {
 
     it("does not call __submitPost if hasStoredKey is false", () => {
         // @ts-ignore
-        node.__hasStoredKey = false;
+        node.__hasStoredKey = () => false;
         mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,

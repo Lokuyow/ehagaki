@@ -29,7 +29,10 @@
   } from "../stores/editorStore.svelte";
 
   import { extractContentWithImages } from "../lib/utils/editorUtils";
-  import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
+  import {
+    extractImageBlurhashMap,
+    getMimeTypeFromUrl,
+  } from "../lib/tags/imetaTag";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
@@ -114,11 +117,10 @@
       try {
         // フォーカスして選択を設定
         currentEditor.view.focus();
-        const sel = NodeSelection.create(
-          currentEditor.state.doc,
-          pos,
+        const sel = NodeSelection.create(currentEditor.state.doc, pos);
+        currentEditor.view.dispatch(
+          currentEditor.state.tr.setSelection(sel).scrollIntoView(),
         );
-        currentEditor.view.dispatch(currentEditor.state.tr.setSelection(sel).scrollIntoView());
       } catch (err) {
         // ignore
         console.warn("select-image-node handler failed:", err);
@@ -359,16 +361,7 @@
       <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
       <EditorContent editor={currentEditor as any} class="editor-content" />
     {/if}
-    <!-- プレースホルダー表示をImagePlaceholderに置き換え -->
-    {#if !editorState.content && !editorState.hasImage}
-      <ImagePlaceholder
-        blurhash=""
-        dimensions={placeholderDimensions}
-        alt={$_("postComponent.enter_your_text") ||
-          "テキストを入力してください"}
-        showLoadingIndicator={false}
-      />
-    {/if}
+    <!-- ImagePlaceholderは文字プレースホルダーと重複するため削除 -->
   </div>
 
   <input
@@ -487,6 +480,68 @@
     transform: translateZ(0);
     /* タッチデバイスでのフォーカス処理改善 */
     -webkit-tap-highlight-color: transparent;
+    /* プレースホルダー用の相対配置 */
+    position: relative;
+  }
+
+  /* Tiptap標準のプレースホルダーを完全に無効化 */
+  :global(.tiptap-editor .is-empty::before),
+  :global(.tiptap-editor p.is-empty::before),
+  :global(.tiptap-editor .ProseMirror-placeholder::before) {
+    display: none !important;
+    content: none !important;
+  }
+
+  /* カスタムプレースホルダーの表示 - より具体的なセレクター */
+  :global(.tiptap-editor p.is-editor-empty::before) {
+    content: attr(data-placeholder) !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: var(--text-placeholder, #999) !important;
+    pointer-events: none;
+    font-size: 1.25rem;
+    line-height: 1.4;
+    opacity: 0.6;
+    z-index: 1;
+    display: block !important;
+  }
+
+  /* より具体的なフォールバック（段落要素でのプレースホルダー） */
+  :global(.tiptap-editor p.editor-paragraph.is-editor-empty::before) {
+    content: attr(data-placeholder) !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+    color: var(--text-placeholder, #999) !important;
+    pointer-events: none;
+    font-size: 1.25rem;
+    line-height: 1.4;
+    opacity: 0.6;
+    z-index: 1;
+    display: block !important;
+  }
+
+  /* エディター全体が空の場合のプレースホルダー（最終フォールバック） */
+  :global(.tiptap-editor.is-editor-empty::before) {
+    content: attr(data-placeholder) !important;
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: var(--text-placeholder, #999) !important;
+    pointer-events: none;
+    font-size: 1.25rem;
+    line-height: 1.4;
+    opacity: 0.6;
+    z-index: 1;
+    display: block !important;
+  }
+
+  /* フォーカス時のプレースホルダー表示を継続（薄く表示） */
+  :global(.tiptap-editor:focus p.is-editor-empty::before),
+  :global(.tiptap-editor:focus p.editor-paragraph.is-editor-empty::before),
+  :global(.tiptap-editor.is-editor-empty:focus::before) {
+    opacity: 0.4 !important;
   }
 
   /* エディタ内の要素スタイル */
@@ -495,6 +550,14 @@
     padding: 0;
     color: var(--text);
     white-space: break-spaces;
+    position: relative;
+    z-index: 2;
+  }
+
+  /* プレースホルダーが表示される時の最初の段落の最小高さ */
+  :global(.tiptap-editor p.is-editor-empty) {
+    min-height: 1.75rem;
+    position: relative;
   }
 
   :global(.tiptap-editor .hashtag) {
