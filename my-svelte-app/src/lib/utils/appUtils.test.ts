@@ -36,9 +36,6 @@ import {
     calculatePinchZoomParams,
     calculatePinchZoom,
 
-    // Balloon Message Utilities
-    getRandomHeaderBalloon,
-
     // Settings Utilities
     loadWriteRelaysFromStorage,
     initializeSettingsValues,
@@ -451,23 +448,6 @@ describe('Coordinate and Zoom Utilities', () => {
             expect(result.newScale).toBe(2);
             expect(result.newTranslate.x).toBe(0);
             expect(result.newTranslate.y).toBe(0);
-        });
-    });
-});
-
-describe('Balloon Message Utilities', () => {
-    describe('getRandomHeaderBalloon', () => {
-        it('should return translated message', () => {
-            const mockTranslate = vi.fn().mockReturnValue('Hello');
-            const result = getRandomHeaderBalloon(mockTranslate);
-            expect(result).toBe('Hello');
-            expect(mockTranslate).toHaveBeenCalled();
-        });
-
-        it('should handle missing translation', () => {
-            const mockTranslate = vi.fn().mockReturnValue(undefined);
-            const result = getRandomHeaderBalloon(mockTranslate);
-            expect(result).toBe('');
         });
     });
 });
