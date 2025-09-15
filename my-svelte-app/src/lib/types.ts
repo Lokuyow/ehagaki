@@ -68,6 +68,7 @@ export interface FileUploadDependencies {
 
 export interface CompressionService {
     compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }>;
+    hasCompressionSettings?(): boolean; // オプションメソッドとして追加
 }
 
 export interface AuthService {
@@ -81,9 +82,10 @@ export interface MimeTypeSupportInterface {
 
 // SharedImageData型を追加（shareHandler.tsからインポートする代わりに）
 export interface SharedImageMetadata {
-    title?: string;
-    url?: string;
-    files?: File[];
+    name?: string;
+    type?: string;
+    size?: number;
+    timestamp?: string;
 }
 
 export interface SharedImageData {

@@ -72,7 +72,21 @@ const createMockDependencies = (): UploadHelperDependencies => {
         )
     };
 
-    return {
+    // モック用のサービス依存関係を作成
+    const mockAuthService = {
+        buildAuthHeader: vi.fn(async () => "Bearer mock-token")
+    };
+
+    const mockCompressionService = {
+        compress: vi.fn(async (file: File) => ({ file, wasCompressed: false, wasSkipped: false }))
+    };
+
+    const mockMimeSupport = {
+        canEncodeWebpWithQuality: vi.fn(async () => true),
+        canEncodeMimeType: vi.fn(() => true)
+    };
+
+    const mockFileUploadDependencies = {
         localStorage: {
             getItem: vi.fn(() => "https://endpoint"),
             setItem: vi.fn(),
@@ -81,11 +95,28 @@ const createMockDependencies = (): UploadHelperDependencies => {
             key: vi.fn(),
             length: 0
         } as Storage,
+        fetch: vi.fn(),
         crypto: {
             digest: vi.fn(async () => new Uint8Array([1, 2, 3]).buffer)
         } as unknown as SubtleCrypto,
+        document: {} as Document,
+        window: {
+            location: { search: "" }
+        } as unknown as Window,
+        navigator: {
+            serviceWorker: { controller: null }
+        } as unknown as Navigator
+    };
+
+    return {
+        localStorage: mockFileUploadDependencies.localStorage,
+        crypto: mockFileUploadDependencies.crypto,
         tick: vi.fn(async () => { }),
-        FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface,
+        FileUploadManager: vi.fn((deps, auth, compression, mime) => {
+            // 依存関係が渡された場合は、それらを使用してFileUploadManagerを作成
+            // テスト用のモックインターfaces を返す
+            return mockFileUploadManager;
+        }) as new (deps?: any, auth?: any, compression?: any, mime?: any) => FileUploadManagerInterface,
         getImageDimensions: vi.fn(async () => ({ width: 100, height: 200, displayWidth: 100, displayHeight: 200 })),
         extractImageBlurhashMap: vi.fn(() => ({})),
         calculateImageHash: vi.fn(async () => "xhash"),
@@ -205,19 +236,26 @@ describe("uploadHelper", () => {
             const processingResults = [{ file: invalidFile, index: 0 }];
             const showUploadError = vi.fn();
 
-            // FileUploadManagerのインスタンスを作成してモックを設定
-            const mockInstance = new mockDependencies.FileUploadManager();
-            vi.mocked(mockInstance.validateImageFile).mockReturnValue({
-                isValid: false,
-                errorMessage: "only_images_allowed"
-            });
+            // 依存関係を直接作成してモック設定
+            const customDependencies = {
+                ...mockDependencies,
+                FileUploadManager: vi.fn(() => ({
+                    validateImageFile: vi.fn(() => ({
+                        isValid: false,
+                        errorMessage: "only_images_allowed"
+                    })),
+                    generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                    uploadFileWithCallbacks: vi.fn(),
+                    uploadMultipleFilesWithCallbacks: vi.fn()
+                })) as new () => FileUploadManagerInterface
+            };
 
             const placeholderMap = insertPlaceholdersIntoEditor(
                 [invalidFile],
                 processingResults,
                 currentEditor,
                 showUploadError,
-                mockDependencies,
+                customDependencies,
                 false
             );
 

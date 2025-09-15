@@ -87,6 +87,11 @@ export class ImageCompressionService implements CompressionService {
     return { ...opt, preserveExif: false };
   }
 
+  // 公開メソッドとして追加（FileUploadManagerからアクセス可能にする）
+  public hasCompressionSettings(): boolean {
+    return this.getCompressionOptions() !== null;
+  }
+
   async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
     if (file.size <= 20 * 1024) return { file, wasCompressed: false, wasSkipped: true };
@@ -140,8 +145,9 @@ export class NostrAuthService implements AuthService {
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager {
-  private compressionService: ImageCompressionService;
+  private compressionService: CompressionService;
   private mimeSupport: MimeTypeSupportInterface;
+  private authService: AuthService;
 
   constructor(
     private dependencies: FileUploadDependencies = {
@@ -152,10 +158,13 @@ export class FileUploadManager {
       window: window,
       navigator: window.navigator
     },
-    private authService: AuthService = new NostrAuthService()
+    authService?: AuthService,
+    compressionService?: CompressionService,
+    mimeSupport?: MimeTypeSupportInterface
   ) {
-    this.mimeSupport = new MimeTypeSupport(dependencies.document);
-    this.compressionService = new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
+    this.mimeSupport = mimeSupport || new MimeTypeSupport(dependencies.document);
+    this.compressionService = compressionService || new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
+    this.authService = authService || new NostrAuthService();
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -242,7 +251,8 @@ export class FileUploadManager {
       const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressionService.compress(file);
       const compressedSize = uploadFile.size;
 
-      const hasCompressionSettings = this.compressionService['getCompressionOptions']() !== null;
+      // 型安全にアクセス
+      const hasCompressionSettings = (this.compressionService as ImageCompressionService).hasCompressionSettings();
       const sizeInfo = createFileSizeInfo(
         originalSize,
         compressedSize,
@@ -404,10 +414,32 @@ export class FileUploadManager {
     return results;
   }
 
+
+  // Service Worker から画像データを取得するためのインスタンスメソッド
+  private createSWMessagePromise(useShareTarget: boolean): Promise<SharedImageData | null> {
+    return new Promise((resolve) => {
+      if (!this.dependencies.navigator?.serviceWorker?.controller) return resolve(null);
+      const channel = new MessageChannel();
+      channel.port1.onmessage = (event) => {
+        if (event.data && event.data.image) {
+          resolve(event.data as SharedImageData);
+        } else {
+          resolve(null);
+        }
+      };
+      this.dependencies.navigator.serviceWorker.controller.postMessage(
+        { type: useShareTarget ? "getSharedImage" : "getSharedImageFallback" },
+        [channel.port2]
+      );
+      // 応答がない場合のタイムアウト
+      setTimeout(() => resolve(null), 3000);
+    });
+  }
+
   // --- Service Worker から共有画像を取得 ---
-  static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    if (localStorage.getItem("sharedImageProcessed") === "1") return null;
-    if (!navigator.serviceWorker.controller) return null;
+  async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+    if (this.dependencies.localStorage.getItem("sharedImageProcessed") === "1") return null;
+    if (!this.dependencies.navigator?.serviceWorker?.controller) return null;
     try {
       const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000));
       return await Promise.race([
@@ -420,42 +452,44 @@ export class FileUploadManager {
     }
   }
 
-  // Service Worker から画像データを取得するための static メソッドを追加
-  private static createSWMessagePromise(useShareTarget: boolean): Promise<SharedImageData | null> {
-    return new Promise((resolve) => {
-      if (!navigator.serviceWorker.controller) return resolve(null);
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (event) => {
-        if (event.data && event.data.image) {
-          resolve(event.data as SharedImageData);
-        } else {
-          resolve(null);
-        }
-      };
-      navigator.serviceWorker.controller.postMessage(
-        { type: useShareTarget ? "getSharedImage" : "getSharedImageFallback" },
-        [channel.port2]
-      );
-      // 応答がない場合のタイムアウト
-      setTimeout(() => resolve(null), 3000);
-    });
+  // --- 共有画像処理 ---
+  public checkIfOpenedFromShare(): boolean {
+    if (!this.dependencies.window?.location) return false;
+    return new URLSearchParams(this.dependencies.window.location.search).get('shared') === 'true';
   }
 
-  public static checkIfOpenedFromShare(): boolean {
+  public async processSharedImage(): Promise<FileUploadResponse | null> {
+    const sharedData = await this.getSharedImageFromServiceWorker();
+    if (!sharedData?.image) return null;
+
+    try {
+      // sharedData.imageは既にFileオブジェクトなので直接使用
+      const file = sharedData.image;
+
+      // ファイルをアップロード
+      return await this.uploadFile(file);
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
+  // 後方互換性のためのstatic メソッド
+  static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+    const manager = new FileUploadManager();
+    return await manager.getSharedImageFromServiceWorker();
+  }
+
+  static checkIfOpenedFromShare(): boolean {
     return new URLSearchParams(window.location.search).get('shared') === 'true';
   }
 
-  public static async processSharedImage(): Promise<FileUploadResponse | null> {
-    const sharedData = await this.getSharedImageFromServiceWorker();
-    if (!sharedData?.image) return null;
-    // Note: 'uploadFile' is an instance method, so you need an instance to call it.
-    // If you want to use it statically, refactor as needed.
-    // For now, return null or throw an error.
-    return null;
+  static async processSharedImage(): Promise<FileUploadResponse | null> {
+    const manager = new FileUploadManager();
+    return await manager.processSharedImage();
   }
 }
 
-// getSharedImageFromServiceWorker: 別名エクスポート用（クラスのstaticメソッドを直接呼び出す）
+// getSharedImageFromServiceWorker: 別名エクスポート用（後方互換性）
 export async function getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
   return await FileUploadManager.getSharedImageFromServiceWorker();
 }
