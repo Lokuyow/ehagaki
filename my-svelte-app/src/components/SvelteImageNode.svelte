@@ -9,7 +9,7 @@
         getPlaceholderDefaultSize,
         type ImageDimensions,
     } from "../lib/utils/imageUtils";
-    import { imageSizeMapStore } from "../lib/tags/tagsStore.svelte";
+    import { imageSizeMapStore } from "../stores/tagsStore.svelte";
     import {
         renderBlurhash as renderBlurhashUtil,
         dispatchDragEvent,

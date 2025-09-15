@@ -3,7 +3,7 @@ import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, create
 import { tick } from "svelte";
 import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse, UploadHelperDependencies, FileUploadManagerInterface } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
-import { imageSizeMapStore } from "./tags/tagsStore.svelte";
+import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import type { ImageDimensions } from "./utils/imageUtils";
 
 // デフォルトの依存関係

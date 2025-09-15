@@ -4,14 +4,17 @@ import {
     pasteAction,
     touchAction,
     keydownAction,
-} from "./editorDomActions";
+} from "../lib/editor/editorDomActions";
 
 // extractContentWithImages をモック
-vi.mock("../utils/editorUtils", () => ({
+vi.mock("../lib/utils/editorUtils", () => ({
     extractContentWithImages: vi.fn(),
 }));
 
-import { extractContentWithImages } from "../utils/editorUtils";
+import { extractContentWithImages } from "../lib/utils/editorUtils";
+
+// extractContentWithImagesをMocked型にキャスト
+const mockedExtractContentWithImages = vi.mocked(extractContentWithImages);
 
 // Helper to create a mock HTMLElement
 function createMockNode(): HTMLElement {
@@ -244,7 +247,7 @@ describe("keydownAction", () => {
         node = createMockNode();
         destroy = keydownAction(node).destroy;
         // デフォルトは空文字列
-        (extractContentWithImages as any).mockReturnValue("");
+        mockedExtractContentWithImages.mockReturnValue("");
     });
 
     afterEach(() => {
@@ -253,7 +256,7 @@ describe("keydownAction", () => {
 
     it("calls __submitPost on Ctrl+Enter if conditions met", () => {
         // extractContentWithImages を非空に
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
 
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
@@ -268,7 +271,7 @@ describe("keydownAction", () => {
     it("does not call __submitPost if postStatus.sending is true", () => {
         // @ts-ignore
         node.__postStatus = { sending: true };
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -282,7 +285,7 @@ describe("keydownAction", () => {
     it("does not call __submitPost if content is empty", () => {
         // @ts-ignore
         node.__currentEditor = undefined;
-        (extractContentWithImages as any).mockReturnValue("");
+        mockedExtractContentWithImages.mockReturnValue("");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -294,7 +297,7 @@ describe("keydownAction", () => {
     });
 
     it("calls __submitPost on Meta+Enter if conditions met", () => {
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             metaKey: true,
@@ -306,7 +309,7 @@ describe("keydownAction", () => {
     });
 
     it("calls __submitPost on Ctrl+NumpadEnter if conditions met", () => {
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -320,7 +323,7 @@ describe("keydownAction", () => {
     it("does not call __submitPost if hasStoredKey is false", () => {
         // @ts-ignore
         node.__hasStoredKey = false;
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -332,7 +335,7 @@ describe("keydownAction", () => {
     });
 
     it("does not call __submitPost if content is whitespace", () => {
-        (extractContentWithImages as any).mockReturnValue("   ");
+        mockedExtractContentWithImages.mockReturnValue("   ");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -350,7 +353,7 @@ describe("keydownAction", () => {
         node.__hasStoredKey = vi.fn(() => true);
         // @ts-ignore
         node.__postStatus = vi.fn(() => ({ sending: false }));
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,
@@ -364,7 +367,7 @@ describe("keydownAction", () => {
     it("does not call __submitPost if __submitPost is not defined", () => {
         // @ts-ignore
         node.__submitPost = undefined;
-        (extractContentWithImages as any).mockReturnValue("content");
+        mockedExtractContentWithImages.mockReturnValue("content");
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
             ctrlKey: true,

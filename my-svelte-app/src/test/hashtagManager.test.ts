@@ -1,19 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 
-// vi.mockファクトリ内で完結するモック設定
-vi.mock('./tagsStore.svelte', () => {
-	const mockStore = {
-		content: '',
-		hashtags: [] as string[],
-		tags: [] as [string, string][]
-	};
-	return {
-		hashtagDataStore: mockStore
-	};
-});
-
-import { extractHashtagsFromContent, updateHashtagData } from './hashtagManager';
-import { hashtagDataStore } from './tagsStore.svelte';
+import { extractHashtagsFromContent, updateHashtagData } from '../lib/tags/hashtagManager';
+import { hashtagDataStore } from '../stores/tagsStore.svelte';
 
 describe('hashtagManager', () => {
 	beforeEach(() => {

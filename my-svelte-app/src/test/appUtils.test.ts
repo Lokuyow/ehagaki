@@ -42,13 +42,13 @@ import {
     handleServiceWorkerRefresh,
 
     // Adapters
-} from './appUtils';
+} from '../lib/utils/appUtils';
 import type {
     StorageAdapter,
     NavigatorAdapter,
     WindowAdapter,
     TimeoutAdapter
-} from './appUtils';
+} from '../lib/utils/appUtils';
 
 describe('File Size Utilities', () => {
     describe('formatFileSize', () => {

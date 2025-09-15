@@ -7,8 +7,8 @@ interface HashtagData {
     tags: [string, string][];
 }
 
-// Svelte 5のrunesを使用（常に$stateを使用）
-const svelteHashtagDataStore = $state<HashtagData>({
+// ハッシュタグストアの実装（常に$stateを使用）
+let svelteHashtagDataStore = $state<HashtagData>({
     content: '',
     hashtags: [],
     tags: []
@@ -38,12 +38,16 @@ export interface ImageSizeMap {
     };
 }
 
-// Svelte 5のrunesを使用
-const svelteImageImetaMap = $state<ImageImetaMap>({});
-const svelteImageSizeMap = $state<ImageSizeMap>({});
+// 画像ストアの実装（常に$stateを使用）
+let svelteImageImetaMap = $state<ImageImetaMap>({});
+let svelteImageSizeMap = $state<ImageSizeMap>({});
 
-// テスト環境判定（必要に応じて修正してください）
-const isTestEnv = typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test';
+// テスト環境判定
+const isTestEnv = typeof globalThis !== 'undefined' &&
+    (globalThis as any).process?.env?.NODE_ENV === 'test' ||
+    typeof global !== 'undefined' &&
+    (global as any).process?.env?.NODE_ENV === 'test' ||
+    typeof window === 'undefined';
 
 export const imageImetaMapStore = {
     get value() { return svelteImageImetaMap; },

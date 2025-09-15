@@ -1,21 +1,29 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadHelper, processFilesForUpload, insertPlaceholdersIntoEditor, prepareMetadataList } from "./uploadHelper";
-import type { UploadHelperDependencies, FileUploadManagerInterface, FileValidationResult } from "./types";
+import { uploadHelper, processFilesForUpload, insertPlaceholdersIntoEditor, prepareMetadataList } from "../lib/uploadHelper";
+import type { UploadHelperDependencies, FileUploadManagerInterface, FileValidationResult } from "../lib/types";
 
-// PWA関連のモジュールをモック
+// PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
-    useRegisterSW: () => ({ needRefresh: false, updateServiceWorker: vi.fn() })
+    useRegisterSW: () => ({
+        needRefresh: false,
+        updateServiceWorker: vi.fn()
+    })
+}));
+
+// appStoreのモック（PWA関連の依存関係を含む）
+vi.mock("../stores/appStore.svelte.ts", () => ({
+    // 必要な状態やストアのモック
 }));
 
 // imageSizeMapStoreをモック
-vi.mock("./tags/tagsStore.svelte", () => ({
+vi.mock("../lib/tags/tagsStore.svelte", () => ({
     imageSizeMapStore: {
         update: vi.fn()
     }
 }));
 
 // その他の依存関係をモック
-vi.mock("./fileUploadManager", () => ({
+vi.mock("../lib/fileUploadManager", () => ({
     FileUploadManager: vi.fn().mockImplementation(() => ({
         validateImageFile: vi.fn(),
         generateBlurhashForFile: vi.fn(),
@@ -25,7 +33,7 @@ vi.mock("./fileUploadManager", () => ({
     getImageDimensions: vi.fn()
 }));
 
-vi.mock("./tags/imetaTag", () => ({
+vi.mock("../lib/tags/imetaTag", () => ({
     extractImageBlurhashMap: vi.fn(),
     getMimeTypeFromUrl: vi.fn(),
     calculateImageHash: vi.fn(),
@@ -97,9 +105,9 @@ describe("uploadHelper", () => {
                     setImage: vi.fn(({ src }: { src: string }) => ({
                         run: vi.fn(() => true) // 成功を示すtrueを返す
                     })),
-                    setTextSelection: vi.fn((pos: number) => ({
-                        insertContent: vi.fn((content: string) => ({
-                            setImage: vi.fn((attrs: any) => ({
+                    setTextSelection: vi.fn((_pos: number) => ({
+                        insertContent: vi.fn((_content: string) => ({
+                            setImage: vi.fn((_attrs: any) => ({
                                 run: vi.fn(() => true)
                             }))
                         }))
@@ -108,7 +116,7 @@ describe("uploadHelper", () => {
             })),
             state: {
                 doc: {
-                    descendants: vi.fn((callback) => {
+                    descendants: vi.fn((_callback) => {
                         // descendants関数のモック実装
                         return;
                     }),
@@ -120,7 +128,7 @@ describe("uploadHelper", () => {
                     insert: vi.fn(() => ({ type: "insert" })),
                     replaceWith: vi.fn(() => ({ type: "replaceWith" }))
                 },
-                selection: { 
+                selection: {
                     empty: true,
                     from: 1
                 },
@@ -462,7 +470,7 @@ describe("uploadHelper", () => {
                 state: {
                     doc: {
                         content: { size: 2 }, // 空のparagraph
-                        descendants: vi.fn((callback) => {
+                        descendants: vi.fn((_callback) => {
                             // descendants関数のモック実装
                             return;
                         }),
@@ -512,3 +520,5 @@ describe("uploadHelper", () => {
         });
     });
 });
+
+
