@@ -37,8 +37,8 @@
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
   import { getDefaultEndpoint } from "./lib/constants";
-  import { getRandomHeaderBalloon } from "./lib/utils/appUtils"; // 追加
-  
+  import { BalloonMessageManager, type BalloonMessage } from "./lib/balloonMessageManager";
+
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
   let secretKey = $state("");
@@ -354,7 +354,10 @@
     postComponentRef?.resetPostContent();
   }
 
-  // --- 追加: 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
+  // バルーンメッセージマネージャー
+  let balloonManager: BalloonMessageManager | null = null;
+  
+  // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
   async function handleRefreshRelaysAndProfile() {
     if (!isAuthenticated || !authState.value.pubkey) return;
     if (!relayManager || !profileManager) {
@@ -375,36 +378,60 @@
     }
   }
 
-  let showHeaderBalloon = $state(true);
-  let headerBalloonMessage = $state("");
+  let showHeaderBalloon = $state(false);
+  let headerBalloonMessage = $state<BalloonMessage | null>(null);
+  let hasShownInitialBalloon = $state(false); // 初回バルーン表示済みフラグ
 
-  // localeInitializedがtrueになったタイミングでメッセージをセット
+  // バルーンメッセージマネージャーの初期化
   $effect(() => {
-    if (localeInitialized) {
-      headerBalloonMessage = getRandomHeaderBalloon($_);
-      showHeaderBalloon = true;
-      setTimeout(() => {
-        showHeaderBalloon = false;
-      }, 3000);
+    if ($_ && !balloonManager) {
+      balloonManager = new BalloonMessageManager($_);
     }
   });
 
-  // --- 追加: visibilitychangeでアクティブ時のみバルーン表示 ---
+  // localeInitializedがtrueになったタイミングでメッセージをセット（一度だけ）
+  $effect(() => {
+    if (localeInitialized && balloonManager && !showHeaderBalloon && !hasShownInitialBalloon) {
+      showHeaderBalloonMessage();
+      hasShownInitialBalloon = true;
+    }
+  });
+
+  function showHeaderBalloonMessage() {
+    if (!balloonManager || showHeaderBalloon) return;
+    
+    headerBalloonMessage = balloonManager.createMessage("info");
+    showHeaderBalloon = true;
+    
+    balloonManager.scheduleHide(() => {
+      showHeaderBalloon = false;
+      headerBalloonMessage = null;
+    }, 3000);
+  }
+
+  // --- visibilitychangeでアクティブ時のみバルーン表示 ---
   let wasHidden = false;
+  let lastVisibilityChange = 0; // デバウンス用タイムスタンプ
+
   function showBalloonOnActive() {
+    const now = Date.now();
+    
+    // デバウンス: 前回の実行から1秒以内は無視
+    if (now - lastVisibilityChange < 1000) {
+      wasHidden = document.visibilityState === "hidden";
+      return;
+    }
+    
     // 「非アクティブ→アクティブ」になった瞬間のみ
     if (
       document.visibilityState === "visible" &&
       wasHidden &&
-      localeInitialized
+      localeInitialized &&
+      balloonManager &&
+      !showHeaderBalloon
     ) {
-      if (!showHeaderBalloon) {
-        headerBalloonMessage = getRandomHeaderBalloon($_);
-        showHeaderBalloon = true;
-        setTimeout(() => {
-          showHeaderBalloon = false;
-        }, 3000);
-      }
+      showHeaderBalloonMessage();
+      lastVisibilityChange = now;
     }
     wasHidden = document.visibilityState === "hidden";
   }
@@ -427,6 +454,15 @@
   function handleSelectedEndpointChange(value: string) {
     selectedEndpoint = value;
   }
+
+  // クリーンアップ
+  $effect(() => {
+    return () => {
+      if (balloonManager) {
+        balloonManager.dispose();
+      }
+    };
+  });
 </script>
 
 {#if $locale && localeInitialized}
@@ -435,9 +471,7 @@
       <HeaderComponent
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onResetPostContent={handleResetPostContent}
-        balloonMessage={showHeaderBalloon && headerBalloonMessage
-          ? { type: "info", message: headerBalloonMessage }
-          : null}
+        balloonMessage={showHeaderBalloon && headerBalloonMessage ? headerBalloonMessage : null}
       />
       <PostComponent
         bind:this={postComponentRef}

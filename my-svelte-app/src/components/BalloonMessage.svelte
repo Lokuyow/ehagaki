@@ -33,7 +33,7 @@
         width: 100%;
         height: 100%;
         margin-left: 2px;
-        margin-right: 4px;
+        margin-right: 6px;
         z-index: 2;
         pointer-events: none;
     }

@@ -1,6 +1,4 @@
 <script lang="ts">
-    // import { run } from "svelte/legacy"; // 削除
-
     import { _ } from "svelte-i18n";
     import {
         editorState,
@@ -9,19 +7,16 @@
     } from "../stores/editorStore.svelte";
     import { authState } from "../stores/appStore.svelte";
     import Button from "./Button.svelte";
-    import BalloonMessage from "./BalloonMessage.svelte"; // 追加
-    import { BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_ERROR_KEY } from "../lib/constants";
+    import BalloonMessage from "./BalloonMessage.svelte";
+    import {
+        BalloonMessageManager,
+        type BalloonMessage as BalloonMessageType,
+    } from "../lib/balloonMessageManager";
 
-    // --- infoバルーンデバッグ用 ---
-    import { onDestroy } from "svelte";
-    import { writable } from "svelte/store";
     interface Props {
         onUploadImage: () => void;
         onResetPostContent: () => void;
-        balloonMessage?: {
-            type: "success" | "error" | "info";
-            message: string;
-        } | null;
+        balloonMessage?: BalloonMessageType | null;
     }
 
     let {
@@ -29,7 +24,14 @@
         onResetPostContent,
         balloonMessage = null,
     }: Props = $props();
-    const infoBalloonStore = writable<{ message: string } | null>(null);
+
+    // バルーンメッセージマネージャー
+    let balloonManager: BalloonMessageManager | null = null;
+    $effect(() => {
+        if ($_ && !balloonManager) {
+            balloonManager = new BalloonMessageManager($_);
+        }
+    });
 
     // --- authState購読用 ---
     let hasStoredKey = $state(false);
@@ -42,58 +44,94 @@
 
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
-    let canPost = $derived(editorState.canPost); // 修正: editorState.canPost のみ参照
+    let canPost = $derived(editorState.canPost);
+
+    // 投稿成功時のバルーンメッセージ管理
+    let postSuccessBalloonMessage = $state<BalloonMessageType | null>(null);
+    let hasProcessedSuccess = $state(false); // 成功処理済みフラグ
 
     function showSuccessMessage() {
-        setTimeout(() => {
-            updatePostStatus({
-                ...editorState.postStatus,
-                success: false,
-                message: "",
-                completed: false,
-            });
-        }, 3000);
+        if (balloonManager && !hasProcessedSuccess) {
+            postSuccessBalloonMessage = balloonManager.createMessage("success");
+            hasProcessedSuccess = true;
+            
+            balloonManager.scheduleHide(() => {
+                postSuccessBalloonMessage = null;
+                hasProcessedSuccess = false;
+                updatePostStatus({
+                    ...editorState.postStatus,
+                    success: false,
+                    message: "",
+                    completed: false,
+                });
+            }, 3000);
+        }
     }
 
-    // 投稿完了時のバルーンメッセージ候補
-    const postSuccessMessages = BALLOON_MESSAGE_SUCCESS_KEYS;
-
-    // 投稿成功時にランダムでメッセージを選択（1回だけ）
-    let postSuccessBalloonMessage = $state("");
-    let hasShownRandomSuccessBalloon = $state(false);
+    // 投稿完了時の処理（一度だけ実行）
     $effect(() => {
         if (
             postStatus.success &&
             postStatus.completed &&
-            !hasShownRandomSuccessBalloon
+            !postSuccessBalloonMessage &&
+            !hasProcessedSuccess
         ) {
-            // completedになったタイミングでランダムメッセージをセット
-            const idx = Math.floor(Math.random() * postSuccessMessages.length);
-            postSuccessBalloonMessage = postSuccessMessages[idx];
-            hasShownRandomSuccessBalloon = true;
             showSuccessMessage();
         }
     });
-    // 投稿がリセットされたらフラグもリセット
+
+    // 投稿がリセットされたら状態もクリア
     $effect(() => {
         if (!postStatus.success || !postStatus.completed) {
-            hasShownRandomSuccessBalloon = false;
-            postSuccessBalloonMessage = "";
+            if (postSuccessBalloonMessage || hasProcessedSuccess) {
+                postSuccessBalloonMessage = null;
+                hasProcessedSuccess = false;
+                if (balloonManager) {
+                    balloonManager.cancelScheduledHide();
+                }
+            }
         }
     });
 
-    // --- dev用: post success/error強制表示デバッグ ---
+    // エラーメッセージ生成（リアクティブだが条件によってキャッシュ）
+    let errorBalloonMessage = $derived(
+        postStatus.error && balloonManager !== null
+            ? (balloonManager as BalloonMessageManager).createMessage("error")
+            : null,
+    );
+
+    // デバッグ機能とメッセージ選択を統合
+    let debugInfoMessage = $state<BalloonMessageType | null>(null);
+
+    // dev用: デバッグ機能
     if (import.meta.env.MODE === "development") {
         (window as any).showInfoBalloonDebug = (msg: string) => {
-            infoBalloonStore.set({ message: msg });
+            debugInfoMessage = { type: "info", message: msg };
         };
         (window as any).hideInfoBalloonDebug = () => {
-            infoBalloonStore.set(null);
+            debugInfoMessage = null;
         };
     }
 
-    onDestroy(() => {
-        // infoBalloonTimeout削除
+    // 最終的なメッセージ選択（開発モードとプロダクションモード共通）
+    let finalBalloonMessage = $derived(
+        import.meta.env.MODE === "development"
+            ? debugInfoMessage ||
+                  balloonMessage ||
+                  errorBalloonMessage ||
+                  postSuccessBalloonMessage
+            : balloonMessage ||
+                  errorBalloonMessage ||
+                  postSuccessBalloonMessage,
+    );
+
+    // クリーンアップ
+    $effect(() => {
+        return () => {
+            if (balloonManager) {
+                balloonManager.dispose();
+            }
+        };
     });
 </script>
 
@@ -111,22 +149,10 @@
                 class="site-icon"
             />
         </a>
-        {#if $infoBalloonStore}
-            <BalloonMessage type="info" message={$infoBalloonStore.message} />
-        {:else if balloonMessage}
+        {#if finalBalloonMessage}
             <BalloonMessage
-                type={balloonMessage.type}
-                message={balloonMessage.message}
-            />
-        {:else if postStatus.error}
-            <BalloonMessage
-                type="error"
-                message={$_(BALLOON_MESSAGE_ERROR_KEY)}
-            />
-        {:else if postStatus.success && postStatus.completed && postSuccessBalloonMessage}
-            <BalloonMessage
-                type="success"
-                message={$_(postSuccessBalloonMessage)}
+                type={finalBalloonMessage.type}
+                message={finalBalloonMessage.message}
             />
         {/if}
     </div>
