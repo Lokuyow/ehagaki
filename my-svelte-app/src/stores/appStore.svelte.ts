@@ -319,3 +319,28 @@ export const isSwUpdatingStore = {
     get value() { return isSwUpdating; },
     set: (value: boolean) => { isSwUpdating = value; }
 };
+
+// --- 共有画像ストアの拡張機能 ---
+export function updateSharedImageStore(file: File | null, metadata?: import('../lib/shareHandler').SharedImageMetadata): void {
+    sharedImageStore.file = file;
+    sharedImageStore.metadata = metadata;
+    sharedImageStore.received = !!file;
+}
+
+export function clearSharedImageStore(): void {
+    sharedImageStore.file = null;
+    sharedImageStore.metadata = undefined;
+    sharedImageStore.received = false;
+}
+
+export function getSharedImageFile(): File | null {
+    return sharedImageStore.file;
+}
+
+export function getSharedImageMetadata(): import('../lib/shareHandler').SharedImageMetadata | undefined {
+    return sharedImageStore.metadata;
+}
+
+export function isSharedImageReceived(): boolean {
+    return sharedImageStore.received;
+}

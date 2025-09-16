@@ -164,3 +164,15 @@ export const UPLOAD_POLLING_CONFIG = {
     RETRY_INTERVAL: 1000,     // 1秒
     TIMEOUT_MESSAGE: "Upload processing timeout"
 } as const;
+
+// --- ShareHandler用定数 ---
+export const SHARE_HANDLER_CONFIG = {
+    REQUEST_TIMEOUT: 5000,
+    RETRY_COUNT: 3,
+    RETRY_DELAY: 1000,
+    SW_CONTROLLER_WAIT_TIMEOUT: 500,
+    INDEXEDDB_NAME: 'eHagakiSharedData',
+    INDEXEDDB_VERSION: 1,
+    STORE_NAME: 'flags',
+    FLAG_KEY: 'sharedImage'
+} as const;

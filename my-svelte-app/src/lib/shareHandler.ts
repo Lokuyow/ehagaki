@@ -1,22 +1,20 @@
-import { sharedImageStore } from '../stores/appStore.svelte';
+import {
+  updateSharedImageStore,
+  clearSharedImageStore,
+  getSharedImageFile,
+  getSharedImageMetadata
+} from '../stores/appStore.svelte';
+import type { SharedImageData, SharedImageMetadata } from './types';
+import {
+  checkIfOpenedFromShare,
+  checkAndClearSharedFlagInIndexedDB,
+  waitForServiceWorkerController,
+  requestSharedImageWithMessageChannel,
+  requestSharedImageWithEventListener
+} from './utils/appUtils';
 
-/**
- * 共有画像データ型
- */
-export interface SharedImageData {
-  image: File;
-  metadata?: SharedImageMetadata;
-}
-
-/**
- * 共有画像のメタデータ型
- */
-export interface SharedImageMetadata {
-  name?: string;
-  type?: string;
-  size?: number;
-  timestamp?: string;
-}
+// 型定義はtypes.tsから再エクスポート
+export type { SharedImageData, SharedImageMetadata } from './types';
 
 type ServiceWorkerMessage = {
   type: 'SHARED_IMAGE';
@@ -26,12 +24,6 @@ type ServiceWorkerMessage = {
 };
 
 export class ShareHandler {
-  private static readonly REQUEST_TIMEOUT = 5000;
-  private static readonly RETRY_COUNT = 3;
-  private static readonly RETRY_DELAY = 1000;
-
-  private sharedImageFile: File | null = null;
-  private sharedImageMetadata: SharedImageMetadata | null = null;
   private isProcessingSharedImage = false;
   private requestCallbacks = new Map<string, (result: SharedImageData | null) => void>();
 
@@ -50,12 +42,7 @@ export class ShareHandler {
     if (type !== 'SHARED_IMAGE') return;
 
     if (data?.image) {
-      this.sharedImageFile = data.image;
-      this.sharedImageMetadata = data.metadata || null;
-      // Storeを更新（runes記法）
-      sharedImageStore.file = this.sharedImageFile;
-      sharedImageStore.metadata = this.sharedImageMetadata ?? undefined;
-      sharedImageStore.received = true;
+      updateSharedImageStore(data.image, data.metadata);
     }
 
     if (requestId && this.requestCallbacks.has(requestId)) {
@@ -64,12 +51,8 @@ export class ShareHandler {
     }
   }
 
-  private dispatchSharedImageEvent(): void {
-    // ここはもう使われないので空実装に
-  }
-
   public static checkIfOpenedFromShare(): boolean {
-    return new URLSearchParams(window.location.search).get('shared') === 'true';
+    return checkIfOpenedFromShare();
   }
 
   public async checkForSharedImageOnLaunch(): Promise<SharedImageData | null> {
@@ -79,108 +62,41 @@ export class ShareHandler {
   }
 
   public async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    // このメソッドもfileUploadManager.tsに集約するため削除
-    return null;
+    try {
+      await waitForServiceWorkerController();
+
+      // MessageChannelを試す
+      let result = await requestSharedImageWithMessageChannel();
+      if (result) return result;
+
+      // EventListenerを試す
+      result = await requestSharedImageWithEventListener(this.requestCallbacks);
+      if (result) return result;
+
+      // IndexedDBをチェック
+      const hasFlag = await checkAndClearSharedFlagInIndexedDB();
+      return hasFlag ? null : null; // フラグがあっても実際のデータは別途取得が必要
+
+    } catch (error) {
+      console.error('共有画像取得エラー:', error);
+      return null;
+    }
   }
 
-  private async requestWithMessageChannel(): Promise<SharedImageData | null> {
-    if (!navigator.serviceWorker.controller) return null;
-    const messageChannel = new MessageChannel();
-    const requestId = this.generateRequestId();
-    const promise = new Promise<SharedImageData | null>((resolve) => {
-      const timeout = setTimeout(() => resolve(null), ShareHandler.REQUEST_TIMEOUT);
-      messageChannel.port1.onmessage = (event: MessageEvent<ServiceWorkerMessage>) => {
-        clearTimeout(timeout);
-        const { data } = event.data || {};
-        resolve(data && data.image ? data : null);
-      };
-    });
-    navigator.serviceWorker.controller.postMessage(
-      { action: 'getSharedImage', requestId },
-      [messageChannel.port2]
-    );
-    return promise;
+  public isProcessing(): boolean {
+    return this.isProcessingSharedImage;
   }
 
-  private async requestWithEventListener(): Promise<SharedImageData | null> {
-    if (!navigator.serviceWorker.controller) return null;
-    const requestId = this.generateRequestId();
-    const promise = new Promise<SharedImageData | null>((resolve) => {
-      this.requestCallbacks.set(requestId, resolve);
-      setTimeout(() => {
-        this.requestCallbacks.delete(requestId);
-        resolve(null);
-      }, ShareHandler.REQUEST_TIMEOUT);
-    });
-    navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage', requestId });
-    return promise;
+  public getSharedImageFile(): File | null {
+    return getSharedImageFile();
   }
 
-  private async waitForServiceWorkerController(): Promise<void> {
-    if (navigator.serviceWorker.controller) return;
-    return new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-        reject(new Error('ServiceWorkerコントローラー待機タイムアウト'));
-      }, ShareHandler.REQUEST_TIMEOUT);
-      const onControllerChange = () => {
-        clearTimeout(timeout);
-        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-        setTimeout(resolve, 500);
-      };
-      navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-    });
+  public getSharedImageMetadata(): SharedImageMetadata | undefined {
+    return getSharedImageMetadata();
   }
 
-  private async checkSharedFlagInIndexedDB(): Promise<boolean> {
-    return new Promise((resolve) => {
-      try {
-        const request = indexedDB.open('eHagakiSharedData', 1);
-        request.onupgradeneeded = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains('flags')) {
-            db.createObjectStore('flags', { keyPath: 'id' });
-          }
-        };
-        request.onerror = () => resolve(false);
-        request.onsuccess = (event) => {
-          try {
-            const db = (event.target as IDBOpenDBRequest).result;
-            if (!db.objectStoreNames.contains('flags')) {
-              db.close(); resolve(false); return;
-            }
-            const transaction = db.transaction(['flags'], 'readwrite');
-            const store = transaction.objectStore('flags');
-            const getRequest = store.get('sharedImage');
-            getRequest.onsuccess = () => {
-              const flag = getRequest.result;
-              if (flag?.value === true) {
-                store.delete('sharedImage').onsuccess = () => { db.close(); resolve(true); };
-              } else {
-                db.close(); resolve(false);
-              }
-            };
-            getRequest.onerror = () => { db.close(); resolve(false); };
-          } catch { resolve(false); }
-        };
-      } catch { resolve(false); }
-    });
-  }
-
-  private delay(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
-  }
-
-  private generateRequestId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  public isProcessing(): boolean { return this.isProcessingSharedImage; }
-  public getSharedImageFile(): File | null { return this.sharedImageFile; }
-  public getSharedImageMetadata(): SharedImageMetadata | null { return this.sharedImageMetadata; }
   public clearSharedImage(): void {
-    this.sharedImageFile = null;
-    this.sharedImageMetadata = null;
+    clearSharedImageStore();
   }
 }
 

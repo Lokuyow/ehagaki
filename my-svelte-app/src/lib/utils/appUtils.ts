@@ -1,5 +1,5 @@
 import { getPublicKey, nip19 } from "nostr-tools";
-import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData } from "../types";
+import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData, SharedImageData } from "../types";
 import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from '../constants';
 
 // =============================================================================
@@ -628,4 +628,173 @@ export function handleServiceWorkerRefresh(
   timeoutAdapter.setTimeout(() => {
     windowAdapter.location.reload();
   }, timeout);
+}
+
+// =============================================================================
+// Share Handler Utilities (Pure Functions & Testable)
+// =============================================================================
+
+/**
+ * URLのクエリパラメータから共有モードかどうかをチェック
+ */
+export function checkIfOpenedFromShare(searchParams?: URLSearchParams): boolean {
+  const params = searchParams || new URLSearchParams(window.location.search);
+  return params.get('shared') === 'true';
+}
+
+/**
+ * リクエストIDを生成
+ */
+export function generateRequestId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * 共有ハンドラー用の設定
+ */
+const SHARE_HANDLER_CONFIG = {
+  INDEXEDDB_NAME: "share-handler-db",
+  INDEXEDDB_VERSION: 1,
+  STORE_NAME: "flags",
+  FLAG_KEY: "shared",
+  REQUEST_TIMEOUT: 3000,
+  SW_CONTROLLER_WAIT_TIMEOUT: 100
+};
+
+/**
+ * IndexedDBから共有フラグをチェックして削除
+ */
+export async function checkAndClearSharedFlagInIndexedDB(): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(
+        SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
+        SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION
+      );
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
+          db.createObjectStore(SHARE_HANDLER_CONFIG.STORE_NAME, { keyPath: 'id' });
+        }
+      };
+
+      request.onerror = () => resolve(false);
+
+      request.onsuccess = (event) => {
+        try {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
+            db.close();
+            resolve(false);
+            return;
+          }
+
+          const transaction = db.transaction([SHARE_HANDLER_CONFIG.STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(SHARE_HANDLER_CONFIG.STORE_NAME);
+          const getRequest = store.get(SHARE_HANDLER_CONFIG.FLAG_KEY);
+
+          getRequest.onsuccess = () => {
+            const flag = getRequest.result;
+            if (flag?.value === true) {
+              store.delete(SHARE_HANDLER_CONFIG.FLAG_KEY).onsuccess = () => {
+                db.close();
+                resolve(true);
+              };
+            } else {
+              db.close();
+              resolve(false);
+            }
+          };
+
+          getRequest.onerror = () => {
+            db.close();
+            resolve(false);
+          };
+        } catch {
+          resolve(false);
+        }
+      };
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
+/**
+ * ServiceWorkerコントローラーの準備を待つ
+ */
+export async function waitForServiceWorkerController(): Promise<void> {
+  if (navigator.serviceWorker.controller) return;
+
+  return new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      reject(new Error('ServiceWorkerコントローラー待機タイムアウト'));
+    }, SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT);
+
+    const onControllerChange = () => {
+      clearTimeout(timeout);
+      navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+      setTimeout(resolve, SHARE_HANDLER_CONFIG.SW_CONTROLLER_WAIT_TIMEOUT);
+    };
+
+    navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+  });
+}
+
+/**
+ * MessageChannelを使ってServiceWorkerから共有画像を取得
+ */
+export async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
+  if (!navigator.serviceWorker.controller) return null;
+
+  const messageChannel = new MessageChannel();
+  const requestId = generateRequestId();
+
+  const promise = new Promise<SharedImageData | null>((resolve) => {
+    const timeout = setTimeout(() => resolve(null), SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT);
+
+    messageChannel.port1.onmessage = (event: MessageEvent) => {
+      clearTimeout(timeout);
+      const { data } = event.data || {};
+      resolve(data && data.image ? data : null);
+    };
+  });
+
+  navigator.serviceWorker.controller.postMessage(
+    { action: 'getSharedImage', requestId },
+    [messageChannel.port2]
+  );
+
+  return promise;
+}
+
+/**
+ * EventListenerを使ってServiceWorkerから共有画像を取得
+ */
+export async function requestSharedImageWithEventListener(
+  requestCallbacks: Map<string, (result: SharedImageData | null) => void>
+): Promise<SharedImageData | null> {
+  if (!navigator.serviceWorker.controller) return null;
+
+  const requestId = generateRequestId();
+
+  const promise = new Promise<SharedImageData | null>((resolve) => {
+    requestCallbacks.set(requestId, resolve);
+    setTimeout(() => {
+      requestCallbacks.delete(requestId);
+      resolve(null);
+    }, SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT);
+  });
+
+  navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage', requestId });
+  return promise;
+}
+
+/**
+ * 遅延ユーティリティ
+ */
+export function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
