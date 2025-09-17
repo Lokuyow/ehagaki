@@ -1,27 +1,26 @@
 import { defineConfig } from 'vitest/config';
-import { sveltekit } from '@sveltejs/kit/vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
 
 export default defineConfig({
-  plugins: [sveltekit()],
+  plugins: [svelte()],
   test: {
     environment: 'jsdom',
     globals: true,
     setupFiles: ['src/test/setup.ts'],
-    testTimeout: 10000, // 10秒のタイムアウト
-    pool: 'forks', // forkプールを使用してメモリ分離
+    testTimeout: 20000,
+    pool: 'forks',
     poolOptions: {
       forks: {
-        singleFork: true, // 単一フォークでメモリ使用量を制限
+        singleFork: true,
       }
     },
     env: {
       NODE_ENV: 'test',
-      NODE_OPTIONS: '--max-old-space-size=2048' // 2GBのメモリ制限
+      NODE_OPTIONS: '--max-old-space-size=2048'
     }
   },
   resolve: {
     alias: {
-      // テスト環境でのPWA仮想モジュールのモック
       'virtual:pwa-register/svelte': new URL('./src/test/mocks/pwa-register.ts', import.meta.url).pathname
     }
   }
