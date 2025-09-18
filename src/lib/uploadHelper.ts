@@ -436,6 +436,17 @@ export async function uploadHelper({
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
+    const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
+    const modeLabel = isPreview ? "[preview]" : "[dev]";
+
+    if (devMode) {
+        console.log(`${modeLabel} [uploadHelper] Starting upload process:`, {
+            fileCount: fileArray.length,
+            endpoint,
+            hasServiceWorker: !!navigator.serviceWorker?.controller
+        });
+    }
+
     // ファイル処理
     const fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
 
@@ -475,6 +486,13 @@ export async function uploadHelper({
     // アップロード対象のファイルを抽出（有効ファイルのみ）
     const validFiles = placeholderMap.map(entry => entry.file);
 
+    if (devMode) {
+        console.log(`${modeLabel} [uploadHelper] Starting file upload:`, {
+            validFileCount: validFiles.length,
+            endpoint
+        });
+    }
+
     // アップロード
     let results: FileUploadResponse[] | null = null;
     try {
@@ -499,8 +517,20 @@ export async function uploadHelper({
                 metadataList,
             );
         }
+
+        if (devMode) {
+            console.log(`${modeLabel} [uploadHelper] Upload results:`, {
+                totalResults: results?.length || 0,
+                successful: results?.filter(r => r.success).length || 0,
+                failed: results?.filter(r => !r.success).length || 0
+            });
+        }
     } catch (error) {
-        showUploadError(error instanceof Error ? error.message : String(error), 5000);
+        if (devMode) {
+            console.error(`${modeLabel} [uploadHelper] Upload error:`, error);
+        }
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        showUploadError(errorMsg, 5000);
         results = null;
     } finally {
         updateUploadState(false);
@@ -542,7 +572,7 @@ export async function uploadHelper({
                         const x = await dependencies.calculateImageHash(url);
                         if (x) imageXMap[url] = x;
                         if (devMode) {
-                            console.log("[dev] x計算Promise.all: url, x", { url, x });
+                            console.log(`${modeLabel} [dev] x計算Promise.all: url, x`, { url, x });
                         }
                     }
                 }),
@@ -555,14 +585,14 @@ export async function uploadHelper({
                     const x = imageXMap[url];
                     const tag = await dependencies.createImetaTag({ url, m, blurhash, ox, x });
                     if (devMode) {
-                        console.log("[dev] imeta生成後: url, tag, usedBlurhashSource", { url, tag, usedBlurhash: blurhash ? 'server' : (rawImageBlurhashMap[url] ? 'client' : 'none') });
+                        console.log(`${modeLabel} [dev] imeta生成後: url, tag, usedBlurhashSource`, { url, tag, usedBlurhash: blurhash ? 'server' : (rawImageBlurhashMap[url] ? 'client' : 'none') });
                     }
                     return tag;
                 }),
             );
-            console.log("[dev] 画像アップロード直後imetaタグまとめ", imetaTags);
+            console.log(`${modeLabel} [dev] 画像アップロード直後imetaタグまとめ`, imetaTags);
         } catch (e) {
-            console.warn("[dev] imetaタグ生成失敗", e);
+            console.warn(`${modeLabel} [dev] imetaタグ生成失敗`, e);
         }
     }
 

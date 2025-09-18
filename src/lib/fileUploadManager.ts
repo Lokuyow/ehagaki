@@ -287,10 +287,26 @@ export class FileUploadManager {
               entries.push({ key: k, value: String(v) });
             }
           }
-          console.log("[dev] FormData to be sent to server:", entries);
+          // 修正: previewモード判定を追加
+          const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
+          const modeLabel = isPreview ? "[preview]" : "[dev]";
+          console.log(`${modeLabel} FormData to be sent to server:`, entries);
+          console.log(`${modeLabel} Upload endpoint:`, finalUrl);
         } catch (e) {
           console.log("[dev] Failed to enumerate FormData for debug", e);
         }
+      }
+
+      // fetchリクエストの詳細ログを追加
+      if (devMode) {
+        const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
+        const modeLabel = isPreview ? "[preview]" : "[dev]";
+        console.log(`${modeLabel} Making fetch request:`, {
+          url: finalUrl,
+          method: 'POST',
+          hasAuth: !!authHeader,
+          formDataSize: uploadFile.size
+        });
       }
 
       const response = await this.dependencies.fetch(finalUrl, {
@@ -298,12 +314,37 @@ export class FileUploadManager {
         headers: { 'Authorization': authHeader },
         body: formData
       });
+
+      if (devMode) {
+        const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
+        const modeLabel = isPreview ? "[preview]" : "[dev]";
+        console.log(`${modeLabel} Fetch response received:`, {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url,
+          ok: response.ok
+        });
+      }
+
       await debugLogUploadResponse(response);
+
+      // レスポンスの処理
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        return {
+          success: false,
+          error: `Upload failed: ${response.status} ${response.statusText} - ${errorText}`,
+          sizeInfo
+        };
+      }
 
       let data: any;
       try {
         data = await response.json();
-      } catch {
+      } catch (jsonError) {
+        if (devMode) {
+          console.error("[dev] JSON parse error:", jsonError);
+        }
         return { success: false, error: 'Could not parse upload response', sizeInfo };
       }
 
@@ -332,7 +373,15 @@ export class FileUploadManager {
       }
       return { success: false, error: data.message || 'Could not extract URL from response', sizeInfo, nip94: Object.keys(parsedNip94).length ? parsedNip94 : null };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      if (devMode) {
+        console.error("[dev] Upload error:", error);
+      }
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Service Workerが原因の可能性がある場合のヒントを追加
+      const enhancedError = errorMessage.includes('Failed to fetch')
+        ? `${errorMessage} (Service Workerが画像アップロードをブロックしている可能性があります)`
+        : errorMessage;
+      return { success: false, error: enhancedError };
     }
   }
 

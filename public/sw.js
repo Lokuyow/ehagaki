@@ -108,7 +108,7 @@ const Utilities = {
         return Response.redirect(url.href, 303);
     },
 
-    // アップロードリクエスト判定
+    // アップロードリクエスト判定（内部のWeb Share Targetのみ）
     isUploadRequest(request, url) {
         return request.method === 'POST' &&
             (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
@@ -599,21 +599,23 @@ class ServiceWorkerCore {
         await ServiceWorkerDependencies.clients.claim();
     }
 
-    // フェッチイベント処理
+    // フェッチイベント処理を修正
     async handleFetch(event) {
         const url = new URL(event.request.url);
 
-        // 修正: オリジンが同じ場合のみ横取り
-        if (Utilities.isUploadRequest(event.request, url) && url.origin === ServiceWorkerDependencies.location.origin) {
+        // 同一オリジンのリクエストのみ処理（外部リクエストはここに来ない）
+        if (Utilities.isUploadRequest(event.request, url)) {
+            ServiceWorkerDependencies.console.log('SW: 内部アップロードリクエストを処理', url.href);
             return await this.requestHandler.handleUploadRequest(event.request);
-        } else if (Utilities.isProfileImageRequest(event.request)) {
+        }
+        // プロフィール画像リクエスト
+        else if (Utilities.isProfileImageRequest(event.request)) {
             return await this.requestHandler.handleProfileImageRequest(event.request);
-        } else if (url.origin === ServiceWorkerDependencies.location.origin) {
+        }
+        // 同一オリジンの通常リクエスト
+        else {
             return await this.cacheManager.handleCacheFirst(event.request);
         }
-
-        // 該当しない場合はundefinedを返してデフォルトの処理に委ねる
-        return undefined;
     }
 
     // メッセージイベント処理
@@ -668,10 +670,28 @@ self.addEventListener('activate', (event) => {
 
 // fetchイベント
 self.addEventListener('fetch', (event) => {
+    const url = new URL(event.request.url);
+
+    // 外部リクエストは完全に素通し（Service Workerによる処理を行わない）
+    if (url.origin !== self.location.origin) {
+        // 外部リクエストの場合は何もしない（ブラウザのデフォルト処理に委ねる）
+        return;
+    }
+
+    // 同一オリジンのリクエストのみ処理
     const response = serviceWorkerCore.handleFetch(event);
     if (response !== undefined) {
-        event.respondWith(response);
+        // Promiseかどうかチェックして適切に処理
+        if (response instanceof Promise) {
+            event.respondWith(response);
+        } else if (response instanceof Response) {
+            event.respondWith(Promise.resolve(response));
+        } else {
+            // 予期しない戻り値の場合はデフォルトの処理に委ねる
+            console.warn('SW: Unexpected response type from handleFetch:', typeof response);
+        }
     }
+    // response が undefined の場合は何もしない（デフォルトの処理に委ねる）
 });
 
 // messageイベント
