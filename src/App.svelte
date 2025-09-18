@@ -37,7 +37,10 @@
   import { debugLog, debugAuthState } from "./lib/debug";
   import type { UploadProgress } from "./lib/types"; // 追加
   import { getDefaultEndpoint } from "./lib/constants";
-  import { BalloonMessageManager, type BalloonMessage } from "./lib/balloonMessageManager";
+  import {
+    BalloonMessageManager,
+    type BalloonMessage,
+  } from "./lib/balloonMessageManager";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -356,7 +359,7 @@
 
   // バルーンメッセージマネージャー
   let balloonManager: BalloonMessageManager | null = null;
-  
+
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
   async function handleRefreshRelaysAndProfile() {
     if (!isAuthenticated || !authState.value.pubkey) return;
@@ -391,7 +394,12 @@
 
   // localeInitializedがtrueになったタイミングでメッセージをセット（一度だけ）
   $effect(() => {
-    if (localeInitialized && balloonManager && !showHeaderBalloon && !hasShownInitialBalloon) {
+    if (
+      localeInitialized &&
+      balloonManager &&
+      !showHeaderBalloon &&
+      !hasShownInitialBalloon
+    ) {
       showHeaderBalloonMessage();
       hasShownInitialBalloon = true;
     }
@@ -399,10 +407,10 @@
 
   function showHeaderBalloonMessage() {
     if (!balloonManager || showHeaderBalloon) return;
-    
+
     headerBalloonMessage = balloonManager.createMessage("info");
     showHeaderBalloon = true;
-    
+
     balloonManager.scheduleHide(() => {
       showHeaderBalloon = false;
       headerBalloonMessage = null;
@@ -415,13 +423,13 @@
 
   function showBalloonOnActive() {
     const now = Date.now();
-    
+
     // デバウンス: 前回の実行から1秒以内は無視
     if (now - lastVisibilityChange < 1000) {
       wasHidden = document.visibilityState === "hidden";
       return;
     }
-    
+
     // 「非アクティブ→アクティブ」になった瞬間のみ
     if (
       document.visibilityState === "visible" &&
@@ -471,7 +479,9 @@
       <HeaderComponent
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onResetPostContent={handleResetPostContent}
-        balloonMessage={showHeaderBalloon && headerBalloonMessage ? headerBalloonMessage : null}
+        balloonMessage={showHeaderBalloon && headerBalloonMessage
+          ? headerBalloonMessage
+          : null}
       />
       <PostComponent
         bind:this={postComponentRef}
