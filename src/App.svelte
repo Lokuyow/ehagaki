@@ -300,6 +300,13 @@
         }
       }
       debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
+      
+      // テスト用ログを追加（previewモードでfloating-dev-console-logの表示確認用）
+      console.log("App.svelte mounted - test log for floating console");
+      console.log("Current mode:", import.meta.env.MODE);
+      console.log("Current location:", window.location.href);
+      console.log("Port:", window.location.port);
+      console.log("Hostname:", window.location.hostname);
     };
 
     // Call the async initializer

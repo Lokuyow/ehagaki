@@ -354,7 +354,11 @@
     });
 
     $effect(() => {
-        if (devMode) {
+        // previewモードでもログ出力するように修正
+        const isPreviewOrDev = import.meta.env.MODE === "development" || 
+            (typeof window !== "undefined" && (window.location.port === "4173" || window.location.hostname === "localhost"));
+        
+        if (isPreviewOrDev) {
             // Svelteのconsole_log_state警告・rune_outside_svelteエラーを回避
             // imageDimensionsは$stateなのでJSON変換でプレーン化
             console.log(

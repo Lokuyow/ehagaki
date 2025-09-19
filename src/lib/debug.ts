@@ -3,6 +3,12 @@ import { writable, type Writable } from "svelte/store";
 // --- dev環境判定ストア ---
 export const isDev = writable(import.meta.env.MODE === "development");
 
+// --- preview環境判定ストア（追加） ---
+export const isPreview = writable(import.meta.env.MODE === "development" || window.location.port === "4173" || window.location.hostname === "localhost");
+
+// --- dev or preview環境判定ストア（追加） ---
+// 削除（下でshouldShowDevLog()を使って再定義）
+
 // --- dev用: console.log履歴ストア ---
 export const devLog: Writable<string[]> = writable([]);
 
@@ -14,19 +20,63 @@ function logToDevFooter(...args: any[]) {
 }
 
 // --- dev用: console.logフック有効/無効切り替え ---
-export const ENABLE_DEV_LOG_HOOK = false; // ← ここに移動
+export const ENABLE_DEV_LOG_HOOK = true; // ← ここに移動
 
-// --- 開発時のみconsole.logをフック ---
+// --- 本番環境でもfloating-dev-console-logを強制表示する設定 ---
+export const FORCE_SHOW_FLOATING_DEV_LOG = true; // trueで本番環境でも表示
+
+// オリジナルのconsole.logを保存
+const originalConsoleLog = console.log;
+if (typeof window !== "undefined") {
+    (window as any).__originalConsoleLog = originalConsoleLog;
+}
+
+// --- previewOrDev判定関数（本番強制表示対応） ---
+export function shouldShowDevLog(): boolean {
+    // 強制表示フラグがtrueなら常に表示
+    if (FORCE_SHOW_FLOATING_DEV_LOG) return true;
+
+    // 通常の開発・previewモード判定
+    return import.meta.env.MODE === "development" ||
+        window.location.port === "4173" ||
+        window.location.hostname === "localhost";
+}
+
+// --- 既存のストアを更新（本番強制表示対応） ---
+export const isPreviewOrDev = writable(shouldShowDevLog());
+
+// --- 開発時・previewモード・本番強制表示時でconsole.logをフック ---
 // ↓ ENABLE_DEV_LOG_HOOK で切り替え
-if (import.meta.env.MODE === "development" && ENABLE_DEV_LOG_HOOK) {
-    const origLog = console.log;
+if (
+    (
+        import.meta.env.MODE === "development" || 
+        window.location.port === "4173" || 
+        window.location.hostname === "localhost" ||
+        FORCE_SHOW_FLOATING_DEV_LOG // 本番強制表示時もフック有効
+    ) && 
+    ENABLE_DEV_LOG_HOOK
+) {
     // すでにフック済みなら再度フックしない
     if (!(window as any).__devLogHooked) {
         console.log = function (...args: any[]) {
-            origLog.apply(console, args);
+            // 特定のデバッグメッセージは無限ループを避けるためフックしない
+            const firstArg = args[0];
+            if (typeof firstArg === 'string' && firstArg.includes('[FooterInfoDisplay Debug]')) {
+                originalConsoleLog.apply(console, args);
+                return;
+            }
+
+            originalConsoleLog.apply(console, args);
             logToDevFooter(...args);
         };
         (window as any).__devLogHooked = true;
+        
+        // 本番環境で強制表示時は初期ログを追加
+        if (FORCE_SHOW_FLOATING_DEV_LOG && import.meta.env.MODE === "production") {
+            logToDevFooter("🔧 Debug mode enabled in production");
+            logToDevFooter("Current environment:", import.meta.env.MODE);
+            logToDevFooter("Location:", window.location.href);
+        }
     }
 }
 
@@ -106,15 +156,17 @@ export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> 
 // デバッグ用ユーティリティ（本番ビルド時は何もしない）
 
 export function debugLog(...args: any[]) {
-    if (import.meta.env.MODE === "development") {
-        // 開発時のみログ出力
+    // previewモードでも表示するように修正
+    if (import.meta.env.MODE === "development" || window.location.port === "4173" || window.location.hostname === "localhost") {
+        // 開発時・previewモードでログ出力
         console.log("[DEBUG]", ...args);
     }
 }
 
 // 認証状態専用のデバッグログ
 export function debugAuthState(label: string, authState: any) {
-    if (import.meta.env.MODE === "development") {
+    // previewモードでも表示するように修正
+    if (import.meta.env.MODE === "development" || window.location.port === "4173" || window.location.hostname === "localhost") {
         console.log(`[AUTH DEBUG] ${label}:`, {
             type: authState.type,
             isAuthenticated: authState.isAuthenticated,
@@ -126,7 +178,8 @@ export function debugAuthState(label: string, authState: any) {
 
 // --- 画像アップロード時のHTTPレスポンスをdevモードのみログ出力 ---
 export async function debugLogUploadResponse(response: Response) {
-    if (import.meta.env.MODE !== "development") return;
+    // previewモードでも表示するように修正
+    if (import.meta.env.MODE !== "development" && !(window.location.port === "4173" || window.location.hostname === "localhost")) return;
     try {
         // 常に clone して安全に読み取る
         const cloned = response.clone();
@@ -201,7 +254,14 @@ if (typeof window !== "undefined") {
 // --- dev用: post success/error強制表示デバッグ ---
 // editorState をここでimport
 import { editorState } from "../stores/editorStore.svelte";
-if (import.meta.env.MODE === "development") {
+// previewモードでも有効にするように修正
+if (shouldShowDevLog()) {
+    // デバッグ用テスト関数を追加
+    (window as any).testDevLog = () => {
+        console.log("テスト用ログ出力:", new Date().toISOString());
+        logToDevFooter("直接devLogに追加:", Math.random());
+    };
+
     (window as any).showPostSuccessDebug = () => {
         // editorStateは$stateストアなのでプロパティ単位で代入
         editorState.postStatus = {
@@ -226,8 +286,9 @@ if (import.meta.env.MODE === "development") {
 // 圧縮画像プレビュー表示（dev用デバッグ）
 const ENABLE_COMPRESSED_IMAGE_PREVIEW = false; // trueで有効、falseで無効
 export function showCompressedImagePreview(file: File) {
+    // previewモードでも有効にするように修正
     if (
-        import.meta.env.MODE === "development" &&
+        (import.meta.env.MODE === "development" || window.location.port === "4173" || window.location.hostname === "localhost") &&
         ENABLE_COMPRESSED_IMAGE_PREVIEW
     ) {
         try {

@@ -104,7 +104,11 @@
     let debugInfoMessage = $state<BalloonMessageType | null>(null);
 
     // dev用: デバッグ機能
-    if (import.meta.env.MODE === "development") {
+    // previewモードでも有効にする
+    const isPreviewOrDev = import.meta.env.MODE === "development" || 
+        (typeof window !== "undefined" && (window.location.port === "4173" || window.location.hostname === "localhost"));
+
+    if (isPreviewOrDev) {
         (window as any).showInfoBalloonDebug = (msg: string) => {
             debugInfoMessage = { type: "info", message: msg };
         };
@@ -115,7 +119,7 @@
 
     // 最終的なメッセージ選択（開発モードとプロダクションモード共通）
     let finalBalloonMessage = $derived(
-        import.meta.env.MODE === "development"
+        isPreviewOrDev
             ? debugInfoMessage ||
                   balloonMessage ||
                   errorBalloonMessage ||

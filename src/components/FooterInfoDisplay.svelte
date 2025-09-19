@@ -2,7 +2,11 @@
     import { _ } from "svelte-i18n";
     import { imageSizeInfoStore } from "../stores/appStore.svelte";
     import type { UploadProgress } from "../lib/types";
-    import { isDev, devLog, copyDevLogWithFallback } from "../lib/debug";
+    import {
+        devLog,
+        copyDevLogWithFallback,
+        shouldShowDevLog,
+    } from "../lib/debug";
 
     let copied = $state(false);
 
@@ -96,7 +100,7 @@
     }
 </script>
 
-{#if $isDev && $devLog.length}
+{#if shouldShowDevLog() && $devLog.length}
     <button
         type="button"
         class="floating-dev-console-log"
