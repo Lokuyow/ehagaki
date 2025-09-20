@@ -68,7 +68,9 @@
     "profile": "Profile",
     "preview": "Preview",
     "upload_destination_settings": "Upload Destination Settings",
-    "nostr_login": "Nostr Login"
+    "nostr_login": "Nostr Login",
+    "service_worker_error": "Service Worker error occurred",
+    "shared_image_failed": "Failed to get shared image"
   },
   "balloonMessage": {
     "success": {

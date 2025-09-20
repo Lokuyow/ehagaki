@@ -798,3 +798,74 @@ export async function requestSharedImageWithEventListener(
 export function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+/**
+ * Service Workerの状態をチェック
+ */
+export async function checkServiceWorkerStatus(): Promise<{
+  isReady: boolean;
+  hasController: boolean;
+  error?: string;
+}> {
+  if (!('serviceWorker' in navigator)) {
+    return { isReady: false, hasController: false, error: 'Service Worker not supported' };
+  }
+
+  const registration = await navigator.serviceWorker.getRegistration();
+  const hasController = !!navigator.serviceWorker.controller;
+
+  if (!registration) {
+    return { isReady: false, hasController, error: 'Service Worker not registered' };
+  }
+
+  const isReady = registration.active !== null;
+  return { isReady, hasController };
+}
+
+/**
+ * Service Workerとの通信テスト
+ */
+export async function testServiceWorkerCommunication(): Promise<boolean> {
+  if (!navigator.serviceWorker.controller) {
+    console.warn('No ServiceWorker controller available for communication test');
+    return false;
+  }
+
+  return new Promise<boolean>((resolve) => {
+    const messageChannel = new MessageChannel();
+    const timeout = setTimeout(() => {
+      console.warn('ServiceWorker communication test timeout');
+      resolve(false);
+    }, 3000);
+
+    messageChannel.port1.onmessage = (event) => {
+      clearTimeout(timeout);
+      console.log('ServiceWorker communication test successful:', event.data);
+      resolve(true);
+    };
+
+    messageChannel.port1.addEventListener('error', (error) => {
+      clearTimeout(timeout);
+      console.error('ServiceWorker communication test error:', error);
+      resolve(false);
+    });
+
+    try {
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(
+          { type: 'PING_TEST' },
+          [messageChannel.port2]
+        );
+        console.log('ServiceWorker PING_TEST message sent');
+      } else {
+        clearTimeout(timeout);
+        console.warn('No ServiceWorker controller available when sending PING_TEST');
+        resolve(false);
+      }
+    } catch (error) {
+      clearTimeout(timeout);
+      console.error('Failed to send PING_TEST message:', error);
+      resolve(false);
+    }
+  });
+}

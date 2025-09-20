@@ -41,6 +41,10 @@
     BalloonMessageManager,
     type BalloonMessage,
   } from "./lib/balloonMessageManager";
+  import {
+    checkServiceWorkerStatus,
+    testServiceWorkerCommunication
+  } from "./lib/utils/appUtils";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -260,6 +264,36 @@
       // 認証サービスの認証ハンドラーを先にセット
       authService.setNostrLoginHandler(handleNostrLoginAuth);
 
+      // Service Worker状態チェック（本番環境でも実行）
+      if (FileUploadManager.checkIfOpenedFromShare()) {
+        const swStatus = await checkServiceWorkerStatus();
+        const canCommunicate = await testServiceWorkerCommunication();
+        
+        console.log('Service Worker Status:', {
+          isReady: swStatus.isReady,
+          hasController: swStatus.hasController,
+          canCommunicate,
+          error: swStatus.error
+        });
+        
+        if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
+          console.warn('Service Worker not ready for shared image processing:', swStatus);
+        }
+
+        // 共有エラーパラメータをチェック
+        const urlParams = new URLSearchParams(window.location.search);
+        const sharedError = urlParams.get('error');
+        if (sharedError) {
+          console.error('Shared image processing failed:', {
+            error: sharedError,
+            swReady: swStatus.isReady,
+            swController: swStatus.hasController,
+            swCommunication: canCommunicate,
+            location: window.location.href
+          });
+        }
+      }
+
       // --- 修正: initializeAuthの処理を改善 ---
       (async () => {
         try {
@@ -294,6 +328,8 @@
             sharedImageStore.received = true;
             // 取得済みフラグをセット
             localStorage.setItem("sharedImageProcessed", "1");
+          } else {
+            console.warn('No shared image data received from Service Worker');
           }
         } catch (error) {
           console.error("共有画像の処理中にエラー:", error);

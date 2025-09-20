@@ -108,6 +108,51 @@
     const isPreviewOrDev = import.meta.env.MODE === "development" || 
         (typeof window !== "undefined" && (window.location.port === "4173" || window.location.hostname === "localhost"));
 
+    // Service Workerエラーチェック（本番環境でも有効）
+    let serviceWorkerError = $state<BalloonMessageType | null>(null);
+    
+    // URLパラメータから共有エラーをチェック
+    $effect(() => {
+        if (typeof window !== "undefined" && balloonManager) {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedError = urlParams.get('error');
+            
+            if (sharedError && urlParams.get('shared') === 'true') {
+                let errorMessage = '';
+                switch (sharedError) {
+                    case 'messaging-error':
+                        errorMessage = 'Service Workerとの通信でエラーが発生しました';
+                        break;
+                    case 'processing-error':
+                        errorMessage = '共有画像の処理中にエラーが発生しました';
+                        break;
+                    case 'no-image':
+                        errorMessage = '共有画像が見つかりませんでした';
+                        break;
+                    default:
+                        errorMessage = `共有処理でエラーが発生しました: ${sharedError}`;
+                }
+                
+                serviceWorkerError = { type: "error", message: errorMessage };
+                
+                // エラーメッセージ表示後、URLからエラーパラメータを削除
+                setTimeout(() => {
+                    const newUrl = new URL(window.location.href);
+                    newUrl.searchParams.delete('error');
+                    if (newUrl.searchParams.get('shared') === 'true' && !newUrl.searchParams.has('error')) {
+                        newUrl.searchParams.delete('shared');
+                    }
+                    window.history.replaceState({}, '', newUrl.toString());
+                    
+                    // エラーメッセージをクリア
+                    setTimeout(() => {
+                        serviceWorkerError = null;
+                    }, 5000);
+                }, 1000);
+            }
+        }
+    });
+
     if (isPreviewOrDev) {
         (window as any).showInfoBalloonDebug = (msg: string) => {
             debugInfoMessage = { type: "info", message: msg };
@@ -117,16 +162,17 @@
         };
     }
 
-    // 最終的なメッセージ選択（開発モードとプロダクションモード共通）
+    // 最終的なメッセージ選択（Service Workerエラーを優先）
     let finalBalloonMessage = $derived(
-        isPreviewOrDev
+        serviceWorkerError ||
+        (isPreviewOrDev
             ? debugInfoMessage ||
                   balloonMessage ||
                   errorBalloonMessage ||
                   postSuccessBalloonMessage
             : balloonMessage ||
                   errorBalloonMessage ||
-                  postSuccessBalloonMessage,
+                  postSuccessBalloonMessage)
     );
 
     // クリーンアップ

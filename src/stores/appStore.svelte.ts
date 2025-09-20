@@ -1,4 +1,6 @@
 import type { SizeDisplayInfo } from '../lib/types';
+/// <reference types="vite/client" />
+// @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 
 // --- 型定義 ---
@@ -10,7 +12,8 @@ export interface AuthState {
     nprofile: string;
     isValid: boolean;
     isInitialized: boolean;
-    isExtensionLogin?: boolean; // 追加
+    isExtensionLogin?: boolean;
+    serviceWorkerReady?: boolean; // 追加
 }
 
 export interface SharedImageStoreState {
@@ -137,8 +140,8 @@ export const showSettingsDialogStore = {
 };
 
 const swRegister = useRegisterSW({
-    onRegistered(r) { console.log("SW registered:", r); },
-    onRegisterError(error) { console.log("SW registration error", error); },
+    onRegistered: (r: ServiceWorkerRegistration | undefined) => { /* handle registration if needed */ },
+    onRegisterError(error: Error) { console.log("SW registration error", error); },
     onNeedRefresh() { console.log("SW needs refresh - showing prompt"); },
 });
 export const swNeedRefresh = swRegister.needRefresh;

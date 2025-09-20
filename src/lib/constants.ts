@@ -174,5 +174,7 @@ export const SHARE_HANDLER_CONFIG = {
     INDEXEDDB_NAME: 'eHagakiSharedData',
     INDEXEDDB_VERSION: 1,
     STORE_NAME: 'flags',
-    FLAG_KEY: 'sharedImage'
+    FLAG_KEY: 'sharedImage',
+    MESSAGE_TIMEOUT: 3000,
+    COMMUNICATION_TEST_TIMEOUT: 3000
 } as const;

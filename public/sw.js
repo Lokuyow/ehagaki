@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.3.0';
+const PRECACHE_VERSION = '1.3.1';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -431,23 +431,35 @@ class ClientManager {
             await client.focus();
             const sharedCache = ServiceWorkerState.getSharedImageCache();
 
-            for (let retry = 0; retry < 3; retry++) {
-                this.setTimeout(() => {
-                    try {
-                        client.postMessage({
-                            type: 'SHARED_IMAGE',
-                            data: sharedCache,
-                            timestamp: Date.now(),
-                            retry
-                        });
-                    } catch (e) {
-                        this.console.error(`メッセージ送信エラー (retry: ${retry}):`, e);
-                    }
-                }, retry * 1000);
+            this.console.log('SW: Attempting to notify client', {
+                hasClient: !!client,
+                hasPostMessage: typeof client.postMessage === 'function',
+                hasSharedCache: !!sharedCache,
+                clientId: client.id || 'unknown'
+            });
+
+            // メッセージ送信の改善
+            if (!client || typeof client.postMessage !== 'function') {
+                this.console.error('SW: Invalid client object');
+                return Utilities.createRedirectResponse('/ehagaki/', 'messaging-error', this.location);
             }
-            return Utilities.createRedirectResponse('/ehagaki/', 'success', this.location);
+
+            // メッセージを一度だけ送信（リトライ処理を簡素化）
+            try {
+                client.postMessage({
+                    type: 'SHARED_IMAGE',
+                    data: sharedCache,
+                    timestamp: Date.now(),
+                    requestId: `sw-${Date.now()}`
+                });
+                this.console.log('SW: Message sent to client successfully');
+                return Utilities.createRedirectResponse('/ehagaki/', null, this.location);
+            } catch (messageError) {
+                this.console.error('SW: Failed to send message to client:', messageError);
+                return Utilities.createRedirectResponse('/ehagaki/', 'messaging-error', this.location);
+            }
         } catch (error) {
-            this.console.error('既存クライアント処理エラー:', error);
+            this.console.error('SW: Client focus/notification error:', error);
             return Utilities.createRedirectResponse('/ehagaki/', 'messaging-error', this.location);
         }
     }
@@ -526,21 +538,37 @@ class RequestHandler {
     // アップロードリクエスト処理
     async handleUploadRequest(request) {
         try {
+            this.console.log('SW: Processing upload request', request.url);
+
             const formData = await request.formData();
             const extractedData = await Utilities.extractImageFromFormData(formData);
 
             if (!extractedData) {
+                this.console.warn('SW: No image data found in FormData');
                 return Utilities.createRedirectResponse('/ehagaki/', 'no-image', this.location);
             }
 
+            this.console.log('SW: Image data extracted successfully', {
+                hasImage: !!extractedData.image,
+                imageType: extractedData.image?.type,
+                imageSize: extractedData.image?.size,
+                imageName: extractedData.image?.name
+            });
+
             ServiceWorkerState.setSharedImageCache(extractedData);
-            this.indexedDBManager.saveSharedFlag().catch(err =>
-                this.console.error('IndexedDB保存エラー:', err)
-            );
+
+            // IndexedDB保存を同期的に待つ
+            try {
+                await this.indexedDBManager.saveSharedFlag();
+                this.console.log('SW: Shared flag saved to IndexedDB');
+            } catch (dbError) {
+                this.console.error('SW: IndexedDB save error:', dbError);
+                // IndexedDBエラーでも続行
+            }
 
             return await this.clientManager.redirectClient();
         } catch (error) {
-            this.console.error('アップロード処理エラー:', error);
+            this.console.error('SW: Upload processing error:', error);
             return Utilities.createRedirectResponse('/ehagaki/', 'processing-error', this.location);
         }
     }
@@ -627,6 +655,23 @@ class ServiceWorkerCore {
             },
             'GET_VERSION': () => {
                 event.ports?.[0]?.postMessage({ version: PRECACHE_VERSION });
+            },
+            'PING_TEST': () => {
+                // Service Worker通信テスト用
+                const response = { type: 'PONG', timestamp: Date.now(), version: PRECACHE_VERSION };
+                try {
+                    if (event.ports?.[0]) {
+                        event.ports[0].postMessage(response);
+                        ServiceWorkerDependencies.console.log('SW: PING_TEST responded via MessageChannel');
+                    } else if (event.source) {
+                        event.source.postMessage(response);
+                        ServiceWorkerDependencies.console.log('SW: PING_TEST responded via source');
+                    } else {
+                        ServiceWorkerDependencies.console.warn('SW: PING_TEST no response channel available');
+                    }
+                } catch (error) {
+                    ServiceWorkerDependencies.console.error('SW: PING_TEST response error:', error);
+                }
             }
         };
 
@@ -671,27 +716,20 @@ self.addEventListener('activate', (event) => {
 // fetchイベント
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
-
-    // 外部リクエストは完全に素通し（Service Workerによる処理を行わない）
-    if (url.origin !== self.location.origin) {
-        // 外部リクエストの場合は何もしない（ブラウザのデフォルト処理に委ねる）
-        return;
-    }
-
-    // 同一オリジンのリクエストのみ処理
-    const response = serviceWorkerCore.handleFetch(event);
-    if (response !== undefined) {
-        // Promiseかどうかチェックして適切に処理
-        if (response instanceof Promise) {
-            event.respondWith(response);
-        } else if (response instanceof Response) {
-            event.respondWith(Promise.resolve(response));
-        } else {
-            // 予期しない戻り値の場合はデフォルトの処理に委ねる
-            console.warn('SW: Unexpected response type from handleFetch:', typeof response);
+    if (event.request.url.startsWith(self.location.origin)) {
+        // 同一オリジンのリクエストのみ処理
+        const response = serviceWorkerCore.handleFetch(event);
+        if (response !== undefined) {
+            if (response instanceof Promise) {
+                event.respondWith(response);
+            } else if (response instanceof Response) {
+                event.respondWith(Promise.resolve(response));
+            } else {
+                // 予期しない戻り値の場合はデフォルトの処理に委ねる
+                console.warn('SW: Unexpected response type from handleFetch:', typeof response);
+            }
         }
     }
-    // response が undefined の場合は何もしない（デフォルトの処理に委ねる）
 });
 
 // messageイベント

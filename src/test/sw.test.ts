@@ -379,7 +379,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 }
 
                 ServiceWorkerState.setSharedImageCache(extractedData);
-                this.indexedDBManager.saveSharedFlag();
+                await this.indexedDBManager.saveSharedFlag();
 
                 return await this.clientManager.redirectClient();
             } catch (error) {

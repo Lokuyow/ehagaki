@@ -68,7 +68,9 @@
     "profile": "プロフィール",
     "preview": "プレビュー",
     "upload_destination_settings": "アップロード先設定",
-    "nostr_login": "Nostr Login"
+    "nostr_login": "Nostr Login",
+    "service_worker_error": "Service Workerでエラーが発生しました",
+    "shared_image_failed": "共有画像の取得に失敗しました"
   },
   "balloonMessage": {
     "success": {

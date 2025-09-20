@@ -66,12 +66,13 @@ export default defineConfig({
         swDest: 'dist/sw.js',
         rollupFormat: 'iife',
         injectionPoint: 'self.__WB_MANIFEST',
+        // Service Workerの更新を確実にするためファイル名にハッシュを含める
+        dontCacheBustURLsMatching: /^assets\/.*/,
         globPatterns: [
           '**/*.{js,css,html}',
           'assets/**/*.{js,css,png,jpg,jpeg,svg,gif,webp,ico}',
           '*.{png,jpg,jpeg,svg,gif,webp,ico}', // publicフォルダ直下のファイル
-          'icons/**/*.{png,jpg,jpeg,svg,gif,webp,ico}' // ← 追加: public/icons配下
-        ]
+          'icons/**/*.{png,jpg,jpeg,svg,gif,webp,ico}']
       }
     })
   ],

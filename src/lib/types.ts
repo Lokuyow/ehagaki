@@ -240,3 +240,17 @@ export interface CleanUrlResult {
     cleanUrl: string;
     actualLength: number;
 }
+
+export interface ServiceWorkerStatus {
+    isReady: boolean;
+    hasController: boolean;
+    canCommunicate: boolean;
+    error?: string;
+}
+
+export interface SharedImageProcessingResult {
+    success: boolean;
+    data?: SharedImageData;
+    error?: string;
+    fromCache?: boolean;
+}
