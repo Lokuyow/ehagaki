@@ -860,29 +860,89 @@ export async function requestSharedImageWithMessageChannel(): Promise<SharedImag
 }
 
 /**
- * 複数の方法で共有画像を取得（フォールバック付き）
+ * 複数の方法で共有画像を取得（フォールバック付き・エラー耐性向上）
  */
 export async function getSharedImageWithFallback(): Promise<SharedImageData | null> {
   try {
-    // 1. MessageChannelでService Workerから取得を試行
-    await waitForServiceWorkerController();
-    const swResult = await requestSharedImageWithMessageChannel();
-    if (swResult) {
-      console.log('Shared image retrieved via ServiceWorker MessageChannel');
-      return swResult;
+    // 1. Service Workerの準備を待つ（タイムアウト付き）
+    try {
+      await Promise.race([
+        waitForServiceWorkerController(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('SW controller timeout')), 2000))
+      ]);
+    } catch (swError) {
+      console.warn('Service Worker controller not ready, trying alternatives:', swError);
     }
 
-    // 2. IndexedDBから直接取得を試行
-    const dbResult = await getAndClearSharedImageFromIndexedDB();
-    if (dbResult) {
-      console.log('Shared image retrieved via IndexedDB fallback');
-      return dbResult;
+    // 2. MessageChannelでService Workerから取得を試行
+    try {
+      const swResult = await requestSharedImageWithMessageChannel();
+      if (swResult) {
+        console.log('Shared image retrieved via ServiceWorker MessageChannel');
+        return swResult;
+      }
+    } catch (swError) {
+      console.warn('Service Worker MessageChannel failed:', swError);
     }
 
-    console.log('No shared image found in ServiceWorker or IndexedDB');
+    // 3. IndexedDBから直接取得を試行（Service Workerがデータを永続化している場合）
+    try {
+      const dbResult = await getAndClearSharedImageFromIndexedDB();
+      if (dbResult) {
+        console.log('Shared image retrieved via IndexedDB fallback');
+        return dbResult;
+      }
+    } catch (dbError) {
+      console.warn('IndexedDB fallback failed:', dbError);
+    }
+
+    // 4. 最後の手段: Service Workerに直接画像データがキャッシュされているかチェック
+    try {
+      if (navigator.serviceWorker.controller) {
+        const messageChannel = new MessageChannel();
+        const result = await new Promise<SharedImageData | null>((resolve) => {
+          const timeout = setTimeout(() => resolve(null), 1000);
+
+          messageChannel.port1.onmessage = (event) => {
+            clearTimeout(timeout);
+            const { data } = event.data || {};
+            resolve(data && data.image ? data : null);
+          };
+
+          messageChannel.port1.addEventListener('error', () => {
+            clearTimeout(timeout);
+            resolve(null);
+          });
+
+          try {
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage(
+                { action: 'getSharedImageForce', requestId: generateRequestId() },
+                [messageChannel.port2]
+              );
+            } else {
+              clearTimeout(timeout);
+              resolve(null);
+            }
+          } catch (error) {
+            clearTimeout(timeout);
+            resolve(null);
+          }
+        });
+
+        if (result) {
+          console.log('Shared image retrieved via forced Service Worker request');
+          return result;
+        }
+      }
+    } catch (forceError) {
+      console.warn('Forced Service Worker request failed:', forceError);
+    }
+
+    console.log('No shared image found through any method');
     return null;
   } catch (error) {
-    console.error('Error retrieving shared image:', error);
+    console.error('Error in getSharedImageWithFallback:', error);
     return null;
   }
 }

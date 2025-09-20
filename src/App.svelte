@@ -277,20 +277,6 @@
           error: swStatus.error
         });
         
-        // エラーパラメータがある場合は共有画像処理をスキップ
-        const urlParams = new URLSearchParams(window.location.search);
-        const sharedError = urlParams.get('error');
-        if (sharedError) {
-          console.error('Shared image processing skipped due to error:', {
-            error: sharedError,
-            swReady: swStatus.isReady,
-            swController: swStatus.hasController,
-            swCommunication: canCommunicate,
-            location: window.location.href
-          });
-          return; // 共有画像処理をスキップ
-        }
-        
         if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
           console.warn('Service Worker not ready for shared image processing:', swStatus);
         }
@@ -316,37 +302,52 @@
       })();
       // --- ここまで ---
 
-      // 共有画像取得: エラーパラメータがない場合のみ実行
+      // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
       if (
         FileUploadManager.checkIfOpenedFromShare() &&
         !sharedImageAlreadyProcessed
       ) {
-        // エラーパラメータがある場合はスキップ
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('error')) {
-          console.log('Shared image processing skipped due to error parameter');
-          return;
-        }
-
         try {
+          // まず実際に共有画像が取得できるかチェック
           const shared = await getSharedImageWithFallback();
           if (shared?.image) {
+            // 画像が取得できた場合は、エラーパラメータを無視して処理を続行
             sharedImageStore.file = shared.image;
             sharedImageStore.metadata = shared.metadata;
             sharedImageStore.received = true;
             localStorage.setItem("sharedImageProcessed", "1");
-            console.log('Shared image successfully loaded:', {
+            console.log('Shared image successfully loaded despite error parameter:', {
               name: shared.image.name,
               size: shared.image.size,
               type: shared.image.type
             });
+            
+            // 成功した場合はエラーパラメータをクリア
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('error')) {
+              const newUrl = new URL(window.location.href);
+              newUrl.searchParams.delete('error');
+              newUrl.searchParams.delete('shared');
+              window.history.replaceState({}, '', newUrl.toString());
+              console.log('Cleared error parameters after successful image loading');
+            }
           } else {
             console.warn('No shared image data received');
+            // 画像が取得できない場合のみエラーパラメータをログ出力
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedError = urlParams.get('error');
+            if (sharedError) {
+              console.error('Shared image processing failed with error parameter:', {
+                error: sharedError,
+                location: window.location.href
+              });
+            }
           }
         } catch (error) {
           console.error("共有画像の処理中にエラー:", error);
         }
       }
+      
       debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
       
       // テスト用ログを追加（previewモードでfloating-dev-console-logの表示確認用）

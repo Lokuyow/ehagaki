@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.3.1';
+const PRECACHE_VERSION = '1.3.2';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -461,7 +461,22 @@ class ClientManager {
         this.setTimeout = dependencies.setTimeout;
     }
 
-    // 既存クライアント通知
+    // クライアントリダイレクト
+    async redirectClient() {
+        try {
+            const clients = await this.clients.matchAll({ type: 'window', includeUncontrolled: true });
+            if (clients.length > 0) {
+                return await this.focusAndNotifyClient(clients[0]);
+            } else {
+                return await this.openNewClient();
+            }
+        } catch (error) {
+            this.console.error('クライアント処理エラー:', error);
+            return Utilities.createRedirectResponse('/', 'client-error', this.location);
+        }
+    }
+
+    // 既存クライアント通知の改善
     async focusAndNotifyClient(client) {
         try {
             await client.focus();
@@ -474,13 +489,7 @@ class ClientManager {
                 clientId: client.id || 'unknown'
             });
 
-            // メッセージ送信の改善
-            if (!client || typeof client.postMessage !== 'function') {
-                this.console.error('SW: Invalid client object');
-                return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
-            }
-
-            // 共有データをIndexedDBに永続化（メッセージ送信失敗に備える）
+            // 共有データをIndexedDBに永続化（メッセージ送信に関係なく必ず実行）
             if (sharedCache) {
                 try {
                     const indexedDBManager = new IndexedDBManager();
@@ -491,23 +500,29 @@ class ClientManager {
                 }
             }
 
-            // メッセージを一度だけ送信（リトライ処理を簡素化）
-            try {
-                client.postMessage({
-                    type: 'SHARED_IMAGE',
-                    data: sharedCache,
-                    timestamp: Date.now(),
-                    requestId: `sw-${Date.now()}`
-                });
-                this.console.log('SW: Message sent to client successfully');
-                return Utilities.createRedirectResponse('/', null, this.location);
-            } catch (messageError) {
-                this.console.error('SW: Failed to send message to client:', messageError);
-                return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
+            // メッセージ送信（失敗してもエラーにしない）
+            if (client && typeof client.postMessage === 'function') {
+                try {
+                    client.postMessage({
+                        type: 'SHARED_IMAGE',
+                        data: sharedCache,
+                        timestamp: Date.now(),
+                        requestId: `sw-${Date.now()}`
+                    });
+                    this.console.log('SW: Message sent to client successfully');
+                } catch (messageError) {
+                    this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
+                }
             }
+
+            // メッセージ送信の成否に関係なく、リダイレクトは成功とする
+            // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
+            return Utilities.createRedirectResponse('/', null, this.location);
+
         } catch (error) {
             this.console.error('SW: Client focus/notification error:', error);
-            return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
+            // 重大なエラーの場合のみエラーリダイレクト
+            return Utilities.createRedirectResponse('/', 'client-error', this.location);
         }
     }
 
@@ -559,8 +574,6 @@ class ClientManager {
             };
         });
     }
-
-    // ...existing code...
 }
 
 // =============================================================================
@@ -597,6 +610,35 @@ class MessageHandler {
             ServiceWorkerState.clearSharedImageCache();
             this.indexedDBManager.clearSharedFlag();
         }
+    }
+
+    // 強制的な共有画像取得リクエスト（フォールバック用）
+    respondSharedImageForce(event) {
+        const client = event.source;
+        const requestId = event.data.requestId || null;
+        const sharedCache = ServiceWorkerState.getSharedImageCache();
+
+        // キャッシュがない場合でもIndexedDBから取得を試みる
+        if (!sharedCache) {
+            this.console.log('SW: No shared cache, client should try IndexedDB fallback');
+        }
+
+        const msg = {
+            type: 'SHARED_IMAGE',
+            data: sharedCache,
+            requestId,
+            timestamp: Date.now(),
+            fallbackRequired: !sharedCache
+        };
+
+        if (event.ports?.[0]) {
+            event.ports[0].postMessage(msg);
+        } else if (client) {
+            client.postMessage(msg);
+        }
+
+        // 強制取得では画像送信後もキャッシュをクリアしない
+        // （複数回の取得試行に対応）
     }
 }
 
@@ -760,6 +802,7 @@ class ServiceWorkerCore {
 
         const actionHandlers = {
             'getSharedImage': () => this.messageHandler.respondSharedImage(event),
+            'getSharedImageForce': () => this.messageHandler.respondSharedImageForce(event),
             'clearProfileCache': async () => {
                 const result = await this.cacheManager.clearProfileCache();
                 event.ports?.[0]?.postMessage(result);

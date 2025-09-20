@@ -20,6 +20,13 @@
             const sharedError = urlParams.get("error");
 
             if (sharedError && urlParams.get("shared") === "true") {
+                // 共有画像が実際に処理されている場合はエラー表示しない
+                const isProcessed = localStorage.getItem("sharedImageProcessed") === "1";
+                if (isProcessed) {
+                    console.log('Shared image was processed successfully, ignoring error parameter');
+                    return;
+                }
+
                 let errorMessage = "";
                 switch (sharedError) {
                     case "processing-error":
