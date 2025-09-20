@@ -441,7 +441,7 @@
         padding: 8px;
 
         .github-icon {
-            mask-image: url("/ehagaki/icons/github-mark.svg");
+            mask-image: url("/icons/github-mark.svg");
         }
     }
     .zap-view-btn-group {
@@ -497,7 +497,7 @@
     }
 
     .lang-icon-btn {
-        mask-image: url("/ehagaki/icons/language-solid-full.svg");
+        mask-image: url("/icons/language-solid-full.svg");
     }
     select {
         padding: 6px;
@@ -521,7 +521,7 @@
         color: var(--text-light);
     }
     .rotate-right-icon {
-        mask-image: url("/ehagaki/icons/rotate-right-solid-full.svg");
+        mask-image: url("/icons/rotate-right-solid-full.svg");
     }
 
     .toggle-switch {

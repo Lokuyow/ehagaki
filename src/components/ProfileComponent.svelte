@@ -100,7 +100,7 @@
   }
 
   .profile-picture.default {
-    mask-image: url("/ehagaki/icons/circle-user-solid-full.svg");
+    mask-image: url("/icons/circle-user-solid-full.svg");
     width: 42px;
     height: 42px;
   }

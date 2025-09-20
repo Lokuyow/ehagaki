@@ -194,7 +194,7 @@
             aria-label="ehagaki"
         >
             <img
-                src="./ehagaki_icon.svg"
+                src="/ehagaki_icon.svg"
                 alt="ehagaki icon"
                 class="site-icon"
             />
@@ -302,12 +302,12 @@
     }
 
     .plane-icon {
-        mask-image: url("/ehagaki/icons/paper-plane-solid-full.svg");
+        mask-image: url("/icons/paper-plane-solid-full.svg");
         width: 30px;
         height: 30px;
     }
     .image-icon {
-        mask-image: url("/ehagaki/icons/image-solid-full.svg");
+        mask-image: url("/icons/image-solid-full.svg");
         width: 32px;
         height: 32px;
     }

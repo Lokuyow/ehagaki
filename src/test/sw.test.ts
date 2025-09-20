@@ -125,7 +125,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
         isUploadRequest(request: Request, url: URL) {
             return request.method === 'POST' &&
-                (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
+                (url.pathname.endsWith('/upload') || url.pathname.includes('/upload'));
         },
 
         isProfileImageRequest(request: Request) {
@@ -317,7 +317,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                     });
                 }, retry * 1000);
             }
-            return Utilities.createRedirectResponse('/ehagaki/', 'success', this.dependencies.location);
+            return Utilities.createRedirectResponse('/', 'success', this.dependencies.location);
         }
 
         async openNewClient() {
@@ -325,12 +325,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             this.dependencies.clients.openWindow.mockResolvedValue(windowClient);
             
             // 実際にclients.openWindowを呼び出す
-            await this.dependencies.clients.openWindow('/ehagaki/?shared=true');
+            await this.dependencies.clients.openWindow('/?shared=true');
             
             if (windowClient) {
                 return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
             }
-            return Utilities.createRedirectResponse('/ehagaki/', 'window-error', this.dependencies.location);
+            return Utilities.createRedirectResponse('/', 'window-error', this.dependencies.location);
         }
     }
 
@@ -375,7 +375,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 const extractedData = await Utilities.extractImageFromFormData(formData);
 
                 if (!extractedData) {
-                    return Utilities.createRedirectResponse('/ehagaki/', 'no-image');
+                    return Utilities.createRedirectResponse('/', 'no-image');
                 }
 
                 ServiceWorkerState.setSharedImageCache(extractedData);
@@ -383,7 +383,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
                 return await this.clientManager.redirectClient();
             } catch (error) {
-                return Utilities.createRedirectResponse('/ehagaki/', 'processing-error');
+                return Utilities.createRedirectResponse('/', 'processing-error');
             }
         }
 

@@ -188,7 +188,7 @@
             height: 47px;
 
             .xmark-icon {
-                mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
+                mask-image: url("/icons/xmark-solid-full.svg");
             }
         }
     }

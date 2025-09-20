@@ -111,7 +111,7 @@ const Utilities = {
     // アップロードリクエスト判定（内部のWeb Share Targetのみ）
     isUploadRequest(request, url) {
         return request.method === 'POST' &&
-            (url.pathname.endsWith('/upload') || url.pathname.includes('/ehagaki/upload'));
+            (url.pathname.endsWith('/upload') || url.pathname.includes('/upload'));
     },
 
     // プロフィール画像リクエスト判定
@@ -421,7 +421,7 @@ class ClientManager {
             }
         } catch (error) {
             this.console.error('クライアント処理エラー:', error);
-            return Utilities.createRedirectResponse('/ehagaki/', 'client-error', this.location);
+            return Utilities.createRedirectResponse('/', 'client-error', this.location);
         }
     }
 
@@ -441,7 +441,7 @@ class ClientManager {
             // メッセージ送信の改善
             if (!client || typeof client.postMessage !== 'function') {
                 this.console.error('SW: Invalid client object');
-                return Utilities.createRedirectResponse('/ehagaki/', 'messaging-error', this.location);
+                return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
             }
 
             // メッセージを一度だけ送信（リトライ処理を簡素化）
@@ -453,29 +453,29 @@ class ClientManager {
                     requestId: `sw-${Date.now()}`
                 });
                 this.console.log('SW: Message sent to client successfully');
-                return Utilities.createRedirectResponse('/ehagaki/', null, this.location);
+                return Utilities.createRedirectResponse('/', null, this.location);
             } catch (messageError) {
                 this.console.error('SW: Failed to send message to client:', messageError);
-                return Utilities.createRedirectResponse('/ehagaki/', 'messaging-error', this.location);
+                return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
             }
         } catch (error) {
             this.console.error('SW: Client focus/notification error:', error);
-            return Utilities.createRedirectResponse('/ehagaki/', 'messaging-error', this.location);
+            return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
         }
     }
 
     // 新規クライアントオープン
     async openNewClient() {
         try {
-            const url = new URL('/ehagaki/?shared=true', this.location.origin).href;
+            const url = new URL('/?shared=true', this.location.origin).href;
             const windowClient = await this.clients.openWindow(url);
             if (windowClient) {
                 return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
             }
-            return Utilities.createRedirectResponse('/ehagaki/', 'window-error', this.location);
+            return Utilities.createRedirectResponse('/', 'window-error', this.location);
         } catch (error) {
             this.console.error('新しいウィンドウ作成エラー:', error);
-            return Utilities.createRedirectResponse('/ehagaki/', 'open-window-error', this.location);
+            return Utilities.createRedirectResponse('/', 'open-window-error', this.location);
         }
     }
 }
@@ -545,7 +545,7 @@ class RequestHandler {
 
             if (!extractedData) {
                 this.console.warn('SW: No image data found in FormData');
-                return Utilities.createRedirectResponse('/ehagaki/', 'no-image', this.location);
+                return Utilities.createRedirectResponse('/', 'no-image', this.location);
             }
 
             this.console.log('SW: Image data extracted successfully', {
@@ -569,7 +569,7 @@ class RequestHandler {
             return await this.clientManager.redirectClient();
         } catch (error) {
             this.console.error('SW: Upload processing error:', error);
-            return Utilities.createRedirectResponse('/ehagaki/', 'processing-error', this.location);
+            return Utilities.createRedirectResponse('/', 'processing-error', this.location);
         }
     }
 

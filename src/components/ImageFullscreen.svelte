@@ -584,7 +584,7 @@
     }
 
     .svg-icon {
-        mask-image: url("/ehagaki/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/xmark-solid-full.svg");
         background-color: whitesmoke;
         width: 32px;
         height: 32px;

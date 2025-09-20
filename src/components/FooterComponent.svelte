@@ -115,7 +115,7 @@
         font-size: 1.1rem;
     }
     .settings-icon {
-        mask-image: url("/ehagaki/icons/gear-solid-full.svg");
+        mask-image: url("/icons/gear-solid-full.svg");
     }
     :global(.settings-btn.has-update) {
         position: relative;
