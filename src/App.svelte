@@ -277,21 +277,22 @@
           error: swStatus.error
         });
         
-        if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
-          console.warn('Service Worker not ready for shared image processing:', swStatus);
-        }
-
-        // 共有エラーパラメータをチェック
+        // エラーパラメータがある場合は共有画像処理をスキップ
         const urlParams = new URLSearchParams(window.location.search);
         const sharedError = urlParams.get('error');
         if (sharedError) {
-          console.error('Shared image processing failed:', {
+          console.error('Shared image processing skipped due to error:', {
             error: sharedError,
             swReady: swStatus.isReady,
             swController: swStatus.hasController,
             swCommunication: canCommunicate,
             location: window.location.href
           });
+          return; // 共有画像処理をスキップ
+        }
+        
+        if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
+          console.warn('Service Worker not ready for shared image processing:', swStatus);
         }
       }
 
@@ -315,19 +316,24 @@
       })();
       // --- ここまで ---
 
-      // 共有画像取得: 取得済みならスキップ
+      // 共有画像取得: エラーパラメータがない場合のみ実行
       if (
         FileUploadManager.checkIfOpenedFromShare() &&
         !sharedImageAlreadyProcessed
       ) {
+        // エラーパラメータがある場合はスキップ
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error')) {
+          console.log('Shared image processing skipped due to error parameter');
+          return;
+        }
+
         try {
-          // 改良版の共有画像取得を使用
           const shared = await getSharedImageWithFallback();
           if (shared?.image) {
             sharedImageStore.file = shared.image;
             sharedImageStore.metadata = shared.metadata;
             sharedImageStore.received = true;
-            // 取得済みフラグをセット
             localStorage.setItem("sharedImageProcessed", "1");
             console.log('Shared image successfully loaded:', {
               name: shared.image.name,

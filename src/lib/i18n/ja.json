@@ -54,7 +54,12 @@
     "uploading": "アップロード中",
     "failed": "失敗",
     "data_size": "送信サイズ",
-    "no_compression": "圧縮なし"
+    "no_compression": "圧縮なし",
+    "shared_image_error": "共有画像エラー",
+    "processing_error": "共有画像の処理中にエラーが発生しました",
+    "no_image": "共有画像が見つかりませんでした",
+    "upload_failed": "画像のアップロードに失敗しました",
+    "network_error": "ネットワークエラーが発生しました"
   },
   "loadingPlaceholder": {
     "loading": "読み込み中..."

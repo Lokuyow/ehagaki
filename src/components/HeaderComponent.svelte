@@ -114,27 +114,59 @@
     // Service Workerエラーチェック（本番環境でも有効）
     let serviceWorkerError = $state<BalloonMessageType | null>(null);
 
-    // URLパラメータから共有エラーをチェック
+    // URLパラメータから共有エラーをチェック - より厳格な条件に変更
     $effect(() => {
         if (typeof window !== "undefined" && balloonManager) {
             const urlParams = new URLSearchParams(window.location.search);
             const sharedError = urlParams.get("error");
 
             if (sharedError && urlParams.get("shared") === "true") {
+                // 画像アップロード関連のエラーはballoonには表示しない
+                // FooterInfoDisplayで表示するためここではスキップ
+                const skipBalloonErrors = [
+                    "processing-error",
+                    "no-image",
+                    "upload-failed",
+                    "network-error",
+                ];
+
+                if (skipBalloonErrors.includes(sharedError)) {
+                    // URLパラメータだけクリアして、balloonメッセージは表示しない
+                    setTimeout(() => {
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.delete("error");
+                        newUrl.searchParams.delete("shared");
+                        window.history.replaceState({}, "", newUrl.toString());
+                    }, 1000);
+                    return;
+                }
+
+                // その他の重要なエラーのみballoonで表示
                 let errorMessage = "";
                 switch (sharedError) {
                     case "messaging-error":
                         errorMessage =
                             "Service Workerとの通信でエラーが発生しました。ページを更新してもう一度お試しください。";
                         break;
-                    case "processing-error":
-                        errorMessage = "共有画像の処理中にエラーが発生しました";
+                    case "window-error":
+                        errorMessage = "新しいウィンドウの作成に失敗しました";
                         break;
-                    case "no-image":
-                        errorMessage = "共有画像が見つかりませんでした";
+                    case "client-error":
+                        errorMessage = "クライアント処理でエラーが発生しました";
                         break;
                     default:
-                        errorMessage = `共有処理でエラーが発生しました: ${sharedError}`;
+                        // その他の未知のエラーも表示しない
+                        setTimeout(() => {
+                            const newUrl = new URL(window.location.href);
+                            newUrl.searchParams.delete("error");
+                            newUrl.searchParams.delete("shared");
+                            window.history.replaceState(
+                                {},
+                                "",
+                                newUrl.toString(),
+                            );
+                        }, 1000);
+                        return;
                 }
 
                 serviceWorkerError = { type: "error", message: errorMessage };
@@ -143,7 +175,7 @@
                 setTimeout(() => {
                     const newUrl = new URL(window.location.href);
                     newUrl.searchParams.delete("error");
-                    newUrl.searchParams.delete("shared"); // sharedパラメータも削除
+                    newUrl.searchParams.delete("shared");
                     window.history.replaceState({}, "", newUrl.toString());
 
                     // エラーメッセージをクリア

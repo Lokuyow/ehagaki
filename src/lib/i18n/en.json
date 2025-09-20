@@ -54,7 +54,12 @@
     "uploading": "Uploading",
     "failed": "Failed",
     "data_size": "Transmission size",
-    "no_compression": "No compression"
+    "no_compression": "No compression",
+    "shared_image_error": "Shared image error",
+    "processing_error": "Error occurred while processing shared image",
+    "no_image": "Shared image not found",
+    "upload_failed": "Image upload failed",
+    "network_error": "Network error occurred"
   },
   "loadingPlaceholder": {
     "loading": "Loading..."

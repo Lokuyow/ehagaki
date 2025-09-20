@@ -10,6 +10,52 @@
 
     let copied = $state(false);
 
+    // 共有画像エラー状態を追加
+    let sharedImageError = $state<string | null>(null);
+
+    // URLパラメータから共有画像エラーをチェック
+    $effect(() => {
+        if (typeof window !== "undefined") {
+            const urlParams = new URLSearchParams(window.location.search);
+            const sharedError = urlParams.get("error");
+
+            if (sharedError && urlParams.get("shared") === "true") {
+                let errorMessage = "";
+                switch (sharedError) {
+                    case "processing-error":
+                        errorMessage = "共有画像の処理中にエラーが発生しました";
+                        break;
+                    case "no-image":
+                        errorMessage = "共有画像が見つかりませんでした";
+                        break;
+                    case "upload-failed":
+                        errorMessage = "画像のアップロードに失敗しました";
+                        break;
+                    case "network-error":
+                        errorMessage = "ネットワークエラーが発生しました";
+                        break;
+                    default:
+                        return; // その他のエラーは表示しない
+                }
+
+                sharedImageError = errorMessage;
+
+                // エラーメッセージ表示後、URLパラメータをクリア
+                setTimeout(() => {
+                    const newUrl = new URL(window.location.href);
+                    newUrl.searchParams.delete("error");
+                    newUrl.searchParams.delete("shared");
+                    window.history.replaceState({}, "", newUrl.toString());
+
+                    // 5秒後にエラーメッセージをクリア
+                    setTimeout(() => {
+                        sharedImageError = null;
+                    }, 5000);
+                }, 1000);
+            }
+        }
+    });
+
     // スマホ対応: タップ時に明示的に選択→コピー（Clipboard API優先、失敗時はtextareaフォールバック）
     async function handleDevLogCopy(e?: Event) {
         try {
@@ -97,6 +143,7 @@
             inProgress: false,
         };
         imageSizeInfoStore.set({ info: null, visible: false });
+        sharedImageError = null; // 共有画像エラーもクリア
     }
 </script>
 
@@ -118,7 +165,11 @@
 {/if}
 
 <div class="footer-center">
-    {#if uploadProgress.inProgress || uploadProgress.total > 0}
+    {#if sharedImageError}
+        <div class="shared-image-error">
+            <div class="error-text">{sharedImageError}</div>
+        </div>
+    {:else if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">
             <div class="progress-text">
                 {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
@@ -272,5 +323,23 @@
     }
     .floating-dev-console-log:active {
         transform: scale(0.97);
+    }
+
+    .shared-image-error {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        background: var(--balloon-error-bg, #fef2f2);
+        border: 1px solid var(--balloon-error-border, #fecaca);
+        border-radius: 6px;
+        max-width: 100%;
+    }
+
+    .error-text {
+        font-size: 0.9rem;
+        color: var(--balloon-error-color, #dc2626);
+        text-align: center;
+        line-height: 1.2;
     }
 </style>
