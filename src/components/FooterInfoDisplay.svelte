@@ -344,6 +344,9 @@
         box-shadow: none;
         appearance: none;
         border-radius: 0;
+        &:hover {
+            --btn-bg: #ffe0e0;
+        }
     }
     .floating-dev-console-log:active,
     .floating-dev-console-log:focus {
