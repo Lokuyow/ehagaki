@@ -43,7 +43,8 @@
   } from "./lib/balloonMessageManager";
   import {
     checkServiceWorkerStatus,
-    testServiceWorkerCommunication
+    testServiceWorkerCommunication,
+    getSharedImageWithFallback
   } from "./lib/utils/appUtils";
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -320,16 +321,21 @@
         !sharedImageAlreadyProcessed
       ) {
         try {
-          const shared =
-            await FileUploadManager.getSharedImageFromServiceWorker();
+          // 改良版の共有画像取得を使用
+          const shared = await getSharedImageWithFallback();
           if (shared?.image) {
             sharedImageStore.file = shared.image;
             sharedImageStore.metadata = shared.metadata;
             sharedImageStore.received = true;
             // 取得済みフラグをセット
             localStorage.setItem("sharedImageProcessed", "1");
+            console.log('Shared image successfully loaded:', {
+              name: shared.image.name,
+              size: shared.image.size,
+              type: shared.image.type
+            });
           } else {
-            console.warn('No shared image data received from Service Worker');
+            console.warn('No shared image data received');
           }
         } catch (error) {
           console.error("共有画像の処理中にエラー:", error);

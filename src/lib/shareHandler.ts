@@ -9,8 +9,7 @@ import {
   checkIfOpenedFromShare,
   checkAndClearSharedFlagInIndexedDB,
   waitForServiceWorkerController,
-  requestSharedImageWithMessageChannel,
-  requestSharedImageWithEventListener
+  requestSharedImageWithMessageChannel
 } from './utils/appUtils';
 
 // 型定義はtypes.tsから再エクスポート
@@ -66,17 +65,15 @@ export class ShareHandler {
       await waitForServiceWorkerController();
 
       // MessageChannelを試す
+      // MessageChannelを試す
       let result = await requestSharedImageWithMessageChannel();
       if (result) return result;
 
-      // EventListenerを試す
-      result = await requestSharedImageWithEventListener(this.requestCallbacks);
-      if (result) return result;
+      // EventListener方式は未サポートまたは未実装
 
       // IndexedDBをチェック
       const hasFlag = await checkAndClearSharedFlagInIndexedDB();
       return hasFlag ? null : null; // フラグがあっても実際のデータは別途取得が必要
-
     } catch (error) {
       console.error('共有画像取得エラー:', error);
       return null;

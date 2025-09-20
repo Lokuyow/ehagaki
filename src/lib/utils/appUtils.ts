@@ -744,7 +744,85 @@ export async function waitForServiceWorkerController(): Promise<void> {
 }
 
 /**
- * MessageChannelを使ってServiceWorkerから共有画像を取得
+ * IndexedDBから共有画像データを取得・削除
+ */
+export async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | null> {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(
+        SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
+        SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION
+      );
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
+          db.createObjectStore(SHARE_HANDLER_CONFIG.STORE_NAME, { keyPath: 'id' });
+        }
+      };
+
+      request.onerror = () => resolve(null);
+
+      request.onsuccess = (event) => {
+        try {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
+            db.close();
+            resolve(null);
+            return;
+          }
+
+          const transaction = db.transaction([SHARE_HANDLER_CONFIG.STORE_NAME], 'readwrite');
+          const store = transaction.objectStore(SHARE_HANDLER_CONFIG.STORE_NAME);
+          const getRequest = store.get('sharedImageData');
+
+          getRequest.onsuccess = () => {
+            const result = getRequest.result;
+            if (result?.data) {
+              // 共有画像データが見つかった場合、削除してから返す
+              store.delete('sharedImageData').onsuccess = () => {
+                db.close();
+
+                // ArrayBufferからFileオブジェクトを再構築
+                if (result.data.image?.arrayBuffer && result.data.image._isFile) {
+                  const file = new File(
+                    [result.data.image.arrayBuffer],
+                    result.data.image.name || 'shared-image',
+                    {
+                      type: result.data.image.type || 'image/jpeg'
+                    }
+                  );
+
+                  resolve({
+                    image: file,
+                    metadata: result.data.metadata
+                  });
+                } else {
+                  resolve(result.data as SharedImageData);
+                }
+              };
+            } else {
+              db.close();
+              resolve(null);
+            }
+          };
+
+          getRequest.onerror = () => {
+            db.close();
+            resolve(null);
+          };
+        } catch {
+          resolve(null);
+        }
+      };
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * MessageChannelを使ってServiceWorkerから共有画像を取得（改良版）
  */
 export async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
   if (!navigator.serviceWorker.controller) return null;
@@ -760,36 +838,53 @@ export async function requestSharedImageWithMessageChannel(): Promise<SharedImag
       const { data } = event.data || {};
       resolve(data && data.image ? data : null);
     };
+
+    messageChannel.port1.addEventListener('error', (error) => {
+      clearTimeout(timeout);
+      console.error('MessageChannel error:', error);
+      resolve(null);
+    });
   });
 
-  navigator.serviceWorker.controller.postMessage(
-    { action: 'getSharedImage', requestId },
-    [messageChannel.port2]
-  );
+  try {
+    navigator.serviceWorker.controller.postMessage(
+      { action: 'getSharedImage', requestId },
+      [messageChannel.port2]
+    );
+  } catch (error) {
+    console.error('Failed to send message to ServiceWorker:', error);
+    return null;
+  }
 
   return promise;
 }
 
 /**
- * EventListenerを使ってServiceWorkerから共有画像を取得
+ * 複数の方法で共有画像を取得（フォールバック付き）
  */
-export async function requestSharedImageWithEventListener(
-  requestCallbacks: Map<string, (result: SharedImageData | null) => void>
-): Promise<SharedImageData | null> {
-  if (!navigator.serviceWorker.controller) return null;
+export async function getSharedImageWithFallback(): Promise<SharedImageData | null> {
+  try {
+    // 1. MessageChannelでService Workerから取得を試行
+    await waitForServiceWorkerController();
+    const swResult = await requestSharedImageWithMessageChannel();
+    if (swResult) {
+      console.log('Shared image retrieved via ServiceWorker MessageChannel');
+      return swResult;
+    }
 
-  const requestId = generateRequestId();
+    // 2. IndexedDBから直接取得を試行
+    const dbResult = await getAndClearSharedImageFromIndexedDB();
+    if (dbResult) {
+      console.log('Shared image retrieved via IndexedDB fallback');
+      return dbResult;
+    }
 
-  const promise = new Promise<SharedImageData | null>((resolve) => {
-    requestCallbacks.set(requestId, resolve);
-    setTimeout(() => {
-      requestCallbacks.delete(requestId);
-      resolve(null);
-    }, SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT);
-  });
-
-  navigator.serviceWorker.controller.postMessage({ action: 'getSharedImage', requestId });
-  return promise;
+    console.log('No shared image found in ServiceWorker or IndexedDB');
+    return null;
+  } catch (error) {
+    console.error('Error retrieving shared image:', error);
+    return null;
+  }
 }
 
 /**

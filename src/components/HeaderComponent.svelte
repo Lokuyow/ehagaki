@@ -54,7 +54,7 @@
         if (balloonManager && !hasProcessedSuccess) {
             postSuccessBalloonMessage = balloonManager.createMessage("success");
             hasProcessedSuccess = true;
-            
+
             balloonManager.scheduleHide(() => {
                 postSuccessBalloonMessage = null;
                 hasProcessedSuccess = false;
@@ -105,45 +105,47 @@
 
     // dev用: デバッグ機能
     // previewモードでも有効にする
-    const isPreviewOrDev = import.meta.env.MODE === "development" || 
-        (typeof window !== "undefined" && (window.location.port === "4173" || window.location.hostname === "localhost"));
+    const isPreviewOrDev =
+        import.meta.env.MODE === "development" ||
+        (typeof window !== "undefined" &&
+            (window.location.port === "4173" ||
+                window.location.hostname === "localhost"));
 
     // Service Workerエラーチェック（本番環境でも有効）
     let serviceWorkerError = $state<BalloonMessageType | null>(null);
-    
+
     // URLパラメータから共有エラーをチェック
     $effect(() => {
         if (typeof window !== "undefined" && balloonManager) {
             const urlParams = new URLSearchParams(window.location.search);
-            const sharedError = urlParams.get('error');
-            
-            if (sharedError && urlParams.get('shared') === 'true') {
-                let errorMessage = '';
+            const sharedError = urlParams.get("error");
+
+            if (sharedError && urlParams.get("shared") === "true") {
+                let errorMessage = "";
                 switch (sharedError) {
-                    case 'messaging-error':
-                        errorMessage = 'Service Workerとの通信でエラーが発生しました';
+                    case "messaging-error":
+                        errorMessage =
+                            "Service Workerとの通信でエラーが発生しました。ページを更新してもう一度お試しください。";
                         break;
-                    case 'processing-error':
-                        errorMessage = '共有画像の処理中にエラーが発生しました';
+                    case "processing-error":
+                        errorMessage = "共有画像の処理中にエラーが発生しました";
                         break;
-                    case 'no-image':
-                        errorMessage = '共有画像が見つかりませんでした';
+                    case "no-image":
+                        errorMessage = "共有画像が見つかりませんでした";
                         break;
                     default:
                         errorMessage = `共有処理でエラーが発生しました: ${sharedError}`;
                 }
-                
+
                 serviceWorkerError = { type: "error", message: errorMessage };
-                
+
                 // エラーメッセージ表示後、URLからエラーパラメータを削除
                 setTimeout(() => {
                     const newUrl = new URL(window.location.href);
-                    newUrl.searchParams.delete('error');
-                    if (newUrl.searchParams.get('shared') === 'true' && !newUrl.searchParams.has('error')) {
-                        newUrl.searchParams.delete('shared');
-                    }
-                    window.history.replaceState({}, '', newUrl.toString());
-                    
+                    newUrl.searchParams.delete("error");
+                    newUrl.searchParams.delete("shared"); // sharedパラメータも削除
+                    window.history.replaceState({}, "", newUrl.toString());
+
                     // エラーメッセージをクリア
                     setTimeout(() => {
                         serviceWorkerError = null;
@@ -165,14 +167,14 @@
     // 最終的なメッセージ選択（Service Workerエラーを優先）
     let finalBalloonMessage = $derived(
         serviceWorkerError ||
-        (isPreviewOrDev
-            ? debugInfoMessage ||
+            (isPreviewOrDev
+                ? debugInfoMessage ||
                   balloonMessage ||
                   errorBalloonMessage ||
                   postSuccessBalloonMessage
-            : balloonMessage ||
+                : balloonMessage ||
                   errorBalloonMessage ||
-                  postSuccessBalloonMessage)
+                  postSuccessBalloonMessage),
     );
 
     // クリーンアップ
@@ -193,11 +195,7 @@
             class="site-icon-link"
             aria-label="ehagaki"
         >
-            <img
-                src="/ehagaki_icon.svg"
-                alt="ehagaki icon"
-                class="site-icon"
-            />
+            <img src="/ehagaki_icon.svg" alt="ehagaki icon" class="site-icon" />
         </a>
         {#if finalBalloonMessage}
             <BalloonMessage

@@ -461,21 +461,6 @@ class ClientManager {
         this.setTimeout = dependencies.setTimeout;
     }
 
-    // クライアントリダイレクト
-    async redirectClient() {
-        try {
-            const clients = await this.clients.matchAll({ type: 'window', includeUncontrolled: true });
-            if (clients.length > 0) {
-                return await this.focusAndNotifyClient(clients[0]);
-            } else {
-                return await this.openNewClient();
-            }
-        } catch (error) {
-            this.console.error('クライアント処理エラー:', error);
-            return Utilities.createRedirectResponse('/', 'client-error', this.location);
-        }
-    }
-
     // 既存クライアント通知
     async focusAndNotifyClient(client) {
         try {
@@ -493,6 +478,17 @@ class ClientManager {
             if (!client || typeof client.postMessage !== 'function') {
                 this.console.error('SW: Invalid client object');
                 return Utilities.createRedirectResponse('/', 'messaging-error', this.location);
+            }
+
+            // 共有データをIndexedDBに永続化（メッセージ送信失敗に備える）
+            if (sharedCache) {
+                try {
+                    const indexedDBManager = new IndexedDBManager();
+                    await this.persistSharedImageToIndexedDB(sharedCache, indexedDBManager);
+                    this.console.log('SW: Shared image persisted to IndexedDB for fallback');
+                } catch (dbError) {
+                    this.console.warn('SW: Failed to persist shared image to IndexedDB:', dbError);
+                }
             }
 
             // メッセージを一度だけ送信（リトライ処理を簡素化）
@@ -515,20 +511,56 @@ class ClientManager {
         }
     }
 
-    // 新規クライアントオープン
-    async openNewClient() {
-        try {
-            const url = new URL('/?shared=true', this.location.origin).href;
-            const windowClient = await this.clients.openWindow(url);
-            if (windowClient) {
-                return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
+    // IndexedDBに共有画像データを永続化
+    async persistSharedImageToIndexedDB(sharedData, indexedDBManager) {
+        return indexedDBManager.executeOperation((db, resolve, reject) => {
+            const tx = db.transaction(['flags'], 'readwrite');
+            const store = tx.objectStore('flags');
+            
+            // 共有画像データを保存（フォールバック用）
+            const sharedImageData = {
+                id: 'sharedImageData',
+                timestamp: Date.now(),
+                data: {
+                    image: {
+                        name: sharedData.image?.name,
+                        type: sharedData.image?.type,
+                        size: sharedData.image?.size,
+                        // Fileオブジェクトは直接保存できないため、後でBlobから再構築する
+                        _isFile: true
+                    },
+                    metadata: sharedData.metadata
+                }
+            };
+
+            // FileオブジェクトをArrayBufferに変換して保存
+            if (sharedData.image instanceof File) {
+                sharedData.image.arrayBuffer().then(buffer => {
+                    sharedImageData.data.image.arrayBuffer = buffer;
+                    
+                    store.put(sharedImageData).onsuccess = () => {
+                        db.close();
+                        resolve();
+                    };
+                }).catch(error => {
+                    db.close();
+                    reject(error);
+                });
+            } else {
+                store.put(sharedImageData).onsuccess = () => {
+                    db.close();
+                    resolve();
+                };
             }
-            return Utilities.createRedirectResponse('/', 'window-error', this.location);
-        } catch (error) {
-            this.console.error('新しいウィンドウ作成エラー:', error);
-            return Utilities.createRedirectResponse('/', 'open-window-error', this.location);
-        }
+
+            tx.onerror = () => {
+                db.close();
+                reject(new Error('Failed to persist shared image data'));
+            };
+        });
     }
+
+    // ...existing code...
 }
 
 // =============================================================================
