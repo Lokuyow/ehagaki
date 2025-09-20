@@ -20,48 +20,77 @@
             const sharedError = urlParams.get("error");
 
             if (sharedError && urlParams.get("shared") === "true") {
-                // 共有画像が実際に処理されている場合はエラー表示しない
-                const isProcessed = localStorage.getItem("sharedImageProcessed") === "1";
-                if (isProcessed) {
-                    console.log('Shared image was processed successfully, ignoring error parameter');
+                // より確実に共有画像が処理されているかチェック
+                const checkImageProcessed = () => {
+                    // 1. ローカルストレージのフラグをチェック
+                    const isProcessed =
+                        localStorage.getItem("sharedImageProcessed") === "1";
+
+                    // 2. URLが既にクリアされているかチェック（App.svelteで成功時にクリアされる）
+                    const currentParams = new URLSearchParams(
+                        window.location.search,
+                    );
+                    const hasErrorParam = currentParams.get("error");
+                    const isUrlCleared = !hasErrorParam;
+
+                    // 3. いずれかの条件が満たされていれば処理済みとみなす
+                    return isProcessed || isUrlCleared;
+                };
+
+                if (checkImageProcessed()) {
+                    console.log(
+                        "Shared image was processed successfully, ignoring error parameter",
+                    );
                     return;
                 }
 
-                let errorMessage = "";
-                switch (sharedError) {
-                    case "processing-error":
-                        errorMessage = "共有画像の処理中にエラーが発生しました";
-                        break;
-                    case "no-image":
-                        errorMessage = "共有画像が見つかりませんでした";
-                        break;
-                    case "upload-failed":
-                        errorMessage = "画像のアップロードに失敗しました";
-                        break;
-                    case "network-error":
-                        errorMessage = "ネットワークエラーが発生しました";
-                        break;
-                    case "client-error":
-                        errorMessage = "画像共有処理でエラーが発生しました";
-                        break;
-                    default:
-                        return; // その他のエラーは表示しない
-                }
-
-                sharedImageError = errorMessage;
-
-                // エラーメッセージ表示後、URLパラメータをクリア
+                // 少し遅延させてから再度チェック（App.svelteの処理完了を待つ）
                 setTimeout(() => {
-                    const newUrl = new URL(window.location.href);
-                    newUrl.searchParams.delete("error");
-                    newUrl.searchParams.delete("shared");
-                    window.history.replaceState({}, "", newUrl.toString());
+                    if (checkImageProcessed()) {
+                        console.log(
+                            "Shared image processing detected after delay, not showing error",
+                        );
+                        return;
+                    }
 
-                    // 5秒後にエラーメッセージをクリア
+                    // この時点でまだ処理されていない場合のみエラーを表示
+                    let errorMessage = "";
+                    switch (sharedError) {
+                        case "processing-error":
+                            errorMessage =
+                                "共有画像の処理中にエラーが発生しました";
+                            break;
+                        case "no-image":
+                            errorMessage = "共有画像が見つかりませんでした";
+                            break;
+                        case "upload-failed":
+                            errorMessage = "画像のアップロードに失敗しました";
+                            break;
+                        case "network-error":
+                            errorMessage = "ネットワークエラーが発生しました";
+                            break;
+                        case "client-error":
+                            errorMessage = "画像共有処理でエラーが発生しました";
+                            break;
+                        default:
+                            return; // その他のエラーは表示しない
+                    }
+
+                    sharedImageError = errorMessage;
+
+                    // エラーメッセージ表示後、URLパラメータをクリア
                     setTimeout(() => {
-                        sharedImageError = null;
-                    }, 5000);
-                }, 1000);
+                        const newUrl = new URL(window.location.href);
+                        newUrl.searchParams.delete("error");
+                        newUrl.searchParams.delete("shared");
+                        window.history.replaceState({}, "", newUrl.toString());
+
+                        // 5秒後にエラーメッセージをクリア
+                        setTimeout(() => {
+                            sharedImageError = null;
+                        }, 5000);
+                    }, 1000);
+                }, 100); // 100ms遅延させてApp.svelteの処理完了を待つ
             }
         }
     });
