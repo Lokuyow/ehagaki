@@ -1,14 +1,29 @@
 // 定数定義
-const PRECACHE_VERSION = '1.3.2';
+const PRECACHE_VERSION = '1.3.3';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
 
+// マニフェスト注入ポイントの確実な初期化
+let PRECACHE_MANIFEST = [];
+try {
+    // Workboxによるマニフェスト注入
+    PRECACHE_MANIFEST = self.__WB_MANIFEST || [];
+    if (PRECACHE_MANIFEST.length === 0) {
+        console.warn('SW: Precache manifest is empty');
+    } else {
+        console.log(`SW: Precache manifest loaded with ${PRECACHE_MANIFEST.length} entries`);
+    }
+} catch (error) {
+    console.error('SW: Failed to load precache manifest:', error);
+    PRECACHE_MANIFEST = [];
+}
+
 // グローバル状態管理
 const ServiceWorkerState = {
     sharedImageCache: null,
-    precacheManifest: self.__WB_MANIFEST || [],
+    precacheManifest: PRECACHE_MANIFEST,
 
     getSharedImageCache() {
         return this.sharedImageCache;
@@ -233,17 +248,53 @@ class CacheManager {
         this.console = dependencies.console;
     }
 
-    // プリキャッシュの実行
+    // プリキャッシュの実行を改善
     async precacheResources(manifest) {
-        if (manifest.length === 0) return;
+        if (!manifest || manifest.length === 0) {
+            this.console.warn('SW: No resources to precache');
+            return;
+        }
 
         try {
             const cache = await this.caches.open(PRECACHE_NAME);
-            const urls = manifest.map(entry => entry.url);
-            await cache.addAll(urls);
-            this.console.log('SW cached resources:', urls.length);
+            const urls = manifest.map(entry => {
+                // エントリが文字列の場合とオブジェクトの場合に対応
+                if (typeof entry === 'string') {
+                    return entry;
+                } else if (entry && typeof entry === 'object' && entry.url) {
+                    return entry.url;
+                } else {
+                    this.console.warn('SW: Invalid manifest entry:', entry);
+                    return null;
+                }
+            }).filter(Boolean);
+
+            if (urls.length > 0) {
+                // バッチサイズを小さくしてVercel環境での成功率を向上
+                const batchSize = 10;
+                for (let i = 0; i < urls.length; i += batchSize) {
+                    const batch = urls.slice(i, i + batchSize);
+                    try {
+                        await cache.addAll(batch);
+                        this.console.log(`SW: Cached batch ${Math.floor(i / batchSize) + 1}: ${batch.length} resources`);
+                    } catch (batchError) {
+                        this.console.error(`SW: Failed to cache batch ${Math.floor(i / batchSize) + 1}:`, batchError);
+                        // 個別にリトライ
+                        for (const url of batch) {
+                            try {
+                                await cache.add(url);
+                            } catch (individualError) {
+                                this.console.error(`SW: Failed to cache individual resource: ${url}`, individualError);
+                            }
+                        }
+                    }
+                }
+                this.console.log(`SW: Successfully cached ${urls.length} resources`);
+            } else {
+                this.console.warn('SW: No valid URLs to cache');
+            }
         } catch (error) {
-            this.console.error('プリキャッシュエラー:', error);
+            this.console.error('SW: Precache error:', error);
         }
     }
 

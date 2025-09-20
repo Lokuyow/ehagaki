@@ -27,6 +27,7 @@
     "src/**/*.svelte"
   ],
   "exclude": [
-    "src/public/sw.js"
+    "public/sw.js",
+    "dist/sw.js"
   ]
 }
