@@ -59,7 +59,8 @@
     "processing_error": "Error occurred while processing shared image",
     "no_image": "Shared image not found",
     "upload_failed": "Image upload failed",
-    "network_error": "Network error occurred"
+    "network_error": "Network error occurred",
+    "client_error": "Error occurred during image sharing process"
   },
   "loadingPlaceholder": {
     "loading": "Loading..."

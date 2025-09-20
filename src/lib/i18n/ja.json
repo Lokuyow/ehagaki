@@ -59,7 +59,8 @@
     "processing_error": "共有画像の処理中にエラーが発生しました",
     "no_image": "共有画像が見つかりませんでした",
     "upload_failed": "画像のアップロードに失敗しました",
-    "network_error": "ネットワークエラーが発生しました"
+    "network_error": "ネットワークエラーが発生しました",
+    "client_error": "画像共有処理でエラーが発生しました"
   },
   "loadingPlaceholder": {
     "loading": "読み込み中..."

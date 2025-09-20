@@ -41,6 +41,9 @@
                     case "network-error":
                         errorMessage = "ネットワークエラーが発生しました";
                         break;
+                    case "client-error":
+                        errorMessage = "画像共有処理でエラーが発生しました";
+                        break;
                     default:
                         return; // その他のエラーは表示しない
                 }

@@ -44,7 +44,7 @@
   import {
     checkServiceWorkerStatus,
     testServiceWorkerCommunication,
-    getSharedImageWithFallback
+    getSharedImageWithFallback,
   } from "./lib/utils/appUtils";
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -269,16 +269,19 @@
       if (FileUploadManager.checkIfOpenedFromShare()) {
         const swStatus = await checkServiceWorkerStatus();
         const canCommunicate = await testServiceWorkerCommunication();
-        
-        console.log('Service Worker Status:', {
+
+        console.log("Service Worker Status:", {
           isReady: swStatus.isReady,
           hasController: swStatus.hasController,
           canCommunicate,
-          error: swStatus.error
+          error: swStatus.error,
         });
-        
+
         if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
-          console.warn('Service Worker not ready for shared image processing:', swStatus);
+          console.warn(
+            "Service Worker not ready for shared image processing:",
+            swStatus,
+          );
         }
       }
 
@@ -316,40 +319,48 @@
             sharedImageStore.metadata = shared.metadata;
             sharedImageStore.received = true;
             localStorage.setItem("sharedImageProcessed", "1");
-            console.log('Shared image successfully loaded despite error parameter:', {
-              name: shared.image.name,
-              size: shared.image.size,
-              type: shared.image.type
-            });
-            
+            console.log(
+              "Shared image successfully loaded despite error parameter:",
+              {
+                name: shared.image.name,
+                size: shared.image.size,
+                type: shared.image.type,
+              },
+            );
+
             // 成功した場合はエラーパラメータをクリア
             const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get('error')) {
+            if (urlParams.get("error")) {
               const newUrl = new URL(window.location.href);
-              newUrl.searchParams.delete('error');
-              newUrl.searchParams.delete('shared');
-              window.history.replaceState({}, '', newUrl.toString());
-              console.log('Cleared error parameters after successful image loading');
+              newUrl.searchParams.delete("error");
+              newUrl.searchParams.delete("shared");
+              window.history.replaceState({}, "", newUrl.toString());
+              console.log(
+                "Cleared error parameters after successful image loading",
+              );
             }
           } else {
-            console.warn('No shared image data received');
+            console.warn("No shared image data received");
             // 画像が取得できない場合のみエラーパラメータをログ出力
             const urlParams = new URLSearchParams(window.location.search);
-            const sharedError = urlParams.get('error');
+            const sharedError = urlParams.get("error");
             if (sharedError) {
-              console.error('Shared image processing failed with error parameter:', {
-                error: sharedError,
-                location: window.location.href
-              });
+              console.error(
+                "Shared image processing failed with error parameter:",
+                {
+                  error: sharedError,
+                  location: window.location.href,
+                },
+              );
             }
           }
         } catch (error) {
           console.error("共有画像の処理中にエラー:", error);
         }
       }
-      
+
       debugLog("初期化完了", { isAuthenticated, isAuthInitialized });
-      
+
       // テスト用ログを追加（previewモードでfloating-dev-console-logの表示確認用）
       console.log("App.svelte mounted - test log for floating console");
       console.log("Current mode:", import.meta.env.MODE);

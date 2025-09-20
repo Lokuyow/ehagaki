@@ -128,6 +128,7 @@
                     "no-image",
                     "upload-failed",
                     "network-error",
+                    "client-error", // client-errorも画像関連エラーとして追加
                 ];
 
                 if (skipBalloonErrors.includes(sharedError)) {
@@ -150,9 +151,6 @@
                         break;
                     case "window-error":
                         errorMessage = "新しいウィンドウの作成に失敗しました";
-                        break;
-                    case "client-error":
-                        errorMessage = "クライアント処理でエラーが発生しました";
                         break;
                     default:
                         // その他の未知のエラーも表示しない
