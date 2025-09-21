@@ -10,7 +10,6 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
-  import { FileUploadManager } from "./lib/fileUploadManager";
   import { authService } from "./lib/authService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
@@ -46,6 +45,7 @@
     testServiceWorkerCommunication,
     getSharedImageWithFallback,
   } from "./lib/utils/appUtils";
+  import { checkIfOpenedFromShare } from "./lib/shareHandler";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -266,7 +266,7 @@
       authService.setNostrLoginHandler(handleNostrLoginAuth);
 
       // Service Worker状態チェック（本番環境でも実行）
-      if (FileUploadManager.checkIfOpenedFromShare()) {
+      if (checkIfOpenedFromShare()) {
         const swStatus = await checkServiceWorkerStatus();
         const canCommunicate = await testServiceWorkerCommunication();
 
@@ -306,10 +306,7 @@
       // --- ここまで ---
 
       // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
-      if (
-        FileUploadManager.checkIfOpenedFromShare() &&
-        !sharedImageAlreadyProcessed
-      ) {
+      if (checkIfOpenedFromShare() && !sharedImageAlreadyProcessed) {
         try {
           // まず実際に共有画像が取得できるかチェック
           const shared = await getSharedImageWithFallback();

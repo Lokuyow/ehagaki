@@ -12,7 +12,8 @@ import type {
   CompressionService,
   AuthService,
   MimeTypeSupportInterface,
-  SharedImageData
+  SharedImageData,
+  SharedImageProcessingResult
 } from "./types";
 import {
   DEFAULT_API_URL,
@@ -385,7 +386,12 @@ export class FileUploadManager {
         const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === 'url');
         if (urlTag?.[1]) return { success: true, url: urlTag[1], sizeInfo, nip94: parsedNip94 };
       }
-      return { success: false, error: data.message || 'Could not extract URL from response', sizeInfo, nip94: Object.keys(parsedNip94).length ? parsedNip94 : null };
+      return {
+        success: false,
+        error: data.message || 'Could not extract URL from response',
+        sizeInfo,
+        nip94: Object.keys(parsedNip94).length ? parsedNip94 : undefined
+      };
     } catch (error) {
       if (devMode) {
         console.error("[dev] Upload error:", error);
@@ -477,8 +483,6 @@ export class FileUploadManager {
     return results;
   }
 
-
-  // Service Worker から画像データを取得するためのインスタンスメソッド
   private createSWMessagePromise(useShareTarget: boolean): Promise<SharedImageData | null> {
     return new Promise((resolve) => {
       if (!this.dependencies.navigator?.serviceWorker?.controller) return resolve(null);
@@ -499,61 +503,72 @@ export class FileUploadManager {
     });
   }
 
-  // --- Service Worker から共有画像を取得 ---
+  // --- 共有画像処理の統一メソッド ---
   async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    if (this.dependencies.localStorage.getItem("sharedImageProcessed") === "1") return null;
     if (!this.dependencies.navigator?.serviceWorker?.controller) return null;
+
     try {
-      const timeoutPromise = new Promise<null>(resolve => setTimeout(() => resolve(null), 5000));
-      return await Promise.race([
-        this.createSWMessagePromise(true),
-        this.createSWMessagePromise(false),
-        timeoutPromise
-      ]);
-    } catch {
+      const channel = new MessageChannel();
+      const promise = new Promise<SharedImageData | null>((resolve) => {
+        channel.port1.onmessage = (event) => {
+          if (event.data?.type === 'SHARED_IMAGE') {
+            resolve(event.data.data);
+          } else {
+            resolve(null);
+          }
+        };
+        setTimeout(() => resolve(null), 3000);
+      });
+
+      this.dependencies.navigator.serviceWorker.controller.postMessage(
+        { action: 'getSharedImage' },
+        [channel.port2]
+      );
+
+      return await promise;
+    } catch (error) {
+      console.error('Service Workerからの共有画像取得に失敗:', error);
       return null;
     }
   }
 
-  // --- 共有画像処理 ---
-  public checkIfOpenedFromShare(): boolean {
+  checkIfOpenedFromShare(): boolean {
     if (!this.dependencies.window?.location) return false;
     return new URLSearchParams(this.dependencies.window.location.search).get('shared') === 'true';
   }
 
-  public async processSharedImage(): Promise<FileUploadResponse | null> {
-    const sharedData = await this.getSharedImageFromServiceWorker();
-    if (!sharedData?.image) return null;
-
+  // 共有画像の包括的な処理メソッド
+  async processSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
     try {
-      // sharedData.imageは既にFileオブジェクトなので直接使用
-      const file = sharedData.image;
+      // Service Workerから取得を試行
+      const sharedData = await this.getSharedImageFromServiceWorker();
+      if (sharedData?.image) {
+        return {
+          success: true,
+          data: sharedData,
+          fromServiceWorker: true
+        };
+      }
 
-      // ファイルをアップロード
-      return await this.uploadFile(file);
+      // IndexedDBフォールバック（必要に応じて実装）
+      // この部分はshareHandler.tsから移行
+
+      return {
+        success: false,
+        error: '共有画像が見つかりません'
+      };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
-  }
-
-  // 後方互換性のためのstatic メソッド
-  static async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    const manager = new FileUploadManager();
-    return await manager.getSharedImageFromServiceWorker();
-  }
-
-  static checkIfOpenedFromShare(): boolean {
-    return new URLSearchParams(window.location.search).get('shared') === 'true';
-  }
-
-  static async processSharedImage(): Promise<FileUploadResponse | null> {
-    const manager = new FileUploadManager();
-    return await manager.processSharedImage();
   }
 }
 
 // getSharedImageFromServiceWorker: 別名エクスポート用（後方互換性）
 export async function getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-  return await FileUploadManager.getSharedImageFromServiceWorker();
+  const manager = new FileUploadManager();
+  return await manager.getSharedImageFromServiceWorker();
 }
 

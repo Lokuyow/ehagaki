@@ -1,7 +1,18 @@
 import { FileUploadManager } from "./fileUploadManager";
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { tick } from "svelte";
-import type { UploadHelperParams, UploadHelperResult, PlaceholderEntry, FileUploadResponse, UploadHelperDependencies, FileUploadManagerInterface } from "./types";
+import type {
+    UploadHelperParams,
+    UploadHelperResult,
+    PlaceholderEntry,
+    FileUploadResponse,
+    UploadHelperDependencies,
+    FileUploadManagerInterface,
+    FileUploadDependencies,
+    AuthService,
+    CompressionService,
+    MimeTypeSupportInterface
+} from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import type { ImageDimensions } from "./utils/imageUtils";
@@ -12,7 +23,12 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     localStorage: window.localStorage,
     crypto: window.crypto.subtle,
     tick,
-    FileUploadManager: FileUploadManager as unknown as new () => FileUploadManagerInterface,
+    FileUploadManager: FileUploadManager as unknown as new (
+        deps?: FileUploadDependencies,
+        auth?: AuthService,
+        compression?: CompressionService,
+        mime?: MimeTypeSupportInterface
+    ) => FileUploadManagerInterface,
     getImageDimensions,
     extractImageBlurhashMap,
     calculateImageHash,
@@ -21,7 +37,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     imageSizeMapStore,
 });
 
-// 純粹関数: ファイル処理とプレースホルダー作成
+// 純粋関数: ファイル処理とプレースホルダー作成
 export async function processFilesForUpload(
     files: File[],
     dependencies: UploadHelperDependencies
@@ -50,7 +66,7 @@ export async function processFilesForUpload(
     return await Promise.all(fileProcessingPromises);
 }
 
-// 純粹関数: プレースホルダー挿入
+// 純粋関数: プレースホルダー挿入（責務を明確化）
 export function insertPlaceholdersIntoEditor(
     fileArray: File[],
     fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
@@ -60,6 +76,8 @@ export function insertPlaceholdersIntoEditor(
     devMode: boolean
 ): PlaceholderEntry[] {
     const placeholderMap: PlaceholderEntry[] = [];
+
+    // FileUploadManagerインスタンス作成時の依存性注入を改善
     const fileUploadManager = new dependencies.FileUploadManager();
     const timestamp = Date.now();
 
@@ -233,7 +251,7 @@ export function prepareMetadataList(fileArray: File[]): Array<Record<string, str
     }));
 }
 
-// 純粹関数: プレースホルダー置換処理
+// 純粋関数: プレースホルダー置換処理
 export async function replacePlaceholdersWithResults(
     results: FileUploadResponse[],
     placeholderMap: PlaceholderEntry[],
@@ -483,20 +501,13 @@ export async function uploadHelper({
         devMode
     );
 
-    // アップロード対象のファイルを抽出（有効ファイルのみ）
+    // アップロード処理（FileUploadManagerに委譲）
     const validFiles = placeholderMap.map(entry => entry.file);
-
-    if (devMode) {
-        console.log(`${modeLabel} [uploadHelper] Starting file upload:`, {
-            validFileCount: validFiles.length,
-            endpoint
-        });
-    }
-
-    // アップロード
     let results: FileUploadResponse[] | null = null;
+
     try {
         const metadataList = prepareMetadataList(validFiles);
+        // 依存性注入されたFileUploadManagerを使用
         const fileUploadManager = new dependencies.FileUploadManager();
 
         if (validFiles.length === 1) {

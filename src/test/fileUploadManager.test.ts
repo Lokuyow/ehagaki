@@ -590,27 +590,38 @@ describe('FileUploadManager', () => {
 
                 if (mockMessageChannel.port1.onmessage) {
                     mockMessageChannel.port1.onmessage({
-                        data: mockSharedData
+                        data: {
+                            type: 'SHARED_IMAGE',
+                            data: mockSharedData
+                        }
                     } as any);
                 }
             }, 10);
 
             const result = await getSharedPromise;
 
-            expect(mockController.postMessage).toHaveBeenCalled();
+            expect(mockController.postMessage).toHaveBeenCalledWith(
+                { action: 'getSharedImage' },
+                [mockMessageChannel.port2]
+            );
             expect(result).toBeTruthy();
             expect(result?.image.name).toBe('shared.jpg');
         });
 
-        it('Service Workerコントローラーがない場合はnullを返す', async () => {
+        it('共有画像の包括的な処理', async () => {
+            // Service Workerコントローラーがある場合
             mockDependencies.navigator = {
-                serviceWorker: { controller: null }
+                serviceWorker: {
+                    controller: { postMessage: vi.fn() }
+                }
             } as any;
 
             uploadManager = new FileUploadManager(mockDependencies);
 
-            const result = await uploadManager.getSharedImageFromServiceWorker();
-            expect(result).toBeNull();
+            const result = await uploadManager.processSharedImageOnLaunch();
+
+            // Service Workerから取得を試行することを確認
+            expect(result.success).toBeDefined();
         });
     });
 

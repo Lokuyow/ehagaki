@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { uploadHelper, processFilesForUpload, insertPlaceholdersIntoEditor, prepareMetadataList } from "../lib/uploadHelper";
-import type { UploadHelperDependencies, FileUploadManagerInterface, FileValidationResult } from "../lib/types";
+import type {
+    UploadHelperDependencies,
+    FileUploadManagerInterface,
+    FileValidationResult,
+    FileUploadDependencies,
+    AuthService,
+    CompressionService,
+    MimeTypeSupportInterface
+} from "../lib/types";
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
@@ -72,21 +80,7 @@ const createMockDependencies = (): UploadHelperDependencies => {
         )
     };
 
-    // モック用のサービス依存関係を作成
-    const mockAuthService = {
-        buildAuthHeader: vi.fn(async () => "Bearer mock-token")
-    };
-
-    const mockCompressionService = {
-        compress: vi.fn(async (file: File) => ({ file, wasCompressed: false, wasSkipped: false }))
-    };
-
-    const mockMimeSupport = {
-        canEncodeWebpWithQuality: vi.fn(async () => true),
-        canEncodeMimeType: vi.fn(() => true)
-    };
-
-    const mockFileUploadDependencies = {
+    return {
         localStorage: {
             getItem: vi.fn(() => "https://endpoint"),
             setItem: vi.fn(),
@@ -95,28 +89,24 @@ const createMockDependencies = (): UploadHelperDependencies => {
             key: vi.fn(),
             length: 0
         } as Storage,
-        fetch: vi.fn(),
         crypto: {
             digest: vi.fn(async () => new Uint8Array([1, 2, 3]).buffer)
         } as unknown as SubtleCrypto,
-        document: {} as Document,
-        window: {
-            location: { search: "" }
-        } as unknown as Window,
-        navigator: {
-            serviceWorker: { controller: null }
-        } as unknown as Navigator
-    };
-
-    return {
-        localStorage: mockFileUploadDependencies.localStorage,
-        crypto: mockFileUploadDependencies.crypto,
         tick: vi.fn(async () => { }),
-        FileUploadManager: vi.fn((deps, auth, compression, mime) => {
-            // 依存関係が渡された場合は、それらを使用してFileUploadManagerを作成
-            // テスト用のモックインターfaces を返す
+        FileUploadManager: vi.fn((
+            deps?: FileUploadDependencies,
+            auth?: AuthService,
+            compression?: CompressionService,
+            mime?: MimeTypeSupportInterface
+        ) => {
+            // 依存関係注入パターンに対応
             return mockFileUploadManager;
-        }) as new (deps?: any, auth?: any, compression?: any, mime?: any) => FileUploadManagerInterface,
+        }) as new (
+            deps?: FileUploadDependencies,
+            auth?: AuthService,
+            compression?: CompressionService,
+            mime?: MimeTypeSupportInterface
+        ) => FileUploadManagerInterface,
         getImageDimensions: vi.fn(async () => ({ width: 100, height: 200, displayWidth: 100, displayHeight: 200 })),
         extractImageBlurhashMap: vi.fn(() => ({})),
         calculateImageHash: vi.fn(async () => "xhash"),

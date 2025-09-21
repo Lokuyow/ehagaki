@@ -4,9 +4,14 @@ import {
   getSharedImageFile,
   getSharedImageMetadata
 } from '../stores/appStore.svelte';
-import type { SharedImageData, SharedImageMetadata } from './types';
+import { FileUploadManager } from './fileUploadManager';
+import type {
+  SharedImageData,
+  SharedImageMetadata,
+  SharedImageProcessingResult,
+  FileUploadDependencies
+} from './types';
 import {
-  checkIfOpenedFromShare,
   checkAndClearSharedFlagInIndexedDB,
   waitForServiceWorkerController,
   requestSharedImageWithMessageChannel
@@ -15,18 +20,12 @@ import {
 // 型定義はtypes.tsから再エクスポート
 export type { SharedImageData, SharedImageMetadata } from './types';
 
-type ServiceWorkerMessage = {
-  type: 'SHARED_IMAGE';
-  data: SharedImageData | null;
-  requestId?: string;
-  timestamp?: number;
-};
-
 export class ShareHandler {
+  private fileUploadManager: FileUploadManager;
   private isProcessingSharedImage = false;
-  private requestCallbacks = new Map<string, (result: SharedImageData | null) => void>();
 
-  constructor() {
+  constructor(dependencies?: FileUploadDependencies) {
+    this.fileUploadManager = new FileUploadManager(dependencies);
     this.setupServiceWorkerListeners();
   }
 
@@ -36,71 +35,91 @@ export class ShareHandler {
     }
   }
 
-  private handleServiceWorkerMessage(event: MessageEvent<ServiceWorkerMessage>): void {
-    const { data, type, requestId } = event.data || {};
+  private handleServiceWorkerMessage(event: MessageEvent): void {
+    const { data, type } = event.data || {};
     if (type !== 'SHARED_IMAGE') return;
 
     if (data?.image) {
       updateSharedImageStore(data.image, data.metadata);
     }
+  }
 
-    if (requestId && this.requestCallbacks.has(requestId)) {
-      this.requestCallbacks.get(requestId)!(data);
-      this.requestCallbacks.delete(requestId);
+  // 共有判定（重複インポートを避けるため、独自実装）
+  private checkIfOpenedFromShareInternal(): boolean {
+    if (typeof window === 'undefined' || !window.location) return false;
+    return new URLSearchParams(window.location.search).get('shared') === 'true';
+  }
+
+  // 共有画像の統一処理メソッド
+  async checkForSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
+    if (this.isProcessingSharedImage) {
+      return { success: false, error: '既に処理中です' };
     }
-  }
 
-  public static checkIfOpenedFromShare(): boolean {
-    return checkIfOpenedFromShare();
-  }
+    if (!this.checkIfOpenedFromShareInternal()) {
+      return { success: false, error: '共有経由での起動ではありません' };
+    }
 
-  public async checkForSharedImageOnLaunch(): Promise<SharedImageData | null> {
-    // このメソッドはfileUploadManager.tsに集約するため削除
-    // 利用側で直接fileUploadManagerのメソッドを呼ぶように変更
-    return null;
-  }
+    this.isProcessingSharedImage = true;
 
-  public async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
     try {
-      await waitForServiceWorkerController();
+      // FileUploadManagerの統合メソッドを使用
+      const result = await this.fileUploadManager.processSharedImageOnLaunch();
 
-      // MessageChannelを試す
-      // MessageChannelを試す
-      let result = await requestSharedImageWithMessageChannel();
-      if (result) return result;
+      if (result.success && result.data) {
+        updateSharedImageStore(result.data.image, result.data.metadata);
+      }
 
-      // EventListener方式は未サポートまたは未実装
-
-      // IndexedDBをチェック
-      const hasFlag = await checkAndClearSharedFlagInIndexedDB();
-      return hasFlag ? null : null; // フラグがあっても実際のデータは別途取得が必要
-    } catch (error) {
-      console.error('共有画像取得エラー:', error);
-      return null;
+      return result;
+    } finally {
+      this.isProcessingSharedImage = false;
     }
   }
 
-  public isProcessing(): boolean {
+  // Service Workerからの取得（FileUploadManagerに委譲）
+  async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+    return await this.fileUploadManager.getSharedImageFromServiceWorker();
+  }
+
+  // 共有判定（FileUploadManagerに委譲）
+  checkIfOpenedFromShare(): boolean {
+    return this.fileUploadManager.checkIfOpenedFromShare();
+  }
+
+  // その他のメソッド（既存機能維持）
+  isProcessing(): boolean {
     return this.isProcessingSharedImage;
   }
 
-  public getSharedImageFile(): File | null {
+  getSharedImageFile(): File | null {
     return getSharedImageFile();
   }
 
-  public getSharedImageMetadata(): SharedImageMetadata | undefined {
+  getSharedImageMetadata(): SharedImageMetadata | undefined {
     return getSharedImageMetadata();
   }
 
-  public clearSharedImage(): void {
+  clearSharedImage(): void {
     clearSharedImageStore();
   }
 }
 
+// シングルトンインスタンス
 let globalShareHandler: ShareHandler | null = null;
 
 export function getShareHandler(): ShareHandler {
-  if (!globalShareHandler) globalShareHandler = new ShareHandler();
+  if (!globalShareHandler) {
+    globalShareHandler = new ShareHandler();
+  }
   return globalShareHandler;
+}
+
+// 後方互換性のための関数（統一）
+export async function getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+  return await getShareHandler().getSharedImageFromServiceWorker();
+}
+
+export function checkIfOpenedFromShare(): boolean {
+  return getShareHandler().checkIfOpenedFromShare();
 }
 

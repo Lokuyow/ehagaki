@@ -138,7 +138,12 @@ export interface UploadHelperDependencies {
     localStorage: Storage;
     crypto: SubtleCrypto;
     tick: () => Promise<void>;
-    FileUploadManager: new () => FileUploadManagerInterface;
+    FileUploadManager: new (
+        deps?: FileUploadDependencies,
+        auth?: AuthService,
+        compression?: CompressionService,
+        mime?: MimeTypeSupportInterface
+    ) => FileUploadManagerInterface;
     getImageDimensions: (file: File) => Promise<ImageDimensions | null>;
     extractImageBlurhashMap: (editor: any) => Record<string, string>;
     calculateImageHash: (url: string) => Promise<string | null>;
@@ -154,7 +159,8 @@ export interface FileUploadResponse {
     url?: string;
     error?: string;
     filename?: string;
-    [key: string]: any;
+    sizeInfo?: FileSizeInfo;
+    nip94?: Record<string, string>;
 }
 
 export interface FileUploadManagerInterface {
@@ -183,7 +189,7 @@ export interface UploadHelperParams {
     showUploadError: (msg: string, duration?: number) => void;
     updateUploadState: (isUploading: boolean, message?: string) => void;
     devMode: boolean;
-    dependencies?: UploadHelperDependencies; // 新規追加
+    dependencies?: UploadHelperDependencies;
 }
 
 export interface UploadHelperResult {
@@ -193,6 +199,15 @@ export interface UploadHelperResult {
     imageXMap: Record<string, string>;
     failedResults: FileUploadResponse[];
     errorMessage: string;
+}
+
+// SharedImageData関連の型統一
+export interface SharedImageProcessingResult {
+    success: boolean;
+    data?: SharedImageData;
+    error?: string;
+    fromServiceWorker?: boolean;
+    fromIndexedDB?: boolean;
 }
 
 // --- authService.ts から移動 ---
@@ -283,6 +298,28 @@ export interface MousePosition {
 export interface ViewportInfo {
     centerX: number;
     centerY: number;
+    offsetX: number;
+    offsetY: number;
+}
+
+export interface ZoomCalculation {
+    newScale: number;
+    newTranslate: MousePosition;
+}
+
+export interface TouchPosition {
+    x: number;
+    y: number;
+}
+
+export interface PinchInfo {
+    distance: number;
+    centerX: number;
+    centerY: number;
+}
+
+export interface ZoomParams {
+    scale: number;
     offsetX: number;
     offsetY: number;
 }

@@ -15,6 +15,7 @@
   import type { Node as PMNode } from "prosemirror-model";
   import type { RxNostr } from "rx-nostr";
   import { NodeSelection } from "prosemirror-state"; // 追加
+  import { getShareHandler } from "../lib/shareHandler";
 
   import {
     createEditorStore,
@@ -201,6 +202,7 @@
 
   export async function uploadFiles(files: File[] | FileList) {
     if (!files || files.length === 0) return;
+
     const result: UploadHelperResult = await uploadHelper({
       files,
       currentEditor,
@@ -210,8 +212,10 @@
       updateUploadState,
       devMode: import.meta.env.MODE === "development",
     });
+
     Object.assign(imageOxMap, result.imageOxMap);
     Object.assign(imageXMap, result.imageXMap);
+
     if (result.failedResults?.length) {
       showUploadError(
         result.errorMessage ||
@@ -223,6 +227,22 @@
     }
     if (fileInput) fileInput.value = "";
   }
+
+  // 共有画像処理の統一
+  onMount(async () => {
+    // 共有画像の処理
+    try {
+      const shareHandler = getShareHandler();
+      const result = await shareHandler.checkForSharedImageOnLaunch();
+
+      if (result.success && result.data?.image) {
+        // 共有画像を自動アップロード
+        await uploadFiles([result.data.image]);
+      }
+    } catch (error) {
+      console.error("共有画像の処理に失敗:", error);
+    }
+  });
 
   export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
