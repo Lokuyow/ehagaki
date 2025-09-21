@@ -8,9 +8,7 @@ import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from '../lib/utils/editorUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
-import type { PostStatus, EditorState } from '../lib/types'; // 型定義をtypes.tsからインポート
-
-// ハッシュタグは別ファイルへ移動
+import type { PostStatus, EditorState } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
 
 /**
@@ -208,11 +206,9 @@ export function createEditorStore(placeholderText: string) {
     return editorStore;
 }
 
-// --- エディタ関連のストアと関数を移動 ---
-// プレースホルダーテキスト用ストア（runes記法）
+// --- エディター専用状態管理 ---
 export let placeholderTextStore = $state({ value: '' });
 
-// エディタ状態管理用ストア（runes記法）
 export let editorState = $state<EditorState>({
     content: '',
     canPost: false,
@@ -227,7 +223,27 @@ export let editorState = $state<EditorState>({
     hasImage: false
 });
 
-// --- エディタ状態更新関数 ---
+// SvelteImageNode用状態管理
+export const imageDragState = $state({
+    isDragging: false,
+    startPos: { x: 0, y: 0 },
+    longPressTimeout: null as ReturnType<typeof setTimeout> | null,
+    startTarget: null as HTMLElement | null,
+    preview: null as HTMLElement | null,
+});
+
+export const imageSelectionState = $state({
+    justSelected: false,
+    justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
+});
+
+export const imageLoadState = $state({
+    isImageLoaded: false,
+    blurhashFadeOut: false,
+    canvasRef: undefined as HTMLCanvasElement | undefined,
+});
+
+// --- エディター状態更新関数 ---
 function canPostByContent(content: string, hasImage: boolean): boolean {
     return !!content.trim() || hasImage;
 }
@@ -261,7 +277,6 @@ export function resetEditorState(): void {
     editorState.hasImage = false;
 }
 
-// 投稿ステータスのみをリセット（コンテンツはそのまま）
 export function resetPostStatus(): void {
     editorState.postStatus = {
         sending: false,
@@ -272,12 +287,11 @@ export function resetPostStatus(): void {
     };
 }
 
-// プレースホルダーテキスト更新用関数
 export function updatePlaceholderText(text: string): void {
     placeholderTextStore.value = text;
 }
 
-// --- PostComponentのsubmitPostへの参照を保持 ---
+// --- 投稿機能の統合 ---
 let postComponentSubmit: (() => Promise<void>) | undefined = undefined;
 
 export function setPostSubmitter(submitter: () => Promise<void>) {
@@ -289,26 +303,3 @@ export async function submitPost() {
         await postComponentSubmit();
     }
 }
-
-// --- SvelteImageNode用 状態管理ストア ---
-// 画像ドラッグ状態
-export const imageDragState = $state({
-    isDragging: false,
-    startPos: { x: 0, y: 0 },
-    longPressTimeout: null as ReturnType<typeof setTimeout> | null,
-    startTarget: null as HTMLElement | null,
-    preview: null as HTMLElement | null,
-});
-
-// 選択状態
-export const imageSelectionState = $state({
-    justSelected: false,
-    justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
-});
-
-// 画像ロード状態
-export const imageLoadState = $state({
-    isImageLoaded: false,
-    blurhashFadeOut: false,
-    canvasRef: undefined as HTMLCanvasElement | undefined,
-});

@@ -14,7 +14,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { Node as PMNode } from "prosemirror-model";
   import type { RxNostr } from "rx-nostr";
-  import { NodeSelection } from "prosemirror-state"; // 追加
+  import { NodeSelection } from "prosemirror-state";
   import { getShareHandler } from "../lib/shareHandler";
 
   import {

@@ -2,15 +2,15 @@
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import {
-        setBodyStyle,
-        clearBodyStyles,
-        focusEditor,
-    } from "../stores/appStore.svelte";
-    import {
         calculateViewportInfo,
         calculateZoomFromEvent,
         calculateDragDelta,
     } from "../lib/utils/appUtils";
+    import {
+        setBodyStyle,
+        clearBodyStyles,
+        focusEditor,
+    } from "../lib/utils/domUtils";
     import { isTouchDevice } from "../lib/utils/editorUtils";
     import {
         transformStore,
@@ -47,6 +47,11 @@
     let lastTapTime = 0;
     let tapTimeoutId: number | null = null;
     let lastTapPosition: { x: number; y: number } | null = null;
+
+    // タッチ処理の改善用の状態
+    let touchStartTime = 0;
+    let touchMoved = false;
+    let dragStartThreshold = 10; // ピクセル単位での移動閾値
 
     // --- Utility functions ---
     function setImageContainerStyle({
@@ -190,6 +195,11 @@
         executeZoomToggle(event.clientX, event.clientY);
     }
     function startDrag(clientX: number, clientY: number) {
+        // 拡大されていない場合はドラッグしない
+        if (transformState.scale <= ZOOM_CONFIG.DEFAULT_SCALE) {
+            return;
+        }
+
         dragState.isDragging = true;
         dragState.start = { x: clientX, y: clientY };
         dragState.startTranslate = { ...transformState.translate };
@@ -316,14 +326,27 @@
     // --- Tap/Pointer Handlers ---
     function handleTap(clientX: number, clientY: number) {
         const currentTime = Date.now();
-        if (currentTime - lastTapTime < 300 && tapTimeoutId !== null) {
+        const tapDistance = lastTapPosition
+            ? Math.sqrt(
+                  Math.pow(clientX - lastTapPosition.x, 2) +
+                      Math.pow(clientY - lastTapPosition.y, 2),
+              )
+            : 0;
+
+        // ダブルタップ検出の条件を厳格化
+        if (
+            currentTime - lastTapTime < 200 &&
+            tapDistance < 50 && // 50px以内での連続タップ
+            tapTimeoutId !== null
+        ) {
             clearTapTimer();
             stopDragIfActive();
             executeZoomToggle(clientX, clientY);
             lastTapTime = 0;
             lastTapPosition = null;
-            return;
+            return true; // ダブルタップを検出したことを示す
         }
+
         lastTapTime = currentTime;
         lastTapPosition = { x: clientX, y: clientY };
         clearTapTimer();
@@ -333,20 +356,73 @@
                 lastTapPosition = null;
             }, 300),
         );
+        return false; // シングルタップ
     }
+
     function handlePointerStart(
         clientX: number,
         clientY: number,
         isTouch = false,
     ) {
-        if (isTouch) handleTap(clientX, clientY);
-        // 拡大時は画面全体でドラッグを開始
-        startDrag(clientX, clientY);
+        if (isTouch) {
+            touchStartTime = Date.now();
+            touchMoved = false;
+            const isDoubleTap = handleTap(clientX, clientY);
+            if (isDoubleTap) {
+                return; // ダブルタップの場合はドラッグを開始しない
+            }
+        } else {
+            handleTap(clientX, clientY);
+        }
+
+        // 拡大時のみドラッグを開始準備
+        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
+            dragState.start = { x: clientX, y: clientY };
+            dragState.startTranslate = { ...transformState.translate };
+        }
     }
-    function handlePointerMove(clientX: number, clientY: number) {
-        if (dragState.isDragging) updateDrag(clientX, clientY);
+
+    function handlePointerMove(
+        clientX: number,
+        clientY: number,
+        isTouch = false,
+    ) {
+        if (isTouch) {
+            const moveDistance = dragState.start
+                ? Math.sqrt(
+                      Math.pow(clientX - dragState.start.x, 2) +
+                          Math.pow(clientY - dragState.start.y, 2),
+                  )
+                : 0;
+
+            if (moveDistance > dragStartThreshold) {
+                touchMoved = true;
+                // 実際にドラッグを開始
+                if (
+                    !dragState.isDragging &&
+                    transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE
+                ) {
+                    startDrag(dragState.start.x, dragState.start.y);
+                }
+            }
+        }
+
+        if (dragState.isDragging) {
+            updateDrag(clientX, clientY);
+        }
     }
-    function handlePointerEnd() {
+
+    function handlePointerEnd(isTouch = false) {
+        if (isTouch) {
+            const touchDuration = Date.now() - touchStartTime;
+
+            // 短時間かつ移動が少ない場合はタップとして処理
+            if (touchDuration < 200 && !touchMoved) {
+                // タップ処理は既にhandlePointerStartで行われている
+                return;
+            }
+        }
+
         stopDrag();
     }
 
@@ -356,10 +432,9 @@
         if ((event.target as Element)?.closest(".close-button-container")) {
             return;
         }
-        // 実際のタッチデバイスの場合のみpreventDefault
-        if (!isTouchDevice()) {
-            event.preventDefault();
-        }
+
+        event.preventDefault(); // デフォルトの動作を防ぐ
+
         if (event.touches.length === 1) {
             const touch = event.touches[0];
             handlePointerStart(touch.clientX, touch.clientY, true);
@@ -369,39 +444,39 @@
             startPinch(event);
         }
     }
+
     function handleTouchMove(event: TouchEvent) {
-        // 実際のタッチデバイスの場合のみpreventDefault
-        if (!isTouchDevice()) {
-            event.preventDefault();
-        }
-        if (event.touches.length === 1 && dragState.isDragging) {
-            handlePointerMove(
-                event.touches[0].clientX,
-                event.touches[0].clientY,
-            );
+        event.preventDefault(); // デフォルトの動作を防ぐ
+
+        if (event.touches.length === 1) {
+            const touch = event.touches[0];
+            handlePointerMove(touch.clientX, touch.clientY, true);
         } else if (event.touches.length === 2 && pinchState.isPinching) {
             updatePinch(event);
         }
     }
+
     function handleTouchEnd(event: TouchEvent) {
-        // 実際のタッチデバイスの場合のみpreventDefault
-        if (!isTouchDevice()) {
-            event.preventDefault();
-        }
+        event.preventDefault(); // デフォルトの動作を防ぐ
+
         if (event.touches.length === 0) {
-            handlePointerEnd();
+            handlePointerEnd(true);
             stopPinch();
         } else if (event.touches.length === 1 && pinchState.isPinching) {
             stopPinch();
         }
     }
+
     function handleMouseDown(event: MouseEvent) {
         // close-buttonのクリックを妨げないように
         if ((event.target as Element)?.closest(".close-button-container")) {
             return;
         }
         handlePointerStart(event.clientX, event.clientY);
+        // マウスの場合は即座にドラッグを開始
+        startDrag(event.clientX, event.clientY);
     }
+
     function handleMouseMove(event: MouseEvent) {
         if (dragState.isDragging) {
             event.preventDefault();
@@ -551,6 +626,9 @@
         -webkit-tap-highlight-color: transparent;
         /* ブラウザ標準のピンチズームを無効化して独自実装を使用 */
         touch-action: none;
+        /* スクロールの慣性を無効化 */
+        -webkit-overflow-scrolling: auto;
+        overscroll-behavior: contain;
     }
 
     .close-button-container {

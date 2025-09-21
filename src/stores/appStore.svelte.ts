@@ -13,7 +13,7 @@ export interface AuthState {
     isValid: boolean;
     isInitialized: boolean;
     isExtensionLogin?: boolean;
-    serviceWorkerReady?: boolean; // 追加
+    serviceWorkerReady?: boolean;
 }
 
 export interface SharedImageStoreState {
@@ -33,7 +33,7 @@ export interface HashtagData {
     tags: string[][];
 }
 
-// --- ストア定義 ---
+// --- アプリ全体の状態管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
     info: null,
     visible: false
@@ -44,7 +44,7 @@ export const imageSizeInfoStore = {
     set: (value: { info: SizeDisplayInfo | null; visible: boolean }) => { imageSizeInfo = value; }
 };
 
-// --- 認証状態ストアと操作関数 ---
+// --- 認証状態管理 ---
 const initialAuthState: AuthState = {
     type: 'none',
     isAuthenticated: false,
@@ -53,7 +53,7 @@ const initialAuthState: AuthState = {
     nprofile: '',
     isValid: false,
     isInitialized: false,
-    isExtensionLogin: false // 追加
+    isExtensionLogin: false
 };
 
 let authStateValue = $state<AuthState>(initialAuthState);
@@ -61,19 +61,16 @@ let authStateValue = $state<AuthState>(initialAuthState);
 export const authState = {
     get value() { return authStateValue; },
     subscribe: (callback: (value: AuthState) => void) => {
-        // Svelte 5では$effectでreactivityを実現
         $effect(() => {
             callback(authStateValue);
         });
     }
 };
 
-// --- 認証状態の更新 ---
 export function updateAuthState(newState: Partial<AuthState>): void {
     const current = authStateValue;
     const updated = { ...current, ...newState };
     updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
-    // Extensionログイン判定: 認証済みかつ nostr-login かつ window.nostrが存在し、window.nostr.signEventがfunction
     updated.isExtensionLogin =
         updated.isAuthenticated &&
         updated.type === 'nostr-login' &&
@@ -83,7 +80,6 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     authStateValue = updated;
 }
 
-// --- 認証状態のクリア ---
 export function clearAuthState(preserveInitialized: boolean = true): void {
     authStateValue = {
         ...initialAuthState,
@@ -91,7 +87,6 @@ export function clearAuthState(preserveInitialized: boolean = true): void {
     };
 }
 
-// --- nsec認証セット ---
 export function setNsecAuth(pubkey: string, npub: string, nprofile: string): void {
     if (!pubkey || !npub || !nprofile) {
         console.warn('setNsecAuth: All parameters are required');
@@ -100,7 +95,6 @@ export function setNsecAuth(pubkey: string, npub: string, nprofile: string): voi
     updateAuthState({ type: 'nsec', pubkey, npub, nprofile, isValid: true });
 }
 
-// --- nostr-login認証セット ---
 export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string): void {
     if (!pubkey || !npub || !nprofile) {
         console.warn('setNostrLoginAuth: All parameters are required');
@@ -109,17 +103,38 @@ export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string
     updateAuthState({ type: 'nostr-login', pubkey, npub, nprofile, isValid: true });
 }
 
-// --- 認証初期化フラグセット ---
 export function setAuthInitialized(): void {
     updateAuthState({ isInitialized: true });
 }
 
+// --- 共有画像管理 ---
 export const sharedImageStore = $state<SharedImageStoreState>({
     file: null,
     metadata: undefined,
     received: false
 });
 
+export function updateSharedImageStore(file: File | null, metadata?: import('../lib/shareHandler').SharedImageMetadata): void {
+    sharedImageStore.file = file;
+    sharedImageStore.metadata = metadata;
+    sharedImageStore.received = !!file;
+}
+
+export function clearSharedImageStore(): void {
+    sharedImageStore.file = null;
+    sharedImageStore.metadata = undefined;
+    sharedImageStore.received = false;
+}
+
+export function getSharedImageFile(): File | null {
+    return sharedImageStore.file;
+}
+
+export function getSharedImageMetadata(): import('../lib/shareHandler').SharedImageMetadata | undefined {
+    return sharedImageStore.metadata;
+}
+
+// --- UIダイアログ状態管理 ---
 let showLogin = $state(false);
 let showLogout = $state(false);
 let showSettings = $state(false);
@@ -139,6 +154,7 @@ export const showSettingsDialogStore = {
     set: (value: boolean) => { showSettings = value; }
 };
 
+// --- Service Worker管理 ---
 const swRegister = useRegisterSW({
     onRegistered: (r: ServiceWorkerRegistration | undefined) => { /* handle registration if needed */ },
     onRegisterError(error: Error) { console.log("SW registration error", error); },
@@ -147,10 +163,22 @@ const swRegister = useRegisterSW({
 export const swNeedRefresh = swRegister.needRefresh;
 export const swUpdateServiceWorker = swRegister.updateServiceWorker;
 
+let swVersion = $state<string | null>(null);
+
+export const swVersionStore = {
+    get value() { return swVersion; },
+    set: (value: string | null) => { swVersion = value; },
+    subscribe: (callback: (value: string | null) => void) => {
+        $effect(() => {
+            callback(swVersion);
+        });
+    }
+};
+
+// --- プロフィール管理 ---
 let profileData = $state<ProfileData>({ name: "", picture: "" });
 let profileLoaded = $state(false);
 let isLoadingProfile = $state(false);
-let isUploading = $state(false);
 
 export const profileDataStore = {
     get value() { return profileData; },
@@ -182,6 +210,9 @@ export const isLoadingProfileStore = {
     }
 };
 
+// --- アップロード状態管理 ---
+let isUploading = $state(false);
+
 export const isUploadingStore = {
     get value() { return isUploading; },
     set: (value: boolean) => { isUploading = value; },
@@ -192,6 +223,7 @@ export const isUploadingStore = {
     }
 };
 
+// --- ハッシュタグ管理 ---
 let hashtagData = $state<HashtagData>({
     content: '',
     hashtags: [],
@@ -209,19 +241,7 @@ export const hashtagDataStore = {
     }
 };
 
-let swVersion = $state<string | null>(null);
-
-export const swVersionStore = {
-    get value() { return swVersion; },
-    set: (value: string | null) => { swVersion = value; },
-    subscribe: (callback: (value: string | null) => void) => {
-        $effect(() => {
-            callback(swVersion);
-        });
-    }
-};
-
-// --- 秘密鍵ストア ---
+// --- 秘密鍵管理 ---
 let secretKey = $state<string | null>(null);
 
 export const secretKeyStore = {
@@ -234,71 +254,7 @@ export const secretKeyStore = {
     }
 };
 
-// --- 画像サイズ情報表示 ---
-export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
-    if (info === null) {
-        hideImageSizeInfo();
-        return;
-    }
-    imageSizeInfoStore.set({ info, visible: true });
-}
-
-export function hideImageSizeInfo(): void {
-    imageSizeInfoStore.set({ info: null, visible: false });
-}
-
-// --- UIダイアログ制御 ---
-export function showLoginDialog() { showLoginDialogStore.set(true); }
-export function closeLoginDialog() { showLoginDialogStore.set(false); }
-export function openLogoutDialog() { showLogoutDialogStore.set(true); }
-export function closeLogoutDialog() { showLogoutDialogStore.set(false); }
-export function openSettingsDialog() { showSettingsDialogStore.set(true); }
-export function closeSettingsDialog() { showSettingsDialogStore.set(false); }
-
-// --- Service Worker更新制御 ---
-export function handleSwUpdate() {
-    swUpdateServiceWorker(true);
-}
-
-// --- リレーリスト更新通知ストア ---
-let relayListUpdated = $state<number>(0);
-
-export const relayListUpdatedStore = {
-    get value() { return relayListUpdated; },
-    set: (value: number) => { relayListUpdated = value; },
-    subscribe: (callback: (value: number) => void) => {
-        $effect(() => {
-            callback(relayListUpdated);
-        });
-    }
-};
-
-export async function fetchSwVersion(): Promise<string | null> {
-    if (!navigator.serviceWorker?.controller) return null;
-    return new Promise((resolve) => {
-        const messageChannel = new MessageChannel();
-        messageChannel.port1.onmessage = (event) => {
-            if (event.data?.version) {
-                swVersionStore.set(event.data.version);
-                resolve(event.data.version);
-            } else {
-                resolve(null);
-            }
-        };
-        if (navigator.serviceWorker.controller) {
-            navigator.serviceWorker.controller.postMessage(
-                { type: 'GET_VERSION' },
-                [messageChannel.port2]
-            );
-        } else {
-            resolve(null);
-            return;
-        }
-        setTimeout(() => resolve(null), 2000); // タイムアウト
-    });
-}
-
-// --- SettingsDialog用ストア ---
+// --- 設定ダイアログ管理 ---
 let writeRelays = $state<string[]>([]);
 let showRelays = $state(false);
 let isSwUpdating = $state(false);
@@ -323,73 +279,67 @@ export const isSwUpdatingStore = {
     set: (value: boolean) => { isSwUpdating = value; }
 };
 
-// --- 共有画像ストアの拡張機能 ---
-export function updateSharedImageStore(file: File | null, metadata?: import('../lib/shareHandler').SharedImageMetadata): void {
-    sharedImageStore.file = file;
-    sharedImageStore.metadata = metadata;
-    sharedImageStore.received = !!file;
-}
+// --- リレーリスト更新通知 ---
+let relayListUpdated = $state<number>(0);
 
-export function clearSharedImageStore(): void {
-    sharedImageStore.file = null;
-    sharedImageStore.metadata = undefined;
-    sharedImageStore.received = false;
-}
-
-export function getSharedImageFile(): File | null {
-    return sharedImageStore.file;
-}
-
-export function getSharedImageMetadata(): import('../lib/shareHandler').SharedImageMetadata | undefined {
-    return sharedImageStore.metadata;
-}
-
-export function isSharedImageReceived(): boolean {
-    return sharedImageStore.received;
-}
-
-// --- appUtils.ts から移動したDOM操作ユーティリティ ---
-/**
- * DOM要素のstyleプロパティを設定（テスト時にモック可能）
- */
-export const domUtils = {
-    setBodyStyle(property: string, value: string): void {
-        document.body.style.setProperty(property, value);
-    },
-
-    querySelector(selector: string): HTMLElement | null {
-        return document.querySelector(selector) as HTMLElement;
-    },
-
-    focusElement(element: HTMLElement): void {
-        element.focus();
+export const relayListUpdatedStore = {
+    get value() { return relayListUpdated; },
+    set: (value: number) => { relayListUpdated = value; },
+    subscribe: (callback: (value: number) => void) => {
+        $effect(() => {
+            callback(relayListUpdated);
+        });
     }
 };
 
-export function setBodyStyle(property: string, value: string): void {
-    domUtils.setBodyStyle(property, value);
+// --- UI操作関数 ---
+export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
+    if (info === null) {
+        hideImageSizeInfo();
+        return;
+    }
+    imageSizeInfoStore.set({ info, visible: true });
 }
 
-export function clearBodyStyles(): void {
-    setBodyStyle("overflow", "");
-    setBodyStyle("user-select", "");
-    setBodyStyle("-webkit-user-select", "");
+export function hideImageSizeInfo(): void {
+    imageSizeInfoStore.set({ info: null, visible: false });
 }
 
-// デフォルトアダプター実装
-export const defaultTimeoutAdapter = {
-    setTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay)
-};
+export function showLoginDialog() { showLoginDialogStore.set(true); }
+export function closeLoginDialog() { showLoginDialogStore.set(false); }
+export function openLogoutDialog() { showLogoutDialogStore.set(true); }
+export function closeLogoutDialog() { showLogoutDialogStore.set(false); }
+export function openSettingsDialog() { showSettingsDialogStore.set(true); }
+export function closeSettingsDialog() { showSettingsDialogStore.set(false); }
 
-export function focusEditor(
-    selector: string,
-    delay: number,
-    timeoutAdapter = defaultTimeoutAdapter
-): void {
-    timeoutAdapter.setTimeout(() => {
-        const editorElement = domUtils.querySelector(selector);
-        if (editorElement) {
-            domUtils.focusElement(editorElement);
+export function handleSwUpdate() {
+    swUpdateServiceWorker(true);
+}
+
+export function fetchSwVersion(): Promise<string | null> {
+    if (!navigator.serviceWorker?.controller) return Promise.resolve(null);
+    return new Promise((resolve) => {
+        const messageChannel = new MessageChannel();
+        messageChannel.port1.onmessage = (event) => {
+            if (event.data?.version) {
+                swVersionStore.set(event.data.version);
+                resolve(event.data.version);
+            } else {
+                resolve(null);
+            }
+        };
+        if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage(
+                { type: 'GET_VERSION' },
+                [messageChannel.port2]
+            );
+        } else {
+            resolve(null);
+            return;
         }
-    }, delay);
+        setTimeout(() => resolve(null), 2000);
+    });
+}
+export function isSharedImageReceived(): boolean {
+    return sharedImageStore.received;
 }
