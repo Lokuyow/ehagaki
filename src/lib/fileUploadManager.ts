@@ -83,8 +83,11 @@ export class ImageCompressionService implements CompressionService {
   private getCompressionOptions(): any {
     const level = (this.localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
     const opt = COMPRESSION_OPTIONS_MAP[level];
-    if (typeof opt === "object" && "skip" in opt && (opt as any).skip) return null;
-    return { ...opt, preserveExif: false };
+    // skipプロパティがtrueの場合はnullを返す
+    if (typeof opt === "object" && opt && "skip" in opt && opt.skip) {
+      return null;
+    }
+    return opt ? { ...opt, preserveExif: false } : null;
   }
 
   // 公開メソッドとして追加（FileUploadManagerからアクセス可能にする）

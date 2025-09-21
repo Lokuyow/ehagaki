@@ -10,7 +10,6 @@ import type {
     CompressionService,
     AuthService,
     MimeTypeSupportInterface,
-    FileUploadResponse,
     SharedImageData
 } from '../lib/types';
 
@@ -293,13 +292,12 @@ describe('ImageCompressionService', () => {
     });
 
     it('圧縮設定を正しく取得する', () => {
-        // 実装では COMPRESSION_OPTIONS_MAP から値を取得
+        // 通常設定の場合は圧縮設定があることを確認
         mockStorage.setItem('imageCompressionLevel', 'medium');
         expect(compressionService.hasCompressionSettings()).toBe(true);
 
-        // 'skip'設定の場合は { skip: true } が返される
+        // 'skip'設定の場合は圧縮設定がないことを確認
         mockStorage.setItem('imageCompressionLevel', 'skip');
-        // getCompressionOptions() が null を返すため hasCompressionSettings() は false
         expect(compressionService.hasCompressionSettings()).toBe(false);
     });
 });
