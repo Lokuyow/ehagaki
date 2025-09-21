@@ -99,26 +99,37 @@ export class ImageCompressionService implements CompressionService {
     if (!options) return { file, wasCompressed: false, wasSkipped: true };
 
     let usedOptions: any = { ...options };
-    if (usedOptions.fileType === "image/webp" && !(await this.mimeSupport.canEncodeWebpWithQuality())) {
-      delete usedOptions.fileType;
+
+    // WebPサポートチェックとfallback処理を改善
+    if (usedOptions.fileType === "image/webp") {
+      const webpSupported = await this.mimeSupport.canEncodeWebpWithQuality();
+      if (!webpSupported) {
+        // WebPがサポートされていない場合、JPEG/PNGにフォールバック
+        usedOptions.fileType = file.type === "image/png" ? "image/png" : "image/jpeg";
+      }
     }
+
     let targetMime: string = usedOptions.fileType || file.type;
-    if (usedOptions.fileType && !this.mimeSupport.canEncodeMimeType(usedOptions.fileType)) {
-      delete usedOptions.fileType;
+    if (!this.mimeSupport.canEncodeMimeType(targetMime)) {
+      // ターゲットMIMEタイプがサポートされていない場合、元のタイプを使用
       targetMime = file.type;
+      delete usedOptions.fileType;
     }
-    if (!this.mimeSupport.canEncodeMimeType(targetMime)) return { file, wasCompressed: false, wasSkipped: true };
 
     try {
       const compressed = await imageCompression(file, usedOptions);
       if ((compressed as File).size >= file.size) return { file, wasCompressed: false };
-      const outType = (compressed as File).type || targetMime || file.type;
+
+      // 出力ファイルのタイプと名前を正しく設定
+      const outType = usedOptions.fileType || (compressed as File).type || targetMime || file.type;
       const outName = renameByMimeType(file.name, outType);
       const outFile = new File([compressed], outName, { type: outType });
 
       showCompressedImagePreview(outFile);
       return { file: outFile, wasCompressed: true };
-    } catch {
+    } catch (error) {
+      // 圧縮に失敗した場合もログを出力
+      console.warn("[ImageCompressionService] Compression failed:", error);
       return { file, wasCompressed: false, wasSkipped: true };
     }
   }

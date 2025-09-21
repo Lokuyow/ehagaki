@@ -19,10 +19,27 @@ export const FALLBACK_RELAYS = [
 export const DEFAULT_API_URL = "https://nostr.build/api/v2/upload/files";
 export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 export const COMPRESSION_OPTIONS_MAP = {
-    skip: { skip: true },
-    low: { maxSizeMB: 5, maxWidthOrHeight: 2048, quality: 0.9 },
-    medium: { maxSizeMB: 3, maxWidthOrHeight: 1536, quality: 0.8 },
-    high: { maxSizeMB: 1.5, maxWidthOrHeight: 1024, quality: 0.7 }
+    none: {
+        skip: true
+    },
+    low: {
+        maxWidthOrHeight: 2048,
+        fileType: "image/webp" as const,
+        initialQuality: 0.95,
+        useWebWorker: true,
+    },
+    medium: {
+        maxWidthOrHeight: 1024,
+        fileType: "image/webp" as const,
+        initialQuality: 0.80,
+        useWebWorker: true,
+    },
+    high: {
+        maxWidthOrHeight: 800,
+        fileType: "image/webp" as const,
+        initialQuality: 0.50,
+        useWebWorker: true,
+    }
 } as const;
 
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
