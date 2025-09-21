@@ -5,6 +5,8 @@
         setBodyStyle,
         clearBodyStyles,
         focusEditor,
+    } from "../stores/appStore.svelte";
+    import {
         calculateViewportInfo,
         calculateZoomFromEvent,
         calculateDragDelta,
@@ -152,8 +154,6 @@
         const zoomParams = calculateZoomFromEvent(
             event,
             containerElement,
-            transformState.scale,
-            transformState.translate,
             newScale,
         );
         transformStore.zoom(zoomParams);

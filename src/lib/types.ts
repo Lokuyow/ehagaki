@@ -254,3 +254,57 @@ export interface SharedImageProcessingResult {
     error?: string;
     fromCache?: boolean;
 }
+
+// --- appUtils.ts から移動した型定義 ---
+export interface StorageAdapter {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+}
+
+export interface NavigatorAdapter {
+    language: string;
+}
+
+export interface WindowAdapter {
+    location: {
+        reload(): void;
+    };
+}
+
+export interface TimeoutAdapter {
+    setTimeout(callback: () => void, delay: number): void;
+}
+
+export interface MousePosition {
+    x: number;
+    y: number;
+}
+
+export interface ViewportInfo {
+    centerX: number;
+    centerY: number;
+    offsetX: number;
+    offsetY: number;
+}
+
+export interface ZoomCalculation {
+    newScale: number;
+    newTranslate: MousePosition;
+}
+
+export interface TouchPosition {
+    x: number;
+    y: number;
+}
+
+export interface PinchInfo {
+    distance: number;
+    centerX: number;
+    centerY: number;
+}
+
+export interface ZoomParams {
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+}

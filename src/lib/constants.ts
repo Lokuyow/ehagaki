@@ -182,16 +182,17 @@ export const UPLOAD_POLLING_CONFIG = {
     TIMEOUT_MESSAGE: "Upload processing timeout"
 } as const;
 
-// --- ShareHandler用定数 ---
+// --- appUtils.ts から移動した定数 ---
+// Nostr Key パターン
+export const NSEC_PATTERN = /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/;
+export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/;
+
+// 共有ハンドラー設定
 export const SHARE_HANDLER_CONFIG = {
-    REQUEST_TIMEOUT: 5000,
-    RETRY_COUNT: 3,
-    RETRY_DELAY: 1000,
-    SW_CONTROLLER_WAIT_TIMEOUT: 500,
-    INDEXEDDB_NAME: 'eHagakiSharedData',
+    INDEXEDDB_NAME: "share-handler-db",
     INDEXEDDB_VERSION: 1,
-    STORE_NAME: 'flags',
-    FLAG_KEY: 'sharedImage',
-    MESSAGE_TIMEOUT: 3000,
-    COMMUNICATION_TEST_TIMEOUT: 3000
+    STORE_NAME: "flags",
+    FLAG_KEY: "shared",
+    REQUEST_TIMEOUT: 3000,
+    SW_CONTROLLER_WAIT_TIMEOUT: 100
 } as const;

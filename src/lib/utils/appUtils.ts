@@ -1,29 +1,32 @@
 import { getPublicKey, nip19 } from "nostr-tools";
-import type { FileSizeInfo, SizeDisplayInfo, PublicKeyData, SharedImageData } from "../types";
-import { STORAGE_KEYS, uploadEndpoints, getDefaultEndpoint } from '../constants';
+import type {
+  FileSizeInfo,
+  SizeDisplayInfo,
+  PublicKeyData,
+  SharedImageData,
+  StorageAdapter,
+  NavigatorAdapter,
+  WindowAdapter,
+  TimeoutAdapter,
+  MousePosition,
+  ViewportInfo,
+  ZoomCalculation,
+  TouchPosition,
+  PinchInfo,
+  ZoomParams
+} from "../types";
+import {
+  STORAGE_KEYS,
+  uploadEndpoints,
+  getDefaultEndpoint,
+  NSEC_PATTERN,
+  NSEC_FULL_PATTERN,
+  SHARE_HANDLER_CONFIG
+} from '../constants';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)
 // =============================================================================
-
-export interface StorageAdapter {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
-
-export interface NavigatorAdapter {
-  language: string;
-}
-
-export interface WindowAdapter {
-  location: {
-    reload(): void;
-  };
-}
-
-export interface TimeoutAdapter {
-  setTimeout(callback: () => void, delay: number): void;
-}
 
 // Default implementations
 export const defaultStorageAdapter: StorageAdapter = {
@@ -137,12 +140,6 @@ export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string |
 // =============================================================================
 
 /**
- * nsec形式の正規表現パターン
- */
-export const NSEC_PATTERN = /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/;
-export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/;
-
-/**
  * 秘密鍵(nsec)が含まれているかチェック
  */
 export function containsSecretKey(text: string): boolean {
@@ -216,46 +213,8 @@ export function calculateDistance(touch1: Touch, touch2: Touch): number {
 }
 
 // =============================================================================
-// DOM Utilities (副作用のある関数)
+// File Upload Utilities (Pure Functions)
 // =============================================================================
-
-/**
- * DOM要素のstyleプロパティを設定（テスト時にモック可能）
- */
-export const domUtils = {
-  setBodyStyle(property: string, value: string): void {
-    document.body.style.setProperty(property, value);
-  },
-
-  querySelector(selector: string): HTMLElement | null {
-    return document.querySelector(selector) as HTMLElement;
-  },
-
-  focusElement(element: HTMLElement): void {
-    element.focus();
-  }
-};
-
-export function setBodyStyle(property: string, value: string): void {
-  domUtils.setBodyStyle(property, value);
-}
-
-export function clearBodyStyles(): void {
-  setBodyStyle("overflow", "");
-  setBodyStyle("user-select", "");
-  setBodyStyle("-webkit-user-select", "");
-}
-
-export function focusEditor(selector: string, delay: number, timeoutAdapter: TimeoutAdapter = defaultTimeoutAdapter): void {
-  timeoutAdapter.setTimeout(() => {
-    const editorElement = domUtils.querySelector(selector);
-    if (editorElement) {
-      domUtils.focusElement(editorElement);
-    }
-  }, delay);
-}
-
-// --- fileUploadManager.ts から移動したユーティリティ関数 ---
 
 /**
  * 画像のSHA-256ハッシュ計算
@@ -283,7 +242,6 @@ export async function getImageDimensions(file: File): Promise<import('../utils/i
 
     img.onload = async () => {
       try {
-        // 動的インポートを使用してimageUtils.tsから関数を取得
         const { calculateImageDisplaySize } = await import('../utils/imageUtils');
         const dimensions = calculateImageDisplaySize(img.naturalWidth, img.naturalHeight);
         URL.revokeObjectURL(url);
@@ -320,44 +278,6 @@ export function renameByMimeType(filename: string, mime: string): string {
   if (!ext) return filename;
   const base = filename.replace(/\.[^.]+$/, "");
   return `${base}${ext}`;
-}
-
-// =============================================================================
-// Type Definitions
-// =============================================================================
-
-export interface MousePosition {
-  x: number;
-  y: number;
-}
-
-export interface ViewportInfo {
-  centerX: number;
-  centerY: number;
-  offsetX: number;
-  offsetY: number;
-}
-
-export interface ZoomCalculation {
-  newScale: number;
-  newTranslate: MousePosition;
-}
-
-export interface TouchPosition {
-  x: number;
-  y: number;
-}
-
-export interface PinchInfo {
-  distance: number;
-  centerX: number;
-  centerY: number;
-}
-
-export interface ZoomParams {
-  scale: number;
-  offsetX: number;
-  offsetY: number;
 }
 
 // =============================================================================
@@ -444,8 +364,6 @@ export function calculatePinchInfo(touch1: Touch, touch2: Touch): PinchInfo {
 export function calculateZoomFromEvent(
   event: MouseEvent | WheelEvent,
   containerElement: HTMLElement,
-  currentScale: number,
-  currentTranslate: MousePosition,
   targetScale: number
 ): ZoomParams {
   const rect = containerElement.getBoundingClientRect();
@@ -650,18 +568,6 @@ export function generateRequestId(): string {
 }
 
 /**
- * 共有ハンドラー用の設定
- */
-const SHARE_HANDLER_CONFIG = {
-  INDEXEDDB_NAME: "share-handler-db",
-  INDEXEDDB_VERSION: 1,
-  STORE_NAME: "flags",
-  FLAG_KEY: "shared",
-  REQUEST_TIMEOUT: 3000,
-  SW_CONTROLLER_WAIT_TIMEOUT: 100
-};
-
-/**
  * IndexedDBから共有フラグをチェックして削除
  */
 export async function checkAndClearSharedFlagInIndexedDB(): Promise<boolean> {
@@ -779,11 +685,9 @@ export async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImage
           getRequest.onsuccess = () => {
             const result = getRequest.result;
             if (result?.data) {
-              // 共有画像データが見つかった場合、削除してから返す
               store.delete('sharedImageData').onsuccess = () => {
                 db.close();
 
-                // ArrayBufferからFileオブジェクトを再構築
                 if (result.data.image?.arrayBuffer && result.data.image._isFile) {
                   const file = new File(
                     [result.data.image.arrayBuffer],
@@ -822,7 +726,7 @@ export async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImage
 }
 
 /**
- * MessageChannelを使ってServiceWorkerから共有画像を取得（改良版）
+ * MessageChannelを使ってServiceWorkerから共有画像を取得
  */
 export async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
   if (!navigator.serviceWorker.controller) return null;
@@ -860,11 +764,10 @@ export async function requestSharedImageWithMessageChannel(): Promise<SharedImag
 }
 
 /**
- * 複数の方法で共有画像を取得（フォールバック付き・エラー耐性向上）
+ * 複数の方法で共有画像を取得（フォールバック付き）
  */
 export async function getSharedImageWithFallback(): Promise<SharedImageData | null> {
   try {
-    // 1. Service Workerの準備を待つ（タイムアウト付き）
     try {
       await Promise.race([
         waitForServiceWorkerController(),
@@ -874,7 +777,6 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
       console.warn('Service Worker controller not ready, trying alternatives:', swError);
     }
 
-    // 2. MessageChannelでService Workerから取得を試行
     try {
       const swResult = await requestSharedImageWithMessageChannel();
       if (swResult) {
@@ -885,7 +787,6 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
       console.warn('Service Worker MessageChannel failed:', swError);
     }
 
-    // 3. IndexedDBから直接取得を試行（Service Workerがデータを永続化している場合）
     try {
       const dbResult = await getAndClearSharedImageFromIndexedDB();
       if (dbResult) {
@@ -896,7 +797,6 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
       console.warn('IndexedDB fallback failed:', dbError);
     }
 
-    // 4. 最後の手段: Service Workerに直接画像データがキャッシュされているかチェック
     try {
       if (navigator.serviceWorker.controller) {
         const messageChannel = new MessageChannel();
@@ -1024,3 +924,4 @@ export async function testServiceWorkerCommunication(): Promise<boolean> {
     }
   });
 }
+
