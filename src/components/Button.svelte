@@ -5,14 +5,9 @@
         type?: "button" | "submit" | "reset";
         ariaLabel?: string;
         style?: string;
-        variant?: 
-        | "default"
-        | "primary"
-        | "danger"
-        | "secondary"
-        | "warning";
+        variant?: "default" | "primary" | "danger" | "secondary" | "warning";
         shape?: "square" | "rounded" | "pill" | "circle";
-        children?: import('svelte').Snippet;
+        children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void; // 追加
     }
 
@@ -25,7 +20,7 @@
         variant = "default",
         shape = "rounded",
         children,
-        onClick = undefined // 追加
+        onClick = undefined, // 追加
     }: Props = $props();
 
     function handleClick(event: MouseEvent) {
@@ -87,26 +82,20 @@
     }
 
     .secondary {
-        background-color: #fff;
+        --btn-bg: var(--white);
         --text: var(--text-black);
-        --btn-border: hsl(0, 0%, 86%);
+        --border: var(--light-gray);
     }
 
     .danger {
-        background-color: #ef4444;
+        --btn-bg: var(--danger);
         color: white;
-        border: 1px solid #ef4444;
+        border: none;
     }
 
     .warning {
         --btn-bg: hsl(58, 99%, 68%);
         --text: var(--text-black);
-        border: none;
-    }
-
-    .btn-danger {
-        --btn-bg: var(--danger);
-        color: #fff;
         border: none;
     }
 
