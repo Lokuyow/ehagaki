@@ -191,6 +191,17 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
   }
 }
 
+/**
+ * 公開鍵hexからnpub文字列を生成
+ */
+export function toNpub(pubkeyHex: string): string {
+  try {
+    return nip19.npubEncode(pubkeyHex);
+  } catch {
+    return `npub1${pubkeyHex.slice(0, 10)}...`;
+  }
+}
+
 // =============================================================================
 // Math Utilities (Pure Functions)
 // =============================================================================

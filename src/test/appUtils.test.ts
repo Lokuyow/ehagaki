@@ -13,6 +13,7 @@ import {
     containsSecretKey,
     isValidNsec,
     derivePublicKeyFromNsec,
+    toNpub,
 
     // Math Utilities
     clamp,
@@ -186,6 +187,21 @@ describe('Nostr Key Utilities', () => {
         it('should handle decode errors gracefully', () => {
             const result = derivePublicKeyFromNsec('nsec1invalid');
             expect(result).toEqual({ hex: '', npub: '', nprofile: '' });
+        });
+    });
+
+    describe('toNpub', () => {
+        it('should encode valid hex to npub', () => {
+            // 32バイトのhex（例: 64文字の0）
+            const hex = '0'.repeat(64);
+            const npub = toNpub(hex);
+            expect(npub.startsWith('npub1')).toBe(true);
+            expect(npub.length).toBeGreaterThan(10);
+        });
+
+        it('should fallback for invalid hex', () => {
+            const npub = toNpub('invalidhex');
+            expect(npub.startsWith('npub1invalidhex')).toBe(true);
         });
     });
 });

@@ -1,6 +1,6 @@
 import { writable, derived, type Readable, get } from "svelte/store";
 import { setNostrLoginAuth, clearAuthState, secretKeyStore } from "../stores/appStore.svelte";
-import { derivePublicKeyFromNsec, isValidNsec } from "./utils/appUtils";
+import { derivePublicKeyFromNsec, isValidNsec, toNpub } from "./utils/appUtils";
 import type { PublicKeyData } from "./types";
 import { nip19 } from "nostr-tools";
 
@@ -135,7 +135,7 @@ export const keyManager = {
   pubkeyToNpub(pubkey: string): string {
     try {
       if (!pubkey) return '';
-      return nip19.npubEncode(pubkey);
+      return toNpub(pubkey); // appUtils.tsのtoNpubを利用
     } catch (error) {
       console.error('pubkeyからnpubへの変換エラー:', error);
       return '';
