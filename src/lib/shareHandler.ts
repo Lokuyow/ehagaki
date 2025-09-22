@@ -11,11 +11,6 @@ import type {
   SharedImageProcessingResult,
   FileUploadDependencies
 } from './types';
-import {
-  checkAndClearSharedFlagInIndexedDB,
-  waitForServiceWorkerController,
-  requestSharedImageWithMessageChannel
-} from './utils/appUtils';
 
 // 型定義はtypes.tsから再エクスポート
 export type { SharedImageData, SharedImageMetadata } from './types';
