@@ -10,6 +10,7 @@ import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, 
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
+import { isTouchDevice } from '../lib/utils/appDomUtils';
 
 /**
  * Tiptap v2のエディターストアを作成

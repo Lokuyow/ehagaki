@@ -45,6 +45,7 @@
     keydownAction,
   } from "../lib/editor/editorDomActions";
   import { getPlaceholderDefaultSize } from "../lib/utils/imageUtils";
+  import { domUtils } from "../lib/utils/appDomUtils";
 
   // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {
@@ -359,7 +360,8 @@
     fullscreenImageSrc = "";
     fullscreenImageAlt = "";
     setTimeout(() => {
-      document.querySelector<HTMLElement>(".tiptap-editor")?.focus();
+      // document.querySelector<HTMLElement>(".tiptap-editor")?.focus();
+      domUtils.querySelector(".tiptap-editor")?.focus();
     }, 150);
   }
 </script>

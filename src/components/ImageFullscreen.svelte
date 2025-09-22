@@ -10,8 +10,7 @@
         setBodyStyle,
         clearBodyStyles,
         focusEditor,
-    } from "../lib/utils/domUtils";
-    import { isTouchDevice } from "../lib/utils/editorUtils";
+    } from "../lib/utils/appDomUtils";
     import {
         transformStore,
         createDragState,

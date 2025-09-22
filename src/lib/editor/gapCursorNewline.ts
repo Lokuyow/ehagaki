@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { isTouchDevice } from '../utils/appDomUtils';
 
 // なぜかiPhoneでしか動作しない
 export const GapCursorNewlineExtension = Extension.create({
@@ -15,8 +16,7 @@ export const GapCursorNewlineExtension = Extension.create({
                         if (event.key !== 'Enter') return false;
 
                         // タッチデバイスでフォーカスが外れている場合は処理をスキップ
-                        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-                        if (isTouchDevice && document.activeElement !== view.dom) {
+                        if (isTouchDevice() && document.activeElement !== view.dom) {
                             return false;
                         }
 

@@ -19,13 +19,13 @@
         removeDragPreview,
         checkMoveThreshold,
         handleImageInteraction,
-        isTouchDevice,
     } from "../lib/utils/editorUtils";
     import {
         imageDragState,
         imageSelectionState,
         imageLoadState,
     } from "../stores/editorStore.svelte";
+    import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -225,9 +225,7 @@
         if (event.touches.length !== 1) return;
 
         // タッチ開始時にキーボードを隠す
-        import("../lib/utils/editorUtils").then(({ blurEditorAndBody }) => {
-            blurEditorAndBody();
-        });
+        blurEditorAndBody();
 
         const touch = event.touches[0];
         startLongPress(
@@ -355,9 +353,12 @@
 
     $effect(() => {
         // previewモードでもログ出力するように修正
-        const isPreviewOrDev = import.meta.env.MODE === "development" || 
-            (typeof window !== "undefined" && (window.location.port === "4173" || window.location.hostname === "localhost"));
-        
+        const isPreviewOrDev =
+            import.meta.env.MODE === "development" ||
+            (typeof window !== "undefined" &&
+                (window.location.port === "4173" ||
+                    window.location.hostname === "localhost"));
+
         if (isPreviewOrDev) {
             // Svelteのconsole_log_state警告・rune_outside_svelteエラーを回避
             // imageDimensionsは$stateなのでJSON変換でプレーン化

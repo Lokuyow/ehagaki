@@ -1,5 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { isTouchDevice } from '../utils/appDomUtils';
 
 export const SmartBackspaceExtension = Extension.create({
     name: 'smartBackspace',
@@ -11,10 +12,9 @@ export const SmartBackspaceExtension = Extension.create({
                     handleKeyDown(view, event) {
                         // Backspaceキーのみ
                         if (event.key !== 'Backspace') return false;
-                        
+
                         // タッチデバイスでフォーカスが外れている場合は処理をスキップ
-                        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-                        if (isTouchDevice && document.activeElement !== view.dom) {
+                        if (isTouchDevice() && document.activeElement !== view.dom) {
                             return false;
                         }
 

@@ -1,5 +1,6 @@
 import { extractContentWithImages } from "../utils/editorUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import { domUtils } from "../utils/appDomUtils";
 
 // ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定
 function isInternalTiptapDrag(dt: DataTransfer | null | undefined): boolean {
@@ -127,9 +128,7 @@ export function touchAction(node: HTMLElement) {
             const touch = event.touches[0];
             const scrollThreshold = 120;
 
-            const tiptapEditor = document.querySelector(
-                ".tiptap-editor",
-            ) as HTMLElement;
+            const tiptapEditor = domUtils.querySelector(".tiptap-editor");
             if (tiptapEditor) {
                 const editorRect = tiptapEditor.getBoundingClientRect();
                 const isNearTop = touch.clientY < editorRect.top + scrollThreshold;
@@ -145,7 +144,7 @@ export function touchAction(node: HTMLElement) {
     }
     function handleTouchEnd(event: TouchEvent) {
         // ドロップゾーンのクリーンアップ
-        const dropZones = document.querySelectorAll(".drop-zone-indicator");
+        const dropZones = domUtils.querySelectorAll(".drop-zone-indicator");
         dropZones.forEach((zone) => {
             zone.classList.remove("drop-zone-hover");
             zone.classList.add("drop-zone-fade-out");
