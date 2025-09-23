@@ -186,7 +186,7 @@ export function derivePublicKeyFromNsec(nsec: string): PublicKeyData {
 
     return { hex, npub, nprofile };
   } catch (e) {
-    console.error("公開鍵の導出に失敗:", e);
+    // エラー時は静かに空データを返す（テスト時のエラーログ抑制）
     return { hex: "", npub: "", nprofile: "" };
   }
 }

@@ -297,11 +297,17 @@ describe('editorUtils', () => {
         let customEventSpy: any;
 
         beforeEach(() => {
+            // window.dispatchEventが存在しない場合は作成
+            if (!window.dispatchEvent) {
+                window.dispatchEvent = vi.fn();
+            }
             customEventSpy = vi.spyOn(window, 'dispatchEvent');
         });
 
         afterEach(() => {
-            customEventSpy.mockRestore();
+            if (customEventSpy) {
+                customEventSpy.mockRestore();
+            }
         });
 
         describe('requestFullscreenImage', () => {
