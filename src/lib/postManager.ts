@@ -20,75 +20,115 @@ export interface PostStatus {
   message: string;
 }
 
-export class PostManager {
-  // 型を RxNostr に変更
-  private rxNostr: RxNostr | null = null;
+// 認証状態の型定義
+export interface AuthState {
+  isAuthenticated: boolean;
+  type?: 'nsec' | 'nostr-login';
+  pubkey?: string;
+}
 
-  // コンストラクタの型を RxNostr に変更
-  constructor(rxNostr?: RxNostr) {
-    if (rxNostr) {
-      this.rxNostr = rxNostr;
-    }
-  }
+// ハッシュタグストアの型定義
+export interface HashtagStore {
+  hashtags: string[];
+  tags: string[][];
+}
 
-  // setRxNostr の型を RxNostr に変更
-  setRxNostr(rxNostr: RxNostr) {
-    this.rxNostr = rxNostr;
-  }
+// キーマネージャーの型定義
+export interface KeyManagerInterface {
+  getFromStore(): string | null;
+  loadFromStorage(): string | null;
+  isWindowNostrAvailable(): boolean;
+}
 
-  // 投稿内容の検証
-  validatePost(content: string): { valid: boolean; error?: string } {
+// 依存性注入用の型定義
+export interface PostManagerDeps {
+  authStateStore?: {
+    value: AuthState;
+  };
+  hashtagStore?: HashtagStore;
+  keyManager?: KeyManagerInterface;
+  window?: {
+    nostr?: {
+      signEvent: (event: any) => Promise<any>;
+    };
+  };
+  console?: Console;
+  createImetaTagFn?: (meta: any) => Promise<string[]>;
+  getClientTagFn?: () => string[] | null;
+  seckeySignerFn?: (key: string) => any; // ★追加
+}
+
+// --- 純粋関数（依存性なし） ---
+export class PostValidator {
+  static validatePost(content: string, isAuthenticated: boolean, hasRxNostr: boolean): { valid: boolean; error?: string } {
     if (!content.trim()) return { valid: false, error: "empty_content" };
-    if (!this.rxNostr) return { valid: false, error: "nostr_not_ready" };
-    const auth = authState.value;
-    if (!auth.isAuthenticated) return { valid: false, error: "login_required" };
+    if (!hasRxNostr) return { valid: false, error: "nostr_not_ready" };
+    if (!isAuthenticated) return { valid: false, error: "login_required" };
     return { valid: true };
   }
+}
 
-  // 投稿イベント生成（共通化）
-  private async buildEvent(content: string, pubkey?: string, imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>) {
-    // ストアからハッシュタグ／既存の tags を取得
-    const { hashtags, tags: storedTags } = hashtagDataStore;
+export class PostEventBuilder {
+  static async buildEvent(
+    content: string,
+    hashtags: string[],
+    tags: string[][],
+    pubkey?: string,
+    imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>,
+    createImetaTagFn?: (meta: any) => Promise<string[]>,
+    getClientTagFn?: () => string[] | null
+  ): Promise<any> {
     // 既にストアに tags が作られていればそれをコピー、なければ hashtags から小文字化して作成
-    const tags: string[][] = Array.isArray(storedTags) && storedTags.length
-      ? [...storedTags]
+    const eventTags: string[][] = Array.isArray(tags) && tags.length
+      ? [...tags]
       : (Array.isArray(hashtags) ? hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]) : []);
 
-    // Client tag は clientTag モジュールへ移譲
-    const clientTag = getClientTag();
-    if (clientTag) {
-      tags.push(clientTag);
+    // Client tag 追加
+    if (getClientTagFn) {
+      const clientTag = getClientTagFn();
+      if (clientTag) {
+        eventTags.push(clientTag);
+      }
     }
 
     // 画像imetaタグ追加
-    if (imageImetaMap) {
+    if (imageImetaMap && createImetaTagFn) {
       for (const [url, meta] of Object.entries(imageImetaMap)) {
         if (url && meta && meta.m) {
-          const imetaTag = await createImetaTag({ url, ...meta });
-          tags.push(imetaTag);
+          const imetaTag = await createImetaTagFn({ url, ...meta });
+          eventTags.push(imetaTag);
         }
       }
     }
+
     const event: any = {
       kind: 1,
       content,
-      tags,
+      tags: eventTags,
       created_at: Math.floor(Date.now() / 1000)
     };
+
     if (pubkey) event.pubkey = pubkey;
     return event;
   }
+}
 
-  // 投稿送信（共通化）
-  private sendEvent(event: any, signer?: any): Promise<PostResult> {
-    if (!this.rxNostr) return Promise.resolve({ success: false, error: "nostr_not_ready" });
+// --- RxNostr送信処理の分離 ---
+export class PostEventSender {
+  constructor(
+    private rxNostr: RxNostr,
+    private console: Console
+  ) { }
+
+  sendEvent(event: any, signer?: any): Promise<PostResult> {
     return new Promise((resolve) => {
       let resolved = false;
       let hasSuccess = false;
-      const sendObservable = this.rxNostr!.send(event, signer ? { signer } : undefined);
+      const sendObservable = this.rxNostr.send(event, signer ? { signer } : undefined);
+
       const subscription = sendObservable.subscribe({
         next: (packet: any) => {
-          console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗");
+          this.console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗");
           if (packet.ok && !resolved) {
             hasSuccess = true;
             resolved = true;
@@ -97,7 +137,7 @@ export class PostManager {
           }
         },
         error: (error: any) => {
-          console.error("送信エラー:", error);
+          this.console.error("送信エラー:", error);
           if (!resolved) {
             resolved = true;
             subscription.unsubscribe();
@@ -113,6 +153,7 @@ export class PostManager {
           }
         }
       });
+
       // 念のためタイムアウトも設定
       setTimeout(() => {
         if (!resolved) {
@@ -123,43 +164,121 @@ export class PostManager {
       }, 3000);
     });
   }
+}
 
-  // 投稿を送信する（純粋な投稿処理のみ）
-  async submitPost(content: string, imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>): Promise<PostResult> {
+// --- メインのPostManager（依存性を組み合わせ） ---
+export class PostManager {
+  private rxNostr: RxNostr | null = null;
+  private eventSender: PostEventSender | null = null;
+
+  constructor(
+    rxNostr?: RxNostr,
+    private deps: PostManagerDeps = {}
+  ) {
+    if (rxNostr) {
+      this.setRxNostr(rxNostr);
+    }
+
+    // デフォルト依存性の設定
+    this.deps.console = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
+    this.deps.createImetaTagFn = deps.createImetaTagFn || createImetaTag;
+    this.deps.getClientTagFn = deps.getClientTagFn || getClientTag;
+    this.deps.seckeySignerFn = deps.seckeySignerFn || seckeySigner; // ★追加
+  }
+
+  setRxNostr(rxNostr: RxNostr) {
+    this.rxNostr = rxNostr;
+    this.eventSender = new PostEventSender(rxNostr, this.deps.console || console);
+  }
+
+  // 外部APIは変更なし（後方互換性のため）
+  validatePost(content: string): { valid: boolean; error?: string } {
+    const authStateStore = this.deps.authStateStore || { value: authState.value };
+    return PostValidator.validatePost(
+      content,
+      authStateStore.value.isAuthenticated,
+      !!this.rxNostr
+    );
+  }
+
+  async submitPost(
+    content: string,
+    imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>
+  ): Promise<PostResult> {
     const validation = this.validatePost(content);
     if (!validation.valid) return { success: false, error: validation.error };
 
+    if (!this.eventSender) {
+      return { success: false, error: "nostr_not_ready" };
+    }
+
     try {
-      // ストアから認証状態を取得
-      const auth = authState.value;
+      // 依存性から認証状態とストアを取得
+      const authStateStore = this.deps.authStateStore || { value: authState.value };
+      const hashtagStore = this.deps.hashtagStore || hashtagDataStore;
+      const keyMgr = this.deps.keyManager || keyManager;
+      const windowObj = this.deps.window || (typeof window !== 'undefined' ? window : undefined);
+
+      const auth = authStateStore.value;
       const isNostrLoginAuth = auth.type === 'nostr-login';
 
       // nostr-login認証の場合のみwindow.nostrを使用
-      if (isNostrLoginAuth && keyManager.isWindowNostrAvailable()) {
+      if (isNostrLoginAuth && keyMgr.isWindowNostrAvailable() && windowObj?.nostr) {
         try {
           const pubkey = auth.pubkey;
           if (!pubkey) return { success: false, error: "pubkey_not_found" };
 
-          const event = await this.buildEvent(content, pubkey, imageImetaMap);
-          const signedEvent = await (window.nostr as any).signEvent(event);
-          console.log("署名済みイベント:", signedEvent);
-          return await this.sendEvent(signedEvent);
+          const event = await PostEventBuilder.buildEvent(
+            content,
+            hashtagStore.hashtags,
+            hashtagStore.tags,
+            pubkey,
+            imageImetaMap,
+            this.deps.createImetaTagFn,
+            this.deps.getClientTagFn
+          );
+
+          // 型ガードで signEvent の存在を確認
+          if (typeof (windowObj.nostr as any).signEvent === "function") {
+            const signedEvent = await (windowObj.nostr as { signEvent: (event: any) => Promise<any> }).signEvent(event);
+            this.deps.console?.log("署名済みイベント:", signedEvent);
+            return await this.eventSender.sendEvent(signedEvent);
+          } else {
+            return { success: false, error: "nostr_sign_event_not_supported" };
+          }
         } catch (err) {
-          console.error("window.nostrでの投稿エラー:", err);
+          this.deps.console?.error("window.nostrでの投稿エラー:", err);
           return { success: false, error: "post_error" };
         }
       }
 
       // ローカルキーを使用（秘密鍵直入れの場合）
-      const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
+      const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage();
       if (!storedKey) return { success: false, error: "key_not_found" };
-      const event = await this.buildEvent(content, undefined, imageImetaMap);
-      const signer = seckeySigner(storedKey);
-      return await this.sendEvent(event, signer);
+
+      const event = await PostEventBuilder.buildEvent(
+        content,
+        hashtagStore.hashtags,
+        hashtagStore.tags,
+        undefined,
+        imageImetaMap,
+        this.deps.createImetaTagFn,
+        this.deps.getClientTagFn
+      );
+
+      const signer = this.deps.seckeySignerFn
+        ? this.deps.seckeySignerFn(storedKey)
+        : seckeySigner(storedKey);
+      return await this.eventSender.sendEvent(event, signer);
 
     } catch (err) {
-      console.error("投稿エラー:", err);
+      this.deps.console?.error("投稿エラー:", err);
       return { success: false, error: "post_error" };
     }
+  }
+
+  // テスト用の内部コンポーネントへのアクセス
+  getEventSender(): PostEventSender | null {
+    return this.eventSender;
   }
 }
