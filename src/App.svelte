@@ -31,6 +31,7 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
+    relayListUpdatedStore, // 追加
   } from "./stores/appStore.svelte";
   import { updatePlaceholderText } from "./stores/editorStore.svelte";
   import { debugLog, debugAuthState } from "./lib/debug";
@@ -107,7 +108,12 @@
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
     profileManager = new ProfileManager(rxNostr);
-    relayManager = new RelayManager(rxNostr);
+    relayManager = new RelayManager(rxNostr, {
+      relayListUpdatedStore: {
+        value: relayListUpdatedStore.value,
+        set: (v: number) => relayListUpdatedStore.set(v),
+      },
+    });
     isLoadingProfileStore.set(true);
     if (pubkeyHex) {
       if (!relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
