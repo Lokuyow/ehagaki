@@ -155,11 +155,16 @@ export const showSettingsDialogStore = {
 };
 
 // --- Service Worker管理 ---
-const swRegister = useRegisterSW({
+// テスト環境では仮のオブジェクトを使用
+const swRegister = typeof useRegisterSW === 'function' ? useRegisterSW({
     onRegistered: (r: ServiceWorkerRegistration | undefined) => { /* handle registration if needed */ },
     onRegisterError(error: Error) { console.log("SW registration error", error); },
     onNeedRefresh() { console.log("SW needs refresh - showing prompt"); },
-});
+}) : {
+    needRefresh: { subscribe: () => {} },
+    updateServiceWorker: () => {}
+};
+
 export const swNeedRefresh = swRegister.needRefresh;
 export const swUpdateServiceWorker = swRegister.updateServiceWorker;
 

@@ -21,7 +21,10 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      'virtual:pwa-register/svelte': new URL('./src/test/mocks/pwa-register.ts', import.meta.url).pathname
+      'virtual:pwa-register/svelte': '/src/test/mocks/pwa-register.ts'
     }
+  },
+  define: {
+    'import.meta.vitest': undefined
   }
 });
