@@ -131,15 +131,28 @@ export function debugLog(...args: any[]) {
     }
 }
 
-export function debugAuthState(label: string, authState: any) {
-    if (shouldShowDevLog()) {
-        console.log(`[AUTH DEBUG] ${label}:`, {
-            type: authState.type,
-            isAuthenticated: authState.isAuthenticated,
-            isInitialized: authState.isInitialized,
-            pubkey: authState.pubkey ? `${authState.pubkey.slice(0, 8)}...` : 'empty'
-        });
-    }
+// DEBUG_ENABLED: devログ表示判定に基づくフラグ
+const DEBUG_ENABLED = shouldShowDevLog();
+
+export function debugAuthState(message: string, authState: any) {
+  if (!DEBUG_ENABLED) return;
+  
+  // authStateが未定義の場合の安全な処理
+  const safeAuthState = authState || { 
+    type: 'undefined', 
+    isAuthenticated: 'undefined', 
+    isInitialized: 'undefined', 
+    pubkey: 'undefined' 
+  };
+  
+  console.log(`[AUTH DEBUG] ${message}:`, {
+    type: safeAuthState.type ?? 'undefined',
+    isAuthenticated: safeAuthState.isAuthenticated ?? 'undefined',
+    isInitialized: safeAuthState.isInitialized ?? 'undefined',
+    isValid: safeAuthState.isValid ?? 'undefined',
+    pubkey: safeAuthState.pubkey ? 
+      (safeAuthState.pubkey.substring(0, 8) + '...') : 'empty'
+  });
 }
 
 export async function debugLogUploadResponse(response: Response) {

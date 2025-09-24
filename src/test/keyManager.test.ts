@@ -51,10 +51,58 @@ class MockStorage implements Storage {
     }
 }
 
+// appStore.svelte.tsのモック（完全版）
+const secretKeyStore = {
+    value: null as string | null,
+    set: vi.fn((value: string | null) => {
+        // 実際に値を更新
+        secretKeyStore.value = value;
+    })
+};
+
+vi.mock("../stores/appStore.svelte.ts", () => ({
+    setNostrLoginAuth: vi.fn(), // 追加
+    clearAuthState: vi.fn(), // 追加
+    secretKeyStore
+}));
+
+// appUtilsのモック（実際の関数を実装）
+vi.mock("../lib/utils/appUtils", () => ({
+    derivePublicKeyFromNsec: vi.fn((nsec: string) => {
+        try {
+            // 簡易的な実装（テスト用）
+            if (!nsec || !nsec.startsWith('nsec1') || nsec.length < 63) {
+                return { hex: "", npub: "", nprofile: "" };
+            }
+            // 実際のnsecデコード処理の代替
+            const hex = '0'.repeat(64); // テスト用の固定値
+            const npub = 'npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5r5x8h';
+            const nprofile = 'nprofile1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq';
+            return { hex, npub, nprofile };
+        } catch (error) {
+            return { hex: "", npub: "", nprofile: "" };
+        }
+    }),
+    isValidNsec: vi.fn((key: string) => {
+        // 実際のバリデーション処理
+        return typeof key === 'string' &&
+            key.startsWith('nsec1') &&
+            key.length >= 63;
+    }),
+    toNpub: vi.fn((pubkey: string) => {
+        try {
+            if (!pubkey || pubkey.length !== 64) return '';
+            // 実際のnpub変換処理の代替
+            return 'npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5r5x8h';
+        } catch {
+            return '';
+        }
+    })
+}));
+
 describe('KeyValidator', () => {
     describe('isValidNsec', () => {
         it('有効なnsecを正しく検証する', () => {
-            // 63文字のnsec（nsec1 + 58文字）
             const validNsec = 'nsec1qpzry9x8gf2tvdw0s3jn54khce6mua7lqpzry9x8gf2tvdw0s3jn54khce';
             expect(KeyValidator.isValidNsec(validNsec)).toBe(true);
         });
@@ -69,7 +117,6 @@ describe('KeyValidator', () => {
 
     describe('pubkeyToNpub', () => {
         it('有効なpubkeyをnpubに変換する', () => {
-            // 32バイトのhex（64文字）
             const validPubkey = '0'.repeat(64);
             const npub = KeyValidator.pubkeyToNpub(validPubkey);
             expect(npub.startsWith('npub1')).toBe(true);
@@ -278,12 +325,17 @@ describe('PublicKeyState', () => {
     let mockClearAuthState: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
+        vi.useFakeTimers();
         mockSetNostrLoginAuth = vi.fn();
         mockClearAuthState = vi.fn();
         publicKeyState = new PublicKeyState({
             setNostrLoginAuthFn: mockSetNostrLoginAuth,
             clearAuthStateFn: mockClearAuthState
         });
+    });
+
+    afterEach(() => {
+        vi.useRealTimers();
     });
 
     describe('setNsec', () => {
@@ -321,7 +373,7 @@ describe('PublicKeyState', () => {
     });
 
     describe('setNostrLoginAuth', () => {
-        it('ログイン認証を設定する', () => {
+        it('ログイン認証を設定する', async () => {
             const auth: NostrLoginAuth = {
                 type: 'login',
                 pubkey: '0'.repeat(64),
@@ -333,6 +385,10 @@ describe('PublicKeyState', () => {
             expect(publicKeyState.currentIsValid).toBe(true);
             expect(publicKeyState.currentIsNostrLogin).toBe(true);
             expect(publicKeyState.currentHex).toBe(auth.pubkey);
+
+            // Advance timers to trigger setTimeout
+            vi.advanceTimersByTime(20);
+
             expect(mockSetNostrLoginAuth).toHaveBeenCalledWith(
                 auth.pubkey,
                 expect.stringMatching(/^npub1/),

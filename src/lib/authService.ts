@@ -1,6 +1,6 @@
-import { keyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
+import { keyManager, KeyManager, PublicKeyState, type NostrLoginAuth } from './keyManager';
 import { nostrLoginManager, type NostrLoginOptions } from './nostrLogin';
-import { setAuthInitialized, setNsecAuth } from '../stores/appStore.svelte';
+import { setAuthInitialized, setNsecAuth, setNostrLoginAuth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';
 import { debugLog } from './debug';
 import type { AuthResult } from './types';
 
@@ -14,8 +14,11 @@ export interface AuthServiceDependencies {
     debugLog?: typeof debugLog;
     setNsecAuth?: typeof setNsecAuth;
     setAuthInitialized?: typeof setAuthInitialized;
-    nostrLoginManager?: typeof nostrLoginManager;
+    clearAuthState?: typeof clearAuthState;
+    setNostrLoginAuth?: typeof setNostrLoginAuth;
+    nostrLoginManager?: NostrLoginManagerInterface;
     setTimeout?: (callback: () => void, delay: number) => void;
+    secretKeyStore?: typeof secretKeyStore;
 }
 
 export interface NostrLoginManagerInterface {
@@ -269,18 +272,24 @@ export class AuthInitializer {
                     pubkeyHex: derived.hex,
                     isNostrLogin: false
                 };
+            } else {
+                this.debugLog('[checkNsecAuth] nsecからpubkey導出失敗、無効なキーを削除');
+                this.keyManager.saveToStorage(''); // 無効なキーを削除
+                return { hasAuth: false };
             }
         } catch (error) {
             this.debugLog('[checkNsecAuth] ストレージキーの処理中にエラー', error);
-            this.console.error('ストレージキーの処理中にエラー:', error);
+            this.keyManager.saveToStorage(''); // エラーの場合も削除
+            return { hasAuth: false };
         }
-
-        return { hasAuth: false };
     }
 
     private async checkNostrLoginAuth(nostrLoginOptions: NostrLoginOptions): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
         // nostr-loginの初期化（UIは起動しない）
         await this.nostrLoginManager.init(nostrLoginOptions);
+
+        // 初期化完了後に少し待ってからユーザー取得を試行
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         // 1. まずwindow.nostrLoginから即時取得
         const currentUser = this.nostrLoginManager.getCurrentUser();
@@ -301,6 +310,7 @@ export class AuthInitializer {
         // 2. localStorage復元
         const storedData = this.storageManager.getStoredNostrLoginData();
         if (storedData?.pubkey) {
+            this.debugLog('[checkNostrLoginAuth] localStorage復元成功', { pubkey: storedData.pubkey });
             this.publicKeyState.setNostrLoginAuth({
                 type: 'login',
                 pubkey: storedData.pubkey,
@@ -313,6 +323,7 @@ export class AuthInitializer {
             };
         }
 
+        this.debugLog('[checkNostrLoginAuth] nostr-login認証情報なし');
         return { hasAuth: false };
     }
 }
@@ -324,6 +335,8 @@ export class AuthService {
     private nostrLoginAuthenticator: NostrLoginAuthenticator;
     private profileCacheCleaner: ProfileCacheCleaner;
     private authInitializer: AuthInitializer;
+    private nostrLoginMgr: NostrLoginManagerInterface;
+    private keyManager: any;
 
     // 設定プロパティ
     nostrLoginOptions: NostrLoginOptions = {
@@ -333,19 +346,26 @@ export class AuthService {
 
     constructor(dependencies: AuthServiceDependencies = {}) {
         // デフォルト依存関係の設定
-        const keyMgr = dependencies.keyManager || keyManager;
+        const keyMgr = dependencies.keyManager || new KeyManager({
+            secretKeyStore: dependencies.secretKeyStore || secretKeyStore,
+            setNostrLoginAuthFn: dependencies.setNsecAuth || setNsecAuth,
+            clearAuthStateFn: dependencies.clearAuthState || clearAuthState
+        });
         const localStorage = dependencies.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
         const windowObj = dependencies.window || (typeof window !== 'undefined' ? window : {} as Window);
         const navigator = dependencies.navigator || (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
         const console = dependencies.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const debugLog = dependencies.debugLog || (typeof window !== 'undefined' ? window.console.log : () => { });
         const setNsecAuthFn = dependencies.setNsecAuth || setNsecAuth;
-        const setAuthInitializedFn = dependencies.setAuthInitialized || setAuthInitialized;
-        const nostrLoginMgr = dependencies.nostrLoginManager || nostrLoginManager;
-        const setTimeoutFn = dependencies.setTimeout || setTimeout;
+
+        // nostrLoginManagerは依存性から取得、なければデフォルト
+        this.nostrLoginMgr = dependencies.nostrLoginManager || nostrLoginManager;
 
         // 内部コンポーネントの初期化
-        this.publicKeyState = new PublicKeyState();
+        this.publicKeyState = new PublicKeyState({
+            setNostrLoginAuthFn: dependencies.setNostrLoginAuth || setNostrLoginAuth,
+            clearAuthStateFn: dependencies.clearAuthState || clearAuthState
+        });
         this.nsecAuthenticator = new NsecAuthenticator(keyMgr, setNsecAuthFn, console);
         this.nostrLoginAuthenticator = new NostrLoginAuthenticator(this.publicKeyState, console);
         this.profileCacheCleaner = new ProfileCacheCleaner(navigator, console);
@@ -356,13 +376,15 @@ export class AuthService {
         this.authInitializer = new AuthInitializer(
             keyMgr,
             this.publicKeyState,
-            nostrLoginMgr,
+            this.nostrLoginMgr,
             externalAuthWaiter,
             storageManager,
             setNsecAuthFn,
             debugLog,
             console
         );
+
+        this.keyManager = keyMgr;
     }
 
     /**
@@ -406,29 +428,65 @@ export class AuthService {
      * ログアウト処理
      */
     logout(): void {
-        const debugLog = this.authInitializer['debugLog'] || console.log; // 依存関係から取得
+        const debugLog = this.authInitializer['debugLog'] || console.log;
         debugLog('ログアウト処理開始');
 
-        // ストレージをクリア
-        localStorage.clear();
+        try {
+            // nostr-login認証の場合のみ、nostr-loginのログアウトを実行
+            if (this.publicKeyState.currentIsNostrLogin && this.nostrLoginMgr.isInitialized) {
+                try {
+                    this.nostrLoginMgr.logout();
+                    debugLog('nostr-loginログアウト完了');
+                } catch (error) {
+                    console.error('nostr-loginログアウト中にエラー:', error);
+                }
+            }
 
-        // nostr-loginからもログアウト
-        const nostrLoginMgr = nostrLoginManager; // 実際のインスタンスを使用
-        if (nostrLoginMgr.isInitialized) {
-            nostrLoginMgr.logout();
+            // ストレージをクリア
+            try {
+                localStorage.clear();
+                debugLog('ローカルストレージクリア完了');
+            } catch (error) {
+                console.error('ローカルストレージクリア中にエラー:', error);
+            }
+
+            // プロフィール画像キャッシュをクリア
+            this.profileCacheCleaner.clearProfileImageCache().catch(error => {
+                console.error('プロフィール画像キャッシュクリア中にエラー:', error);
+            });
+
+            debugLog('ログアウト処理完了');
+
+            // ページをリロード（遅延させて確実に反映）
+            setTimeout(() => {
+                try {
+                    // Check if location.replace is available and is a function
+                    if (typeof window !== 'undefined' &&
+                        window.location &&
+                        typeof window.location.replace === 'function') {
+                        window.location.replace(window.location.pathname);
+                    } else if (typeof window !== 'undefined' && window.location) {
+                        // Fallback to href assignment
+                        window.location.href = window.location.pathname;
+                    }
+                } catch (error) {
+                    console.error('ページリロード中にエラー:', error);
+                    // Additional fallback - do nothing in test environments
+                }
+            }, 500);
+        } catch (error) {
+            console.error('ログアウト処理中に予期しないエラー:', error);
+            // エラーが発生してもページリロードは実行
+            setTimeout(() => {
+                try {
+                    if (typeof window !== 'undefined' && window.location) {
+                        window.location.href = window.location.pathname;
+                    }
+                } catch (reloadError) {
+                    console.error('ページリロード中にエラー:', reloadError);
+                }
+            }, 2000);
         }
-
-        // プロフィール画像キャッシュをクリア
-        this.profileCacheCleaner.clearProfileImageCache().catch(error => {
-            console.error('プロフィール画像キャッシュクリア中にエラー:', error);
-        });
-
-        debugLog('ログアウト処理完了');
-
-        // ページをリロード（遅延させて確実に反映）
-        setTimeout(() => {
-            window.location.replace(window.location.pathname);
-        }, 500);
     }
 
     /**
@@ -449,8 +507,7 @@ export class AuthService {
      * nostr-loginの認証ハンドラーを設定
      */
     setNostrLoginHandler(handler: (auth: NostrLoginAuth) => void): void {
-        const nostrLoginMgr = nostrLoginManager; // 実際のインスタンスを使用
-        nostrLoginMgr.setAuthHandler(handler);
+        this.nostrLoginMgr.setAuthHandler(handler);
     }
 
     /**

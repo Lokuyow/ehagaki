@@ -56,13 +56,16 @@ const initialAuthState: AuthState = {
     isExtensionLogin: false
 };
 
-let authStateValue = $state<AuthState>(initialAuthState);
+let authStateValue = $state<AuthState>({ ...initialAuthState }); // 確実に初期値をコピー
 
 export const authState = {
-    get value() { return authStateValue; },
+    get value() { 
+        // undefinedの場合は初期値を返す
+        return authStateValue || initialAuthState; 
+    },
     subscribe: (callback: (value: AuthState) => void) => {
         $effect(() => {
-            callback(authStateValue);
+            callback(authStateValue || initialAuthState);
         });
     }
 };
@@ -77,7 +80,15 @@ export function updateAuthState(newState: Partial<AuthState>): void {
         typeof window !== 'undefined' &&
         typeof (window as any).nostr === 'object' &&
         typeof (window as any).nostr.signEvent === 'function';
+    
     authStateValue = updated;
+    
+    console.log('[updateAuthState] 認証状態を更新:', {
+        type: updated.type,
+        isAuthenticated: updated.isAuthenticated,
+        isValid: updated.isValid,
+        pubkey: updated.pubkey ? updated.pubkey.substring(0, 8) + '...' : 'empty'
+    });
 }
 
 export function clearAuthState(preserveInitialized: boolean = true): void {
@@ -100,7 +111,20 @@ export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string
         console.warn('setNostrLoginAuth: All parameters are required');
         return;
     }
-    updateAuthState({ type: 'nostr-login', pubkey, npub, nprofile, isValid: true });
+    
+    console.log('[setNostrLoginAuth] NostrLogin認証状態を更新:', {
+        pubkey: pubkey.substring(0, 8) + '...',
+        npub: npub.substring(0, 12) + '...',
+        type: 'nostr-login'
+    });
+    
+    updateAuthState({ 
+        type: 'nostr-login', 
+        pubkey, 
+        npub, 
+        nprofile, 
+        isValid: true 
+    });
 }
 
 export function setAuthInitialized(): void {
@@ -155,15 +179,38 @@ export const showSettingsDialogStore = {
 };
 
 // --- Service Worker管理 ---
-// テスト環境では仮のオブジェクトを使用
-const swRegister = typeof useRegisterSW === 'function' ? useRegisterSW({
-    onRegistered: (r: ServiceWorkerRegistration | undefined) => { /* handle registration if needed */ },
-    onRegisterError(error: Error) { console.log("SW registration error", error); },
-    onNeedRefresh() { console.log("SW needs refresh - showing prompt"); },
-}) : {
-    needRefresh: { subscribe: () => {} },
-    updateServiceWorker: () => {}
-};
+// テスト環境やService Worker未対応環境での安全な処理
+const swRegister = (() => {
+    try {
+        if (typeof useRegisterSW === 'function') {
+            return useRegisterSW({
+                onRegistered: (r: ServiceWorkerRegistration | undefined) => { 
+                    console.log("SW registered successfully", r);
+                },
+                onRegisterError(error: Error) { 
+                    console.warn("SW registration error", error);
+                    // エラーログを出力するが、アプリケーションは継続
+                },
+                onNeedRefresh() { 
+                    console.log("SW needs refresh - showing prompt"); 
+                },
+                // Service Workerの登録オプションを明示的に指定
+                immediate: true,
+                onOfflineReady() {
+                    console.log("App ready to work offline");
+                }
+            });
+        }
+    } catch (error) {
+        console.warn("Failed to initialize Service Worker:", error);
+    }
+    
+    // フォールバック（テスト環境やエラー時）
+    return {
+        needRefresh: { subscribe: () => {} },
+        updateServiceWorker: () => {}
+    };
+})();
 
 export const swNeedRefresh = swRegister.needRefresh;
 export const swUpdateServiceWorker = swRegister.updateServiceWorker;

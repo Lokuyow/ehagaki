@@ -11,7 +11,8 @@ export default defineConfig({
       registerType: 'prompt',
       strategies: 'injectManifest',
       devOptions: {
-        enabled: true,
+        enabled: false, // 開発モードでService Workerを無効化
+        type: 'module' // 明示的にtypeを指定
       },
       scope: '/',
       manifest: {

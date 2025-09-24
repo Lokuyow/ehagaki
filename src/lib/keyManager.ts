@@ -1,33 +1,7 @@
 import { writable, derived, type Readable, get } from "svelte/store";
 import type { PublicKeyData } from "./types";
 import { nip19 } from "nostr-tools";
-
-// テスト環境を考慮したインポート
-let setNostrLoginAuth: ((pubkey: string, npub: string, nprofile: string) => void) | undefined;
-let clearAuthState: (() => void) | undefined;
-let secretKeyStore: { value: string | null; set: (value: string | null) => void };
-let derivePublicKeyFromNsec: (nsec: string) => PublicKeyData;
-let isValidNsec: (key: string) => boolean;
-let toNpub: (pubkey: string) => string;
-
-try {
-  const appStore = await import("../stores/appStore.svelte");
-  setNostrLoginAuth = appStore.setNostrLoginAuth;
-  clearAuthState = appStore.clearAuthState;
-  secretKeyStore = appStore.secretKeyStore;
-
-  const appUtils = await import("./utils/appUtils");
-  derivePublicKeyFromNsec = appUtils.derivePublicKeyFromNsec;
-  isValidNsec = appUtils.isValidNsec;
-  toNpub = appUtils.toNpub;
-} catch (error) {
-  // テスト環境などでインポートが失敗した場合のフォールバック
-  console.warn('Failed to import dependencies:', error);
-  secretKeyStore = { value: null, set: () => { } };
-  derivePublicKeyFromNsec = () => ({ hex: "", npub: "", nprofile: "" });
-  isValidNsec = () => false;
-  toNpub = () => "";
-}
+import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/appUtils';
 
 declare global {
   interface Window {
@@ -230,15 +204,29 @@ export class PublicKeyState {
     try {
       const npub = auth.npub || nip19.npubEncode(auth.pubkey);
       const nprofile = nip19.nprofileEncode({ pubkey: auth.pubkey, relays: [] });
+
       this._dataStore.set({ hex: auth.pubkey, npub, nprofile });
       this._isValidStore.set(true);
       this._isNostrLoginStore.set(true);
       this._nsecStore.set("");
 
-      // 依存性注入されたコールバックを使用
+      // グローバル認証状態を更新（依存性注入を優先）
       if (this.deps.setNostrLoginAuthFn) {
         this.deps.setNostrLoginAuthFn(auth.pubkey, npub, nprofile);
+      } else {
+        // 依存関係がまだ読み込まれていない場合は遅延実行
+        setTimeout(() => {
+          if (this.deps.setNostrLoginAuthFn) {
+            this.deps.setNostrLoginAuthFn!(auth.pubkey!, npub, nprofile);
+          }
+        }, 10);
       }
+
+      console.log('[PublicKeyState] NostrLogin認証状態を設定:', {
+        pubkey: auth.pubkey,
+        npub,
+        type: auth.type
+      });
     } catch (error) {
       console.error("Failed to set NostrLogin auth:", error);
       this.clear();
@@ -277,7 +265,7 @@ export class PublicKeyState {
     this._nsecStore.set("");
     this._isNostrLoginStore.set(false);
 
-    // 依存性注入されたコールバックを使用
+    // 依存性注入されたコールバックを優先使用
     if (this.deps.clearAuthStateFn) {
       this.deps.clearAuthStateFn();
     }
@@ -295,7 +283,7 @@ export class PublicKeyState {
   }
 }
 
-// --- メインのKeyManager（依存性を組み合わせ） ---
+// --- メインのKeyManagerクラス ---
 export class KeyManager {
   private storage: KeyStorage;
   private externalAuth: ExternalAuthChecker;
@@ -304,7 +292,7 @@ export class KeyManager {
     // デフォルト依存性の設定
     const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
     const console = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
-    const secretKeyStoreObj = deps.secretKeyStore || secretKeyStore;
+    const secretKeyStoreObj = deps.secretKeyStore || { value: null, set: () => { } };
     const windowObj = deps.window || (typeof window !== 'undefined' ? window : undefined);
 
     this.storage = new KeyStorage(localStorage, console, secretKeyStoreObj);
@@ -361,8 +349,5 @@ export class KeyManager {
 }
 
 // --- 既存のkeyManagerインスタンス（後方互換性のため） ---
-export const keyManager = new KeyManager({
-  setNostrLoginAuthFn: setNostrLoginAuth,
-  clearAuthStateFn: clearAuthState
-});
+export const keyManager = new KeyManager();
 
