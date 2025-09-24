@@ -2,6 +2,11 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
+const isPreview = process.argv.some(arg => arg.includes('preview')) ||
+  process.env.VITE_PREVIEW === 'true' ||
+  process.env.NODE_ENV === 'preview';
+
 // https://vite.dev/config/
 export default defineConfig({
   base: process.env.VERCEL_URL ? '/' : '/',
@@ -11,7 +16,7 @@ export default defineConfig({
       registerType: 'prompt',
       strategies: 'injectManifest',
       devOptions: {
-        enabled: false, // 開発モードでService Workerを無効化
+        enabled: isPreview, // previewモードのみ有効、devは無効
         type: 'module' // 明示的にtypeを指定
       },
       scope: '/',

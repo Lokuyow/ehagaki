@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.3.0test';
+const PRECACHE_VERSION = '1.3.0';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -531,7 +531,7 @@ class ClientManager {
         return indexedDBManager.executeOperation((db, resolve, reject) => {
             const tx = db.transaction(['flags'], 'readwrite');
             const store = tx.objectStore('flags');
-            
+
             // 共有画像データを保存（フォールバック用）
             const sharedImageData = {
                 id: 'sharedImageData',
@@ -552,7 +552,7 @@ class ClientManager {
             if (sharedData.image instanceof File) {
                 sharedData.image.arrayBuffer().then(buffer => {
                     sharedImageData.data.image.arrayBuffer = buffer;
-                    
+
                     store.put(sharedImageData).onsuccess = () => {
                         db.close();
                         resolve();
