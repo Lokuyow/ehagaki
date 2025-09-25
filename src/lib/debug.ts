@@ -135,70 +135,24 @@ export function debugLog(...args: any[]) {
 const DEBUG_ENABLED = shouldShowDevLog();
 
 export function debugAuthState(message: string, authState: any) {
-  if (!DEBUG_ENABLED) return;
-  
-  // authStateが未定義の場合の安全な処理
-  const safeAuthState = authState || { 
-    type: 'undefined', 
-    isAuthenticated: 'undefined', 
-    isInitialized: 'undefined', 
-    pubkey: 'undefined' 
-  };
-  
-  console.log(`[AUTH DEBUG] ${message}:`, {
-    type: safeAuthState.type ?? 'undefined',
-    isAuthenticated: safeAuthState.isAuthenticated ?? 'undefined',
-    isInitialized: safeAuthState.isInitialized ?? 'undefined',
-    isValid: safeAuthState.isValid ?? 'undefined',
-    pubkey: safeAuthState.pubkey ? 
-      (safeAuthState.pubkey.substring(0, 8) + '...') : 'empty'
-  });
-}
+    if (!DEBUG_ENABLED) return;
 
-export async function debugLogUploadResponse(response: Response) {
-    if (!shouldShowDevLog()) return;
-    try {
-        const cloned = response.clone();
-        if (response.status === 200) {
-            try {
-                const json = await cloned.json();
-                console.log("[UPLOAD RESPONSE]", {
-                    status: response.status,
-                    statusText: response.statusText,
-                    url: response.url,
-                    body: json
-                });
-                return;
-            } catch {
-                try {
-                    const text = await cloned.text();
-                    console.log("[UPLOAD RESPONSE]", {
-                        status: response.status,
-                        statusText: response.statusText,
-                        url: response.url,
-                        body: text
-                    });
-                    return;
-                } catch (e) {
-                    console.log("[UPLOAD RESPONSE] (failed to read body)", e);
-                    return;
-                }
-            }
-        }
-        try {
-            const text = await cloned.text();
-            console.log("[UPLOAD RESPONSE]", {
-                status: response.status,
-                statusText: response.statusText,
-                url: response.url,
-                body: text
-            });
-        } catch (e) {
-            console.log("[UPLOAD RESPONSE] (failed to read body)", e);
-        }
-    } catch (e) {
-        console.log("[UPLOAD RESPONSE] (unexpected error)", e);
-    }
+    // authStateが未定義の場合の安全な処理
+    const safeAuthState = authState || {
+        type: 'undefined',
+        isAuthenticated: 'undefined',
+        isInitialized: 'undefined',
+        pubkey: 'undefined'
+    };
+
+    console.log(`[AUTH DEBUG] ${message}:`, {
+        type: safeAuthState.type ?? 'undefined',
+        isAuthenticated: safeAuthState.isAuthenticated ?? 'undefined',
+        isInitialized: safeAuthState.isInitialized ?? 'undefined',
+        isValid: safeAuthState.isValid ?? 'undefined',
+        pubkey: safeAuthState.pubkey ?
+            (safeAuthState.pubkey.substring(0, 8) + '...') : 'empty'
+    });
 }
 
 // --- showSwUpdateModalDebug: SW更新ボタン強制表示デバッグ機能 ---

@@ -606,27 +606,10 @@ export function renderBlurhash(
     devMode: boolean = false
 ) {
     if (!validateBlurhashParams(blurhash, canvasRef, dimensions)) {
-        if (devMode) {
-            console.log("[blurhash] renderBlurhash: invalid parameters", {
-                blurhash: !!blurhash,
-                canvasRef: !!canvasRef,
-                dimensions,
-                isPlaceholder
-            });
-        }
         return;
     }
 
     setupCanvas(canvasRef, dimensions);
-
-    if (devMode) {
-        console.log("[blurhash] renderBlurhash: rendering", {
-            blurhash,
-            width: dimensions.displayWidth,
-            height: dimensions.displayHeight,
-            isPlaceholder
-        });
-    }
 
     // @ts-ignore
     import("../tags/imetaTag").then(({ renderBlurhashToCanvas }) => {

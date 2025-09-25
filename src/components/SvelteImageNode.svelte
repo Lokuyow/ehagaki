@@ -75,16 +75,6 @@
         const imageUrl = node.attrs.src;
         if (!imageUrl) return;
 
-        // デバッグ: 画像ノードの重複作成を検知
-        if (devMode) {
-            console.log("[SvelteImageNode] effect triggered", {
-                imageUrl,
-                isPlaceholder,
-                nodeAttrs: node.attrs,
-                timestamp: Date.now(),
-            });
-        }
-
         // ストアから既存のサイズ情報を確認
         const storedSize = imageSizeMapStore.value[imageUrl];
         if (storedSize) {
@@ -340,15 +330,6 @@
                 passive: false,
             });
         }
-
-        if (devMode) {
-            console.log("[SvelteImageNode] mounted", {
-                src: node.attrs.src,
-                isPlaceholder,
-                dimensions: imageDimensions,
-                timestamp: Date.now(),
-            });
-        }
     });
 
     $effect(() => {
@@ -359,20 +340,6 @@
                 (window.location.port === "4173" ||
                     window.location.hostname === "localhost"));
 
-        if (isPreviewOrDev) {
-            // Svelteのconsole_log_state警告・rune_outside_svelteエラーを回避
-            // imageDimensionsは$stateなのでJSON変換でプレーン化
-            console.log(
-                "[snapshot] [blurhash] $effect: blurhash=",
-                node.attrs.blurhash,
-                "canvasRef=",
-                !!localCanvasRef,
-                "dimensions=",
-                imageDimensions
-                    ? JSON.parse(JSON.stringify(imageDimensions))
-                    : imageDimensions,
-            );
-        }
         if (node.attrs.blurhash && localCanvasRef) {
             renderBlurhashUtil(
                 node.attrs.blurhash,
@@ -420,14 +387,6 @@
             blurhashFadeOut: false,
         });
         localCanvasRef = undefined;
-
-        if (devMode) {
-            console.log("[SvelteImageNode] destroyed", {
-                src: node.attrs.src,
-                isPlaceholder,
-                timestamp: Date.now(),
-            });
-        }
     });
 </script>
 

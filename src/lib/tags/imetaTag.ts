@@ -98,12 +98,7 @@ export async function createImetaTagAsync(fields: ImetaField): Promise<string[]>
  * @returns blurhash文字列 or null
  */
 export async function generateBlurhash(file: File): Promise<string | null> {
-    const devMode = import.meta.env?.MODE === "development";
     try {
-        if (!file.type.startsWith("image/")) {
-            if (devMode) console.log("[blurhash] generateBlurhash: not image file", file);
-            return null;
-        }
         const img = await new Promise<HTMLImageElement>((resolve, reject) => {
             const url = URL.createObjectURL(file);
             const image = new window.Image();
@@ -122,17 +117,14 @@ export async function generateBlurhash(file: File): Promise<string | null> {
         canvas.height = Math.min(img.height, 64);
         const ctx = canvas.getContext("2d");
         if (!ctx) {
-            if (devMode) console.log("[blurhash] generateBlurhash: no ctx", { canvas });
             return null;
         }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         // component数は4x4固定
         const hash = encode(imageData.data, imageData.width, imageData.height, 4, 4);
-        if (devMode) console.log("[blurhash] generateBlurhash: success", { hash, file, width: canvas.width, height: canvas.height });
         return hash;
     } catch (e) {
-        if (devMode) console.log("[blurhash] generateBlurhash: error", e, file);
         return null;
     }
 }
@@ -158,7 +150,6 @@ export async function createPlaceholderUrl(file: File): Promise<string | null> {
 export async function generateBlurhashForFile(file: File): Promise<string | null> {
     const devMode = import.meta.env?.MODE === "development";
     const hash = await generateBlurhash(file);
-    if (devMode) console.log("[blurhash] generateBlurhashForFile: result", { hash, file });
     return hash;
 }
 

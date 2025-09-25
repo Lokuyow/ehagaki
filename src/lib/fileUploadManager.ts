@@ -22,7 +22,6 @@ import {
   UPLOAD_POLLING_CONFIG
 } from "./constants";
 import { getToken } from "nostr-tools/nip98";
-import { debugLogUploadResponse } from "./debug";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { showCompressedImagePreview } from "./debug";
 
@@ -291,57 +290,11 @@ export class FileUploadManager {
       formData.append('content_type', metadata?.content_type ? String(metadata.content_type) : uploadFile.type || '');
       formData.append('no_transform', metadata?.no_transform ? String(metadata.no_transform) : 'true');
 
-      if (devMode) {
-        try {
-          const entries: any[] = [];
-          for (const entry of (formData as any).entries()) {
-            const [k, v] = entry;
-            if (v instanceof File) {
-              entries.push({ key: k, filename: v.name, size: v.size, type: v.type });
-            } else {
-              entries.push({ key: k, value: String(v) });
-            }
-          }
-          // 修正: previewモード判定を追加
-          const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
-          const modeLabel = isPreview ? "[preview]" : "[dev]";
-          console.log(`${modeLabel} FormData to be sent to server:`, entries);
-          console.log(`${modeLabel} Upload endpoint:`, finalUrl);
-        } catch (e) {
-          console.log("[dev] Failed to enumerate FormData for debug", e);
-        }
-      }
-
-      // fetchリクエストの詳細ログを追加
-      if (devMode) {
-        const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
-        const modeLabel = isPreview ? "[preview]" : "[dev]";
-        console.log(`${modeLabel} Making fetch request:`, {
-          url: finalUrl,
-          method: 'POST',
-          hasAuth: !!authHeader,
-          formDataSize: uploadFile.size
-        });
-      }
-
       const response = await this.dependencies.fetch(finalUrl, {
         method: 'POST',
         headers: { 'Authorization': authHeader },
         body: formData
       });
-
-      if (devMode) {
-        const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
-        const modeLabel = isPreview ? "[preview]" : "[dev]";
-        console.log(`${modeLabel} Fetch response received:`, {
-          status: response.status,
-          statusText: response.statusText,
-          url: response.url,
-          ok: response.ok
-        });
-      }
-
-      await debugLogUploadResponse(response);
 
       // レスポンスの処理
       if (!response.ok) {

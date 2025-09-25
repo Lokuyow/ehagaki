@@ -106,14 +106,6 @@ export function insertPlaceholdersIntoEditor(
                     ...map,
                     [placeholderId]: dimensions
                 }));
-
-                if (devMode) {
-                    console.log("[uploadHelper] calculated dimensions for placeholder", {
-                        placeholderId,
-                        dimensions,
-                        file: file.name
-                    });
-                }
             }
 
             try {
@@ -150,17 +142,6 @@ export function insertPlaceholdersIntoEditor(
                     const tr = currentEditor.state.tr.insert(insertPos, currentEditor.state.schema.nodes.image.create(imageAttrs));
                     currentEditor.view.dispatch(tr);
                 }
-
-                if (devMode) {
-                    console.log("[uploadHelper] inserted image node", {
-                        placeholderId,
-                        file: file.name,
-                        index,
-                        totalFiles: fileArray.length,
-                        method: index === 0 ? 'first' : 'subsequent',
-                        docSize: currentEditor.state.doc.content.size
-                    });
-                }
             } catch (error) {
                 if (devMode) {
                     console.error("[uploadHelper] failed to insert image node", {
@@ -175,15 +156,6 @@ export function insertPlaceholdersIntoEditor(
         }
 
         placeholderMap.push({ file, placeholderId, ox, dimensions });
-
-        if (devMode) {
-            console.log("[uploadHelper] insertPlaceholderImage", {
-                placeholderId,
-                file: file.name,
-                ox,
-                dimensions
-            });
-        }
     });
 
     return placeholderMap;
@@ -215,13 +187,6 @@ export async function generateBlurhashesForPlaceholders(
                             currentEditor.view.dispatch(tr);
                             return false;
                         }
-                    });
-                }
-                if (devMode) {
-                    console.log("[uploadHelper] updated placeholder with blurhash", {
-                        placeholderId: item.placeholderId,
-                        blurhash,
-                        file: item.file.name
                     });
                 }
             }
@@ -345,12 +310,6 @@ export async function replacePlaceholdersWithResults(
                         try {
                             const x = await dependencies.calculateImageHash(result.url);
                             if (x) imageXMap[result.url] = x;
-                            if (devMode) {
-                                console.log("[uploadHelper] calculated x hash for uploaded image (fallback)", {
-                                    url: result.url,
-                                    x
-                                });
-                            }
                         } catch (error) {
                             if (devMode) {
                                 console.warn("[uploadHelper] failed to calculate x hash (fallback)", {
@@ -360,14 +319,6 @@ export async function replacePlaceholdersWithResults(
                             }
                         }
                     }
-                }
-
-                if (devMode) {
-                    console.log("[uploadHelper] replaced placeholder with result", {
-                        placeholderId: matched.placeholderId,
-                        url: result.url,
-                        fileName: matched.file.name
-                    });
                 }
             }
         } else if (!result.success) {
@@ -390,14 +341,6 @@ export async function replacePlaceholdersWithResults(
                         return false;
                     }
                 });
-
-                if (devMode) {
-                    console.log("[uploadHelper] removed failed placeholder", {
-                        placeholderId: failed.placeholderId,
-                        fileName: failed.file.name,
-                        error: result.error
-                    });
-                }
             }
         }
     }
@@ -420,13 +363,6 @@ export async function replacePlaceholdersWithResults(
                     return false;
                 }
             });
-
-            if (devMode) {
-                console.log("[uploadHelper] removed unmatched placeholder", {
-                    placeholderId: remaining.placeholderId,
-                    fileName: remaining.file.name
-                });
-            }
         }
     }
 
@@ -456,14 +392,6 @@ export async function uploadHelper({
 
     const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
     const modeLabel = isPreview ? "[preview]" : "[dev]";
-
-    if (devMode) {
-        console.log(`${modeLabel} [uploadHelper] Starting upload process:`, {
-            fileCount: fileArray.length,
-            endpoint,
-            hasServiceWorker: !!navigator.serviceWorker?.controller
-        });
-    }
 
     // ファイル処理
     const fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
@@ -528,14 +456,6 @@ export async function uploadHelper({
                 metadataList,
             );
         }
-
-        if (devMode) {
-            console.log(`${modeLabel} [uploadHelper] Upload results:`, {
-                totalResults: results?.length || 0,
-                successful: results?.filter(r => r.success).length || 0,
-                failed: results?.filter(r => !r.success).length || 0
-            });
-        }
     } catch (error) {
         if (devMode) {
             console.error(`${modeLabel} [uploadHelper] Upload error:`, error);
@@ -582,9 +502,6 @@ export async function uploadHelper({
                     if (!imageXMap[url]) {
                         const x = await dependencies.calculateImageHash(url);
                         if (x) imageXMap[url] = x;
-                        if (devMode) {
-                            console.log(`${modeLabel} [dev] x計算Promise.all: url, x`, { url, x });
-                        }
                     }
                 }),
             );
@@ -595,13 +512,9 @@ export async function uploadHelper({
                     const ox = imageOxMap[url];
                     const x = imageXMap[url];
                     const tag = await dependencies.createImetaTag({ url, m, blurhash, ox, x });
-                    if (devMode) {
-                        console.log(`${modeLabel} [dev] imeta生成後: url, tag, usedBlurhashSource`, { url, tag, usedBlurhash: blurhash ? 'server' : (rawImageBlurhashMap[url] ? 'client' : 'none') });
-                    }
                     return tag;
                 }),
             );
-            console.log(`${modeLabel} [dev] 画像アップロード直後imetaタグまとめ`, imetaTags);
         } catch (e) {
             console.warn(`${modeLabel} [dev] imetaタグ生成失敗`, e);
         }
