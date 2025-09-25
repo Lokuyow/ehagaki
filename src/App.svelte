@@ -95,7 +95,7 @@
   $effect(() => {
     // authStateの値が正常に設定されているかチェック
     const currentAuth = authState.value;
-    if (currentAuth && typeof currentAuth === 'object') {
+    if (currentAuth && typeof currentAuth === "object") {
       debugAuthState("Auth state changed", currentAuth);
     }
   });
@@ -108,6 +108,7 @@
   let footerInfoDisplay: any;
   let postComponentRef: any = $state();
   let footerComponentRef: any = $state();
+  let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
@@ -131,7 +132,7 @@
 
   async function handleNostrLoginAuth(auth: any) {
     debugLog("NostrLogin認証コールバック受信:", auth);
-    
+
     const result = await authService.authenticateWithNostrLogin(auth);
     if (!result.success) {
       console.error("nostr-login認証失敗:", result.error);
@@ -143,7 +144,7 @@
     if (result.pubkeyHex) {
       isLoadingNostrLogin = true;
       isLoadingProfileStore.set(true);
-      
+
       // ダイアログを閉じる
       closeLoginDialog();
 
@@ -152,17 +153,18 @@
         await relayManager.fetchUserRelays(result.pubkeyHex);
         await loadProfileForPubkey(result.pubkeyHex);
         debugLog("NostrLogin認証処理完了:", { pubkey: result.pubkeyHex });
-        
+
         // 認証状態の反映を確認
         setTimeout(() => {
           const currentAuth = authState.value;
           debugLog("NostrLogin認証後の認証状態:", {
             type: currentAuth.type,
             isAuthenticated: currentAuth.isAuthenticated,
-            pubkey: currentAuth.pubkey ? currentAuth.pubkey.substring(0, 8) + '...' : 'empty'
+            pubkey: currentAuth.pubkey
+              ? currentAuth.pubkey.substring(0, 8) + "..."
+              : "empty",
           });
         }, 100);
-        
       } catch (error) {
         console.error("nostr-login認証処理中にエラー:", error);
         isLoadingProfileStore.set(false);
@@ -223,6 +225,7 @@
   }
 
   function logout() {
+    isLoggingOut = true; // 追加: ログアウト開始時にローディング状態をtrueに
     authService.logout();
     profileDataStore.set({ name: "", picture: "" });
     profileLoadedStore.set(false);
@@ -236,8 +239,7 @@
       });
     }
     hideImageSizeInfo();
-    // ダイアログを閉じる
-    closeLogoutDialog();
+    // 削除: closeLogoutDialog(); // ダイアログを開いたままにする
 
     // ログアウト時にも入力をクリアしておく
     secretKey = "";
@@ -319,7 +321,7 @@
           debugLog("認証初期化開始");
           const authResult = await authService.initializeAuth();
           debugLog("認証初期化結果:", authResult);
-          
+
           if (authResult.hasAuth && authResult.pubkeyHex) {
             await initializeNostr(authResult.pubkeyHex);
             await loadProfileForPubkey(authResult.pubkeyHex);
@@ -607,6 +609,7 @@
         show={showLogoutDialogStore.value}
         onClose={closeLogoutDialog}
         onLogout={logout}
+        {isLoggingOut}
       />
     {/if}
     <SettingsDialog

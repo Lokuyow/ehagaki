@@ -2,14 +2,16 @@
     import { _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte"; // 追加: LoadingPlaceholderのインポート
 
     interface Props {
         show: boolean;
         onClose: () => void;
         onLogout: () => void;
+        isLoggingOut?: boolean; // 追加: ログアウト中の状態
     }
 
-    let { show, onClose, onLogout }: Props = $props();
+    let { show, onClose, onLogout, isLoggingOut = false }: Props = $props(); // 追加: isLoggingOutのデフォルト値
 
     function handleLogout() {
         onLogout?.();
@@ -17,7 +19,7 @@
 </script>
 
 <Dialog
-    show={show}
+    {show}
     useHistory={true}
     {onClose}
     ariaLabel={$_("logoutDialog.logout_confirmation")}
@@ -31,13 +33,25 @@
                 onClick={handleLogout}
                 className="logout-btn"
                 variant="danger"
-                shape="square">{$_("logoutDialog.logout")}</Button
+                shape="square"
+                disabled={isLoggingOut}
             >
+                {#if isLoggingOut}
+                    <LoadingPlaceholder
+                        text=""
+                        showImage={false}
+                        showSpinner={true}
+                    />
+                {:else}
+                    {$_("logoutDialog.logout")}
+                {/if}
+            </Button>
             <Button
                 onClick={close}
                 className="cancel-btn"
                 variant="secondary"
-                shape="square">{$_("logoutDialog.cancel")}</Button
+                shape="square"
+                disabled={isLoggingOut}>{$_("logoutDialog.cancel")}</Button
             >
         </div>
     {/snippet}
