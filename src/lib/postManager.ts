@@ -124,15 +124,23 @@ export class PostEventSender {
     return new Promise((resolve) => {
       let resolved = false;
       let hasSuccess = false;
-      const sendObservable = this.rxNostr.send(event, signer ? { signer } : undefined);
+      let subscription: any = null;
 
-      const subscription = sendObservable.subscribe({
+      const safeUnsubscribe = () => {
+        try {
+          subscription?.unsubscribe();
+        } catch (e) {
+          // ignore
+        }
+      };
+
+      const observer = {
         next: (packet: any) => {
           this.console.log(`リレー ${packet.from} への送信結果:`, packet.ok ? "成功" : "失敗");
           if (packet.ok && !resolved) {
             hasSuccess = true;
             resolved = true;
-            subscription.unsubscribe();
+            safeUnsubscribe();
             resolve({ success: true });
           }
         },
@@ -140,7 +148,7 @@ export class PostEventSender {
           this.console.error("送信エラー:", error);
           if (!resolved) {
             resolved = true;
-            subscription.unsubscribe();
+            safeUnsubscribe();
             resolve({ success: false, error: "post_error" });
           }
         },
@@ -148,17 +156,19 @@ export class PostEventSender {
           // すべて失敗した場合のみここでresolve
           if (!resolved && !hasSuccess) {
             resolved = true;
-            subscription.unsubscribe();
+            safeUnsubscribe();
             resolve({ success: false, error: "post_error" });
           }
         }
-      });
+      };
+
+      subscription = this.rxNostr.send(event, signer ? { signer } : undefined).subscribe(observer);
 
       // 念のためタイムアウトも設定
       setTimeout(() => {
         if (!resolved) {
           resolved = true;
-          subscription.unsubscribe();
+          safeUnsubscribe();
           resolve(hasSuccess ? { success: true } : { success: false, error: "post_error" });
         }
       }, 3000);
