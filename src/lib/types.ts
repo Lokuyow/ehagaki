@@ -385,3 +385,29 @@ export interface PostManagerDeps {
   getClientTagFn?: () => string[] | null;
   seckeySignerFn?: (key: string) => any;
 }
+
+// --- keyManager.ts から移動した型定義 ---
+export interface NostrLoginAuth {
+    type: 'login' | 'signup' | 'logout';
+    pubkey?: string;
+    npub?: string;
+    otpData?: unknown;
+}
+
+export interface KeyManagerDeps {
+    localStorage?: Storage;
+    console?: Console;
+    secretKeyStore?: {
+        value: string | null;
+        set: (value: string | null) => void;
+    };
+    window?: Window;
+    setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string) => void;
+    clearAuthStateFn?: () => void;
+}
+
+export interface KeyManagerError {
+    type: 'storage' | 'network' | 'validation';
+    message: string;
+    originalError?: unknown;
+}

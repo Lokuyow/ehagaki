@@ -17,11 +17,9 @@ import {
     KeyStorage,
     ExternalAuthChecker,
     PublicKeyState,
-    KeyValidator,
-    type KeyManagerDeps,
-    type KeyManagerError,
-    type NostrLoginAuth
+    KeyValidator
 } from '../lib/keyManager';
+import type { KeyManagerDeps, NostrLoginAuth } from '../lib/types';
 
 // StorageのモックImplementation
 class MockStorage implements Storage {

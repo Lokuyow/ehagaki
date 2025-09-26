@@ -1,5 +1,5 @@
 import { writable, derived, type Readable, get } from "svelte/store";
-import type { PublicKeyData } from "./types";
+import type { PublicKeyData, NostrLoginAuth, KeyManagerDeps, KeyManagerError } from "./types";
 import { nip19 } from "nostr-tools";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/appUtils';
 
@@ -9,32 +9,6 @@ declare global {
       getPublicKey(): Promise<string>;
     };
   }
-}
-
-export interface NostrLoginAuth {
-  type: 'login' | 'signup' | 'logout';
-  pubkey?: string;
-  npub?: string;
-  otpData?: unknown;
-}
-
-// --- 依存性注入用のインターフェース ---
-export interface KeyManagerDeps {
-  localStorage?: Storage;
-  console?: Console;
-  secretKeyStore?: {
-    value: string | null;
-    set: (value: string | null) => void;
-  };
-  window?: Window;
-  setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string) => void;
-  clearAuthStateFn?: () => void;
-}
-
-export interface KeyManagerError {
-  type: 'storage' | 'network' | 'validation';
-  message: string;
-  originalError?: unknown;
 }
 
 // --- 純粋関数（テストしやすい） ---
