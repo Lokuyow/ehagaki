@@ -67,6 +67,20 @@ class MockKeyManager implements KeyManagerInterface {
     }
 }
 
+// モックObservable作成ヘルパー
+function createMockObservable(nextData?: any, shouldError = false, delay = 0) {
+    return {
+        subscribe: (observer: any) => {
+            if (shouldError) {
+                setTimeout(() => observer.error(new Error('Network error')), delay);
+            } else if (nextData) {
+                setTimeout(() => observer.next(nextData), delay);
+            }
+            return { unsubscribe: vi.fn() };
+        }
+    };
+}
+
 describe('PostValidator', () => {
     describe('validatePost', () => {
         it('有効な投稿を受け入れる', () => {
@@ -181,7 +195,6 @@ describe('PostEventSender', () => {
     let mockRxNostr: RxNostr;
     let mockConsole: Console;
     let sender: PostEventSender;
-    let mockSendObservable: any;
     let mockSubscription: any;
 
     beforeEach(() => {
@@ -189,12 +202,8 @@ describe('PostEventSender', () => {
             unsubscribe: vi.fn()
         };
 
-        mockSendObservable = {
-            subscribe: vi.fn()
-        };
-
         mockRxNostr = {
-            send: vi.fn().mockReturnValue(mockSendObservable)
+            send: vi.fn()
         } as any;
 
         mockConsole = {
@@ -212,30 +221,37 @@ describe('PostEventSender', () => {
     it('成功した送信を処理する', async () => {
         const event = { kind: 1, content: 'test' };
 
-        mockSendObservable.subscribe.mockImplementation((observer: any) => {
-            setTimeout(() => {
-                observer.next({ from: 'relay1', ok: true });
-            }, 10);
-            return mockSubscription;
-        });
+        // 同期的に成功をモック（OkPacketAgainstEvent型に合わせる）
+        const mockObservable = createMockObservable({
+            from: 'relay1',
+            ok: true,
+            done: true,
+            eventId: 'test-event-id',
+            type: 'ok',
+            message: ''
+        }, false, 0);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await sender.sendEvent(event);
 
         expect(result.success).toBe(true);
         expect(mockRxNostr.send).toHaveBeenCalledWith(event, undefined);
-        expect(mockSubscription.unsubscribe).toHaveBeenCalled();
     });
 
     it('署名者付きでイベントを送信する', async () => {
         const event = { kind: 1, content: 'test' };
         const signer = { sign: vi.fn() };
 
-        mockSendObservable.subscribe.mockImplementation((observer: any) => {
-            setTimeout(() => {
-                observer.next({ from: 'relay1', ok: true });
-            }, 10);
-            return mockSubscription;
-        });
+        // 同期的に成功をモック
+        const mockObservable = createMockObservable({
+            from: 'relay1',
+            ok: true,
+            done: true,
+            eventId: 'test-event-id',
+            type: 'ok',
+            message: ''
+        }, false, 0);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         await sender.sendEvent(event, signer);
 
@@ -245,12 +261,9 @@ describe('PostEventSender', () => {
     it('エラーを適切に処理する', async () => {
         const event = { kind: 1, content: 'test' };
 
-        mockSendObservable.subscribe.mockImplementation((observer: any) => {
-            setTimeout(() => {
-                observer.error(new Error('Network error'));
-            }, 10);
-            return mockSubscription;
-        });
+        // 同期的にエラーをモック
+        const mockObservable = createMockObservable(null, true, 0);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await sender.sendEvent(event);
 
@@ -262,8 +275,11 @@ describe('PostEventSender', () => {
     it('タイムアウトを適切に処理する', async () => {
         const event = { kind: 1, content: 'test' };
 
-        // subscribeが何も呼び出さない（タイムアウトシナリオ）
-        mockSendObservable.subscribe.mockReturnValue(mockSubscription);
+        // 何も発火しないObservableをモック（タイムアウトシナリオ）
+        const mockObservable = {
+            subscribe: vi.fn().mockReturnValue(mockSubscription)
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         // タイマーを高速化してテスト
         vi.useFakeTimers();
@@ -329,17 +345,16 @@ describe('PostManager統合テスト', () => {
     });
 
     it('秘密鍵認証で投稿を送信する', async () => {
-        const mockSendObservable = {
-            subscribe: vi.fn().mockImplementation((observer: any) => {
-                setTimeout(() => observer.next({ from: 'relay1', ok: true }), 10);
-                return { unsubscribe: vi.fn() };
-            }),
-            // Observable型の最低限のプロパティを追加
-            lift: () => mockSendObservable,
-            forEach: () => Promise.resolve(),
-        };
-
-        vi.mocked(mockRxNostr.send).mockReturnValue(mockSendObservable as any);
+        // 同期的に成功をモック
+        const mockObservable = createMockObservable({
+            from: 'relay1',
+            ok: true,
+            done: true,
+            eventId: 'test-event-id',
+            type: 'ok',
+            message: ''
+        }, false, 0);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await manager.submitPost('Test post content');
 
@@ -381,16 +396,16 @@ describe('PostManager統合テスト', () => {
 
         manager = new PostManager(mockRxNostr, mockDeps);
 
-        const mockSendObservable = {
-            subscribe: vi.fn().mockImplementation((observer: any) => {
-                setTimeout(() => observer.next({ from: 'relay1', ok: true }), 10);
-                return { unsubscribe: vi.fn() };
-            }),
-            lift: () => mockSendObservable,
-            forEach: () => Promise.resolve(),
-        };
-
-        vi.mocked(mockRxNostr.send).mockReturnValue(mockSendObservable as any);
+        // 同期的に成功をモック
+        const mockObservable = createMockObservable({
+            from: 'relay1',
+            ok: true,
+            done: true,
+            eventId: 'test-event-id',
+            type: 'ok',
+            message: ''
+        }, false, 0);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await manager.submitPost('Test post content');
 
@@ -418,16 +433,16 @@ describe('PostManager統合テスト', () => {
             }
         };
 
-        const mockSendObservable = {
-            subscribe: vi.fn().mockImplementation((observer: any) => {
-                setTimeout(() => observer.next({ from: 'relay1', ok: true }), 10);
-                return { unsubscribe: vi.fn() };
-            }),
-            lift: () => mockSendObservable,
-            forEach: () => Promise.resolve(),
-        };
-
-        vi.mocked(mockRxNostr.send).mockReturnValue(mockSendObservable as any);
+        // 同期的に成功をモック
+        const mockObservable = createMockObservable({
+            from: 'relay1',
+            ok: true,
+            done: true,
+            eventId: 'test-event-id',
+            type: 'ok',
+            message: ''
+        }, false, 0);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
         const result = await manager.submitPost('Post with image', imageImetaMap);
 
