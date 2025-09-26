@@ -37,7 +37,6 @@
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
-  import ImagePlaceholder from "./ImagePlaceholder.svelte";
   import {
     fileDropAction,
     pasteAction,
