@@ -342,6 +342,7 @@ export class AuthService {
     nostrLoginOptions: NostrLoginOptions = {
         theme: 'default',
         noBanner: true,
+        methods: 'connect, extension, local',
     };
 
     constructor(dependencies: AuthServiceDependencies = {}) {

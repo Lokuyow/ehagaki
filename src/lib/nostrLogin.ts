@@ -7,6 +7,7 @@ export interface NostrLoginOptions {
     perms?: string;
     noBanner?: boolean;
     startScreen?: string;
+    methods?: string;
 }
 
 export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
@@ -32,6 +33,7 @@ export class NostrLoginUtils {
         return {
             theme: 'default',
             noBanner: true,
+            methods: 'connect, extension, local',
             perms: 'get_public_key,sign_event:1,sign_event:27235',
             startScreen: 'welcome',
             ...options
