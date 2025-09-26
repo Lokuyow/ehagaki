@@ -528,41 +528,11 @@
     display: block !important;
   }
 
-  /* より具体的なフォールバック（段落要素でのプレースホルダー） */
-  :global(.tiptap-editor p.editor-paragraph.is-editor-empty::before) {
-    content: attr(data-placeholder) !important;
-    position: absolute;
-    top: 0;
-    left: 0;
-    color: var(--text-placeholder, #999) !important;
-    pointer-events: none;
-    font-size: 1.25rem;
-    line-height: 1.4;
-    opacity: 0.6;
-    z-index: 1;
-    display: block !important;
-  }
-
-  /* エディター全体が空の場合のプレースホルダー（最終フォールバック） */
-  :global(.tiptap-editor.is-editor-empty::before) {
-    content: attr(data-placeholder) !important;
-    position: absolute;
-    top: 10px;
-    left: 10px;
-    color: var(--text-placeholder, #999) !important;
-    pointer-events: none;
-    font-size: 1.25rem;
-    line-height: 1.4;
-    opacity: 0.6;
-    z-index: 1;
-    display: block !important;
-  }
-
   /* フォーカス時のプレースホルダー表示を継続（薄く表示） */
   :global(.tiptap-editor:focus p.is-editor-empty::before),
   :global(.tiptap-editor:focus p.editor-paragraph.is-editor-empty::before),
   :global(.tiptap-editor.is-editor-empty:focus::before) {
-    opacity: 0.4 !important;
+    opacity: 0.6 !important;
   }
 
   /* エディタ内の要素スタイル */
@@ -573,12 +543,6 @@
     white-space: break-spaces;
     position: relative;
     z-index: 2;
-  }
-
-  /* プレースホルダーが表示される時の最初の段落の最小高さ */
-  :global(.tiptap-editor p.is-editor-empty) {
-    min-height: 1.75rem;
-    position: relative;
   }
 
   :global(.tiptap-editor .hashtag) {
