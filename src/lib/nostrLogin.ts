@@ -261,7 +261,7 @@ export class NostrLoginManager {
         this.windowObj = dependencies.window || (typeof window !== 'undefined' ? window : {} as any);
         this.documentObj = dependencies.document || (typeof window !== 'undefined' ? window.document : {} as Document);
         this.consoleObj = dependencies.console || (typeof window !== 'undefined' ? window.console : {} as Console);
-        this.setTimeoutFn = dependencies.setTimeout || (typeof window !== 'undefined' ? window.setTimeout.bind(window) : (() => { }) as any);
+        this.setTimeoutFn = dependencies.setTimeout || ((typeof window !== 'undefined' && window.setTimeout) ? window.setTimeout.bind(window) : (() => { }) as any);
         const importNostrLogin = dependencies.importNostrLogin || (() => import('nostr-login'));
 
         // 内部コンポーネントの初期化
