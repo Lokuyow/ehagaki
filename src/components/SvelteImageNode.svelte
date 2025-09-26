@@ -462,7 +462,7 @@
         cursor: grab;
         display: inline;
         position: relative;
-        touch-action: none;
+        touch-action: pan-y; /* 垂直スクロールを許可し、水平ドラッグはJavaScriptで制御 */
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
