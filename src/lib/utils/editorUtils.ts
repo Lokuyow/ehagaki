@@ -4,6 +4,7 @@ import {
     blurEditorAndBody
 } from "./appDomUtils";
 import { domUtils } from "./appDomUtils";
+import { renderBlurhashToCanvas } from "../tags/imetaTag";
 
 // === URL検証・正規関数） ===
 export function normalizeUrl(url: string): string {
@@ -602,8 +603,8 @@ export function renderBlurhash(
     blurhash: string,
     canvasRef: HTMLCanvasElement,
     dimensions: { displayWidth: number; displayHeight: number },
-    isPlaceholder: boolean,
-    devMode: boolean = false
+    _isPlaceholder: boolean,
+    _devMode: boolean = false
 ) {
     if (!validateBlurhashParams(blurhash, canvasRef, dimensions)) {
         return;
@@ -611,8 +612,5 @@ export function renderBlurhash(
 
     setupCanvas(canvasRef, dimensions);
 
-    // @ts-ignore
-    import("../tags/imetaTag").then(({ renderBlurhashToCanvas }) => {
-        renderBlurhashToCanvas(blurhash, canvasRef, dimensions.displayWidth, dimensions.displayHeight);
-    });
+    renderBlurhashToCanvas(blurhash, canvasRef, dimensions.displayWidth, dimensions.displayHeight);
 }

@@ -23,6 +23,7 @@ import {
   NSEC_FULL_PATTERN,
   SHARE_HANDLER_CONFIG
 } from '../constants';
+import { calculateImageDisplaySize, type ImageDimensions } from '../utils/imageUtils';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)
@@ -241,8 +242,8 @@ export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = wind
 /**
  * 画像サイズ取得関数
  */
-export async function getImageDimensions(file: File): Promise<import('../utils/imageUtils').ImageDimensions | null> {
-  return new Promise(async (resolve) => {
+export async function getImageDimensions(file: File): Promise<ImageDimensions | null> {
+  return new Promise((resolve) => {
     if (!file.type.startsWith('image/')) {
       resolve(null);
       return;
@@ -251,9 +252,8 @@ export async function getImageDimensions(file: File): Promise<import('../utils/i
     const img = new Image();
     const url = URL.createObjectURL(file);
 
-    img.onload = async () => {
+    img.onload = () => {
       try {
-        const { calculateImageDisplaySize } = await import('../utils/imageUtils');
         const dimensions = calculateImageDisplaySize(img.naturalWidth, img.naturalHeight);
         URL.revokeObjectURL(url);
         resolve(dimensions);
