@@ -345,3 +345,43 @@ export interface ZoomParams {
     offsetX: number;
     offsetY: number;
 }
+
+// --- postManager.ts から移動した型定義 ---
+export interface PostResult {
+  success: boolean;
+  error?: string;
+}
+
+export interface AuthState {
+  isAuthenticated: boolean;
+  type?: 'nsec' | 'nostr-login';
+  pubkey?: string;
+}
+
+export interface HashtagStore {
+  hashtags: string[];
+  tags: string[][];
+}
+
+export interface KeyManagerInterface {
+  getFromStore(): string | null;
+  loadFromStorage(): string | null;
+  isWindowNostrAvailable(): boolean;
+}
+
+export interface PostManagerDeps {
+  authStateStore?: {
+    value: AuthState;
+  };
+  hashtagStore?: HashtagStore;
+  keyManager?: KeyManagerInterface;
+  window?: {
+    nostr?: {
+      signEvent: (event: any) => Promise<any>;
+    };
+  };
+  console?: Console;
+  createImetaTagFn?: (meta: any) => Promise<string[]>;
+  getClientTagFn?: () => string[] | null;
+  seckeySignerFn?: (key: string) => any;
+}

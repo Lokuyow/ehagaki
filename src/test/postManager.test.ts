@@ -30,12 +30,14 @@ import {
     PostManager,
     PostValidator,
     PostEventBuilder,
-    PostEventSender,
-    type PostManagerDeps,
-    type AuthState,
-    type HashtagStore,
-    type KeyManagerInterface
+    PostEventSender
 } from '../lib/postManager';
+import type {
+    PostManagerDeps,
+    AuthState,
+    HashtagStore,
+    KeyManagerInterface
+} from '../lib/types';
 import type { RxNostr } from 'rx-nostr';
 
 // RxNostrのモック

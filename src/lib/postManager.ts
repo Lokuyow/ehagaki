@@ -5,58 +5,7 @@ import { authState } from "../stores/appStore.svelte";
 import { hashtagDataStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
-
-// 投稿結果の型定義
-export interface PostResult {
-  success: boolean;
-  error?: string;
-}
-
-// 投稿状態の型定義（UIコンポーネント用）
-export interface PostStatus {
-  sending: boolean;
-  success: boolean;
-  error: boolean;
-  message: string;
-}
-
-// 認証状態の型定義
-export interface AuthState {
-  isAuthenticated: boolean;
-  type?: 'nsec' | 'nostr-login';
-  pubkey?: string;
-}
-
-// ハッシュタグストアの型定義
-export interface HashtagStore {
-  hashtags: string[];
-  tags: string[][];
-}
-
-// キーマネージャーの型定義
-export interface KeyManagerInterface {
-  getFromStore(): string | null;
-  loadFromStorage(): string | null;
-  isWindowNostrAvailable(): boolean;
-}
-
-// 依存性注入用の型定義
-export interface PostManagerDeps {
-  authStateStore?: {
-    value: AuthState;
-  };
-  hashtagStore?: HashtagStore;
-  keyManager?: KeyManagerInterface;
-  window?: {
-    nostr?: {
-      signEvent: (event: any) => Promise<any>;
-    };
-  };
-  console?: Console;
-  createImetaTagFn?: (meta: any) => Promise<string[]>;
-  getClientTagFn?: () => string[] | null;
-  seckeySignerFn?: (key: string) => any; // ★追加
-}
+import type { PostResult, PostManagerDeps } from "./types";
 
 // --- 純粋関数（依存性なし） ---
 export class PostValidator {
