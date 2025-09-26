@@ -68,7 +68,6 @@
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
-  const placeholderDimensions = getPlaceholderDefaultSize();
 
   // --- PostManager初期化 ---
   $effect(() => {
