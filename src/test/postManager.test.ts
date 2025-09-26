@@ -25,7 +25,7 @@ vi.mock("../stores/appStore.svelte.ts", () => {
     };
 });
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import {
     PostManager,
     PostValidator,
@@ -484,4 +484,14 @@ describe('PostManager統合テスト', () => {
     it('内部コンポーネントへのアクセスが可能', () => {
         expect(manager.getEventSender()).toBeInstanceOf(PostEventSender);
     });
+});
+
+// テスト環境フラグをセット
+let originalVitestEnv: any;
+beforeAll(() => {
+    originalVitestEnv = process.env.VITEST;
+    process.env.VITEST = "true";
+});
+afterAll(() => {
+    process.env.VITEST = originalVitestEnv;
 });
