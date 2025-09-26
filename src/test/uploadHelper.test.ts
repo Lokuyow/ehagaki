@@ -9,6 +9,7 @@ import type {
     CompressionService,
     MimeTypeSupportInterface
 } from "../lib/types";
+import { NodeSelection } from "prosemirror-state";
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
@@ -251,6 +252,77 @@ describe("uploadHelper", () => {
 
             expect(placeholderMap).toHaveLength(0);
             expect(showUploadError).toHaveBeenCalledWith("only_images_allowed");
+        });
+
+        it("inserts after selected image node when image is selected", () => {
+            const file1 = new File(["content1"], "test1.png", { type: "image/png" });
+            const file2 = new File(["content2"], "test2.png", { type: "image/png" });
+            const processingResults = [
+                { file: file1, index: 0, ox: "hash1", dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 } },
+                { file: file2, index: 1, ox: "hash2", dimensions: { width: 150, height: 300, displayWidth: 150, displayHeight: 300 } }
+            ];
+            const showUploadError = vi.fn();
+
+            // NodeSelectionで画像ノードが選択されている状態をモック
+            const mockNodeSelection = {
+                constructor: { name: 'NodeSelection' },
+                node: { type: { name: 'image' }, attrs: { src: 'existing-image.png' } },
+                to: 2, // 選択されたノードの直後の位置
+                from: 1
+            };
+
+            const mockCurrentEditor: any = {
+                state: {
+                    doc: {
+                        content: { size: 4 }, // 画像1つ分のサイズ
+                        descendants: vi.fn((_callback) => {
+                            return;
+                        }),
+                    },
+                    tr: {
+                        insert: vi.fn((pos, node) => ({ type: "insert", pos, node })),
+                        replaceWith: vi.fn((start, end, node) => ({ type: "replaceWith", start, end, node }))
+                    },
+                    selection: mockNodeSelection,
+                    schema: {
+                        nodes: {
+                            image: {
+                                create: vi.fn((attrs) => ({ type: "image", attrs, nodeSize: 1 }))
+                            }
+                        }
+                    }
+                },
+                view: {
+                    dispatch: vi.fn()
+                }
+            };
+
+            // NodeSelectionのinstanceofをモック
+            Object.setPrototypeOf(mockNodeSelection, NodeSelection.prototype);
+
+            const placeholderMap = insertPlaceholdersIntoEditor(
+                [file1, file2],
+                processingResults,
+                mockCurrentEditor,
+                showUploadError,
+                mockDependencies,
+                true // devMode
+            );
+
+            expect(placeholderMap).toHaveLength(2);
+            expect(showUploadError).not.toHaveBeenCalled();
+
+            // 画像ノードが選択されている場合、選択ノードの直後に挿入される（上書きしない）
+            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(2);
+            expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(2);
+            
+            // 1番目の画像は位置2（選択ノードの直後）に挿入
+            expect(mockCurrentEditor.state.tr.insert).toHaveBeenNthCalledWith(1, 2, expect.any(Object));
+            // 2番目の画像は位置3（1番目の画像の直後）に挿入
+            expect(mockCurrentEditor.state.tr.insert).toHaveBeenNthCalledWith(2, 3, expect.any(Object));
+            
+            // replaceWith は呼ばれない（上書きしない）
+            expect(mockCurrentEditor.state.tr.replaceWith).not.toHaveBeenCalled();
         });
     });
 
