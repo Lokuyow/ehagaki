@@ -42,12 +42,29 @@
   function handleImageError(event: Event) {
     console.log("プロフィール画像の読み込みに失敗しました:", event);
     imageLoadError = true;
+
+    // Service Workerが利用可能な場合、キャッシュの問題かどうかをチェック
+    if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+      console.log("Service Workerによるキャッシュ処理の可能性があります");
+    }
   }
 
   // プロフィールデータが変更されたら画像エラー状態をリセット
   $effect(() => {
     if (profileData?.picture) {
       imageLoadError = false;
+
+      // Service Workerでのキャッシュ処理をログ出力
+      if (
+        "serviceWorker" in navigator &&
+        navigator.serviceWorker.controller &&
+        profileData.picture.includes("profile=true")
+      ) {
+        console.log(
+          "Service Workerでプロフィール画像をキャッシュ処理予定:",
+          profileData.picture,
+        );
+      }
     }
   });
 </script>

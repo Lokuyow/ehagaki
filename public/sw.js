@@ -367,26 +367,31 @@ class CacheManager {
         if (ServiceWorkerDependencies.navigator.onLine === false) return null;
 
         try {
-            const corsRequest = Utilities.createCorsRequest(request.url, {
+            const baseUrl = Utilities.getBaseUrl(request.url);
+            const corsRequest = Utilities.createCorsRequest(baseUrl, {
                 headers: { 'Cache-Control': 'no-cache' },
                 cache: 'no-cache'
             });
 
+            this.console.log('プロフィール画像をネットワークから取得中:', baseUrl);
             const response = await this.fetch(corsRequest);
 
             if (response.ok && response.status === 200) {
                 const cache = await this.caches.open(PROFILE_CACHE_NAME);
-                const baseUrl = Utilities.getBaseUrl(request.url);
                 const baseRequest = Utilities.createCorsRequest(baseUrl);
 
-                // ベースURLのみでキャッシュに保存（重複を防ぐ）
+                // レスポンスをクローンしてキャッシュに保存
                 const responseClone = response.clone();
                 await cache.put(baseRequest, responseClone);
-                this.console.log('プロフィール画像をキャッシュに保存（ベースURL）:', baseUrl);
+                this.console.log('プロフィール画像をキャッシュに保存完了:', baseUrl);
+
+                // オリジナルのレスポンスを返す
                 return response;
+            } else {
+                this.console.warn('プロフィール画像の取得に失敗:', response.status, response.statusText);
             }
         } catch (networkError) {
-            this.console.log('ネットワークエラー:', networkError.message);
+            this.console.log('プロフィール画像のネットワークエラー:', networkError.message);
         }
 
         return null;
@@ -701,22 +706,29 @@ class RequestHandler {
     // プロフィール画像リクエスト処理
     async handleProfileImageRequest(request) {
         try {
-            // キャッシュから検索
+            this.console.log('プロフィール画像リクエスト処理開始:', request.url);
+
+            // まずキャッシュから検索
             const cached = await this.cacheManager.handleProfileImageCache(request);
-            if (cached) return cached;
+            if (cached) {
+                this.console.log('プロフィール画像をキャッシュから返却:', request.url);
+                return cached;
+            }
 
-            // ネットワークから取得
+            // キャッシュにない場合、ネットワークから取得してキャッシュ
             const networkResponse = await this.cacheManager.fetchAndCacheProfileImage(request);
-            if (networkResponse) return networkResponse;
+            if (networkResponse) {
+                this.console.log('プロフィール画像をネットワークから返却:', request.url);
+                return networkResponse;
+            }
 
-            // フォールバック: 透明な1x1ピクセル画像を返す
+            // すべて失敗した場合はフォールバック画像
             this.console.log('フォールバック画像を返却:', request.url);
             return Utilities.createTransparentImageResponse();
 
         } catch (error) {
             this.console.error('プロフィール画像処理エラー:', error);
-            // エラー時も透明画像を返す
-            return Utilities.createTransparentImageResponse();
+            return Utilities.createTransparentImageResponse(404);
         }
     }
 }
@@ -842,19 +854,18 @@ self.addEventListener('activate', (event) => {
 // fetchイベント
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
+
+    // 同一オリジンのリクエストを処理
     if (event.request.url.startsWith(self.location.origin)) {
-        // 同一オリジンのリクエストのみ処理
         const response = serviceWorkerCore.handleFetch(event);
         if (response !== undefined) {
-            if (response instanceof Promise) {
-                event.respondWith(response);
-            } else if (response instanceof Response) {
-                event.respondWith(Promise.resolve(response));
-            } else {
-                // 予期しない戻り値の場合はデフォルトの処理に委ねる
-                console.warn('SW: Unexpected response type from handleFetch:', typeof response);
-            }
+            event.respondWith(response);
         }
+    }
+    // 外部ドメインのプロフィール画像リクエストも処理
+    else if (Utilities.isProfileImageRequest(event.request)) {
+        console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
+        event.respondWith(serviceWorkerCore.requestHandler.handleProfileImageRequest(event.request));
     }
 });
 

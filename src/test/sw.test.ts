@@ -156,7 +156,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         async executeOperation(operation: any) {
             // 実際にindexedDB.openを呼び出す
             this.dependencies.indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
-            
+
             return new Promise((resolve, reject) => {
                 const mockReq = {
                     onupgradeneeded: null as any,
@@ -175,7 +175,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                         close: vi.fn()
                     }
                 };
-                
+
                 // 即座にコールバックを実行してタイムアウトを防ぐ
                 queueMicrotask(() => {
                     try {
@@ -234,7 +234,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 addAll: vi.fn().mockResolvedValue(undefined)
             };
             this.dependencies.caches.open.mockResolvedValue(mockCache);
-            
+
             await this.dependencies.caches.open(PRECACHE_NAME);
             const urls = manifest.map(entry => entry.url);
             await mockCache.addAll(urls);
@@ -245,14 +245,14 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             const cacheNames = ['old-cache-1', 'old-cache-2', PRECACHE_NAME, PROFILE_CACHE_NAME];
             this.dependencies.caches.keys.mockResolvedValue(cacheNames);
             this.dependencies.caches.delete.mockResolvedValue(true);
-            
+
             // 実際にメソッド呼び出しを実行
             await this.dependencies.caches.keys();
-            
-            const toDelete = cacheNames.filter(name => 
+
+            const toDelete = cacheNames.filter(name =>
                 name !== PRECACHE_NAME && name !== PROFILE_CACHE_NAME
             );
-            
+
             await Promise.all(toDelete.map(name => this.dependencies.caches.delete(name)));
         }
 
@@ -262,13 +262,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 put: vi.fn().mockResolvedValue(undefined)
             };
             await this.dependencies.caches.open(PRECACHE_NAME);
-            
+
             const cached = await mockCache.match(request);
             if (cached) return cached;
 
             const networkResponse = new Response('network content');
             this.dependencies.fetch.mockResolvedValue(networkResponse);
-            
+
             const response = await this.dependencies.fetch(request);
             if (response.ok && request.method === 'GET') {
                 await mockCache.put(request, response.clone());
@@ -285,6 +285,21 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 this.dependencies.console.error('プロフィールキャッシュクリアエラー:', err);
                 return { success: false, error: err.message };
             }
+        }
+
+        async fetchAndCacheProfileImage(request: Request) {
+            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
+            const cachedResponse = await cache.match(request);
+
+            if (cachedResponse) {
+                return cachedResponse;
+            }
+
+            const networkResponse = await this.dependencies.fetch(request);
+            if (networkResponse.ok) {
+                await cache.put(request, networkResponse.clone());
+            }
+            return networkResponse;
         }
     }
 
@@ -323,10 +338,10 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         async openNewClient() {
             const windowClient = { id: 'new-client' };
             this.dependencies.clients.openWindow.mockResolvedValue(windowClient);
-            
+
             // 実際にclients.openWindowを呼び出す
             await this.dependencies.clients.openWindow('/?shared=true');
-            
+
             if (windowClient) {
                 return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
             }
@@ -469,7 +484,7 @@ describe('Service Worker Tests', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         swModule = createServiceWorkerMocks();
-        
+
         // ClientManagerテスト用のモック設定
         swModule.ServiceWorkerDependencies.clients.matchAll.mockResolvedValue([
             { focus: vi.fn(), postMessage: vi.fn() }
@@ -587,6 +602,32 @@ describe('Service Worker Tests', () => {
 
             expect(result.success).toBe(true);
             expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
+        });
+
+        it('should fetch and cache profile image from network', async () => {
+            const manager = new swModule.CacheManager();
+            const request = new Request('https://example.com/profile.jpg?profile=true');
+
+            // ネットワークレスポンスをモック
+            const mockResponse = new Response('image data', {
+                status: 200,
+                headers: { 'Content-Type': 'image/jpeg' }
+            });
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(mockResponse);
+
+            // Cacheオブジェクトのモック（match, put両方を持つ）
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null), // キャッシュヒットしない
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+
+            const response = await manager.fetchAndCacheProfileImage(request);
+
+            expect(response).toBeDefined();
+            expect(response.status).toBe(200);
+            expect(swModule.ServiceWorkerDependencies.caches.open).toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
+            expect(mockCache.put).toHaveBeenCalled();
         });
     });
 
@@ -713,6 +754,16 @@ describe('Service Worker Tests', () => {
         it('should handle fetch event for upload', async () => {
             const core = new swModule.ServiceWorkerCore();
             const request = new Request('https://example.com/upload', { method: 'POST' });
+            const mockEvent = { request };
+
+            const response = await core.handleFetch(mockEvent);
+
+            expect(response).toBeDefined();
+        });
+
+        it('should handle fetch event for external profile image', async () => {
+            const core = new swModule.ServiceWorkerCore();
+            const request = new Request('https://external.com/profile.jpg?profile=true');
             const mockEvent = { request };
 
             const response = await core.handleFetch(mockEvent);
