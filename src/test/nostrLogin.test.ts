@@ -61,6 +61,7 @@ describe('NostrLoginUtils', () => {
             expect(result).toEqual({
                 theme: 'ocean',
                 noBanner: true,
+                methods: 'connect, extension, local',
                 perms: 'get_public_key,sign_event:1,sign_event:27235',
                 startScreen: 'welcome',
                 bunkers: ['bunker1', 'bunker2']
@@ -73,6 +74,7 @@ describe('NostrLoginUtils', () => {
             expect(result).toEqual({
                 theme: 'default',
                 noBanner: true,
+                methods: 'connect, extension, local',
                 perms: 'get_public_key,sign_event:1,sign_event:27235',
                 startScreen: 'welcome'
             });
@@ -297,6 +299,7 @@ describe('NostrLoginInitializer', () => {
         expect(mockInit).toHaveBeenCalledWith({
             theme: 'purple',
             noBanner: true,
+            methods: 'connect, extension, local',
             perms: 'get_public_key,sign_event:1,sign_event:27235',
             startScreen: 'welcome',
             bunkers: 'bunker1,bunker2',
