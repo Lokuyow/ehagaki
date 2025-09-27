@@ -5,12 +5,9 @@ import {
     NostrLoginAuthHandler,
     NostrLoginInitializer,
     NostrLoginLauncher,
-    NostrLoginEventEmitter,
-    type NostrLoginOptions,
-    type NostrLoginDependencies,
-    type NostrLoginEventHandler
+    NostrLoginEventEmitter
 } from '../lib/nostrLogin';
-import { type NostrLoginAuth } from '../lib/keyManager';
+import type { NostrLoginOptions, NostrLoginDependencies, NostrLoginEventHandler } from '../lib/types';
 
 // --- モッククラス定義 ---
 class MockDocument {
@@ -401,11 +398,11 @@ describe('NostrLoginEventEmitter', () => {
     });
 
     it('ログアウトイベント発行エラーを適切に処理する', () => {
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
         mockDocument.dispatchEvent.mockImplementation(() => {
             throw new Error('dispatchEvent failed');
         });
-        
+
         const mockSetLoggingOutFlag = vi.fn();
 
         // エラーが発生してもクラッシュしないことを確認
@@ -415,12 +412,12 @@ describe('NostrLoginEventEmitter', () => {
 
         expect(consoleSpy).toHaveBeenCalledWith('Failed to dispatch nlLogout event:', expect.any(Error));
         expect(mockSetLoggingOutFlag).toHaveBeenCalledWith(true);
-        
+
         consoleSpy.mockRestore();
     });
 
     it('ダークモードイベント発行エラーを適切に処理する', () => {
-        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => { });
         mockDocument.dispatchEvent.mockImplementation(() => {
             throw new Error('dispatchEvent failed');
         });
@@ -431,7 +428,7 @@ describe('NostrLoginEventEmitter', () => {
         }).not.toThrow();
 
         expect(consoleSpy).toHaveBeenCalledWith('Failed to dispatch nlDarkMode event:', expect.any(Error));
-        
+
         consoleSpy.mockRestore();
     });
 });

@@ -109,6 +109,10 @@ export interface FileValidationResult {
 // --- window.nostrZap 型拡張 ---
 declare global {
     interface Window {
+        nostr?: {
+            getPublicKey(): Promise<string>;
+            signEvent: (event: any) => Promise<any>;
+        };
         nostrZap?: {
             initTargets: () => void;
             // 必要に応じて他のメソッドや型も追加
@@ -348,42 +352,42 @@ export interface ZoomParams {
 
 // --- postManager.ts から移動した型定義 ---
 export interface PostResult {
-  success: boolean;
-  error?: string;
+    success: boolean;
+    error?: string;
 }
 
 export interface AuthState {
-  isAuthenticated: boolean;
-  type?: 'nsec' | 'nostr-login';
-  pubkey?: string;
+    isAuthenticated: boolean;
+    type?: 'nsec' | 'nostr-login';
+    pubkey?: string;
 }
 
 export interface HashtagStore {
-  hashtags: string[];
-  tags: string[][];
+    hashtags: string[];
+    tags: string[][];
 }
 
 export interface KeyManagerInterface {
-  getFromStore(): string | null;
-  loadFromStorage(): string | null;
-  isWindowNostrAvailable(): boolean;
+    getFromStore(): string | null;
+    loadFromStorage(): string | null;
+    isWindowNostrAvailable(): boolean;
 }
 
 export interface PostManagerDeps {
-  authStateStore?: {
-    value: AuthState;
-  };
-  hashtagStore?: HashtagStore;
-  keyManager?: KeyManagerInterface;
-  window?: {
-    nostr?: {
-      signEvent: (event: any) => Promise<any>;
+    authStateStore?: {
+        value: AuthState;
     };
-  };
-  console?: Console;
-  createImetaTagFn?: (meta: any) => Promise<string[]>;
-  getClientTagFn?: () => string[] | null;
-  seckeySignerFn?: (key: string) => any;
+    hashtagStore?: HashtagStore;
+    keyManager?: KeyManagerInterface;
+    window?: {
+        nostr?: {
+            signEvent: (event: any) => Promise<any>;
+        };
+    };
+    console?: Console;
+    createImetaTagFn?: (meta: any) => Promise<string[]>;
+    getClientTagFn?: () => string[] | null;
+    seckeySignerFn?: (key: string) => any;
 }
 
 // --- keyManager.ts から移動した型定義 ---
@@ -408,6 +412,32 @@ export interface KeyManagerDeps {
 
 export interface KeyManagerError {
     type: 'storage' | 'network' | 'validation';
+    message: string;
+    originalError?: unknown;
+}
+
+// --- nostrLogin.ts から移動した型定義 ---
+export interface NostrLoginOptions {
+    theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
+    bunkers?: string[];
+    perms?: string;
+    noBanner?: boolean;
+    startScreen?: string;
+    methods?: string;
+}
+
+export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
+
+export interface NostrLoginDependencies {
+    window?: Window & { nostrLogin?: any };
+    document?: Document;
+    console?: Console;
+    setTimeout?: (callback: () => void, delay: number) => void;
+    importNostrLogin?: () => Promise<{ init: Function; launch: Function }>;
+}
+
+export interface NostrLoginError {
+    type: 'initialization' | 'auth' | 'launch' | 'decode';
     message: string;
     originalError?: unknown;
 }

@@ -1,31 +1,5 @@
-import type { NostrLoginAuth } from './keyManager';
+import type { NostrLoginOptions, NostrLoginEventHandler, NostrLoginDependencies, NostrLoginError } from './types';
 import { nip19 } from "nostr-tools";
-
-export interface NostrLoginOptions {
-    theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
-    bunkers?: string[];
-    perms?: string;
-    noBanner?: boolean;
-    startScreen?: string;
-    methods?: string;
-}
-
-export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
-
-// --- 依存性注入用のインターフェース ---
-export interface NostrLoginDependencies {
-    window?: Window & { nostrLogin?: any };
-    document?: Document;
-    console?: Console;
-    setTimeout?: (callback: () => void, delay: number) => void;
-    importNostrLogin?: () => Promise<{ init: Function; launch: Function }>;
-}
-
-export interface NostrLoginError {
-    type: 'initialization' | 'auth' | 'launch' | 'decode';
-    message: string;
-    originalError?: unknown;
-}
 
 // --- 純粋関数: オプション処理とデータ変換 ---
 export class NostrLoginUtils {

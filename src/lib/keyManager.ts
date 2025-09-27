@@ -3,14 +3,6 @@ import type { PublicKeyData, NostrLoginAuth, KeyManagerDeps, KeyManagerError } f
 import { nip19 } from "nostr-tools";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/appUtils';
 
-declare global {
-  interface Window {
-    nostr: {
-      getPublicKey(): Promise<string>;
-    };
-  }
-}
-
 // --- 純粋関数（テストしやすい） ---
 export class KeyValidator {
   static isValidNsec(key: string): boolean {
