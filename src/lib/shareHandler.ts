@@ -12,9 +12,6 @@ import type {
   FileUploadDependencies
 } from './types';
 
-// 型定義はtypes.tsから再エクスポート
-export type { SharedImageData, SharedImageMetadata } from './types';
-
 export class ShareHandler {
   private fileUploadManager: FileUploadManager;
   private isProcessingSharedImage = false;
