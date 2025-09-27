@@ -8,10 +8,8 @@
     import { authState } from "../stores/appStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte";
-    import {
-        BalloonMessageManager,
-        type BalloonMessage as BalloonMessageType,
-    } from "../lib/balloonMessageManager";
+    import { BalloonMessageManager } from "../lib/balloonMessageManager";
+    import { type BalloonMessage as BalloonMessageType } from "../lib/types";
 
     interface Props {
         onUploadImage: () => void;
