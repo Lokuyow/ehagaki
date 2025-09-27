@@ -1,14 +1,4 @@
-/**
- * 画像サイズ計算ユーティリティ
- * SvelteImageNodeとImagePlaceholderで共通使用
- */
-
-export interface ImageDimensions {
-    width: number;
-    height: number;
-    displayWidth: number;
-    displayHeight: number;
-}
+import type { ImageDimensions } from '../types';
 
 /**
  * エディター内画像の最大サイズ制限（CSS値と一致させる）
@@ -27,7 +17,7 @@ export function calculateImageDisplaySize(
     originalHeight: number,
     maxWidth: number = EDITOR_IMAGE_CONSTRAINTS.maxWidth,
     maxHeight: number = EDITOR_IMAGE_CONSTRAINTS.maxHeight
-): ImageDimensions {
+) {
     // 元サイズが制約内の場合はそのまま使用
     if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
         return {

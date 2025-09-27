@@ -13,7 +13,8 @@ import type {
   ZoomCalculation,
   TouchPosition,
   PinchInfo,
-  ZoomParams
+  ZoomParams,
+  ImageDimensions
 } from "../types";
 import {
   STORAGE_KEYS,
@@ -23,7 +24,7 @@ import {
   NSEC_FULL_PATTERN,
   SHARE_HANDLER_CONFIG
 } from '../constants';
-import { calculateImageDisplaySize, type ImageDimensions } from '../utils/imageUtils';
+import { calculateImageDisplaySize } from '../utils/imageUtils';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)

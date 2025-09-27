@@ -1,6 +1,13 @@
 import type { RxNostr, createRxNostr } from "rx-nostr";
-import type { ImageDimensions } from './utils/imageUtils';
 import type { Editor as TipTapEditor } from "@tiptap/core";
+
+// --- Image-related types (moved from imageUtils.ts) ---
+export interface ImageDimensions {
+    width: number;
+    height: number;
+    displayWidth: number;
+    displayHeight: number;
+}
 
 export interface PostStatus {
     sending: boolean;
