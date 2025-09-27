@@ -298,13 +298,6 @@ export interface ServiceWorkerStatus {
     error?: string;
 }
 
-export interface SharedImageProcessingResult {
-    success: boolean;
-    data?: SharedImageData;
-    error?: string;
-    fromCache?: boolean;
-}
-
 // --- appUtils.ts から移動した型定義 ---
 export interface StorageAdapter {
     getItem(key: string): string | null;

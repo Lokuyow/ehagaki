@@ -1,6 +1,6 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
-import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, getImageDimensions, renameByMimeType } from "./utils/appUtils";
+import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
 import { showImageSizeInfo } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
 import type {
@@ -13,7 +13,8 @@ import type {
   AuthService,
   MimeTypeSupportInterface,
   SharedImageData,
-  SharedImageProcessingResult
+  SharedImageProcessingResult,
+  FileUploadManagerInterface
 } from "./types";
 import {
   DEFAULT_API_URL,
@@ -158,7 +159,7 @@ export class NostrAuthService implements AuthService {
 }
 
 // ファイルアップロード専用マネージャークラス
-export class FileUploadManager {
+export class FileUploadManager implements FileUploadManagerInterface {
   private compressionService: CompressionService;
   private mimeSupport: MimeTypeSupportInterface;
   private authService: AuthService;
