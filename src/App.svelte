@@ -31,15 +31,12 @@
     profileLoadedStore,
     isLoadingProfileStore,
     isUploadingStore,
-    relayListUpdatedStore, // 追加
+    relayListUpdatedStore,
   } from "./stores/appStore.svelte";
   import { updatePlaceholderText } from "./stores/editorStore.svelte";
-  import type { UploadProgress } from "./lib/types"; // 追加
+  import type { UploadProgress, BalloonMessage } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
-  import {
-    BalloonMessageManager,
-    type BalloonMessage,
-  } from "./lib/balloonMessageManager";
+  import { BalloonMessageManager } from "./lib/balloonMessageManager";
   import {
     checkServiceWorkerStatus,
     testServiceWorkerCommunication,
