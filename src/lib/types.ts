@@ -511,16 +511,6 @@ declare global {
         };
     }
 }
-export interface RelayFetchResult {
-    success: boolean;
-    relayConfig?: RelayConfig;
-    source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
-    error?: string;
-}
-
-export interface I18nFunction {
-    (key: string): string | undefined;
-}
 
 // --- profileManager.ts から移動した型定義 ---
 export interface ProfileManagerDeps {
