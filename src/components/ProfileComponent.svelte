@@ -1,6 +1,6 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
-  import type { ProfileData } from "../lib/profileManager";
+  import type { ProfileData } from "../lib/types";
   import Button from "./Button.svelte";
   import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
