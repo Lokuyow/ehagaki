@@ -1,19 +1,6 @@
 import { BALLOON_MESSAGE_INFO_KEYS, BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_ERROR_KEY } from "./constants";
+import type { BalloonMessageType, BalloonMessage, I18nFunction } from "./types";
 
-export type BalloonMessageType = "success" | "error" | "info";
-
-export interface BalloonMessage {
-    type: BalloonMessageType;
-    message: string;
-}
-
-export interface I18nFunction {
-    (key: string): string | undefined;
-}
-
-/**
- * バルーンメッセージの管理を行うクラス
- */
 export class BalloonMessageManager {
     private showTimeout: ReturnType<typeof setTimeout> | null = null;
     private lastMessageTime = 0; // デバウンス用タイムスタンプ
@@ -51,7 +38,7 @@ export class BalloonMessageManager {
      */
     createMessage(type: BalloonMessageType, message?: string, skipDebounce = false): BalloonMessage {
         const now = Date.now();
-        
+
         // デバウンス: 前回から一定時間以内の場合はスキップ（skipDebounceがfalseの場合）
         if (!skipDebounce && now - this.lastMessageTime < this.debounceDelay) {
             return { type, message: "" }; // 空メッセージを返す

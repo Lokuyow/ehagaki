@@ -492,3 +492,15 @@ export interface RelayFetchResult {
     source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
     error?: string;
 }
+
+// --- BalloonMessage関連型定義 ---
+export type BalloonMessageType = "success" | "error" | "info";
+
+export interface BalloonMessage {
+    type: BalloonMessageType;
+    message: string;
+}
+
+export interface I18nFunction {
+    (key: string): string | undefined;
+}
