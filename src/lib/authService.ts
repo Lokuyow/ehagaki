@@ -1,40 +1,8 @@
-import { keyManager, KeyManager, PublicKeyState } from './keyManager';
+import { KeyManager, PublicKeyState } from './keyManager';
 import type { NostrLoginAuth, NostrLoginOptions } from './types';
 import { nostrLoginManager } from './nostrLogin';
 import { setAuthInitialized, setNsecAuth, setNostrLoginAuth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';
-import { debugLog } from './debug';
-import type { AuthResult } from './types';
-
-// --- 依存関係注入用のインターフェース ---
-export interface AuthServiceDependencies {
-    keyManager?: typeof keyManager;
-    localStorage?: Storage;
-    window?: Window;
-    navigator?: Navigator;
-    console?: Console;
-    debugLog?: typeof debugLog;
-    setNsecAuth?: typeof setNsecAuth;
-    setAuthInitialized?: typeof setAuthInitialized;
-    clearAuthState?: typeof clearAuthState;
-    setNostrLoginAuth?: typeof setNostrLoginAuth;
-    nostrLoginManager?: NostrLoginManagerInterface;
-    setTimeout?: (callback: () => void, delay: number) => void;
-    secretKeyStore?: typeof secretKeyStore;
-}
-
-export interface NostrLoginManagerInterface {
-    isInitialized: boolean;
-    init(options: NostrLoginOptions): Promise<void>;
-    showLogin(): Promise<void>;
-    logout(): void;
-    getCurrentUser(): { pubkey?: string; npub?: string } | null;
-    setAuthHandler(handler: (auth: NostrLoginAuth) => void): void;
-}
-
-export interface LocalStorageData {
-    pubkey?: string;
-    npub?: string;
-}
+import type { AuthResult, AuthServiceDependencies, NostrLoginManagerInterface, LocalStorageData } from './types';
 
 // --- 純粋関数: バリデーション ---
 export class AuthValidator {

@@ -7,12 +7,10 @@ import {
     ExternalAuthWaiter,
     ProfileCacheCleaner,
     NostrLoginStorageManager,
-    AuthInitializer,
-    type AuthServiceDependencies,
-    type NostrLoginManagerInterface
+    AuthInitializer
 } from '../lib/authService';
-import { NostrLoginManager } from '../lib/nostrLogin';
-import { type NostrLoginAuth } from '../lib/keyManager';
+import type { AuthServiceDependencies, NostrLoginManagerInterface } from '../lib/types';
+import { type NostrLoginAuth } from '../lib/types';
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({

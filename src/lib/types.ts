@@ -221,6 +221,37 @@ export interface AuthResult {
     pubkeyHex?: string;
 }
 
+// --- authService.ts から移動した型定義 ---
+export interface AuthServiceDependencies {
+    keyManager?: typeof import('./keyManager').keyManager;
+    localStorage?: Storage;
+    window?: Window;
+    navigator?: Navigator;
+    console?: Console;
+    debugLog?: typeof import('./debug').debugLog;
+    setNsecAuth?: typeof import('../stores/appStore.svelte').setNsecAuth;
+    setAuthInitialized?: typeof import('../stores/appStore.svelte').setAuthInitialized;
+    clearAuthState?: typeof import('../stores/appStore.svelte').clearAuthState;
+    setNostrLoginAuth?: typeof import('../stores/appStore.svelte').setNostrLoginAuth;
+    nostrLoginManager?: NostrLoginManagerInterface;
+    setTimeout?: (callback: () => void, delay: number) => void;
+    secretKeyStore?: typeof import('../stores/appStore.svelte').secretKeyStore;
+}
+
+export interface NostrLoginManagerInterface {
+    isInitialized: boolean;
+    init(options: NostrLoginOptions): Promise<void>;
+    showLogin(): Promise<void>;
+    logout(): void;
+    getCurrentUser(): { pubkey?: string; npub?: string } | null;
+    setAuthHandler(handler: (auth: NostrLoginAuth) => void): void;
+}
+
+export interface LocalStorageData {
+    pubkey?: string;
+    npub?: string;
+}
+
 // --- SettingsDialog用型定義 ---
 export interface SettingsDialogProps {
     show?: boolean;
