@@ -38,7 +38,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     imageSizeMapStore,
 });
 
-// 純粋関数: ファイル処理とプレースホルダー作成
+// 純粹関数: ファイル処理とプレースホルダー作成
 export async function processFilesForUpload(
     files: File[],
     dependencies: UploadHelperDependencies
@@ -82,6 +82,30 @@ export function insertPlaceholdersIntoEditor(
     const fileUploadManager = new dependencies.FileUploadManager();
     const timestamp = Date.now();
 
+    if (!currentEditor) return placeholderMap;
+
+    const state = currentEditor.state;
+    const selection = state.selection;
+
+    // 画像ノードが選択されているかチェック（instanceofを使用）
+    const isImageNodeSelected = selection instanceof NodeSelection &&
+        selection.node?.type?.name === 'image';
+
+    if (devMode) {
+        console.log('[dev] insertPlaceholdersIntoEditor:', {
+            fileCount: fileArray.length,
+            isImageNodeSelected,
+            selectionType: selection.constructor.name,
+            selectionFrom: selection.from,
+            selectionTo: (selection as any).to,
+            docSize: state.doc.content.size
+        });
+    }
+
+    // 単一のトランザクションで全ての挿入を行う
+    let tr = state.tr;
+    let currentInsertPos = isImageNodeSelected ? (selection as NodeSelection).to : selection.from;
+
     fileArray.forEach((file, index) => {
         const validation = fileUploadManager.validateImageFile(file);
         if (!validation.isValid) {
@@ -95,105 +119,43 @@ export function insertPlaceholdersIntoEditor(
         const ox = processingResult?.ox;
         const dimensions = processingResult?.dimensions;
 
-        if (currentEditor) {
-            const imageAttrs: any = {
-                src: placeholderId,
-                isPlaceholder: true
-            };
+        const imageAttrs: any = {
+            src: placeholderId,
+            isPlaceholder: true
+        };
 
-            if (dimensions) {
-                imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
-                dependencies.imageSizeMapStore.update(map => ({
-                    ...map,
-                    [placeholderId]: dimensions
-                }));
-            }
-
-            try {
-                const { state } = currentEditor;
-                const { selection } = state;
-
-                // 画像ノードが選択されているかチェック（instanceofを使用）
-                const isImageNodeSelected = selection instanceof NodeSelection &&
-                    selection.node?.type?.name === 'image';
-
-                if (devMode) {
-                    console.log('[dev] insertPlaceholdersIntoEditor:', {
-                        fileName: file.name,
-                        index,
-                        isImageNodeSelected,
-                        selectionType: selection.constructor.name,
-                        selectionFrom: selection.from,
-                        selectionTo: selection.to,
-                        selectedNodeType: (selection as any).node?.type?.name,
-                        docSize: state.doc.content.size,
-                        placeholderId
-                    });
-                }
-
-                if (isImageNodeSelected) {
-                    // 選択された画像ノードの直後に挿入（上書きしない）
-                    const insertPos = (selection as NodeSelection).to + index; // 選択ノードの直後に順次挿入
-
-                    if (devMode) {
-                        console.log('[dev] inserting after selected image node:', {
-                            insertPos,
-                            selectionTo: (selection as NodeSelection).to,
-                            index,
-                            fileName: file.name
-                        });
-                    }
-
-                    const tr = state.tr.insert(insertPos, state.schema.nodes.image.create(imageAttrs));
-                    currentEditor.view.dispatch(tr);
-                } else {
-                    // 通常の挿入処理
-                    const docIsEmpty = state.doc.content.size <= 2;
-
-                    if (index === 0) {
-                        // 最初の画像
-                        if (docIsEmpty) {
-                            // 空のドキュメントの場合、既存のパラグラフを置換
-                            const tr = state.tr.replaceWith(0, state.doc.content.size, state.schema.nodes.image.create(imageAttrs));
-                            currentEditor.view.dispatch(tr);
-                        } else {
-                            // テキストがある場合、カーソル位置に画像を挿入
-                            const pos = selection.from;
-                            const tr = state.tr.insert(pos, state.schema.nodes.image.create(imageAttrs));
-                            currentEditor.view.dispatch(tr);
-                        }
-                    } else {
-                        // 2番目以降の画像：前の画像の直後に挿入
-                        const docSize = currentEditor.state.doc.content.size;
-                        let insertPos = docSize;
-
-                        // 最後のノードの位置を取得
-                        currentEditor.state.doc.descendants((node, pos) => {
-                            if (pos + node.nodeSize === docSize) {
-                                insertPos = pos + node.nodeSize;
-                            }
-                        });
-
-                        // 位置を指定して画像を挿入
-                        const tr = currentEditor.state.tr.insert(insertPos, currentEditor.state.schema.nodes.image.create(imageAttrs));
-                        currentEditor.view.dispatch(tr);
-                    }
-                }
-            } catch (error) {
-                if (devMode) {
-                    console.error("[uploadHelper] failed to insert image node", {
-                        placeholderId,
-                        file: file.name,
-                        error
-                    });
-                }
-                showUploadError("画像の挿入に失敗しました");
-                return;
-            }
+        if (dimensions) {
+            imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
+            dependencies.imageSizeMapStore.update(map => ({
+                ...map,
+                [placeholderId]: dimensions
+            }));
         }
 
-        placeholderMap.push({ file, placeholderId, ox, dimensions });
+        try {
+            const node = state.schema.nodes.image.create(imageAttrs);
+            tr = tr.insert(currentInsertPos, node);
+            currentInsertPos += node.nodeSize; // 次の挿入位置を更新
+
+            placeholderMap.push({ file, placeholderId, ox, dimensions });
+        } catch (error) {
+            if (devMode) {
+                console.error("[uploadHelper] failed to insert image node", {
+                    placeholderId,
+                    file: file.name,
+                    error,
+                    insertPos: currentInsertPos,
+                    docSize: state.doc.content.size
+                });
+            }
+            showUploadError("画像の挿入に失敗しました");
+        }
     });
+
+    // 全ての挿入を一度に適用
+    if (placeholderMap.length > 0) {
+        currentEditor.view.dispatch(tr);
+    }
 
     return placeholderMap;
 }

@@ -150,10 +150,10 @@ describe("uploadHelper", () => {
                     content: { size: 2 } // 初期サイズ
                 },
                 tr: {
-                    setNodeMarkup: vi.fn(() => ({ type: "setNodeMarkup" })),
-                    delete: vi.fn(() => ({ type: "delete" })),
-                    insert: vi.fn(() => ({ type: "insert" })),
-                    replaceWith: vi.fn(() => ({ type: "replaceWith" }))
+                    setNodeMarkup: vi.fn().mockReturnThis(),
+                    delete: vi.fn().mockReturnThis(),
+                    insert: vi.fn().mockReturnThis(), // チェーンをサポートするために自分自身を返す
+                    replaceWith: vi.fn().mockReturnThis()
                 },
                 selection: {
                     empty: true,
@@ -280,8 +280,8 @@ describe("uploadHelper", () => {
                         }),
                     },
                     tr: {
-                        insert: vi.fn((pos, node) => ({ type: "insert", pos, node })),
-                        replaceWith: vi.fn((start, end, node) => ({ type: "replaceWith", start, end, node }))
+                        insert: vi.fn().mockReturnThis(), // チェーンをサポート
+                        replaceWith: vi.fn().mockReturnThis()
                     },
                     selection: mockNodeSelection,
                     schema: {
@@ -313,8 +313,8 @@ describe("uploadHelper", () => {
             expect(showUploadError).not.toHaveBeenCalled();
 
             // 画像ノードが選択されている場合、選択ノードの直後に挿入される（上書きしない）
-            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(2);
-            expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(2);
+            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(1); // 1回のdispatch
+            expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(2); // 2回のinsert
 
             // 1番目の画像は位置2（選択ノードの直後）に挿入
             expect(mockCurrentEditor.state.tr.insert).toHaveBeenNthCalledWith(1, 2, expect.any(Object));
@@ -581,8 +581,8 @@ describe("uploadHelper", () => {
                         }),
                     },
                     tr: {
-                        insert: vi.fn((pos, node) => ({ type: "insert", pos, node })),
-                        replaceWith: vi.fn((start, end, node) => ({ type: "replaceWith", start, end, node }))
+                        insert: vi.fn().mockReturnThis(), // チェーンをサポート
+                        replaceWith: vi.fn().mockReturnThis()
                     },
                     selection: {
                         from: 1
@@ -616,11 +616,10 @@ describe("uploadHelper", () => {
             expect(showUploadError).not.toHaveBeenCalled();
 
             // 修正: 実装の実際の動作に合わせた検証
-            // - 最初のファイル（空ドキュメント）: tr.replaceWith を使用
-            // - 2番目のファイル: tr.insert を使用
-            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(2);
-            expect(mockCurrentEditor.state.tr.replaceWith).toHaveBeenCalledTimes(1); // 最初のファイル用
-            expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(1); // 2番目のファイル用
+            // - 両方のファイル: tr.insert を使用（isImageNodeSelected: false の場合）
+            expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(1); // 1回のdispatch
+            expect(mockCurrentEditor.state.tr.replaceWith).toHaveBeenCalledTimes(0); // replaceWith は呼ばれない
+            expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(2); // 両方のファイル用
             expect(mockCurrentEditor.state.schema.nodes.image.create).toHaveBeenCalledTimes(2); // 両方のファイル用
         });
     });
