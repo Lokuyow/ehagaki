@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ShareHandler, getShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare } from "../lib/shareHandler";
+import { ShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare } from "../lib/shareHandler";
 import * as appStore from "../stores/appStore.svelte";
-import type { SharedImageData, SharedImageMetadata } from "../lib/types";
+import type { SharedImageMetadata } from "../lib/types";
 
 // appStore.svelte.tsの直接モック（pwa-register依存を回避）
 vi.mock("../stores/appStore.svelte.ts", () => ({
