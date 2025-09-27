@@ -499,19 +499,6 @@ export interface ZoomParams {
     offsetY: number;
 }
 
-// --- Global Window extensions ---
-declare global {
-    interface Window {
-        nostr?: {
-            getPublicKey(): Promise<string>;
-            signEvent: (event: any) => Promise<any>;
-        };
-        nostrZap?: {
-            initTargets: () => void;
-        };
-    }
-}
-
 // --- profileManager.ts から移動した型定義 ---
 export interface ProfileManagerDeps {
     localStorage?: Storage;
@@ -527,4 +514,17 @@ export interface ProfileData {
     name: string;
     picture: string;
     npub?: string;
+}
+
+// --- Global Window extensions ---
+declare global {
+    interface Window {
+        nostr?: {
+            getPublicKey(): Promise<string>;
+            signEvent: (event: any) => Promise<any>;
+        };
+        nostrZap?: {
+            initTargets: () => void;
+        };
+    }
 }
