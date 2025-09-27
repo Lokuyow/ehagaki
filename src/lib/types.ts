@@ -1,4 +1,4 @@
-import type { RxNostr } from "rx-nostr";
+import type { RxNostr, createRxNostr } from "rx-nostr";
 import type { ImageDimensions } from './utils/imageUtils';
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
@@ -503,4 +503,21 @@ export interface BalloonMessage {
 
 export interface I18nFunction {
     (key: string): string | undefined;
+}
+
+// --- profileManager.ts から移動した型定義 ---
+export interface ProfileManagerDeps {
+    localStorage?: Storage;
+    navigator?: Navigator;
+    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
+    clearTimeoutFn?: (timeoutId: any) => void;
+    console?: Console;
+    // RxNostrの抽象化（テスト用）
+    rxNostrFactory?: () => ReturnType<typeof createRxNostr>;
+}
+
+export interface ProfileData {
+    name: string;
+    picture: string;
+    npub?: string;
 }

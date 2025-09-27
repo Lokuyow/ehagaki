@@ -1,24 +1,7 @@
 import type { createRxNostr } from 'rx-nostr';
 import { createRxForwardReq } from 'rx-nostr';
 import { toNpub } from "./utils/appUtils";
-
-// --- 依存性注入用の型定義を拡張 ---
-export interface ProfileManagerDeps {
-  localStorage?: Storage;
-  navigator?: Navigator;
-  setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
-  clearTimeoutFn?: (timeoutId: any) => void;
-  console?: Console;
-  // RxNostrの抽象化（テスト用）
-  rxNostrFactory?: () => ReturnType<typeof createRxNostr>;
-}
-
-// --- ProfileData型（変更なし） ---
-export interface ProfileData {
-  name: string;
-  picture: string;
-  npub?: string;
-}
+import type { ProfileManagerDeps, ProfileData } from './types';
 
 // --- URL処理の純粋関数（依存性なし） ---
 export class ProfileUrlUtils {

@@ -4,9 +4,9 @@ import {
     ProfileStorage,
     ProfileNetworkFetcher,
     ProfileDataFactory,
-    ProfileUrlUtils,
-    type ProfileManagerDeps
+    ProfileUrlUtils
 } from '../lib/profileManager';
+import type { ProfileManagerDeps } from '../lib/types';
 
 // RxNostrのモック
 const createMockRxNostr = () => ({
