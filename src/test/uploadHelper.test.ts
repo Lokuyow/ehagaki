@@ -51,7 +51,7 @@ vi.mock("../lib/tags/imetaTag", () => ({
     extractImageBlurhashMap: vi.fn(),
     getMimeTypeFromUrl: vi.fn(),
     calculateImageHash: vi.fn(),
-    createImetaTag: vi.fn()
+    createImetaTag: vi.fn(async () => ["imeta-tag"])
 }));
 
 vi.mock("svelte", () => ({
@@ -112,7 +112,7 @@ const createMockDependencies = (): UploadHelperDependencies => {
         extractImageBlurhashMap: vi.fn(() => ({})),
         calculateImageHash: vi.fn(async () => "xhash"),
         getMimeTypeFromUrl: vi.fn(() => "image/png"),
-        createImetaTag: vi.fn(async () => "imeta-tag"),
+        createImetaTag: vi.fn(async () => ["imeta-tag"]),
         imageSizeMapStore: {
             update: vi.fn()
         }
@@ -315,12 +315,12 @@ describe("uploadHelper", () => {
             // 画像ノードが選択されている場合、選択ノードの直後に挿入される（上書きしない）
             expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(2);
             expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(2);
-            
+
             // 1番目の画像は位置2（選択ノードの直後）に挿入
             expect(mockCurrentEditor.state.tr.insert).toHaveBeenNthCalledWith(1, 2, expect.any(Object));
             // 2番目の画像は位置3（1番目の画像の直後）に挿入
             expect(mockCurrentEditor.state.tr.insert).toHaveBeenNthCalledWith(2, 3, expect.any(Object));
-            
+
             // replaceWith は呼ばれない（上書きしない）
             expect(mockCurrentEditor.state.tr.replaceWith).not.toHaveBeenCalled();
         });

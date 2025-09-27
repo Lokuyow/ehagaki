@@ -1,5 +1,6 @@
 import type { RxNostr } from "rx-nostr";
 import type { ImageDimensions } from './utils/imageUtils';
+import type { Editor as TipTapEditor } from "@tiptap/core";
 
 export interface PostStatus {
     sending: boolean;
@@ -149,10 +150,10 @@ export interface UploadHelperDependencies {
         mime?: MimeTypeSupportInterface
     ) => FileUploadManagerInterface;
     getImageDimensions: (file: File) => Promise<ImageDimensions | null>;
-    extractImageBlurhashMap: (editor: any) => Record<string, string>;
+    extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>;
     calculateImageHash: (url: string) => Promise<string | null>;
     getMimeTypeFromUrl: (url: string) => string;
-    createImetaTag: (params: any) => Promise<string>;
+    createImetaTag: (params: any) => Promise<string[]>;
     imageSizeMapStore: {
         update: (updater: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void;
     };
@@ -187,7 +188,7 @@ export interface FileUploadManagerInterface {
 
 export interface UploadHelperParams {
     files: File[] | FileList;
-    currentEditor: import("@tiptap/core").Editor | null;
+    currentEditor: TipTapEditor | null;
     fileInput?: HTMLInputElement | undefined;
     uploadCallbacks?: UploadInfoCallbacks | undefined;
     showUploadError: (msg: string, duration?: number) => void;

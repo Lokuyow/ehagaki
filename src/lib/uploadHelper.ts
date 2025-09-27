@@ -34,7 +34,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     extractImageBlurhashMap,
     calculateImageHash,
     getMimeTypeFromUrl,
-    createImetaTag: async (params: any) => (await createImetaTag(params)).join(" "),
+    createImetaTag: async (params: any) => await createImetaTag(params),
     imageSizeMapStore,
 });
 
@@ -549,7 +549,7 @@ export async function uploadHelper({
                     const ox = imageOxMap[url];
                     const x = imageXMap[url];
                     const tag = await dependencies.createImetaTag({ url, m, blurhash, ox, x });
-                    return tag;
+                    return tag.join(" ");
                 }),
             );
         } catch (e) {
