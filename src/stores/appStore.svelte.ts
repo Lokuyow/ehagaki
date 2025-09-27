@@ -1,4 +1,5 @@
 import type { SizeDisplayInfo } from '../lib/types';
+import type { SharedImageMetadata } from '../lib/types';
 /// <reference types="vite/client" />
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
@@ -18,7 +19,7 @@ export interface AuthState {
 
 export interface SharedImageStoreState {
     file: File | null;
-    metadata?: import('../lib/shareHandler').SharedImageMetadata;
+    metadata?: SharedImageMetadata;
     received: boolean;
 }
 
@@ -59,9 +60,9 @@ const initialAuthState: AuthState = {
 let authStateValue = $state<AuthState>({ ...initialAuthState }); // 確実に初期値をコピー
 
 export const authState = {
-    get value() { 
+    get value() {
         // undefinedの場合は初期値を返す
-        return authStateValue || initialAuthState; 
+        return authStateValue || initialAuthState;
     },
     subscribe: (callback: (value: AuthState) => void) => {
         $effect(() => {
@@ -80,9 +81,9 @@ export function updateAuthState(newState: Partial<AuthState>): void {
         typeof window !== 'undefined' &&
         typeof (window as any).nostr === 'object' &&
         typeof (window as any).nostr.signEvent === 'function';
-    
+
     authStateValue = updated;
-    
+
     console.log('[updateAuthState] 認証状態を更新:', {
         type: updated.type,
         isAuthenticated: updated.isAuthenticated,
@@ -111,19 +112,19 @@ export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string
         console.warn('setNostrLoginAuth: All parameters are required');
         return;
     }
-    
+
     console.log('[setNostrLoginAuth] NostrLogin認証状態を更新:', {
         pubkey: pubkey.substring(0, 8) + '...',
         npub: npub.substring(0, 12) + '...',
         type: 'nostr-login'
     });
-    
-    updateAuthState({ 
-        type: 'nostr-login', 
-        pubkey, 
-        npub, 
-        nprofile, 
-        isValid: true 
+
+    updateAuthState({
+        type: 'nostr-login',
+        pubkey,
+        npub,
+        nprofile,
+        isValid: true
     });
 }
 
@@ -138,7 +139,7 @@ export const sharedImageStore = $state<SharedImageStoreState>({
     received: false
 });
 
-export function updateSharedImageStore(file: File | null, metadata?: import('../lib/shareHandler').SharedImageMetadata): void {
+export function updateSharedImageStore(file: File | null, metadata?: SharedImageMetadata): void {
     sharedImageStore.file = file;
     sharedImageStore.metadata = metadata;
     sharedImageStore.received = !!file;
@@ -154,7 +155,7 @@ export function getSharedImageFile(): File | null {
     return sharedImageStore.file;
 }
 
-export function getSharedImageMetadata(): import('../lib/shareHandler').SharedImageMetadata | undefined {
+export function getSharedImageMetadata(): SharedImageMetadata | undefined {
     return sharedImageStore.metadata;
 }
 
@@ -184,15 +185,15 @@ const swRegister = (() => {
     try {
         if (typeof useRegisterSW === 'function') {
             return useRegisterSW({
-                onRegistered: (r: ServiceWorkerRegistration | undefined) => { 
+                onRegistered: (r: ServiceWorkerRegistration | undefined) => {
                     console.log("SW registered successfully", r);
                 },
-                onRegisterError(error: Error) { 
+                onRegisterError(error: Error) {
                     console.warn("SW registration error", error);
                     // エラーログを出力するが、アプリケーションは継続
                 },
-                onNeedRefresh() { 
-                    console.log("SW needs refresh - showing prompt"); 
+                onNeedRefresh() {
+                    console.log("SW needs refresh - showing prompt");
                 },
                 // Service Workerの登録オプションを明示的に指定
                 immediate: true,
@@ -204,11 +205,11 @@ const swRegister = (() => {
     } catch (error) {
         console.warn("Failed to initialize Service Worker:", error);
     }
-    
+
     // フォールバック（テスト環境やエラー時）
     return {
-        needRefresh: { subscribe: () => {} },
-        updateServiceWorker: () => {}
+        needRefresh: { subscribe: () => { } },
+        updateServiceWorker: () => { }
     };
 })();
 

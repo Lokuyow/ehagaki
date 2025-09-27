@@ -2,10 +2,8 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { renderBlurhashToCanvas } from "../lib/tags/imetaTag";
-    import {
-        getPlaceholderDefaultSize,
-        type ImageDimensions,
-    } from "../lib/utils/imageUtils";
+    import { getPlaceholderDefaultSize } from "../lib/utils/imageUtils";
+    import type { ImageDimensions } from "../lib/types";
 
     interface Props {
         blurhash?: string;

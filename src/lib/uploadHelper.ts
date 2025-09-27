@@ -15,9 +15,9 @@ import type {
 } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
-import type { ImageDimensions } from "./utils/imageUtils";
 import { getImageDimensions } from "./utils/appUtils";
 import { NodeSelection } from "prosemirror-state";
+import type { ImageDimensions } from "./types";
 
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({

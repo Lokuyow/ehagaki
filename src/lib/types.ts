@@ -1,7 +1,7 @@
 import type { RxNostr, createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
-// --- Image-related types (moved from imageUtils.ts) ---
+// --- Image-related types ---
 export interface ImageDimensions {
     width: number;
     height: number;
@@ -9,6 +9,27 @@ export interface ImageDimensions {
     displayHeight: number;
 }
 
+export interface SharedImageMetadata {
+    name?: string;
+    type?: string;
+    size?: number;
+    timestamp?: string;
+}
+
+export interface SharedImageData {
+    image: File;
+    metadata?: SharedImageMetadata;
+}
+
+export interface SharedImageProcessingResult {
+    success: boolean;
+    data?: SharedImageData;
+    error?: string;
+    fromServiceWorker?: boolean;
+    fromIndexedDB?: boolean;
+}
+
+// --- Post and Editor types ---
 export interface PostStatus {
     sending: boolean;
     success: boolean;
@@ -26,7 +47,12 @@ export interface EditorState {
     hasImage?: boolean;
 }
 
-// 投稿画像アップロード進捗用型
+export interface PostResult {
+    success: boolean;
+    error?: string;
+}
+
+// --- Upload-related types ---
 export interface UploadProgress {
     total: number;
     completed: number;
@@ -34,7 +60,8 @@ export interface UploadProgress {
     inProgress: boolean;
 }
 
-// --- utils.ts から移動 ---
+export type MultipleUploadProgress = UploadProgress;
+
 export interface FileSizeInfo {
     originalSize: number;
     compressedSize: number;
@@ -58,13 +85,42 @@ export interface SizeDisplayInfo {
     wasSkipped?: boolean;
 }
 
-export interface PublicKeyData {
-    hex: string;
-    npub: string;
-    nprofile: string;
+export interface FileValidationResult {
+    isValid: boolean;
+    errorMessage?: string;
 }
 
-// --- fileUploadManager.ts から移動した型定義 ---
+export interface FileUploadResponse {
+    success: boolean;
+    url?: string;
+    error?: string;
+    filename?: string;
+    sizeInfo?: FileSizeInfo;
+    nip94?: Record<string, string>;
+}
+
+export interface UploadInfoCallbacks {
+    onProgress?: (progress: UploadProgress) => void;
+}
+
+export interface PlaceholderEntry {
+    file: File;
+    placeholderId: string;
+    blurhash?: string;
+    ox?: string;
+    dimensions?: ImageDimensions;
+}
+
+export interface UploadHelperResult {
+    placeholderMap: PlaceholderEntry[];
+    results: FileUploadResponse[] | null;
+    imageOxMap: Record<string, string>;
+    imageXMap: Record<string, string>;
+    failedResults: FileUploadResponse[];
+    errorMessage: string;
+}
+
+// --- Service and Manager interfaces ---
 export interface FileUploadDependencies {
     localStorage: Storage;
     fetch: typeof fetch;
@@ -76,7 +132,7 @@ export interface FileUploadDependencies {
 
 export interface CompressionService {
     compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }>;
-    hasCompressionSettings?(): boolean; // オプションメソッドとして追加
+    hasCompressionSettings?(): boolean;
 }
 
 export interface AuthService {
@@ -88,62 +144,22 @@ export interface MimeTypeSupportInterface {
     canEncodeMimeType(mime: string): boolean;
 }
 
-// SharedImageData型を追加（shareHandler.tsからインポートする代わりに）
-export interface SharedImageMetadata {
-    name?: string;
-    type?: string;
-    size?: number;
-    timestamp?: string;
-}
-
-export interface SharedImageData {
-    image: File;
-    metadata?: SharedImageMetadata;
-}
-
-// MultipleUploadProgress を UploadProgress のエイリアスに統一
-export type MultipleUploadProgress = UploadProgress;
-
-export interface UploadInfoCallbacks {
-    // 統一された UploadProgress 型を使用
-    onProgress?: (progress: UploadProgress) => void;
-}
-
-export interface FileValidationResult {
-    isValid: boolean;
-    errorMessage?: string;
-}
-
-// --- window.nostrZap 型拡張 ---
-declare global {
-    interface Window {
-        nostr?: {
-            getPublicKey(): Promise<string>;
-            signEvent: (event: any) => Promise<any>;
-        };
-        nostrZap?: {
-            initTargets: () => void;
-            // 必要に応じて他のメソッドや型も追加
-        };
-    }
-}
-
-// --- PostComponent用Props型 ---
-export interface Props {
-    rxNostr?: RxNostr; // rx-nostr の型参照を使用
-    hasStoredKey: boolean;
-    onPostSuccess?: () => void;
-    onUploadStatusChange?: (isUploading: boolean) => void;
-    onUploadProgress?: (progress: UploadProgress) => void;
-}
-
-// uploadHelper 用の型定義を追加
-export interface PlaceholderEntry {
-    file: File;
-    placeholderId: string;
-    blurhash?: string;
-    ox?: string;
-    dimensions?: ImageDimensions; // 新規追加
+export interface FileUploadManagerInterface {
+    validateImageFile: (file: File) => FileValidationResult;
+    generateBlurhashForFile: (file: File) => Promise<string | null>;
+    uploadFileWithCallbacks: (
+        file: File,
+        endpoint: string,
+        callbacks?: UploadInfoCallbacks,
+        devMode?: boolean,
+        metadata?: Record<string, string | number | undefined>
+    ) => Promise<FileUploadResponse>;
+    uploadMultipleFilesWithCallbacks: (
+        files: File[],
+        endpoint: string,
+        callbacks?: UploadInfoCallbacks,
+        metadataList?: Array<Record<string, string | number | undefined> | undefined>
+    ) => Promise<FileUploadResponse[]>;
 }
 
 export interface UploadHelperDependencies {
@@ -166,33 +182,6 @@ export interface UploadHelperDependencies {
     };
 }
 
-export interface FileUploadResponse {
-    success: boolean;
-    url?: string;
-    error?: string;
-    filename?: string;
-    sizeInfo?: FileSizeInfo;
-    nip94?: Record<string, string>;
-}
-
-export interface FileUploadManagerInterface {
-    validateImageFile: (file: File) => FileValidationResult;
-    generateBlurhashForFile: (file: File) => Promise<string | null>;
-    uploadFileWithCallbacks: (
-        file: File,
-        endpoint: string,
-        callbacks?: UploadInfoCallbacks,
-        devMode?: boolean,
-        metadata?: Record<string, string | number | undefined>
-    ) => Promise<FileUploadResponse>;
-    uploadMultipleFilesWithCallbacks: (
-        files: File[],
-        endpoint: string,
-        callbacks?: UploadInfoCallbacks,
-        metadataList?: Array<Record<string, string | number | undefined> | undefined>
-    ) => Promise<FileUploadResponse[]>;
-}
-
 export interface UploadHelperParams {
     files: File[] | FileList;
     currentEditor: TipTapEditor | null;
@@ -204,46 +193,55 @@ export interface UploadHelperParams {
     dependencies?: UploadHelperDependencies;
 }
 
-export interface UploadHelperResult {
-    placeholderMap: PlaceholderEntry[];
-    results: FileUploadResponse[] | null;
-    imageOxMap: Record<string, string>;
-    imageXMap: Record<string, string>;
-    failedResults: FileUploadResponse[];
-    errorMessage: string;
-}
-
-// SharedImageData関連の型統一
-export interface SharedImageProcessingResult {
-    success: boolean;
-    data?: SharedImageData;
-    error?: string;
-    fromServiceWorker?: boolean;
-    fromIndexedDB?: boolean;
-}
-
-// --- authService.ts から移動 ---
+// --- Auth-related types ---
 export interface AuthResult {
     success: boolean;
     error?: string;
     pubkeyHex?: string;
 }
 
-// --- authService.ts から移動した型定義 ---
-export interface AuthServiceDependencies {
-    keyManager?: typeof import('./keyManager').keyManager;
-    localStorage?: Storage;
-    window?: Window;
-    navigator?: Navigator;
+export interface AuthState {
+    isAuthenticated: boolean;
+    type?: 'nsec' | 'nostr-login';
+    pubkey?: string;
+}
+
+export interface PublicKeyData {
+    hex: string;
+    npub: string;
+    nprofile: string;
+}
+
+export interface NostrLoginAuth {
+    type: 'login' | 'signup' | 'logout';
+    pubkey?: string;
+    npub?: string;
+    otpData?: unknown;
+}
+
+export interface NostrLoginOptions {
+    theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
+    bunkers?: string[];
+    perms?: string;
+    noBanner?: boolean;
+    startScreen?: string;
+    methods?: string;
+}
+
+export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
+
+export interface NostrLoginError {
+    type: 'initialization' | 'auth' | 'launch' | 'decode';
+    message: string;
+    originalError?: unknown;
+}
+
+export interface NostrLoginDependencies {
+    window?: Window & { nostrLogin?: any };
+    document?: Document;
     console?: Console;
-    debugLog?: typeof import('./debug').debugLog;
-    setNsecAuth?: typeof import('../stores/appStore.svelte').setNsecAuth;
-    setAuthInitialized?: typeof import('../stores/appStore.svelte').setAuthInitialized;
-    clearAuthState?: typeof import('../stores/appStore.svelte').clearAuthState;
-    setNostrLoginAuth?: typeof import('../stores/appStore.svelte').setNostrLoginAuth;
-    nostrLoginManager?: NostrLoginManagerInterface;
     setTimeout?: (callback: () => void, delay: number) => void;
-    secretKeyStore?: typeof import('../stores/appStore.svelte').secretKeyStore;
+    importNostrLogin?: () => Promise<{ init: Function; launch: Function }>;
 }
 
 export interface NostrLoginManagerInterface {
@@ -260,7 +258,119 @@ export interface LocalStorageData {
     npub?: string;
 }
 
-// --- SettingsDialog用型定義 ---
+export interface AuthServiceDependencies {
+    keyManager?: typeof import('./keyManager').keyManager;
+    localStorage?: Storage;
+    window?: Window;
+    navigator?: Navigator;
+    console?: Console;
+    debugLog?: typeof import('./debug').debugLog;
+    setNsecAuth?: typeof import('../stores/appStore.svelte').setNsecAuth;
+    setAuthInitialized?: typeof import('../stores/appStore.svelte').setAuthInitialized;
+    clearAuthState?: typeof import('../stores/appStore.svelte').clearAuthState;
+    setNostrLoginAuth?: typeof import('../stores/appStore.svelte').setNostrLoginAuth;
+    nostrLoginManager?: NostrLoginManagerInterface;
+    setTimeout?: (callback: () => void, delay: number) => void;
+    secretKeyStore?: typeof import('../stores/appStore.svelte').secretKeyStore;
+}
+
+export interface KeyManagerInterface {
+    getFromStore(): string | null;
+    loadFromStorage(): string | null;
+    isWindowNostrAvailable(): boolean;
+}
+
+export interface KeyManagerDeps {
+    localStorage?: Storage;
+    console?: Console;
+    secretKeyStore?: {
+        value: string | null;
+        set: (value: string | null) => void;
+    };
+    window?: Window;
+    setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string) => void;
+    clearAuthStateFn?: () => void;
+}
+
+export interface KeyManagerError {
+    type: 'storage' | 'network' | 'validation';
+    message: string;
+    originalError?: unknown;
+}
+
+// --- Relay and Profile types ---
+export type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
+
+export interface RelayManagerDeps {
+    localStorage?: Storage;
+    console?: Console;
+    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
+    clearTimeoutFn?: (timeoutId: any) => void;
+    relayListUpdatedStore?: {
+        value: number;
+        set: (value: number) => void;
+    };
+}
+
+export interface RelayFetchOptions {
+    forceRemote?: boolean;
+    timeoutMs?: number;
+}
+
+export interface RelayFetchResult {
+    success: boolean;
+    relayConfig?: RelayConfig;
+    source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
+    error?: string;
+}
+
+export interface ProfileManagerDeps {
+    localStorage?: Storage;
+    navigator?: Navigator;
+    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
+    clearTimeoutFn?: (timeoutId: any) => void;
+    console?: Console;
+    rxNostrFactory?: () => ReturnType<typeof createRxNostr>;
+}
+
+export interface ProfileData {
+    name: string;
+    picture: string;
+    npub?: string;
+}
+
+// --- Post Manager types ---
+export interface HashtagStore {
+    hashtags: string[];
+    tags: string[][];
+}
+
+export interface PostManagerDeps {
+    authStateStore?: {
+        value: AuthState;
+    };
+    hashtagStore?: HashtagStore;
+    keyManager?: KeyManagerInterface;
+    window?: {
+        nostr?: {
+            signEvent: (event: any) => Promise<any>;
+        };
+    };
+    console?: Console;
+    createImetaTagFn?: (meta: any) => Promise<string[]>;
+    getClientTagFn?: () => string[] | null;
+    seckeySignerFn?: (key: string) => any;
+}
+
+// --- UI and Component types ---
+export interface Props {
+    rxNostr?: RxNostr;
+    hasStoredKey: boolean;
+    onPostSuccess?: () => void;
+    onUploadStatusChange?: (isUploading: boolean) => void;
+    onUploadProgress?: (progress: UploadProgress) => void;
+}
+
 export interface SettingsDialogProps {
     show?: boolean;
     onClose: () => void;
@@ -281,7 +391,19 @@ export interface UploadEndpoint {
     url: string;
 }
 
-// --- editorUtils.ts から移動 ---
+// --- BalloonMessage関連型定義 ---
+export type BalloonMessageType = "success" | "error" | "info";
+
+export interface BalloonMessage {
+    type: "success" | "error" | "info";
+    message: string;
+}
+
+export interface I18nFunction {
+    (key: string): string | undefined;
+}
+
+// --- Editor and Utils types ---
 export interface NodeData {
     type: string;
     attrs?: any;
@@ -306,7 +428,7 @@ export interface ServiceWorkerStatus {
     error?: string;
 }
 
-// --- appUtils.ts から移動した型定義 ---
+// --- App Utils types ---
 export interface StorageAdapter {
     getItem(key: string): string | null;
     setItem(key: string, value: string): void;
@@ -360,152 +482,23 @@ export interface ZoomParams {
     offsetY: number;
 }
 
-export interface ZoomCalculation {
-    newScale: number;
-    newTranslate: MousePosition;
-}
-
-export interface TouchPosition {
-    x: number;
-    y: number;
-}
-
-export interface PinchInfo {
-    distance: number;
-    centerX: number;
-    centerY: number;
-}
-
-export interface ZoomParams {
-    scale: number;
-    offsetX: number;
-    offsetY: number;
-}
-
-// --- postManager.ts から移動した型定義 ---
-export interface PostResult {
-    success: boolean;
-    error?: string;
-}
-
-export interface AuthState {
-    isAuthenticated: boolean;
-    type?: 'nsec' | 'nostr-login';
-    pubkey?: string;
-}
-
-export interface HashtagStore {
-    hashtags: string[];
-    tags: string[][];
-}
-
-export interface KeyManagerInterface {
-    getFromStore(): string | null;
-    loadFromStorage(): string | null;
-    isWindowNostrAvailable(): boolean;
-}
-
-export interface PostManagerDeps {
-    authStateStore?: {
-        value: AuthState;
-    };
-    hashtagStore?: HashtagStore;
-    keyManager?: KeyManagerInterface;
-    window?: {
+// --- Global Window extensions ---
+declare global {
+    interface Window {
         nostr?: {
+            getPublicKey(): Promise<string>;
             signEvent: (event: any) => Promise<any>;
         };
-    };
-    console?: Console;
-    createImetaTagFn?: (meta: any) => Promise<string[]>;
-    getClientTagFn?: () => string[] | null;
-    seckeySignerFn?: (key: string) => any;
+        nostrZap?: {
+            initTargets: () => void;
+        };
+    }
 }
-
-// --- keyManager.ts から移動した型定義 ---
-export interface NostrLoginAuth {
-    type: 'login' | 'signup' | 'logout';
-    pubkey?: string;
-    npub?: string;
-    otpData?: unknown;
-}
-
-export interface KeyManagerDeps {
-    localStorage?: Storage;
-    console?: Console;
-    secretKeyStore?: {
-        value: string | null;
-        set: (value: string | null) => void;
-    };
-    window?: Window;
-    setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string) => void;
-    clearAuthStateFn?: () => void;
-}
-
-export interface KeyManagerError {
-    type: 'storage' | 'network' | 'validation';
-    message: string;
-    originalError?: unknown;
-}
-
-// --- nostrLogin.ts から移動した型定義 ---
-export interface NostrLoginOptions {
-    theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
-    bunkers?: string[];
-    perms?: string;
-    noBanner?: boolean;
-    startScreen?: string;
-    methods?: string;
-}
-
-export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
-
-export interface NostrLoginDependencies {
-    window?: Window & { nostrLogin?: any };
-    document?: Document;
-    console?: Console;
-    setTimeout?: (callback: () => void, delay: number) => void;
-    importNostrLogin?: () => Promise<{ init: Function; launch: Function }>;
-}
-
-export interface NostrLoginError {
-    type: 'initialization' | 'auth' | 'launch' | 'decode';
-    message: string;
-    originalError?: unknown;
-}
-
-// --- relayManager.ts から移動した型定義 ---
-export type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
-
-export interface RelayManagerDeps {
-    localStorage?: Storage;
-    console?: Console;
-    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
-    clearTimeoutFn?: (timeoutId: any) => void;
-    relayListUpdatedStore?: {
-        value: number;
-        set: (value: number) => void;
-    };
-}
-
-export interface RelayFetchOptions {
-    forceRemote?: boolean;
-    timeoutMs?: number;
-}
-
 export interface RelayFetchResult {
     success: boolean;
     relayConfig?: RelayConfig;
     source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
     error?: string;
-}
-
-// --- BalloonMessage関連型定義 ---
-export type BalloonMessageType = "success" | "error" | "info";
-
-export interface BalloonMessage {
-    type: BalloonMessageType;
-    message: string;
 }
 
 export interface I18nFunction {

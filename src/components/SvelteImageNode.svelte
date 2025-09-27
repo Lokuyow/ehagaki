@@ -7,7 +7,6 @@
         calculateImageDisplaySize,
         parseDimString,
         getPlaceholderDefaultSize,
-        type ImageDimensions,
     } from "../lib/utils/imageUtils";
     import { imageSizeMapStore } from "../stores/tagsStore.svelte";
     import {
@@ -26,6 +25,7 @@
         imageLoadState,
     } from "../stores/editorStore.svelte";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
+    import type { ImageDimensions } from "../lib/types";
 
     interface Props {
         node: NodeViewProps["node"];
