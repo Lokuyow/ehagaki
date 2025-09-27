@@ -278,19 +278,32 @@ export interface LocalStorageData {
 }
 
 export interface AuthServiceDependencies {
-    keyManager?: typeof import('./keyManager').keyManager;
+    // Core services
+    keyManager?: KeyManagerInterface;
+    nostrLoginManager?: NostrLoginManagerInterface;
+
+    // Browser APIs
     localStorage?: Storage;
     window?: Window;
     navigator?: Navigator;
     console?: Console;
-    debugLog?: typeof import('./debug').debugLog;
-    setNsecAuth?: typeof import('../stores/appStore.svelte').setNsecAuth;
-    setAuthInitialized?: typeof import('../stores/appStore.svelte').setAuthInitialized;
-    clearAuthState?: typeof import('../stores/appStore.svelte').clearAuthState;
-    setNostrLoginAuth?: typeof import('../stores/appStore.svelte').setNostrLoginAuth;
-    nostrLoginManager?: NostrLoginManagerInterface;
     setTimeout?: (callback: () => void, delay: number) => void;
-    secretKeyStore?: typeof import('../stores/appStore.svelte').secretKeyStore;
+
+    // Store setters
+    setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
+    setAuthInitialized?: () => void;
+    clearAuthState?: () => void;
+    setNostrLoginAuth?: (pubkey: string, npub: string, nprofile: string) => void;
+
+    // Stores
+    secretKeyStore?: {
+        value: string | null;
+        set: (value: string | null) => void;
+        subscribe: (callback: (value: string | null) => void) => void;
+    };
+
+    // Utility functions
+    debugLog?: (...args: any[]) => void;
 }
 
 export interface KeyManagerInterface {
