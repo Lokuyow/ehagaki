@@ -472,3 +472,29 @@ export interface NostrLoginError {
     message: string;
     originalError?: unknown;
 }
+
+// --- relayManager.ts から移動した型定義 ---
+export type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
+
+export interface RelayManagerDeps {
+    localStorage?: Storage;
+    console?: Console;
+    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
+    clearTimeoutFn?: (timeoutId: any) => void;
+    relayListUpdatedStore?: {
+        value: number;
+        set: (value: number) => void;
+    };
+}
+
+export interface RelayFetchOptions {
+    forceRemote?: boolean;
+    timeoutMs?: number;
+}
+
+export interface RelayFetchResult {
+    success: boolean;
+    relayConfig?: RelayConfig;
+    source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
+    error?: string;
+}

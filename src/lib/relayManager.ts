@@ -1,32 +1,7 @@
 import { createRxForwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
-
-// --- 型定義 ---
-export type RelayConfig = { [url: string]: { read: boolean; write: boolean } } | string[];
-
-export interface RelayManagerDeps {
-    localStorage?: Storage;
-    console?: Console;
-    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
-    clearTimeoutFn?: (timeoutId: any) => void;
-    relayListUpdatedStore?: {
-        value: number;
-        set: (value: number) => void;
-    };
-}
-
-export interface RelayFetchOptions {
-    forceRemote?: boolean;
-    timeoutMs?: number;
-}
-
-export interface RelayFetchResult {
-    success: boolean;
-    relayConfig?: RelayConfig;
-    source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
-    error?: string;
-}
+import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult } from "./types";
 
 // --- 純粋関数（依存性なし） ---
 export class RelayConfigParser {

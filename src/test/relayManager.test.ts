@@ -3,11 +3,9 @@ import {
     RelayManager,
     RelayStorage,
     RelayNetworkFetcher,
-    RelayConfigParser,
-    type RelayConfig,
-    type RelayManagerDeps,
-    type RelayFetchOptions
+    RelayConfigParser
 } from '../lib/relayManager';
+import type { RelayConfig, RelayManagerDeps } from '../lib/types';
 import type { RxNostr } from 'rx-nostr';
 
 // RxNostrのモック
