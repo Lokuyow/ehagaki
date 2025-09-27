@@ -1,38 +1,7 @@
-import type { SizeDisplayInfo } from '../lib/types';
-import type { SharedImageMetadata } from '../lib/types';
+import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreState, ProfileData, HashtagData } from '../lib/types';
 /// <reference types="vite/client" />
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
-
-// --- 型定義 ---
-export interface AuthState {
-    type: 'none' | 'nsec' | 'nostr-login';
-    isAuthenticated: boolean;
-    pubkey: string;
-    npub: string;
-    nprofile: string;
-    isValid: boolean;
-    isInitialized: boolean;
-    isExtensionLogin?: boolean;
-    serviceWorkerReady?: boolean;
-}
-
-export interface SharedImageStoreState {
-    file: File | null;
-    metadata?: SharedImageMetadata;
-    received: boolean;
-}
-
-export interface ProfileData {
-    name: string;
-    picture: string;
-}
-
-export interface HashtagData {
-    content: string;
-    hashtags: string[];
-    tags: string[][];
-}
 
 // --- アプリ全体の状態管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({

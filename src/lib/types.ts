@@ -1,6 +1,31 @@
 import type { RxNostr, createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
+// --- App Store types ---
+export interface AuthState {
+    type: 'none' | 'nsec' | 'nostr-login';
+    isAuthenticated: boolean;
+    pubkey: string;
+    npub: string;
+    nprofile: string;
+    isValid: boolean;
+    isInitialized: boolean;
+    isExtensionLogin?: boolean;
+    serviceWorkerReady?: boolean;
+}
+
+export interface SharedImageStoreState {
+    file: File | null;
+    metadata?: SharedImageMetadata;
+    received: boolean;
+}
+
+export interface HashtagData {
+    content: string;
+    hashtags: string[];
+    tags: string[][];
+}
+
 // --- Image-related types ---
 export interface ImageDimensions {
     width: number;
@@ -200,12 +225,6 @@ export interface AuthResult {
     pubkeyHex?: string;
 }
 
-export interface AuthState {
-    isAuthenticated: boolean;
-    type?: 'nsec' | 'nostr-login';
-    pubkey?: string;
-}
-
 export interface PublicKeyData {
     hex: string;
     npub: string;
@@ -322,21 +341,6 @@ export interface RelayFetchResult {
     relayConfig?: RelayConfig;
     source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
     error?: string;
-}
-
-export interface ProfileManagerDeps {
-    localStorage?: Storage;
-    navigator?: Navigator;
-    setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
-    clearTimeoutFn?: (timeoutId: any) => void;
-    console?: Console;
-    rxNostrFactory?: () => ReturnType<typeof createRxNostr>;
-}
-
-export interface ProfileData {
-    name: string;
-    picture: string;
-    npub?: string;
 }
 
 // --- Post Manager types ---
