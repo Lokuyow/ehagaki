@@ -3,93 +3,94 @@ import { get as getStore } from "svelte/store";
 import type { MenuItem, ImageContextMenuStore, ImageContextMenuState } from "../types";
 import { calculateContextMenuPosition } from "./appUtils";
 
+// getImageContextMenuItems: 依存関係を引数で注入可能に
 export function getImageContextMenuItems(
     src: string,
     alt: string,
     getPos: () => number,
     nodeSize: number,
     isSelected: boolean,
+    options?: {
+        windowObj?: Window;
+        navigatorObj?: Navigator;
+        editorObj?: any;
+        t?: typeof _;
+    }
 ): MenuItem[] {
+    const windowObj = options?.windowObj ?? window;
+    const navigatorObj = options?.navigatorObj ?? navigator;
+    const editorObj = options?.editorObj ?? (window as any).__currentEditor;
+    const tRaw = options?.t ?? _;
+    const t = typeof tRaw === "function" ? tRaw : getStore(tRaw);
+
     return [
         {
-            label: getStore(_)("imageContextMenu.fullscreen"),
+            label: t("imageContextMenu.fullscreen"),
             action: () => {
-                // 全画面表示イベント発火
-                window.dispatchEvent(
+                windowObj.dispatchEvent(
                     new CustomEvent("image-fullscreen-request", {
                         detail: { src, alt },
                     }),
                 );
             },
-            src, // 画像URLをMenuItemに追加
-            icon: "/icons/expand-solid-full.svg", // アイコン追加
+            src,
+            icon: "/icons/expand-solid-full.svg",
         },
         {
-            label: getStore(_)("imageContextMenu.copyUrl"),
+            label: t("imageContextMenu.copyUrl"),
             action: async () => {
                 try {
-                    await navigator.clipboard.writeText(src);
+                    await navigatorObj.clipboard.writeText(src);
                 } catch (error) {
+                    // テスト時はconsole.warnを直接利用
                     console.warn("Failed to copy URL:", error);
                 }
             },
             src,
-            icon: "/icons/copy-solid-full.svg", // アイコン追加
+            icon: "/icons/copy-solid-full.svg",
         },
         {
-            label: getStore(_)("imageContextMenu.delete"),
+            label: t("imageContextMenu.delete"),
             action: () => {
                 if (!isSelected) return;
-                // 画像ノード削除（選択ノードのみ）
-                const editor = (window as any).__currentEditor;
-                const view = editor?.view;
+                const view = editorObj?.view;
                 if (view?.state && view?.dispatch) {
                     const pos = getPos();
-                    // ノードサイズが正しいか確認
                     view.dispatch(view.state.tr.delete(pos, pos + nodeSize));
-                    // 追加のfocus/blurは不要
                 }
             },
             disabled: !isSelected,
             src,
-            icon: "/icons/trash-solid-full.svg", // アイコン追加
+            icon: "/icons/trash-solid-full.svg",
         },
     ];
 }
 
-/**
- * ボタン要素からコンテキストメニューを開く位置を計算
- */
-export function openContextMenuAtButton(buttonElement: HTMLButtonElement): { x: number; y: number } {
+// openContextMenuAtButton: window依存を引数化
+export function openContextMenuAtButton(
+    buttonElement: HTMLButtonElement,
+    options?: { windowObj?: Window }
+): { x: number; y: number } {
+    const windowObj = options?.windowObj ?? window;
     const rect = buttonElement.getBoundingClientRect();
     const targetX = rect.left + rect.width / 2;
     const targetY = rect.bottom + 8;
     return calculateContextMenuPosition(targetX, targetY);
 }
 
-/**
- * 指定位置からコンテキストメニューを開く位置を計算
- */
+// openContextMenuAtPosition: そのまま
 export function openContextMenuAtPosition(position: { x: number; y: number }): { x: number; y: number } {
     return calculateContextMenuPosition(position.x, position.y);
 }
 
-/**
- * コンテキストメニューを閉じる（ユーティリティとしてコールバックを返す）
- * グローバルストアも閉じるのは呼び出し側で対応
- */
+// createCloseContextMenuHandler: 副作用なし
 export function createCloseContextMenuHandler(setShowContextMenu: (value: boolean) => void): () => void {
     return () => {
         setShowContextMenu(false);
     };
 }
 
-/**
- * 画像ノード用コンテキストメニューをグローバルストアと連携して開く
- * - ノードID管理
- * - 既存メニューが他ノードで開いていれば閉じてから開く
- * - 位置計算も含む
- */
+// openContextMenuForImageNode: setTimeout, store依存を引数化
 export function openContextMenuForImageNode(
     globalContextMenuStore: ImageContextMenuStore,
     nodeId: string,
@@ -97,7 +98,14 @@ export function openContextMenuForImageNode(
     setShowContextMenu: (value: boolean) => void,
     setContextMenuX: (value: number) => void,
     setContextMenuY: (value: number) => void,
+    options?: {
+        // 変更: 厳密な typeof setTimeout を避け、テストから渡される簡易実行関数も受け取れる汎用型にする
+        setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any
+    }
 ) {
+    const setTimeoutFn = options?.setTimeoutFn ?? ((fn: (...args: any[]) => void, ms?: number, ...args: any[]) => {
+        return setTimeout(fn as TimerHandler, ms, ...args);
+    });
     let alreadyOpen = false;
     let prevNodeId: string | undefined;
     globalContextMenuStore.update((state: ImageContextMenuState) => {
@@ -106,10 +114,8 @@ export function openContextMenuForImageNode(
         return state;
     });
     if (alreadyOpen && prevNodeId) {
-        // 他ノードのメニューを閉じる
         globalContextMenuStore.set({ open: false, nodeId: undefined });
-        // 少し待ってから自分のメニューを開く（DOM更新のため）
-        setTimeout(() => {
+        setTimeoutFn(() => {
             const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
             setContextMenuX(pos.x);
             setContextMenuY(pos.y);
@@ -118,7 +124,6 @@ export function openContextMenuForImageNode(
         }, 0);
         return;
     }
-    // 通常通り開く
     const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
     setContextMenuX(pos.x);
     setContextMenuY(pos.y);
