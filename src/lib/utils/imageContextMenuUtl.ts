@@ -66,6 +66,7 @@ export function openContextMenuAtPosition(position: { x: number; y: number }): {
 
 /**
  * コンテキストメニューを閉じる（ユーティリティとしてコールバックを返す）
+ * グローバルストアも閉じるのは呼び出し側で対応
  */
 export function createCloseContextMenuHandler(setShowContextMenu: (value: boolean) => void): () => void {
     return () => {

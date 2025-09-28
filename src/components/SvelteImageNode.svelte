@@ -38,6 +38,7 @@
         getEventPosition,
         calculateContextMenuPosition,
     } from "../lib/utils/appUtils";
+    import { globalContextMenuStore } from "../stores/appStore.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -197,6 +198,19 @@
     let contextMenuY = $state(0);
     let lastClickPosition = $state<{ x: number; y: number } | null>(null);
 
+    // ノード固有のID（src+posで一意化）
+    const nodeId = `${node.attrs.src || ""}-${getPos()}`;
+
+    // グローバルストア監視
+    $effect(() => {
+        globalContextMenuStore.subscribe((state) => {
+            // 他ノードでメニューが開かれたら自分のメニューを閉じる
+            if (!state.open || state.nodeId !== nodeId) {
+                showContextMenu = false;
+            }
+        });
+    });
+
     // コンテキストメニュー項目（ユーティリティから取得）
     let contextMenuItems = $derived(
         getImageContextMenuItems(
@@ -209,11 +223,41 @@
 
     // コンテキストメニューを閉じるハンドラー（ユーティリティから生成）
     let closeContextMenu = $derived(
-        createCloseContextMenuHandler((value) => (showContextMenu = value)),
+        createCloseContextMenuHandler((value) => {
+            showContextMenu = value;
+            if (!value) {
+                globalContextMenuStore.set({ open: false, nodeId: undefined });
+            }
+        }),
     );
 
     function openContextMenuAtPositionHandler() {
         if (!lastClickPosition) return;
+        // 他のノードでメニューが開かれていれば閉じてから開く
+        let alreadyOpen = false;
+        let prevNodeId: string | undefined;
+        globalContextMenuStore.update((state) => {
+            alreadyOpen = state.open && state.nodeId !== nodeId;
+            prevNodeId = state.nodeId;
+            return state;
+        });
+        if (alreadyOpen && prevNodeId) {
+            // 他ノードのメニューを閉じる
+            globalContextMenuStore.set({ open: false, nodeId: undefined });
+            // 少し待ってから自分のメニューを開く（DOM更新のため）
+            setTimeout(() => {
+                const pos = calculateContextMenuPosition(
+                    lastClickPosition!.x,
+                    lastClickPosition!.y,
+                );
+                contextMenuX = pos.x;
+                contextMenuY = pos.y;
+                showContextMenu = true;
+                globalContextMenuStore.set({ open: true, nodeId });
+            }, 0);
+            return;
+        }
+        // 通常通り開く
         const pos = calculateContextMenuPosition(
             lastClickPosition.x,
             lastClickPosition.y,
@@ -221,6 +265,7 @@
         contextMenuX = pos.x;
         contextMenuY = pos.y;
         showContextMenu = true;
+        globalContextMenuStore.set({ open: true, nodeId });
     }
 
     // イベントハンドラー
@@ -398,6 +443,8 @@
             clearTimeout(selectionState.justSelectedTimeout);
         }
         removeDragPreview(dragState.preview);
+        // コンテキストメニューを閉じる
+        globalContextMenuStore.set({ open: false, nodeId: undefined });
 
         // タッチイベントリスナーを削除
         if (isTouchCapable && buttonElement) {

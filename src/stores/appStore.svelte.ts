@@ -2,6 +2,7 @@ import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreS
 /// <reference types="vite/client" />
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
+import { writable } from "svelte/store";
 
 // --- アプリ全体の状態管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
@@ -313,6 +314,9 @@ export const relayListUpdatedStore = {
         });
     }
 };
+
+// --- グローバルなコンテキストメニュー表示状態ストア ---
+export const globalContextMenuStore = writable<{ open: boolean; nodeId?: string }>({ open: false, nodeId: undefined });
 
 // --- UI操作関数 ---
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {

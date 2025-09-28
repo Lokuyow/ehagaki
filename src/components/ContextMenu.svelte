@@ -2,6 +2,7 @@
     import { onMount, onDestroy, tick } from "svelte";
     import { _ } from "svelte-i18n";
     import type { MenuItem } from "../lib/types";
+    import { globalContextMenuStore } from "../stores/appStore.svelte";
 
     interface Props {
         x: number;
@@ -15,13 +16,13 @@
     let targetY = y;
     let left: number = $state(x);
     let top: number = $state(y);
-
     let menuElement: HTMLDivElement | undefined = $state();
 
     // メニュー外クリックで閉じる
     function handleClickOutside(event: MouseEvent) {
         if (menuElement && !menuElement.contains(event.target as Node)) {
             onClose();
+            globalContextMenuStore.set({ open: false, nodeId: undefined });
         }
     }
 
@@ -29,6 +30,7 @@
     function handleKeyDown(event: KeyboardEvent) {
         if (event.key === "Escape") {
             onClose();
+            globalContextMenuStore.set({ open: false, nodeId: undefined });
         }
     }
 
