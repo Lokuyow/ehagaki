@@ -122,6 +122,7 @@
   "imageContextMenu": {
     "delete": "Delete",
     "fullscreen": "Fullscreen",
-    "copyUrl": "Copy URL"
+    "copyUrl": "Copy URL",
+    "copySuccess": "Copied!"
   }
 }

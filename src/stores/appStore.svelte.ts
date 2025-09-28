@@ -318,6 +318,22 @@ export const relayListUpdatedStore = {
 // --- グローバルなコンテキストメニュー表示状態ストア ---
 export const globalContextMenuStore = writable<{ open: boolean; nodeId?: string }>({ open: false, nodeId: undefined });
 
+// --- クリック/タップ位置管理 ---
+let lastClickPosition = $state<{ x: number; y: number } | null>(null);
+
+export const lastClickPositionStore = {
+    get value() { return lastClickPosition; },
+    set: (value: { x: number; y: number } | null) => { lastClickPosition = value; }
+};
+
+export function setLastClickPosition(pos: { x: number; y: number }) {
+    lastClickPositionStore.set(pos);
+}
+
+export function clearLastClickPosition() {
+    lastClickPositionStore.set(null);
+}
+
 // --- UI操作関数 ---
 export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
     if (info === null) {

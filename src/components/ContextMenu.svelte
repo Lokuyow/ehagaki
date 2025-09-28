@@ -1,17 +1,21 @@
 <script lang="ts">
     import { onMount, onDestroy, tick } from "svelte";
     import { _ } from "svelte-i18n";
+    import { get } from "svelte/store"; // 追加: ストア値を取得するため
     import type { MenuItem } from "../lib/types";
     import { globalContextMenuStore } from "../stores/appStore.svelte";
+    import { calculateContextMenuPosition } from "../lib/utils/appUtils"; // 追加: 位置計算関数をインポート
 
     interface Props {
         x: number;
         y: number;
         items: MenuItem[];
         onClose: () => void;
+        onShowPopup: (x: number, y: number, message: string) => void;
     }
 
-    let { x, y, items, onClose }: Props = $props();
+    let { x, y, items, onClose, onShowPopup }: Props = $props(); // 変更: lastClickPosition を受け取らない
+
     let targetX = x;
     let targetY = y;
     let left: number = $state(x);
@@ -89,6 +93,42 @@
             imageUrlHeader = null;
         }
     });
+
+    // スクリプト内で安全に翻訳を取得するヘルパー
+    const t = (key: string) => {
+        const translator = get(_);
+        return typeof translator === "function" ? translator(key) : String(key);
+    };
+
+    // 追加: コピー成功時のポップアップ表示関数（親に通知）
+    function showCopySuccessPopup(event?: MouseEvent) {
+        // 簡素化: イベント座標があればそれを使用し、なければコンポーネントに渡された x,y を使用する（ストアや menu の近傍フォールバックは削除）
+        let source: { x: number; y: number };
+        if (
+            event &&
+            typeof event.clientX === "number" &&
+            typeof event.clientY === "number"
+        ) {
+            source = { x: event.clientX, y: event.clientY };
+        } else {
+            source = { x: x, y: y };
+        }
+
+        const pos = calculateContextMenuPosition(source.x, source.y);
+        onShowPopup(pos.x, pos.y, t("imageContextMenu.copySuccess"));
+        // devログ
+        if (import.meta.env.MODE === "development") {
+            console.log("[dev] ContextMenu.showCopySuccessPopup()", {
+                initialPropsX: x,
+                initialPropsY: y,
+                source,
+                calculated: pos,
+                popupX: pos.x,
+                popupY: pos.y,
+                popupMessage: t("imageContextMenu.copySuccess"),
+            });
+        }
+    }
 </script>
 
 <div
@@ -105,8 +145,29 @@
         <button
             class="context-menu-item"
             class:disabled={item.disabled}
-            onclick={() => {
-                item.action();
+            onclick={async (event) => {
+                if (import.meta.env.MODE === "development") {
+                    console.log("[dev] ContextMenu.item.click", {
+                        label: item.label,
+                        icon: item.icon,
+                        disabled: item.disabled,
+                    });
+                }
+                // コピーアクションの判定をラベル比較からアイコン比較へ変更（翻訳差異に頑強）
+                const isCopyAction =
+                    item.icon === "/icons/copy-solid-full.svg" ||
+                    /copy/i.test(String(item.label));
+                if (isCopyAction) {
+                    try {
+                        await item.action();
+                        // ストアにある「メニューを開いたときのクリック位置」を優先してポップアップ位置を決定
+                        showCopySuccessPopup(event as MouseEvent);
+                    } catch (error) {
+                        console.warn("Copy failed:", error);
+                    }
+                } else {
+                    item.action();
+                }
                 onClose();
             }}
             disabled={item.disabled}
@@ -193,5 +254,14 @@
     }
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
+    }
+
+    /* 追加: コピー成功メッセージのスタイル */
+    :global(.copy-success-message) {
+        font-size: 1rem;
+        font-weight: bold;
+        color: var(--text);
+        text-align: center;
+        padding: 0;
     }
 </style>

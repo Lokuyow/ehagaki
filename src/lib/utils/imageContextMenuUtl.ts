@@ -22,11 +22,17 @@ export function getImageContextMenuItems(
     const editorObj = options?.editorObj ?? (window as any).__currentEditor;
     const tRaw = options?.t ?? _;
     const t = typeof tRaw === "function" ? tRaw : getStore(tRaw);
+    if (import.meta.env.MODE === "development") {
+        console.log("[dev] getImageContextMenuItems", { src, alt, nodeSize, isSelected });
+    }
 
     return [
         {
             label: t("imageContextMenu.fullscreen"),
             action: () => {
+                if (import.meta.env.MODE === "development") {
+                    console.log("[dev] imageContextMenu.fullscreen action", { src, alt });
+                }
                 windowObj.dispatchEvent(
                     new CustomEvent("image-fullscreen-request", {
                         detail: { src, alt },
@@ -40,6 +46,9 @@ export function getImageContextMenuItems(
             label: t("imageContextMenu.copyUrl"),
             action: async () => {
                 try {
+                    if (import.meta.env.MODE === "development") {
+                        console.log("[dev] imageContextMenu.copyUrl action", { src });
+                    }
                     await navigatorObj.clipboard.writeText(src);
                 } catch (error) {
                     // テスト時はconsole.warnを直接利用
@@ -75,6 +84,9 @@ export function openContextMenuAtButton(
     const rect = buttonElement.getBoundingClientRect();
     const targetX = rect.left + rect.width / 2;
     const targetY = rect.bottom + 8;
+    if (import.meta.env.MODE === "development") {
+        console.log("[dev] openContextMenuAtButton rect, target", { rect, targetX, targetY });
+    }
     return calculateContextMenuPosition(targetX, targetY);
 }
 
@@ -103,6 +115,9 @@ export function openContextMenuForImageNode(
         setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any
     }
 ) {
+    if (import.meta.env.MODE === "development") {
+        console.log("[dev] openContextMenuForImageNode called", { nodeId, clickPosition });
+    }
     const setTimeoutFn = options?.setTimeoutFn ?? ((fn: (...args: any[]) => void, ms?: number, ...args: any[]) => {
         return setTimeout(fn as TimerHandler, ms, ...args);
     });
@@ -114,9 +129,15 @@ export function openContextMenuForImageNode(
         return state;
     });
     if (alreadyOpen && prevNodeId) {
+        if (import.meta.env.MODE === "development") {
+            console.log("[dev] openContextMenuForImageNode already open, closing then reopening", { prevNodeId, nodeId });
+        }
         globalContextMenuStore.set({ open: false, nodeId: undefined });
         setTimeoutFn(() => {
             const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
+            if (import.meta.env.MODE === "development") {
+                console.log("[dev] openContextMenuForImageNode delayed pos", pos);
+            }
             setContextMenuX(pos.x);
             setContextMenuY(pos.y);
             setShowContextMenu(true);
@@ -125,6 +146,9 @@ export function openContextMenuForImageNode(
         return;
     }
     const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
+    if (import.meta.env.MODE === "development") {
+        console.log("[dev] openContextMenuForImageNode immediate pos", pos);
+    }
     setContextMenuX(pos.x);
     setContextMenuY(pos.y);
     setShowContextMenu(true);

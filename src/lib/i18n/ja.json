@@ -17,7 +17,8 @@
   "imageContextMenu": {
     "delete": "削除",
     "fullscreen": "全画面表示",
-    "copyUrl": "URLをコピー"
+    "copyUrl": "URLをコピー",
+    "copySuccess": "コピーしました"
   },
   "loginDialog": {
     "input_secret": "秘密鍵の入力",

@@ -26,6 +26,7 @@
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import type { ImageDimensions } from "../lib/types";
     import ContextMenu from "./ContextMenu.svelte";
+    import PopupModal from "./PopupModal.svelte";
     import { _ } from "svelte-i18n";
     import {
         getImageContextMenuItems,
@@ -33,7 +34,10 @@
         openContextMenuForImageNode, // 追加
     } from "../lib/utils/imageContextMenuUtl";
     import { getEventPosition } from "../lib/utils/appUtils";
-    import { globalContextMenuStore } from "../stores/appStore.svelte";
+    import {
+        globalContextMenuStore,
+        lastClickPositionStore,
+    } from "../stores/appStore.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -111,13 +115,85 @@
         }
     });
 
+    // コンテキストメニュー関連の状態
+    let showContextMenu = $state(false);
+    let contextMenuX = $state(0);
+    let contextMenuY = $state(0);
+
+    // ストアからクリック位置を取得
+    let lastClickPosition = $derived(lastClickPositionStore.value);
+
+    // ノード固有のID（src+posで一意化）
+    const nodeId = `${node?.attrs?.src || ""}-${typeof getPos === "function" ? getPos() : ""}`;
+
+    // グローバルストア監視
+    $effect(() => {
+        globalContextMenuStore.subscribe((state) => {
+            // 他ノードでメニューが開かれたら自分のメニューを閉じる
+            if (!state.open || state.nodeId !== nodeId) {
+                showContextMenu = false;
+            }
+        });
+    });
+
+    // コンテキストメニュー項目（ユーティリティから取得）
+    let contextMenuItems = $derived(
+        getImageContextMenuItems(
+            node?.attrs?.src || "",
+            node?.attrs?.alt || "Image",
+            getPos,
+            node?.nodeSize ?? 1,
+            selected,
+        ),
+    );
+
+    // コンテキストメニューを閉じるハンドラー（ユーティリティから生成）
+    let closeContextMenu = $derived(
+        createCloseContextMenuHandler((value) => {
+            showContextMenu = value;
+            if (!value) {
+                globalContextMenuStore.set({ open: false, nodeId: undefined });
+            }
+        }),
+    );
+
+    // コンテキストメニューを開く処理（ユーティリティ関数へ移譲）
+    function openContextMenuAtPositionHandler() {
+        if (!lastClickPosition) return;
+        openContextMenuForImageNode(
+            globalContextMenuStore,
+            nodeId,
+            lastClickPosition,
+            (v) => (showContextMenu = v),
+            (v) => (contextMenuX = v),
+            (v) => (contextMenuY = v),
+        );
+    }
+
+    // ポップアップモーダルの状態を追加
+    let showPopupModal = $state(false);
+    let popupX = $state(0);
+    let popupY = $state(0);
+    let popupMessage = $state("");
+
+    // ポップアップを表示するコールバック
+    function handleShowPopup(x: number, y: number, message: string) {
+        popupX = Number.isFinite(x) ? x : 0;
+        popupY = Number.isFinite(y) ? y : 0;
+        popupMessage = message;
+        showPopupModal = true;
+        setTimeout(() => {
+            showPopupModal = false;
+        }, 1500);
+    }
+
     // 統合されたタップ/クリック処理
     function handleInteraction(
         event: MouseEvent | TouchEvent,
         isTouch = false,
     ) {
         const pos = getEventPosition(event);
-        lastClickPosition = pos;
+        lastClickPositionStore.set(pos); // ストアに保存
 
         const handled = handleImageInteraction(
             event,
@@ -188,64 +264,10 @@
         isImageLoaded = false;
     }
 
-    // コンテキストメニュー関連の状態
-    let showContextMenu = $state(false);
-    let contextMenuX = $state(0);
-    let contextMenuY = $state(0);
-    let lastClickPosition = $state<{ x: number; y: number } | null>(null);
-
-    // ノード固有のID（src+posで一意化）
-    const nodeId = `${node?.attrs?.src || ""}-${typeof getPos === "function" ? getPos() : ""}`;
-
-    // グローバルストア監視
-    $effect(() => {
-        globalContextMenuStore.subscribe((state) => {
-            // 他ノードでメニューが開かれたら自分のメニューを閉じる
-            if (!state.open || state.nodeId !== nodeId) {
-                showContextMenu = false;
-            }
-        });
-    });
-
-    // コンテキストメニュー項目（ユーティリティから取得）
-    let contextMenuItems = $derived(
-        getImageContextMenuItems(
-            node?.attrs?.src || "",
-            node?.attrs?.alt || "Image",
-            getPos,
-            node?.nodeSize ?? 1,
-            selected,
-        ),
-    );
-
-    // コンテキストメニューを閉じるハンドラー（ユーティリティから生成）
-    let closeContextMenu = $derived(
-        createCloseContextMenuHandler((value) => {
-            showContextMenu = value;
-            if (!value) {
-                globalContextMenuStore.set({ open: false, nodeId: undefined });
-            }
-        }),
-    );
-
-    // コンテキストメニューを開く処理（ユーティリティ関数へ移譲）
-    function openContextMenuAtPositionHandler() {
-        if (!lastClickPosition) return;
-        openContextMenuForImageNode(
-            globalContextMenuStore,
-            nodeId,
-            lastClickPosition,
-            (v) => (showContextMenu = v),
-            (v) => (contextMenuX = v),
-            (v) => (contextMenuY = v),
-        );
-    }
-
     // イベントハンドラー
     function handleClick(event: MouseEvent) {
         handleInteraction(event, false);
         // クリック位置でコンテキストメニューを開く
-        lastClickPosition = getEventPosition(event);
         openContextMenuAtPositionHandler();
     }
 
@@ -286,6 +308,7 @@
         blurEditorAndBody();
 
         const pos = getEventPosition(event);
+        lastClickPositionStore.set(pos); // ストアに保存
         startLongPress(event.currentTarget as HTMLElement, pos.x, pos.y);
     }
 
@@ -333,7 +356,6 @@
                 // 通常のタップ処理（キーボードは既にblurEditorAndBodyで隠されている）
                 handleInteraction(event, true);
                 // タップ位置でコンテキストメニューを開く
-                lastClickPosition = getEventPosition(event);
                 openContextMenuAtPositionHandler();
                 return;
             }
@@ -494,7 +516,23 @@
             y={contextMenuY}
             items={contextMenuItems}
             onClose={closeContextMenu}
+            onShowPopup={handleShowPopup}
         />
+    {/if}
+
+    {#if showPopupModal}
+        <PopupModal
+            show={showPopupModal}
+            x={popupX}
+            y={popupY}
+            onClose={() => {
+                showPopupModal = false;
+            }}
+        >
+            <div class="copy-success-message">
+                {popupMessage}
+            </div>
+        </PopupModal>
     {/if}
 </NodeViewWrapper>
 
