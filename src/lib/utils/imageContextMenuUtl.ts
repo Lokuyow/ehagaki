@@ -22,6 +22,7 @@ export function getImageContextMenuItems(
                 );
             },
             src, // 画像URLをMenuItemに追加
+            icon: "/icons/expand-solid-full.svg", // アイコン追加
         },
         {
             label: getStore(_)("imageContextMenu.copyUrl"),
@@ -33,6 +34,7 @@ export function getImageContextMenuItems(
                 }
             },
             src,
+            icon: "/icons/copy-solid-full.svg", // アイコン追加
         },
         {
             label: getStore(_)("imageContextMenu.delete"),
@@ -50,6 +52,7 @@ export function getImageContextMenuItems(
             },
             disabled: !isSelected,
             src,
+            icon: "/icons/trash-solid-full.svg", // アイコン追加
         },
     ];
 }

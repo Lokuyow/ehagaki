@@ -77,10 +77,14 @@
     let imageUrlHeader: string | null = $state(null);
     $effect(() => {
         const src = items[0]?.src;
-        if (typeof src === "string" && src.length > 30) {
-            imageUrlHeader = `${src.slice(0, 20)}...${src.slice(-10)}`;
-        } else if (typeof src === "string") {
-            imageUrlHeader = src;
+        if (typeof src === "string") {
+            // プロトコルを除去
+            let displayUrl = src.replace(/^https?:\/\//, "");
+            if (displayUrl.length > 26) {
+                imageUrlHeader = `${displayUrl.slice(0, 18)}...${displayUrl.slice(-8)}`;
+            } else {
+                imageUrlHeader = displayUrl;
+            }
         } else {
             imageUrlHeader = null;
         }
@@ -108,6 +112,17 @@
             disabled={item.disabled}
             role="menuitem"
         >
+            {#if item.icon}
+                <span
+                    class="menu-icon svg-icon"
+                    class:expand-icon={item.icon ===
+                        "/icons/expand-solid-full.svg"}
+                    class:copy-icon={item.icon === "/icons/copy-solid-full.svg"}
+                    class:trash-icon={item.icon ===
+                        "/icons/trash-solid-full.svg"}
+                    aria-hidden="true"
+                ></span>
+            {/if}
             {item.label}
         </button>
     {/each}
@@ -122,11 +137,10 @@
         box-shadow: 0 4px 12px var(--shadow);
         z-index: 10000;
         min-width: 160px;
-        padding: 0;
+        padding-bottom: 6px;
         pointer-events: auto;
     }
 
-    /* 変更: ヘッダーの高さがコンテンツに応じて確実に取れるように調整 */
     .context-menu-header {
         display: flex;
         align-items: center;
@@ -136,15 +150,20 @@
         font-size: 0.9375rem;
         color: var(--text-light, #888);
         padding: 0 12px;
+        margin-bottom: 4px;
         border-bottom: 1px solid var(--border, #eee);
         word-break: break-all;
         background: none;
+        cursor: default;
     }
 
     .context-menu-item {
-        display: block;
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 14px;
         width: 100%;
-        padding: 12px 16px;
+        padding: 10px 16px;
         background: none;
         border: none;
         text-align: left;
@@ -165,5 +184,19 @@
         &:active {
             transform: scale(1);
         }
+
+        .menu-icon {
+            width: 24px;
+            height: 24px;
+        }
+    }
+    .expand-icon {
+        mask-image: url("/icons/expand-solid-full.svg");
+    }
+    .copy-icon {
+        mask-image: url("/icons/copy-solid-full.svg");
+    }
+    .trash-icon {
+        mask-image: url("/icons/trash-solid-full.svg");
     }
 </style>

@@ -535,4 +535,5 @@ export interface MenuItem {
     action: () => void;
     disabled?: boolean;
     src?: string; // 画像URLを追加
+    icon?: string; // アイコンパス（任意）
 }
