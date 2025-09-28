@@ -1,6 +1,6 @@
 import { _ } from "svelte-i18n";
 import { get as getStore } from "svelte/store";
-import type { MenuItem } from "../types";
+import type { MenuItem, ImageContextMenuStore, ImageContextMenuState } from "../types";
 import { calculateContextMenuPosition } from "./appUtils";
 
 export function getImageContextMenuItems(
@@ -82,4 +82,46 @@ export function createCloseContextMenuHandler(setShowContextMenu: (value: boolea
     return () => {
         setShowContextMenu(false);
     };
+}
+
+/**
+ * 画像ノード用コンテキストメニューをグローバルストアと連携して開く
+ * - ノードID管理
+ * - 既存メニューが他ノードで開いていれば閉じてから開く
+ * - 位置計算も含む
+ */
+export function openContextMenuForImageNode(
+    globalContextMenuStore: ImageContextMenuStore,
+    nodeId: string,
+    clickPosition: { x: number; y: number },
+    setShowContextMenu: (value: boolean) => void,
+    setContextMenuX: (value: number) => void,
+    setContextMenuY: (value: number) => void,
+) {
+    let alreadyOpen = false;
+    let prevNodeId: string | undefined;
+    globalContextMenuStore.update((state: ImageContextMenuState) => {
+        alreadyOpen = state.open && state.nodeId !== nodeId;
+        prevNodeId = state.nodeId;
+        return state;
+    });
+    if (alreadyOpen && prevNodeId) {
+        // 他ノードのメニューを閉じる
+        globalContextMenuStore.set({ open: false, nodeId: undefined });
+        // 少し待ってから自分のメニューを開く（DOM更新のため）
+        setTimeout(() => {
+            const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
+            setContextMenuX(pos.x);
+            setContextMenuY(pos.y);
+            setShowContextMenu(true);
+            globalContextMenuStore.set({ open: true, nodeId });
+        }, 0);
+        return;
+    }
+    // 通常通り開く
+    const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
+    setContextMenuX(pos.x);
+    setContextMenuY(pos.y);
+    setShowContextMenu(true);
+    globalContextMenuStore.set({ open: true, nodeId });
 }

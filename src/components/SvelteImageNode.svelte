@@ -30,11 +30,9 @@
     import {
         getImageContextMenuItems,
         createCloseContextMenuHandler,
+        openContextMenuForImageNode, // 追加
     } from "../lib/utils/imageContextMenuUtl";
-    import {
-        getEventPosition,
-        calculateContextMenuPosition,
-    } from "../lib/utils/appUtils";
+    import { getEventPosition } from "../lib/utils/appUtils";
     import { globalContextMenuStore } from "../stores/appStore.svelte";
 
     interface Props {
@@ -230,41 +228,17 @@
         }),
     );
 
+    // コンテキストメニューを開く処理（ユーティリティ関数へ移譲）
     function openContextMenuAtPositionHandler() {
         if (!lastClickPosition) return;
-        // 他のノードでメニューが開かれていれば閉じてから開く
-        let alreadyOpen = false;
-        let prevNodeId: string | undefined;
-        globalContextMenuStore.update((state) => {
-            alreadyOpen = state.open && state.nodeId !== nodeId;
-            prevNodeId = state.nodeId;
-            return state;
-        });
-        if (alreadyOpen && prevNodeId) {
-            // 他ノードのメニューを閉じる
-            globalContextMenuStore.set({ open: false, nodeId: undefined });
-            // 少し待ってから自分のメニューを開く（DOM更新のため）
-            setTimeout(() => {
-                const pos = calculateContextMenuPosition(
-                    lastClickPosition!.x,
-                    lastClickPosition!.y,
-                );
-                contextMenuX = pos.x;
-                contextMenuY = pos.y;
-                showContextMenu = true;
-                globalContextMenuStore.set({ open: true, nodeId });
-            }, 0);
-            return;
-        }
-        // 通常通り開く
-        const pos = calculateContextMenuPosition(
-            lastClickPosition.x,
-            lastClickPosition.y,
+        openContextMenuForImageNode(
+            globalContextMenuStore,
+            nodeId,
+            lastClickPosition,
+            (v) => (showContextMenu = v),
+            (v) => (contextMenuX = v),
+            (v) => (contextMenuY = v),
         );
-        contextMenuX = pos.x;
-        contextMenuY = pos.y;
-        showContextMenu = true;
-        globalContextMenuStore.set({ open: true, nodeId });
     }
 
     // イベントハンドラー

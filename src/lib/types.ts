@@ -537,3 +537,14 @@ export interface MenuItem {
     src?: string; // 画像URLを追加
     icon?: string; // アイコンパス（任意）
 }
+
+// --- Image Context Menu Store 型定義 ---
+export interface ImageContextMenuStore {
+    update: (updater: (state: ImageContextMenuState) => ImageContextMenuState) => void;
+    set: (state: ImageContextMenuState) => void;
+}
+
+export interface ImageContextMenuState {
+    open: boolean;
+    nodeId?: string;
+}
