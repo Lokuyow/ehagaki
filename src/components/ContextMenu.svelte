@@ -176,11 +176,6 @@
             cursor: not-allowed;
         }
 
-        &:focus {
-            outline: 1px solid var(--theme);
-            outline-offset: -2px;
-        }
-
         &:active {
             transform: scale(1);
         }
