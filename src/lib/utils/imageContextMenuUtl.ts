@@ -8,6 +8,7 @@ export function getImageContextMenuItems(
     alt: string,
     getPos: () => number,
     nodeSize: number,
+    isSelected: boolean,
 ): MenuItem[] {
     return [
         {
@@ -34,15 +35,18 @@ export function getImageContextMenuItems(
         {
             label: getStore(_)("imageContextMenu.delete"),
             action: () => {
-                // 画像ノード削除
-                const { state, dispatch } =
-                    (window as any).__currentEditor?.view || {};
-                if (state && dispatch) {
+                if (!isSelected) return;
+                // 画像ノード削除（選択ノードのみ）
+                const editor = (window as any).__currentEditor;
+                const view = editor?.view;
+                if (view?.state && view?.dispatch) {
                     const pos = getPos();
-                    const tr = state.tr.delete(pos, pos + nodeSize);
-                    dispatch(tr);
+                    // ノードサイズが正しいか確認
+                    view.dispatch(view.state.tr.delete(pos, pos + nodeSize));
+                    // 追加のfocus/blurは不要
                 }
             },
+            disabled: !isSelected,
         },
     ];
 }

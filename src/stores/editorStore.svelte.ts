@@ -237,12 +237,6 @@ export const imageSelectionState = $state({
     justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
 });
 
-export const imageLoadState = $state({
-    isImageLoaded: false,
-    blurhashFadeOut: false,
-    canvasRef: undefined as HTMLCanvasElement | undefined,
-});
-
 // --- エディター状態更新関数 ---
 function canPostByContent(content: string, hasImage: boolean): boolean {
     return !!content.trim() || hasImage;

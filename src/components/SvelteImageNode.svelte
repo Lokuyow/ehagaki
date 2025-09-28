@@ -22,7 +22,6 @@
     import {
         imageDragState,
         imageSelectionState,
-        imageLoadState,
     } from "../stores/editorStore.svelte";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import type { ImageDimensions } from "../lib/types";
@@ -30,8 +29,6 @@
     import { _ } from "svelte-i18n";
     import {
         getImageContextMenuItems,
-        openContextMenuAtButton,
-        openContextMenuAtPosition,
         createCloseContextMenuHandler,
     } from "../lib/utils/imageContextMenuUtl";
     import {
@@ -50,8 +47,9 @@
 
     let dragState = imageDragState;
     let selectionState = imageSelectionState;
-    let isImageLoaded = imageLoadState.isImageLoaded;
-    let blurhashFadeOut = imageLoadState.blurhashFadeOut;
+    // ローカルに変更
+    let isImageLoaded = $state(false);
+    let blurhashFadeOut = $state(false);
 
     // 個別のcanvas要素参照（グローバルストアではなくローカル）
     let localCanvasRef: HTMLCanvasElement | undefined = $state();
@@ -180,16 +178,16 @@
 
     // 画像読み込み完了時の処理
     function handleImageLoad() {
-        imageLoadState.isImageLoaded = true;
-        imageLoadState.blurhashFadeOut = true;
+        isImageLoaded = true;
+        blurhashFadeOut = true;
         setTimeout(() => {
-            imageLoadState.blurhashFadeOut = false;
+            blurhashFadeOut = false;
         }, 400); // CSSアニメーションと合わせる
     }
 
     // 画像読み込みエラー時の処理
     function handleImageError() {
-        imageLoadState.isImageLoaded = false;
+        isImageLoaded = false;
     }
 
     // コンテキストメニュー関連の状態
@@ -199,7 +197,7 @@
     let lastClickPosition = $state<{ x: number; y: number } | null>(null);
 
     // ノード固有のID（src+posで一意化）
-    const nodeId = `${node.attrs.src || ""}-${getPos()}`;
+    const nodeId = `${node?.attrs?.src || ""}-${typeof getPos === "function" ? getPos() : ""}`;
 
     // グローバルストア監視
     $effect(() => {
@@ -214,10 +212,11 @@
     // コンテキストメニュー項目（ユーティリティから取得）
     let contextMenuItems = $derived(
         getImageContextMenuItems(
-            node.attrs.src,
-            node.attrs.alt || "Image",
+            node?.attrs?.src || "",
+            node?.attrs?.alt || "Image",
             getPos,
-            node.nodeSize,
+            node?.nodeSize ?? 1,
+            selected,
         ),
     );
 
@@ -470,10 +469,6 @@
             justSelected: false,
             justSelectedTimeout: null,
         });
-        Object.assign(imageLoadState, {
-            isImageLoaded: false,
-            blurhashFadeOut: false,
-        });
         localCanvasRef = undefined;
     });
 </script>
@@ -487,7 +482,7 @@
         data-dragging={dragState.isDragging}
         onclick={handleClick}
         tabindex="0"
-        aria-label={node.attrs.alt || "Image"}
+        aria-label={node?.attrs?.alt || "Image"}
         draggable={!isTouchCapable}
         ondragstart={(e) => handleDragRelatedEvent("start", e)}
         ondragend={() => handleDragRelatedEvent("end")}
@@ -499,17 +494,17 @@
                 bind:this={localCanvasRef}
                 class="blurhash-canvas"
                 class:is-placeholder={isPlaceholder}
-                class:fade-out={imageLoadState.isImageLoaded &&
-                    imageLoadState.blurhashFadeOut &&
+                class:fade-out={isImageLoaded &&
+                    blurhashFadeOut &&
                     showActualImage}
             ></canvas>
         {/if}
         {#if showActualImage}
             <img
-                src={node.attrs.src}
-                alt={node.attrs.alt || ""}
+                src={node?.attrs?.src}
+                alt={node?.attrs?.alt || ""}
                 class="editor-image"
-                class:image-loading={!imageLoadState.isImageLoaded}
+                class:image-loading={!isImageLoaded}
                 draggable="false"
                 onload={handleImageLoad}
                 onerror={handleImageError}
