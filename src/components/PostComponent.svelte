@@ -115,8 +115,10 @@
       if (pos == null) return;
       if (!currentEditor || !currentEditor.view) return;
       try {
-        // フォーカスして選択を設定
-        currentEditor.view.focus();
+        // スマートフォン（タッチデバイス）ではキーボードを立ち上げない
+        if (!("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
+          currentEditor.view.focus();
+        }
         const sel = NodeSelection.create(currentEditor.state.doc, pos);
         currentEditor.view.dispatch(
           currentEditor.state.tr.setSelection(sel).scrollIntoView(),

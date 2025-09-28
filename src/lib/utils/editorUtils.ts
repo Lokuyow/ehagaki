@@ -1,7 +1,8 @@
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
 import type { NodeData, DragEvent, CleanUrlResult } from "../types";
 import {
-    blurEditorAndBody
+    blurEditorAndBody,
+    isTouchDevice
 } from "./appDomUtils";
 import { domUtils } from "./appDomUtils";
 import { renderBlurhashToCanvas } from "../tags/imetaTag";
@@ -564,6 +565,10 @@ export function requestFullscreenImage(src: string, alt: string = "Image") {
 
 export function requestNodeSelection(getPos: () => number) {
     const pos = getPos();
+    // スマートフォン（タッチデバイス）ではキーボードを閉じる
+    if (isTouchDevice()) {
+        blurEditorAndBody();
+    }
     window.dispatchEvent(
         new CustomEvent("select-image-node", { detail: { pos } }),
     );
