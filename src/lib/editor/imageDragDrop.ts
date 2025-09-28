@@ -231,6 +231,11 @@ export const ImageDragDropExtension = Extension.create({
                         return DecorationSet.empty;
                     },
                     apply(_tr, _prev, _oldState, newState) {
+                        // PC環境ではドロップゾーンを作成しない
+                        if (!isTouchDevice()) {
+                            return DecorationSet.empty;
+                        }
+
                         // imageDragDropKey を使用して状態を取得
                         const imageDragState = imageDragDropKey.getState(newState);
 
