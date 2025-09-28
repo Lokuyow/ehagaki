@@ -580,8 +580,9 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        height: 24px;
-        padding: 0;
+        width: 100%;
+        height: fit-content;
+        padding: 10px 0;
         background: none;
         border: none;
         box-shadow: none;
@@ -589,19 +590,16 @@
 
     :global(.drop-zone-bar) {
         width: 90%;
-        max-width: 240px;
-        height: 4px;
-        border-radius: 2px;
+        max-width: 260px;
+        height: 6px;
+        border-radius: 9999px;
         background: var(--blue);
         margin: 0 auto;
-        box-shadow: 0 1px 4px rgba(33, 150, 243, 0.1);
-        transition: background 0.2s ease-out;
     }
 
-    /* より分かりやすいハイライト色（鮮やかな黄色） */
     :global(.drop-zone-hover .drop-zone-bar) {
         background: var(--yellow);
-        box-shadow: 0 0 0 3px var(--yellow);
+        outline: 2px solid var(--yellow);
     }
 
     /* ドラッグプレビュー用のクラス */
