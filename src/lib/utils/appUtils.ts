@@ -937,3 +937,31 @@ export async function testServiceWorkerCommunication(): Promise<boolean> {
   });
 }
 
+/**
+ * イベントから位置座標を取得（クリックまたはタップ）
+ */
+export function getEventPosition(event: MouseEvent | TouchEvent): { x: number; y: number } {
+  if (event.type.startsWith('touch')) {
+    const touchEvent = event as TouchEvent;
+    const touch = touchEvent.touches[0] || touchEvent.changedTouches[0];
+    return { x: touch.clientX, y: touch.clientY };
+  } else {
+    const mouseEvent = event as MouseEvent;
+    return { x: mouseEvent.clientX, y: mouseEvent.clientY };
+  }
+}
+
+/**
+ * コンテキストメニューの位置をビューポート内に収める
+ */
+export function calculateContextMenuPosition(x: number, y: number, margin: number = 10): { x: number; y: number } {
+  const viewportWidth =
+    window.innerWidth || document.documentElement.clientWidth || 0;
+  const viewportHeight =
+    window.innerHeight || document.documentElement.clientHeight || 0;
+  return {
+    x: Math.max(0, Math.min(viewportWidth - margin, x)),
+    y: Math.max(0, Math.min(viewportHeight - margin, y)),
+  };
+}
+

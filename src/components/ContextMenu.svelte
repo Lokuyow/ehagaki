@@ -1,12 +1,7 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, tick } from "svelte";
     import { _ } from "svelte-i18n";
-
-    interface MenuItem {
-        label: string;
-        action: () => void;
-        disabled?: boolean;
-    }
+    import type { MenuItem } from "../lib/types";
 
     interface Props {
         x: number;
@@ -16,6 +11,10 @@
     }
 
     let { x, y, items, onClose }: Props = $props();
+    let targetX = x;
+    let targetY = y;
+    let left: number = $state(x);
+    let top: number = $state(y);
 
     let menuElement: HTMLDivElement | undefined = $state();
 
@@ -33,21 +32,50 @@
         }
     }
 
+    async function updatePosition() {
+        await tick();
+        if (!menuElement) return;
+        const { offsetWidth, offsetHeight } = menuElement;
+        const viewportWidth =
+            window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight =
+            window.innerHeight || document.documentElement.clientHeight || 0;
+        const rect = menuElement.getBoundingClientRect();
+        const correctedX = targetX - (rect.left - targetX);
+        const correctedY = targetY - (rect.top - targetY);
+        const maxX = Math.max(0, viewportWidth - offsetWidth);
+        const maxY = Math.max(0, viewportHeight - offsetHeight);
+
+        left = Math.min(Math.max(0, correctedX), maxX);
+        top = Math.min(Math.max(0, correctedY), maxY);
+    }
+
+    $effect(() => {
+        targetX = x;
+        targetY = y;
+        left = targetX;
+        top = targetY;
+        updatePosition();
+    });
+
     onMount(() => {
         document.addEventListener("click", handleClickOutside);
         document.addEventListener("keydown", handleKeyDown);
+        updatePosition();
+        window.addEventListener("resize", updatePosition);
     });
 
     onDestroy(() => {
         document.removeEventListener("click", handleClickOutside);
         document.removeEventListener("keydown", handleKeyDown);
+        window.removeEventListener("resize", updatePosition);
     });
 </script>
 
 <div
     bind:this={menuElement}
     class="context-menu"
-    style="left: {x}px; top: {y}px;"
+    style="left: {left}px; top: {top}px;"
     role="menu"
     aria-label="Image context menu"
 >

@@ -28,6 +28,11 @@
     import type { ImageDimensions } from "../lib/types";
     import ContextMenu from "./ContextMenu.svelte";
     import { _ } from "svelte-i18n";
+    import { getImageContextMenuItems } from "../lib/utils/imageContextMenu";
+    import {
+        getEventPosition,
+        calculateContextMenuPosition,
+    } from "../lib/utils/appUtils";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -110,6 +115,9 @@
         event: MouseEvent | TouchEvent,
         isTouch = false,
     ) {
+        const pos = getEventPosition(event);
+        lastClickPosition = pos;
+
         const handled = handleImageInteraction(
             event,
             isTouch,
@@ -183,56 +191,17 @@
     let showContextMenu = $state(false);
     let contextMenuX = $state(0);
     let contextMenuY = $state(0);
+    let lastClickPosition = $state<{ x: number; y: number } | null>(null);
 
-    // コンテキストメニュー項目
-    let contextMenuItems = $derived([
-        {
-            label: $_("imageContextMenu.fullscreen"),
-            action: () => {
-                // 全画面表示イベント発火
-                window.dispatchEvent(
-                    new CustomEvent("image-fullscreen-request", {
-                        detail: {
-                            src: node.attrs.src,
-                            alt: node.attrs.alt || "Image",
-                        },
-                    }),
-                );
-            },
-        },
-        {
-            label: $_("imageContextMenu.copyUrl"),
-            action: async () => {
-                try {
-                    await navigator.clipboard.writeText(node.attrs.src);
-                    // 成功時のフィードバック（オプション）
-                } catch (error) {
-                    console.warn("Failed to copy URL:", error);
-                }
-            },
-        },
-        {
-            label: $_("imageContextMenu.delete"),
-            action: () => {
-                // 画像ノード削除
-                const { state, dispatch } =
-                    (window as any).__currentEditor?.view || {};
-                if (state && dispatch) {
-                    const pos = getPos();
-                    const tr = state.tr.delete(pos, pos + node.nodeSize);
-                    dispatch(tr);
-                }
-            },
-        },
-    ]);
-
-    // 右クリックハンドラー
-    function handleContextMenu(event: MouseEvent) {
-        event.preventDefault();
-        contextMenuX = event.clientX;
-        contextMenuY = event.clientY;
-        showContextMenu = true;
-    }
+    // コンテキストメニュー項目（ユーティリティから取得）
+    let contextMenuItems = $derived(
+        getImageContextMenuItems(
+            node.attrs.src,
+            node.attrs.alt || "Image",
+            getPos,
+            node.nodeSize,
+        ),
+    );
 
     function closeContextMenu() {
         showContextMenu = false;
@@ -241,6 +210,9 @@
     // イベントハンドラー
     function handleClick(event: MouseEvent) {
         handleInteraction(event, false);
+        // クリック位置でコンテキストメニューを開く
+        lastClickPosition = getEventPosition(event);
+        openContextMenuAtPosition();
     }
 
     function handleDragRelatedEvent(type: "start" | "end", event?: Event) {
@@ -279,12 +251,8 @@
         // タッチ開始時にキーボードを隠す
         blurEditorAndBody();
 
-        const touch = event.touches[0];
-        startLongPress(
-            event.currentTarget as HTMLElement,
-            touch.clientX,
-            touch.clientY,
-        );
+        const pos = getEventPosition(event);
+        startLongPress(event.currentTarget as HTMLElement, pos.x, pos.y);
     }
 
     function handleTouchMoveActive(event: TouchEvent) {
@@ -293,14 +261,14 @@
             return;
         }
 
-        const touch = event.touches[0];
+        const pos = getEventPosition(event);
 
         // 長押し前で移動距離が閾値を超えたらキャンセル
         if (!dragState.isDragging && dragState.longPressTimeout) {
             if (
                 checkMoveThreshold(
-                    touch.clientX,
-                    touch.clientY,
+                    pos.x,
+                    pos.y,
                     dragState.startPos.x,
                     dragState.startPos.y,
                     MOVE_CANCEL_THRESHOLD,
@@ -314,12 +282,12 @@
         if (!dragState.isDragging) return;
 
         event.preventDefault();
-        updateDragPreview(dragState.preview, touch.clientX, touch.clientY);
-        highlightDropZoneAtPosition(touch.clientX, touch.clientY);
+        updateDragPreview(dragState.preview, pos.x, pos.y);
+        highlightDropZoneAtPosition(pos.x, pos.y);
 
         dispatchDragEvent("move", {
-            touchX: touch.clientX,
-            touchY: touch.clientY,
+            touchX: pos.x,
+            touchY: pos.y,
             nodePos: getPos(),
         });
     }
@@ -337,11 +305,8 @@
         if (!dragState.isDragging) return;
 
         event.preventDefault();
-        const touch = event.changedTouches[0];
-        const elementBelow = document.elementFromPoint(
-            touch.clientX,
-            touch.clientY,
-        );
+        const pos = getEventPosition(event);
+        const elementBelow = document.elementFromPoint(pos.x, pos.y);
 
         if (elementBelow) {
             const dropZone = elementBelow.closest(".drop-zone-indicator");
@@ -349,8 +314,8 @@
 
             dispatchDragEvent("end", {
                 nodeData: { type: "image", attrs: node.attrs, pos: getPos() },
-                dropX: touch.clientX,
-                dropY: touch.clientY,
+                dropX: pos.x,
+                dropY: pos.y,
                 target: elementBelow,
                 dropPosition: targetDropPos
                     ? parseInt(targetDropPos, 10)
@@ -370,21 +335,22 @@
     function openContextMenuAtButton() {
         if (!buttonElement) return;
         const rect = buttonElement.getBoundingClientRect();
-        const margin = 12;
-        const viewportWidth =
-            window.innerWidth || document.documentElement.clientWidth || 0;
-        const viewportHeight =
-            window.innerHeight || document.documentElement.clientHeight || 0;
         const targetX = rect.left + rect.width / 2;
         const targetY = rect.bottom + 8;
-        contextMenuX = Math.min(
-            viewportWidth - margin,
-            Math.max(margin, targetX),
+        const pos = calculateContextMenuPosition(targetX, targetY);
+        contextMenuX = pos.x;
+        contextMenuY = pos.y;
+        showContextMenu = true;
+    }
+
+    function openContextMenuAtPosition() {
+        if (!lastClickPosition) return;
+        const pos = calculateContextMenuPosition(
+            lastClickPosition.x,
+            lastClickPosition.y,
         );
-        contextMenuY = Math.min(
-            viewportHeight - margin,
-            Math.max(margin, targetY),
-        );
+        contextMenuX = pos.x;
+        contextMenuY = pos.y;
         showContextMenu = true;
     }
 
@@ -434,19 +400,6 @@
         }
     });
 
-    $effect(() => {
-        if (!buttonElement) {
-            wasSelected = selected;
-            return;
-        }
-        if (selected && !wasSelected && !showContextMenu) {
-            openContextMenuAtButton();
-        } else if (!selected && wasSelected && showContextMenu) {
-            closeContextMenu();
-        }
-        wasSelected = selected;
-    });
-
     onDestroy(() => {
         clearLongPress();
         if (selectionState.justSelectedTimeout) {
@@ -494,8 +447,6 @@
         data-highlighted={selected}
         data-dragging={dragState.isDragging}
         onclick={handleClick}
-        onfocus={openContextMenuAtButton}
-        oncontextmenu={handleContextMenu}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
         draggable={!isTouchCapable}

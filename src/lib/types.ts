@@ -528,3 +528,10 @@ declare global {
         };
     }
 }
+
+// --- Menu Item types ---
+export interface MenuItem {
+    label: string;
+    action: () => void;
+    disabled?: boolean;
+}
