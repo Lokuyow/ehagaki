@@ -539,9 +539,7 @@ export function handleImageInteraction(
         return false;
     }
 
-    if (selected) {
-        requestFullscreenImage(imageSrc, imageAlt);
-    } else {
+    if (!selected) {
         requestNodeSelection(getPos);
     }
 

@@ -26,6 +26,8 @@
     } from "../stores/editorStore.svelte";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import type { ImageDimensions } from "../lib/types";
+    import ContextMenu from "./ContextMenu.svelte";
+    import { _ } from "svelte-i18n";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -67,6 +69,7 @@
 
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
+    let wasSelected = false;
 
     const devMode = import.meta.env.MODE === "development";
 
@@ -174,6 +177,65 @@
     // 画像読み込みエラー時の処理
     function handleImageError() {
         imageLoadState.isImageLoaded = false;
+    }
+
+    // コンテキストメニュー関連の状態
+    let showContextMenu = $state(false);
+    let contextMenuX = $state(0);
+    let contextMenuY = $state(0);
+
+    // コンテキストメニュー項目
+    let contextMenuItems = $derived([
+        {
+            label: $_("imageContextMenu.fullscreen"),
+            action: () => {
+                // 全画面表示イベント発火
+                window.dispatchEvent(
+                    new CustomEvent("image-fullscreen-request", {
+                        detail: {
+                            src: node.attrs.src,
+                            alt: node.attrs.alt || "Image",
+                        },
+                    }),
+                );
+            },
+        },
+        {
+            label: $_("imageContextMenu.copyUrl"),
+            action: async () => {
+                try {
+                    await navigator.clipboard.writeText(node.attrs.src);
+                    // 成功時のフィードバック（オプション）
+                } catch (error) {
+                    console.warn("Failed to copy URL:", error);
+                }
+            },
+        },
+        {
+            label: $_("imageContextMenu.delete"),
+            action: () => {
+                // 画像ノード削除
+                const { state, dispatch } =
+                    (window as any).__currentEditor?.view || {};
+                if (state && dispatch) {
+                    const pos = getPos();
+                    const tr = state.tr.delete(pos, pos + node.nodeSize);
+                    dispatch(tr);
+                }
+            },
+        },
+    ]);
+
+    // 右クリックハンドラー
+    function handleContextMenu(event: MouseEvent) {
+        event.preventDefault();
+        contextMenuX = event.clientX;
+        contextMenuY = event.clientY;
+        showContextMenu = true;
+    }
+
+    function closeContextMenu() {
+        showContextMenu = false;
     }
 
     // イベントハンドラー
@@ -305,6 +367,27 @@
         event.preventDefault();
     }
 
+    function openContextMenuAtButton() {
+        if (!buttonElement) return;
+        const rect = buttonElement.getBoundingClientRect();
+        const margin = 12;
+        const viewportWidth =
+            window.innerWidth || document.documentElement.clientWidth || 0;
+        const viewportHeight =
+            window.innerHeight || document.documentElement.clientHeight || 0;
+        const targetX = rect.left + rect.width / 2;
+        const targetY = rect.bottom + 8;
+        contextMenuX = Math.min(
+            viewportWidth - margin,
+            Math.max(margin, targetX),
+        );
+        contextMenuY = Math.min(
+            viewportHeight - margin,
+            Math.max(margin, targetY),
+        );
+        showContextMenu = true;
+    }
+
     onMount(() => {
         if (node.attrs.blurhash && localCanvasRef) {
             renderBlurhashUtil(
@@ -349,6 +432,19 @@
                 devMode,
             );
         }
+    });
+
+    $effect(() => {
+        if (!buttonElement) {
+            wasSelected = selected;
+            return;
+        }
+        if (selected && !wasSelected && !showContextMenu) {
+            openContextMenuAtButton();
+        } else if (!selected && wasSelected && showContextMenu) {
+            closeContextMenu();
+        }
+        wasSelected = selected;
     });
 
     onDestroy(() => {
@@ -398,6 +494,8 @@
         data-highlighted={selected}
         data-dragging={dragState.isDragging}
         onclick={handleClick}
+        onfocus={openContextMenuAtButton}
+        oncontextmenu={handleContextMenu}
         tabindex="0"
         aria-label={node.attrs.alt || "Image"}
         draggable={!isTouchCapable}
@@ -405,7 +503,6 @@
         ondragend={() => handleDragRelatedEvent("end")}
         ondragover={isTouchCapable ? (e) => e.preventDefault() : undefined}
         ondrop={isTouchCapable ? (e) => e.preventDefault() : undefined}
-        oncontextmenu={preventContextMenu}
     >
         {#if showBlurhash}
             <canvas
@@ -431,6 +528,15 @@
             />
         {/if}
     </button>
+
+    {#if showContextMenu}
+        <ContextMenu
+            x={contextMenuX}
+            y={contextMenuY}
+            items={contextMenuItems}
+            onClose={closeContextMenu}
+        />
+    {/if}
 </NodeViewWrapper>
 
 <style>

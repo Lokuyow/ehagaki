@@ -118,5 +118,10 @@
       "kit-ten_ketten": "So, what's Kit-ten's weak spot?",
       "such_is_life": "That's life."
     }
+  },
+  "imageContextMenu": {
+    "delete": "Delete",
+    "fullscreen": "Fullscreen",
+    "copyUrl": "Copy URL"
   }
 }

@@ -14,6 +14,11 @@
     "upload_image": "画像をアップロード",
     "only_images_allowed": "画像ファイルのみアップロード可能です"
   },
+  "imageContextMenu": {
+    "delete": "削除",
+    "fullscreen": "全画面表示",
+    "copyUrl": "URLをコピー"
+  },
   "loginDialog": {
     "input_secret": "秘密鍵の入力",
     "save": "保存",
