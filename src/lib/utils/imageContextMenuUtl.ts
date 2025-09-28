@@ -1,6 +1,7 @@
 import { _ } from "svelte-i18n";
 import { get as getStore } from "svelte/store";
 import type { MenuItem } from "../types";
+import { calculateContextMenuPosition } from "./appUtils";
 
 export function getImageContextMenuItems(
     src: string,
@@ -44,4 +45,30 @@ export function getImageContextMenuItems(
             },
         },
     ];
+}
+
+/**
+ * ボタン要素からコンテキストメニューを開く位置を計算
+ */
+export function openContextMenuAtButton(buttonElement: HTMLButtonElement): { x: number; y: number } {
+    const rect = buttonElement.getBoundingClientRect();
+    const targetX = rect.left + rect.width / 2;
+    const targetY = rect.bottom + 8;
+    return calculateContextMenuPosition(targetX, targetY);
+}
+
+/**
+ * 指定位置からコンテキストメニューを開く位置を計算
+ */
+export function openContextMenuAtPosition(position: { x: number; y: number }): { x: number; y: number } {
+    return calculateContextMenuPosition(position.x, position.y);
+}
+
+/**
+ * コンテキストメニューを閉じる（ユーティリティとしてコールバックを返す）
+ */
+export function createCloseContextMenuHandler(setShowContextMenu: (value: boolean) => void): () => void {
+    return () => {
+        setShowContextMenu(false);
+    };
 }

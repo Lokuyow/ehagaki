@@ -28,7 +28,12 @@
     import type { ImageDimensions } from "../lib/types";
     import ContextMenu from "./ContextMenu.svelte";
     import { _ } from "svelte-i18n";
-    import { getImageContextMenuItems } from "../lib/utils/imageContextMenu";
+    import {
+        getImageContextMenuItems,
+        openContextMenuAtButton,
+        openContextMenuAtPosition,
+        createCloseContextMenuHandler,
+    } from "../lib/utils/imageContextMenuUtl";
     import {
         getEventPosition,
         calculateContextMenuPosition,
@@ -74,7 +79,6 @@
 
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
-    let wasSelected = false;
 
     const devMode = import.meta.env.MODE === "development";
 
@@ -203,8 +207,20 @@
         ),
     );
 
-    function closeContextMenu() {
-        showContextMenu = false;
+    // コンテキストメニューを閉じるハンドラー（ユーティリティから生成）
+    let closeContextMenu = $derived(
+        createCloseContextMenuHandler((value) => (showContextMenu = value)),
+    );
+
+    function openContextMenuAtPositionHandler() {
+        if (!lastClickPosition) return;
+        const pos = calculateContextMenuPosition(
+            lastClickPosition.x,
+            lastClickPosition.y,
+        );
+        contextMenuX = pos.x;
+        contextMenuY = pos.y;
+        showContextMenu = true;
     }
 
     // イベントハンドラー
@@ -212,7 +228,7 @@
         handleInteraction(event, false);
         // クリック位置でコンテキストメニューを開く
         lastClickPosition = getEventPosition(event);
-        openContextMenuAtPosition();
+        openContextMenuAtPositionHandler();
     }
 
     function handleDragRelatedEvent(type: "start" | "end", event?: Event) {
@@ -298,6 +314,9 @@
             if (!dragState.isDragging) {
                 // 通常のタップ処理（キーボードは既にblurEditorAndBodyで隠されている）
                 handleInteraction(event, true);
+                // タップ位置でコンテキストメニューを開く
+                lastClickPosition = getEventPosition(event);
+                openContextMenuAtPositionHandler();
                 return;
             }
         }
@@ -332,28 +351,6 @@
         event.preventDefault();
     }
 
-    function openContextMenuAtButton() {
-        if (!buttonElement) return;
-        const rect = buttonElement.getBoundingClientRect();
-        const targetX = rect.left + rect.width / 2;
-        const targetY = rect.bottom + 8;
-        const pos = calculateContextMenuPosition(targetX, targetY);
-        contextMenuX = pos.x;
-        contextMenuY = pos.y;
-        showContextMenu = true;
-    }
-
-    function openContextMenuAtPosition() {
-        if (!lastClickPosition) return;
-        const pos = calculateContextMenuPosition(
-            lastClickPosition.x,
-            lastClickPosition.y,
-        );
-        contextMenuX = pos.x;
-        contextMenuY = pos.y;
-        showContextMenu = true;
-    }
-
     onMount(() => {
         if (node.attrs.blurhash && localCanvasRef) {
             renderBlurhashUtil(
@@ -383,11 +380,6 @@
 
     $effect(() => {
         // previewモードでもログ出力するように修正
-        const isPreviewOrDev =
-            import.meta.env.MODE === "development" ||
-            (typeof window !== "undefined" &&
-                (window.location.port === "4173" ||
-                    window.location.hostname === "localhost"));
 
         if (node.attrs.blurhash && localCanvasRef) {
             renderBlurhashUtil(
