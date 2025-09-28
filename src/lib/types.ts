@@ -534,4 +534,5 @@ export interface MenuItem {
     label: string;
     action: () => void;
     disabled?: boolean;
+    src?: string; // 画像URLを追加
 }

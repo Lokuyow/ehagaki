@@ -21,6 +21,7 @@ export function getImageContextMenuItems(
                     }),
                 );
             },
+            src, // 画像URLをMenuItemに追加
         },
         {
             label: getStore(_)("imageContextMenu.copyUrl"),
@@ -31,6 +32,7 @@ export function getImageContextMenuItems(
                     console.warn("Failed to copy URL:", error);
                 }
             },
+            src,
         },
         {
             label: getStore(_)("imageContextMenu.delete"),
@@ -47,6 +49,7 @@ export function getImageContextMenuItems(
                 }
             },
             disabled: !isSelected,
+            src,
         },
     ];
 }

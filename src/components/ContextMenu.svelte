@@ -72,6 +72,19 @@
         document.removeEventListener("keydown", handleKeyDown);
         window.removeEventListener("resize", updatePosition);
     });
+
+    // 画像URLヘッダー表示用
+    let imageUrlHeader: string | null = $state(null);
+    $effect(() => {
+        const src = items[0]?.src;
+        if (typeof src === "string" && src.length > 30) {
+            imageUrlHeader = `${src.slice(0, 20)}...${src.slice(-10)}`;
+        } else if (typeof src === "string") {
+            imageUrlHeader = src;
+        } else {
+            imageUrlHeader = null;
+        }
+    });
 </script>
 
 <div
@@ -81,6 +94,9 @@
     role="menu"
     aria-label="Image context menu"
 >
+    {#if imageUrlHeader}
+        <div class="context-menu-header">{imageUrlHeader}</div>
+    {/if}
     {#each items as item (item.label)}
         <button
             class="context-menu-item"
@@ -106,15 +122,29 @@
         box-shadow: 0 4px 12px var(--shadow);
         z-index: 10000;
         min-width: 160px;
-        padding: 4px 0;
-        font-size: 1rem;
+        padding: 0;
         pointer-events: auto;
+    }
+
+    /* 変更: ヘッダーの高さがコンテンツに応じて確実に取れるように調整 */
+    .context-menu-header {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 34px;
+        font-size: 0.9375rem;
+        color: var(--text-light, #888);
+        padding: 0 12px;
+        border-bottom: 1px solid var(--border, #eee);
+        word-break: break-all;
+        background: none;
     }
 
     .context-menu-item {
         display: block;
         width: 100%;
-        padding: 8px 16px;
+        padding: 12px 16px;
         background: none;
         border: none;
         text-align: left;
