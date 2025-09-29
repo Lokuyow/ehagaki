@@ -1,6 +1,6 @@
 import { ZoomCalculation, ZoomParams, MousePosition } from "../types";
 import { TIMING, ZOOM_CONFIG } from "../constants";
-import { transformStore } from "../../stores/transformStore.svelte";
+import { transformStore } from "../../stores/imageFullscreenStore.svelte";
 import { setBodyStyle, clearBodyStyles } from "./appDomUtils";
 
 /**

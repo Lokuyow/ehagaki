@@ -7,7 +7,7 @@
         transformStore,
         createDragState,
         createPinchState,
-    } from "../stores/transformStore.svelte";
+    } from "../stores/imageFullscreenStore.svelte";
     import {
         calculateViewportInfo,
         calculateZoomFromEvent,
