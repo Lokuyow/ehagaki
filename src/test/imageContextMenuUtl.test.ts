@@ -68,6 +68,61 @@ describe("imageContextMenuUtl", () => {
         expect(mockView.dispatch).toHaveBeenCalledWith("TRANSACTION");
     });
 
+    it("copy action fails when both clipboard and fallback fail", async () => {
+        // カスタム翻訳 Readable<MessageFormatter> モック
+        const t = {
+            subscribe: (run: (formatter: (id: string | { id: string }) => string) => void, _invalidate?: () => void) => {
+                run((id: string | { id: string }) => {
+                    const key = typeof id === "string" ? id : id.id;
+                    const map: Record<string, string> = {
+                        "imageContextMenu.fullscreen": "Fullscreen",
+                        "imageContextMenu.copyUrl": "Copy URL",
+                        "imageContextMenu.delete": "Delete"
+                    };
+                    return map[key] ?? key;
+                });
+                return () => { };
+            }
+        };
+
+        // Clipboard API を失敗させる
+        (globalThis as any).navigator.clipboard.writeText = vi.fn().mockRejectedValue(new Error("Clipboard not available"));
+
+        // document.execCommand を失敗させる
+        const mockDoc = {
+            createElement: vi.fn().mockReturnValue({
+                value: src,
+                style: {},
+                setAttribute: vi.fn(),
+                focus: vi.fn(),
+                select: vi.fn()
+            }),
+            body: {
+                appendChild: vi.fn(),
+                removeChild: vi.fn()
+            },
+            execCommand: vi.fn().mockReturnValue(false) // execCommand を失敗させる
+        } as any;
+
+        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, {
+            navigatorObj: navigator,
+            windowObj: { document: mockDoc } as any,
+            t
+        });
+
+        const copyAction = items[1].action;
+
+        // コピーアクションが失敗して例外を投げることを確認
+        await expect(copyAction()).rejects.toThrow();
+
+        // Clipboard API が呼ばれたことを確認
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(src);
+
+        // フォールバックが試されたことを確認
+        expect(mockDoc.createElement).toHaveBeenCalledWith("textarea");
+        expect(mockDoc.execCommand).toHaveBeenCalledWith("copy");
+    });
+
     it("createCloseContextMenuHandler returns a closer that calls setter", () => {
         let show = true;
         const setter = (v: boolean) => { show = v; };

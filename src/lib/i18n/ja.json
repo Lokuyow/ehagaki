@@ -18,7 +18,8 @@
     "delete": "削除",
     "fullscreen": "全画面表示",
     "copyUrl": "URLをコピー",
-    "copySuccess": "コピーしました"
+    "copySuccess": "コピーしました",
+    "copyFailed": "コピーに失敗しました"
   },
   "loginDialog": {
     "input_secret": "秘密鍵の入力",

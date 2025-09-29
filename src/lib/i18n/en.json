@@ -123,6 +123,7 @@
     "delete": "Delete",
     "fullscreen": "Fullscreen",
     "copyUrl": "Copy URL",
-    "copySuccess": "Copied!"
+    "copySuccess": "Copied!",
+    "copyFailed": "Copy failed"
   }
 }

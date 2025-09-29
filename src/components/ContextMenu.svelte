@@ -129,6 +129,29 @@
             });
         }
     }
+
+    // 追加: コピー失敗時のポップアップ表示（親に通知）
+    function showCopyFailurePopup(event?: MouseEvent) {
+        let source: { x: number; y: number };
+        if (
+            event &&
+            typeof event.clientX === "number" &&
+            typeof event.clientY === "number"
+        ) {
+            source = { x: event.clientX, y: event.clientY };
+        } else {
+            source = { x: x, y: y };
+        }
+        const pos = calculateContextMenuPosition(source.x, source.y);
+        onShowPopup(pos.x, pos.y, t("imageContextMenu.copyFailed"));
+        if (import.meta.env.MODE === "development") {
+            console.log("[dev] ContextMenu.showCopyFailurePopup()", {
+                source,
+                calculated: pos,
+                popupMessage: t("imageContextMenu.copyFailed"),
+            });
+        }
+    }
 </script>
 
 <div
@@ -164,6 +187,8 @@
                         showCopySuccessPopup(event as MouseEvent);
                     } catch (error) {
                         console.warn("Copy failed:", error);
+                        // 失敗時は失敗メッセージをポップアップで表示
+                        showCopyFailurePopup(event as MouseEvent);
                     }
                 } else {
                     item.action();
