@@ -140,14 +140,6 @@
         );
     }
 
-    // ポップアップモーダルの状態を追加
-    let showPopupModal = $state(false);
-    let popupX = $state(0);
-    let popupY = $state(0);
-    let popupMessage = $state("");
-
-    // ポップアップを表示するコールバック
-
     // 統合されたタップ/クリック処理
     function handleInteraction(
         event: MouseEvent | TouchEvent,
