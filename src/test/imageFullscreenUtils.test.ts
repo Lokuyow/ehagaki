@@ -99,7 +99,7 @@ describe('imageFullscreenUtils', () => {
         let called = false;
         const cb = () => { called = true; };
         const now = Date.now();
-        const result = handleTap(now - 100, { x: 10, y: 10 }, 1, 12, 12, cb);
+        const result = handleTap(now - 100, { x: 10, y: 10 }, 1, 12, 12, true, cb);
         expect(result.isDoubleTap).toBe(true);
         expect(called).toBe(true);
     });

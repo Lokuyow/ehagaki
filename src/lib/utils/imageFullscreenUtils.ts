@@ -153,8 +153,14 @@ export function handleTap(
     tapTimeoutId: number | null,
     clientX: number,
     clientY: number,
+    isTouch: boolean,
     onDoubleTap: (x: number, y: number) => void
 ): { isDoubleTap: boolean; newLastTapTime: number; newLastTapPosition: { x: number; y: number } | null; newTapTimeoutId: number | null } {
+    if (!isTouch) {
+        // マウスイベントではondblclickに任せるため、ダブルタップ検知をスキップ
+        return { isDoubleTap: false, newLastTapTime: lastTapTime, newLastTapPosition: lastTapPosition, newTapTimeoutId: tapTimeoutId };
+    }
+
     const currentTime = Date.now();
     const tapDistance = lastTapPosition
         ? Math.sqrt(
@@ -198,7 +204,7 @@ export function handlePointerStart(
     let newLastTapPosition = lastTapPosition;
     let newTapTimeoutId = tapTimeoutId;
 
-    const tapResult = handleTap(lastTapTime, lastTapPosition, tapTimeoutId, clientX, clientY, onDoubleTap);
+    const tapResult = handleTap(lastTapTime, lastTapPosition, tapTimeoutId, clientX, clientY, isTouch, onDoubleTap);
     newLastTapTime = tapResult.newLastTapTime;
     newLastTapPosition = tapResult.newLastTapPosition;
     newTapTimeoutId = tapResult.newTapTimeoutId;
