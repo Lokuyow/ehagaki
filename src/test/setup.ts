@@ -169,3 +169,11 @@ if (!navigator.serviceWorker) {
 if (!window.dispatchEvent) {
     window.dispatchEvent = function () { return true; };
 }
+
+// window.setTimeout/clearTimeout の安全な定義
+if (!window.setTimeout) {
+    window.setTimeout = setTimeout;
+}
+if (!window.clearTimeout) {
+    window.clearTimeout = clearTimeout;
+}
