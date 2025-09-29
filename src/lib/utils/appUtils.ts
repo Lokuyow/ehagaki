@@ -9,10 +9,7 @@ import type {
   WindowAdapter,
   TimeoutAdapter,
   MousePosition,
-  ViewportInfo,
   ZoomCalculation,
-  TouchPosition,
-  PinchInfo,
   ZoomParams,
   ImageDimensions
 } from "../types";
@@ -305,24 +302,6 @@ export function calculateElementCenter(rect: DOMRect): MousePosition {
   return {
     x: rect.width / 2,
     y: rect.height / 2
-  };
-}
-
-/**
- * イベントとコンテナ要素からズームパラメータを計算
- */
-export function calculateZoomFromEvent(
-  event: MouseEvent | WheelEvent,
-  containerElement: HTMLElement,
-  targetScale: number
-): ZoomParams {
-  const rect = containerElement.getBoundingClientRect();
-  const center = calculateElementCenter(rect);
-
-  return {
-    scale: targetScale,
-    offsetX: event.clientX - rect.left - center.x,
-    offsetY: event.clientY - rect.top - center.y
   };
 }
 
