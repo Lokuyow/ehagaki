@@ -384,7 +384,6 @@
                 dragState,
                 pinchState,
                 lastTapTime,
-                tapTimeoutId,
             );
             animationFrameId = null;
             pinchAnimationFrameId = null;
@@ -401,7 +400,6 @@
             dragState,
             pinchState,
             lastTapTime,
-            tapTimeoutId,
         );
         animationFrameId = null;
         pinchAnimationFrameId = null;
@@ -425,7 +423,6 @@
                 dragState,
                 pinchState,
                 lastTapTime,
-                tapTimeoutId,
             );
             animationFrameId = null;
             pinchAnimationFrameId = null;
@@ -481,7 +478,6 @@
             dragState,
             pinchState,
             lastTapTime,
-            tapTimeoutId,
         );
         historyPushed = false;
         lastTapPosition = null;
