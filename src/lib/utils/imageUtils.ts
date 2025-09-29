@@ -79,3 +79,51 @@ export function getPlaceholderDefaultSize(): ImageDimensions {
         displayHeight: 150
     };
 }
+
+/**
+ * 要素の中心からのオフセットを計算
+ */
+export function calculateViewportInfo(
+    element: HTMLElement,
+    mouseX: number,
+    mouseY: number
+): { centerX: number; centerY: number; offsetX: number; offsetY: number } {
+    const rect = element.getBoundingClientRect();
+    const center = { x: rect.width / 2, y: rect.height / 2 };
+    return {
+        centerX: center.x,
+        centerY: center.y,
+        offsetX: mouseX - rect.left - center.x,
+        offsetY: mouseY - rect.top - center.y
+    };
+}
+
+/**
+ * ドラッグの移動量計算
+ */
+export function calculateDragDelta(
+    currentMouse: { x: number; y: number },
+    startMouse: { x: number; y: number }
+): { x: number; y: number } {
+    return {
+        x: currentMouse.x - startMouse.x,
+        y: currentMouse.y - startMouse.y
+    };
+}
+
+/**
+ * イベントとコンテナ要素からズームパラメータを計算
+ */
+export function calculateZoomFromEvent(
+    event: MouseEvent | WheelEvent,
+    containerElement: HTMLElement,
+    targetScale: number
+): { scale: number; offsetX: number; offsetY: number } {
+    const rect = containerElement.getBoundingClientRect();
+    const center = { x: rect.width / 2, y: rect.height / 2 };
+    return {
+        scale: targetScale,
+        offsetX: event.clientX - rect.left - center.x,
+        offsetY: event.clientY - rect.top - center.y
+    };
+}

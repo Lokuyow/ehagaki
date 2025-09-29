@@ -7,7 +7,6 @@ import {
     createFileSizeInfo,
     hasFileSizeChanges,
     generateSizeDisplayInfo,
-    generateSizeDisplayText,
 
     // Nostr Key Utilities
     containsSecretKey,
@@ -135,22 +134,6 @@ describe('File Size Utilities', () => {
                 compressedFilename: 'compressed.jpg',
                 wasSkipped: undefined
             });
-        });
-    });
-
-    describe('generateSizeDisplayText', () => {
-        it('should return null for null input', () => {
-            expect(generateSizeDisplayText(null)).toBe(null);
-        });
-
-        it('should return null when not compressed', () => {
-            const info = createFileSizeInfo(1024, 1024, false);
-            expect(generateSizeDisplayText(info)).toBe(null);
-        });
-
-        it('should return display text when compressed', () => {
-            const info = createFileSizeInfo(2048, 1024, true);
-            expect(generateSizeDisplayText(info)).toBe('データサイズ:<br>2KB → 1KB （50%）');
         });
     });
 });

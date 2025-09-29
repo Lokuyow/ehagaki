@@ -5,7 +5,7 @@
         calculateViewportInfo,
         calculateZoomFromEvent,
         calculateDragDelta,
-    } from "../lib/utils/appUtils";
+    } from "../lib/utils/imageUtils";
     import {
         setBodyStyle,
         clearBodyStyles,

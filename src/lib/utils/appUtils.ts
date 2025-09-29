@@ -129,14 +129,6 @@ export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisp
   };
 }
 
-/**
- * @deprecated 後方互換性のために保持
- */
-export function generateSizeDisplayText(sizeInfo: FileSizeInfo | null): string | null {
-  if (!sizeInfo || !sizeInfo.wasCompressed) return null;
-  return `データサイズ:<br>${sizeInfo.sizeReduction} （${sizeInfo.compressionRatio}%）`;
-}
-
 // =============================================================================
 // Nostr Key Utilities (Pure Functions)
 // =============================================================================
@@ -313,60 +305,6 @@ export function calculateElementCenter(rect: DOMRect): MousePosition {
   return {
     x: rect.width / 2,
     y: rect.height / 2
-  };
-}
-
-/**
- * 要素の中心からのオフセットを計算
- */
-export function calculateViewportInfo(
-  element: HTMLElement,
-  mouseX: number,
-  mouseY: number
-): ViewportInfo {
-  const rect = element.getBoundingClientRect();
-  const center = calculateElementCenter(rect);
-
-  return {
-    centerX: center.x,
-    centerY: center.y,
-    offsetX: mouseX - rect.left - center.x,
-    offsetY: mouseY - rect.top - center.y
-  };
-}
-
-/**
- * ドラッグの移動量計算
- */
-export function calculateDragDelta(
-  currentMouse: MousePosition,
-  startMouse: MousePosition
-): MousePosition {
-  return {
-    x: currentMouse.x - startMouse.x,
-    y: currentMouse.y - startMouse.y
-  };
-}
-
-/**
- * 2点の中心座標を計算
- */
-export function calculatePinchCenter(touch1: Touch, touch2: Touch): TouchPosition {
-  return {
-    x: (touch1.clientX + touch2.clientX) / 2,
-    y: (touch1.clientY + touch2.clientY) / 2
-  };
-}
-
-/**
- * ピンチ情報を計算
- */
-export function calculatePinchInfo(touch1: Touch, touch2: Touch): PinchInfo {
-  const center = calculatePinchCenter(touch1, touch2);
-  return {
-    distance: calculateDistance(touch1, touch2),
-    centerX: center.x,
-    centerY: center.y
   };
 }
 
