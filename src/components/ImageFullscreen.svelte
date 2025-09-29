@@ -2,7 +2,11 @@
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import type { TransformState, Props } from "../lib/types";
-    import { setBodyStyle, focusEditor } from "../lib/utils/appDomUtils";
+    import {
+        setBodyStyle,
+        focusEditor,
+        isTouchDevice,
+    } from "../lib/utils/appDomUtils";
     import {
         transformStore,
         createDragState,
@@ -24,6 +28,8 @@
         handlePointerStart,
         handlePointerMove,
         handlePointerEnd,
+        calculateDragVelocity,
+        applyMomentumAnimation,
     } from "../lib/utils/imageFullscreenUtils";
 
     let {
@@ -42,6 +48,7 @@
     let pinchState = createPinchState();
     let animationFrameId: number | null = null;
     let pinchAnimationFrameId: number | null = null;
+    let momentumAnimationId: number | null = null; // 慣性アニメーション用のID
     let historyPushed = false;
     let lastTapTime = 0;
     let tapTimeoutId: number | null = null;
@@ -51,6 +58,11 @@
     let touchStartTime = 0;
     let touchMoved = false; // Moved to component state for handlePointerMove
     let dragStartThreshold = 10; // ピクセル単位での移動閾値
+
+    // 慣性アニメーション用の状態
+    let lastDragTime = 0;
+    let lastDragPosition = { x: 0, y: 0 };
+    let dragVelocity = { x: 0, y: 0 };
 
     // --- Transform effect ---
     $effect(() => {
@@ -121,6 +133,9 @@
         dragState.isDragging = true;
         dragState.start = { x: clientX, y: clientY };
         dragState.startTranslate = { ...transformState.translate };
+        lastDragTime = Date.now();
+        lastDragPosition = { x: clientX, y: clientY };
+        dragVelocity = { x: 0, y: 0 };
         if (imageContainerElement) {
             imageContainerElement.style.cursor = "grabbing";
             setTransition(false);
@@ -139,6 +154,18 @@
                 dragState.start,
             );
             transformStore.drag(delta.x, delta.y, dragState.startTranslate);
+            // 速度計算
+            const now = Date.now();
+            const timeDelta = now - lastDragTime;
+            if (timeDelta > 0) {
+                dragVelocity = calculateDragVelocity(
+                    lastDragPosition,
+                    { x: clientX, y: clientY },
+                    timeDelta,
+                );
+            }
+            lastDragTime = now;
+            lastDragPosition = { x: clientX, y: clientY };
         });
     }
     function stopDrag() {
@@ -148,9 +175,40 @@
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
         }
-        setImageCursorByScale(transformState.scale, imageContainerElement);
-        setOverlayCursorByScale(transformState.scale, containerElement);
-        setTimeout(() => setTransition(true), 50);
+        // 慣性アニメーションを開始（スマートフォンでのみ）
+        if (isTouchDevice()) {
+            applyMomentumAnimation(
+                dragVelocity,
+                transformState.translate,
+                transformState.scale,
+                (newTranslate) => {
+                    transformStore.setDirectState({
+                        ...transformState,
+                        translate: newTranslate,
+                        useTransition: false,
+                    });
+                },
+                () => {
+                    setTransition(true);
+                    setImageCursorByScale(
+                        transformState.scale,
+                        imageContainerElement,
+                    );
+                    setOverlayCursorByScale(
+                        transformState.scale,
+                        containerElement,
+                    );
+                },
+                momentumAnimationId,
+                (id) => {
+                    momentumAnimationId = id;
+                },
+            );
+        } else {
+            setImageCursorByScale(transformState.scale, imageContainerElement);
+            setOverlayCursorByScale(transformState.scale, containerElement);
+            setTimeout(() => setTransition(true), 50);
+        }
         setBodyUserSelect(true);
     }
     function stopDragIfActive() {
@@ -251,6 +309,15 @@
 
         event.preventDefault(); // デフォルトの動作を防ぐ
 
+        // 慣性アニメーションを停止
+        if (momentumAnimationId !== null) {
+            cancelAnimationFrame(momentumAnimationId);
+            momentumAnimationId = null;
+            setTransition(true);
+            setImageCursorByScale(transformState.scale, imageContainerElement);
+            setOverlayCursorByScale(transformState.scale, containerElement);
+        }
+
         if (event.touches.length === 1) {
             const touch = event.touches[0];
             const result = handlePointerStart(
@@ -320,6 +387,16 @@
         if ((event.target as Element)?.closest(".close-button-container")) {
             return;
         }
+
+        // 慣性アニメーションを停止
+        if (momentumAnimationId !== null) {
+            cancelAnimationFrame(momentumAnimationId);
+            momentumAnimationId = null;
+            setTransition(true);
+            setImageCursorByScale(transformState.scale, imageContainerElement);
+            setOverlayCursorByScale(transformState.scale, containerElement);
+        }
+
         const result = handlePointerStart(
             transformState.scale,
             transformState.translate,

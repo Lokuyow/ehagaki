@@ -110,6 +110,12 @@ export const ZOOM_CONFIG = {
     PINCH_SCALE_SENSITIVITY: 1.0, // ピンチスケール感度
 } as const;
 
+// 慣性アニメーション用の定数
+export const MOMENTUM_CONFIG = {
+    FRICTION: 0.92, // 減衰係数
+    MIN_VELOCITY: 0.1, // 最小速度閾値
+} as const;
+
 export const TIMING = {
     EDITOR_FOCUS_DELAY: 100,
     TRANSITION_DURATION: "0.3s",

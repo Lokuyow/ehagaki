@@ -1,5 +1,5 @@
 import { ZoomCalculation, ZoomParams, MousePosition } from "../types";
-import { TIMING, ZOOM_CONFIG } from "../constants";
+import { TIMING, ZOOM_CONFIG, MOMENTUM_CONFIG } from "../constants"; // MOMENTUM_CONFIG を追加
 import { transformStore } from "../../stores/imageFullscreenStore.svelte";
 import { setBodyStyle, clearBodyStyles } from "./appDomUtils";
 
@@ -368,4 +368,65 @@ export function calculateElementCenter(rect: DOMRect): MousePosition {
         x: rect.width / 2,
         y: rect.height / 2
     };
+}
+
+/**
+ * ドラッグ速度を計算
+ */
+export function calculateDragVelocity(
+    lastPosition: MousePosition,
+    currentPosition: MousePosition,
+    timeDelta: number
+): MousePosition {
+    const dx = currentPosition.x - lastPosition.x;
+    const dy = currentPosition.y - lastPosition.y;
+    return {
+        x: dx / timeDelta * 16, // 約60FPS相当の速度に正規化
+        y: dy / timeDelta * 16,
+    };
+}
+
+/**
+ * 慣性アニメーションを適用（減衰しながら移動）
+ */
+export function applyMomentumAnimation(
+    initialVelocity: MousePosition,
+    initialTranslate: MousePosition,
+    scale: number,
+    onUpdate: (translate: MousePosition) => void,
+    onComplete: () => void,
+    animationId: number | null,
+    setAnimationId: (id: number | null) => void
+) {
+    if (animationId !== null) cancelAnimationFrame(animationId);
+    let velocity = { ...initialVelocity };
+    let translate = { ...initialTranslate };
+    const friction = MOMENTUM_CONFIG.FRICTION; // 定数を使用
+    const minVelocity = MOMENTUM_CONFIG.MIN_VELOCITY; // 定数を使用
+
+    function animate() {
+        // 速度を減衰
+        velocity.x *= friction;
+        velocity.y *= friction;
+
+        // 速度が小さくなったら停止
+        if (Math.abs(velocity.x) < minVelocity && Math.abs(velocity.y) < minVelocity) {
+            setAnimationId(null);
+            onComplete();
+            return;
+        }
+
+        // 位置を更新
+        translate.x += velocity.x;
+        translate.y += velocity.y;
+
+        // 境界制約を適用
+        const constrainedTranslate = transformStore.applyBoundaryConstraints(translate, scale);
+        translate = constrainedTranslate;
+
+        onUpdate(translate);
+        setAnimationId(requestAnimationFrame(animate));
+    }
+
+    setAnimationId(requestAnimationFrame(animate));
 }

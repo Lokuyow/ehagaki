@@ -92,6 +92,10 @@ export const transformStore = {
     },
     setBoundaryConstraints(constraints: BoundaryConstraints | null) {
         boundaryConstraints = constraints;
+    },
+    // 境界制約適用を公開メソッドとして追加
+    applyBoundaryConstraints(translate: Position, scale: number): Position {
+        return applyBoundaryConstraints(translate, scale);
     }
 };
 
