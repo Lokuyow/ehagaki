@@ -1,43 +1,13 @@
 import { ZOOM_CONFIG } from '../lib/constants';
 import { clamp, isNearScale } from '../lib/utils/appUtils';
-
-export interface Position {
-    x: number;
-    y: number;
-}
-
-export interface TransformState {
-    scale: number;
-    translate: Position;
-    useTransition?: boolean;
-}
-
-export interface DragState {
-    isDragging: boolean;
-    start: Position;
-    startTranslate: Position;
-}
-
-export interface PinchState {
-    isPinching: boolean;
-    initialDistance: number;
-    initialScale: number;
-    centerX: number;
-    centerY: number;
-}
-
-export interface ZoomParams {
-    scale: number;
-    offsetX: number;
-    offsetY: number;
-}
-
-export interface BoundaryConstraints {
-    imageWidth: number;
-    imageHeight: number;
-    containerWidth: number;
-    containerHeight: number;
-}
+import type {
+    Position,
+    TransformState,
+    DragState,
+    PinchState,
+    ZoomParams,
+    BoundaryConstraints
+} from '../lib/types';
 
 let transform = $state<TransformState>({
     scale: ZOOM_CONFIG.DEFAULT_SCALE,

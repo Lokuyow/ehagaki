@@ -493,12 +493,6 @@ export interface PinchInfo {
     centerY: number;
 }
 
-export interface ZoomParams {
-    scale: number;
-    offsetX: number;
-    offsetY: number;
-}
-
 // --- profileManager.ts から移動した型定義 ---
 export interface ProfileManagerDeps {
     localStorage?: Storage;
@@ -547,4 +541,43 @@ export interface ImageContextMenuStore {
 export interface ImageContextMenuState {
     open: boolean;
     nodeId?: string;
+}
+
+// --- TransformStore関連型定義 ---
+export interface Position {
+    x: number;
+    y: number;
+}
+
+export interface TransformState {
+    scale: number;
+    translate: Position;
+    useTransition?: boolean;
+}
+
+export interface DragState {
+    isDragging: boolean;
+    start: Position;
+    startTranslate: Position;
+}
+
+export interface PinchState {
+    isPinching: boolean;
+    initialDistance: number;
+    initialScale: number;
+    centerX: number;
+    centerY: number;
+}
+
+export interface ZoomParams {
+    scale: number;
+    offsetX: number;
+    offsetY: number;
+}
+
+export interface BoundaryConstraints {
+    imageWidth: number;
+    imageHeight: number;
+    containerWidth: number;
+    containerHeight: number;
 }

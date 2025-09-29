@@ -15,9 +15,8 @@
         transformStore,
         createDragState,
         createPinchState,
-        type TransformState,
-        type BoundaryConstraints,
     } from "../stores/transformStore.svelte";
+    import type { TransformState, BoundaryConstraints } from "../lib/types";
 
     interface Props {
         src?: string;
