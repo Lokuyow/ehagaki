@@ -152,11 +152,19 @@
       "image-fullscreen-request",
       handleImageFullscreenRequest as EventListener,
     );
+    window.addEventListener(
+      "select-image-node",
+      handleSelectImageNode as EventListener,
+    );
     // 追加: editorContainerEl にもイベントリスナーを追加
     if (editorContainerEl) {
       editorContainerEl.addEventListener(
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
+      );
+      editorContainerEl.addEventListener(
+        "select-image-node",
+        handleSelectImageNode as EventListener,
       );
     }
 
@@ -181,11 +189,19 @@
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
       );
+      window.removeEventListener(
+        "select-image-node",
+        handleSelectImageNode as EventListener,
+      );
       // 追加: editorContainerEl のイベントリスナーも削除
       if (editorContainerEl) {
         editorContainerEl.removeEventListener(
           "image-fullscreen-request",
           handleImageFullscreenRequest as EventListener,
+        );
+        editorContainerEl.removeEventListener(
+          "select-image-node",
+          handleSelectImageNode as EventListener,
         );
       }
       unsubscribe();

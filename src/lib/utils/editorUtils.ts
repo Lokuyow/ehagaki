@@ -569,9 +569,9 @@ export function requestNodeSelection(getPos: () => number) {
     if (isTouchDevice()) {
         blurEditorAndBody();
     }
-    window.dispatchEvent(
-        new CustomEvent("select-image-node", { detail: { pos } }),
-    );
+    const event = new CustomEvent("select-image-node", { detail: { pos } });
+    window.dispatchEvent(event);
+    document.dispatchEvent(event); // ← 追加: documentにも発火
 }
 
 // === エディター状態管理 ===
