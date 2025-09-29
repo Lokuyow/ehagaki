@@ -164,3 +164,8 @@ if (!navigator.serviceWorker) {
         configurable: true
     });
 }
+
+// DOM APIのモック - window.dispatchEventの安全な定義
+if (!window.dispatchEvent) {
+    window.dispatchEvent = function () { return true; };
+}

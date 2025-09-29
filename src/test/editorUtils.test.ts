@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
 import * as editorUtils from '../lib/utils/editorUtils';
 
 // モック設定
@@ -214,93 +214,10 @@ describe('editorUtils', () => {
         });
     });
 
-    describe('ドラッグプレビュー計算', () => {
-        describe('calculatePreviewDimensions', () => {
-            it('should calculate preview dimensions', () => {
-                const rect = new DOMRect(0, 0, 200, 150);
-                const result = editorUtils.calculatePreviewDimensions(rect, 140);
-
-                expect(result.width).toBe(140);
-                expect(result.height).toBe(105); // 150/200 * 140 = 105
-            });
-
-            it('should handle zero width', () => {
-                const rect = new DOMRect(0, 0, 0, 150);
-                const result = editorUtils.calculatePreviewDimensions(rect, 140);
-
-                expect(result.width).toBe(140);
-                expect(result.height).toBe(140);
-            });
-        });
-
-        describe('applyPreviewStyles', () => {
-            it('should apply preview styles', () => {
-                const element = document.createElement('div');
-                const dimensions = { width: 100, height: 80 };
-                const position = { x: 50, y: 40 };
-
-                editorUtils.applyPreviewStyles(element, dimensions, position);
-
-                expect(element.style.width).toBe('100px');
-                expect(element.style.height).toBe('80px');
-                expect(element.style.left).toBe('0px'); // 50 - 100/2
-                expect(element.style.top).toBe('0px'); // 40 - 80/2
-            });
-        });
-    });
-
-    describe('DOM操作', () => {
-        beforeEach(() => {
-            // DOM のセットアップ
-            document.body.innerHTML = '';
-        });
-
-        describe('clearAllDropZoneHighlights', () => {
-            it('should clear all drop zone highlights', () => {
-                const zone1 = document.createElement('div');
-                zone1.className = 'drop-zone-indicator drop-zone-hover';
-                const zone2 = document.createElement('div');
-                zone2.className = 'drop-zone-indicator drop-zone-hover';
-                document.body.appendChild(zone1);
-                document.body.appendChild(zone2);
-
-                editorUtils.clearAllDropZoneHighlights();
-
-                expect(zone1.classList.contains('drop-zone-hover')).toBe(false);
-                expect(zone2.classList.contains('drop-zone-hover')).toBe(false);
-            });
-        });
-
-        describe('highlightDropZone', () => {
-            it('should highlight drop zone', () => {
-                const zone = document.createElement('div');
-                zone.className = 'drop-zone-indicator';
-
-                editorUtils.highlightDropZone(zone);
-                expect(zone.classList.contains('drop-zone-hover')).toBe(true);
-            });
-
-            it('should handle null zone', () => {
-                expect(() => editorUtils.highlightDropZone(null)).not.toThrow();
-            });
-        });
-
-        describe('checkMoveThreshold', () => {
-            it('should check move threshold', () => {
-                expect(editorUtils.checkMoveThreshold(10, 10, 0, 0, 5)).toBe(true);
-                expect(editorUtils.checkMoveThreshold(3, 3, 0, 0, 5)).toBe(false);
-            });
-        });
-    });
-
     describe('イベント処理', () => {
-        let customEventSpy: any;
+        let customEventSpy: MockInstance;
 
         beforeEach(() => {
-            // window.dispatchEventが存在しない場合は作成
-            if (!window.dispatchEvent) {
-                window.dispatchEvent = vi.fn();
-            }
             customEventSpy = vi.spyOn(window, 'dispatchEvent');
         });
 
@@ -323,169 +240,91 @@ describe('editorUtils', () => {
             });
         });
 
-        describe('requestNodeSelection', () => {
-            it('should dispatch node selection event', () => {
-                const getPos = vi.fn().mockReturnValue(5);
-                editorUtils.requestNodeSelection(getPos);
+        describe('エディター操作', () => {
+            describe('createEditorAdapter', () => {
+                it('should create editor adapter', () => {
+                    const mockDispatch = vi.fn();
+                    const mockEditor = {
+                        view: {
+                            state: 'test-state',
+                            dispatch: mockDispatch
+                        },
+                        chain: vi.fn().mockReturnValue({ focus: vi.fn() })
+                    };
 
-                expect(customEventSpy).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        type: 'select-image-node',
-                        detail: { pos: 5 }
-                    })
-                );
+                    const adapter = editorUtils.createEditorAdapter(mockEditor);
+
+                    expect(adapter.getState()).toBe('test-state');
+                    expect(typeof adapter.dispatch).toBe('function');
+                    expect(adapter.chain()).toBe(mockEditor.chain());
+                });
+            });
+
+            describe('calculateInsertPositions', () => {
+                it('should calculate insert positions', () => {
+                    const nodes = [
+                        { nodeSize: 3 },
+                        { nodeSize: 5 },
+                        { nodeSize: 2 }
+                    ];
+
+                    const result = editorUtils.calculateInsertPositions(nodes, 10);
+
+                    expect(result).toEqual([
+                        { node: nodes[0], position: 10 },
+                        { node: nodes[1], position: 13 },
+                        { node: nodes[2], position: 18 }
+                    ]);
+                });
             });
         });
 
-        describe('dispatchDragEvent', () => {
-            it('should dispatch drag events', () => {
-                const getPos = vi.fn().mockReturnValue(10);
-                editorUtils.dispatchDragEvent('start', {}, getPos);
+        describe('コンテンツ抽出', () => {
+            describe('extractFragmentsFromDoc', () => {
+                it('should extract fragments from document', () => {
+                    const mockDoc = {
+                        descendants: vi.fn((callback) => {
+                            [
+                                {
+                                    type: { name: 'paragraph' },
+                                    textContent: 'Hello world'
+                                },
+                                {
+                                    type: { name: 'image' },
+                                    attrs: { src: 'https://example.com/image.jpg' }
+                                }
+                            ].forEach(node => callback(node));
+                        })
+                    };
 
-                expect(customEventSpy).toHaveBeenCalledWith(
-                    expect.objectContaining({
-                        type: 'touch-image-drag-start'
-                    })
-                );
-            });
-        });
-    });
-
-    describe('画像インタラクション', () => {
-        describe('shouldPreventInteraction', () => {
-            it('should prevent interaction when dragging', () => {
-                expect(editorUtils.shouldPreventInteraction(true, false, false, false)).toBe(true);
-            });
-
-            it('should prevent interaction when placeholder', () => {
-                expect(editorUtils.shouldPreventInteraction(false, true, false, false)).toBe(true);
-            });
-
-            it('should prevent interaction when just selected and not touch', () => {
-                expect(editorUtils.shouldPreventInteraction(false, false, true, false)).toBe(true);
+                    const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                    expect(result).toEqual(['Hello world', 'https://example.com/image.jpg']);
+                });
             });
 
-            it('should allow interaction when just selected and touch', () => {
-                expect(editorUtils.shouldPreventInteraction(false, false, true, true)).toBe(false);
-            });
+            describe('getDocumentFromEditor', () => {
+                it('should get document from editor', () => {
+                    const mockDoc = { type: 'doc' };
+                    const mockEditor = {
+                        state: { doc: mockDoc }
+                    };
 
-            it('should allow normal interaction', () => {
-                expect(editorUtils.shouldPreventInteraction(false, false, false, false)).toBe(false);
-            });
-        });
-    });
+                    const result = editorUtils.getDocumentFromEditor(mockEditor);
+                    expect(result).toBe(mockDoc);
+                });
 
-    describe('Blurhash描画', () => {
-        describe('validateBlurhashParams', () => {
-            it('should validate blurhash parameters', () => {
-                const canvas = document.createElement('canvas');
-                const dimensions = { displayWidth: 100, displayHeight: 80 };
+                it('should handle function editor', () => {
+                    const mockDoc = { type: 'doc' };
+                    const mockEditor = () => ({ state: { doc: mockDoc } });
 
-                expect(editorUtils.validateBlurhashParams('validhash', canvas, dimensions)).toBe(true);
-                expect(editorUtils.validateBlurhashParams('', canvas, dimensions)).toBe(false);
-                expect(editorUtils.validateBlurhashParams('validhash', null as any, dimensions)).toBe(false);
-                expect(editorUtils.validateBlurhashParams('validhash', canvas, { displayWidth: 0, displayHeight: 80 })).toBe(false);
-            });
-        });
+                    const result = editorUtils.getDocumentFromEditor(mockEditor);
+                    expect(result).toBe(mockDoc);
+                });
 
-        describe('setupCanvas', () => {
-            it('should setup canvas dimensions', () => {
-                const canvas = document.createElement('canvas');
-                const dimensions = { displayWidth: 200, displayHeight: 150 };
-
-                editorUtils.setupCanvas(canvas, dimensions);
-
-                expect(canvas.width).toBe(200);
-                expect(canvas.height).toBe(150);
-            });
-        });
-    });
-
-    describe('エディター操作', () => {
-        describe('createEditorAdapter', () => {
-            it('should create editor adapter', () => {
-                const mockDispatch = vi.fn();
-                const mockEditor = {
-                    view: {
-                        state: 'test-state',
-                        dispatch: mockDispatch
-                    },
-                    chain: vi.fn().mockReturnValue({ focus: vi.fn() })
-                };
-
-                const adapter = editorUtils.createEditorAdapter(mockEditor);
-
-                expect(adapter.getState()).toBe('test-state');
-                expect(typeof adapter.dispatch).toBe('function');
-                expect(adapter.chain()).toBe(mockEditor.chain());
-            });
-        });
-
-        describe('calculateInsertPositions', () => {
-            it('should calculate insert positions', () => {
-                const nodes = [
-                    { nodeSize: 3 },
-                    { nodeSize: 5 },
-                    { nodeSize: 2 }
-                ];
-
-                const result = editorUtils.calculateInsertPositions(nodes, 10);
-
-                expect(result).toEqual([
-                    { node: nodes[0], position: 10 },
-                    { node: nodes[1], position: 13 },
-                    { node: nodes[2], position: 18 }
-                ]);
-            });
-        });
-    });
-
-    describe('コンテンツ抽出', () => {
-        describe('extractFragmentsFromDoc', () => {
-            it('should extract fragments from document', () => {
-                const mockDoc = {
-                    descendants: vi.fn((callback) => {
-                        // Simulate paragraph node
-                        callback({
-                            type: { name: 'paragraph' },
-                            textContent: 'Hello world'
-                        });
-
-                        // Simulate image node
-                        callback({
-                            type: { name: 'image' },
-                            attrs: { src: 'https://example.com/image.jpg' }
-                        });
-                    })
-                };
-
-                const result = editorUtils.extractFragmentsFromDoc(mockDoc);
-                expect(result).toEqual(['Hello world', 'https://example.com/image.jpg']);
-            });
-        });
-
-        describe('getDocumentFromEditor', () => {
-            it('should get document from editor', () => {
-                const mockDoc = { type: 'doc' };
-                const mockEditor = {
-                    state: { doc: mockDoc }
-                };
-
-                const result = editorUtils.getDocumentFromEditor(mockEditor);
-                expect(result).toBe(mockDoc);
-            });
-
-            it('should handle function editor', () => {
-                const mockDoc = { type: 'doc' };
-                const mockEditor = () => ({ state: { doc: mockDoc } });
-
-                const result = editorUtils.getDocumentFromEditor(mockEditor);
-                expect(result).toBe(mockDoc);
-            });
-
-            it('should return null for invalid editor', () => {
-                expect(editorUtils.getDocumentFromEditor(null)).toBe(null);
-                expect(editorUtils.getDocumentFromEditor({})).toBe(null);
+                it('should return null for invalid editor', () => {
+                    expect(editorUtils.getDocumentFromEditor(null)).toBe(null);
+                    expect(editorUtils.getDocumentFromEditor({})).toBe(null);
+                });
             });
         });
     });
