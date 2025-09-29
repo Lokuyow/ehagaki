@@ -8,15 +8,39 @@
     Props,
     UploadHelperResult,
   } from "../lib/types";
-  import { containsSecretKey } from "../lib/utils/appUtils";
   import { uploadHelper } from "../lib/uploadHelper";
   import type { Readable } from "svelte/store";
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { Node as PMNode } from "prosemirror-model";
   import type { RxNostr } from "rx-nostr";
+  import Button from "./Button.svelte";
+  import Dialog from "./Dialog.svelte";
   import { NodeSelection } from "prosemirror-state";
   import { getShareHandler } from "../lib/shareHandler";
-
+  import ContextMenu from "./ContextMenu.svelte";
+  import PopupModal from "./PopupModal.svelte";
+  import {
+    extractImageBlurhashMap,
+    getMimeTypeFromUrl,
+  } from "../lib/tags/imetaTag";
+  import ImageFullscreen from "./ImageFullscreen.svelte";
+  import {
+    containsSecretKey,
+    calculateContextMenuPosition,
+  } from "../lib/utils/appUtils";
+  import { domUtils } from "../lib/utils/appDomUtils";
+  import { extractContentWithImages } from "../lib/utils/editorUtils";
+  import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
+  import {
+    fileDropAction,
+    pasteAction,
+    touchAction,
+    keydownAction,
+  } from "../lib/editor/editorDomActions";
+  import {
+    globalContextMenuStore,
+    lastClickPositionStore,
+  } from "../stores/appStore.svelte";
   import {
     createEditorStore,
     placeholderTextStore,
@@ -28,30 +52,6 @@
     resetPostStatus,
     setPostSubmitter,
   } from "../stores/editorStore.svelte";
-
-  import { extractContentWithImages } from "../lib/utils/editorUtils";
-  import {
-    extractImageBlurhashMap,
-    getMimeTypeFromUrl,
-  } from "../lib/tags/imetaTag";
-  import Button from "./Button.svelte";
-  import Dialog from "./Dialog.svelte";
-  import ImageFullscreen from "./ImageFullscreen.svelte";
-  import {
-    fileDropAction,
-    pasteAction,
-    touchAction,
-    keydownAction,
-  } from "../lib/editor/editorDomActions";
-  import { domUtils } from "../lib/utils/appDomUtils";
-  import ContextMenu from "./ContextMenu.svelte";
-  import PopupModal from "./PopupModal.svelte";
-  import {
-    globalContextMenuStore,
-    lastClickPositionStore,
-  } from "../stores/appStore.svelte";
-  import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtl";
-  import { calculateContextMenuPosition } from "../lib/utils/appUtils";
 
   // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {

@@ -5,7 +5,7 @@
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
     import type { ImageDimensions } from "../lib/types";
     import { _ } from "svelte-i18n";
-    import { openContextMenuForImageNode } from "../lib/utils/imageContextMenuUtl";
+    import { openContextMenuForImageNode } from "../lib/utils/imageContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
     import {
         renderBlurhash as renderBlurhashUtil,

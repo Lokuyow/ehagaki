@@ -5,9 +5,9 @@ import {
     openContextMenuAtPosition,
     createCloseContextMenuHandler,
     openContextMenuForImageNode
-} from "../lib/utils/imageContextMenuUtl";
+} from "../lib/utils/imageContextMenuUtils";
 
-describe("imageContextMenuUtl", () => {
+describe("imageContextMenuUtils", () => {
     const src = "https://example.com/image.jpg";
     const alt = "Alt text";
     const getPos = () => 5;
