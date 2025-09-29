@@ -2,7 +2,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { renderBlurhashToCanvas } from "../lib/tags/imetaTag";
-    import { getPlaceholderDefaultSize } from "../lib/utils/imageFullscreenUtils";
+    import { getPlaceholderDefaultSize } from "../lib/utils/editorImageUtils";
     import type { ImageDimensions } from "../lib/types";
 
     interface Props {

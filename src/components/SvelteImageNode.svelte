@@ -21,7 +21,7 @@
         calculateImageDisplaySize,
         parseDimString,
         getPlaceholderDefaultSize,
-    } from "../lib/utils/imageFullscreenUtils";
+    } from "../lib/utils/editorImageUtils";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import {
         globalContextMenuStore,
