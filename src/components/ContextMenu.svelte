@@ -182,7 +182,7 @@
                     /copy/i.test(String(item.label));
                 if (isCopyAction) {
                     try {
-                        await item.action();
+                        item.action();
                         // ストアにある「メニューを開いたときのクリック位置」を優先してポップアップ位置を決定
                         showCopySuccessPopup(event as MouseEvent);
                     } catch (error) {

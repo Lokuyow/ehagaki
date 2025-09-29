@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy, createEventDispatcher } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { tick } from "svelte";
 
     // Runesモード: $props() で受ける（let にして親からの更新を反映）
@@ -17,8 +17,6 @@
         children?: () => any;
     }>();
 
-    const dispatch = createEventDispatcher();
-
     function close() {
         if (import.meta.env.MODE === "development") {
             console.log("[dev] PopupModal.close() before", { show, x, y });
@@ -26,7 +24,6 @@
         try {
             onClose && onClose();
         } catch {}
-        dispatch("close");
     }
 
     function handleKeydown(event: KeyboardEvent) {
