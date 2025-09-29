@@ -197,9 +197,9 @@ export function renderBlurhashToCanvas(
         const ctx = canvas.getContext("2d");
         if (!ctx) return false;
 
-        // pixelsを必ずUint8ClampedArrayに変換（型エラー回避のためArray.fromと型アサーションを利用）
+        // pixelsを必ずUint8ClampedArrayに変換（型エラー回避のためArray.fromを利用）
         const imgData = new ImageData(
-            new Uint8ClampedArray(Array.from(pixels)) as unknown as ImageDataArray,
+            new Uint8ClampedArray(Array.from(pixels)),
             width,
             height
         );

@@ -351,7 +351,11 @@ describe('PostManager統合テスト', () => {
         mockAuthState = {
             isAuthenticated: true,
             type: 'nsec',
-            pubkey: 'testpubkey123'
+            pubkey: 'testpubkey123',
+            npub: '',
+            nprofile: '',
+            isValid: true,
+            isInitialized: true
         };
 
         mockHashtagStore = {
