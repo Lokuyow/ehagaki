@@ -225,6 +225,7 @@
         min-width: 160px;
         padding-bottom: 6px;
         pointer-events: auto;
+        white-space: nowrap;
     }
 
     .context-menu-header {
@@ -269,6 +270,7 @@
         .menu-icon {
             width: 24px;
             height: 24px;
+            min-width: 24px;
         }
     }
     .expand-icon {

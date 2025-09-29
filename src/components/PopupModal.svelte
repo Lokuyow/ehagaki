@@ -108,6 +108,7 @@
         outline: none;
         display: inline-flex;
         align-items: flex-start;
+        white-space: nowrap;
     }
 
     .popup-body {
@@ -117,7 +118,6 @@
         width: 100%;
     }
     .popup-children {
-        min-width: 0;
         padding: 0 2px;
     }
 
@@ -125,5 +125,6 @@
         mask-image: url("/icons/circle-info-solid-full.svg");
         width: 24px;
         height: 24px;
+        min-width: 24px;
     }
 </style>
