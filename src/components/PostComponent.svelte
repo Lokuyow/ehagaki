@@ -523,6 +523,7 @@
   bind:show={showImageFullscreen}
   src={fullscreenImageSrc}
   alt={fullscreenImageAlt}
+  {hasStoredKey}
   onClose={handleImageFullscreenClose}
 />
 
