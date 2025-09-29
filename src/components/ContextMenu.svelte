@@ -38,41 +38,50 @@
         }
     }
 
-    // 位置更新でエディター境界を考慮しない（ビューポート全体）
-    async function updatePosition() {
+    // updateMenuPosition を非同期化して DOM 更新を待つようにする
+    async function updateMenuPosition() {
+        // DOM 更新を待つ（初回レンダリングで要素サイズが未確定なケースに対応）
         await tick();
-        if (!menuElement) return;
-        const { offsetWidth, offsetHeight } = menuElement;
-        const viewportWidth =
-            window.innerWidth || document.documentElement.clientWidth || 0;
-        const viewportHeight =
-            window.innerHeight || document.documentElement.clientHeight || 0;
-        const maxX = Math.max(0, viewportWidth - offsetWidth);
-        const maxY = Math.max(0, viewportHeight - offsetHeight);
 
-        left = Math.min(Math.max(0, targetX), maxX);
-        top = Math.min(Math.max(0, targetY), maxY);
+        // menuElementが存在すればサイズを取得（getBoundingClientRect を優先）
+        let width = menuElement ? menuElement.getBoundingClientRect().width : 0;
+        let height = menuElement ? menuElement.getBoundingClientRect().height : 0;
+
+        // フォールバック値（極端に小さい場合の保険）
+        if (!width || width < 8) width = menuElement?.offsetWidth ?? 160;
+        if (!height || height < 4) height = menuElement?.offsetHeight ?? 40;
+
+        // 余白を少し取る（見た目調整／端寄せ回避）
+        const margin = 8;
+        const menuPos = calculateContextMenuPosition(targetX, targetY, margin, width, height);
+
+        left = menuPos.x;
+        top = menuPos.y;
     }
 
     $effect(() => {
         targetX = x;
         targetY = y;
-        left = targetX;
-        top = targetY;
-        updatePosition();
+        updateMenuPosition();
     });
+
+    // resizeイベント用のハンドラを変数に
+    function handleResize() {
+        updateMenuPosition();
+    }
 
     onMount(() => {
         document.addEventListener("click", handleClickOutside);
         document.addEventListener("keydown", handleKeyDown);
-        updatePosition();
-        window.addEventListener("resize", updatePosition);
+        window.addEventListener("resize", handleResize);
+        // 非同期関数なので呼び出しは void で（返り値の Promise を無視）
+        void updateMenuPosition();
     });
 
     onDestroy(() => {
         document.removeEventListener("click", handleClickOutside);
         document.removeEventListener("keydown", handleKeyDown);
-        window.removeEventListener("resize", updatePosition);
+        window.removeEventListener("resize", handleResize);
     });
 
     // 画像URLヘッダー表示用

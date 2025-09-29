@@ -395,12 +395,14 @@
         { editorObj: currentEditor },
       );
       globalContextMenuItems = items;
+      // 位置計算を一度だけ実行し、両方の変数にセット
       const lastPos = lastClickPositionStore.value;
+      let menuPos = { x: 0, y: 0 };
       if (lastPos) {
-        const posObj = calculateContextMenuPosition(lastPos.x, lastPos.y);
-        globalContextMenuX = posObj.x;
-        globalContextMenuY = posObj.y;
+        menuPos = calculateContextMenuPosition(lastPos.x, lastPos.y);
       }
+      globalContextMenuX = menuPos.x;
+      globalContextMenuY = menuPos.y;
     }
   });
 

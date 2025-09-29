@@ -70,21 +70,25 @@
     let popupY = $state(y);
 
     $effect(() => {
-        // containerが存在する場合はサイズを取得して位置を計算
-        let width = container?.offsetWidth ?? 0;
-        let height = container?.offsetHeight ?? 0;
-        // 初回は0なので fallback
-        if (width < 10) width = 320;
-        if (height < 10) height = 40;
-        const pos = calculateContextMenuPosition(
-            x,
-            y,
-            undefined,
-            width,
-            height,
-        );
-        popupX = pos.x;
-        popupY = pos.y;
+        // 非同期に DOM 更新を待ってからサイズを取得し位置計算する
+        (async () => {
+            await tick();
+            // containerが存在する場合はサイズを取得して位置を計算
+            let width = container?.offsetWidth ?? 0;
+            let height = container?.offsetHeight ?? 0;
+            // 初回は0なので fallback
+            if (width < 10) width = 320;
+            if (height < 10) height = 40;
+            const pos = calculateContextMenuPosition(
+                x,
+                y,
+                undefined,
+                width,
+                height,
+            );
+            popupX = pos.x;
+            popupY = pos.y;
+        })();
     });
 </script>
 

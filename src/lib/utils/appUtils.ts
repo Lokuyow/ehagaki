@@ -953,11 +953,6 @@ export function getEventPosition(event: MouseEvent | TouchEvent): { x: number; y
 
 /**
  * コンテキストメニューの位置をビューポート内に収める
- * @param x X座標
- * @param y Y座標
- * @param margin 余白
- * @param popupWidth ポップアップの幅（任意）
- * @param popupHeight ポップアップの高さ（任意）
  */
 export function calculateContextMenuPosition(
   x: number,
