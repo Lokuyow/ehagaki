@@ -25,12 +25,8 @@
     } from "../stores/editorStore.svelte";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import type { ImageDimensions } from "../lib/types";
-    import ContextMenu from "./ContextMenu.svelte";
-    import PopupModal from "./PopupModal.svelte";
     import { _ } from "svelte-i18n";
     import {
-        getImageContextMenuItems,
-        createCloseContextMenuHandler,
         openContextMenuForImageNode, // 追加
     } from "../lib/utils/imageContextMenuUtl";
     import { getEventPosition } from "../lib/utils/appUtils";
