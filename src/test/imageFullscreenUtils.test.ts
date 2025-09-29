@@ -177,4 +177,63 @@ describe('imageFullscreenUtils', () => {
         const rect = { width: 200, height: 100 } as DOMRect;
         expect(calculateElementCenter(rect)).toEqual({ x: 100, y: 50 });
     });
+
+    it('calculateDragVelocity が正しい速度を返す', async () => {
+        const { calculateDragVelocity } = await import('../lib/utils/imageFullscreenUtils');
+        const last = { x: 0, y: 0 };
+        const current = { x: 32, y: 16 };
+        const timeDelta = 8;
+        const result = calculateDragVelocity(last, current, timeDelta);
+        expect(result.x).toBeCloseTo((32 / 8) * 16); // 64
+        expect(result.y).toBeCloseTo((16 / 8) * 16); // 32
+    });
+
+    it('applyMomentumAnimation が onUpdate と onComplete を呼び出す', async () => {
+        const { applyMomentumAnimation } = await import('../lib/utils/imageFullscreenUtils');
+        // モック定数
+        const MOMENTUM_CONFIG = { FRICTION: 0.5, MIN_VELOCITY: 0.1 };
+        // グローバル定数を上書き
+        (globalThis as any).MOMENTUM_CONFIG = MOMENTUM_CONFIG;
+        // transformStore.applyBoundaryConstraints をモック
+        const originalTransformStore = (globalThis as any).transformStore;
+        (globalThis as any).transformStore = {
+            applyBoundaryConstraints: (translate: any) => translate
+        };
+
+        // モック関数
+        const onUpdate = vi.fn();
+        const onComplete = vi.fn();
+        let animationId: number | null = null;
+        const setAnimationId = (id: number | null) => { animationId = id; };
+
+        // requestAnimationFrame/cancelAnimationFrame を即時実行モック
+        const raf = vi.spyOn(window, 'requestAnimationFrame').mockImplementation(cb => {
+            setTimeout(cb, 0);
+            return 1;
+        });
+        const caf = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => { });
+
+        // 初期速度が十分大きい場合
+        await new Promise<void>(resolve => {
+            applyMomentumAnimation(
+                { x: 1, y: 1 },
+                { x: 0, y: 0 },
+                1,
+                onUpdate,
+                () => {
+                    onComplete();
+                    resolve();
+                },
+                null,
+                setAnimationId
+            );
+        });
+
+        expect(onUpdate).toHaveBeenCalled();
+        expect(onComplete).toHaveBeenCalled();
+
+        raf.mockRestore();
+        caf.mockRestore();
+        (globalThis as any).transformStore = originalTransformStore;
+    });
 });
