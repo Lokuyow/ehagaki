@@ -21,7 +21,7 @@ import {
   NSEC_FULL_PATTERN,
   SHARE_HANDLER_CONFIG
 } from '../constants';
-import { calculateImageDisplaySize } from '../utils/imageUtils';
+import { calculateImageDisplaySize } from './imageFullscreenUtils';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)

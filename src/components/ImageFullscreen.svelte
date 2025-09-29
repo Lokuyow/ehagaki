@@ -24,7 +24,7 @@
         handlePointerStart,
         handlePointerMove,
         handlePointerEnd,
-    } from "../lib/utils/imageUtils";
+    } from "../lib/utils/imageFullscreenUtils";
 
     interface Props {
         src?: string;
