@@ -222,3 +222,123 @@ export function resetAllStates(
     clearTapTimer(tapTimeoutId);
     clearBodyStyles();
 }
+
+export function handleTap(
+    lastTapTime: number,
+    lastTapPosition: { x: number; y: number } | null,
+    tapTimeoutId: number | null,
+    clientX: number,
+    clientY: number,
+    onDoubleTap: (x: number, y: number) => void
+): { isDoubleTap: boolean; newLastTapTime: number; newLastTapPosition: { x: number; y: number } | null; newTapTimeoutId: number | null } {
+    const currentTime = Date.now();
+    const tapDistance = lastTapPosition
+        ? Math.sqrt(
+            Math.pow(clientX - lastTapPosition.x, 2) +
+            Math.pow(clientY - lastTapPosition.y, 2),
+        )
+        : 0;
+
+    if (
+        currentTime - lastTapTime < 200 &&
+        tapDistance < 50 &&
+        tapTimeoutId !== null
+    ) {
+        clearTapTimer(tapTimeoutId);
+        onDoubleTap(clientX, clientY);
+        return { isDoubleTap: true, newLastTapTime: 0, newLastTapPosition: null, newTapTimeoutId: null };
+    }
+
+    const newLastTapTime = currentTime;
+    const newLastTapPosition = { x: clientX, y: clientY };
+    clearTapTimer(tapTimeoutId);
+    const newTapTimeoutId = window.setTimeout(() => { }, 300); // Timeout handled by caller
+    return { isDoubleTap: false, newLastTapTime, newLastTapPosition, newTapTimeoutId };
+}
+
+export function handlePointerStart(
+    transformStateScale: number,
+    transformStateTranslate: { x: number; y: number },
+    dragState: any,
+    lastTapTime: number,
+    lastTapPosition: { x: number; y: number } | null,
+    tapTimeoutId: number | null,
+    clientX: number,
+    clientY: number,
+    isTouch: boolean,
+    onDoubleTap: (x: number, y: number) => void
+): { newDragState: any; newLastTapTime: number; newLastTapPosition: { x: number; y: number } | null; newTapTimeoutId: number | null } {
+    let newDragState = { ...dragState };
+    let newLastTapTime = lastTapTime;
+    let newLastTapPosition = lastTapPosition;
+    let newTapTimeoutId = tapTimeoutId;
+
+    const tapResult = handleTap(lastTapTime, lastTapPosition, tapTimeoutId, clientX, clientY, onDoubleTap);
+    newLastTapTime = tapResult.newLastTapTime;
+    newLastTapPosition = tapResult.newLastTapPosition;
+    newTapTimeoutId = tapResult.newTapTimeoutId;
+
+    if (tapResult.isDoubleTap && isTouch) {
+        return { newDragState, newLastTapTime, newLastTapPosition, newTapTimeoutId };
+    }
+
+    if (transformStateScale > ZOOM_CONFIG.DEFAULT_SCALE) {
+        newDragState.start = { x: clientX, y: clientY };
+        newDragState.startTranslate = { ...transformStateTranslate };
+    }
+
+    return { newDragState, newLastTapTime, newLastTapPosition, newTapTimeoutId };
+}
+
+export function handlePointerMove(
+    dragState: any,
+    clientX: number,
+    clientY: number,
+    isTouch: boolean,
+    dragStartThreshold: number,
+    transformStateScale: number,
+    onStartDrag: (x: number, y: number) => void,
+    onUpdateDrag: (x: number, y: number) => void
+): { newDragState: any; touchMoved: boolean } {
+    let newDragState = { ...dragState };
+    let touchMoved = false;
+
+    if (isTouch) {
+        const moveDistance = newDragState.start
+            ? Math.sqrt(
+                Math.pow(clientX - newDragState.start.x, 2) +
+                Math.pow(clientY - newDragState.start.y, 2),
+            )
+            : 0;
+
+        if (moveDistance > dragStartThreshold) {
+            touchMoved = true;
+            if (!newDragState.isDragging && transformStateScale > ZOOM_CONFIG.DEFAULT_SCALE) {
+                onStartDrag(newDragState.start.x, newDragState.start.y);
+                newDragState.isDragging = true;
+            }
+        }
+    }
+
+    if (newDragState.isDragging) {
+        onUpdateDrag(clientX, clientY);
+    }
+
+    return { newDragState, touchMoved };
+}
+
+export function handlePointerEnd(
+    _dragState: any,
+    isTouch: boolean,
+    touchStartTime: number,
+    touchMoved: boolean,
+    onStopDrag: () => void
+): void {
+    if (isTouch) {
+        const touchDuration = Date.now() - touchStartTime;
+        if (touchDuration < 200 && !touchMoved) {
+            return; // Tap already handled
+        }
+    }
+    onStopDrag();
+}

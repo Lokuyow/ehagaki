@@ -2,11 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import type { TransformState } from "../lib/types";
-    import {
-        setBodyStyle,
-        clearBodyStyles,
-        focusEditor,
-    } from "../lib/utils/appDomUtils";
+    import { setBodyStyle, focusEditor } from "../lib/utils/appDomUtils";
     import {
         transformStore,
         createDragState,
@@ -24,6 +20,10 @@
         setBodyUserSelect,
         clearTapTimer,
         updateBoundaryConstraints,
+        resetAllStates,
+        handlePointerStart,
+        handlePointerMove,
+        handlePointerEnd,
     } from "../lib/utils/imageUtils";
 
     interface Props {
@@ -56,24 +56,8 @@
 
     // タッチ処理の改善用の状態
     let touchStartTime = 0;
-    let touchMoved = false;
+    let touchMoved = false; // Moved to component state for handlePointerMove
     let dragStartThreshold = 10; // ピクセル単位での移動閾値
-
-    // --- Utility functions ---
-    function resetTransformState() {
-        if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
-        if (pinchAnimationFrameId !== null)
-            cancelAnimationFrame(pinchAnimationFrameId);
-        animationFrameId = null;
-        pinchAnimationFrameId = null;
-        transformStore.reset();
-        transformStore.setBoundaryConstraints(null);
-        dragState.isDragging = false;
-        pinchState.isPinching = false;
-        lastTapTime = 0;
-        clearTapTimer(tapTimeoutId);
-        clearBodyStyles();
-    }
 
     // --- Transform effect ---
     $effect(() => {
@@ -266,107 +250,6 @@
     }
 
     // --- Tap/Pointer Handlers ---
-    function handleTap(clientX: number, clientY: number) {
-        const currentTime = Date.now();
-        const tapDistance = lastTapPosition
-            ? Math.sqrt(
-                  Math.pow(clientX - lastTapPosition.x, 2) +
-                      Math.pow(clientY - lastTapPosition.y, 2),
-              )
-            : 0;
-
-        // ダブルタップ検出の条件を厳格化
-        if (
-            currentTime - lastTapTime < 200 &&
-            tapDistance < 50 &&
-            tapTimeoutId !== null
-        ) {
-            clearTapTimer(tapTimeoutId);
-            stopDragIfActive();
-            executeZoomToggle(clientX, clientY);
-            lastTapTime = 0;
-            lastTapPosition = null;
-            return true; // ダブルタップを検出したことを示す
-        }
-
-        lastTapTime = currentTime;
-        lastTapPosition = { x: clientX, y: clientY };
-        clearTapTimer(tapTimeoutId);
-        tapTimeoutId = window.setTimeout(() => {
-            tapTimeoutId = null;
-            lastTapPosition = null;
-        }, 300);
-        return false; // シングルタップ
-    }
-
-    function handlePointerStart(
-        clientX: number,
-        clientY: number,
-        isTouch = false,
-    ) {
-        if (isTouch) {
-            touchStartTime = Date.now();
-            touchMoved = false;
-            const isDoubleTap = handleTap(clientX, clientY);
-            if (isDoubleTap) {
-                return; // ダブルタップの場合はドラッグを開始しない
-            }
-        } else {
-            handleTap(clientX, clientY);
-        }
-
-        // 拡大時のみドラッグを開始準備
-        if (transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE) {
-            dragState.start = { x: clientX, y: clientY };
-            dragState.startTranslate = { ...transformState.translate };
-        }
-    }
-
-    function handlePointerMove(
-        clientX: number,
-        clientY: number,
-        isTouch = false,
-    ) {
-        if (isTouch) {
-            const moveDistance = dragState.start
-                ? Math.sqrt(
-                      Math.pow(clientX - dragState.start.x, 2) +
-                          Math.pow(clientY - dragState.start.y, 2),
-                  )
-                : 0;
-
-            if (moveDistance > dragStartThreshold) {
-                touchMoved = true;
-                // 実際にドラッグを開始
-                if (
-                    !dragState.isDragging &&
-                    transformState.scale > ZOOM_CONFIG.DEFAULT_SCALE
-                ) {
-                    startDrag(dragState.start.x, dragState.start.y);
-                }
-            }
-        }
-
-        if (dragState.isDragging) {
-            updateDrag(clientX, clientY);
-        }
-    }
-
-    function handlePointerEnd(isTouch = false) {
-        if (isTouch) {
-            const touchDuration = Date.now() - touchStartTime;
-
-            // 短時間かつ移動が少ない場合はタップとして処理
-            if (touchDuration < 200 && !touchMoved) {
-                // タップ処理は既にhandlePointerStartで行われている
-                return;
-            }
-        }
-
-        stopDrag();
-    }
-
-    // --- Event Handlers ---
     function handleTouchStart(event: TouchEvent) {
         // close-buttonのタッチを妨げないように
         if ((event.target as Element)?.closest(".close-button-container")) {
@@ -377,7 +260,22 @@
 
         if (event.touches.length === 1) {
             const touch = event.touches[0];
-            handlePointerStart(touch.clientX, touch.clientY, true);
+            const result = handlePointerStart(
+                transformState.scale,
+                transformState.translate,
+                dragState,
+                lastTapTime,
+                lastTapPosition,
+                tapTimeoutId,
+                touch.clientX,
+                touch.clientY,
+                true,
+                (x, y) => executeZoomToggle(x, y),
+            );
+            dragState = result.newDragState;
+            lastTapTime = result.newLastTapTime;
+            lastTapPosition = result.newLastTapPosition;
+            tapTimeoutId = result.newTapTimeoutId;
         } else if (event.touches.length === 2) {
             stopDrag();
             clearTapTimer(tapTimeoutId);
@@ -390,7 +288,18 @@
 
         if (event.touches.length === 1) {
             const touch = event.touches[0];
-            handlePointerMove(touch.clientX, touch.clientY, true);
+            const result = handlePointerMove(
+                dragState,
+                touch.clientX,
+                touch.clientY,
+                true,
+                dragStartThreshold,
+                transformState.scale,
+                startDrag,
+                updateDrag,
+            );
+            dragState = result.newDragState;
+            touchMoved = result.touchMoved;
         } else if (event.touches.length === 2 && pinchState.isPinching) {
             updatePinch(event);
         }
@@ -400,7 +309,13 @@
         event.preventDefault(); // デフォルトの動作を防ぐ
 
         if (event.touches.length === 0) {
-            handlePointerEnd(true);
+            handlePointerEnd(
+                dragState,
+                true,
+                touchStartTime,
+                touchMoved,
+                stopDrag,
+            );
             stopPinch();
         } else if (event.touches.length === 1 && pinchState.isPinching) {
             stopPinch();
@@ -412,19 +327,50 @@
         if ((event.target as Element)?.closest(".close-button-container")) {
             return;
         }
-        handlePointerStart(event.clientX, event.clientY);
-        // マウスの場合は即座にドラッグを開始
+        const result = handlePointerStart(
+            transformState.scale,
+            transformState.translate,
+            dragState,
+            lastTapTime,
+            lastTapPosition,
+            tapTimeoutId,
+            event.clientX,
+            event.clientY,
+            false,
+            (x, y) => executeZoomToggle(x, y),
+        );
+        dragState = result.newDragState;
+        lastTapTime = result.newLastTapTime;
+        lastTapPosition = result.newLastTapPosition;
+        tapTimeoutId = result.newTapTimeoutId;
         startDrag(event.clientX, event.clientY);
     }
 
     function handleMouseMove(event: MouseEvent) {
         if (dragState.isDragging) {
             event.preventDefault();
-            handlePointerMove(event.clientX, event.clientY);
+            const result = handlePointerMove(
+                dragState,
+                event.clientX,
+                event.clientY,
+                false,
+                dragStartThreshold,
+                transformState.scale,
+                startDrag,
+                updateDrag,
+            );
+            dragState = result.newDragState;
+            // touchMoved not used for mouse
         }
     }
     function handleMouseUp() {
-        handlePointerEnd();
+        handlePointerEnd(
+            dragState,
+            false,
+            touchStartTime,
+            touchMoved,
+            stopDrag,
+        );
     }
     function handleKeydown(event: KeyboardEvent) {
         if (event.key === "Escape") close();
@@ -432,14 +378,35 @@
     function handlePopState(event: PopStateEvent) {
         if (show && historyPushed) {
             event.preventDefault();
-            resetTransformState();
-            historyPushed = false;
+            resetAllStates(
+                animationFrameId,
+                pinchAnimationFrameId,
+                dragState,
+                pinchState,
+                lastTapTime,
+                tapTimeoutId,
+            );
+            animationFrameId = null;
+            pinchAnimationFrameId = null;
+            lastTapTime = 0;
+            tapTimeoutId = null;
             show = false;
             onClose();
         }
     }
     function close() {
-        resetTransformState();
+        resetAllStates(
+            animationFrameId,
+            pinchAnimationFrameId,
+            dragState,
+            pinchState,
+            lastTapTime,
+            tapTimeoutId,
+        );
+        animationFrameId = null;
+        pinchAnimationFrameId = null;
+        lastTapTime = 0;
+        tapTimeoutId = null;
         show = false;
         onClose();
         if (historyPushed) {
@@ -452,7 +419,18 @@
     // --- Effect: show/hide ---
     $effect(() => {
         if (show) {
-            resetTransformState();
+            resetAllStates(
+                animationFrameId,
+                pinchAnimationFrameId,
+                dragState,
+                pinchState,
+                lastTapTime,
+                tapTimeoutId,
+            );
+            animationFrameId = null;
+            pinchAnimationFrameId = null;
+            lastTapTime = 0;
+            tapTimeoutId = null;
             setBodyStyle("overflow", "hidden");
             if (!historyPushed) {
                 history.pushState({ imageFullscreen: true }, "", "");
@@ -497,7 +475,14 @@
     });
 
     onDestroy(() => {
-        resetTransformState();
+        resetAllStates(
+            animationFrameId,
+            pinchAnimationFrameId,
+            dragState,
+            pinchState,
+            lastTapTime,
+            tapTimeoutId,
+        );
         historyPushed = false;
         lastTapPosition = null;
     });
