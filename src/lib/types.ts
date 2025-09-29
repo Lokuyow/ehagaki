@@ -581,3 +581,11 @@ export interface BoundaryConstraints {
     containerWidth: number;
     containerHeight: number;
 }
+
+// --- ImageFullscreen Component types ---
+export interface Props {
+    src?: string;
+    alt?: string;
+    show?: boolean;
+    onClose?: () => void;
+}
