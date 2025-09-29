@@ -1,5 +1,5 @@
 import { ZOOM_CONFIG } from '../lib/constants';
-import { clamp, isNearScale } from '../lib/utils/appUtils';
+import { clamp, isNearScale } from '../lib/utils/imageFullscreenUtils';
 import type {
     Position,
     TransformState,

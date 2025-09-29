@@ -14,12 +14,6 @@ import {
     derivePublicKeyFromNsec,
     toNpub,
 
-    // Math Utilities
-    clamp,
-    isNearScale,
-    calculateDistance,
-
-
     // Settings Utilities
     loadWriteRelaysFromStorage,
     initializeSettingsValues,
@@ -185,31 +179,6 @@ describe('Nostr Key Utilities', () => {
         it('should fallback for invalid hex', () => {
             const npub = toNpub('invalidhex');
             expect(npub.startsWith('npub1invalidhex')).toBe(true);
-        });
-    });
-});
-
-describe('Math Utilities', () => {
-    describe('clamp', () => {
-        it('should clamp values to range', () => {
-            expect(clamp(5, 0, 10)).toBe(5);
-            expect(clamp(-5, 0, 10)).toBe(0);
-            expect(clamp(15, 0, 10)).toBe(10);
-        });
-    });
-
-    describe('isNearScale', () => {
-        it('should check if scale is near target', () => {
-            expect(isNearScale(1.0, 1.05, 0.1)).toBe(true);
-            expect(isNearScale(1.0, 1.2, 0.1)).toBe(false);
-        });
-    });
-
-    describe('calculateDistance', () => {
-        it('should calculate distance between touches', () => {
-            const touch1 = { clientX: 0, clientY: 0 } as Touch;
-            const touch2 = { clientX: 3, clientY: 4 } as Touch;
-            expect(calculateDistance(touch1, touch2)).toBe(5);
         });
     });
 });

@@ -8,9 +8,6 @@ import type {
   NavigatorAdapter,
   WindowAdapter,
   TimeoutAdapter,
-  MousePosition,
-  ZoomCalculation,
-  ZoomParams,
   ImageDimensions
 } from "../types";
 import {
@@ -194,27 +191,6 @@ export function toNpub(pubkeyHex: string): string {
 }
 
 // =============================================================================
-// Math Utilities (Pure Functions)
-// =============================================================================
-
-export function clamp(value: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, value));
-}
-
-export function isNearScale(scale: number, target: number, threshold: number): boolean {
-  return Math.abs(scale - target) < threshold;
-}
-
-/**
- * 2点間の距離を計算
- */
-export function calculateDistance(touch1: Touch, touch2: Touch): number {
-  const dx = touch1.clientX - touch2.clientX;
-  const dy = touch1.clientY - touch2.clientY;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-
-// =============================================================================
 // File Upload Utilities (Pure Functions)
 // =============================================================================
 
@@ -279,78 +255,6 @@ export function renameByMimeType(filename: string, mime: string): string {
   if (!ext) return filename;
   const base = filename.replace(/\.[^.]+$/, "");
   return `${base}${ext}`;
-}
-
-// =============================================================================
-// Coordinate and Zoom Utilities (Pure Functions)
-// =============================================================================
-
-/**
- * マウスイベントから相対座標を取得
- */
-export function getMousePosition(event: MouseEvent): MousePosition {
-  return {
-    x: event.clientX,
-    y: event.clientY
-  };
-}
-
-/**
- * 要素の矩形情報から中心座標を計算
- */
-export function calculateElementCenter(rect: DOMRect): MousePosition {
-  return {
-    x: rect.width / 2,
-    y: rect.height / 2
-  };
-}
-
-/**
- * ピンチズーム用のパラメータを計算
- */
-export function calculatePinchZoomParams(
-  currentScale: number,
-  scaleRatio: number,
-  centerX: number,
-  centerY: number,
-  containerElement: HTMLElement
-): ZoomParams {
-  const rect = containerElement.getBoundingClientRect();
-  const center = calculateElementCenter(rect);
-
-  return {
-    scale: clamp(currentScale * scaleRatio, 0.5, 5),
-    offsetX: centerX - rect.left - center.x,
-    offsetY: centerY - rect.top - center.y
-  };
-}
-
-/**
- * ピンチズームの詳細な計算
- */
-export function calculatePinchZoom(
-  currentScale: number,
-  currentTranslate: MousePosition,
-  scaleRatio: number,
-  centerX: number,
-  centerY: number,
-  containerElement: HTMLElement
-): ZoomCalculation {
-  const rect = containerElement.getBoundingClientRect();
-  const center = calculateElementCenter(rect);
-  const offsetX = centerX - rect.left - center.x;
-  const offsetY = centerY - rect.top - center.y;
-
-  const newScale = clamp(currentScale * scaleRatio, 0.5, 5);
-  const actualScaleRatio = newScale / currentScale;
-
-  return {
-    newScale,
-    newTranslate: {
-      x: currentTranslate.x * actualScaleRatio - offsetX * (actualScaleRatio - 1),
-      y: currentTranslate.y * actualScaleRatio - offsetY * (actualScaleRatio - 1)
-    }
-  };
 }
 
 // =============================================================================
