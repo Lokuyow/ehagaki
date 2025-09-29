@@ -474,21 +474,6 @@
             />
         {/if}
     </button>
-
-    {#if showPopupModal}
-        <PopupModal
-            show={showPopupModal}
-            x={popupX}
-            y={popupY}
-            onClose={() => {
-                showPopupModal = false;
-            }}
-        >
-            <div class="copy-success-message">
-                {popupMessage}
-            </div>
-        </PopupModal>
-    {/if}
 </NodeViewWrapper>
 
 <style>

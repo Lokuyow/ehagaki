@@ -45,6 +45,7 @@
   } from "../lib/editor/editorDomActions";
   import { domUtils } from "../lib/utils/appDomUtils";
   import ContextMenu from "./ContextMenu.svelte";
+  import PopupModal from "./PopupModal.svelte";
   import {
     globalContextMenuStore,
     lastClickPositionStore,
@@ -353,9 +354,21 @@
     pendingPost = "";
   }
 
+  // ポップアップ表示用の状態を追加
+  let showPopupModal = $state(false);
+  let popupX = $state(0);
+  let popupY = $state(0);
+  let popupMessage = $state("");
+
   // ポップアップ表示ハンドラー
   function handleShowPopup(x: number, y: number, message: string) {
-    // ポップアップ表示ロジック（既存のものを使用）
+    popupX = x;
+    popupY = y;
+    popupMessage = message;
+    showPopupModal = true;
+    setTimeout(() => {
+      showPopupModal = false;
+    }, 1800);
   }
 
   // グローバルコンテキストメニューの位置とアイテムを更新
@@ -504,6 +517,17 @@
       globalContextMenuStore.set({ open: false, nodeId: undefined })}
     onShowPopup={handleShowPopup}
   />
+{/if}
+
+{#if showPopupModal}
+  <PopupModal
+    show={showPopupModal}
+    x={popupX}
+    y={popupY}
+    onClose={() => (showPopupModal = false)}
+  >
+    <div class="copy-success-message">{popupMessage}</div>
+  </PopupModal>
 {/if}
 
 <style>

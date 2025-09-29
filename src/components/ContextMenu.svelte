@@ -180,12 +180,11 @@
                     /copy/i.test(String(item.label));
                 if (isCopyAction) {
                     try {
-                        item.action();
-                        // ストアにある「メニューを開いたときのクリック位置」を優先してポップアップ位置を決定
+                        // コピーアクションは Promise を返すので await
+                        await item.action();
                         showCopySuccessPopup(event as MouseEvent);
                     } catch (error) {
                         console.warn("Copy failed:", error);
-                        // 失敗時は失敗メッセージをポップアップで表示
                         showCopyFailurePopup(event as MouseEvent);
                     }
                 } else {
@@ -279,14 +278,5 @@
     }
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
-    }
-
-    /* 追加: コピー成功メッセージのスタイル */
-    :global(.copy-success-message) {
-        font-size: 1rem;
-        font-weight: bold;
-        color: var(--text);
-        text-align: center;
-        padding: 0;
     }
 </style>

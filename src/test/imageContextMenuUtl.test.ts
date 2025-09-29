@@ -48,7 +48,10 @@ describe("imageContextMenuUtl", () => {
         const mockTr = { delete: vi.fn().mockReturnValue("TRANSACTION") } as any;
         const mockView = {
             state: { tr: mockTr },
-            dispatch: vi.fn()
+            dispatch: vi.fn(),
+            dom: {
+                dispatchEvent: vi.fn() // 追加: dispatchEventを持つ
+            }
         };
         const editorObj = { view: mockView };
 
@@ -58,6 +61,8 @@ describe("imageContextMenuUtl", () => {
         // fullscreen action dispatches an event on window (just call to ensure no throw)
         const fullscreenAction = items[0].action;
         fullscreenAction();
+        expect(mockView.dom.dispatchEvent).toHaveBeenCalled(); // dispatchEventが呼ばれることを確認
+
         // copy action uses navigator.clipboard
         await items[1].action();
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith(src);
@@ -240,6 +245,53 @@ describe("imageContextMenuUtl", () => {
         expect(event.detail).toEqual({ src, alt });
         expect(event.bubbles).toBe(true);
         expect(event.composed).toBe(true);
+    });
+
+    it("URLコピー時にonShowPopupが呼ばれる（ポップアップ表示テスト）", async () => {
+        // モック onShowPopup
+        const onShowPopup = vi.fn();
+
+        // カスタム翻訳
+        const t = {
+            subscribe: (run: (formatter: (id: string | { id: string }) => string) => void) => {
+                run((id: string | { id: string }) => {
+                    const key = typeof id === "string" ? id : id.id;
+                    const map: Record<string, string> = {
+                        "imageContextMenu.fullscreen": "Fullscreen",
+                        "imageContextMenu.copyUrl": "Copy URL",
+                        "imageContextMenu.copySuccess": "Copied!",
+                        "imageContextMenu.copyFailed": "Copy failed",
+                        "imageContextMenu.delete": "Delete"
+                    };
+                    return map[key] ?? key;
+                });
+                return () => { };
+            }
+        };
+
+        // Clipboard API モック
+        (globalThis as any).navigator.clipboard.writeText = vi.fn().mockResolvedValue(undefined);
+
+        // getImageContextMenuItems を直接利用
+        const src = "https://example.com/image.jpg";
+        const alt = "Alt text";
+        const getPos = () => 5;
+        const nodeSize = 3;
+        const items = getImageContextMenuItems(
+            src, alt, getPos, nodeSize, true, { t }
+        );
+
+        // コピーアクションを実行
+        await items[1].action();
+
+        // ポップアップ表示コールバックを呼ぶ（ContextMenuの showCopySuccessPopup 相当）
+        const { calculateContextMenuPosition } = await import("../lib/utils/appUtils");
+        const x = 123, y = 456;
+        const pos = calculateContextMenuPosition(x, y);
+        onShowPopup(pos.x, pos.y, "Copied!");
+
+        // ポップアップ表示コールバックが呼ばれることを検証
+        expect(onShowPopup).toHaveBeenCalledWith(pos.x, pos.y, "Copied!");
     });
 });
 

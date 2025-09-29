@@ -127,4 +127,13 @@
         height: 24px;
         min-width: 24px;
     }
+
+    /* 追加: コピー成功メッセージのスタイル（ContextMenuと同じ） */
+    :global(.copy-success-message) {
+        font-size: 1rem;
+        font-weight: bold;
+        color: var(--text);
+        text-align: center;
+        padding: 0;
+    }
 </style>
