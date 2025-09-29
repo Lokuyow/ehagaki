@@ -115,10 +115,8 @@
         }
     });
 
-    // コンテキストメニュー関連の状態
-    let showContextMenu = $state(false);
-    let contextMenuX = $state(0);
-    let contextMenuY = $state(0);
+    // コンテキストメニュー関連の状態（表示は削除）
+    let showContextMenu = $state(false); // ローカルで管理せず、ストア経由でグローバルに
 
     // ストアからクリック位置を取得
     let lastClickPosition = $derived(lastClickPositionStore.value);
@@ -136,37 +134,13 @@
         });
     });
 
-    // コンテキストメニュー項目（ユーティリティから取得）
-    let contextMenuItems = $derived(
-        getImageContextMenuItems(
-            node?.attrs?.src || "",
-            node?.attrs?.alt || "Image",
-            getPos,
-            node?.nodeSize ?? 1,
-            selected,
-        ),
-    );
-
-    // コンテキストメニューを閉じるハンドラー（ユーティリティから生成）
-    let closeContextMenu = $derived(
-        createCloseContextMenuHandler((value) => {
-            showContextMenu = value;
-            if (!value) {
-                globalContextMenuStore.set({ open: false, nodeId: undefined });
-            }
-        }),
-    );
-
-    // コンテキストメニューを開く処理（ユーティリティ関数へ移譲）
+    // コンテキストメニューを開く処理（位置設定のみ）
     function openContextMenuAtPositionHandler() {
         if (!lastClickPosition) return;
         openContextMenuForImageNode(
             globalContextMenuStore,
             nodeId,
             lastClickPosition,
-            (v) => (showContextMenu = v),
-            (v) => (contextMenuX = v),
-            (v) => (contextMenuY = v),
         );
     }
 
@@ -177,15 +151,6 @@
     let popupMessage = $state("");
 
     // ポップアップを表示するコールバック
-    function handleShowPopup(x: number, y: number, message: string) {
-        popupX = Number.isFinite(x) ? x : 0;
-        popupY = Number.isFinite(y) ? y : 0;
-        popupMessage = message;
-        showPopupModal = true;
-        setTimeout(() => {
-            showPopupModal = false;
-        }, 1500);
-    }
 
     // 統合されたタップ/クリック処理
     function handleInteraction(
@@ -509,16 +474,6 @@
             />
         {/if}
     </button>
-
-    {#if showContextMenu}
-        <ContextMenu
-            x={contextMenuX}
-            y={contextMenuY}
-            items={contextMenuItems}
-            onClose={closeContextMenu}
-            onShowPopup={handleShowPopup}
-        />
-    {/if}
 
     {#if showPopupModal}
         <PopupModal

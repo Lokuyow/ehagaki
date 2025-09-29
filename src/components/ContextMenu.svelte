@@ -38,6 +38,7 @@
         }
     }
 
+    // 位置更新でエディター境界を考慮しない（ビューポート全体）
     async function updatePosition() {
         await tick();
         if (!menuElement) return;
@@ -46,14 +47,11 @@
             window.innerWidth || document.documentElement.clientWidth || 0;
         const viewportHeight =
             window.innerHeight || document.documentElement.clientHeight || 0;
-        const rect = menuElement.getBoundingClientRect();
-        const correctedX = targetX - (rect.left - targetX);
-        const correctedY = targetY - (rect.top - targetY);
         const maxX = Math.max(0, viewportWidth - offsetWidth);
         const maxY = Math.max(0, viewportHeight - offsetHeight);
 
-        left = Math.min(Math.max(0, correctedX), maxX);
-        top = Math.min(Math.max(0, correctedY), maxY);
+        left = Math.min(Math.max(0, targetX), maxX);
+        top = Math.min(Math.max(0, targetY), maxY);
     }
 
     $effect(() => {

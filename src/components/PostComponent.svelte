@@ -43,8 +43,14 @@
     touchAction,
     keydownAction,
   } from "../lib/editor/editorDomActions";
-  import { getPlaceholderDefaultSize } from "../lib/utils/imageUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
+  import ContextMenu from "./ContextMenu.svelte";
+  import {
+    globalContextMenuStore,
+    lastClickPositionStore,
+  } from "../stores/appStore.svelte";
+  import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtl";
+  import { calculateContextMenuPosition } from "../lib/utils/appUtils";
 
   // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {
@@ -68,6 +74,14 @@
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
+
+  // グローバルコンテキストメニューの状態
+  let globalContextMenuState = $derived($globalContextMenuStore);
+  let showGlobalContextMenu = $derived(globalContextMenuState.open);
+  let globalContextMenuX = $state(0);
+  let globalContextMenuY = $state(0);
+  import type { MenuItem } from "../lib/types";
+  let globalContextMenuItems = $state<MenuItem[]>([]);
 
   // --- PostManager初期化 ---
   $effect(() => {
@@ -137,10 +151,13 @@
       "image-fullscreen-request",
       handleImageFullscreenRequest as EventListener,
     );
-    window.addEventListener(
-      "select-image-node",
-      handleSelectImageNode as EventListener,
-    );
+    // 追加: editorContainerEl にもイベントリスナーを追加
+    if (editorContainerEl) {
+      editorContainerEl.addEventListener(
+        "image-fullscreen-request",
+        handleImageFullscreenRequest as EventListener,
+      );
+    }
 
     setPostSubmitter(submitPost);
 
@@ -163,10 +180,13 @@
         "image-fullscreen-request",
         handleImageFullscreenRequest as EventListener,
       );
-      window.removeEventListener(
-        "select-image-node",
-        handleSelectImageNode as EventListener,
-      );
+      // 追加: editorContainerEl のイベントリスナーも削除
+      if (editorContainerEl) {
+        editorContainerEl.removeEventListener(
+          "image-fullscreen-request",
+          handleImageFullscreenRequest as EventListener,
+        );
+      }
       unsubscribe();
       currentEditor?.destroy?.();
       if (editorContainerEl) {
@@ -333,6 +353,44 @@
     pendingPost = "";
   }
 
+  // ポップアップ表示ハンドラー
+  function handleShowPopup(x: number, y: number, message: string) {
+    // ポップアップ表示ロジック（既存のものを使用）
+  }
+
+  // グローバルコンテキストメニューの位置とアイテムを更新
+  $effect(() => {
+    if (showGlobalContextMenu && globalContextMenuState.nodeId) {
+      // nodeIdから src, getPos, nodeSize, isSelected を復元
+      const nodeId = globalContextMenuState.nodeId;
+      // nodeIdは "src-pos" の形式なので分割
+      const [src, posStr] = nodeId.split("-");
+      const pos = Number(posStr) || 0;
+      // altは仮で "Image"（必要ならストアから取得）
+      const alt = "Image";
+      // nodeSizeは仮で 1（必要ならストアから取得）
+      const nodeSize = 1;
+      // isSelectedは true（必要ならストアから取得）
+      const isSelected = true;
+
+      const items = getImageContextMenuItems(
+        src,
+        alt,
+        () => pos,
+        nodeSize,
+        isSelected,
+        { editorObj: currentEditor },
+      );
+      globalContextMenuItems = items;
+      const lastPos = lastClickPositionStore.value;
+      if (lastPos) {
+        const posObj = calculateContextMenuPosition(lastPos.x, lastPos.y);
+        globalContextMenuX = posObj.x;
+        globalContextMenuY = posObj.y;
+      }
+    }
+  });
+
   $effect(() => {
     if (
       currentEditor &&
@@ -436,6 +494,17 @@
   alt={fullscreenImageAlt}
   onClose={handleImageFullscreenClose}
 />
+
+{#if showGlobalContextMenu}
+  <ContextMenu
+    x={globalContextMenuX}
+    y={globalContextMenuY}
+    items={globalContextMenuItems}
+    onClose={() =>
+      globalContextMenuStore.set({ open: false, nodeId: undefined })}
+    onShowPopup={handleShowPopup}
+  />
+{/if}
 
 <style>
   .post-container {

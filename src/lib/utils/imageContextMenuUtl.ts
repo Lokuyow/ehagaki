@@ -33,9 +33,19 @@ export function getImageContextMenuItems(
                 if (import.meta.env.MODE === "development") {
                     console.log("[dev] imageContextMenu.fullscreen action", { src, alt });
                 }
-                windowObj.dispatchEvent(
+                // 変更: dispatchEventがなければwindowにフォールバック
+                let target =
+                    editorObj?.view?.dom ||
+                    document.querySelector(".editor-container") ||
+                    windowObj;
+                if (typeof target.dispatchEvent !== "function") {
+                    target = window;
+                }
+                target.dispatchEvent(
                     new CustomEvent("image-fullscreen-request", {
                         detail: { src, alt },
+                        bubbles: true,
+                        composed: true,
                     }),
                 );
             },
@@ -138,16 +148,12 @@ export function createCloseContextMenuHandler(setShowContextMenu: (value: boolea
     };
 }
 
-// openContextMenuForImageNode: setTimeout, store依存を引数化
+// openContextMenuForImageNode: 位置設定コールバックを削除し、ストアのみ更新
 export function openContextMenuForImageNode(
     globalContextMenuStore: ImageContextMenuStore,
     nodeId: string,
     clickPosition: { x: number; y: number },
-    setShowContextMenu: (value: boolean) => void,
-    setContextMenuX: (value: number) => void,
-    setContextMenuY: (value: number) => void,
     options?: {
-        // 変更: 厳密な typeof setTimeout を避け、テストから渡される簡易実行関数も受け取れる汎用型にする
         setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any
     }
 ) {
@@ -165,28 +171,11 @@ export function openContextMenuForImageNode(
         return state;
     });
     if (alreadyOpen && prevNodeId) {
-        if (import.meta.env.MODE === "development") {
-            console.log("[dev] openContextMenuForImageNode already open, closing then reopening", { prevNodeId, nodeId });
-        }
         globalContextMenuStore.set({ open: false, nodeId: undefined });
         setTimeoutFn(() => {
-            const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
-            if (import.meta.env.MODE === "development") {
-                console.log("[dev] openContextMenuForImageNode delayed pos", pos);
-            }
-            setContextMenuX(pos.x);
-            setContextMenuY(pos.y);
-            setShowContextMenu(true);
             globalContextMenuStore.set({ open: true, nodeId });
         }, 0);
         return;
     }
-    const pos = calculateContextMenuPosition(clickPosition.x, clickPosition.y);
-    if (import.meta.env.MODE === "development") {
-        console.log("[dev] openContextMenuForImageNode immediate pos", pos);
-    }
-    setContextMenuX(pos.x);
-    setContextMenuY(pos.y);
-    setShowContextMenu(true);
     globalContextMenuStore.set({ open: true, nodeId });
 }

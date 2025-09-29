@@ -162,18 +162,11 @@ describe("imageContextMenuUtl", () => {
             set: vi.fn((s: any) => calls.push(s))
         };
 
-        const setShow = vi.fn();
-        const setX = vi.fn();
-        const setY = vi.fn();
-
-        // immediate execution for setTimeout
+        // 関数は位置設定コールバックを受け取らないため、引数を削除
         openContextMenuForImageNode(
             mockStore as any,
             "node-1",
             { x: 100, y: 200 },
-            setShow,
-            setX,
-            setY,
             { setTimeoutFn: (fn: Function) => fn() }
         );
 
@@ -182,10 +175,7 @@ describe("imageContextMenuUtl", () => {
         expect(calls[0]).toEqual({ open: false, nodeId: undefined });
         expect(calls[calls.length - 1]).toEqual({ open: true, nodeId: "node-1" });
 
-        // 位置設定と表示フラグも呼ばれる
-        expect(setX).toHaveBeenCalledWith(100);
-        expect(setY).toHaveBeenCalledWith(200);
-        expect(setShow).toHaveBeenCalledWith(true);
+        // 位置設定コールバックは呼ばれないため、setX, setY の期待値を削除
     });
 
     it("openContextMenuForImageNode: when not already open -> opens immediately", () => {
@@ -198,25 +188,58 @@ describe("imageContextMenuUtl", () => {
             set: vi.fn((s: any) => calls.push(s))
         };
 
-        const setShow = vi.fn();
-        const setX = vi.fn();
-        const setY = vi.fn();
-
+        // 関数は位置設定コールバックを受け取らないため、引数を削除
         openContextMenuForImageNode(
             mockStore as any,
             "node-2",
             { x: 150, y: 250 },
-            setShow,
-            setX,
-            setY,
             { setTimeoutFn: (fn: Function) => fn() } // irrelevant here but keep sync
         );
 
         // store.set は一度呼ばれ、open を true にする
         expect(calls).toContainEqual({ open: true, nodeId: "node-2" });
-        expect(setX).toHaveBeenCalledWith(150);
-        expect(setY).toHaveBeenCalledWith(250);
-        expect(setShow).toHaveBeenCalledWith(true);
+        // 位置設定コールバックは呼ばれないため、setX, setY の期待値を削除
+    });
+
+    it("fullscreen action dispatches image-fullscreen-request event with correct detail", () => {
+        // モック editorObj.view.dom
+        const dispatchedEvents: CustomEvent[] = [];
+        const mockDom = {
+            dispatchEvent: (event: CustomEvent) => {
+                dispatchedEvents.push(event);
+            }
+        };
+        const mockEditorObj = { view: { dom: mockDom } };
+        const t = {
+            subscribe: (run: (formatter: (id: string | { id: string }) => string) => void) => {
+                run((id: string | { id: string }) => {
+                    const key = typeof id === "string" ? id : id.id;
+                    const map: Record<string, string> = {
+                        "imageContextMenu.fullscreen": "Fullscreen",
+                        "imageContextMenu.copyUrl": "Copy URL",
+                        "imageContextMenu.delete": "Delete"
+                    };
+                    return map[key] ?? key;
+                });
+                return () => { };
+            }
+        };
+
+        const src = "https://example.com/image.jpg";
+        const alt = "Alt text";
+        const getPos = () => 5;
+        const nodeSize = 3;
+
+        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, { editorObj: mockEditorObj, t });
+        // fullscreen actionを実行
+        items[0].action();
+
+        expect(dispatchedEvents.length).toBe(1);
+        const event = dispatchedEvents[0];
+        expect(event.type).toBe("image-fullscreen-request");
+        expect(event.detail).toEqual({ src, alt });
+        expect(event.bubbles).toBe(true);
+        expect(event.composed).toBe(true);
     });
 });
 
