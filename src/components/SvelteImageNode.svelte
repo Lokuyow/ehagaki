@@ -3,12 +3,10 @@
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onDestroy, onMount } from "svelte";
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
-    import {
-        calculateImageDisplaySize,
-        parseDimString,
-        getPlaceholderDefaultSize,
-    } from "../lib/utils/imageUtils";
-    import { imageSizeMapStore } from "../stores/tagsStore.svelte";
+    import type { ImageDimensions } from "../lib/types";
+    import { _ } from "svelte-i18n";
+    import { openContextMenuForImageNode } from "../lib/utils/imageContextMenuUtl";
+    import { getEventPosition } from "../lib/utils/appUtils";
     import {
         renderBlurhash as renderBlurhashUtil,
         dispatchDragEvent,
@@ -20,20 +18,20 @@
         handleImageInteraction,
     } from "../lib/utils/editorUtils";
     import {
-        imageDragState,
-        imageSelectionState,
-    } from "../stores/editorStore.svelte";
+        calculateImageDisplaySize,
+        parseDimString,
+        getPlaceholderDefaultSize,
+    } from "../lib/utils/imageUtils";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
-    import type { ImageDimensions } from "../lib/types";
-    import { _ } from "svelte-i18n";
-    import {
-        openContextMenuForImageNode, // 追加
-    } from "../lib/utils/imageContextMenuUtl";
-    import { getEventPosition } from "../lib/utils/appUtils";
     import {
         globalContextMenuStore,
         lastClickPositionStore,
     } from "../stores/appStore.svelte";
+    import {
+        imageDragState,
+        imageSelectionState,
+    } from "../stores/editorStore.svelte";
+    import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
