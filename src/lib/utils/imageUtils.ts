@@ -127,3 +127,98 @@ export function calculateZoomFromEvent(
         offsetY: event.clientY - rect.top - center.y
     };
 }
+
+// --- ImageFullscreen.svelteから移動したユーティリティ関数 ---
+
+import { TIMING, ZOOM_CONFIG } from "../constants";
+import { transformStore } from "../../stores/transformStore.svelte";
+import { setBodyStyle, clearBodyStyles } from "./appDomUtils";
+
+export function setImageContainerStyle(
+    { scale, translate, useTransition }: { scale: number; translate: { x: number; y: number }; useTransition: boolean },
+    imageContainerElement?: HTMLDivElement
+) {
+    const el = imageContainerElement ?? document.querySelector(".image-container") as HTMLDivElement | null;
+    if (!el) return;
+    el.style.transition = useTransition
+        ? `transform ${TIMING.TRANSITION_DURATION} ease`
+        : "none";
+    el.style.transform = `scale(${scale}) translate(${translate.x / scale}px, ${translate.y / scale}px)`;
+    el.style.transformOrigin = "center";
+}
+
+export function setImageContainerTransformDirect(
+    scale: number,
+    translateX: number,
+    translateY: number,
+    imageContainerElement?: HTMLDivElement
+) {
+    const el = imageContainerElement ?? document.querySelector(".image-container") as HTMLDivElement | null;
+    if (!el) return;
+    el.style.transition = "none";
+    el.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
+}
+
+export function setImageCursorByScale(scale: number, imageContainerElement?: HTMLDivElement) {
+    const el = imageContainerElement ?? document.querySelector(".image-container") as HTMLDivElement | null;
+    if (!el) return;
+    el.style.cursor = scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
+}
+
+export function setOverlayCursorByScale(scale: number, containerElement?: HTMLDivElement) {
+    const el = containerElement ?? document.querySelector(".fullscreen-overlay") as HTMLDivElement | null;
+    if (!el) return;
+    el.style.cursor = scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
+}
+
+export function setTransition(enable: boolean) {
+    transformStore.setTransition(enable);
+}
+
+export function setBodyUserSelect(enable: boolean) {
+    const value = enable ? "" : "none";
+    setBodyStyle("user-select", value);
+    setBodyStyle("-webkit-user-select", value);
+}
+
+export function clearTapTimer(tapTimeoutId: number | null) {
+    if (tapTimeoutId !== null) {
+        clearTimeout(tapTimeoutId);
+        // 呼び出し元でtapTimeoutIdをnullにすること
+    }
+}
+
+export function updateBoundaryConstraints(imageElement: HTMLImageElement | undefined, containerElement: HTMLDivElement | undefined) {
+    if (imageElement && containerElement) {
+        const imageRect = imageElement.getBoundingClientRect();
+        const containerRect = containerElement.getBoundingClientRect();
+        const constraints = {
+            imageWidth: imageRect.width,
+            imageHeight: imageRect.height,
+            containerWidth: containerRect.width,
+            containerHeight: containerRect.height,
+        };
+        transformStore.setBoundaryConstraints(constraints);
+    }
+}
+
+export function resetAllStates(
+    animationFrameId: number | null,
+    pinchAnimationFrameId: number | null,
+    dragState: any,
+    pinchState: any,
+    lastTapTime: number,
+    tapTimeoutId: number | null
+) {
+    if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+    if (pinchAnimationFrameId !== null) cancelAnimationFrame(pinchAnimationFrameId);
+    animationFrameId = null;
+    pinchAnimationFrameId = null;
+    transformStore.reset();
+    transformStore.setBoundaryConstraints(null);
+    dragState.isDragging = false;
+    pinchState.isPinching = false;
+    lastTapTime = 0;
+    clearTapTimer(tapTimeoutId);
+    clearBodyStyles();
+}

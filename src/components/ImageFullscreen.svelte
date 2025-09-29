@@ -1,11 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
-    import {
-        calculateViewportInfo,
-        calculateZoomFromEvent,
-        calculateDragDelta,
-    } from "../lib/utils/imageUtils";
+    import type { TransformState } from "../lib/types";
     import {
         setBodyStyle,
         clearBodyStyles,
@@ -16,7 +12,19 @@
         createDragState,
         createPinchState,
     } from "../stores/transformStore.svelte";
-    import type { TransformState, BoundaryConstraints } from "../lib/types";
+    import {
+        calculateViewportInfo,
+        calculateZoomFromEvent,
+        calculateDragDelta,
+        setImageContainerStyle,
+        setImageContainerTransformDirect,
+        setImageCursorByScale,
+        setOverlayCursorByScale,
+        setTransition,
+        setBodyUserSelect,
+        clearTapTimer,
+        updateBoundaryConstraints,
+    } from "../lib/utils/imageUtils";
 
     interface Props {
         src?: string;
@@ -52,79 +60,7 @@
     let dragStartThreshold = 10; // ピクセル単位での移動閾値
 
     // --- Utility functions ---
-    function setImageContainerStyle({
-        scale,
-        translate,
-        useTransition,
-    }: TransformState) {
-        if (!imageContainerElement) return;
-        imageContainerElement.style.transition = useTransition
-            ? `transform ${TIMING.TRANSITION_DURATION} ease`
-            : "none";
-        imageContainerElement.style.transform = `scale(${scale}) translate(${
-            translate.x / scale
-        }px, ${translate.y / scale}px)`;
-        imageContainerElement.style.transformOrigin = "center";
-    }
-    function setImageContainerTransformDirect(
-        scale: number,
-        translateX: number,
-        translateY: number,
-    ) {
-        if (!imageContainerElement) return;
-        imageContainerElement.style.transition = "none";
-        imageContainerElement.style.transform = `scale(${scale}) translate(${
-            translateX / scale
-        }px, ${translateY / scale}px)`;
-    }
-    function setImageCursorByScale(scale: number) {
-        if (!imageContainerElement) return;
-        imageContainerElement.style.cursor =
-            scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
-    }
-    function setOverlayCursorByScale(scale: number) {
-        if (!containerElement) return;
-        containerElement.style.cursor =
-            scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
-    }
-    function setTransition(enable: boolean) {
-        transformStore.setTransition(enable);
-    }
-    function setBodyUserSelect(enable: boolean) {
-        const value = enable ? "" : "none";
-        setBodyStyle("user-select", value);
-        setBodyStyle("-webkit-user-select", value);
-    }
-    function clearTapTimer() {
-        if (tapTimeoutId !== null) {
-            clearTimeout(tapTimeoutId);
-            tapTimeoutId = null;
-        }
-    }
-    function pushHistoryState() {
-        if (!historyPushed) {
-            history.pushState({ imageFullscreen: true }, "", "");
-            historyPushed = true;
-        }
-    }
-    function clearHistoryState() {
-        historyPushed = false;
-    }
-    function updateBoundaryConstraints() {
-        if (imageElement && containerElement) {
-            const imageRect = imageElement.getBoundingClientRect();
-            const containerRect = containerElement.getBoundingClientRect();
-            const constraints: BoundaryConstraints = {
-                imageWidth: imageRect.width,
-                imageHeight: imageRect.height,
-                containerWidth: containerRect.width,
-                containerHeight: containerRect.height,
-            };
-            transformStore.setBoundaryConstraints(constraints);
-        }
-    }
-
-    function resetAllStates() {
+    function resetTransformState() {
         if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
         if (pinchAnimationFrameId !== null)
             cancelAnimationFrame(pinchAnimationFrameId);
@@ -135,14 +71,21 @@
         dragState.isDragging = false;
         pinchState.isPinching = false;
         lastTapTime = 0;
-        clearTapTimer();
+        clearTapTimer(tapTimeoutId);
         clearBodyStyles();
     }
 
     // --- Transform effect ---
     $effect(() => {
         transformState = transformStore.state;
-        setImageContainerStyle(transformState);
+        setImageContainerStyle(
+            {
+                scale: transformState.scale,
+                translate: transformState.translate,
+                useTransition: transformState.useTransition ?? false,
+            },
+            imageContainerElement,
+        );
     });
 
     // --- Zoom/Drag/Pinch Handlers ---
@@ -160,8 +103,8 @@
             newScale,
         );
         transformStore.zoom(zoomParams);
-        setImageCursorByScale(transformState.scale);
-        setOverlayCursorByScale(transformState.scale);
+        setImageCursorByScale(transformState.scale, imageContainerElement);
+        setOverlayCursorByScale(transformState.scale, containerElement);
     }
     function executeZoomToggle(clientX?: number, clientY?: number) {
         setTransition(true);
@@ -185,7 +128,7 @@
                     viewport.offsetY,
                 );
             }
-            setImageCursorByScale(transformState.scale);
+            setImageCursorByScale(transformState.scale, imageContainerElement);
         }, 100);
     }
     function handleDoubleClick(event: MouseEvent) {
@@ -228,8 +171,8 @@
             cancelAnimationFrame(animationFrameId);
             animationFrameId = null;
         }
-        setImageCursorByScale(transformState.scale);
-        setOverlayCursorByScale(transformState.scale);
+        setImageCursorByScale(transformState.scale, imageContainerElement);
+        setOverlayCursorByScale(transformState.scale, containerElement);
         setTimeout(() => setTransition(true), 50);
         setBodyUserSelect(true);
     }
@@ -287,6 +230,7 @@
                     newScale,
                     newTranslateX,
                     newTranslateY,
+                    imageContainerElement,
                 );
             }
         });
@@ -318,7 +262,7 @@
             }
         }
         setTransition(true);
-        setImageCursorByScale(transformState.scale);
+        setImageCursorByScale(transformState.scale, imageContainerElement);
     }
 
     // --- Tap/Pointer Handlers ---
@@ -334,10 +278,10 @@
         // ダブルタップ検出の条件を厳格化
         if (
             currentTime - lastTapTime < 200 &&
-            tapDistance < 50 && // 50px以内での連続タップ
+            tapDistance < 50 &&
             tapTimeoutId !== null
         ) {
-            clearTapTimer();
+            clearTapTimer(tapTimeoutId);
             stopDragIfActive();
             executeZoomToggle(clientX, clientY);
             lastTapTime = 0;
@@ -347,13 +291,11 @@
 
         lastTapTime = currentTime;
         lastTapPosition = { x: clientX, y: clientY };
-        clearTapTimer();
-        tapTimeoutId = Number(
-            setTimeout(() => {
-                tapTimeoutId = null;
-                lastTapPosition = null;
-            }, 300),
-        );
+        clearTapTimer(tapTimeoutId);
+        tapTimeoutId = window.setTimeout(() => {
+            tapTimeoutId = null;
+            lastTapPosition = null;
+        }, 300);
         return false; // シングルタップ
     }
 
@@ -438,7 +380,7 @@
             handlePointerStart(touch.clientX, touch.clientY, true);
         } else if (event.touches.length === 2) {
             stopDrag();
-            clearTapTimer();
+            clearTapTimer(tapTimeoutId);
             startPinch(event);
         }
     }
@@ -490,18 +432,18 @@
     function handlePopState(event: PopStateEvent) {
         if (show && historyPushed) {
             event.preventDefault();
-            resetAllStates();
-            clearHistoryState();
+            resetTransformState();
+            historyPushed = false;
             show = false;
             onClose();
         }
     }
     function close() {
-        resetAllStates();
+        resetTransformState();
         show = false;
         onClose();
         if (historyPushed) {
-            clearHistoryState();
+            historyPushed = false;
             history.back();
         }
         focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
@@ -510,16 +452,18 @@
     // --- Effect: show/hide ---
     $effect(() => {
         if (show) {
-            resetAllStates();
+            resetTransformState();
             setBodyStyle("overflow", "hidden");
-            pushHistoryState();
-            // 画像が読み込まれた後に境界制限を設定
+            if (!historyPushed) {
+                history.pushState({ imageFullscreen: true }, "", "");
+                historyPushed = true;
+            }
             if (imageElement && imageElement.complete) {
-                updateBoundaryConstraints();
+                updateBoundaryConstraints(imageElement, containerElement);
             }
         } else {
             setBodyStyle("overflow", "");
-            clearHistoryState();
+            historyPushed = false;
         }
     });
 
@@ -548,13 +492,13 @@
         const handlers = attachGlobalHandlers();
         return () => {
             detachGlobalHandlers(handlers);
-            clearTapTimer();
+            clearTapTimer(tapTimeoutId);
         };
     });
 
     onDestroy(() => {
-        resetAllStates();
-        clearHistoryState();
+        resetTransformState();
+        historyPushed = false;
         lastTapPosition = null;
     });
 </script>
@@ -599,7 +543,8 @@
                 {alt}
                 class="fullscreen-image"
                 ondblclick={handleDoubleClick}
-                onload={updateBoundaryConstraints}
+                onload={(e) =>
+                    updateBoundaryConstraints(imageElement, containerElement)}
                 draggable="false"
             />
         </div>
