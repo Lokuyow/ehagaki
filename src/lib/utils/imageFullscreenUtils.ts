@@ -50,6 +50,7 @@ export function calculateZoomFromEvent(
     };
 }
 
+// image-container要素のスタイルを設定
 export function setImageContainerStyle(
     { scale, translate, useTransition }: { scale: number; translate: { x: number; y: number }; useTransition: boolean },
     imageContainerElement?: HTMLDivElement
@@ -63,6 +64,7 @@ export function setImageContainerStyle(
     el.style.transformOrigin = "center";
 }
 
+// 即座にスタイルを反映させるためにtransitionを無効化してtransformを設定
 export function setImageContainerTransformDirect(
     scale: number,
     translateX: number,
@@ -75,28 +77,33 @@ export function setImageContainerTransformDirect(
     el.style.transform = `scale(${scale}) translate(${translateX / scale}px, ${translateY / scale}px)`;
 }
 
+// カーソルスタイルをズームレベルに応じて設定
 export function setImageCursorByScale(scale: number, imageContainerElement?: HTMLDivElement) {
     const el = imageContainerElement ?? document.querySelector(".image-container") as HTMLDivElement | null;
     if (!el) return;
     el.style.cursor = scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
 }
 
+// オーバーレイ要素のカーソルスタイルをズームレベルに応じて設定
 export function setOverlayCursorByScale(scale: number, containerElement?: HTMLDivElement) {
     const el = containerElement ?? document.querySelector(".fullscreen-overlay") as HTMLDivElement | null;
     if (!el) return;
     el.style.cursor = scale > ZOOM_CONFIG.DEFAULT_SCALE ? "grab" : "default";
 }
 
+// transformStoreのtransitionフラグを設定
 export function setTransition(enable: boolean) {
     transformStore.setTransition(enable);
 }
 
+// body要素のuser-selectスタイルを設定
 export function setBodyUserSelect(enable: boolean) {
     const value = enable ? "" : "none";
     setBodyStyle("user-select", value);
     setBodyStyle("-webkit-user-select", value);
 }
 
+// タップタイマーをクリア
 export function clearTapTimer(tapTimeoutId: number | null) {
     if (tapTimeoutId !== null) {
         clearTimeout(tapTimeoutId);
@@ -104,6 +111,7 @@ export function clearTapTimer(tapTimeoutId: number | null) {
     }
 }
 
+// 画像とコンテナの境界制約を更新
 export function updateBoundaryConstraints(imageElement: HTMLImageElement | undefined, containerElement: HTMLDivElement | undefined) {
     if (imageElement && containerElement) {
         const imageRect = imageElement.getBoundingClientRect();
@@ -118,12 +126,12 @@ export function updateBoundaryConstraints(imageElement: HTMLImageElement | undef
     }
 }
 
+// 全ての状態をリセット
 export function resetAllStates(
     animationFrameId: number | null,
     pinchAnimationFrameId: number | null,
     dragState: any,
     pinchState: any,
-    lastTapTime: number,
     tapTimeoutId: number | null
 ) {
     if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
@@ -134,11 +142,11 @@ export function resetAllStates(
     transformStore.setBoundaryConstraints(null);
     dragState.isDragging = false;
     pinchState.isPinching = false;
-    lastTapTime = 0;
     clearTapTimer(tapTimeoutId);
     clearBodyStyles();
 }
 
+// ダブルタップ/ダブルクリックの処理
 export function handleTap(
     lastTapTime: number,
     lastTapPosition: { x: number; y: number } | null,
@@ -172,6 +180,7 @@ export function handleTap(
     return { isDoubleTap: false, newLastTapTime, newLastTapPosition, newTapTimeoutId };
 }
 
+// ポインタダウンの処理
 export function handlePointerStart(
     transformStateScale: number,
     transformStateTranslate: { x: number; y: number },
@@ -206,6 +215,7 @@ export function handlePointerStart(
     return { newDragState, newLastTapTime, newLastTapPosition, newTapTimeoutId };
 }
 
+// ポインタムーブの処理
 export function handlePointerMove(
     dragState: any,
     clientX: number,
@@ -243,6 +253,7 @@ export function handlePointerMove(
     return { newDragState, touchMoved };
 }
 
+// ポインタアップの処理
 export function handlePointerEnd(
     _dragState: any,
     isTouch: boolean,
