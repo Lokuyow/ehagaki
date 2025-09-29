@@ -22,7 +22,7 @@ function applyBoundaryConstraints(translate: Position, scale: number): Position 
         return translate;
     }
 
-    const { imageWidth, imageHeight, containerWidth, containerHeight } = boundaryConstraints;
+    const { imageWidth, imageHeight, containerWidth } = boundaryConstraints;
     const scaledImageWidth = imageWidth * scale;
     const scaledImageHeight = imageHeight * scale;
 
