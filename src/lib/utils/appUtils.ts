@@ -953,15 +953,38 @@ export function getEventPosition(event: MouseEvent | TouchEvent): { x: number; y
 
 /**
  * コンテキストメニューの位置をビューポート内に収める
+ * @param x X座標
+ * @param y Y座標
+ * @param margin 余白
+ * @param popupWidth ポップアップの幅（任意）
+ * @param popupHeight ポップアップの高さ（任意）
  */
-export function calculateContextMenuPosition(x: number, y: number, margin: number = 10): { x: number; y: number } {
+export function calculateContextMenuPosition(
+  x: number,
+  y: number,
+  margin?: number,
+  popupWidth?: number,
+  popupHeight?: number
+): { x: number; y: number } {
   const viewportWidth =
     window.innerWidth || document.documentElement.clientWidth || 0;
   const viewportHeight =
     window.innerHeight || document.documentElement.clientHeight || 0;
+
+  // marginが未指定なら0
+  const safeMargin = typeof margin === "number" ? margin : 0;
+
+  // ポップアップサイズが指定されていればその分だけ余白を取る
+  const maxX = popupWidth
+    ? viewportWidth - popupWidth - safeMargin
+    : viewportWidth - safeMargin;
+  const maxY = popupHeight
+    ? viewportHeight - popupHeight - safeMargin
+    : viewportHeight - safeMargin;
+
   return {
-    x: Math.max(0, Math.min(viewportWidth - margin, x)),
-    y: Math.max(0, Math.min(viewportHeight - margin, y)),
+    x: Math.max(safeMargin, Math.min(maxX, x)),
+    y: Math.max(safeMargin, Math.min(maxY, y)),
   };
 }
 

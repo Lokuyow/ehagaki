@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { tick } from "svelte";
+    import { calculateContextMenuPosition } from "../lib/utils/appUtils"; // 追加
 
     // Runesモード: $props() で受ける（let にして親からの更新を反映）
     let {
@@ -64,13 +65,34 @@
             } catch {}
         }
     });
+
+    let popupX = $state(x);
+    let popupY = $state(y);
+
+    $effect(() => {
+        // containerが存在する場合はサイズを取得して位置を計算
+        let width = container?.offsetWidth ?? 0;
+        let height = container?.offsetHeight ?? 0;
+        // 初回は0なので fallback
+        if (width < 10) width = 320;
+        if (height < 10) height = 40;
+        const pos = calculateContextMenuPosition(
+            x,
+            y,
+            undefined,
+            width,
+            height,
+        );
+        popupX = pos.x;
+        popupY = pos.y;
+    });
 </script>
 
 {#if show}
     <div
         bind:this={container}
         class="popup-modal"
-        style="left: {x}px; top: {y}px;"
+        style="left: {popupX}px; top: {popupY}px;"
         onclick={(e) =>
             (e as Event & { stopPropagation?: () => void }).stopPropagation?.()}
         onkeydown={(e) => {
