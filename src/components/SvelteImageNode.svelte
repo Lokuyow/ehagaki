@@ -8,6 +8,9 @@
     import { openContextMenuForImageNode } from "../lib/utils/imageContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
     import {
+        calculateImageDisplaySize,
+        parseDimString,
+        getPlaceholderDefaultSize,
         renderBlurhash as renderBlurhashUtil,
         dispatchDragEvent,
         highlightDropZoneAtPosition,
@@ -16,11 +19,6 @@
         removeDragPreview,
         checkMoveThreshold,
         handleImageInteraction,
-    } from "../lib/utils/editorUtils";
-    import {
-        calculateImageDisplaySize,
-        parseDimString,
-        getPlaceholderDefaultSize,
     } from "../lib/utils/editorImageUtils";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import {
