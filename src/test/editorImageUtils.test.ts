@@ -6,7 +6,7 @@ import {
     shouldPreventInteraction,
     validateBlurhashParams,
     setupCanvas,
-} from './editorImageUtils';
+} from '../lib/utils/editorImageUtils';
 
 describe('calculateImageDisplaySize', () => {
     it('制約内なら元サイズを返す', () => {
