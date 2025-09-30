@@ -65,7 +65,6 @@
 
   // --- 追加: 初回レンダリング時にローカルストレージで即時認証判定 ---
   let initialAuthChecked = false;
-  let initialIsAuthenticated = false;
   let initialPubkey = "";
 
   // ローカルストレージから即時判定
@@ -73,12 +72,10 @@
     const nsec = localStorage.getItem("nsec");
     const nip46Raw = localStorage.getItem("__nostrlogin_nip46");
     if (nsec) {
-      initialIsAuthenticated = true;
     } else if (nip46Raw) {
       try {
         const nip46 = JSON.parse(nip46Raw);
         if (nip46?.pubkey) {
-          initialIsAuthenticated = true;
           initialPubkey = nip46.pubkey;
         }
       } catch (e) {
