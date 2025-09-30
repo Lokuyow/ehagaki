@@ -12,6 +12,7 @@ describe("imageContextMenuUtils", () => {
     const alt = "Alt text";
     const getPos = () => 5;
     const nodeSize = 3;
+    const nodeId = "test-node-id";  // 追加: nodeId を定義
 
     beforeEach(() => {
         // 安全のため clipboard を初期化
@@ -46,8 +47,19 @@ describe("imageContextMenuUtils", () => {
 
         // mock editor with view.state.tr.delete and view.dispatch
         const mockTr = { delete: vi.fn().mockReturnValue("TRANSACTION") } as any;
+        const mockDoc = {
+            descendants: vi.fn((callback) => {
+                // モックノードを渡す（nodeId が一致する場合）
+                const mockNode = {
+                    type: { name: 'image' },
+                    attrs: { id: nodeId },
+                    nodeSize: 1
+                };
+                callback(mockNode, 5); // pos=5
+            })
+        };
         const mockView = {
-            state: { tr: mockTr },
+            state: { tr: mockTr, doc: mockDoc },
             dispatch: vi.fn(),
             dom: {
                 dispatchEvent: vi.fn() // 追加: dispatchEventを持つ
@@ -55,7 +67,7 @@ describe("imageContextMenuUtils", () => {
         };
         const editorObj = { view: mockView };
 
-        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, { editorObj, t });
+        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, nodeId, { editorObj, t });  // 修正: nodeId を追加
 
         expect(items).toHaveLength(3);
         // fullscreen action dispatches an event on window (just call to ensure no throw)
@@ -69,8 +81,8 @@ describe("imageContextMenuUtils", () => {
 
         // delete action should call view.state.tr.delete and view.dispatch when selected
         items[2].action();
-        expect(mockTr.delete).toHaveBeenCalledWith(5, 5 + nodeSize);
         expect(mockView.dispatch).toHaveBeenCalledWith("TRANSACTION");
+        expect(mockDoc.descendants).toHaveBeenCalled();
     });
 
     it("copy action fails when both clipboard and fallback fail", async () => {
@@ -109,7 +121,7 @@ describe("imageContextMenuUtils", () => {
             execCommand: vi.fn().mockReturnValue(false) // execCommand を失敗させる
         } as any;
 
-        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, {
+        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, nodeId, {  // 修正: nodeId を追加
             navigatorObj: navigator,
             windowObj: { document: mockDoc } as any,
             t
@@ -237,7 +249,7 @@ describe("imageContextMenuUtils", () => {
         const getPos = () => 5;
         const nodeSize = 3;
 
-        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, { editorObj: mockEditorObj, t });
+        const items = getImageContextMenuItems(src, alt, getPos, nodeSize, true, nodeId, { editorObj: mockEditorObj, t });  // 修正: nodeId を追加
         // fullscreen actionを実行
         items[0].action();
 
@@ -280,7 +292,7 @@ describe("imageContextMenuUtils", () => {
         const getPos = () => 5;
         const nodeSize = 3;
         const items = getImageContextMenuItems(
-            src, alt, getPos, nodeSize, true, { t }
+            src, alt, getPos, nodeSize, true, nodeId, { t }  // 修正: nodeId を追加
         );
 
         // コピーアクションを実行

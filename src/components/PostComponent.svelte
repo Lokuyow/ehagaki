@@ -406,7 +406,9 @@
       // altは仮で "Image"（必要ならストアから取得）
       const alt = "Image";
       // nodeSizeは仮で 1（必要ならストアから取得）
-      const nodeSize = 1;
+      // 変更: メニューを開く時点で正確なノードサイズを取得
+      const node = currentEditor?.state?.doc?.nodeAt(pos);
+      const nodeSize = node ? node.nodeSize : 1;
       // isSelectedは true（必要ならストアから取得）
       const isSelected = true;
 
@@ -416,6 +418,7 @@
         () => pos,
         nodeSize,
         isSelected,
+        nodeId,  // 追加: nodeIdを渡す
         { editorObj: currentEditor },
       );
       globalContextMenuItems = items;

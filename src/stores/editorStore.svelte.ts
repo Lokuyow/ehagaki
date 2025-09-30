@@ -45,6 +45,7 @@ export function createEditorStore(placeholderText: string) {
                     return !!validateAndNormalizeUrl(url);
                 }
             }),
+            // Image拡張の設定
             Image.configure({
                 HTMLAttributes: {
                     class: 'editor-image',
@@ -56,6 +57,9 @@ export function createEditorStore(placeholderText: string) {
                         src: { default: null },
                         blurhash: { default: null },
                         isPlaceholder: { default: false },
+                        id: {
+                            default: () => crypto.randomUUID(),  // 追加: ノード作成時にUUIDを生成
+                        },
                     };
                 },
                 addNodeView() {

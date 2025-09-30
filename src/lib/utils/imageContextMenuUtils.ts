@@ -10,6 +10,7 @@ export function getImageContextMenuItems(
     getPos: () => number,
     nodeSize: number,
     isSelected: boolean,
+    nodeId: string,  // 追加: nodeIdパラメータ
     options?: {
         windowObj?: Window;
         navigatorObj?: Navigator;
@@ -110,8 +111,25 @@ export function getImageContextMenuItems(
                 if (!isSelected) return;
                 const view = editorObj?.view;
                 if (view?.state && view?.dispatch) {
-                    const pos = getPos();
-                    view.dispatch(view.state.tr.delete(pos, pos + nodeSize));
+                    // 変更: ID属性でノードを特定して削除
+                    let found = false;
+                    interface DescendantNode {
+                        type: { name: string };
+                        attrs: { id: string };
+                        nodeSize: number;
+                    }
+
+                    (view.state.doc as {
+                        descendants: (
+                            callback: (node: DescendantNode, pos: number) => boolean | void
+                        ) => void;
+                    }).descendants((node: DescendantNode, pos: number) => {
+                        if (!found && node.type.name === 'image' && node.attrs.id === nodeId) {
+                            view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
+                            found = true;
+                            return false; // 走査停止
+                        }
+                    });
                 }
             },
             disabled: !isSelected,
