@@ -379,14 +379,7 @@ export interface PostManagerDeps {
     seckeySignerFn?: (key: string) => any;
 }
 
-// --- UI and Component types ---
-export interface Props {
-    rxNostr?: RxNostr;
-    hasStoredKey: boolean;
-    onPostSuccess?: () => void;
-    onUploadStatusChange?: (isUploading: boolean) => void;
-    onUploadProgress?: (progress: UploadProgress) => void;
-}
+// --- UI and Component types --
 
 export interface SettingsDialogProps {
     show?: boolean;
@@ -580,12 +573,4 @@ export interface BoundaryConstraints {
     imageHeight: number;
     containerWidth: number;
     containerHeight: number;
-}
-
-// --- ImageFullscreen Component types ---
-export interface Props {
-    src?: string;
-    alt?: string;
-    show?: boolean;
-    onClose?: () => void;
 }

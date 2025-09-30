@@ -2,41 +2,40 @@
   import { _ } from "svelte-i18n";
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
-  import { PostManager } from "../lib/postManager";
-  import type {
-    UploadInfoCallbacks,
-    Props,
-    UploadHelperResult,
-  } from "../lib/types";
-  import { uploadHelper } from "../lib/uploadHelper";
   import type { Readable } from "svelte/store";
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { Node as PMNode } from "prosemirror-model";
+  import { NodeSelection } from "prosemirror-state";
   import type { RxNostr } from "rx-nostr";
+  import type {
+    UploadInfoCallbacks,
+    UploadHelperResult,
+    UploadProgress,
+  } from "../lib/types";
+  import { PostManager } from "../lib/postManager";
+  import { uploadHelper } from "../lib/uploadHelper";
+  import { getShareHandler } from "../lib/shareHandler";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
-  import { NodeSelection } from "prosemirror-state";
-  import { getShareHandler } from "../lib/shareHandler";
   import ContextMenu from "./ContextMenu.svelte";
   import PopupModal from "./PopupModal.svelte";
   import {
     extractImageBlurhashMap,
     getMimeTypeFromUrl,
   } from "../lib/tags/imetaTag";
-  import ImageFullscreen from "./ImageFullscreen.svelte";
-  import {
-    containsSecretKey,
-    calculateContextMenuPosition,
-  } from "../lib/utils/appUtils";
-  import { domUtils } from "../lib/utils/appDomUtils";
-  import { extractContentWithImages } from "../lib/utils/editorUtils";
-  import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
   import {
     fileDropAction,
     pasteAction,
     touchAction,
     keydownAction,
   } from "../lib/editor/editorDomActions";
+  import {
+    containsSecretKey,
+    calculateContextMenuPosition,
+  } from "../lib/utils/appUtils";
+  import { extractContentWithImages } from "../lib/utils/editorUtils";
+  import { domUtils } from "../lib/utils/appDomUtils";
+  import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
   import {
     globalContextMenuStore,
     lastClickPositionStore,
@@ -52,6 +51,15 @@
     resetPostStatus,
     setPostSubmitter,
   } from "../stores/editorStore.svelte";
+  import ImageFullscreen from "./ImageFullscreen.svelte";
+
+  interface Props {
+    rxNostr?: RxNostr;
+    hasStoredKey: boolean;
+    onPostSuccess?: () => void;
+    onUploadStatusChange?: (isUploading: boolean) => void;
+    onUploadProgress?: (progress: UploadProgress) => void;
+  }
 
   // EditorStore型
   type EditorStore = Readable<TipTapEditor | null> & {
@@ -523,7 +531,6 @@
   bind:show={showImageFullscreen}
   src={fullscreenImageSrc}
   alt={fullscreenImageAlt}
-  {hasStoredKey}
   onClose={handleImageFullscreenClose}
 />
 

@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
-    import type { TransformState, Props } from "../lib/types";
+    import type { TransformState } from "../lib/types";
     import {
         setBodyStyle,
         focusEditor,
@@ -31,6 +31,13 @@
         calculateDragVelocity,
         applyMomentumAnimation,
     } from "../lib/utils/imageFullscreenUtils";
+
+    interface Props {
+        src?: string;
+        alt?: string;
+        show?: boolean;
+        onClose?: () => void;
+    }
 
     let {
         src = "",
