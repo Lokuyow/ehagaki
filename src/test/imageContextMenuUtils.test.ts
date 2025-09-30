@@ -172,13 +172,14 @@ describe("imageContextMenuUtils", () => {
             mockStore as any,
             "node-1",
             { x: 100, y: 200 },
+            "https://example.com/image.jpg",  // 追加: srcパラメータ
             { setTimeoutFn: (fn: Function) => fn() }
         );
 
         // 最初に閉じるセット、その後開くセットが呼ばれる
         expect(calls.length).toBeGreaterThanOrEqual(2);
-        expect(calls[0]).toEqual({ open: false, nodeId: undefined });
-        expect(calls[calls.length - 1]).toEqual({ open: true, nodeId: "node-1" });
+        expect(calls[0]).toEqual({ open: false, nodeId: undefined, src: undefined });
+        expect(calls[calls.length - 1]).toEqual({ open: true, nodeId: "node-1", src: "https://example.com/image.jpg" });
 
         // 位置設定コールバックは呼ばれないため、setX, setY の期待値を削除
     });
@@ -198,11 +199,12 @@ describe("imageContextMenuUtils", () => {
             mockStore as any,
             "node-2",
             { x: 150, y: 250 },
+            "https://example.com/image2.jpg",  // 追加: srcパラメータ
             { setTimeoutFn: (fn: Function) => fn() } // irrelevant here but keep sync
         );
 
         // store.set は一度呼ばれ、open を true にする
-        expect(calls).toContainEqual({ open: true, nodeId: "node-2" });
+        expect(calls).toContainEqual({ open: true, nodeId: "node-2", src: "https://example.com/image2.jpg" });
         // 位置設定コールバックは呼ばれないため、setX, setY の期待値を削除
     });
 

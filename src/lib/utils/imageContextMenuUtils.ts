@@ -153,12 +153,13 @@ export function openContextMenuForImageNode(
     globalContextMenuStore: ImageContextMenuStore,
     nodeId: string,
     clickPosition: { x: number; y: number },
+    src: string,  // 追加: srcパラメータ
     options?: {
         setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any
     }
 ) {
     if (import.meta.env.MODE === "development") {
-        console.log("[dev] openContextMenuForImageNode called", { nodeId, clickPosition });
+        console.log("[dev] openContextMenuForImageNode called", { nodeId, clickPosition, src });
     }
     const setTimeoutFn = options?.setTimeoutFn ?? ((fn: (...args: any[]) => void, ms?: number, ...args: any[]) => {
         return setTimeout(fn as TimerHandler, ms, ...args);
@@ -171,11 +172,11 @@ export function openContextMenuForImageNode(
         return state;
     });
     if (alreadyOpen && prevNodeId) {
-        globalContextMenuStore.set({ open: false, nodeId: undefined });
+        globalContextMenuStore.set({ open: false, nodeId: undefined, src: undefined });
         setTimeoutFn(() => {
-            globalContextMenuStore.set({ open: true, nodeId });
+            globalContextMenuStore.set({ open: true, nodeId, src });
         }, 0);
         return;
     }
-    globalContextMenuStore.set({ open: true, nodeId });
+    globalContextMenuStore.set({ open: true, nodeId, src });
 }

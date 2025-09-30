@@ -113,8 +113,8 @@
     // ストアからクリック位置を取得
     let lastClickPosition = $derived(lastClickPositionStore.value);
 
-    // ノード固有のID（src+posで一意化）
-    const nodeId = `${node?.attrs?.src || ""}-${typeof getPos === "function" ? getPos() : ""}`;
+    // ノード固有のID（src+posで一意化） -> 変更: posのみで固有ID化
+    const nodeId = typeof getPos === "function" ? getPos().toString() : "";
 
     // グローバルストア監視
     $effect(() => {
@@ -133,6 +133,7 @@
             globalContextMenuStore,
             nodeId,
             lastClickPosition,
+            node.attrs.src,  // 追加: srcを渡す
         );
     }
 

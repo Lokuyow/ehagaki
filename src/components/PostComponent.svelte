@@ -398,11 +398,11 @@
   // グローバルコンテキストメニューの位置とアイテムを更新
   $effect(() => {
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
-      // nodeIdから src, getPos, nodeSize, isSelected を復元
+      // nodeIdから src, getPos, nodeSize, isSelected を復元 -> 変更: ストアから直接取得
       const nodeId = globalContextMenuState.nodeId;
-      // nodeIdは "src-pos" の形式なので分割
-      const [src, posStr] = nodeId.split("-");
-      const pos = Number(posStr) || 0;
+      const src = globalContextMenuState.src || "";  // 変更: ストアからsrcを取得
+      // nodeIdは pos の文字列なので数値化
+      const pos = Number(nodeId) || 0;
       // altは仮で "Image"（必要ならストアから取得）
       const alt = "Image";
       // nodeSizeは仮で 1（必要ならストアから取得）
@@ -540,7 +540,7 @@
     y={globalContextMenuY}
     items={globalContextMenuItems}
     onClose={() =>
-      globalContextMenuStore.set({ open: false, nodeId: undefined })}
+      globalContextMenuStore.set({ open: false, nodeId: undefined, src: undefined })}
     onShowPopup={handleShowPopup}
   />
 {/if}

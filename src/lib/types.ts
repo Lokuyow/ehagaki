@@ -534,6 +534,7 @@ export interface ImageContextMenuStore {
 export interface ImageContextMenuState {
     open: boolean;
     nodeId?: string;
+    src?: string;
 }
 
 // --- TransformStore関連型定義 ---
