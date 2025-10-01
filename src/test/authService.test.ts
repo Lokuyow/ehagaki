@@ -241,7 +241,6 @@ function createMockDependencies(): AuthServiceDependencies {
             error: vi.fn(),
             warn: vi.fn()
         } as unknown as Console,
-        debugLog: vi.fn(),
         setNsecAuth: vi.fn(),
         setAuthInitialized: vi.fn(),
         nostrLoginManager: new MockNostrLoginManager(),
@@ -440,12 +439,10 @@ describe('NostrLoginAuthenticator', () => {
 describe('ExternalAuthWaiter', () => {
     let waiter: ExternalAuthWaiter;
     let mockWindow: any;
-    let mockDebugLog: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
-        mockDebugLog = vi.fn();
         mockWindow = {};
-        waiter = new ExternalAuthWaiter(mockWindow, mockDebugLog);
+        waiter = new ExternalAuthWaiter(mockWindow);
     });
 
     afterEach(() => {
@@ -460,7 +457,6 @@ describe('ExternalAuthWaiter', () => {
         const result = await waiter.waitForExternalAuth(100);
 
         expect(result).toBe(true);
-        expect(mockDebugLog).toHaveBeenCalledWith('[waitForExternalAuth] window.nostr利用可能');
     });
 
     it('タイムアウトした場合はfalseを返す', async () => {
@@ -474,7 +470,6 @@ describe('ExternalAuthWaiter', () => {
         const result = await promise;
 
         expect(result).toBe(false);
-        expect(mockDebugLog).toHaveBeenCalledWith('[waitForExternalAuth] タイムアウト');
     });
 });
 
@@ -543,12 +538,10 @@ describe('ProfileCacheCleaner', () => {
 describe('NostrLoginStorageManager', () => {
     let manager: NostrLoginStorageManager;
     let mockStorage: MockStorage;
-    let mockDebugLog: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
         mockStorage = new MockStorage();
-        mockDebugLog = vi.fn();
-        manager = new NostrLoginStorageManager(mockStorage, mockDebugLog);
+        manager = new NostrLoginStorageManager(mockStorage);
     });
 
     it('保存されたnostr-loginデータを取得する', () => {
@@ -558,10 +551,6 @@ describe('NostrLoginStorageManager', () => {
         const result = manager.getStoredNostrLoginData();
 
         expect(result).toEqual(testData);
-        expect(mockDebugLog).toHaveBeenCalledWith(
-            '[getStoredNostrLoginData] localStorageからnip46取得',
-            { nip46: testData }
-        );
     });
 
     it('データが存在しない場合はnullを返す', () => {
@@ -576,10 +565,6 @@ describe('NostrLoginStorageManager', () => {
         const result = manager.getStoredNostrLoginData();
 
         expect(result).toBeNull();
-        expect(mockDebugLog).toHaveBeenCalledWith(
-            '[getStoredNostrLoginData] localStorage復元中に例外',
-            expect.any(SyntaxError)
-        );
     });
 
     it('pubkeyが不足している場合はnullを返す', () => {

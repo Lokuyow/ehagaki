@@ -82,8 +82,7 @@ export class NostrLoginAuthenticator {
 // --- 外部認証チェッカー ---
 export class ExternalAuthWaiter {
     constructor(
-        private window: Window,
-        private debugLog: (...args: any[]) => void
+        private window: Window
     ) { }
 
     async waitForExternalAuth(timeoutMs: number = 5000): Promise<boolean> {
@@ -93,13 +92,11 @@ export class ExternalAuthWaiter {
         return new Promise((resolve) => {
             const checkAuth = () => {
                 if (this.isWindowNostrAvailable()) {
-                    this.debugLog('[waitForExternalAuth] window.nostr利用可能');
                     resolve(true);
                     return;
                 }
 
                 if (Date.now() - startTime >= timeoutMs) {
-                    this.debugLog('[waitForExternalAuth] タイムアウト');
                     resolve(false);
                     return;
                 }
@@ -164,8 +161,7 @@ export class ProfileCacheCleaner {
 // --- LocalStorage処理の分離 ---
 export class NostrLoginStorageManager {
     constructor(
-        private localStorage: Storage,
-        private debugLog: (...args: any[]) => void
+        private localStorage: Storage
     ) { }
 
     getStoredNostrLoginData(): LocalStorageData | null {
@@ -174,14 +170,12 @@ export class NostrLoginStorageManager {
             if (!nip46Raw) return null;
 
             const nip46 = JSON.parse(nip46Raw);
-            this.debugLog('[getStoredNostrLoginData] localStorageからnip46取得', { nip46 });
 
             return nip46?.pubkey ? {
                 pubkey: nip46.pubkey,
                 npub: nip46.npub
             } : null;
         } catch (error) {
-            this.debugLog('[getStoredNostrLoginData] localStorage復元中に例外', error);
             return null;
         }
     }
@@ -196,7 +190,6 @@ export class AuthInitializer {
         private externalAuthWaiter: ExternalAuthWaiter,
         private storageManager: NostrLoginStorageManager,
         private setNsecAuth: (pubkey: string, npub: string, nprofile: string) => void,
-        private debugLog: (...args: any[]) => void,
         private console: Console
     ) { }
 
@@ -207,10 +200,7 @@ export class AuthInitializer {
             if (nsecResult.hasAuth) return nsecResult;
 
             // 外部認証の確認
-            const hasExternalAuth = await this.externalAuthWaiter.waitForExternalAuth(100);
-            if (hasExternalAuth) {
-                this.debugLog('[initializeAuth] 外部認証オブジェクト検出済み');
-            }
+            await this.externalAuthWaiter.waitForExternalAuth(100);
 
             // nostr-loginの初期化とチェック
             const nostrLoginResult = await this.checkNostrLoginAuth(nostrLoginOptions);
@@ -220,7 +210,6 @@ export class AuthInitializer {
             this.console.error('nostr-login初期化失敗:', error);
         }
 
-        this.debugLog('[initializeAuth] 認証情報なし');
         return { hasAuth: false };
     }
 
@@ -228,13 +217,11 @@ export class AuthInitializer {
         const storedKey = this.keyManager.loadFromStorage();
         if (!storedKey) return { hasAuth: false };
 
-        this.debugLog('[checkNsecAuth] nsecストレージキーを検出', { storedKey });
         this.publicKeyState.setNsec(storedKey);
 
         try {
             const derived = this.keyManager.derivePublicKey(storedKey);
             if (derived.hex) {
-                this.debugLog('[checkNsecAuth] nsecからpubkey導出成功', { hex: derived.hex });
                 this.setNsecAuth(derived.hex, derived.npub, derived.nprofile);
                 return {
                     hasAuth: true,
@@ -242,12 +229,10 @@ export class AuthInitializer {
                     isNostrLogin: false
                 };
             } else {
-                this.debugLog('[checkNsecAuth] nsecからpubkey導出失敗、無効なキーを削除');
                 this.keyManager.saveToStorage(''); // 無効なキーを削除
                 return { hasAuth: false };
             }
         } catch (error) {
-            this.debugLog('[checkNsecAuth] ストレージキーの処理中にエラー', error);
             this.keyManager.saveToStorage(''); // エラーの場合も削除
             return { hasAuth: false };
         }
@@ -263,7 +248,6 @@ export class AuthInitializer {
         // 1. まずwindow.nostrLoginから即時取得
         const currentUser = this.nostrLoginManager.getCurrentUser();
         if (currentUser?.pubkey) {
-            this.debugLog('[checkNostrLoginAuth] nostr-login認証成功', { pubkey: currentUser.pubkey });
             this.publicKeyState.setNostrLoginAuth({
                 type: 'login',
                 pubkey: currentUser.pubkey,
@@ -279,7 +263,6 @@ export class AuthInitializer {
         // 2. localStorage復元
         const storedData = this.storageManager.getStoredNostrLoginData();
         if (storedData?.pubkey) {
-            this.debugLog('[checkNostrLoginAuth] localStorage復元成功', { pubkey: storedData.pubkey });
             this.publicKeyState.setNostrLoginAuth({
                 type: 'login',
                 pubkey: storedData.pubkey,
@@ -292,7 +275,6 @@ export class AuthInitializer {
             };
         }
 
-        this.debugLog('[checkNostrLoginAuth] nostr-login認証情報なし');
         return { hasAuth: false };
     }
 }
@@ -325,7 +307,6 @@ export class AuthService {
         const windowObj = dependencies.window || (typeof window !== 'undefined' ? window : {} as Window);
         const navigator = dependencies.navigator || (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
         const console = dependencies.console || (typeof window !== 'undefined' ? window.console : {} as Console);
-        const debugLog = dependencies.debugLog || (typeof window !== 'undefined' ? window.console.log : () => { });
         const setNsecAuthFn = dependencies.setNsecAuth || setNsecAuth;
 
         // nostrLoginManagerは依存性から取得、なければデフォルト
@@ -340,8 +321,8 @@ export class AuthService {
         this.nostrLoginAuthenticator = new NostrLoginAuthenticator(this.publicKeyState, console);
         this.profileCacheCleaner = new ProfileCacheCleaner(navigator, console);
 
-        const externalAuthWaiter = new ExternalAuthWaiter(windowObj, debugLog);
-        const storageManager = new NostrLoginStorageManager(localStorage, debugLog);
+        const externalAuthWaiter = new ExternalAuthWaiter(windowObj);
+        const storageManager = new NostrLoginStorageManager(localStorage);
 
         this.authInitializer = new AuthInitializer(
             keyMgr,
@@ -350,7 +331,6 @@ export class AuthService {
             externalAuthWaiter,
             storageManager,
             setNsecAuthFn,
-            debugLog,
             console
         );
 
@@ -398,15 +378,11 @@ export class AuthService {
      * ログアウト処理
      */
     logout(): void {
-        const debugLog = this.authInitializer['debugLog'] || console.log;
-        debugLog('ログアウト処理開始');
-
         try {
             // nostr-login認証の場合のみ、nostr-loginのログアウトを実行
             if (this.publicKeyState.currentIsNostrLogin && this.nostrLoginMgr.isInitialized) {
                 try {
                     this.nostrLoginMgr.logout();
-                    debugLog('nostr-loginログアウト完了');
                 } catch (error) {
                     console.error('nostr-loginログアウト中にエラー:', error);
                 }
@@ -415,7 +391,6 @@ export class AuthService {
             // ストレージをクリア
             try {
                 localStorage.clear();
-                debugLog('ローカルストレージクリア完了');
             } catch (error) {
                 console.error('ローカルストレージクリア中にエラー:', error);
             }
@@ -424,8 +399,6 @@ export class AuthService {
             this.profileCacheCleaner.clearProfileImageCache().catch(error => {
                 console.error('プロフィール画像キャッシュクリア中にエラー:', error);
             });
-
-            debugLog('ログアウト処理完了');
 
             // ページをリロード（遅延させて確実に反映）
             setTimeout(() => {
