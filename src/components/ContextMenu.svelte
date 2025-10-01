@@ -239,11 +239,11 @@
         align-items: center;
         justify-content: center;
         width: 100%;
-        height: 34px;
+        height: 32px;
         font-size: 0.9375rem;
         color: var(--text-light, #888);
-        padding: 0 12px;
-        margin-bottom: 4px;
+        padding: 0 10px;
+        margin-bottom: 2px;
         border-bottom: 1px solid var(--border, #eee);
         word-break: break-all;
         background: none;
