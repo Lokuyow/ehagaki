@@ -12,6 +12,13 @@ import type { PostStatus, EditorState } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
 
 /**
+ * 簡易UUID生成関数
+ */
+function generateSimpleUUID(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
+}
+
+/**
  * Tiptap v2のエディターストアを作成
  */
 export function createEditorStore(placeholderText: string) {
@@ -58,7 +65,7 @@ export function createEditorStore(placeholderText: string) {
                         blurhash: { default: null },
                         isPlaceholder: { default: false },
                         id: {
-                            default: () => crypto.randomUUID(),  // 追加: ノード作成時にUUIDを生成
+                            default: () => generateSimpleUUID(),  // 変更: 簡易UUIDのみ使用
                         },
                     };
                 },
