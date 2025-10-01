@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.4.0test2';
+const PRECACHE_VERSION = '1.4.0';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -526,7 +526,6 @@ class ClientManager {
             // メッセージ送信（失敗してもエラーにしない）
             if (client && typeof client.postMessage === 'function') {
                 try {
-                    this.console.log('SW: Posting SHARED_IMAGE message to client', { clientId: client.id, hasSharedCache: !!sharedCache });
                     client.postMessage({
                         type: 'SHARED_IMAGE',
                         data: sharedCache,
@@ -624,10 +623,8 @@ class MessageHandler {
         };
 
         if (event.ports?.[0]) {
-            this.console.log('SW: respondSharedImage -> replying via MessageChannel', { requestId, hasSharedCache: !!sharedCache });
             event.ports[0].postMessage(msg);
         } else if (client) {
-            this.console.log('SW: respondSharedImage -> replying via client.postMessage', { clientId: client.id, requestId, hasSharedCache: !!sharedCache });
             client.postMessage(msg);
         }
 

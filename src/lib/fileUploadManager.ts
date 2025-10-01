@@ -459,35 +459,32 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
   // --- 共有画像処理の統一メソッド ---
   async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    console.log('[FileUploadManager] getSharedImageFromServiceWorker invoked');
-     if (!this.dependencies.navigator?.serviceWorker?.controller) return null;
- 
-     try {
-       const channel = new MessageChannel();
-       const promise = new Promise<SharedImageData | null>((resolve) => {
-         channel.port1.onmessage = (event) => {
-           console.log('[FileUploadManager] message from SW via MessageChannel', event.data);
-           if (event.data?.type === 'SHARED_IMAGE') {
-             resolve(event.data.data);
-           } else {
-             resolve(null);
-           }
-         };
-         setTimeout(() => resolve(null), 3000);
-       });
- 
-       this.dependencies.navigator.serviceWorker.controller.postMessage(
-         { action: 'getSharedImage' },
-         [channel.port2]
-       );
- 
-       return await promise;
-     } catch (error) {
-      console.error('[FileUploadManager] getSharedImageFromServiceWorker error', error);
-       console.error('Service Workerからの共有画像取得に失敗:', error);
-       return null;
-     }
-   }
+    if (!this.dependencies.navigator?.serviceWorker?.controller) return null;
+
+    try {
+      const channel = new MessageChannel();
+      const promise = new Promise<SharedImageData | null>((resolve) => {
+        channel.port1.onmessage = (event) => {
+          if (event.data?.type === 'SHARED_IMAGE') {
+            resolve(event.data.data);
+          } else {
+            resolve(null);
+          }
+        };
+        setTimeout(() => resolve(null), 3000);
+      });
+
+      this.dependencies.navigator.serviceWorker.controller.postMessage(
+        { action: 'getSharedImage' },
+        [channel.port2]
+      );
+
+      return await promise;
+    } catch (error) {
+      console.error('Service Workerからの共有画像取得に失敗:', error);
+      return null;
+    }
+  }
 
   checkIfOpenedFromShare(): boolean {
     if (!this.dependencies.window?.location) return false;
@@ -497,31 +494,28 @@ export class FileUploadManager implements FileUploadManagerInterface {
   // 共有画像の包括的な処理メソッド
   async processSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
     try {
-      console.log('[FileUploadManager] processSharedImageOnLaunch start');
-       // Service Workerから取得を試行
-       const sharedData = await this.getSharedImageFromServiceWorker();
-       console.log('[FileUploadManager] processSharedImageOnLaunch got sharedData', { hasImage: !!sharedData?.image, metadata: sharedData?.metadata });
-       if (sharedData?.image) {
-         return {
-           success: true,
-           data: sharedData,
-           fromServiceWorker: true
-         };
-       }
+      // Service Workerから取得を試行
+      const sharedData = await this.getSharedImageFromServiceWorker();
+      if (sharedData?.image) {
+        return {
+          success: true,
+          data: sharedData,
+          fromServiceWorker: true
+        };
+      }
 
-       // IndexedDBフォールバック（必要に応じて実装）
-       // この部分はshareHandler.tsから移行
+      // IndexedDBフォールバック（必要に応じて実装）
+      // この部分はshareHandler.tsから移行
 
-       return {
-         success: false,
-         error: '共有画像が見つかりません'
-       };
+      return {
+        success: false,
+        error: '共有画像が見つかりません'
+      };
     } catch (error) {
-      console.error('[FileUploadManager] processSharedImageOnLaunch error', error);
-       return {
-         success: false,
-         error: error instanceof Error ? error.message : String(error)
-       };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error)
+      };
     }
   }
 }

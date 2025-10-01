@@ -249,10 +249,6 @@
   onMount(() => {
     // Define an inner async function for initialization
     const init = async () => {
-      console.log(
-        "[App] onMount init start - checkIfOpenedFromShare:",
-        checkIfOpenedFromShare(),
-      );
       const storedLocale = localStorage.getItem("locale");
       if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
       await waitLocale();
@@ -270,13 +266,6 @@
       if (checkIfOpenedFromShare()) {
         const swStatus = await checkServiceWorkerStatus();
         const canCommunicate = await testServiceWorkerCommunication();
-
-        console.log("Service Worker Status:", {
-          isReady: swStatus.isReady,
-          hasController: swStatus.hasController,
-          canCommunicate,
-          error: swStatus.error,
-        });
 
         if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
           console.warn(
@@ -309,33 +298,17 @@
 
       // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
       if (checkIfOpenedFromShare() && !sharedImageAlreadyProcessed) {
-        console.log("[App] Attempting to get shared image on launch (App)", {
-          sharedImageAlreadyProcessed,
-        });
         try {
           // まず実際に共有画像が取得できるかチェック
           const shared = await getSharedImageWithFallback();
-          console.log("[App] getSharedImageWithFallback result", { shared });
           if (shared?.image) {
             // 画像が取得できた場合は、エラーパラメータを無視して処理を続行
             sharedImageStore.file = shared.image;
             sharedImageStore.metadata = shared.metadata;
             sharedImageStore.received = true;
             localStorage.setItem("sharedImageProcessed", "1");
-            console.log(
-              "Shared image successfully loaded despite error parameter:",
-              {
-                name: shared.image.name,
-                size: shared.image.size,
-                type: shared.image.type,
-              },
-            );
-            console.log("[App] set sharedImageStore and mark processed");
           } else {
             console.warn("No shared image data received");
-            console.log(
-              "[App] No shared image returned by getSharedImageWithFallback",
-            );
             // 画像が取得できない場合のみエラーパラメータをログ出力
             const urlParams = new URLSearchParams(window.location.search);
             const sharedError = urlParams.get("error");

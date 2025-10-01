@@ -12,8 +12,8 @@ export const isPreview = writable(isPreviewOrDevEnv());
 export const devLog: Writable<string[]> = writable([]);
 
 // --- 設定 ---
-export const ENABLE_DEV_LOG_HOOK = true; // falseでconsole.logフック無効化
-export const FORCE_SHOW_FLOATING_DEV_LOG = true; // trueで本番環境でも表示
+export const ENABLE_DEV_LOG_HOOK = false; // falseでconsole.logフック無効化
+export const FORCE_SHOW_FLOATING_DEV_LOG = false; // trueで本番環境でも表示
 
 // --- 共通: preview/dev判定関数 ---
 function isPreviewOrDevEnv(): boolean {

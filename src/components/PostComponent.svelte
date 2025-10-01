@@ -248,10 +248,6 @@
 
   export async function uploadFiles(files: File[] | FileList) {
     if (!files || files.length === 0) return;
-    console.log("[PostComponent] uploadFiles called", {
-      count: files.length,
-      names: Array.from(files as File[]).map((f: File) => f.name),
-    });
 
     const result: UploadHelperResult = await uploadHelper({
       files,
@@ -261,13 +257,6 @@
       showUploadError,
       updateUploadState,
       devMode: import.meta.env.MODE === "development",
-    });
-    console.log("[PostComponent] uploadFiles result", {
-      results: result.results?.map((r) => ({
-        success: r.success,
-        url: r.url,
-        error: r.error,
-      })),
     });
 
     Object.assign(imageOxMap, result.imageOxMap);
@@ -284,12 +273,6 @@
     }
     if (fileInput) fileInput.value = "";
   }
-
-  // 共有画像処理の統一
-  onMount(async () => {
-    // 共有画像の自動処理は App 側に一元化しています（sharedImageStore を監視）。
-    // ここでは PostComponent 側からの二重アップロードを防ぐため、ShareHandler の起動時処理は行いません。
-  });
 
   export async function submitPost() {
     if (!postManager) return console.error("PostManager is not initialized");
