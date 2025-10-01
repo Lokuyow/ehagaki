@@ -287,30 +287,8 @@
 
   // 共有画像処理の統一
   onMount(async () => {
-    // 共有画像の処理
-    try {
-      console.log(
-        "[PostComponent] onMount checking for shared image via ShareHandler",
-      );
-      const shareHandler = getShareHandler();
-      const result = await shareHandler.checkForSharedImageOnLaunch();
-      console.log(
-        "[PostComponent] ShareHandler.checkForSharedImageOnLaunch result",
-        result,
-      );
-
-      if (result.success && result.data?.image) {
-        // 共有画像を自動アップロード
-        console.log("[PostComponent] auto-uploading shared image", {
-          name: result.data.image.name,
-          size: result.data.image.size,
-        });
-        await uploadFiles([result.data.image]);
-        console.log("[PostComponent] auto-upload completed for shared image");
-      }
-    } catch (error) {
-      console.error("共有画像の処理に失敗:", error);
-    }
+    // 共有画像の自動処理は App 側に一元化しています（sharedImageStore を監視）。
+    // ここでは PostComponent 側からの二重アップロードを防ぐため、ShareHandler の起動時処理は行いません。
   });
 
   export async function submitPost() {
