@@ -94,15 +94,20 @@ const Utilities = {
     },
 
     // 共通のHTTPリクエスト作成
+    // mode をオプション化してプロフィール取得時に 'no-cors' を選べるようにする
     createCorsRequest(url, options = {}) {
+        const mode = options.mode || 'cors'; // default 'cors', can be overridden to 'no-cors'
+        const headers = new Headers({
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            ...(options.headers || {})
+        });
         return new Request(url, {
             method: 'GET',
-            headers: new Headers({
-                'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                ...options.headers
-            }),
-            mode: 'cors',
+            headers,
+            mode,
             credentials: 'omit',
+            cache: options.cache || 'default',
+            redirect: 'follow',
             ...options
         });
     },
@@ -339,16 +344,18 @@ class CacheManager {
         try {
             const cache = await this.caches.open(PROFILE_CACHE_NAME);
             const baseUrl = Utilities.getBaseUrl(request.url);
-            const baseRequest = Utilities.createCorsRequest(baseUrl);
 
-            // キャッシュから検索（ベースURL優先）
+            // キャッシュキーは fetch時と同じ生成方法（no-cors モードのベースRequest）で検索する
+            const baseRequest = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+
+            // まずベースURLで検索
             const cachedBase = await cache.match(baseRequest);
             if (cachedBase) {
                 this.console.log('プロフィール画像をキャッシュから返却（ベースURL）:', baseUrl);
                 return cachedBase;
             }
 
-            // 念のため元のURLでも検索（既存キャッシュとの互換性）
+            // 互換性のため、元のリクエストでも検索
             const cached = await cache.match(request);
             if (cached) {
                 this.console.log('プロフィール画像をキャッシュから返却（元URL）:', request.url);
@@ -364,34 +371,45 @@ class CacheManager {
 
     // プロフィール画像をネットワークから取得してキャッシュ
     async fetchAndCacheProfileImage(request) {
-        if (ServiceWorkerDependencies.navigator.onLine === false) return null;
+        // ネットワーク取得はオフライン時はスキップ
+        if (ServiceWorkerDependencies.navigator && ServiceWorkerDependencies.navigator.onLine === false) return null;
 
         try {
             const baseUrl = Utilities.getBaseUrl(request.url);
-            const corsRequest = Utilities.createCorsRequest(baseUrl, {
+
+            // クロスオリジン画像は no-cors リクエストで取得（サーバの CORS 設定に依存せず取得可能）
+            const profileFetchRequest = Utilities.createCorsRequest(baseUrl, {
+                mode: 'no-cors',
                 headers: { 'Cache-Control': 'no-cache' },
                 cache: 'no-cache'
             });
 
             this.console.log('プロフィール画像をネットワークから取得中:', baseUrl);
-            const response = await this.fetch(corsRequest);
+            const response = await this.fetch(profileFetchRequest);
 
-            if (response.ok && response.status === 200) {
+            // opaque（no-cors の不透明レスポンス）も許容してキャッシュする
+            if (response && (response.ok || response.type === 'opaque')) {
                 const cache = await this.caches.open(PROFILE_CACHE_NAME);
-                const baseRequest = Utilities.createCorsRequest(baseUrl);
 
-                // レスポンスをクローンしてキャッシュに保存
-                const responseClone = response.clone();
-                await cache.put(baseRequest, responseClone);
-                this.console.log('プロフィール画像をキャッシュに保存完了:', baseUrl);
+                // キャッシュキーは同じ生成ルールで作成（no-cors のベースRequest）
+                const cacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+
+                try {
+                    // レスポンスをクローンしてキャッシュに保存
+                    await cache.put(cacheKey, response.clone());
+                    this.console.log('プロフィール画像をキャッシュに保存完了:', baseUrl);
+                } catch (cacheError) {
+                    // 一部ブラウザや opaque レスポンスでキャッシュに失敗する場合があるので警告のみ
+                    this.console.warn('プロフィール画像のキャッシュ保存に失敗:', cacheError, baseUrl);
+                }
 
                 // オリジナルのレスポンスを返す
                 return response;
             } else {
-                this.console.warn('プロフィール画像の取得に失敗:', response.status, response.statusText);
+                this.console.warn('プロフィール画像の取得に失敗または非OKレスポンス:', response && response.type, response && response.status, response && response.statusText);
             }
         } catch (networkError) {
-            this.console.log('プロフィール画像のネットワークエラー:', networkError.message);
+            this.console.log('プロフィール画像のネットワークエラー:', networkError && networkError.message);
         }
 
         return null;

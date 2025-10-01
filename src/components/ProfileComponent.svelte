@@ -65,8 +65,29 @@
           profileData.picture,
         );
       }
+
+      // 同一オリジン判定（失敗時は外部オリジン扱い）
+      isSameOriginPicture = isSameOriginPictureUrl(profileData.picture);
+    } else {
+      isSameOriginPicture = false;
     }
   });
+
+  // 同一オリジン判定（外部テストからも利用できる純粋関数としてエクスポート）
+  export function isSameOriginPictureUrl(
+    pictureUrl: string | undefined | null,
+  ): boolean {
+    if (!pictureUrl) return false;
+    try {
+      const picUrl = new URL(pictureUrl, location.href);
+      return picUrl.origin === location.origin;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // プロフィール画像が同一オリジンかどうか（クロスオリジンなら SW の no-cors キャッシュと整合するため crossorigin を付けない）
+  let isSameOriginPicture = $state(false);
 </script>
 
 {#if hasStoredKey}
@@ -88,8 +109,9 @@
           alt={getProfileAlt()}
           class="profile-picture"
           loading="lazy"
-          crossorigin="anonymous"
-          referrerpolicy="no-referrer"
+          {...isSameOriginPicture
+            ? { crossorigin: "anonymous", referrerpolicy: "no-referrer" }
+            : {}}
           onerror={handleImageError}
         />
       {:else}
