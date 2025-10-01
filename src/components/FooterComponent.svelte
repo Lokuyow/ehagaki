@@ -128,12 +128,12 @@
         height: 10px;
         background: var(--theme);
         border-radius: 50%;
-        animation: pulse 3000ms linear infinite;
+        animation: pulse 2600ms linear infinite;
     }
     @keyframes pulse {
         0% {
             opacity: 1;
-            animation-timing-function: cubic-bezier(0.5, 0.1, 1, 0.5); /* 滅 */
+            animation-timing-function: cubic-bezier(0.4, 0.1, 0.8, 0.6); /* 滅 */
         }
         50% {
             opacity: 0;
