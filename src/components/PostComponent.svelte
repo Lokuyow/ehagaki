@@ -248,6 +248,10 @@
 
   export async function uploadFiles(files: File[] | FileList) {
     if (!files || files.length === 0) return;
+    console.log("[PostComponent] uploadFiles called", {
+      count: files.length,
+      names: Array.from(files as File[]).map((f: File) => f.name),
+    });
 
     const result: UploadHelperResult = await uploadHelper({
       files,
@@ -257,6 +261,13 @@
       showUploadError,
       updateUploadState,
       devMode: import.meta.env.MODE === "development",
+    });
+    console.log("[PostComponent] uploadFiles result", {
+      results: result.results?.map((r) => ({
+        success: r.success,
+        url: r.url,
+        error: r.error,
+      })),
     });
 
     Object.assign(imageOxMap, result.imageOxMap);
@@ -278,12 +289,24 @@
   onMount(async () => {
     // 共有画像の処理
     try {
+      console.log(
+        "[PostComponent] onMount checking for shared image via ShareHandler",
+      );
       const shareHandler = getShareHandler();
       const result = await shareHandler.checkForSharedImageOnLaunch();
+      console.log(
+        "[PostComponent] ShareHandler.checkForSharedImageOnLaunch result",
+        result,
+      );
 
       if (result.success && result.data?.image) {
         // 共有画像を自動アップロード
+        console.log("[PostComponent] auto-uploading shared image", {
+          name: result.data.image.name,
+          size: result.data.image.size,
+        });
         await uploadFiles([result.data.image]);
+        console.log("[PostComponent] auto-upload completed for shared image");
       }
     } catch (error) {
       console.error("共有画像の処理に失敗:", error);
@@ -400,7 +423,7 @@
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
       // nodeIdから src, getPos, nodeSize, isSelected を復元 -> 変更: ストアから直接取得
       const nodeId = globalContextMenuState.nodeId;
-      const src = globalContextMenuState.src || "";  // 変更: ストアからsrcを取得
+      const src = globalContextMenuState.src || ""; // 変更: ストアからsrcを取得
       // nodeIdは pos の文字列なので数値化
       const pos = Number(nodeId) || 0;
       // altは仮で "Image"（必要ならストアから取得）
@@ -418,7 +441,7 @@
         () => pos,
         nodeSize,
         isSelected,
-        nodeId,  // 追加: nodeIdを渡す
+        nodeId, // 追加: nodeIdを渡す
         { editorObj: currentEditor },
       );
       globalContextMenuItems = items;
@@ -543,7 +566,11 @@
     y={globalContextMenuY}
     items={globalContextMenuItems}
     onClose={() =>
-      globalContextMenuStore.set({ open: false, nodeId: undefined, src: undefined })}
+      globalContextMenuStore.set({
+        open: false,
+        nodeId: undefined,
+        src: undefined,
+      })}
     onShowPopup={handleShowPopup}
   />
 {/if}

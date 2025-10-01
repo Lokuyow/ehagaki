@@ -249,6 +249,10 @@
   onMount(() => {
     // Define an inner async function for initialization
     const init = async () => {
+      console.log(
+        "[App] onMount init start - checkIfOpenedFromShare:",
+        checkIfOpenedFromShare(),
+      );
       const storedLocale = localStorage.getItem("locale");
       if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
       await waitLocale();
@@ -305,9 +309,13 @@
 
       // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
       if (checkIfOpenedFromShare() && !sharedImageAlreadyProcessed) {
+        console.log("[App] Attempting to get shared image on launch (App)", {
+          sharedImageAlreadyProcessed,
+        });
         try {
           // まず実際に共有画像が取得できるかチェック
           const shared = await getSharedImageWithFallback();
+          console.log("[App] getSharedImageWithFallback result", { shared });
           if (shared?.image) {
             // 画像が取得できた場合は、エラーパラメータを無視して処理を続行
             sharedImageStore.file = shared.image;
@@ -322,20 +330,12 @@
                 type: shared.image.type,
               },
             );
-
-            // 成功した場合はエラーパラメータをクリア
-            const urlParams = new URLSearchParams(window.location.search);
-            if (urlParams.get("error")) {
-              const newUrl = new URL(window.location.href);
-              newUrl.searchParams.delete("error");
-              newUrl.searchParams.delete("shared");
-              window.history.replaceState({}, "", newUrl.toString());
-              console.log(
-                "Cleared error parameters after successful image loading",
-              );
-            }
+            console.log("[App] set sharedImageStore and mark processed");
           } else {
             console.warn("No shared image data received");
+            console.log(
+              "[App] No shared image returned by getSharedImageWithFallback",
+            );
             // 画像が取得できない場合のみエラーパラメータをログ出力
             const urlParams = new URLSearchParams(window.location.search);
             const sharedError = urlParams.get("error");

@@ -18,23 +18,31 @@ export class ShareHandler {
 
   constructor(dependencies?: FileUploadDependencies) {
     this.fileUploadManager = new FileUploadManager(dependencies);
+    console.log('[ShareHandler] constructed', { hasServiceWorker: 'serviceWorker' in navigator });
     this.setupServiceWorkerListeners();
   }
 
   private setupServiceWorkerListeners(): void {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
-    }
-  }
+    console.log('[ShareHandler] setupServiceWorkerListeners');
+     if ('serviceWorker' in navigator) {
+       navigator.serviceWorker.addEventListener('message', this.handleServiceWorkerMessage.bind(this));
+     }
+   }
 
-  private handleServiceWorkerMessage(event: MessageEvent): void {
+   private handleServiceWorkerMessage(event: MessageEvent): void {
     const { data, type } = event.data || {};
-    if (type !== 'SHARED_IMAGE') return;
+    console.log('[ShareHandler] handleServiceWorkerMessage', { type, data });
+     if (type !== 'SHARED_IMAGE') return;
 
-    if (data?.image) {
-      updateSharedImageStore(data.image, data.metadata);
-    }
-  }
+     if (data?.image) {
+      console.log('[ShareHandler] updating shared image store from SW message', {
+        name: data.image?.name,
+        size: data.image?.size,
+        metadata: data.metadata
+      });
+       updateSharedImageStore(data.image, data.metadata);
+     }
+   }
 
   // 共有判定（重複インポートを避けるため、独自実装）
   private checkIfOpenedFromShareInternal(): boolean {
@@ -44,11 +52,13 @@ export class ShareHandler {
 
   // 共有画像の統一処理メソッド
   async checkForSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
+    console.log('[ShareHandler] checkForSharedImageOnLaunch start', { alreadyProcessing: this.isProcessingSharedImage });
     if (this.isProcessingSharedImage) {
       return { success: false, error: '既に処理中です' };
     }
 
     if (!this.checkIfOpenedFromShareInternal()) {
+      console.log('[ShareHandler] not opened from share (URL param missing)');
       return { success: false, error: '共有経由での起動ではありません' };
     }
 
@@ -58,6 +68,7 @@ export class ShareHandler {
       // FileUploadManagerの統合メソッドを使用
       const result = await this.fileUploadManager.processSharedImageOnLaunch();
 
+      console.log('[ShareHandler] processSharedImageOnLaunch result', result);
       if (result.success && result.data) {
         updateSharedImageStore(result.data.image, result.data.metadata);
       }
