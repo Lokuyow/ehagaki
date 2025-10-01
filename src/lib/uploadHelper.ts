@@ -16,6 +16,7 @@ import type {
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import { getImageDimensions } from "./utils/appUtils";
+import { generateSimpleUUID } from "./utils/appUtils";
 import { NodeSelection } from "prosemirror-state";
 import type { ImageDimensions } from "./types";
 
@@ -114,7 +115,7 @@ export function insertPlaceholdersIntoEditor(
         }
 
         // プレースホルダーIDを一意にするため、タイムスタンプ＋インデックス＋ランダム値を使用
-        const placeholderId = `placeholder-${timestamp}-${index}-${Math.random().toString(36).substr(2, 9)}`;
+        const placeholderId = `placeholder-${timestamp}-${index}-${generateSimpleUUID()}`;
         const processingResult = fileProcessingResults[index];
         const ox = processingResult?.ox;
         const dimensions = processingResult?.dimensions;

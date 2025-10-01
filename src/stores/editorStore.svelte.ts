@@ -6,17 +6,11 @@ import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { validateAndNormalizeUrl } from '../lib/utils/editorUtils';
+import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
-
-/**
- * 簡易UUID生成関数
- */
-function generateSimpleUUID(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
-}
 
 /**
  * Tiptap v2のエディターストアを作成

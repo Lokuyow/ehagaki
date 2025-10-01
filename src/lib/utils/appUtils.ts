@@ -257,6 +257,13 @@ export function renameByMimeType(filename: string, mime: string): string {
   return `${base}${ext}`;
 }
 
+/**
+ * 簡易UUID生成関数
+ */
+export function generateSimpleUUID(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
+}
+
 // =============================================================================
 // Settings Utilities (Refactored for Testability)
 // =============================================================================

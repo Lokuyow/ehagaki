@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import Button from "./Button.svelte";
+    import { generateSimpleUUID } from '../lib/utils/appUtils';
 
     interface Props {
         show?: boolean;
@@ -60,7 +61,7 @@
         if (show && !isModalVisible) {
             isModalVisible = true;
             if (!historyStateId) {
-                historyStateId = `modal-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+                historyStateId = `modal-${generateSimpleUUID()}`;
                 history.pushState(
                     { modalId: historyStateId },
                     "",

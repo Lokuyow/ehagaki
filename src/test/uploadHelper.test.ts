@@ -44,7 +44,8 @@ vi.mock("../lib/fileUploadManager", () => ({
 vi.mock("../lib/utils/appUtils", () => ({
     getImageDimensions: vi.fn(),
     calculateSHA256Hex: vi.fn(),
-    renameByMimeType: vi.fn()
+    renameByMimeType: vi.fn(),
+    generateSimpleUUID: vi.fn(() => "mock-uuid-123")
 }));
 
 vi.mock("../lib/tags/imetaTag", () => ({
