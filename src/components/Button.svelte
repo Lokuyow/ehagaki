@@ -94,7 +94,7 @@
     }
 
     .warning {
-        --btn-bg: hsl(58, 99%, 68%);
+        --btn-bg: hsl(58, 99%, 74%);
         --text: var(--text-black);
         border: none;
     }

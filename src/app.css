@@ -3,7 +3,7 @@
   --text-black: hsl(0, 0%, 24%);
   --nostr-bg: hsl(270, 100%, 98%);
   --white: #ffffff;
-  --yellow: #ffd600;
+  --yellow: hsl(50, 100%, 50%);
   --danger: hsl(0, 84%, 60%);
   --blue: #2196f3;
   --darker: rgba(0, 0, 0, 0.8);
