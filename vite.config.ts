@@ -77,7 +77,7 @@ export default defineConfig({
         globPatterns: [
           '**/*.{js,css,html}',
           'assets/**/*.{js,css,png,jpg,jpeg,svg,gif,webp,ico}',
-          '*.{png,jpg,jpeg,svg,gif,webp,ico}', // publicフォルダ直下のファイル
+          '*.{png,jpg,jpeg,svg,gif,webp,ico}',
           'icons/**/*.{png,jpg,jpeg,svg,gif,webp,ico}'
         ],
         // Vercel環境での追加設定

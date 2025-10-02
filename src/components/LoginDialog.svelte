@@ -164,7 +164,7 @@
                 />
             {:else}
                 <img
-                    src="/icons/nostr-login.svg"
+                    src="./icons/nostr-login.svg"
                     alt="nostr-login"
                     class="nostr-login-icon"
                 />
