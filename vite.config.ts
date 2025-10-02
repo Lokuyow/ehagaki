@@ -9,7 +9,7 @@ const isPreview = process.argv.some(arg => arg.includes('preview')) ||
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: process.env.VERCEL_URL ? '/' : '/',
+  base: '/ehagaki/',
   plugins: [
     svelte(),
     VitePWA({
@@ -19,7 +19,7 @@ export default defineConfig({
         enabled: isPreview, // previewモードのみ有効、devは無効
         type: 'module' // 明示的にtypeを指定
       },
-      scope: '/',
+      scope: '/ehagaki/',
       manifest: {
         name: 'eHagaki',
         short_name: 'eHagaki',
@@ -29,32 +29,32 @@ export default defineConfig({
         background_color: '#364029',
         icons: [
           {
-            src: '/ehagaki_icon_x192.png',
+            src: '/ehagaki/ehagaki_icon_x192.png',
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/ehagaki_icon_x512.png',
+            src: '/ehagaki/ehagaki_icon_x512.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: "/maskable_icon_x192.png",
+            src: "/ehagaki/maskable_icon_x192.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable"
           },
           {
-            src: "/maskable_icon_x512.png",
+            src: "/ehagaki/maskable_icon_x512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
           }
         ],
         share_target: {
-          action: '/upload',
+          action: '/ehagaki/upload',
           method: 'POST',
           enctype: 'multipart/form-data',
           params: {

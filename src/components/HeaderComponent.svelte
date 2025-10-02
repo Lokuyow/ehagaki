@@ -223,7 +223,7 @@
             class="site-icon-link"
             aria-label="ehagaki"
         >
-            <img src="/ehagaki_icon.svg" alt="ehagaki icon" class="site-icon" />
+            <img src="./ehagaki_icon.svg" alt="ehagaki icon" class="site-icon" />
         </a>
         {#if finalBalloonMessage}
             <BalloonMessage
