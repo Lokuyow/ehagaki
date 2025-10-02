@@ -138,7 +138,7 @@
 {/if}
 
 <Dialog
-    show={show}
+    {show}
     useHistory={true}
     {onClose}
     ariaLabel={$_("loginDialog.input_secret")}
