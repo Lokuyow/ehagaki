@@ -26,6 +26,8 @@ import {
     pasteAction,
     touchAction,
     keydownAction,
+    fileDropActionWithDragState,
+    hasImageInDoc,
 } from "../lib/editor/editorDomActions";
 
 // extractContentWithImages をモック
@@ -396,5 +398,79 @@ describe("keydownAction", () => {
             key: "Enter",
         });
         expect(() => node.dispatchEvent(event)).not.toThrow();
+    });
+});
+
+describe("fileDropActionWithDragState", () => {
+    let node: HTMLElement;
+    let dragOverState: boolean | null;
+    let destroy: () => void;
+
+    beforeEach(() => {
+        node = document.createElement("div");
+        dragOverState = null;
+        destroy = fileDropActionWithDragState(node, {
+            dragOver: (v) => { dragOverState = v; },
+        }).destroy;
+    });
+
+    afterEach(() => {
+        destroy();
+    });
+
+    it("calls dragOver(true) on dragover", () => {
+        const event = new DragEvent("dragover", { bubbles: true, cancelable: true });
+        node.dispatchEvent(event);
+        expect(dragOverState).toBe(true);
+    });
+
+    it("calls dragOver(false) on dragleave", () => {
+        const event = new DragEvent("dragleave", { bubbles: true, cancelable: true });
+        node.dispatchEvent(event);
+        expect(dragOverState).toBe(false);
+    });
+
+    it("calls dragOver(false) on drop", () => {
+        const event = new DragEvent("drop", { bubbles: true, cancelable: true });
+        node.dispatchEvent(event);
+        expect(dragOverState).toBe(false);
+    });
+});
+
+describe("hasImageInDoc", () => {
+    it("returns false if doc is undefined", () => {
+        expect(hasImageInDoc(undefined)).toBe(false);
+    });
+
+    it("returns false if doc is null", () => {
+        expect(hasImageInDoc(null)).toBe(false);
+    });
+
+    it("returns false if doc has no image node", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "paragraph" } });
+            },
+        };
+        expect(hasImageInDoc(doc as any)).toBe(false);
+    });
+
+    it("returns true if doc has image node", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "image" } });
+            },
+        };
+        expect(hasImageInDoc(doc as any)).toBe(true);
+    });
+
+    it("returns true if doc has image node among others", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "paragraph" } });
+                cb({ type: { name: "image" } });
+            },
+        };
+        expect(hasImageInDoc(doc as any)).toBe(true);
     });
 });
