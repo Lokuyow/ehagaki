@@ -27,6 +27,8 @@
     pasteAction,
     touchAction,
     keydownAction,
+    fileDropActionWithDragState,
+    hasImageInDoc,
   } from "../lib/editor/editorDomActions";
   import {
     containsSecretKey,
@@ -100,14 +102,6 @@
   });
 
   // --- Editor初期化・クリーンアップ ---
-  function hasImageInDoc(doc: PMNode | undefined | null): boolean {
-    let found = false;
-    doc?.descendants((node: PMNode) => {
-      if ((node as any).type?.name === "image") found = true;
-    });
-    return found;
-  }
-
   onMount(() => {
     const initialPlaceholder =
       $_("postComponent.enter_your_text") || "テキストを入力してください";
@@ -386,7 +380,7 @@
       const src = globalContextMenuState.src || ""; // 変更: ストアからsrcを取得
       // nodeIdは pos の文字列なので数値化
       const pos = Number(nodeId) || 0;
-      // altは仮で "Image"（必要ならストアから取得）
+      // altは仮で 1（必要ならストアから取得）
       const alt = "Image";
       // nodeSizeは仮で 1（必要ならストアから取得）
       // 変更: メニューを開く時点で正確なノードサイズを取得
@@ -447,36 +441,15 @@
       domUtils.querySelector(".tiptap-editor")?.focus();
     }, 150);
   }
-
-  // fileDropActionのラッパー: dragOver状態を制御
-  function fileDropAction(node: HTMLElement) {
-    const action = _fileDropAction(node);
-    // drag-overクラス制御用イベント
-    function setDragOverTrue() {
-      dragOver = true;
-    }
-    function setDragOverFalse() {
-      dragOver = false;
-    }
-    node.addEventListener("dragover", setDragOverTrue);
-    node.addEventListener("dragleave", setDragOverFalse);
-    node.addEventListener("drop", setDragOverFalse);
-    return {
-      destroy() {
-        action?.destroy?.();
-        node.removeEventListener("dragover", setDragOverTrue);
-        node.removeEventListener("dragleave", setDragOverFalse);
-        node.removeEventListener("drop", setDragOverFalse);
-      },
-    };
-  }
 </script>
 
 <div class="post-container">
   <div
     class="editor-container"
     class:drag-over={dragOver}
-    use:fileDropAction
+    use:fileDropActionWithDragState={{
+      dragOver: (v: boolean) => (dragOver = v),
+    }}
     use:pasteAction
     use:touchAction
     use:keydownAction

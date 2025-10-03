@@ -1,6 +1,7 @@
 import { extractContentWithImages } from "../utils/editorUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
+import type { Node as PMNode } from "prosemirror-model"; // 追加
 
 // ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定
 function isInternalTiptapDrag(dt: DataTransfer | null | undefined): boolean {
@@ -83,6 +84,31 @@ export function fileDropAction(node: HTMLElement) {
             node.removeEventListener("dragover", handleDragOver);
             node.removeEventListener("dragleave", handleDragLeave);
             node.removeEventListener("drop", handleDrop);
+        },
+    };
+}
+
+// dragOver状態を外部制御できるfileDropActionのラッパー
+export function fileDropActionWithDragState(
+    node: HTMLElement,
+    params: { dragOver: (v: boolean) => void }
+) {
+    const action = fileDropAction(node);
+    function setDragOverTrue() {
+        params.dragOver(true);
+    }
+    function setDragOverFalse() {
+        params.dragOver(false);
+    }
+    node.addEventListener("dragover", setDragOverTrue);
+    node.addEventListener("dragleave", setDragOverFalse);
+    node.addEventListener("drop", setDragOverFalse);
+    return {
+        destroy() {
+            action?.destroy?.();
+            node.removeEventListener("dragover", setDragOverTrue);
+            node.removeEventListener("dragleave", setDragOverFalse);
+            node.removeEventListener("drop", setDragOverFalse);
         },
     };
 }
@@ -193,4 +219,13 @@ export function keydownAction(node: HTMLElement) {
             node.removeEventListener("keydown", handleEditorKeydown);
         },
     };
+}
+
+// ドキュメント内に画像ノードが存在するか判定
+export function hasImageInDoc(doc: PMNode | undefined | null): boolean {
+    let found = false;
+    doc?.descendants((node: PMNode) => {
+        if ((node as any).type?.name === "image") found = true;
+    });
+    return found;
 }
