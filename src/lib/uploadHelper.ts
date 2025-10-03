@@ -103,6 +103,11 @@ export function insertPlaceholdersIntoEditor(
         });
     }
 
+    // ドキュメントが空のパラグラフ1つだけかをチェック
+    const isOnlyEmptyParagraph = state.doc.childCount === 1 &&
+        state.doc.firstChild?.type.name === 'paragraph' &&
+        state.doc.firstChild.content.size === 0;
+
     // 単一のトランザクションで全ての挿入を行う
     let tr = state.tr;
     let currentInsertPos = isImageNodeSelected ? (selection as NodeSelection).to : selection.from;
@@ -135,8 +140,15 @@ export function insertPlaceholdersIntoEditor(
 
         try {
             const node = state.schema.nodes.image.create(imageAttrs);
-            tr = tr.insert(currentInsertPos, node);
-            currentInsertPos += node.nodeSize; // 次の挿入位置を更新
+
+            if (isOnlyEmptyParagraph && index === 0) {
+                // 空のパラグラフを最初の画像で置き換え
+                tr = tr.replaceWith(0, state.doc.content.size, node);
+                currentInsertPos = node.nodeSize; // 次の挿入位置を更新
+            } else {
+                tr = tr.insert(currentInsertPos, node);
+                currentInsertPos += node.nodeSize; // 次の挿入位置を更新
+            }
 
             placeholderMap.push({ file, placeholderId, ox, dimensions });
         } catch (error) {

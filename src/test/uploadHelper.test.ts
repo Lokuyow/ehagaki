@@ -623,6 +623,190 @@ describe("uploadHelper", () => {
             expect(mockCurrentEditor.state.tr.insert).toHaveBeenCalledTimes(2); // 両方のファイル用
             expect(mockCurrentEditor.state.schema.nodes.image.create).toHaveBeenCalledTimes(2); // 両方のファイル用
         });
+
+        describe("insertPlaceholdersIntoEditor edge cases", () => {
+            it("returns empty array if currentEditor is null", () => {
+                const file = new File(["content"], "test.png", { type: "image/png" });
+                const processingResults = [{
+                    file,
+                    index: 0,
+                    ox: "010203",
+                    dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
+                }];
+                const showUploadError = vi.fn();
+
+                const result = insertPlaceholdersIntoEditor(
+                    [file],
+                    processingResults,
+                    null,
+                    showUploadError,
+                    mockDependencies,
+                    false
+                );
+                expect(result).toEqual([]);
+                expect(showUploadError).not.toHaveBeenCalled();
+            });
+
+            it("handles error thrown by image node creation", () => {
+                const file = new File(["content"], "test.png", { type: "image/png" });
+                const processingResults = [{
+                    file,
+                    index: 0,
+                    ox: "010203",
+                    dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
+                }];
+                const showUploadError = vi.fn();
+
+                // Mock image.create to throw
+                const erroringEditor: any = {
+                    state: {
+                        doc: {
+                            content: { size: 2 },
+                            descendants: vi.fn(),
+                        },
+                        tr: {
+                            insert: vi.fn().mockReturnThis(),
+                            replaceWith: vi.fn().mockReturnThis()
+                        },
+                        selection: { from: 1 },
+                        schema: {
+                            nodes: {
+                                image: {
+                                    create: vi.fn(() => { throw new Error("fail create"); })
+                                }
+                            }
+                        }
+                    },
+                    view: {
+                        dispatch: vi.fn()
+                    }
+                };
+
+                const result = insertPlaceholdersIntoEditor(
+                    [file],
+                    processingResults,
+                    erroringEditor,
+                    showUploadError,
+                    mockDependencies,
+                    true // devMode to trigger console.error
+                );
+                expect(result).toEqual([]);
+                expect(showUploadError).toHaveBeenCalledWith("画像の挿入に失敗しました");
+            });
+
+            it("replaces empty paragraph with image if doc is only empty paragraph", () => {
+                const file = new File(["content"], "test.png", { type: "image/png" });
+                const processingResults = [{
+                    file,
+                    index: 0,
+                    ox: "oxval",
+                    dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
+                }];
+                const showUploadError = vi.fn();
+
+                const mockCurrentEditor: any = {
+                    state: {
+                        doc: {
+                            childCount: 1,
+                            firstChild: {
+                                type: { name: "paragraph" },
+                                content: { size: 0 }
+                            },
+                            content: { size: 2 },
+                            descendants: vi.fn(),
+                        },
+                        tr: {
+                            insert: vi.fn().mockReturnThis(),
+                            replaceWith: vi.fn().mockReturnThis()
+                        },
+                        selection: { from: 1 },
+                        schema: {
+                            nodes: {
+                                image: {
+                                    create: vi.fn((attrs) => ({ type: "image", attrs, nodeSize: 1 }))
+                                }
+                            }
+                        }
+                    },
+                    view: {
+                        dispatch: vi.fn()
+                    }
+                };
+
+                const result = insertPlaceholdersIntoEditor(
+                    [file],
+                    processingResults,
+                    mockCurrentEditor,
+                    showUploadError,
+                    mockDependencies,
+                    false
+                );
+                expect(result).toHaveLength(1);
+                expect(mockCurrentEditor.state.tr.replaceWith).toHaveBeenCalledTimes(1);
+                expect(mockCurrentEditor.state.tr.insert).not.toHaveBeenCalled();
+                expect(mockCurrentEditor.view.dispatch).toHaveBeenCalledTimes(1);
+            });
+
+            it("updates imageSizeMapStore when dimensions are present", () => {
+                const file = new File(["content"], "test.png", { type: "image/png" });
+                const processingResults = [{
+                    file,
+                    index: 0,
+                    ox: "oxval",
+                    dimensions: { width: 123, height: 456, displayWidth: 123, displayHeight: 456 }
+                }];
+                const showUploadError = vi.fn();
+                const imageSizeMapStoreUpdate = vi.fn();
+
+                const customDependencies = {
+                    ...mockDependencies,
+                    imageSizeMapStore: {
+                        update: imageSizeMapStoreUpdate
+                    }
+                };
+
+                const result = insertPlaceholdersIntoEditor(
+                    [file],
+                    processingResults,
+                    currentEditor,
+                    showUploadError,
+                    customDependencies,
+                    false
+                );
+                expect(result).toHaveLength(1);
+                expect(imageSizeMapStoreUpdate).toHaveBeenCalled();
+            });
+
+            it("does not update imageSizeMapStore if dimensions are missing", () => {
+                const file = new File(["content"], "test.png", { type: "image/png" });
+                const processingResults = [{
+                    file,
+                    index: 0,
+                    ox: "oxval"
+                    // no dimensions
+                }];
+                const showUploadError = vi.fn();
+                const imageSizeMapStoreUpdate = vi.fn();
+
+                const customDependencies = {
+                    ...mockDependencies,
+                    imageSizeMapStore: {
+                        update: imageSizeMapStoreUpdate
+                    }
+                };
+
+                const result = insertPlaceholdersIntoEditor(
+                    [file],
+                    processingResults,
+                    currentEditor,
+                    showUploadError,
+                    customDependencies,
+                    false
+                );
+                expect(result).toHaveLength(1);
+                expect(imageSizeMapStoreUpdate).not.toHaveBeenCalled();
+            });
+        });
     });
 });
 
