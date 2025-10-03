@@ -75,6 +75,7 @@ export const uploadEndpoints = [
     { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
     { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
     { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
+    { label: "files.sovbit.host", url: "https://files.sovbit.host/api/v2/media" },
     {
         label: "nostr.build",
         url: "https://nostr.build/api/v2/nip96/upload",
