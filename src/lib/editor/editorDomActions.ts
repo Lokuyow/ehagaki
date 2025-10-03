@@ -47,16 +47,10 @@ export function fileDropAction(node: HTMLElement) {
         }
     }
     function handleDragLeave(event: DragEvent) {
-        const dt = event.dataTransfer;
-        const internal = isInternalTiptapDrag(dt);
-        const externalFiles = hasExternalFiles(dt);
-
-        // 外部ファイルのドラッグ離脱時のみクラスを消す
-        if (!externalFiles || internal) {
-            if (dragOver) {
-                dragOver = false;
-                node.classList.remove("drag-over");
-            }
+        // 外部ファイルドラッグ離脱時は必ず drag-over を消す
+        if (dragOver) {
+            dragOver = false;
+            node.classList.remove("drag-over");
         }
     }
     async function handleDrop(event: DragEvent) {

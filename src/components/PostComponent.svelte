@@ -23,7 +23,7 @@
     getMimeTypeFromUrl,
   } from "../lib/tags/imetaTag";
   import {
-    fileDropAction,
+    fileDropAction as _fileDropAction,
     pasteAction,
     touchAction,
     keydownAction,
@@ -446,6 +446,29 @@
       // document.querySelector<HTMLElement>(".tiptap-editor")?.focus();
       domUtils.querySelector(".tiptap-editor")?.focus();
     }, 150);
+  }
+
+  // fileDropActionのラッパー: dragOver状態を制御
+  function fileDropAction(node: HTMLElement) {
+    const action = _fileDropAction(node);
+    // drag-overクラス制御用イベント
+    function setDragOverTrue() {
+      dragOver = true;
+    }
+    function setDragOverFalse() {
+      dragOver = false;
+    }
+    node.addEventListener("dragover", setDragOverTrue);
+    node.addEventListener("dragleave", setDragOverFalse);
+    node.addEventListener("drop", setDragOverFalse);
+    return {
+      destroy() {
+        action?.destroy?.();
+        node.removeEventListener("dragover", setDragOverTrue);
+        node.removeEventListener("dragleave", setDragOverFalse);
+        node.removeEventListener("drop", setDragOverFalse);
+      },
+    };
   }
 </script>
 
