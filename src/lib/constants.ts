@@ -72,7 +72,7 @@ export const SW_UPDATE_TIMEOUT = 1000;
 export const RELAY_LIST_REFRESH_DELAY = 0;
 
 export const uploadEndpoints = [
-    { label: "yabu.me", url: "https://yabu.me/api/v2/media" },
+    { label: "share.yabu.me", url: "https://share.yabu.me/api/v2/media" },
     { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
     { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
     { label: "files.sovbit.host", url: "https://files.sovbit.host/api/v2/media" },
@@ -85,7 +85,7 @@ export const uploadEndpoints = [
 // デフォルトエンドポイント取得関数
 export function getDefaultEndpoint(locale: string | null | undefined): string {
     return locale === "ja"
-        ? "https://yabu.me/api/v2/media"
+        ? "https://share.yabu.me/api/v2/media"
         : "https://nostrcheck.me/api/v2/media";
 }
 
