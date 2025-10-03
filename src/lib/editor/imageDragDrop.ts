@@ -267,7 +267,9 @@ export const ImageDragDropExtension = Extension.create({
                                     const dropZone = document.createElement('div');
                                     dropZone.className = 'drop-zone-indicator drop-zone-top';
                                     dropZone.setAttribute('data-drop-pos', '0');
-                                    dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
+                                    const bar = document.createElement('div');
+                                    bar.className = 'drop-zone-bar';
+                                    dropZone.appendChild(bar);
                                     return dropZone;
                                 }, { side: -1 })
                             );
@@ -293,7 +295,9 @@ export const ImageDragDropExtension = Extension.create({
                                             const dropZone = document.createElement('div');
                                             dropZone.className = 'drop-zone-indicator drop-zone-between';
                                             dropZone.setAttribute('data-drop-pos', afterPos.toString());
-                                            dropZone.innerHTML = `<div class="drop-zone-bar"></div>`;
+                                            const bar = document.createElement('div');
+                                            bar.className = 'drop-zone-bar';
+                                            dropZone.appendChild(bar);
                                             return dropZone;
                                         }, { side: 1 })
                                     );

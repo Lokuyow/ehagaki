@@ -14,7 +14,6 @@
   } from "../lib/types";
   import { PostManager } from "../lib/postManager";
   import { uploadHelper } from "../lib/uploadHelper";
-  import { getShareHandler } from "../lib/shareHandler";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
