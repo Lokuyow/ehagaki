@@ -125,5 +125,9 @@
     "copyUrl": "Copy URL",
     "copySuccess": "Copied!",
     "copyFailed": "Copy failed"
+  },
+  "videoNode": {
+    "uploading": "Uploading video...",
+    "not_supported": "Your browser does not support the video tag."
   }
 }

@@ -2,6 +2,7 @@
     import type { NodeViewProps } from "@tiptap/core";
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onMount } from "svelte";
+    import { _ } from "svelte-i18n";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -45,7 +46,7 @@
             <!-- アップロード中のローディング表示 -->
             <div class="video-placeholder">
                 <div class="loading-spinner"></div>
-                <p class="loading-text">動画をアップロード中...</p>
+                <p class="loading-text">{$_("videoNode.uploading")}</p>
             </div>
         {:else}
             <!-- 実際の動画 -->
@@ -60,7 +61,7 @@
                 preload="metadata"
             >
                 <track kind="captions" />
-                お使いのブラウザは動画タグをサポートしていません。
+                {$_("videoNode.not_supported")}
             </video>
         {/if}
     </div>
