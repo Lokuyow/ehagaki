@@ -116,7 +116,6 @@
         width: 100%;
         height: 100%;
         padding: 40px;
-        background-color: rgba(128, 128, 128, 0.1);
         border-radius: 6px;
         box-sizing: border-box;
     }
@@ -138,8 +137,8 @@
 
     .loading-text {
         margin-top: 16px;
-        font-size: 14px;
-        color: var(--text-color, #666);
+        font-size: 1rem;
+        color: var(--text);
         opacity: 0.8;
     }
 
