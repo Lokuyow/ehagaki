@@ -54,6 +54,10 @@
                 bind:this={videoElement}
                 src={node.attrs.src}
                 controls
+                playsinline
+                autoplay
+                muted
+                loop
                 class="editor-video"
                 class:loaded={isLoaded}
                 onloadeddata={handleVideoLoad}
