@@ -7,9 +7,12 @@ const isPreview = process.argv.some(arg => arg.includes('preview')) ||
   process.env.VITE_PREVIEW === 'true' ||
   process.env.NODE_ENV === 'preview';
 
+// Vercel環境ではルートパス、それ以外では /ehagaki/ を使用
+const baseUrl = process.env.VERCEL ? '/' : '/ehagaki/';
+
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/ehagaki/',
+  base: baseUrl,
   plugins: [
     svelte(),
     VitePWA({
@@ -19,7 +22,7 @@ export default defineConfig({
         enabled: isPreview, // previewモードのみ有効、devは無効
         type: 'module' // 明示的にtypeを指定
       },
-      scope: '/ehagaki/',
+      scope: baseUrl,
       manifest: {
         name: 'eHagaki',
         short_name: 'eHagaki',
@@ -29,32 +32,32 @@ export default defineConfig({
         background_color: '#364029',
         icons: [
           {
-            src: '/ehagaki/ehagaki_icon_x192.png',
+            src: `${baseUrl}ehagaki_icon_x192.png`,
             sizes: '192x192',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: '/ehagaki/ehagaki_icon_x512.png',
+            src: `${baseUrl}ehagaki_icon_x512.png`,
             sizes: '512x512',
             type: 'image/png',
             purpose: 'any'
           },
           {
-            src: "/ehagaki/maskable_icon_x192.png",
+            src: `${baseUrl}maskable_icon_x192.png`,
             sizes: "192x192",
             type: "image/png",
             purpose: "maskable"
           },
           {
-            src: "/ehagaki/maskable_icon_x512.png",
+            src: `${baseUrl}maskable_icon_x512.png`,
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
           }
         ],
         share_target: {
-          action: '/ehagaki/upload',
+          action: `${baseUrl}upload`,
           method: 'POST',
           enctype: 'multipart/form-data',
           params: {
