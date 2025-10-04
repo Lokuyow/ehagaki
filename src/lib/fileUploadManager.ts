@@ -188,6 +188,21 @@ export class FileUploadManager implements FileUploadManagerInterface {
     return { isValid: true };
   }
 
+  validateMediaFile(file: File): FileValidationResult {
+    const isImage = file.type.startsWith("image/");
+    const isVideo = file.type.startsWith("video/");
+    
+    if (!isImage && !isVideo) {
+      return { isValid: false, errorMessage: "only_images_or_videos_allowed" };
+    }
+    
+    if (file.size > MAX_FILE_SIZE) {
+      return { isValid: false, errorMessage: "file_too_large" };
+    }
+    
+    return { isValid: true };
+  }
+
   async generateBlurhashForFile(file: File): Promise<string | null> {
     return await generateBlurhashForFile(file);
   }

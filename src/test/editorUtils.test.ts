@@ -280,29 +280,67 @@ describe('editorUtils', () => {
         });
 
         describe('コンテンツ抽出', () => {
-            describe('extractFragmentsFromDoc', () => {
-                it('should extract fragments from document', () => {
-                    const mockDoc = {
-                        descendants: vi.fn((callback) => {
-                            [
-                                {
-                                    type: { name: 'paragraph' },
-                                    textContent: 'Hello world'
-                                },
-                                {
-                                    type: { name: 'image' },
-                                    attrs: { src: 'https://example.com/image.jpg' }
-                                }
-                            ].forEach(node => callback(node));
-                        })
-                    };
+        describe('extractFragmentsFromDoc', () => {
+            it('should extract fragments from document', () => {
+                const mockDoc = {
+                    descendants: vi.fn((callback) => {
+                        [
+                            {
+                                type: { name: 'paragraph' },
+                                textContent: 'Hello world'
+                            },
+                            {
+                                type: { name: 'image' },
+                                attrs: { src: 'https://example.com/image.jpg' }
+                            }
+                        ].forEach(node => callback(node));
+                    })
+                };
 
-                    const result = editorUtils.extractFragmentsFromDoc(mockDoc);
-                    expect(result).toEqual(['Hello world', 'https://example.com/image.jpg']);
-                });
+                const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                expect(result).toEqual(['Hello world', 'https://example.com/image.jpg']);
             });
 
-            describe('getDocumentFromEditor', () => {
+            it('should extract video fragments from document', () => {
+                const mockDoc = {
+                    descendants: vi.fn((callback) => {
+                        [
+                            {
+                                type: { name: 'paragraph' },
+                                textContent: 'Video content'
+                            },
+                            {
+                                type: { name: 'video' },
+                                attrs: { src: 'https://example.com/video.mp4' }
+                            }
+                        ].forEach(node => callback(node));
+                    })
+                };
+
+                const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                expect(result).toEqual(['Video content', 'https://example.com/video.mp4']);
+            });
+
+            it('should extract both image and video fragments', () => {
+                const mockDoc = {
+                    descendants: vi.fn((callback) => {
+                        [
+                            {
+                                type: { name: 'image' },
+                                attrs: { src: 'https://example.com/image.jpg' }
+                            },
+                            {
+                                type: { name: 'video' },
+                                attrs: { src: 'https://example.com/video.mp4' }
+                            }
+                        ].forEach(node => callback(node));
+                    })
+                };
+
+                const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                expect(result).toEqual(['https://example.com/image.jpg', 'https://example.com/video.mp4']);
+            });
+        });            describe('getDocumentFromEditor', () => {
                 it('should get document from editor', () => {
                     const mockDoc = { type: 'doc' };
                     const mockEditor = {

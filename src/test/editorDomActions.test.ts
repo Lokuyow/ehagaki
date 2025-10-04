@@ -28,6 +28,8 @@ import {
     keydownAction,
     fileDropActionWithDragState,
     hasImageInDoc,
+    hasVideoInDoc,
+    hasMediaInDoc,
 } from "../lib/editor/editorDomActions";
 
 // extractContentWithImages をモック
@@ -472,5 +474,90 @@ describe("hasImageInDoc", () => {
             },
         };
         expect(hasImageInDoc(doc as any)).toBe(true);
+    });
+});
+
+describe("hasVideoInDoc", () => {
+    it("returns false if doc is undefined", () => {
+        expect(hasVideoInDoc(undefined)).toBe(false);
+    });
+
+    it("returns false if doc is null", () => {
+        expect(hasVideoInDoc(null)).toBe(false);
+    });
+
+    it("returns false if doc has no video node", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "paragraph" } });
+            },
+        };
+        expect(hasVideoInDoc(doc as any)).toBe(false);
+    });
+
+    it("returns true if doc has video node", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "video" } });
+            },
+        };
+        expect(hasVideoInDoc(doc as any)).toBe(true);
+    });
+
+    it("returns true if doc has video node among others", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "paragraph" } });
+                cb({ type: { name: "video" } });
+            },
+        };
+        expect(hasVideoInDoc(doc as any)).toBe(true);
+    });
+});
+
+describe("hasMediaInDoc", () => {
+    it("returns false if doc is undefined", () => {
+        expect(hasMediaInDoc(undefined)).toBe(false);
+    });
+
+    it("returns false if doc is null", () => {
+        expect(hasMediaInDoc(null)).toBe(false);
+    });
+
+    it("returns false if doc has no media nodes", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "paragraph" } });
+            },
+        };
+        expect(hasMediaInDoc(doc as any)).toBe(false);
+    });
+
+    it("returns true if doc has image node", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "image" } });
+            },
+        };
+        expect(hasMediaInDoc(doc as any)).toBe(true);
+    });
+
+    it("returns true if doc has video node", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "video" } });
+            },
+        };
+        expect(hasMediaInDoc(doc as any)).toBe(true);
+    });
+
+    it("returns true if doc has both image and video nodes", () => {
+        const doc = {
+            descendants: (cb: (node: any) => void) => {
+                cb({ type: { name: "image" } });
+                cb({ type: { name: "video" } });
+            },
+        };
+        expect(hasMediaInDoc(doc as any)).toBe(true);
     });
 });

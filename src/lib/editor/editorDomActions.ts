@@ -229,3 +229,17 @@ export function hasImageInDoc(doc: PMNode | undefined | null): boolean {
     });
     return found;
 }
+
+// ドキュメント内に動画ノードが存在するか判定
+export function hasVideoInDoc(doc: PMNode | undefined | null): boolean {
+    let found = false;
+    doc?.descendants((node: PMNode) => {
+        if ((node as any).type?.name === "video") found = true;
+    });
+    return found;
+}
+
+// ドキュメント内に画像または動画ノードが存在するか判定
+export function hasMediaInDoc(doc: PMNode | undefined | null): boolean {
+    return hasImageInDoc(doc) || hasVideoInDoc(doc);
+}

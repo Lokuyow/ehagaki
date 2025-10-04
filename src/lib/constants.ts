@@ -46,6 +46,8 @@ export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 
 export const ALLOWED_PROTOCOLS = ['http:', 'https:'];
 export const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+export const ALLOWED_VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv'];
+export const ALLOWED_VIDEO_MIMETYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/mpeg'];
 
 // --- SvelteImageNode用定数 ---
 export const LONG_PRESS_DELAY = 400; // ms

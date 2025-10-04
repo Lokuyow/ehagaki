@@ -67,6 +67,13 @@ const createMockDependencies = (): UploadHelperDependencies => {
                 ? { isValid: true }
                 : { isValid: false, errorMessage: "only_images_allowed" };
         }),
+        validateMediaFile: vi.fn((file: File): FileValidationResult => {
+            const isImage = file.type.startsWith('image/');
+            const isVideo = file.type.startsWith('video/');
+            return (isImage || isVideo)
+                ? { isValid: true }
+                : { isValid: false, errorMessage: "only_images_or_videos_allowed" };
+        }),
         generateBlurhashForFile: vi.fn(async () => "blurhash123"),
         uploadFileWithCallbacks: vi.fn(async (file: File) => ({
             success: true,
@@ -236,6 +243,10 @@ describe("uploadHelper", () => {
                         isValid: false,
                         errorMessage: "only_images_allowed"
                     })),
+                    validateMediaFile: vi.fn(() => ({
+                        isValid: false,
+                        errorMessage: "only_images_or_videos_allowed"
+                    })),
                     generateBlurhashForFile: vi.fn(async () => "blurhash123"),
                     uploadFileWithCallbacks: vi.fn(),
                     uploadMultipleFilesWithCallbacks: vi.fn()
@@ -252,7 +263,7 @@ describe("uploadHelper", () => {
             );
 
             expect(placeholderMap).toHaveLength(0);
-            expect(showUploadError).toHaveBeenCalledWith("only_images_allowed");
+            expect(showUploadError).toHaveBeenCalledWith("only_images_or_videos_allowed");
         });
 
         it("inserts after selected image node when image is selected", () => {
@@ -381,6 +392,10 @@ describe("uploadHelper", () => {
                     isValid: false,
                     errorMessage: "only_images_allowed"
                 })),
+                validateMediaFile: vi.fn(() => ({
+                    isValid: false,
+                    errorMessage: "only_images_or_videos_allowed"
+                })),
                 generateBlurhashForFile: vi.fn(async () => "blurhash123"),
                 uploadFileWithCallbacks: vi.fn(),
                 uploadMultipleFilesWithCallbacks: vi.fn()
@@ -400,7 +415,7 @@ describe("uploadHelper", () => {
                 dependencies: customDependencies
             });
 
-            expect(showUploadError).toHaveBeenCalledWith("only_images_allowed");
+            expect(showUploadError).toHaveBeenCalledWith("only_images_or_videos_allowed");
             expect(result.placeholderMap).toHaveLength(0);
             // 無効なファイルの場合、アップロード処理自体が実行されない
             expect(updateUploadState).not.toHaveBeenCalled();
@@ -418,6 +433,13 @@ describe("uploadHelper", () => {
                     return file.type.startsWith('image/')
                         ? { isValid: true }
                         : { isValid: false, errorMessage: "only_images_allowed" };
+                }),
+                validateMediaFile: vi.fn((file: File) => {
+                    const isImage = file.type.startsWith('image/');
+                    const isVideo = file.type.startsWith('video/');
+                    return (isImage || isVideo)
+                        ? { isValid: true }
+                        : { isValid: false, errorMessage: "only_images_or_videos_allowed" };
                 }),
                 generateBlurhashForFile: vi.fn(async () => "blurhash123"),
                 uploadFileWithCallbacks: vi.fn(async (file: File) => ({
@@ -450,7 +472,7 @@ describe("uploadHelper", () => {
             });
 
             // 無効ファイルに対してエラーが表示される
-            expect(showUploadError).toHaveBeenCalledWith("only_images_allowed");
+            expect(showUploadError).toHaveBeenCalledWith("only_images_or_videos_allowed");
 
             // プレースホルダーマップは置換処理後にクリアされる
             expect(result.placeholderMap).toHaveLength(0);
@@ -492,6 +514,7 @@ describe("uploadHelper", () => {
 
             const mockFileUploadManager: FileUploadManagerInterface = {
                 validateImageFile: vi.fn(() => ({ isValid: true })),
+                validateMediaFile: vi.fn(() => ({ isValid: true })),
                 generateBlurhashForFile: vi.fn(async () => "blurhash123"),
                 uploadFileWithCallbacks: vi.fn(),
                 uploadMultipleFilesWithCallbacks: vi.fn(async (files: File[]) =>

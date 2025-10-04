@@ -240,6 +240,11 @@ export function extractFragmentsFromDoc(doc: any): string[] {
             if (src) {
                 fragments.push(src);
             }
+        } else if (node.type.name === 'video') {
+            const src = node.attrs?.src;
+            if (src) {
+                fragments.push(src);
+            }
         }
     });
     return fragments;

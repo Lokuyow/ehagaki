@@ -113,7 +113,8 @@ export function insertPlaceholdersIntoEditor(
     let currentInsertPos = isImageNodeSelected ? (selection as NodeSelection).to : selection.from;
 
     fileArray.forEach((file, index) => {
-        const validation = fileUploadManager.validateImageFile(file);
+        const isVideo = file.type.startsWith('video/');
+        const validation = fileUploadManager.validateMediaFile(file);
         if (!validation.isValid) {
             showUploadError(validation.errorMessage || "postComponent.upload_failed");
             return;
@@ -125,24 +126,35 @@ export function insertPlaceholdersIntoEditor(
         const ox = processingResult?.ox;
         const dimensions = processingResult?.dimensions;
 
-        const imageAttrs: any = {
-            src: placeholderId,
-            isPlaceholder: true
-        };
-
-        if (dimensions) {
-            imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
-            dependencies.imageSizeMapStore.update(map => ({
-                ...map,
-                [placeholderId]: dimensions
-            }));
-        }
-
         try {
-            const node = state.schema.nodes.image.create(imageAttrs);
+            let node;
+            
+            if (isVideo) {
+                // 動画ノードの作成
+                const videoAttrs: any = {
+                    src: placeholderId,
+                    id: placeholderId,
+                };
+                node = state.schema.nodes.video.create(videoAttrs);
+            } else {
+                // 画像ノードの作成
+                const imageAttrs: any = {
+                    src: placeholderId,
+                    isPlaceholder: true
+                };
+
+                if (dimensions) {
+                    imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
+                    dependencies.imageSizeMapStore.update(map => ({
+                        ...map,
+                        [placeholderId]: dimensions
+                    }));
+                }
+                node = state.schema.nodes.image.create(imageAttrs);
+            }
 
             if (isOnlyEmptyParagraph && index === 0) {
-                // 空のパラグラフを最初の画像で置き換え
+                // 空のパラグラフを最初のメディアで置き換え
                 tr = tr.replaceWith(0, state.doc.content.size, node);
                 currentInsertPos = node.nodeSize; // 次の挿入位置を更新
             } else {
@@ -153,15 +165,16 @@ export function insertPlaceholdersIntoEditor(
             placeholderMap.push({ file, placeholderId, ox, dimensions });
         } catch (error) {
             if (devMode) {
-                console.error("[uploadHelper] failed to insert image node", {
+                console.error("[uploadHelper] failed to insert media node", {
                     placeholderId,
                     file: file.name,
+                    isVideo,
                     error,
                     insertPos: currentInsertPos,
                     docSize: state.doc.content.size
                 });
             }
-            showUploadError("画像の挿入に失敗しました");
+            showUploadError(isVideo ? "動画の挿入に失敗しました" : "画像の挿入に失敗しました");
         }
     });
 
@@ -274,60 +287,80 @@ export async function replacePlaceholdersWithResults(
                 // リストから削除
                 remainingPlaceholders.splice(matchedIndex, 1);
 
+                const isVideo = matched.file.type.startsWith('video/');
                 const state = currentEditor.state;
                 const doc = state.doc;
+                
                 doc.descendants((node: any, pos: number) => {
-                    if (node.type?.name === "image" && node.attrs?.src === matched!.placeholderId) {
-                        const newAttrs: any = {
-                            ...node.attrs,
-                            src: result.url,
-                            isPlaceholder: false,
-                            blurhash: matched!.blurhash ?? undefined,
-                        };
+                    const nodeType = node.type?.name;
+                    const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
+                    
+                    if (isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId)) {
+                        if (isVideo) {
+                            // 動画ノードの更新
+                            const newAttrs = {
+                                ...node.attrs,
+                                src: result.url,
+                                id: result.url,
+                            };
+                            const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                            currentEditor.view.dispatch(tr);
+                        } else {
+                            // 画像ノードの更新
+                            const newAttrs: any = {
+                                ...node.attrs,
+                                src: result.url,
+                                isPlaceholder: false,
+                                blurhash: matched!.blurhash ?? undefined,
+                            };
 
-                        if (matched!.dimensions) {
-                            newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
-                            dependencies.imageSizeMapStore.update(map => {
-                                const newMap = { ...map };
-                                delete newMap[matched!.placeholderId];
-                                newMap[result.url!] = matched!.dimensions!;
-                                return newMap;
-                            });
+                            if (matched!.dimensions) {
+                                newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
+                                dependencies.imageSizeMapStore.update(map => {
+                                    const newMap = { ...map };
+                                    delete newMap[matched!.placeholderId];
+                                    newMap[result.url!] = matched!.dimensions!;
+                                    return newMap;
+                                });
+                            }
+
+                            const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                            currentEditor.view.dispatch(tr);
                         }
-
-                        const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                        currentEditor.view.dispatch(tr);
                         return false;
                     }
                 });
 
-                const nip94 = result.nip94 || {};
-                const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
-                if (serverBlurhash && result.url) {
-                    imageServerBlurhashMap[result.url] = serverBlurhash;
-                }
-                const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
-                const xFromServer = nip94['x'] ?? undefined;
+                // 画像の場合のみハッシュマップを更新
+                if (!isVideo) {
+                    const nip94 = result.nip94 || {};
+                    const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
+                    if (serverBlurhash && result.url) {
+                        imageServerBlurhashMap[result.url] = serverBlurhash;
+                    }
+                    const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
+                    const xFromServer = nip94['x'] ?? undefined;
 
-                if (oxFromServer && result.url) {
-                    imageOxMap[result.url] = oxFromServer;
-                } else if (matched.ox && result.url) {
-                    imageOxMap[result.url] = matched.ox;
-                }
+                    if (oxFromServer && result.url) {
+                        imageOxMap[result.url] = oxFromServer;
+                    } else if (matched.ox && result.url) {
+                        imageOxMap[result.url] = matched.ox;
+                    }
 
-                if (result.url) {
-                    if (xFromServer) {
-                        imageXMap[result.url] = xFromServer;
-                    } else {
-                        try {
-                            const x = await dependencies.calculateImageHash(result.url);
-                            if (x) imageXMap[result.url] = x;
-                        } catch (error) {
-                            if (devMode) {
-                                console.warn("[uploadHelper] failed to calculate x hash (fallback)", {
-                                    url: result.url,
-                                    error
-                                });
+                    if (result.url) {
+                        if (xFromServer) {
+                            imageXMap[result.url] = xFromServer;
+                        } else {
+                            try {
+                                const x = await dependencies.calculateImageHash(result.url);
+                                if (x) imageXMap[result.url] = x;
+                            } catch (error) {
+                                if (devMode) {
+                                    console.warn("[uploadHelper] failed to calculate x hash (fallback)", {
+                                        url: result.url,
+                                        error
+                                    });
+                                }
                             }
                         }
                     }
@@ -338,6 +371,8 @@ export async function replacePlaceholdersWithResults(
             // 失敗したファイルに対応するプレースホルダーを削除
             const failed = remainingPlaceholders.shift();
             if (failed && currentEditor) {
+                const isVideo = failed.file.type.startsWith('video/');
+                
                 dependencies.imageSizeMapStore.update(map => {
                     const newMap = { ...map };
                     delete newMap[failed.placeholderId];
@@ -347,7 +382,10 @@ export async function replacePlaceholdersWithResults(
                 const state = currentEditor.state;
                 const doc = state.doc;
                 doc.descendants((node: any, pos: number) => {
-                    if (node.type?.name === "image" && node.attrs?.src === failed.placeholderId) {
+                    const nodeType = node.type?.name;
+                    const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
+                    
+                    if (isSameNode && (node.attrs?.src === failed.placeholderId || node.attrs?.id === failed.placeholderId)) {
                         const tr = state.tr.delete(pos, pos + node.nodeSize);
                         currentEditor.view.dispatch(tr);
                         return false;
@@ -360,6 +398,8 @@ export async function replacePlaceholdersWithResults(
     // 残ったプレースホルダーがあれば削除（サーバーから想定より少ない結果が返った場合）
     for (const remaining of remainingPlaceholders) {
         if (currentEditor) {
+            const isVideo = remaining.file.type.startsWith('video/');
+            
             dependencies.imageSizeMapStore.update(map => {
                 const newMap = { ...map };
                 delete newMap[remaining.placeholderId];
@@ -369,7 +409,10 @@ export async function replacePlaceholdersWithResults(
             const state = currentEditor.state;
             const doc = state.doc;
             doc.descendants((node: any, pos: number) => {
-                if (node.type?.name === "image" && node.attrs?.src === remaining.placeholderId) {
+                const nodeType = node.type?.name;
+                const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
+                
+                if (isSameNode && (node.attrs?.src === remaining.placeholderId || node.attrs?.id === remaining.placeholderId)) {
                     const tr = state.tr.delete(pos, pos + node.nodeSize);
                     currentEditor.view.dispatch(tr);
                     return false;

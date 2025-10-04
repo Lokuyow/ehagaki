@@ -69,7 +69,7 @@ export interface EditorState {
     isUploading: boolean;
     uploadErrorMessage: string;
     postStatus: PostStatus;
-    hasImage?: boolean;
+    hasImage?: boolean; // 画像または動画が含まれているか（hasMediaとして使用）
 }
 
 export interface PostResult {
@@ -171,6 +171,7 @@ export interface MimeTypeSupportInterface {
 
 export interface FileUploadManagerInterface {
     validateImageFile: (file: File) => FileValidationResult;
+    validateMediaFile: (file: File) => FileValidationResult;
     generateBlurhashForFile: (file: File) => Promise<string | null>;
     uploadFileWithCallbacks: (
         file: File,

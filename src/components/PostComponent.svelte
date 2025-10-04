@@ -28,7 +28,7 @@
     touchAction,
     keydownAction,
     fileDropActionWithDragState,
-    hasImageInDoc,
+    hasMediaInDoc,
   } from "../lib/editor/editorDomActions";
   import {
     containsSecretKey,
@@ -112,10 +112,10 @@
 
     function handleContentUpdate(event: CustomEvent<{ plainText: string }>) {
       const plainText = event.detail.plainText;
-      let hasImage = currentEditor
-        ? hasImageInDoc(currentEditor.state?.doc as PMNode | undefined)
+      let hasMedia = currentEditor
+        ? hasMediaInDoc(currentEditor.state?.doc as PMNode | undefined)
         : false;
-      updateEditorContent(plainText, hasImage);
+      updateEditorContent(plainText, hasMedia);
     }
     function handleImageFullscreenRequest(
       event: CustomEvent<{ src: string; alt?: string }>,
@@ -467,7 +467,7 @@
 
   <input
     type="file"
-    accept="image/*"
+    accept="image/*,video/*"
     multiple
     onchange={handleFileSelect}
     bind:this={fileInput}

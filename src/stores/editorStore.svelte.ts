@@ -5,6 +5,7 @@ import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
+import { Video } from '../lib/editor/videoExtension';
 import { validateAndNormalizeUrl } from '../lib/utils/editorUtils';
 import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '../lib/editor';
@@ -77,6 +78,7 @@ export function createEditorStore(placeholderText: string) {
                     window.dispatchEvent(event);
                 }
             }),
+            Video,
             ImagePasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
@@ -243,14 +245,14 @@ export const imageSelectionState = $state({
 });
 
 // --- エディター状態更新関数 ---
-function canPostByContent(content: string, hasImage: boolean): boolean {
-    return !!content.trim() || hasImage;
+function canPostByContent(content: string, hasMedia: boolean): boolean {
+    return !!content.trim() || hasMedia;
 }
 
-export function updateEditorContent(content: string, hasImage: boolean = false): void {
+export function updateEditorContent(content: string, hasMedia: boolean = false): void {
     editorState.content = content;
-    editorState.hasImage = hasImage;
-    editorState.canPost = canPostByContent(content, hasImage);
+    editorState.hasImage = hasMedia;
+    editorState.canPost = canPostByContent(content, hasMedia);
 }
 
 export function updatePostStatus(postStatus: PostStatus): void {
