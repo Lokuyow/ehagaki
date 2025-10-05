@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
+import { viteStaticCopy } from 'vite-plugin-static-copy';
 
 // previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
 const isPreview = process.argv.some(arg => arg.includes('preview')) ||
@@ -13,7 +14,27 @@ const baseUrl = process.env.VERCEL ? '/' : '/ehagaki/';
 // https://vite.dev/config/
 export default defineConfig({
   base: baseUrl,
+  optimizeDeps: {
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+  },
+  worker: {
+    format: 'es'
+  },
+  assetsInclude: ['**/*.wasm'],
+  build: {
+    rollupOptions: {
+      external: []
+    }
+  },
   plugins: [
+    viteStaticCopy({
+      targets: [
+        {
+          src: 'node_modules/@ffmpeg/core/dist/esm/*',
+          dest: 'ffmpeg-core'
+        }
+      ]
+    }),
     svelte(),
     VitePWA({
       registerType: 'prompt',

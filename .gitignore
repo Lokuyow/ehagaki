@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# FFmpeg core files (copied from node_modules)
+public/ffmpeg-core
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

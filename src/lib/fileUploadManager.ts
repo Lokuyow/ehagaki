@@ -3,6 +3,7 @@ import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
 import { showImageSizeInfo } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
+import { VideoCompressionService } from "./videoCompressionService";
 import type {
   FileUploadResponse,
   UploadProgress,
@@ -160,7 +161,8 @@ export class NostrAuthService implements AuthService {
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
-  private compressionService: CompressionService;
+  private imageCompressionService: CompressionService;
+  private videoCompressionService: CompressionService;
   private mimeSupport: MimeTypeSupportInterface;
   private authService: AuthService;
 
@@ -174,11 +176,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
       navigator: window.navigator
     },
     authService?: AuthService,
-    compressionService?: CompressionService,
+    imageCompressionService?: CompressionService,
+    videoCompressionService?: CompressionService,
     mimeSupport?: MimeTypeSupportInterface
   ) {
     this.mimeSupport = mimeSupport || new MimeTypeSupport(dependencies.document);
-    this.compressionService = compressionService || new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
+    this.imageCompressionService = imageCompressionService || new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
+    this.videoCompressionService = videoCompressionService || new VideoCompressionService(dependencies.localStorage);
     this.authService = authService || new NostrAuthService();
   }
 
@@ -278,11 +282,17 @@ export class FileUploadManager implements FileUploadManagerInterface {
       }
 
       const originalSize = file.size;
-      const { file: uploadFile, wasCompressed, wasSkipped } = await this.compressionService.compress(file);
+      
+      // ファイルタイプに応じて適切な圧縮サービスを選択
+      const isVideo = file.type.startsWith('video/');
+      const compressionService = isVideo ? this.videoCompressionService : this.imageCompressionService;
+      const { file: uploadFile, wasCompressed, wasSkipped } = await compressionService.compress(file);
       const compressedSize = uploadFile.size;
 
       // 型安全にアクセス
-      const hasCompressionSettings = (this.compressionService as ImageCompressionService).hasCompressionSettings();
+      const hasCompressionSettings = isVideo
+        ? (this.videoCompressionService as VideoCompressionService).hasCompressionSettings()
+        : (this.imageCompressionService as ImageCompressionService).hasCompressionSettings();
       const sizeInfo = createFileSizeInfo(
         originalSize,
         compressedSize,

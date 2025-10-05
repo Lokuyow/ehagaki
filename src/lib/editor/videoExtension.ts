@@ -17,6 +17,9 @@ export const Video = Node.create({
             id: {
                 default: null,
             },
+            isPlaceholder: {
+                default: false,
+            },
         };
     },
 

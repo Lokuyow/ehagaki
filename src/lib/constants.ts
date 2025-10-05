@@ -67,6 +67,7 @@ export const STORAGE_KEYS = {
     UPLOAD_ENDPOINT: "uploadEndpoint",
     CLIENT_TAG_ENABLED: "clientTagEnabled",
     IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
+    VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     NOSTR_RELAYS: "nostr-relays-",
 } as const;
 
@@ -88,10 +89,20 @@ export function getDefaultEndpoint(locale: string | null | undefined): string {
         : "https://nostrcheck.me/api/v2/media";
 }
 
-// 圧縮設定候補を返す関数（i18n対応）
+// 圧縮設定候補を返す関数(i18n対応)
 export function getCompressionLevels($_: (key: string) => string | undefined) {
     return [
         { label: $_("settingsDialog.compression_none") || "無圧縮", value: "none" },
+        { label: $_("settingsDialog.compression_low") || "低圧縮", value: "low" },
+        { label: $_("settingsDialog.compression_medium") || "中圧縮", value: "medium" },
+        { label: $_("settingsDialog.compression_high") || "高圧縮", value: "high" },
+    ];
+}
+
+// 動画圧縮設定候補を返す関数（i18n対応）
+export function getVideoCompressionLevels($_: (key: string) => string | undefined) {
+    return [
+        { label: $_("settingsDialog.compression_skip") || "圧縮しない", value: "skip" },
         { label: $_("settingsDialog.compression_low") || "低圧縮", value: "low" },
         { label: $_("settingsDialog.compression_medium") || "中圧縮", value: "medium" },
         { label: $_("settingsDialog.compression_high") || "高圧縮", value: "high" },

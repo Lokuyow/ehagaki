@@ -15,12 +15,25 @@
     let videoElement: HTMLVideoElement | undefined = $state();
     let isLoaded = $state(false);
 
-    // プレースホルダーかどうかを判定
+    // プレースホルダーかどうかを判定（node.attrsの変更を監視）
     let isPlaceholder = $derived(
+        node.attrs.isPlaceholder === true ||
         node.attrs.src?.startsWith("placeholder-") ||
-            node.attrs.src?.startsWith("blob:") ||
-            !node.attrs.src,
+        node.attrs.src?.startsWith("blob:") ||
+        !node.attrs.src
     );
+    
+    // デバッグ用：属性の変更をログ出力（開発環境のみ）
+    $effect(() => {
+        if (import.meta.env.DEV) {
+            console.log('[SvelteVideoNode] Node attributes changed:', {
+                src: node.attrs.src,
+                id: node.attrs.id,
+                isPlaceholder: node.attrs.isPlaceholder,
+                computed_isPlaceholder: isPlaceholder
+            });
+        }
+    });
 
     // 動画の読み込み完了時
     function handleVideoLoad() {

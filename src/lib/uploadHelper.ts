@@ -134,6 +134,7 @@ export function insertPlaceholdersIntoEditor(
                 const videoAttrs: any = {
                     src: placeholderId,
                     id: placeholderId,
+                    isPlaceholder: true
                 };
                 node = state.schema.nodes.video.create(videoAttrs);
             } else {
@@ -261,6 +262,15 @@ export async function replacePlaceholdersWithResults(
     for (let i = 0; i < results.length; i++) {
         const result = results[i];
 
+        if (devMode) {
+            console.log('[uploadHelper] Processing result', i, ':', {
+                success: result.success,
+                url: result.url,
+                filename: result.filename,
+                sizeInfo: result.sizeInfo
+            });
+        }
+
         if (result.success && result.url) {
             // 対応するプレースホルダーを見つける
             let matched: PlaceholderEntry | undefined = undefined;
@@ -288,6 +298,17 @@ export async function replacePlaceholdersWithResults(
                 remainingPlaceholders.splice(matchedIndex, 1);
 
                 const isVideo = matched.file.type.startsWith('video/');
+                
+                if (devMode) {
+                    console.log('[uploadHelper] Matched placeholder:', {
+                        placeholderId: matched.placeholderId,
+                        fileName: matched.file.name,
+                        fileType: matched.file.type,
+                        isVideo,
+                        resultUrl: result.url
+                    });
+                }
+                
                 const state = currentEditor.state;
                 const doc = state.doc;
                 
@@ -295,13 +316,33 @@ export async function replacePlaceholdersWithResults(
                     const nodeType = node.type?.name;
                     const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
                     
+                    if (devMode) {
+                        console.log('[uploadHelper] Checking node:', {
+                            nodeType,
+                            nodeSrc: node.attrs?.src,
+                            nodeId: node.attrs?.id,
+                            placeholderId: matched!.placeholderId,
+                            isSameNode,
+                            isMatch: node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId
+                        });
+                    }
+                    
                     if (isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId)) {
+                        if (devMode) {
+                            console.log('[uploadHelper] Replacing placeholder with actual URL:', {
+                                isVideo,
+                                placeholderId: matched!.placeholderId,
+                                newUrl: result.url
+                            });
+                        }
+                        
                         if (isVideo) {
                             // 動画ノードの更新
                             const newAttrs = {
                                 ...node.attrs,
                                 src: result.url,
                                 id: result.url,
+                                isPlaceholder: false,
                             };
                             const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
                             currentEditor.view.dispatch(tr);

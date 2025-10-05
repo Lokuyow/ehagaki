@@ -17,6 +17,7 @@
     import {
         uploadEndpoints,
         getCompressionLevels,
+        getVideoCompressionLevels,
         getDefaultEndpoint,
         STORAGE_KEYS,
         SW_UPDATE_TIMEOUT,
@@ -43,10 +44,13 @@
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
+    let videoCompressionLevels = $derived(getVideoCompressionLevels($_));
 
     let clientTagEnabled = $state(true);
     let _selectedCompression: string = $state(selectedCompression);
+    let _selectedVideoCompression: string = $state("medium");
     let _selectedEndpoint: string = $state(selectedEndpoint);
+    let isInitialized = $state(false); // 初期化完了フラグ
 
     // 直接同期処理（$effectを使用）
     $effect(() => {
@@ -81,9 +85,9 @@
         }
     });
 
-    // localStorage保存処理
+    // localStorage保存処理（初期化完了後のみ）
     $effect(() => {
-        if (_selectedCompression) {
+        if (isInitialized && _selectedCompression) {
             localStorage.setItem(
                 STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL,
                 _selectedCompression,
@@ -92,7 +96,16 @@
     });
 
     $effect(() => {
-        if (_selectedEndpoint) {
+        if (isInitialized && _selectedVideoCompression) {
+            localStorage.setItem(
+                STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
+                _selectedVideoCompression,
+            );
+        }
+    });
+
+    $effect(() => {
+        if (isInitialized && _selectedEndpoint) {
             localStorage.setItem(
                 STORAGE_KEYS.UPLOAD_ENDPOINT,
                 _selectedEndpoint,
@@ -101,10 +114,12 @@
     });
 
     $effect(() => {
-        localStorage.setItem(
-            STORAGE_KEYS.CLIENT_TAG_ENABLED,
-            clientTagEnabled ? "true" : "false",
-        );
+        if (isInitialized) {
+            localStorage.setItem(
+                STORAGE_KEYS.CLIENT_TAG_ENABLED,
+                clientTagEnabled ? "true" : "false",
+            );
+        }
     });
 
     // swVersion from store
@@ -135,6 +150,24 @@
         _selectedEndpoint = settings.endpoint;
         clientTagEnabled = settings.clientTagEnabled;
         _selectedCompression = settings.compression;
+
+        // 動画圧縮設定の初期化（既存の値がある場合はそれを使用、ない場合のみデフォルト値を設定）
+        const savedVideoCompression = localStorage.getItem(
+            STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
+        );
+        if (savedVideoCompression) {
+            _selectedVideoCompression = savedVideoCompression;
+        } else {
+            // 初回のみデフォルト値を設定
+            _selectedVideoCompression = "medium";
+            localStorage.setItem(
+                STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
+                "medium",
+            );
+        }
+
+        // 初期化完了をマーク
+        isInitialized = true;
     }
 
     onMount(() => {
@@ -301,6 +334,24 @@
                     bind:value={_selectedCompression}
                 >
                     {#each compressionLevels as level}
+                        <option value={level.value}>{level.label}</option>
+                    {/each}
+                </select>
+            </div>
+        </div>
+
+        <!-- 動画圧縮設定セクション -->
+        <div class="setting-section">
+            <span class="setting-label"
+                >{$_("settingsDialog.video_compression_setting") ||
+                    "動画圧縮設定"}</span
+            >
+            <div class="setting-control">
+                <select
+                    id="video-compression-select"
+                    bind:value={_selectedVideoCompression}
+                >
+                    {#each videoCompressionLevels as level}
                         <option value={level.value}>{level.label}</option>
                     {/each}
                 </select>
@@ -507,7 +558,8 @@
     #endpoint-select {
         font-size: 1rem;
     }
-    #compression-select {
+    #compression-select,
+    #video-compression-select {
         font-size: 1rem;
         min-width: 200px;
         height: 50px;
