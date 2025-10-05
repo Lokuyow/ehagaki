@@ -156,7 +156,13 @@
             STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
         );
         if (savedVideoCompression) {
-            _selectedVideoCompression = savedVideoCompression;
+            // 旧バージョンからの移行: "skip" を "none" に変換
+            if (savedVideoCompression === "skip") {
+                _selectedVideoCompression = "none";
+                localStorage.setItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL, "none");
+            } else {
+                _selectedVideoCompression = savedVideoCompression;
+            }
         } else {
             // 初回のみデフォルト値を設定
             _selectedVideoCompression = "medium";

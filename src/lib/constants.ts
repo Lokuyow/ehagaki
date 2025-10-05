@@ -102,7 +102,7 @@ export function getCompressionLevels($_: (key: string) => string | undefined) {
 // 動画圧縮設定候補を返す関数（i18n対応）
 export function getVideoCompressionLevels($_: (key: string) => string | undefined) {
     return [
-        { label: $_("settingsDialog.compression_skip") || "圧縮しない", value: "skip" },
+        { label: $_("settingsDialog.compression_none") || "無圧縮", value: "none" },
         { label: $_("settingsDialog.compression_low") || "低圧縮", value: "low" },
         { label: $_("settingsDialog.compression_medium") || "中圧縮", value: "medium" },
         { label: $_("settingsDialog.compression_high") || "高圧縮", value: "high" },

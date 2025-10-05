@@ -5,10 +5,10 @@ import { fetchFile } from '@ffmpeg/util';
  * 動画圧縮設定のマップ
  */
 export const VIDEO_COMPRESSION_OPTIONS_MAP = {
-    skip: { skip: true },
+    none: { skip: true },
     low: {
         crf: 18,
-        preset: 'ultrafast',
+        preset: 'veryfast',
         maxSize: 1920, // 最大画素数
     },
     medium: {
@@ -17,8 +17,8 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         maxSize: 1280, // 最大画素数
     },
     high: {
-        crf: 35,
-        preset: 'medium',
+        crf: 28,
+        preset: 'veryfast',
         maxSize: 640, // 最大画素数
     },
 } as const;
@@ -33,7 +33,7 @@ export class VideoCompressionService {
     private isLoaded = false;
     private loadPromise: Promise<void> | null = null;
 
-    constructor(private localStorage: Storage) {}
+    constructor(private localStorage: Storage) { }
 
     /**
      * FFmpegのロード（シングルスレッド版）
@@ -93,11 +93,11 @@ export class VideoCompressionService {
     private getCompressionOptions(): any {
         const level = (this.localStorage.getItem('videoCompressionLevel') || 'medium') as VideoCompressionLevel;
         const opt = VIDEO_COMPRESSION_OPTIONS_MAP[level];
-        
+
         if (typeof opt === 'object' && opt && 'skip' in opt && opt.skip) {
             return null;
         }
-        
+
         return opt || null;
     }
 
@@ -113,7 +113,7 @@ export class VideoCompressionService {
      */
     async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
         const isDev = import.meta.env.DEV;
-        
+
         // 動画ファイル以外はスキップ
         if (!file.type.startsWith('video/')) {
             if (isDev) console.log('[VideoCompressionService] Not a video file, skipping:', file.type);

@@ -62,15 +62,15 @@ function createMockVideoFile(size: number = 5 * 1024 * 1024, name: string = 'tes
 
 describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
     it('should have correct compression levels', () => {
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.skip).toEqual({ skip: true });
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.none).toEqual({ skip: true });
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('crf', 18);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('preset', 'ultrafast');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('preset', 'veryfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('maxSize', 1920);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('crf', 23);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('preset', 'veryfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('maxSize', 1280);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('crf', 35);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('preset', 'medium');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('crf', 28);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('preset', 'veryfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('maxSize', 640);
     });
 });
@@ -119,8 +119,8 @@ describe('VideoCompressionService', () => {
             expect(service.hasCompressionSettings()).toBe(true);
         });
 
-        it('should return false when compression level is set to skip', () => {
-            mockStorage.setItem('videoCompressionLevel', 'skip');
+        it('should return false when compression level is set to none', () => {
+            mockStorage.setItem('videoCompressionLevel', 'none');
             expect(service.hasCompressionSettings()).toBe(false);
         });
 
@@ -147,8 +147,8 @@ describe('VideoCompressionService', () => {
             expect(result.file).toBe(smallFile);
         });
 
-        it('should skip compression when compression level is set to skip', async () => {
-            mockStorage.setItem('videoCompressionLevel', 'skip');
+        it('should skip compression when compression level is set to none', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'none');
             const file = createMockVideoFile();
             const result = await service.compress(file);
 
@@ -368,7 +368,7 @@ describe('VideoCompressionService', () => {
             expect(mockFFmpegInstance.exec).toHaveBeenCalled();
             const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
             const presetIndex = callArgs.indexOf('-preset');
-            expect(callArgs[presetIndex + 1]).toBe('ultrafast');
+            expect(callArgs[presetIndex + 1]).toBe('veryfast');
         });
 
         it('should use AAC audio codec with 128k bitrate', async () => {
