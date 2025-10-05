@@ -269,7 +269,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
     file: File,
     apiUrl: string = DEFAULT_API_URL,
     devMode: boolean = false,
-    metadata?: Record<string, string | number | undefined>
+    metadata?: Record<string, string | number | undefined>,
+    callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse> {
     try {
       if (!file) return { success: false, error: "No file selected" };
@@ -286,7 +287,19 @@ export class FileUploadManager implements FileUploadManagerInterface {
       // ファイルタイプに応じて適切な圧縮サービスを選択
       const isVideo = file.type.startsWith('video/');
       const compressionService = isVideo ? this.videoCompressionService : this.imageCompressionService;
+      
+      // 動画圧縮の進捗コールバックを設定
+      if (isVideo && callbacks?.onVideoCompressionProgress) {
+        (this.videoCompressionService as VideoCompressionService).setProgressCallback(callbacks.onVideoCompressionProgress);
+      }
+      
       const { file: uploadFile, wasCompressed, wasSkipped } = await compressionService.compress(file);
+      
+      // 圧縮完了後はコールバックをクリア
+      if (isVideo) {
+        (this.videoCompressionService as VideoCompressionService).setProgressCallback(undefined);
+      }
+      
       const compressedSize = uploadFile.size;
 
       // 型安全にアクセス
@@ -389,7 +402,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
     apiUrl: string = DEFAULT_API_URL,
     onProgress?: (progress: UploadProgress) => void,
     devMode: boolean = false,
-    metadataList?: Array<Record<string, string | number | undefined> | undefined>
+    metadataList?: Array<Record<string, string | number | undefined> | undefined>,
+    callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
     const results: FileUploadResponse[] = new Array(files.length);
@@ -401,7 +415,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     await Promise.all(files.map(async (file, index) => {
       try {
         const meta = metadataList ? metadataList[index] : undefined;
-        const result = await this.uploadFile(file, apiUrl, devMode, meta);
+        const result = await this.uploadFile(file, apiUrl, devMode, meta, callbacks);
         results[index] = result;
         result.success ? completed++ : failed++;
         updateProgress();
@@ -422,7 +436,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
   ): Promise<FileUploadResponse> {
     callbacks?.onProgress?.({ completed: 0, failed: 0, total: 1, inProgress: true });
     try {
-      const result = await this.uploadFile(file, apiUrl, devMode, metadata);
+      const result = await this.uploadFile(file, apiUrl, devMode, metadata, callbacks);
       callbacks?.onProgress?.({
         completed: result.success ? 1 : 0,
         failed: result.success ? 0 : 1,
@@ -452,7 +466,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
       apiUrl,
       callbacks?.onProgress,
       import.meta.env.MODE === "development",
-      metadataList
+      metadataList,
+      callbacks
     );
     const firstSuccess = results.find(r => r.success && r.sizeInfo);
     if (firstSuccess?.sizeInfo) {

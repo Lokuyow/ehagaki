@@ -126,6 +126,7 @@ export interface FileUploadResponse {
 
 export interface UploadInfoCallbacks {
     onProgress?: (progress: UploadProgress) => void;
+    onVideoCompressionProgress?: (progress: number) => void;
 }
 
 export interface PlaceholderEntry {

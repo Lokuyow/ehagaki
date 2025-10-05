@@ -12,6 +12,7 @@
     UploadHelperResult,
     UploadProgress,
   } from "../lib/types";
+  import { videoCompressionProgressStore } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadHelper } from "../lib/uploadHelper";
   import Button from "./Button.svelte";
@@ -231,6 +232,9 @@
         onProgress: onUploadProgress as (
           p: import("../lib/types").UploadProgress,
         ) => void,
+        onVideoCompressionProgress: (progress: number) => {
+          videoCompressionProgressStore.set(progress);
+        },
       }
     : undefined;
 

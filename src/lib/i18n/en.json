@@ -57,6 +57,7 @@
     "failed": "Failed",
     "data_size": "Transmission size",
     "no_compression": "No compression",
+    "video_compressing": "Compressing video",
     "shared_image_error": "Shared image error",
     "processing_error": "Error occurred while processing shared image",
     "no_image": "Shared image not found",

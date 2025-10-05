@@ -1,6 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { imageSizeInfoStore } from "../stores/appStore.svelte";
+    import { imageSizeInfoStore, videoCompressionProgressStore } from "../stores/appStore.svelte";
     import type { UploadProgress } from "../lib/types";
     import {
         devLog,
@@ -129,10 +129,51 @@
         }),
     }: Props = $props();
 
+    // ストアから動画圧縮の進捗を取得
+    let videoCompressionProgress = $derived(videoCompressionProgressStore.value);
+    
+    // 動画圧縮の開始時刻と経過時間
+    let compressionStartTime = $state<number | null>(null);
+    let compressionElapsedSeconds = $state(0);
+    let compressionTimerInterval: number | null = null;
+    
+    // 動画圧縮の進捗に応じてタイマーを管理
+    $effect(() => {
+        if (videoCompressionProgress > 0 && videoCompressionProgress < 100) {
+            // 圧縮開始
+            if (!compressionStartTime) {
+                compressionStartTime = Date.now();
+                compressionTimerInterval = window.setInterval(() => {
+                    if (compressionStartTime) {
+                        compressionElapsedSeconds = Math.floor((Date.now() - compressionStartTime) / 1000);
+                    }
+                }, 1000);
+            }
+        } else {
+            // 圧縮完了または未開始
+            if (compressionTimerInterval !== null) {
+                clearInterval(compressionTimerInterval);
+                compressionTimerInterval = null;
+            }
+            compressionStartTime = null;
+            compressionElapsedSeconds = 0;
+        }
+    });
+
     // ストアから画像サイズ情報を取得
     let imageSizeInfo = $derived(imageSizeInfoStore.value.info);
     let imageSizeInfoVisible = $derived(imageSizeInfoStore.value.visible);
 
+    // 経過時間をフォーマット（秒 → 「Xs」または「Xm Ys」）
+    function formatElapsedTime(seconds: number): string {
+        if (seconds < 60) {
+            return `${seconds}s`;
+        }
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}m ${remainingSeconds}s`;
+    }
+    
     // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
     function getExtension(filename: string | undefined): string {
         if (!filename) return "";
@@ -181,6 +222,13 @@
             failed: 0,
             inProgress: false,
         };
+        videoCompressionProgressStore.set(0);
+        if (compressionTimerInterval !== null) {
+            clearInterval(compressionTimerInterval);
+            compressionTimerInterval = null;
+        }
+        compressionStartTime = null;
+        compressionElapsedSeconds = 0;
         imageSizeInfoStore.set({ info: null, visible: false });
         sharedImageError = null; // 共有画像エラーもクリア
     }
@@ -207,6 +255,18 @@
     {#if sharedImageError}
         <div class="shared-image-error">
             <div class="error-text">{sharedImageError}</div>
+        </div>
+    {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
+        <div class="upload-progress">
+            <div class="progress-text">
+                {$_("footerInfoDisplay.video_compressing")}: {videoCompressionProgress}% ({formatElapsedTime(compressionElapsedSeconds)})
+            </div>
+            <div class="progress-bar">
+                <div
+                    class="progress-fill"
+                    style="width: {videoCompressionProgress}%"
+                ></div>
+            </div>
         </div>
     {:else if uploadProgress.inProgress || uploadProgress.total > 0}
         <div class="upload-progress">

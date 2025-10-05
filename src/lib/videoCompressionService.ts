@@ -32,8 +32,16 @@ export class VideoCompressionService {
     private ffmpeg: FFmpeg | null = null;
     private isLoaded = false;
     private loadPromise: Promise<void> | null = null;
+    private onProgress?: (progress: number) => void;
 
     constructor(private localStorage: Storage) { }
+
+    /**
+     * 進捗コールバックを設定
+     */
+    public setProgressCallback(callback?: (progress: number) => void): void {
+        this.onProgress = callback;
+    }
 
     /**
      * FFmpegのロード（シングルスレッド版）
@@ -53,6 +61,13 @@ export class VideoCompressionService {
                     });
                     console.log('[VideoCompressionService] Loading FFmpeg from node_modules');
                 }
+
+                // 進捗イベントのリスナーを設定
+                this.ffmpeg.on('progress', ({ progress }) => {
+                    if (this.onProgress) {
+                        this.onProgress(Math.round(progress * 100));
+                    }
+                });
 
                 // Viteの静的アセットimportを使用
                 // vite-plugin-static-copyでコピーされたファイルを参照

@@ -246,6 +246,19 @@ export const isUploadingStore = {
     }
 };
 
+// --- 動画圧縮進捗管理 ---
+let videoCompressionProgress = $state(0);
+
+export const videoCompressionProgressStore = {
+    get value() { return videoCompressionProgress; },
+    set: (value: number) => { videoCompressionProgress = value; },
+    subscribe: (callback: (value: number) => void) => {
+        $effect(() => {
+            callback(videoCompressionProgress);
+        });
+    }
+};
+
 // --- ハッシュタグ管理 ---
 let hashtagData = $state<HashtagData>({
     content: '',
