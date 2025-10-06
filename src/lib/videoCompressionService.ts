@@ -9,17 +9,17 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
     low: {
         crf: 20,
         preset: 'superfast',
-        maxSize: 1280, // 最大画素数
+        maxSize: 1280,
     },
     medium: {
-        crf: 23,
+        crf: 26,
         preset: 'superfast',
-        maxSize: 1280, // 最大画素数
+        maxSize: 640,
     },
     high: {
         crf: 28,
-        preset: 'veryfast',
-        maxSize: 640, // 最大画素数
+        preset: 'medium',
+        maxSize: 320,
     },
 } as const;
 

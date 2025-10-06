@@ -66,12 +66,12 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('crf', 20);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('preset', 'superfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('maxSize', 1280);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('crf', 23);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('crf', 26);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('preset', 'superfast');
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('maxSize', 1280);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('maxSize', 640);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('crf', 28);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('preset', 'veryfast');
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('maxSize', 640);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('preset', 'medium');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('maxSize', 320);
     });
 
 });
@@ -84,7 +84,7 @@ describe('VideoCompressionService', () => {
         mockStorage = new MockStorage();
         service = new VideoCompressionService(mockStorage);
         vi.clearAllMocks();
-        
+
         // デフォルトのモック動作をリセット
         mockFFmpegInstance.load.mockResolvedValue(undefined);
         mockFFmpegInstance.writeFile.mockResolvedValue(undefined);
@@ -163,7 +163,7 @@ describe('VideoCompressionService', () => {
             const file = createMockVideoFile(5 * 1024 * 1024, 'test.mp4'); // 5MB
             // 圧縮後のファイルは2MBになるようモック設定
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const result = await service.compress(file);
 
             expect(result.wasCompressed).toBe(true);
@@ -176,7 +176,7 @@ describe('VideoCompressionService', () => {
             mockStorage.setItem('videoCompressionLevel', 'medium');
             const file = createMockVideoFile(5 * 1024 * 1024, 'test.mp4');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const result = await service.compress(file);
 
             expect(result.wasCompressed).toBe(true);
@@ -188,7 +188,7 @@ describe('VideoCompressionService', () => {
             mockStorage.setItem('videoCompressionLevel', 'high');
             const file = createMockVideoFile(5 * 1024 * 1024, 'test.mp4');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const result = await service.compress(file);
 
             expect(result.wasCompressed).toBe(true);
@@ -225,7 +225,7 @@ describe('VideoCompressionService', () => {
         it('should preserve file extension when compressing', async () => {
             mockStorage.setItem('videoCompressionLevel', 'medium');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const file = createMockVideoFile(5 * 1024 * 1024, 'my-video.mp4');
             const result = await service.compress(file);
 
@@ -235,7 +235,7 @@ describe('VideoCompressionService', () => {
         it('should handle file names without extension', async () => {
             mockStorage.setItem('videoCompressionLevel', 'medium');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const buffer = new ArrayBuffer(5 * 1024 * 1024);
             const file = new File([buffer], 'video', { type: 'video/mp4' });
             const result = await service.compress(file);
@@ -248,7 +248,7 @@ describe('VideoCompressionService', () => {
         it('should cleanup resources', async () => {
             mockStorage.setItem('videoCompressionLevel', 'medium');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const file = createMockVideoFile();
             await service.compress(file);
 
@@ -264,7 +264,7 @@ describe('VideoCompressionService', () => {
         it('should handle cleanup errors gracefully', async () => {
             mockStorage.setItem('videoCompressionLevel', 'medium');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
-            
+
             const file = createMockVideoFile();
             await service.compress(file);
 
@@ -316,7 +316,7 @@ describe('VideoCompressionService', () => {
             expect(callArgs[vfIndex + 1]).toContain('1280');
         });
 
-        it('should apply scale filter for medium compression (1280px)', async () => {
+        it('should apply scale filter for medium compression (640px)', async () => {
             mockStorage.setItem('videoCompressionLevel', 'medium');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
 
@@ -327,10 +327,10 @@ describe('VideoCompressionService', () => {
             const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
             expect(callArgs).toContain('-vf');
             const vfIndex = callArgs.indexOf('-vf');
-            expect(callArgs[vfIndex + 1]).toContain('1280');
+            expect(callArgs[vfIndex + 1]).toContain('640');
         });
 
-        it('should apply scale filter for high compression (640px)', async () => {
+        it('should apply scale filter for high compression (320px)', async () => {
             mockStorage.setItem('videoCompressionLevel', 'high');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
 
@@ -341,7 +341,7 @@ describe('VideoCompressionService', () => {
             const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
             expect(callArgs).toContain('-vf');
             const vfIndex = callArgs.indexOf('-vf');
-            expect(callArgs[vfIndex + 1]).toContain('640');
+            expect(callArgs[vfIndex + 1]).toContain('320');
         });
     });
 
