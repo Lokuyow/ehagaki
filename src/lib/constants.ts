@@ -17,7 +17,7 @@ export const FALLBACK_RELAYS = [
 
 // --- fileUploadManager用定数 ---
 export const DEFAULT_API_URL = "https://nostr.build/api/v2/upload/files";
-export const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+export const MAX_FILE_SIZE = 300 * 1024 * 1024; // 300MB
 export const COMPRESSION_OPTIONS_MAP = {
     none: {
         skip: true

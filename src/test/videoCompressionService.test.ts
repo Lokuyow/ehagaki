@@ -63,16 +63,17 @@ function createMockVideoFile(size: number = 5 * 1024 * 1024, name: string = 'tes
 describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
     it('should have correct compression levels', () => {
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.none).toEqual({ skip: true });
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('crf', 18);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('preset', 'veryfast');
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('maxSize', 1920);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('crf', 20);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('preset', 'superfast');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('maxSize', 1280);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('crf', 23);
-        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('preset', 'veryfast');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('preset', 'superfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('maxSize', 1280);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('crf', 28);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('preset', 'veryfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('maxSize', 640);
     });
+
 });
 
 describe('VideoCompressionService', () => {
@@ -300,7 +301,7 @@ describe('VideoCompressionService', () => {
     });
 
     describe('compression with scale filter', () => {
-        it('should apply scale filter for low compression (1920px)', async () => {
+        it('should apply scale filter for low compression (1280px)', async () => {
             mockStorage.setItem('videoCompressionLevel', 'low');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
 
@@ -312,7 +313,7 @@ describe('VideoCompressionService', () => {
             const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
             expect(callArgs).toContain('-vf');
             const vfIndex = callArgs.indexOf('-vf');
-            expect(callArgs[vfIndex + 1]).toContain('1920');
+            expect(callArgs[vfIndex + 1]).toContain('1280');
         });
 
         it('should apply scale filter for medium compression (1280px)', async () => {
@@ -355,7 +356,7 @@ describe('VideoCompressionService', () => {
             expect(mockFFmpegInstance.exec).toHaveBeenCalled();
             const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
             const crfIndex = callArgs.indexOf('-crf');
-            expect(callArgs[crfIndex + 1]).toBe('18');
+            expect(callArgs[crfIndex + 1]).toBe('20');
         });
 
         it('should use correct preset for low compression', async () => {
@@ -368,7 +369,7 @@ describe('VideoCompressionService', () => {
             expect(mockFFmpegInstance.exec).toHaveBeenCalled();
             const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
             const presetIndex = callArgs.indexOf('-preset');
-            expect(callArgs[presetIndex + 1]).toBe('veryfast');
+            expect(callArgs[presetIndex + 1]).toBe('superfast');
         });
 
         it('should use AAC audio codec with 128k bitrate', async () => {

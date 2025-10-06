@@ -7,13 +7,13 @@ import { fetchFile } from '@ffmpeg/util';
 export const VIDEO_COMPRESSION_OPTIONS_MAP = {
     none: { skip: true },
     low: {
-        crf: 18,
-        preset: 'veryfast',
-        maxSize: 1920, // 最大画素数
+        crf: 20,
+        preset: 'superfast',
+        maxSize: 1280, // 最大画素数
     },
     medium: {
         crf: 23,
-        preset: 'veryfast',
+        preset: 'superfast',
         maxSize: 1280, // 最大画素数
     },
     high: {
@@ -135,8 +135,8 @@ export class VideoCompressionService {
             return { file, wasCompressed: false };
         }
 
-        // 小さいファイルはスキップ (1MB未満)
-        if (file.size <= 1 * 1024 * 1024) {
+        // 小さいファイルはスキップ (500KB以下)
+        if (file.size <= 500 * 1024) {
             if (isDev) console.log('[VideoCompressionService] File too small, skipping compression:', file.size);
             return { file, wasCompressed: false, wasSkipped: true };
         }
