@@ -66,12 +66,18 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('crf', 20);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('preset', 'superfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('maxSize', 1280);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toHaveProperty('audioBitrate', '128k');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('crf', 26);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('preset', 'superfast');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('maxSize', 640);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('audioBitrate', '64k');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium).toHaveProperty('audioSampleRate', 44100);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('crf', 28);
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('preset', 'medium');
         expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('maxSize', 320);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('audioBitrate', '32k');
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('audioSampleRate', 16000);
+        expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toHaveProperty('audioChannels', 1);
     });
 
 });
@@ -140,7 +146,7 @@ describe('VideoCompressionService', () => {
         });
 
         it('should skip compression for small video files (< 1MB)', async () => {
-            const smallFile = createMockVideoFile(500 * 1024); // 500KB
+            const smallFile = createMockVideoFile(200 * 1024); // 200KB
             const result = await service.compress(smallFile);
 
             expect(result.wasCompressed).toBe(false);
@@ -372,8 +378,8 @@ describe('VideoCompressionService', () => {
             expect(callArgs[presetIndex + 1]).toBe('superfast');
         });
 
-        it('should use AAC audio codec with 128k bitrate', async () => {
-            mockStorage.setItem('videoCompressionLevel', 'medium');
+        it('should use AAC audio codec with 128k bitrate for low compression', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'low');
             mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
 
             const file = createMockVideoFile();
@@ -385,6 +391,75 @@ describe('VideoCompressionService', () => {
             expect(callArgs).toContain('aac');
             expect(callArgs).toContain('-b:a');
             expect(callArgs).toContain('128k');
+        });
+
+        it('should use AAC audio codec with 64k bitrate for medium compression', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'medium');
+            mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
+
+            const file = createMockVideoFile();
+            await service.compress(file);
+
+            expect(mockFFmpegInstance.exec).toHaveBeenCalled();
+            const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
+            expect(callArgs).toContain('-c:a');
+            expect(callArgs).toContain('aac');
+            expect(callArgs).toContain('-b:a');
+            expect(callArgs).toContain('64k');
+        });
+
+        it('should use AAC audio codec with 32k bitrate for high compression', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'high');
+            mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
+
+            const file = createMockVideoFile();
+            await service.compress(file);
+
+            expect(mockFFmpegInstance.exec).toHaveBeenCalled();
+            const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
+            expect(callArgs).toContain('-c:a');
+            expect(callArgs).toContain('aac');
+            expect(callArgs).toContain('-b:a');
+            expect(callArgs).toContain('32k');
+        });
+
+        it('should apply audio sample rate for medium compression', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'medium');
+            mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
+
+            const file = createMockVideoFile();
+            await service.compress(file);
+
+            expect(mockFFmpegInstance.exec).toHaveBeenCalled();
+            const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
+            expect(callArgs).toContain('-ar');
+            expect(callArgs).toContain('44100');
+        });
+
+        it('should apply audio sample rate for high compression', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'high');
+            mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
+
+            const file = createMockVideoFile();
+            await service.compress(file);
+
+            expect(mockFFmpegInstance.exec).toHaveBeenCalled();
+            const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
+            expect(callArgs).toContain('-ar');
+            expect(callArgs).toContain('16000');
+        });
+
+        it('should apply mono audio for high compression', async () => {
+            mockStorage.setItem('videoCompressionLevel', 'high');
+            mockFFmpegInstance.readFile.mockResolvedValue(new Uint8Array(2 * 1024 * 1024));
+
+            const file = createMockVideoFile();
+            await service.compress(file);
+
+            expect(mockFFmpegInstance.exec).toHaveBeenCalled();
+            const callArgs = mockFFmpegInstance.exec.mock.calls[0][0];
+            expect(callArgs).toContain('-ac');
+            expect(callArgs).toContain('1');
         });
 
         it('should use faststart for streaming', async () => {

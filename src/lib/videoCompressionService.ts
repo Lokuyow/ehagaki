@@ -10,16 +10,22 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         crf: 20,
         preset: 'superfast',
         maxSize: 1280,
+        audioBitrate: '128k',
     },
     medium: {
         crf: 26,
         preset: 'superfast',
         maxSize: 640,
+        audioBitrate: '64k',
+        audioSampleRate: 44100,
     },
     high: {
         crf: 28,
         preset: 'medium',
         maxSize: 320,
+        audioBitrate: '32k',
+        audioSampleRate: 16000,
+        audioChannels: 1,
     },
 } as const;
 
@@ -135,8 +141,8 @@ export class VideoCompressionService {
             return { file, wasCompressed: false };
         }
 
-        // 小さいファイルはスキップ (500KB以下)
-        if (file.size <= 500 * 1024) {
+        // 小さいファイルはスキップ (200KB以下)
+        if (file.size <= 200 * 1024) {
             if (isDev) console.log('[VideoCompressionService] File too small, skipping compression:', file.size);
             return { file, wasCompressed: false, wasSkipped: true };
         }
@@ -171,11 +177,18 @@ export class VideoCompressionService {
                 '-crf', String(options.crf),
                 '-preset', options.preset,
                 '-c:a', 'aac',
-                '-b:a', '128k',
-                '-movflags', '+faststart',
-                '-y',
-                outputName
+                '-b:a', options.audioBitrate || '128k',
             ];
+
+            // オーディオサンプリングレート
+            if (options.audioSampleRate) {
+                args.push('-ar', String(options.audioSampleRate));
+            }
+
+            // オーディオチャンネル（モノラル化）
+            if (options.audioChannels) {
+                args.push('-ac', String(options.audioChannels));
+            }
 
             // 最大画素数によるスケーリングフィルターの追加
             if (options.maxSize) {
@@ -183,8 +196,10 @@ export class VideoCompressionService {
                 // 'scale=W:H' で -2 はアスペクト比を維持しつつ2の倍数にする
                 // 幅と高さの両方を制限するため、if文で条件分岐
                 const scaleFilter = `scale='if(gte(iw,ih),min(${options.maxSize},iw),-2)':'if(lt(iw,ih),min(${options.maxSize},ih),-2)'`;
-                args.splice(-2, 0, '-vf', scaleFilter);
+                args.push('-vf', scaleFilter);
             }
+
+            args.push('-movflags', '+faststart', '-y', outputName);
 
             if (isDev) {
                 console.log('[VideoCompressionService] Starting compression with args:', args);
