@@ -373,7 +373,7 @@ describe('FileUploadManager', () => {
 
             // ファイルサイズを直接設定（テスト用のモック）
             Object.defineProperty(file, 'size', {
-                value: 350 * 1024 * 1024, // 350MB (MAX_FILE_SIZE は 300MB)
+                value: 1024 * 1024 * 1024 + 1, // 1GB + 1 (MAX_FILE_SIZE は 1GB)
                 writable: false
             });
 
