@@ -3,6 +3,7 @@
     import {
         imageSizeInfoStore,
         videoCompressionProgressStore,
+        abortVideoCompression,
     } from "../stores/appStore.svelte";
     import type { UploadProgress } from "../lib/types";
     import {
@@ -10,6 +11,7 @@
         copyDevLogWithFallback,
         shouldShowDevLog,
     } from "../lib/debug";
+    import Button from "./Button.svelte";
 
     let copied = $state(false);
 
@@ -181,6 +183,12 @@
         return `${minutes}m ${remainingSeconds}s`;
     }
 
+    // 動画圧縮中止ハンドラー
+    function handleAbortCompression() {
+        console.log("[FooterInfoDisplay] Abort button clicked!");
+        abortVideoCompression();
+    }
+
     // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
     function getExtension(filename: string | undefined): string {
         if (!filename) return "";
@@ -287,16 +295,29 @@
             <div class="error-text">{sharedImageError}</div>
         </div>
     {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
-        <div class="upload-progress">
-            <div class="progress-text">
-                {getVideoCompressionLevelLabel(getVideoCompressionLevel())}{$_("videoCompressionLabelSuffix")}: {videoCompressionProgress}%
-                ({formatElapsedTime(compressionElapsedSeconds)})
-            </div>
-            <div class="progress-bar">
-                <div
-                    class="progress-fill"
-                    style="width: {videoCompressionProgress}%"
-                ></div>
+        <div class="compression-container">
+            <Button
+                variant="danger"
+                shape="circle"
+                className="abort-button"
+                ariaLabel="圧縮中止"
+                onClick={handleAbortCompression}
+            >
+                <div class="stop-icon svg-icon"></div>
+            </Button>
+            <div class="upload-progress">
+                <div class="progress-text">
+                    {getVideoCompressionLevelLabel(
+                        getVideoCompressionLevel(),
+                    )}{$_("videoCompressionLabelSuffix")}: {videoCompressionProgress}%
+                    ({formatElapsedTime(compressionElapsedSeconds)})
+                </div>
+                <div class="progress-bar">
+                    <div
+                        class="progress-fill"
+                        style="width: {videoCompressionProgress}%"
+                    ></div>
+                </div>
             </div>
         </div>
     {:else if uploadProgress.inProgress || uploadProgress.total > 0}
@@ -347,9 +368,16 @@
     .footer-center {
         flex: 1;
         display: flex;
-        justify-content: flex-start;
+        justify-content: center;
+        align-items: center;
         height: 100%;
-        padding-bottom: 4px;
+    }
+
+    .compression-container {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        width: 100%;
     }
 
     .image-size-info {
@@ -382,6 +410,7 @@
         align-items: center;
         gap: 4px;
         width: 100%;
+        padding-bottom: 4px;
     }
 
     .progress-text {
@@ -390,12 +419,31 @@
         text-align: center;
         white-space: normal;
         line-height: 1.2;
+        flex: 1;
+    }
+
+    :global(.compression-container .abort-button) {
+        width: 40px;
+        height: 40px;
+        min-width: 40px;
+        flex-shrink: 0;
+        cursor: pointer;
+        pointer-events: auto;
+        position: relative;
+        z-index: 10;
+
+        :global(.stop-icon.svg-icon) {
+            mask-image: url("/icons/stop-solid-full.svg");
+            width: 22px;
+            height: 22px;
+            background-color: #f0f0f0;
+        }
     }
 
     .progress-bar {
         width: 100%;
         height: 14px;
-        background-color: #e0e0e0;
+        background-color: white;
         overflow: hidden;
     }
 

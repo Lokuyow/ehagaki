@@ -39,8 +39,36 @@ export class VideoCompressionService {
     private isLoaded = false;
     private loadPromise: Promise<void> | null = null;
     private onProgress?: (progress: number) => void;
+    private abortFlag = false;
+    private isCompressing = false;
 
     constructor(private localStorage: Storage) { }
+
+    /**
+     * 圧縮処理を中止
+     */
+    public abort(): void {
+        const isDev = import.meta.env.DEV;
+        if (isDev) console.log('[VideoCompressionService] Abort requested');
+
+        this.abortFlag = true;
+
+        // 進捗を0にリセット
+        if (this.onProgress) {
+            this.onProgress(0);
+        }
+
+        // FFmpegが実行中の場合は終了させる
+        if (this.ffmpeg && this.isCompressing) {
+            if (isDev) console.log('[VideoCompressionService] Terminating FFmpeg');
+            try {
+                // FFmpegを終了させる（非同期だが待たない）
+                this.ffmpeg.terminate();
+            } catch (error) {
+                if (isDev) console.warn('[VideoCompressionService] Error terminating FFmpeg:', error);
+            }
+        }
+    }
 
     /**
      * 進捗コールバックを設定
@@ -132,8 +160,12 @@ export class VideoCompressionService {
     /**
      * 動画ファイルを圧縮
      */
-    async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
+    async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
         const isDev = import.meta.env.DEV;
+
+        // 中止フラグをリセット
+        this.abortFlag = false;
+        this.isCompressing = false;
 
         // 動画ファイル以外はスキップ
         if (!file.type.startsWith('video/')) {
@@ -159,6 +191,12 @@ export class VideoCompressionService {
             // FFmpegをロード
             if (isDev) console.log('[VideoCompressionService] Loading FFmpeg...');
             await this.loadFFmpeg();
+
+            // 中止チェック
+            if (this.abortFlag) {
+                if (isDev) console.log('[VideoCompressionService] Compression aborted by user');
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
 
             if (!this.ffmpeg) {
                 throw new Error('FFmpeg not loaded');
@@ -201,10 +239,45 @@ export class VideoCompressionService {
 
             args.push('-movflags', '+faststart', '-y', outputName);
 
+            // 中止チェック
+            if (this.abortFlag) {
+                if (isDev) console.log('[VideoCompressionService] Compression aborted before execution');
+                await this.ffmpeg.deleteFile(inputName);
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
+
             if (isDev) {
                 console.log('[VideoCompressionService] Starting compression with args:', args);
             }
-            await this.ffmpeg.exec(args);
+
+            // 実行中フラグを設定
+            this.isCompressing = true;
+
+            try {
+                await this.ffmpeg.exec(args);
+            } catch (error) {
+                // 中止による終了の場合はエラーログを出さない
+                if (this.abortFlag) {
+                    if (isDev) console.log('[VideoCompressionService] Compression aborted during execution');
+                } else {
+                    if (isDev) console.error('[VideoCompressionService] FFmpeg execution error:', error);
+                    throw error;
+                }
+            } finally {
+                this.isCompressing = false;
+            }
+
+            // 中止チェック
+            if (this.abortFlag) {
+                if (isDev) console.log('[VideoCompressionService] Cleaning up after abort');
+                try {
+                    await this.ffmpeg.deleteFile(inputName);
+                } catch { }
+                try {
+                    await this.ffmpeg.deleteFile(outputName);
+                } catch { }
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
 
             // 出力ファイルを読み取り
             const data = await this.ffmpeg.readFile(outputName);
@@ -238,6 +311,14 @@ export class VideoCompressionService {
             return { file: outputFile, wasCompressed: true };
 
         } catch (error) {
+            this.isCompressing = false;
+
+            // 中止による終了の場合
+            if (this.abortFlag) {
+                if (isDev) console.log('[VideoCompressionService] Compression aborted, using original file');
+                return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+            }
+
             console.error('[VideoCompressionService] Compression failed:', error);
             return { file, wasCompressed: false, wasSkipped: true };
         }

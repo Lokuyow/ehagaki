@@ -122,6 +122,7 @@ export interface FileUploadResponse {
     filename?: string;
     sizeInfo?: FileSizeInfo;
     nip94?: Record<string, string>;
+    aborted?: boolean;
 }
 
 export interface UploadInfoCallbacks {
@@ -157,7 +158,7 @@ export interface FileUploadDependencies {
 }
 
 export interface CompressionService {
-    compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }>;
+    compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }>;
     hasCompressionSettings?(): boolean;
 }
 

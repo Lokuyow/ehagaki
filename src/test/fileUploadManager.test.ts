@@ -23,7 +23,8 @@ vi.mock("virtual:pwa-register/svelte", () => ({
 
 // appStore.svelte.tsのモック
 vi.mock("../stores/appStore.svelte.ts", () => ({
-    showImageSizeInfo: vi.fn()
+    showImageSizeInfo: vi.fn(),
+    setVideoCompressionService: vi.fn()
 }));
 
 // その他の依存関係をモック

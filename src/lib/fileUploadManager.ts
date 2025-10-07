@@ -1,7 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
-import { showImageSizeInfo } from "../stores/appStore.svelte";
+import { showImageSizeInfo, setVideoCompressionService } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
 import { VideoCompressionService } from "./videoCompressionService";
 import type {
@@ -184,6 +184,12 @@ export class FileUploadManager implements FileUploadManagerInterface {
     this.imageCompressionService = imageCompressionService || new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
     this.videoCompressionService = videoCompressionService || new VideoCompressionService(dependencies.localStorage);
     this.authService = authService || new NostrAuthService();
+
+    // VideoCompressionServiceインスタンスをストアに登録
+    if (this.videoCompressionService instanceof VideoCompressionService) {
+      setVideoCompressionService(this.videoCompressionService);
+      console.log('[FileUploadManager] VideoCompressionService registered to store');
+    }
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -195,15 +201,15 @@ export class FileUploadManager implements FileUploadManagerInterface {
   validateMediaFile(file: File): FileValidationResult {
     const isImage = file.type.startsWith("image/");
     const isVideo = file.type.startsWith("video/");
-    
+
     if (!isImage && !isVideo) {
       return { isValid: false, errorMessage: "only_images_or_videos_allowed" };
     }
-    
+
     if (file.size > MAX_FILE_SIZE) {
       return { isValid: false, errorMessage: "file_too_large" };
     }
-    
+
     return { isValid: true };
   }
 
@@ -283,23 +289,29 @@ export class FileUploadManager implements FileUploadManagerInterface {
       }
 
       const originalSize = file.size;
-      
+
       // ファイルタイプに応じて適切な圧縮サービスを選択
       const isVideo = file.type.startsWith('video/');
       const compressionService = isVideo ? this.videoCompressionService : this.imageCompressionService;
-      
+
       // 動画圧縮の進捗コールバックを設定
       if (isVideo && callbacks?.onVideoCompressionProgress) {
         (this.videoCompressionService as VideoCompressionService).setProgressCallback(callbacks.onVideoCompressionProgress);
       }
-      
-      const { file: uploadFile, wasCompressed, wasSkipped } = await compressionService.compress(file);
-      
+
+      const { file: uploadFile, wasCompressed, wasSkipped, aborted } = await compressionService.compress(file);
+
       // 圧縮完了後はコールバックをクリア
       if (isVideo) {
         (this.videoCompressionService as VideoCompressionService).setProgressCallback(undefined);
       }
-      
+
+      // 中止された場合はアップロードを中止
+      if (aborted) {
+        if (devMode) console.log('[FileUploadManager] Upload aborted by user');
+        return { success: false, error: 'Upload aborted by user', aborted: true };
+      }
+
       const compressedSize = uploadFile.size;
 
       // 型安全にアクセス

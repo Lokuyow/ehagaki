@@ -267,8 +267,38 @@ export async function replacePlaceholdersWithResults(
                 success: result.success,
                 url: result.url,
                 filename: result.filename,
-                sizeInfo: result.sizeInfo
+                sizeInfo: result.sizeInfo,
+                aborted: result.aborted
             });
+        }
+
+        // 中止されたアップロードの場合、プレースホルダーを削除
+        if (result.aborted) {
+            const aborted = remainingPlaceholders.shift();
+            if (aborted && currentEditor) {
+                const isVideo = aborted.file.type.startsWith('video/');
+                
+                dependencies.imageSizeMapStore.update(map => {
+                    delete map[aborted.placeholderId];
+                    return map;
+                });
+
+                const state = currentEditor.state;
+                const doc = state.doc;
+                doc.descendants((node: any, pos: number) => {
+                    const nodeType = isVideo ? 'video' : 'image';
+                    if (node.type.name === nodeType && 
+                        (node.attrs.src === aborted.placeholderId || node.attrs.id === aborted.placeholderId)) {
+                        const tr = state.tr.delete(pos, pos + node.nodeSize);
+                        currentEditor.view.dispatch(tr);
+                        if (devMode) {
+                            console.log(`[uploadHelper] Deleted aborted ${nodeType} placeholder:`, aborted.placeholderId);
+                        }
+                        return false;
+                    }
+                });
+            }
+            continue;
         }
 
         if (result.success && result.url) {

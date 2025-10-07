@@ -3,6 +3,7 @@ import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreS
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { writable } from "svelte/store";
+import type { VideoCompressionService } from '../lib/videoCompressionService';
 
 // --- アプリ全体の状態管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
@@ -14,6 +15,23 @@ export const imageSizeInfoStore = {
     get value() { return imageSizeInfo; },
     set: (value: { info: SizeDisplayInfo | null; visible: boolean }) => { imageSizeInfo = value; }
 };
+
+// --- 動画圧縮サービスインスタンス管理 ---
+let videoCompressionServiceInstance: VideoCompressionService | null = null;
+
+export function setVideoCompressionService(service: VideoCompressionService | null): void {
+    videoCompressionServiceInstance = service;
+}
+
+export function abortVideoCompression(): void {
+    console.log('[appStore] abortVideoCompression called, instance:', videoCompressionServiceInstance);
+    if (videoCompressionServiceInstance) {
+        console.log('[appStore] Calling abort on service instance');
+        videoCompressionServiceInstance.abort();
+    } else {
+        console.warn('[appStore] VideoCompressionService instance is null!');
+    }
+}
 
 // --- 認証状態管理 ---
 const initialAuthState: AuthState = {
