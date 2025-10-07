@@ -130,6 +130,7 @@
             total: 0,
             completed: 0,
             failed: 0,
+            aborted: 0,
             inProgress: false,
         }),
     }: Props = $props();
@@ -246,6 +247,7 @@
                     total: 0,
                     completed: 0,
                     failed: 0,
+                    aborted: 0,
                     inProgress: false,
                 };
             }, 1000);
@@ -258,6 +260,7 @@
             total: 0,
             completed: 0,
             failed: 0,
+            aborted: 0,
             inProgress: false,
         };
         videoCompressionProgressStore.set(0);
@@ -326,6 +329,9 @@
                 {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
                 {#if uploadProgress.failed > 0}
                     ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
+                {/if}
+                {#if uploadProgress.aborted > 0}
+                    ({$_("footerInfoDisplay.aborted")}: {uploadProgress.aborted})
                 {/if}
             </div>
             <div class="progress-bar">

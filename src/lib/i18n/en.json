@@ -54,6 +54,7 @@
   "footerInfoDisplay": {
     "uploading": "Uploading",
     "failed": "Failed",
+    "aborted": "Aborted",
     "data_size": "Transmission size",
     "no_compression": "No compression",
     "video_compressing": "Compressing video",

@@ -419,9 +419,9 @@ export class FileUploadManager implements FileUploadManagerInterface {
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
     const results: FileUploadResponse[] = new Array(files.length);
-    let completed = 0, failed = 0;
+    let completed = 0, failed = 0, aborted = 0;
     const updateProgress = () => onProgress?.({
-      completed, failed, total: files.length, inProgress: completed + failed < files.length
+      completed, failed, aborted, total: files.length, inProgress: completed + failed + aborted < files.length
     });
     updateProgress();
     await Promise.all(files.map(async (file, index) => {
@@ -429,7 +429,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
         const meta = metadataList ? metadataList[index] : undefined;
         const result = await this.uploadFile(file, apiUrl, devMode, meta, callbacks);
         results[index] = result;
-        result.success ? completed++ : failed++;
+        if (result.success) {
+          completed++;
+        } else if (result.aborted) {
+          aborted++;
+        } else {
+          failed++;
+        }
         updateProgress();
       } catch (error) {
         results[index] = { success: false, error: error instanceof Error ? error.message : String(error) };
@@ -446,12 +452,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
     devMode: boolean = false,
     metadata?: Record<string, string | number | undefined>
   ): Promise<FileUploadResponse> {
-    callbacks?.onProgress?.({ completed: 0, failed: 0, total: 1, inProgress: true });
+    callbacks?.onProgress?.({ completed: 0, failed: 0, aborted: 0, total: 1, inProgress: true });
     try {
       const result = await this.uploadFile(file, apiUrl, devMode, metadata, callbacks);
       callbacks?.onProgress?.({
         completed: result.success ? 1 : 0,
-        failed: result.success ? 0 : 1,
+        failed: (!result.success && !result.aborted) ? 1 : 0,
+        aborted: result.aborted ? 1 : 0,
         total: 1,
         inProgress: false
       });
@@ -461,7 +468,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
       }
       return result;
     } catch (error) {
-      callbacks?.onProgress?.({ completed: 0, failed: 1, total: 1, inProgress: false });
+      callbacks?.onProgress?.({ completed: 0, failed: 1, aborted: 0, total: 1, inProgress: false });
       return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   }

@@ -539,6 +539,7 @@ describe('FileUploadManager', () => {
             expect(progressCallback).toHaveBeenCalledWith({
                 completed: 2,
                 failed: 0,
+                aborted: 0,
                 total: 2,
                 inProgress: false
             });

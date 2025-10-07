@@ -82,6 +82,7 @@ export interface UploadProgress {
     total: number;
     completed: number;
     failed: number;
+    aborted: number;
     inProgress: boolean;
 }
 

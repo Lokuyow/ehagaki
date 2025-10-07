@@ -66,6 +66,7 @@
   "footerInfoDisplay": {
     "uploading": "アップロード中",
     "failed": "失敗",
+    "aborted": "中止",
     "data_size": "送信サイズ",
     "no_compression": "圧縮なし",
     "video_compressing": "動画圧縮中",
