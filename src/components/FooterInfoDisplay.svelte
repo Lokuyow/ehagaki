@@ -289,7 +289,7 @@
     {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
         <div class="upload-progress">
             <div class="progress-text">
-                {getVideoCompressionLevelLabel(getVideoCompressionLevel())}: {videoCompressionProgress}%
+                {getVideoCompressionLevelLabel(getVideoCompressionLevel())}{$_("videoCompressionLabelSuffix")}: {videoCompressionProgress}%
                 ({formatElapsedTime(compressionElapsedSeconds)})
             </div>
             <div class="progress-bar">

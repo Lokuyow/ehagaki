@@ -25,6 +25,7 @@
     "uploading": "動画をアップロード中...",
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
   },
+  "videoCompressionLabelSuffix": "圧縮",
   "loginDialog": {
     "input_secret": "秘密鍵の入力",
     "save": "保存",
