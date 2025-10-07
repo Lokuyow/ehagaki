@@ -151,6 +151,8 @@
             // 圧縮開始
             if (!compressionStartTime) {
                 compressionStartTime = Date.now();
+                // 新しい動画圧縮が開始されたら過去のimage-size-infoをクリア
+                reset({ imageSizeInfoOnly: true });
                 compressionTimerInterval = window.setInterval(() => {
                     if (compressionStartTime) {
                         compressionElapsedSeconds = Math.floor(
@@ -255,7 +257,12 @@
     }
 
     // 進捗・画像サイズ情報をリセットするメソッドを追加
-    export function reset() {
+    export function reset(options?: { imageSizeInfoOnly?: boolean }) {
+        if (options?.imageSizeInfoOnly) {
+            imageSizeInfoStore.set({ info: null, visible: false });
+            return;
+        }
+
         uploadProgress = {
             total: 0,
             completed: 0,
