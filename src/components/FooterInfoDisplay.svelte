@@ -1,6 +1,9 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { imageSizeInfoStore, videoCompressionProgressStore } from "../stores/appStore.svelte";
+    import {
+        imageSizeInfoStore,
+        videoCompressionProgressStore,
+    } from "../stores/appStore.svelte";
     import type { UploadProgress } from "../lib/types";
     import {
         devLog,
@@ -130,13 +133,15 @@
     }: Props = $props();
 
     // ストアから動画圧縮の進捗を取得
-    let videoCompressionProgress = $derived(videoCompressionProgressStore.value);
-    
+    let videoCompressionProgress = $derived(
+        videoCompressionProgressStore.value,
+    );
+
     // 動画圧縮の開始時刻と経過時間
     let compressionStartTime = $state<number | null>(null);
     let compressionElapsedSeconds = $state(0);
     let compressionTimerInterval: number | null = null;
-    
+
     // 動画圧縮の進捗に応じてタイマーを管理
     $effect(() => {
         if (videoCompressionProgress > 0 && videoCompressionProgress < 100) {
@@ -145,7 +150,9 @@
                 compressionStartTime = Date.now();
                 compressionTimerInterval = window.setInterval(() => {
                     if (compressionStartTime) {
-                        compressionElapsedSeconds = Math.floor((Date.now() - compressionStartTime) / 1000);
+                        compressionElapsedSeconds = Math.floor(
+                            (Date.now() - compressionStartTime) / 1000,
+                        );
                     }
                 }, 1000);
             }
@@ -173,7 +180,7 @@
         const remainingSeconds = seconds % 60;
         return `${minutes}m ${remainingSeconds}s`;
     }
-    
+
     // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
     function getExtension(filename: string | undefined): string {
         if (!filename) return "";
@@ -259,7 +266,8 @@
     {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
         <div class="upload-progress">
             <div class="progress-text">
-                {$_("footerInfoDisplay.video_compressing")}: {videoCompressionProgress}% ({formatElapsedTime(compressionElapsedSeconds)})
+                {$_("footerInfoDisplay.video_compressing")}: {videoCompressionProgress}%
+                ({formatElapsedTime(compressionElapsedSeconds)})
             </div>
             <div class="progress-bar">
                 <div
@@ -351,7 +359,6 @@
         align-items: center;
         gap: 4px;
         width: 100%;
-        padding: 0 8px;
     }
 
     .progress-text {
