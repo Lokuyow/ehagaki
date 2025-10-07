@@ -189,6 +189,29 @@
         const ext = match[1].toUpperCase();
         return ext === "JPEG" ? "JPG" : ext;
     }
+
+    // 動画圧縮レベルを取得する関数
+    function getVideoCompressionLevel(): string {
+        if (typeof window === "undefined") return "medium";
+        const level = localStorage.getItem("videoCompressionLevel") || "medium";
+        return level;
+    }
+
+    // 動画圧縮レベルの表示名を取得する関数
+    function getVideoCompressionLevelLabel(level: string): string {
+        switch (level) {
+            case "none":
+                return $_("settingsDialog.compression_none");
+            case "low":
+                return $_("settingsDialog.compression_low");
+            case "medium":
+                return $_("settingsDialog.compression_medium");
+            case "high":
+                return $_("settingsDialog.compression_high");
+            default:
+                return $_("settingsDialog.compression_medium");
+        }
+    }
     // 画像サイズ情報から拡張子を取得
     let originalExt = $derived(
         imageSizeInfo?.originalFilename
@@ -266,7 +289,7 @@
     {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
         <div class="upload-progress">
             <div class="progress-text">
-                {$_("footerInfoDisplay.video_compressing")}: {videoCompressionProgress}%
+                {getVideoCompressionLevelLabel(getVideoCompressionLevel())}: {videoCompressionProgress}%
                 ({formatElapsedTime(compressionElapsedSeconds)})
             </div>
             <div class="progress-bar">
@@ -362,7 +385,7 @@
     }
 
     .progress-text {
-        font-size: 0.9rem;
+        font-size: 0.875rem;
         color: var(--text);
         text-align: center;
         white-space: normal;
