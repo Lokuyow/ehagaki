@@ -3,14 +3,14 @@
     interface Props {
         text?: string;
         showImage?: boolean;
-        showSpinner?: boolean;
+        showLoader?: boolean;
         customClass?: string;
     }
 
     let {
         text = "",
         showImage = true,
-        showSpinner = false,
+        showLoader = false,
         customClass = "",
     }: Props = $props();
 
@@ -19,7 +19,7 @@
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>
-    {#if showSpinner}
+    {#if showLoader}
         <div class="loader-container">
             <div class="square"></div>
             <div class="square"></div>

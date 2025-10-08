@@ -40,7 +40,7 @@
                     <LoadingPlaceholder
                         text=""
                         showImage={false}
-                        showSpinner={true}
+                        showLoader={true}
                     />
                 {:else}
                     {$_("logoutDialog.logout")}

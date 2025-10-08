@@ -159,7 +159,7 @@
                 <LoadingPlaceholder
                     text=""
                     showImage={false}
-                    showSpinner={true}
+                    showLoader={true}
                     customClass="nostr-login-placeholder"
                 />
             {:else}
