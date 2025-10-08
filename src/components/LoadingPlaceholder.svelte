@@ -1,21 +1,27 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     interface Props {
-        text?: string;
+        text?: string | boolean;
         showImage?: boolean;
         showLoader?: boolean;
         customClass?: string;
     }
 
     let {
-        text = "",
+        text = false,
         showImage = false,
         showLoader = false,
         customClass = "",
     }: Props = $props();
 
     // デフォルトテキストを国際化対応で設定
-    let displayText = $derived(text || $_("loadingPlaceholder.loading"));
+    let displayText = $derived(
+        typeof text === "string"
+            ? text
+            : text === true
+              ? $_("loadingPlaceholder.loading")
+              : "",
+    );
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>
@@ -31,7 +37,9 @@
     {#if showImage}
         <div class="placeholder-image" aria-hidden="true"></div>
     {/if}
-    <span class="placeholder-text loading-text">{displayText}</span>
+    {#if displayText}
+        <span class="placeholder-text loading-text">{displayText}</span>
+    {/if}
 </div>
 
 <style>
@@ -58,7 +66,6 @@
     .placeholder-text {
         color: var(--text);
         opacity: 0.6;
-        font-size: 0.95rem;
         font-weight: 500;
     }
     .loading-text {

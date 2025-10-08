@@ -37,7 +37,7 @@
                 disabled={isLoggingOut}
             >
                 {#if isLoggingOut}
-                    <LoadingPlaceholder text="" showLoader={true} />
+                    <LoadingPlaceholder text={true} showLoader={true} />
                 {:else}
                     {$_("logoutDialog.logout")}
                 {/if}

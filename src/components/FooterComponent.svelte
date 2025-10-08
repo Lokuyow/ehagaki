@@ -47,7 +47,7 @@
             className="profile-display loading"
             disabled={true}
         >
-            <LoadingPlaceholder text="" showImage={true} />
+            <LoadingPlaceholder text={true} showImage={true} />
         </Button>
     {:else if isAuthenticated && isLoadingProfile}
         <Button
@@ -55,7 +55,7 @@
             className="profile-display loading"
             disabled={true}
         >
-            <LoadingPlaceholder text="" showImage={true} />
+            <LoadingPlaceholder text={true} showImage={true} />
         </Button>
     {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
         <ProfileComponent

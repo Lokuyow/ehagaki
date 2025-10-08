@@ -107,6 +107,10 @@
 
     .video-wrapper.selected {
         outline: 2px solid var(--theme);
+
+        :global(span.placeholder-text.loading-text) {
+            font-size: 1.125rem;
+        }
     }
 
     .editor-video {
@@ -123,10 +127,6 @@
 
     .editor-video.loaded {
         opacity: 1;
-    }
-
-    :global(span.placeholder-text.loading-text) {
-        font-size: 1.125rem;
     }
 
     @media (prefers-color-scheme: light) {

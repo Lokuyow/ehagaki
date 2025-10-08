@@ -8,6 +8,7 @@
     import { authState } from "../stores/appStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { BalloonMessageManager } from "../lib/balloonMessageManager";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
 
@@ -266,7 +267,15 @@
                 onClick={submitPost}
                 ariaLabel={$_("postComponent.post")}
             >
-                <div class="plane-icon svg-icon"></div>
+                {#if postStatus.sending}
+                    <LoadingPlaceholder
+                        showLoader={true}
+                        text={false}
+                        customClass="post-button-loading"
+                    />
+                {:else}
+                    <div class="plane-icon svg-icon"></div>
+                {/if}
             </Button>
         </div>
     </div>
@@ -335,6 +344,13 @@
         mask-image: url("/icons/paper-plane-solid-full.svg");
         width: 30px;
         height: 30px;
+    }
+    :global(.post-button-loading) {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
     .image-icon {
         mask-image: url("/icons/image-solid-full.svg");

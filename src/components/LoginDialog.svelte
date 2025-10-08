@@ -157,7 +157,7 @@
         >
             {#if isLoadingNostrLogin}
                 <LoadingPlaceholder
-                    text=""
+                    text={true}
                     showLoader={true}
                     customClass="nostr-login-placeholder"
                 />
