@@ -20,7 +20,13 @@
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>
     {#if showSpinner}
-        <span class="loading-spinner" aria-hidden="true"></span>
+        <div class="loader-container">
+            <div class="square"></div>
+            <div class="square"></div>
+            <div class="square"></div>
+            <div class="square"></div>
+            <div class="square"></div>
+        </div>
     {/if}
     {#if showImage}
         <div class="placeholder-image" aria-hidden="true"></div>
@@ -29,6 +35,9 @@
 </div>
 
 <style>
+    :global(button:disabled.loading) {
+        opacity: 1;
+    }
     .loading-placeholder {
         display: flex;
         align-items: center;
@@ -55,24 +64,7 @@
     .loading-text {
         animation: pulse-text 1.5s ease-in-out infinite;
     }
-    .loading-spinner {
-        width: 20px;
-        height: 20px;
-        border: 4px solid hsl(0, 0%, 60%);
-        border-top: 4px solid hsl(0, 0%, 90%);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        flex-shrink: 0;
-        background: transparent;
-    }
-    @keyframes spin {
-        0% {
-            transform: rotate(0deg);
-        }
-        100% {
-            transform: rotate(360deg);
-        }
-    }
+
     @keyframes pulse {
         0%,
         100% {
@@ -114,5 +106,64 @@
         100% {
             left: 100%;
         }
+    }
+    /* 正方形たちをまとめるコンテナ */
+    .loader-container {
+        position: relative;
+        width: 40px;
+        height: 40px;
+    }
+    /* 正方形の基本スタイル */
+    .square {
+        position: absolute;
+        top: 25%;
+        left: 25%;
+        border: none;
+        border-radius: 20%;
+        opacity: 1;
+        background-color: var(--theme);
+        animation: compactFloatAndRotate 4s infinite ease-in-out;
+    }
+    /* アニメーションの定義 */
+    @keyframes compactFloatAndRotate {
+        0% {
+            transform: translate(-25%, -25%) scale(1) rotate(0deg);
+        }
+        20% {
+            transform: translate(12px, 10px) scale(0.6) rotate(-170deg);
+        }
+        40% {
+            transform: translate(8px, -2px) scale(1.05) rotate(200deg);
+        }
+        60% {
+            transform: translate(-2px, -4px) scale(0.9) rotate(-220deg);
+        }
+        80% {
+            transform: translate(0px, 12px) scale(0.5) rotate(0deg);
+        }
+        100% {
+            transform: translate(-25%, -25%) scale(1) rotate(360deg);
+        }
+    }
+    /* 各正方形のサイズとアニメーション開始タイミングを個別に設定 */
+    .square:nth-child(1) {
+        width: 8px;
+        height: 8px;
+        animation-delay: -4s;
+    }
+    .square:nth-child(2) {
+        width: 12px;
+        height: 12px;
+        animation-delay: -3s;
+    }
+    .square:nth-child(3) {
+        width: 14px;
+        height: 14px;
+        animation-delay: -1s;
+    }
+    .square:nth-child(4) {
+        width: 18px;
+        height: 18px;
+        animation-delay: -2s;
     }
 </style>
