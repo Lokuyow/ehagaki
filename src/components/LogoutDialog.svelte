@@ -31,7 +31,7 @@
         <div class="dialog-buttons">
             <Button
                 onClick={handleLogout}
-                className="logout-btn"
+                className="logout-btn {isLoggingOut ? 'loading' : ''}"
                 variant="danger"
                 shape="square"
                 disabled={isLoggingOut}

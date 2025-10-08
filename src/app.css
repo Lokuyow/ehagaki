@@ -82,6 +82,10 @@ select {
     opacity: 0.3;
     cursor: not-allowed;
   }
+
+  &:disabled.loading {
+    opacity: 1;
+  }
 }
 
 button>* {
