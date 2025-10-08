@@ -158,7 +158,6 @@
             {#if isLoadingNostrLogin}
                 <LoadingPlaceholder
                     text=""
-                    showImage={false}
                     showLoader={true}
                     customClass="nostr-login-placeholder"
                 />

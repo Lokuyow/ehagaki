@@ -9,7 +9,7 @@
 
     let {
         text = "",
-        showImage = true,
+        showImage = false,
         showLoader = false,
         customClass = "",
     }: Props = $props();
