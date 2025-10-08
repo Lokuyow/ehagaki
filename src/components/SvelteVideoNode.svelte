@@ -3,6 +3,7 @@
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onMount } from "svelte";
     import { _ } from "svelte-i18n";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -18,19 +19,19 @@
     // プレースホルダーかどうかを判定（node.attrsの変更を監視）
     let isPlaceholder = $derived(
         node.attrs.isPlaceholder === true ||
-        node.attrs.src?.startsWith("placeholder-") ||
-        node.attrs.src?.startsWith("blob:") ||
-        !node.attrs.src
+            node.attrs.src?.startsWith("placeholder-") ||
+            node.attrs.src?.startsWith("blob:") ||
+            !node.attrs.src,
     );
-    
+
     // デバッグ用：属性の変更をログ出力（開発環境のみ）
     $effect(() => {
         if (import.meta.env.DEV) {
-            console.log('[SvelteVideoNode] Node attributes changed:', {
+            console.log("[SvelteVideoNode] Node attributes changed:", {
                 src: node.attrs.src,
                 id: node.attrs.id,
                 isPlaceholder: node.attrs.isPlaceholder,
-                computed_isPlaceholder: isPlaceholder
+                computed_isPlaceholder: isPlaceholder,
             });
         }
     });
@@ -57,10 +58,10 @@
     <div class="video-wrapper" class:selected data-video-node>
         {#if isPlaceholder}
             <!-- アップロード中のローディング表示 -->
-            <div class="video-placeholder">
-                <div class="loading-spinner"></div>
-                <p class="loading-text">{$_("videoNode.uploading")}</p>
-            </div>
+            <LoadingPlaceholder
+                text={$_("videoNode.uploading")}
+                showLoader={true}
+            />
         {:else}
             <!-- 実際の動画 -->
             <video
@@ -124,39 +125,8 @@
         opacity: 1;
     }
 
-    /* プレースホルダー（ローディング）表示 */
-    .video-placeholder {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100%;
-        padding: 40px;
-        border-radius: 6px;
-        box-sizing: border-box;
-    }
-
-    .loading-spinner {
-        width: 40px;
-        height: 40px;
-        border: 4px solid rgba(128, 128, 128, 0.2);
-        border-top-color: var(--theme, #333);
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
-    }
-
-    .loading-text {
-        margin-top: 16px;
-        font-size: 1rem;
-        color: var(--text);
-        opacity: 0.8;
+    :global(span.placeholder-text.loading-text) {
+        font-size: 1.125rem;
     }
 
     @media (prefers-color-scheme: light) {
