@@ -308,7 +308,6 @@
     }
 
     :global(.nostr-login-button.loading) {
-        opacity: 0.8;
         cursor: not-allowed;
     }
 
