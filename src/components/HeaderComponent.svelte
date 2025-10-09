@@ -11,6 +11,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { BalloonMessageManager } from "../lib/balloonMessageManager";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
+    import { triggerVibration } from "../lib/utils/appDomUtils";
 
     interface Props {
         onUploadImage: () => void;
@@ -229,6 +230,16 @@
             }
         };
     });
+
+    // iPhone用振動チェックボックスの参照
+    let vibrateSwitchInput: HTMLInputElement | undefined = $state();
+    
+    // マウント時にswitch属性を設定
+    $effect(() => {
+        if (vibrateSwitchInput) {
+            vibrateSwitchInput.setAttribute('switch', '');
+        }
+    });
 </script>
 
 <div class="header-container">
@@ -282,7 +293,10 @@
                     postStatus.sending ||
                     !hasStoredKey ||
                     postStatus.completed}
-                onClick={submitPost}
+                onClick={() => {
+                    triggerVibration(30);
+                    submitPost();
+                }}
                 ariaLabel={$_("postComponent.post")}
             >
                 {#if isShowingLoader}
@@ -298,6 +312,13 @@
         </div>
     </div>
 </div>
+
+<!-- iPhone用の振動トリガー（非表示） -->
+<!-- svelte-ignore a11y_hidden -->
+<!-- svelte-ignore a11y_label_has_associated_control -->
+<label id="vibrateSwitch" style="display: none;" aria-hidden="true">
+    <input type="checkbox" checked bind:this={vibrateSwitchInput} />
+</label>
 
 <style>
     .header-container {

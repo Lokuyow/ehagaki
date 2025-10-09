@@ -92,3 +92,32 @@ export function focusEditor(
         }
     }, delay);
 }
+
+/**
+ * スマートフォンを振動させる（Android / iPhone 対応）
+ */
+export function triggerVibration(duration: number = 200): void {
+    if (typeof window === "undefined" || typeof navigator === "undefined") {
+        return;
+    }
+
+    // navigator.vibrateが使える場合 (Androidなど)
+    if ("vibrate" in navigator) {
+        try {
+            navigator.vibrate(duration);
+        } catch (e) {
+            // ignore
+        }
+    } 
+    // 使えない場合 (iOSなど) - label要素をクリックしてcheckbox switchをトリガー
+    else {
+        try {
+            const switchElement = document.getElementById("vibrateSwitch");
+            if (switchElement) {
+                switchElement.click();
+            }
+        } catch (e) {
+            // ignore
+        }
+    }
+}
