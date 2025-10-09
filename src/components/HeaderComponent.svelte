@@ -53,10 +53,10 @@
         if (postStatus.sending) {
             isShowingLoader = true;
         } else if (isShowingLoader) {
-            // 送信完了したら0.5秒後にローダーを隠す
+            // 送信完了したら0.4秒後にローダーを隠す
             setTimeout(() => {
                 isShowingLoader = false;
-            }, 500);
+            }, 400);
         }
     });
 
@@ -356,6 +356,10 @@
         ) {
         border: 1px solid var(--hagaki);
         width: 58px;
+    }
+
+    :global(.default.post-button.loading) {
+        border: 1px solid var(--theme);
     }
 
     .plane-icon {
