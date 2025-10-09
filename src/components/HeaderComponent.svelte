@@ -45,6 +45,21 @@
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
 
+    // ローダーの表示状態（最低0.5秒表示）
+    let isShowingLoader = $state(false);
+
+    // 送信中のローダー表示管理
+    $effect(() => {
+        if (postStatus.sending) {
+            isShowingLoader = true;
+        } else if (isShowingLoader) {
+            // 送信完了したら0.5秒後にローダーを隠す
+            setTimeout(() => {
+                isShowingLoader = false;
+            }, 500);
+        }
+    });
+
     // 投稿成功時のバルーンメッセージ管理
     let postSuccessBalloonMessage = $state<BalloonMessageType | null>(null);
     let hasProcessedSuccess = $state(false); // 成功処理済みフラグ
@@ -262,7 +277,7 @@
             <Button
                 variant="default"
                 shape="square"
-                className="post-button"
+                className="post-button {isShowingLoader ? 'loading' : ''}"
                 disabled={!canPost ||
                     postStatus.sending ||
                     !hasStoredKey ||
@@ -270,7 +285,7 @@
                 onClick={submitPost}
                 ariaLabel={$_("postComponent.post")}
             >
-                {#if postStatus.sending}
+                {#if isShowingLoader}
                     <LoadingPlaceholder
                         showLoader={true}
                         text={false}
