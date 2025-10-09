@@ -263,7 +263,10 @@
                 variant="default"
                 shape="square"
                 className="post-button"
-                disabled={!canPost || postStatus.sending || !hasStoredKey}
+                disabled={!canPost ||
+                    postStatus.sending ||
+                    !hasStoredKey ||
+                    postStatus.completed}
                 onClick={submitPost}
                 ariaLabel={$_("postComponent.post")}
             >
