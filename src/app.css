@@ -144,7 +144,7 @@ select {
     --link-visited: #681da8;
 
     --dialog: hsl(0, 0%, 98%);
-    --dialog-overlay: rgba(0, 0, 0, 0.4);
+    --dialog-overlay: rgba(0, 0, 0, 0.5);
 
     --svg: hsl(0, 0%, 32%);
     --svg-light: var(--text-light);
