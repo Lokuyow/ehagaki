@@ -82,7 +82,7 @@
     }
 
     .secondary {
-        --btn-bg: var(--white);
+        --btn-bg: white;
         --text: var(--text-black);
         --border: var(--light-gray);
     }
