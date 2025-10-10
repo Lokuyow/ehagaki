@@ -31,7 +31,12 @@
         <pre class="features">{$_("welcomeDialog.features")}</pre>
     </div>
     {#snippet footer()}
-        <Button shape="square" onClick={onClose} className="get-started-btn">
+        <Button
+            variant="primary"
+            shape="square"
+            onClick={onClose}
+            className="get-started-btn"
+        >
             {$_("welcomeDialog.get_started")}
         </Button>
     {/snippet}
@@ -86,9 +91,6 @@
 
         :global(.get-started-btn) {
             width: 100%;
-            background-color: var(--theme);
-            color: white;
-            border: none;
             font-size: 1.0625rem;
         }
     }

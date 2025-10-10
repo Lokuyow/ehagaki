@@ -57,13 +57,34 @@
             font-size: 1rem;
             font-weight: 500;
         }
+
+        @media (prefers-color-scheme: light) and (min-width: 601px) {
+            &:hover:not(:disabled) {
+                :global(.btn-text) {
+                    color: color-mix(in srgb, var(--text-light), black 20%);
+                }
+                :global(.svg-icon) {
+                    background-color: color-mix(in srgb, var(--svg), white 10%);
+                }
+            }
+        }
+
+        @media (prefers-color-scheme: dark) and (min-width: 601px) {
+            &:hover:not(:disabled) {
+                :global(.btn-text) {
+                    color: color-mix(in srgb, var(--text-light), black 10%);
+                }
+                :global(.svg-icon) {
+                    background-color: color-mix(in srgb, var(--svg), black 10%);
+                }
+            }
+        }
     }
 
     .primary {
         --btn-bg: var(--theme);
-        color: white;
+        --text: white;
         font-weight: 500;
-        padding: 12px 18px 12px 16px;
         gap: 8px;
         border: none;
         z-index: 10;
@@ -78,6 +99,16 @@
             color: whitesmoke;
             font-size: 1rem;
             font-weight: 500;
+        }
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                background-color: color-mix(in srgb, var(--btn-bg), black 8%);
+                color: color-mix(in srgb, var(--text), black 7%);
+                :global(.btn-text) {
+                    color: color-mix(in srgb, var(--text), black 7%);
+                }
+            }
         }
     }
 
