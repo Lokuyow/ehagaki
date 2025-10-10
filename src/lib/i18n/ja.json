@@ -26,6 +26,12 @@
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
   },
   "videoCompressionLabelSuffix": "圧縮",
+  "welcomeDialog": {
+    "title": "eHagaki へようこそ",
+    "description": "eHagaki（えはがき）は投稿専用のNostrクライアントです。画像、動画を圧縮してから送信できます。",
+    "features": "利点：\n• 通信量の節約\n• 通信状況が悪い場合にアップロード失敗を回避\n• 外部アプリの共有ボタンから画像アップロード可能（Android）",
+    "get_started": "はじめる"
+  },
   "loginDialog": {
     "input_secret": "秘密鍵の入力",
     "save": "保存",

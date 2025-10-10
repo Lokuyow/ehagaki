@@ -151,6 +151,7 @@ export function getSharedImageMetadata(): SharedImageMetadata | undefined {
 let showLogin = $state(false);
 let showLogout = $state(false);
 let showSettings = $state(false);
+let showWelcome = $state(false);
 
 export const showLoginDialogStore = {
     get value() { return showLogin; },
@@ -165,6 +166,11 @@ export const showLogoutDialogStore = {
 export const showSettingsDialogStore = {
     get value() { return showSettings; },
     set: (value: boolean) => { showSettings = value; }
+};
+
+export const showWelcomeDialogStore = {
+    get value() { return showWelcome; },
+    set: (value: boolean) => { showWelcome = value; }
 };
 
 // --- Service Worker管理 ---

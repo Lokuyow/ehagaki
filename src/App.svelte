@@ -10,6 +10,7 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import LogoutDialog from "./components/LogoutDialog.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
+  import WelcomeDialog from "./components/WelcomeDialog.svelte";
   import { authService } from "./lib/authService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
@@ -32,6 +33,7 @@
     isLoadingProfileStore,
     isUploadingStore,
     relayListUpdatedStore,
+    showWelcomeDialogStore,
   } from "./stores/appStore.svelte";
   import { updatePlaceholderText } from "./stores/editorStore.svelte";
   import type { UploadProgress, BalloonMessage } from "./lib/types";
@@ -326,6 +328,13 @@
           console.error("共有画像の処理中にエラー:", error);
         }
       }
+
+      // 初回アクセス判定
+      const isFirstVisit = localStorage.getItem("firstVisit") !== "1";
+      if (isFirstVisit) {
+        showWelcomeDialogStore.set(true);
+        localStorage.setItem("firstVisit", "1");
+      }
     };
 
     // Call the async initializer
@@ -546,6 +555,12 @@
         onClose={closeLogoutDialog}
         onLogout={logout}
         {isLoggingOut}
+      />
+    {/if}
+    {#if showWelcomeDialogStore.value}
+      <WelcomeDialog
+        show={showWelcomeDialogStore.value}
+        onClose={() => showWelcomeDialogStore.set(false)}
       />
     {/if}
     <SettingsDialog

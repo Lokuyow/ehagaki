@@ -133,5 +133,11 @@
     "uploading": "Uploading video...",
     "not_supported": "Your browser does not support the video tag."
   },
-  "videoCompressionLabelSuffix": " compression"
+  "videoCompressionLabelSuffix": " compression",
+  "welcomeDialog": {
+    "title": "Welcome to eHagaki",
+    "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
+    "features": "Advantages:\n• Save data usage\n• Avoid upload failures in poor network conditions\n• Upload images from the share button of external apps (Android)",
+    "get_started": "Get Started"
+  }
 }

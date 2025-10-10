@@ -388,9 +388,13 @@ export class AuthService {
                 }
             }
 
-            // ストレージをクリア
+            // ストレージをクリア（firstVisitフラグは残す）
             try {
+                const firstVisit = localStorage.getItem("firstVisit");
                 localStorage.clear();
+                if (firstVisit) {
+                    localStorage.setItem("firstVisit", firstVisit);
+                }
             } catch (error) {
                 console.error('ローカルストレージクリア中にエラー:', error);
             }
