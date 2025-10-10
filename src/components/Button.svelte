@@ -85,6 +85,7 @@
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;
+        padding: 12px 18px 12px 16px;
         gap: 8px;
         border: none;
         z-index: 10;
