@@ -45,7 +45,6 @@
 <style>
     .welcome-content {
         text-align: center;
-        max-width: 400px;
     }
 
     .title-section {
