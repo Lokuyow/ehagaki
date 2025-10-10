@@ -31,6 +31,7 @@
     import type { SettingsDialogProps } from "../lib/types";
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     let {
         show = false,
@@ -159,7 +160,10 @@
             // 旧バージョンからの移行: "skip" を "none" に変換
             if (savedVideoCompression === "skip") {
                 _selectedVideoCompression = "none";
-                localStorage.setItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL, "none");
+                localStorage.setItem(
+                    STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
+                    "none",
+                );
             } else {
                 _selectedVideoCompression = savedVideoCompression;
             }
@@ -287,21 +291,28 @@
                     <Button
                         variant="primary"
                         shape="rounded"
-                        className="sw-update-btn"
+                        className="sw-update-btn {isUpdating ? 'loading' : ''}"
                         onClick={handleSwRefresh}
                         disabled={isUpdating}
                         ariaLabel={$_("settingsDialog.update_app") ||
                             "アプリを更新"}
                     >
-                        <div
-                            class="rotate-right-icon svg-icon"
-                            aria-label={$_("settingsDialog.refresh") || "更新"}
-                        ></div>
-                        <span class="btn-text">
-                            {isUpdating
-                                ? $_("settingsDialog.updating") || "更新中..."
-                                : $_("settingsDialog.update_app") || "更新"}
-                        </span>
+                        {#if isUpdating}
+                            <LoadingPlaceholder
+                                showLoader={true}
+                                text={$_("settingsDialog.updating") ||
+                                    "更新中..."}
+                            />
+                        {:else}
+                            <div
+                                class="rotate-right-icon svg-icon"
+                                aria-label={$_("settingsDialog.refresh") ||
+                                    "更新"}
+                            ></div>
+                            <span class="btn-text">
+                                {$_("settingsDialog.update_app") || "更新"}
+                            </span>
+                        {/if}
                     </Button>
                 </div>
             </div>
@@ -658,6 +669,19 @@
     .sw-update-label {
         color: var(--theme);
         font-weight: 600;
+    }
+
+    :global(.sw-update-btn) {
+        height: 54px;
+        width: 154px;
+    }
+
+    :global(.sw-update-btn.loading) {
+        padding: 0;
+
+        :global(.square) {
+            background-color: whitesmoke;
+        }
     }
 
     :global(.sw-update-btn:disabled) {
