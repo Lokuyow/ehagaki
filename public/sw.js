@@ -5,6 +5,14 @@ const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
 
+// ベースパスの動的計算（GitHub Pagesなどのサブディレクトリ対応）
+const BASE_PATH = (() => {
+    const pathname = self.location.pathname;
+    // sw.jsのファイル名を除いたパスをベースパスとする
+    const pathParts = pathname.split('/').filter(p => p && p !== 'sw.js');
+    return pathParts.length > 0 ? '/' + pathParts.join('/') + '/' : '/';
+})();
+
 // マニフェスト注入ポイントの確実な初期化
 let PRECACHE_MANIFEST = [];
 try {
@@ -119,7 +127,7 @@ const Utilities = {
     },
 
     // リダイレクトレスポンス
-    createRedirectResponse(path, error = null, location = ServiceWorkerDependencies.location) {
+    createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location) {
         const url = new URL(path, location.origin);
         if (error) {
             url.searchParams.set('shared', 'true');
@@ -495,7 +503,7 @@ class ClientManager {
             }
         } catch (error) {
             this.console.error('クライアント処理エラー:', error);
-            return Utilities.createRedirectResponse('/', 'client-error', this.location);
+            return Utilities.createRedirectResponse(undefined, 'client-error', this.location);
         }
     }
 
@@ -540,12 +548,12 @@ class ClientManager {
 
             // メッセージ送信の成否に関係なく、リダイレクトは成功とする
             // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
-            return Utilities.createRedirectResponse('/', null, this.location);
+            return Utilities.createRedirectResponse();
 
         } catch (error) {
             this.console.error('SW: Client focus/notification error:', error);
             // 重大なエラーの場合のみエラーリダイレクト
-            return Utilities.createRedirectResponse('/', 'client-error', this.location);
+            return Utilities.createRedirectResponse(undefined, 'client-error', this.location);
         }
     }
 
@@ -693,7 +701,7 @@ class RequestHandler {
 
             if (!extractedData) {
                 this.console.warn('SW: No image data found in FormData');
-                return Utilities.createRedirectResponse('/', 'no-image', this.location);
+                return Utilities.createRedirectResponse(undefined, 'no-image', this.location);
             }
 
             this.console.log('SW: Image data extracted successfully', {
@@ -717,7 +725,7 @@ class RequestHandler {
             return await this.clientManager.redirectClient();
         } catch (error) {
             this.console.error('SW: Upload processing error:', error);
-            return Utilities.createRedirectResponse('/', 'processing-error', this.location);
+            return Utilities.createRedirectResponse(undefined, 'processing-error', this.location);
         }
     }
 
@@ -873,8 +881,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // 同一オリジンのリクエストを処理
-    if (event.request.url.startsWith(self.location.origin)) {
+    // 同一オリジンのリクエストを厳密に判定して処理
+    if (new URL(event.request.url).origin === self.location.origin) {
         const response = serviceWorkerCore.handleFetch(event);
         if (response !== undefined) {
             event.respondWith(response);
@@ -882,7 +890,7 @@ self.addEventListener('fetch', (event) => {
     }
     // 外部ドメインのプロフィール画像リクエストも処理
     else if (Utilities.isProfileImageRequest(event.request)) {
-        console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
+        ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
         event.respondWith(serviceWorkerCore.requestHandler.handleProfileImageRequest(event.request));
     }
 });
