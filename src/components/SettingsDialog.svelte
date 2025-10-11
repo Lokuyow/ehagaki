@@ -537,8 +537,8 @@
     }
     .site-title {
         display: flex;
-        align-items: center;
-        gap: 6px;
+        align-items: baseline;
+        gap: 8px;
         .site-name {
             font-size: 1.5rem;
             font-weight: bold;
