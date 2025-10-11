@@ -594,20 +594,27 @@ describe('AuthService統合テスト', () => {
 
         authService = new AuthService(mockDependencies);
 
+        // localStorageのモック
+        const mockLocalStorage = {
+            getItem: vi.fn(),
+            setItem: vi.fn(),
+            clear: vi.fn(),
+            removeItem: vi.fn(),
+            key: vi.fn(),
+            length: 0
+        };
+
+        Object.defineProperty(window, 'localStorage', {
+            value: mockLocalStorage,
+            writable: true
+        });
+
         // window.locationのモック
         Object.defineProperty(window, 'location', {
             value: {
                 pathname: '/test',
                 href: '',
                 replace: vi.fn()
-            },
-            writable: true
-        });
-
-        // localStorageのモック
-        Object.defineProperty(global, 'localStorage', {
-            value: {
-                clear: vi.fn()
             },
             writable: true
         });
