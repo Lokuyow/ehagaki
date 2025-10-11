@@ -271,15 +271,16 @@
             >
                 <div class="help-icon svg-icon" aria-label="Help"></div>
             </Button>
-            <a
-                href="https://github.com/Lokuyow/ehagaki"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="GitHub Repository"
-                class="github-link"
+            <Button
+                shape="circle"
+                variant="default"
+                className="github-link-btn"
+                onClick={() =>
+                    window.open("https://github.com/Lokuyow/ehagaki", "_blank")}
+                ariaLabel="GitHub Repository"
             >
                 <div class="github-icon svg-icon" aria-label="GitHub"></div>
-            </a>
+            </Button>
             <div>
                 <div class="zap-view-btn-group">
                     <button
@@ -516,14 +517,14 @@
         font-weight: bold;
         font-size: 1.3rem;
         width: 100%;
-        padding: 12px;
-        gap: 6px;
+        padding: 8px 12px;
+        gap: 2px;
         border-bottom: 1px solid var(--border-hr);
     }
     .first-row {
         display: flex;
         align-items: center;
-        justify-content: flex-start;
+        justify-content: space-between;
         width: 100%;
         gap: 10px;
     }
@@ -539,40 +540,40 @@
         align-items: center;
         gap: 6px;
         .site-name {
-            font-size: 1.375rem;
+            font-size: 1.5rem;
             font-weight: bold;
             letter-spacing: 0.5px;
         }
         .cache-version {
-            font-size: 0.9375rem;
+            font-size: 1rem;
             color: var(--text-light);
         }
     }
-    .github-link {
-        display: inline-flex;
-        align-items: center;
-        text-decoration: none;
+    :global(.github-link-btn.circle) {
+        width: 38px;
+        height: 38px;
 
         .github-icon {
             mask-image: url("/icons/github-mark.svg");
+            width: 26px;
+            height: 26px;
         }
     }
     :global(.help-btn.circle) {
         width: 38px;
         height: 38px;
         :global(.help-icon) {
-            mask-image: url("/icons/question-solid-full.svg");
-            width: 22px;
-            height: 22px;
+            mask-image: url("/icons/circle-question-solid-full.svg");
+            width: 30px;
+            height: 30px;
         }
     }
     .zap-view-btn-group {
         display: inline-flex;
-        height: 36px;
+        height: 38px;
 
         .zap-btn,
         .view-btn {
-            color: var(--text-light);
             min-width: 70px;
         }
 
