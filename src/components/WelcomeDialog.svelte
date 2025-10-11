@@ -91,6 +91,9 @@
         :global(.get-started-btn) {
             width: 100%;
             font-size: 1.0625rem;
+            &:active {
+                transform: scale(1);
+            }
         }
     }
 </style>
