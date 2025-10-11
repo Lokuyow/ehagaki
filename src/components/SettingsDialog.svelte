@@ -41,6 +41,7 @@
         onSelectedCompressionChange = undefined,
         selectedEndpoint = "",
         onSelectedEndpointChange = undefined,
+        onOpenWelcomeDialog = undefined,
     }: SettingsDialogProps = $props();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
@@ -258,6 +259,18 @@
             </div>
         </div>
         <div class="second-row">
+            <Button
+                shape="circle"
+                variant="default"
+                className="help-btn"
+                onClick={() => {
+                    onClose();
+                    onOpenWelcomeDialog?.();
+                }}
+                ariaLabel="Help"
+            >
+                <div class="help-icon svg-icon" aria-label="Help"></div>
+            </Button>
             <a
                 href="https://github.com/Lokuyow/ehagaki"
                 target="_blank"
@@ -500,7 +513,6 @@
         flex-direction: column;
         align-items: center;
         justify-content: space-between;
-        color: var(--text-light);
         font-weight: bold;
         font-size: 1.3rem;
         width: 100%;
@@ -511,23 +523,30 @@
     .first-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-start;
         width: 100%;
+        gap: 10px;
     }
     .second-row {
         display: flex;
-        justify-content: space-between;
         align-items: center;
+        justify-content: flex-end;
         width: 100%;
+        gap: 10px;
     }
     .site-title {
         display: flex;
         align-items: center;
         gap: 6px;
-        margin-right: auto;
-        font-size: 1.375rem;
-        color: var(--text);
-        opacity: 0.8;
+        .site-name {
+            font-size: 1.375rem;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+        .cache-version {
+            font-size: 0.9375rem;
+            color: var(--text-light);
+        }
     }
     .github-link {
         display: inline-flex;
@@ -536,6 +555,15 @@
 
         .github-icon {
             mask-image: url("/icons/github-mark.svg");
+        }
+    }
+    :global(.help-btn.circle) {
+        width: 38px;
+        height: 38px;
+        :global(.help-icon) {
+            mask-image: url("/icons/question-solid-full.svg");
+            width: 22px;
+            height: 22px;
         }
     }
     .zap-view-btn-group {
@@ -569,7 +597,7 @@
     .author-info {
         display: flex;
         align-items: center;
-        font-size: 1rem;
+        font-size: 0.9375rem;
         color: var(--text-light);
         gap: 4px;
     }
@@ -623,14 +651,6 @@
         font-size: 1rem;
         min-width: 200px;
         height: 50px;
-    }
-    .site-name {
-        font-weight: bold;
-        letter-spacing: 0.5px;
-    }
-    .cache-version {
-        font-size: 0.9375rem;
-        color: var(--text-light);
     }
     .rotate-right-icon {
         mask-image: url("/icons/rotate-right-solid-full.svg");

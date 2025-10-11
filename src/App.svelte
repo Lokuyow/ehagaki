@@ -571,6 +571,7 @@
       onSelectedCompressionChange={handleSelectedCompressionChange}
       {selectedEndpoint}
       onSelectedEndpointChange={handleSelectedEndpointChange}
+      onOpenWelcomeDialog={() => showWelcomeDialogStore.set(true)}
     />
   </main>
 {/if}

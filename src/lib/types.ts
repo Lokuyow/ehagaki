@@ -393,6 +393,7 @@ export interface SettingsDialogProps {
     onSelectedCompressionChange?: (value: string) => void;
     selectedEndpoint?: string;
     onSelectedEndpointChange?: (value: string) => void;
+    onOpenWelcomeDialog?: () => void;
 }
 
 export interface CompressionLevel {
