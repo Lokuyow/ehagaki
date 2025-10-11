@@ -241,7 +241,23 @@
     showFooter={true}
 >
     <div class="settings-header">
-        <div class="site-title">
+        <div class="first-row">
+            <div class="site-title">
+                <span class="site-name">eHagaki</span>
+                <span class="cache-version"
+                    >{swVersion ? `v${swVersion}` : ""}</span
+                >
+            </div>
+            <div class="author-info">
+                <span>{$_("settingsDialog.author_info") || "制作："}</span><a
+                    href="https://lokuyow.github.io/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    >{$_("settingsDialog.author_name") || " Lokuyow"}</a
+                >
+            </div>
+        </div>
+        <div class="second-row">
             <a
                 href="https://github.com/Lokuyow/ehagaki"
                 target="_blank"
@@ -251,31 +267,27 @@
             >
                 <div class="github-icon svg-icon" aria-label="GitHub"></div>
             </a>
-            <span class="site-name">eHagaki</span>
-            <span class="cache-version">{swVersion ? `v${swVersion}` : ""}</span
-            >
-        </div>
-
-        <div>
-            <div class="zap-view-btn-group">
-                <button
-                    class="zap-btn"
-                    data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
-                    data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
-                    data-relays="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
-                >
-                    Support
-                </button>
-                <span class="divider"></span>
-                <button
-                    class="view-btn"
-                    data-title="Thanks for the Support!"
-                    data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
-                    data-zap-color-mode="true"
-                    data-relay-urls="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
-                >
-                    View
-                </button>
+            <div>
+                <div class="zap-view-btn-group">
+                    <button
+                        class="zap-btn"
+                        data-npub="npub1a3pvwe2p3v7mnjz6hle63r628wl9w567aw7u23fzqs062v5vqcqqu3sgh3"
+                        data-note-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                        data-relays="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                    >
+                        Support
+                    </button>
+                    <span class="divider"></span>
+                    <button
+                        class="view-btn"
+                        data-title="Thanks for the Support!"
+                        data-nzv-id="naddr1qqxnzde4xsunzwpnxymrgwpsqgswcsk8v4qck0deepdtluag3a9rh0jh2d0wh0w9g53qg8a9x2xqvqqrqsqqql8kt67m30"
+                        data-zap-color-mode="true"
+                        data-relay-urls="wss://relay.nostr.band,wss://relay.damus.io,wss://nos.lol,wss://nostr.bitcoiner.social,wss://relay.nostr.wirednet.jp,wss://yabu.me"
+                    >
+                        View
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -485,21 +497,35 @@
     }
     .settings-header {
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: space-between;
         color: var(--text-light);
         font-weight: bold;
         font-size: 1.3rem;
         width: 100%;
-        padding: 14px 0;
+        padding: 12px;
+        gap: 6px;
         border-bottom: 1px solid var(--border-hr);
+    }
+    .first-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+    }
+    .second-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
     }
     .site-title {
         display: flex;
         align-items: center;
         gap: 6px;
         margin-right: auto;
-        font-size: 1.3rem;
+        font-size: 1.375rem;
         color: var(--text);
         opacity: 0.8;
     }
@@ -507,7 +533,6 @@
         display: inline-flex;
         align-items: center;
         text-decoration: none;
-        padding: 8px;
 
         .github-icon {
             mask-image: url("/icons/github-mark.svg");
@@ -515,8 +540,7 @@
     }
     .zap-view-btn-group {
         display: inline-flex;
-        margin: 0 8px;
-        height: 40px;
+        height: 36px;
 
         .zap-btn,
         .view-btn {
@@ -541,6 +565,19 @@
             padding: 0 14px 0 12px;
         }
     }
+
+    .author-info {
+        display: flex;
+        align-items: center;
+        font-size: 1rem;
+        color: var(--text-light);
+        gap: 4px;
+    }
+    .author-info a {
+        color: var(--text-light);
+        text-decoration: underline;
+    }
+
     .modal-body {
         padding: 16px;
         font-size: 1rem;

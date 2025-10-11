@@ -49,7 +49,9 @@
     "update_app": "Update app",
     "updating": "Updating...",
     "toggle_write_relays_list": "Toggle write relays list",
-    "no_relay_info": "No relay info"
+    "no_relay_info": "No relay info",
+    "author_info": "Author by:",
+    "author_name": "Lokuyow"
   },
   "footerInfoDisplay": {
     "uploading": "Uploading",

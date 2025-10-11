@@ -67,7 +67,9 @@
     "update_app": "アプリを更新",
     "updating": "更新中...",
     "toggle_write_relays_list": "投稿先リレーの表示切替",
-    "no_relay_info": "リレー情報なし"
+    "no_relay_info": "リレー情報なし",
+    "author_info": "制作:",
+    "author_name": "ロクヨウ"
   },
   "footerInfoDisplay": {
     "uploading": "アップロード中",
