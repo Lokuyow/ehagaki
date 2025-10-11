@@ -67,6 +67,10 @@
 
         :global(button) {
             flex: 1;
+
+            :global(.square) {
+                background-color: whitesmoke;
+            }
         }
     }
 </style>
