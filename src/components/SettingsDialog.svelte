@@ -266,6 +266,7 @@
                 >
                     Support
                 </button>
+                <span class="divider"></span>
                 <button
                     class="view-btn"
                     data-title="Thanks for the Support!"
@@ -490,7 +491,7 @@
         font-weight: bold;
         font-size: 1.3rem;
         width: 100%;
-        padding: 12px 0;
+        padding: 14px 0;
         border-bottom: 1px solid var(--border-hr);
     }
     .site-title {
@@ -514,8 +515,8 @@
     }
     .zap-view-btn-group {
         display: inline-flex;
-        height: 35px;
         margin: 0 8px;
+        height: 40px;
 
         .zap-btn,
         .view-btn {
@@ -525,13 +526,18 @@
 
         .zap-btn {
             border-radius: 6px 0 0 6px;
-            border-right: 1px solid var(--border);
+            border-right-color: transparent;
             padding: 0 10px 0 13px;
+        }
+
+        .divider {
+            width: 1px;
+            background-color: var(--border);
         }
 
         .view-btn {
             border-radius: 0 6px 6px 0;
-            border-left: 1px solid var(--border);
+            border-left-color: transparent;
             padding: 0 14px 0 12px;
         }
     }
