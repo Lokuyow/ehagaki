@@ -233,11 +233,11 @@
 
     // iPhone用振動チェックボックスの参照
     let vibrateSwitchInput: HTMLInputElement | undefined = $state();
-    
+
     // マウント時にswitch属性を設定
     $effect(() => {
         if (vibrateSwitchInput) {
-            vibrateSwitchInput.setAttribute('switch', '');
+            vibrateSwitchInput.setAttribute("switch", "");
         }
     });
 </script>
@@ -269,7 +269,10 @@
                 variant="default"
                 shape="square"
                 className="clear-button"
-                disabled={!canPost || postStatus.sending || isUploading}
+                disabled={!canPost ||
+                    postStatus.sending ||
+                    isUploading ||
+                    isShowingLoader}
                 onClick={onResetPostContent}
                 ariaLabel={$_("postComponent.clear_editor")}
             >
@@ -279,7 +282,10 @@
                 variant="default"
                 shape="square"
                 className="image-button"
-                disabled={!hasStoredKey || postStatus.sending || isUploading}
+                disabled={!hasStoredKey ||
+                    postStatus.sending ||
+                    isUploading ||
+                    isShowingLoader}
                 onClick={onUploadImage}
                 ariaLabel={$_("postComponent.upload_image")}
             >
