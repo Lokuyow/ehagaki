@@ -5,3 +5,4 @@ export { ImageDragDropExtension } from './imageDragDrop';
 export { SmartBackspaceExtension } from './smartBackspace';
 export { GapCursorNewlineExtension } from './gapCursorNewline';
 export { Video } from './videoExtension';
+export { ClipboardExtension } from './clipboardExtension';

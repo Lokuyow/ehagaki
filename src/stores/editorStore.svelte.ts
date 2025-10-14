@@ -8,7 +8,7 @@ import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { Video } from '../lib/editor/videoExtension';
 import { validateAndNormalizeUrl } from '../lib/utils/editorUtils';
 import { generateSimpleUUID } from '../lib/utils/appUtils';
-import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension } from '../lib/editor';
+import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
@@ -21,8 +21,8 @@ export function createEditorStore(placeholderText: string) {
         placeholder: placeholderText,
         emptyEditorClass: 'is-editor-empty',
         showOnlyWhenEditable: true,
-        showOnlyCurrent: false,
-        includeChildren: true,
+        showOnlyCurrent: true,  // 変更: 現在の段落のみに表示
+        includeChildren: false, // 変更: 子要素には表示しない
     });
 
     const editorStore = createEditor({
@@ -79,6 +79,7 @@ export function createEditorStore(placeholderText: string) {
                 }
             }),
             Video,
+            ClipboardExtension, // ← クリップボード処理を追加（ImagePasteExtensionの前に配置）
             ImagePasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
@@ -138,6 +139,8 @@ export function createEditorStore(placeholderText: string) {
             // プレースホルダー属性を設定
             const editorElement = editor.view.dom as HTMLElement;
             if (editorElement) {
+                // 初期状態では空なのでis-editor-emptyクラスを追加
+                editorElement.classList.add('is-editor-empty');
                 editorElement.setAttribute('data-placeholder', placeholderText);
 
                 // 段落要素にもプレースホルダー属性を設定
@@ -158,9 +161,34 @@ export function createEditorStore(placeholderText: string) {
             }
         },
         onUpdate({ editor }) {
-            // 更新時にも段落要素のプレースホルダー属性を確認・設定
+            // 更新時にエディタ全体が空かどうかを判定
             const editorElement = editor.view.dom as HTMLElement;
             if (editorElement) {
+                // エディタの内容を確認（テキストまたは画像/動画があるか）
+                const doc = editor.state.doc;
+                let isEmpty = true;
+                
+                doc.descendants((node) => {
+                    // テキストがある、または画像/動画ノードがある場合は空ではない
+                    if (node.isText && node.text && node.text.trim().length > 0) {
+                        isEmpty = false;
+                        return false; // 探索を中止
+                    }
+                    if (node.type.name === 'image' || node.type.name === 'video') {
+                        isEmpty = false;
+                        return false; // 探索を中止
+                    }
+                    return true;
+                });
+                
+                // is-editor-emptyクラスをエディタ要素に設定/削除
+                if (isEmpty) {
+                    editorElement.classList.add('is-editor-empty');
+                } else {
+                    editorElement.classList.remove('is-editor-empty');
+                }
+                
+                // 段落要素のプレースホルダー属性を設定
                 const emptyParagraphs = editorElement.querySelectorAll('p.is-editor-empty, p.is-empty');
                 emptyParagraphs.forEach((p) => {
                     const paragraph = p as HTMLElement;

@@ -232,9 +232,8 @@ export function extractFragmentsFromDoc(doc: any): string[] {
     doc.descendants((node: any) => {
         if (node.type.name === 'paragraph') {
             const textContent = node.textContent;
-            if (textContent.trim()) {
-                fragments.push(textContent);
-            }
+            // 空の段落も含めて抽出（改行のみの行を維持）
+            fragments.push(textContent);
         } else if (node.type.name === 'image') {
             const src = node.attrs?.src;
             if (src) {

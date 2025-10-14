@@ -623,8 +623,8 @@
     content: none !important;
   }
 
-  /* カスタムプレースホルダーの表示 - より具体的なセレクター */
-  :global(.tiptap-editor p.is-editor-empty::before) {
+  /* カスタムプレースホルダーの表示 - 最初の段落のみ、かつエディタが完全に空の場合のみ */
+  :global(.tiptap-editor.is-editor-empty > p.is-editor-empty:first-child::before) {
     content: attr(data-placeholder) !important;
     position: absolute;
     top: 0;
@@ -639,9 +639,7 @@
   }
 
   /* フォーカス時のプレースホルダー表示を継続（薄く表示） */
-  :global(.tiptap-editor:focus p.is-editor-empty::before),
-  :global(.tiptap-editor:focus p.editor-paragraph.is-editor-empty::before),
-  :global(.tiptap-editor.is-editor-empty:focus::before) {
+  :global(.tiptap-editor.is-editor-empty:focus > p.is-editor-empty:first-child::before) {
     opacity: 0.6 !important;
   }
 

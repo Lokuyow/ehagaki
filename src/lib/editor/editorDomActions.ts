@@ -114,6 +114,7 @@ export function fileDropActionWithDragState(
 }
 
 // pasteAction
+// 画像ファイルのペーストのみを処理（テキストペーストはClipboardExtensionで処理）
 export function pasteAction(node: HTMLElement) {
     function handlePaste(event: ClipboardEvent) {
         if (!event.clipboardData) return;
@@ -128,6 +129,7 @@ export function pasteAction(node: HTMLElement) {
             event.preventDefault();
             (node as any).__uploadFiles?.(files);
         }
+        // テキストペーストはClipboardExtensionに委譲
     }
     node.addEventListener("paste", handlePaste as EventListener);
     return {
