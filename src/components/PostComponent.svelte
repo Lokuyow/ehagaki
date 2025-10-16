@@ -11,10 +11,9 @@
   import { videoCompressionProgressStore } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadFiles } from "../lib/uploadHelper";
-  import Button from "./Button.svelte";
-  import Dialog from "./Dialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import PopupModal from "./PopupModal.svelte";
+  import SecretKeyWarningDialog from "./SecretKeyWarningDialog.svelte";
   import {
     fileDropAction as _fileDropAction,
     pasteAction,
@@ -42,8 +41,6 @@
     updateEditorContent,
     updatePostStatus,
     updateUploadState,
-    resetEditorState,
-    resetPostStatus,
     setPostSubmitter,
   } from "../stores/editorStore.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
@@ -112,10 +109,6 @@
     const cleanup = setupGboardHandler();
     return cleanup;
   });
-
-  function clearEditorContent() {
-    currentEditor?.chain().clearContent().run();
-  }
 
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
@@ -357,7 +350,7 @@
     let lastContent = currentEditor ? currentEditor.getText() : "";
     let isProcessingPaste = false;
 
-    const handleInput = (event: Event) => {
+    const handleInput = () => {
       if (isProcessingPaste) return;
 
       if (currentEditor) {
@@ -416,7 +409,10 @@
     const handleImageFullscreenRequest = (
       event: CustomEvent<{ src: string; alt?: string }>,
     ) => {
-      postComponentUIStore.showImageFullscreen(event.detail.src, event.detail.alt || "");
+      postComponentUIStore.showImageFullscreen(
+        event.detail.src,
+        event.detail.alt || "",
+      );
     };
 
     const handleSelectImageNode = (e: CustomEvent<{ pos: number }>) => {
@@ -534,35 +530,11 @@
   {/if}
 </div>
 
-<Dialog
+<SecretKeyWarningDialog
   bind:show={showSecretKeyDialog}
-  ariaLabel={$_("postComponent.warning")}
-  onClose={cancelSendWithSecretKey}
->
-  <div class="secretkey-dialog-content">
-    <div class="secretkey-dialog-message">
-      {$_("postComponent.secret_key_detected")}
-    </div>
-    <div class="secretkey-dialog-buttons">
-      <Button
-        className="btn-confirm"
-        variant="danger"
-        shape="square"
-        onClick={confirmSendWithSecretKey}
-      >
-        {$_("postComponent.post")}
-      </Button>
-      <Button
-        className="btn-cancel"
-        variant="secondary"
-        shape="square"
-        onClick={cancelSendWithSecretKey}
-      >
-        {$_("postComponent.cancel")}
-      </Button>
-    </div>
-  </div>
-</Dialog>
+  onConfirm={confirmSendWithSecretKey}
+  onCancel={cancelSendWithSecretKey}
+/>
 
 <ImageFullscreen
   bind:show={showImageFullscreen}
@@ -725,27 +697,6 @@
 
   :global(.tiptap-editor .preview-link:visited) {
     color: var(--link-visited);
-  }
-
-  .secretkey-dialog-content {
-    text-align: center;
-  }
-  .secretkey-dialog-message {
-    margin: 46px 0;
-    color: var(--text);
-    font-size: 1.2rem;
-    font-weight: bold;
-  }
-  .secretkey-dialog-buttons {
-    display: flex;
-    justify-content: center;
-    height: 60px;
-    gap: 8px;
-
-    :global(button) {
-      flex: 1;
-      font-size: 1.2rem;
-    }
   }
 
   /* ドロップゾーンのフェードアウトアニメーション（改善版） */
