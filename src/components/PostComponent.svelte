@@ -33,6 +33,7 @@
   import {
     globalContextMenuStore,
     lastClickPositionStore,
+    postComponentUIStore,
   } from "../stores/appStore.svelte";
   import {
     createEditorStore,
@@ -67,16 +68,22 @@
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
   let postManager: PostManager | undefined = $state();
-  let showSecretKeyDialog = $state(false);
-  let pendingPost = "";
-  let showImageFullscreen = $state(false);
-  let fullscreenImageSrc = $state("");
-  let fullscreenImageAlt = $state("");
   let imageOxMap: Record<string, string> = $state({});
   let imageXMap: Record<string, string> = $state({});
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
+
+  // UI状態をストアから取得
+  let postComponentUI = $derived(postComponentUIStore.value);
+  let showSecretKeyDialog = $derived(postComponentUI.showSecretKeyDialog);
+  let showImageFullscreen = $derived(postComponentUI.showImageFullscreen);
+  let fullscreenImageSrc = $derived(postComponentUI.fullscreenImageSrc);
+  let fullscreenImageAlt = $derived(postComponentUI.fullscreenImageAlt);
+  let showPopupModal = $derived(postComponentUI.showPopupModal);
+  let popupX = $derived(postComponentUI.popupX);
+  let popupY = $derived(postComponentUI.popupY);
+  let popupMessage = $derived(postComponentUI.popupMessage);
 
   // グローバルコンテキストメニューの状態
   let globalContextMenuState = $derived($globalContextMenuStore);
@@ -131,8 +138,7 @@
     if (!postManager || !currentEditor) return;
     const postContent = postManager.preparePostContent(currentEditor);
     if (containsSecretKey(postContent)) {
-      pendingPost = postContent;
-      showSecretKeyDialog = true;
+      postComponentUIStore.showSecretKeyDialog(postContent);
       return;
     }
     await postManager.performPostSubmission(
@@ -179,104 +185,69 @@
       postManager.clearContentAfterSuccess(currentEditor);
   }
 
-  // UI状態管理関連の変数
-  let showPopupModal = $state(false);
-  let popupX = $state(0);
-  let popupY = $state(0);
-  let popupMessage = $state("");
-
-  // UI状態管理関連の処理をまとめる
-  function handleSecretKeyDialog() {
-    async function confirmSendWithSecretKey() {
-      showSecretKeyDialog = false;
-      if (postManager && currentEditor) {
-        const imageBlurhashMap = postManager.prepareImageBlurhashMap(
-          currentEditor,
-          imageOxMap,
-          imageXMap,
+  // UI状態管理をストアから取得して使用
+  async function confirmSendWithSecretKey() {
+    const pendingPost = postComponentUIStore.getPendingPost();
+    postComponentUIStore.hideSecretKeyDialog();
+    if (postManager && currentEditor) {
+      const imageBlurhashMap = postManager.prepareImageBlurhashMap(
+        currentEditor,
+        imageOxMap,
+        imageXMap,
+      );
+      updatePostStatus({
+        sending: true,
+        success: false,
+        error: false,
+        message: "",
+        completed: false,
+      });
+      try {
+        const result = await postManager.submitPost(
+          pendingPost,
+          imageBlurhashMap,
         );
-        updatePostStatus({
-          sending: true,
-          success: false,
-          error: false,
-          message: "",
-          completed: false,
-        });
-        try {
-          const result = await postManager.submitPost(
-            pendingPost,
-            imageBlurhashMap,
-          );
-          if (result.success) {
-            updatePostStatus({
-              sending: false,
-              success: true,
-              error: false,
-              message: "postComponent.post_success",
-              completed: true,
-            });
-            clearContentAfterSuccess();
-            onPostSuccess?.();
-          } else {
-            updatePostStatus({
-              sending: false,
-              success: false,
-              error: true,
-              message: result.error || "postComponent.post_error",
-              completed: false,
-            });
-          }
-        } catch (error) {
+        if (result.success) {
+          updatePostStatus({
+            sending: false,
+            success: true,
+            error: false,
+            message: "postComponent.post_success",
+            completed: true,
+          });
+          clearContentAfterSuccess();
+          onPostSuccess?.();
+        } else {
           updatePostStatus({
             sending: false,
             success: false,
             error: true,
-            message: "postComponent.post_error",
+            message: result.error || "postComponent.post_error",
             completed: false,
           });
         }
+      } catch (error) {
+        updatePostStatus({
+          sending: false,
+          success: false,
+          error: true,
+          message: "postComponent.post_error",
+          completed: false,
+        });
       }
-      pendingPost = "";
     }
-
-    function cancelSendWithSecretKey() {
-      showSecretKeyDialog = false;
-      pendingPost = "";
-    }
-
-    return { confirmSendWithSecretKey, cancelSendWithSecretKey };
   }
 
-  function handlePopup() {
-    function showPopupMessage(x: number, y: number, message: string) {
-      popupX = x;
-      popupY = y;
-      popupMessage = message;
-      showPopupModal = true;
-      setTimeout(() => {
-        showPopupModal = false;
-      }, 1800);
-    }
-
-    return { showPopupMessage };
+  function cancelSendWithSecretKey() {
+    postComponentUIStore.hideSecretKeyDialog();
   }
 
-  function handleImageFullscreen() {
-    function closeFullscreen() {
-      showImageFullscreen = false;
-      fullscreenImageSrc = "";
-      fullscreenImageAlt = "";
-      setTimeout(() => {
-        domUtils.querySelector(".tiptap-editor")?.focus();
-      }, 150);
-    }
-
-    return { closeFullscreen };
+  function closeFullscreen() {
+    postComponentUIStore.hideImageFullscreen();
+    setTimeout(() => {
+      domUtils.querySelector(".tiptap-editor")?.focus();
+    }, 150);
   }
-
-  const secretKeyHandlers = handleSecretKeyDialog();
-  const popupHandlers = handlePopup();
-  const fullscreenHandlers = handleImageFullscreen();
 
   // グローバルコンテキストメニューの位置とアイテムを更新
   $effect(() => {
@@ -445,9 +416,7 @@
     const handleImageFullscreenRequest = (
       event: CustomEvent<{ src: string; alt?: string }>,
     ) => {
-      fullscreenImageSrc = event.detail.src;
-      fullscreenImageAlt = event.detail.alt || "";
-      showImageFullscreen = true;
+      postComponentUIStore.showImageFullscreen(event.detail.src, event.detail.alt || "");
     };
 
     const handleSelectImageNode = (e: CustomEvent<{ pos: number }>) => {
@@ -568,7 +537,7 @@
 <Dialog
   bind:show={showSecretKeyDialog}
   ariaLabel={$_("postComponent.warning")}
-  onClose={secretKeyHandlers.cancelSendWithSecretKey}
+  onClose={cancelSendWithSecretKey}
 >
   <div class="secretkey-dialog-content">
     <div class="secretkey-dialog-message">
@@ -579,7 +548,7 @@
         className="btn-confirm"
         variant="danger"
         shape="square"
-        onClick={secretKeyHandlers.confirmSendWithSecretKey}
+        onClick={confirmSendWithSecretKey}
       >
         {$_("postComponent.post")}
       </Button>
@@ -587,7 +556,7 @@
         className="btn-cancel"
         variant="secondary"
         shape="square"
-        onClick={secretKeyHandlers.cancelSendWithSecretKey}
+        onClick={cancelSendWithSecretKey}
       >
         {$_("postComponent.cancel")}
       </Button>
@@ -599,7 +568,7 @@
   bind:show={showImageFullscreen}
   src={fullscreenImageSrc}
   alt={fullscreenImageAlt}
-  onClose={fullscreenHandlers.closeFullscreen}
+  onClose={closeFullscreen}
 />
 
 {#if showGlobalContextMenu}
@@ -613,7 +582,7 @@
         nodeId: undefined,
         src: undefined,
       })}
-    onShowPopup={popupHandlers.showPopupMessage}
+    onShowPopup={postComponentUIStore.showPopupMessage}
   />
 {/if}
 
@@ -622,7 +591,7 @@
     show={showPopupModal}
     x={popupX}
     y={popupY}
-    onClose={() => (showPopupModal = false)}
+    onClose={() => postComponentUIStore.hidePopupMessage()}
   >
     <div class="copy-success-message">{popupMessage}</div>
   </PopupModal>

@@ -422,6 +422,19 @@ export interface I18nFunction {
     (key: string): string | undefined;
 }
 
+// --- PostComponent UI状態型定義 ---
+export interface PostComponentUIState {
+    showSecretKeyDialog: boolean;
+    pendingPost: string;
+    showImageFullscreen: boolean;
+    fullscreenImageSrc: string;
+    fullscreenImageAlt: string;
+    showPopupModal: boolean;
+    popupX: number;
+    popupY: number;
+    popupMessage: string;
+}
+
 // --- Editor and Utils types ---
 export interface NodeData {
     type: string;
