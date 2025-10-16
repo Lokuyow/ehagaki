@@ -10,8 +10,10 @@ import { validateAndNormalizeUrl } from '../lib/utils/editorUtils';
 import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
-import type { PostStatus, EditorState } from '../lib/types';
+import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
+import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '../lib/editor/editorDomActions.svelte';
+import { processPastedText } from '../lib/editor/clipboardExtension';
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -336,5 +338,90 @@ export function setPostSubmitter(submitter: () => Promise<void>) {
 export async function submitPost() {
     if (postComponentSubmit) {
         await postComponentSubmit();
+    }
+}
+
+// --- エディター初期化・クリーンアップ関数 ---
+export function initializeEditor(params: InitializeEditorParams): InitializeEditorResult {
+    const {
+        placeholderText,
+        editorContainerEl,
+        currentEditor,
+        hasStoredKey,
+        submitPost,
+        uploadFiles,
+        eventCallbacks
+    } = params;
+
+    // プレースホルダーの設定
+    placeholderTextStore.value = placeholderText;
+
+    // エディターストアの作成
+    const editor = createEditorStore(placeholderText);
+
+    // エディターインスタンスの購読
+    let latestEditor: any = null;
+    const unsubscribe = editor.subscribe((editorInstance: any) => {
+        latestEditor = editorInstance;
+    });
+
+    // イベントリスナーのセットアップ
+    const handlers = setupEventListeners({
+        currentEditor: latestEditor,
+        editorContainerEl,
+        callbacks: eventCallbacks,
+    });
+
+    // ポスト送信関数の登録
+    setPostSubmitter(submitPost);
+
+    // エディターコンテナに必要なプロパティを設定
+    if (editorContainerEl) {
+        Object.assign(editorContainerEl, {
+            __uploadFiles: uploadFiles,
+            __currentEditor: () => latestEditor,
+            __hasStoredKey: () => hasStoredKey,
+            __postStatus: () => editorState.postStatus,
+            __submitPost: submitPost,
+        });
+    }
+
+    // Android Gboard対応のセットアップ
+    let gboardCleanup: (() => void) | undefined;
+    if (editorContainerEl) {
+        gboardCleanup = setupGboardHandler({
+            editorContainerEl,
+            getCurrentEditor: () => latestEditor,
+            processPastedText,
+        });
+    }
+
+    return { editor, unsubscribe, handlers, gboardCleanup };
+}
+
+export function cleanupEditor(params: CleanupEditorParams): void {
+    const { unsubscribe, handlers, gboardCleanup, currentEditor, editorContainerEl } = params;
+
+    // イベントリスナーのクリーンアップ
+    cleanupEventListeners(handlers, editorContainerEl);
+
+    // Gboardハンドラーのクリーンアップ
+    if (gboardCleanup) {
+        gboardCleanup();
+    }
+
+    // エディターの購読解除
+    unsubscribe();
+
+    // エディターの破棄
+    currentEditor?.destroy?.();
+
+    // エディターコンテナのプロパティをクリア
+    if (editorContainerEl) {
+        delete (editorContainerEl as any).__uploadFiles;
+        delete (editorContainerEl as any).__currentEditor;
+        delete (editorContainerEl as any).__hasStoredKey;
+        delete (editorContainerEl as any).__postStatus;
+        delete (editorContainerEl as any).__submitPost;
     }
 }

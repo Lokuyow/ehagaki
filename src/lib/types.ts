@@ -547,6 +547,56 @@ export interface MenuItem {
     icon?: string; // アイコンパス（任意）
 }
 
+// --- Editor Event Listener types ---
+export interface EditorEventCallbacks {
+    onContentUpdate?: (plainText: string, hasMedia: boolean) => void;
+    onImageFullscreenRequest?: (src: string, alt: string) => void;
+    onSelectImageNode?: (pos: number) => void;
+}
+
+export interface EditorEventHandlers {
+    handleContentUpdate: EventListener;
+    handleImageFullscreenRequest: EventListener;
+    handleSelectImageNode: EventListener;
+}
+
+export interface SetupEventListenersParams {
+    currentEditor: TipTapEditor | null;
+    editorContainerEl: HTMLElement | null;
+    callbacks: EditorEventCallbacks;
+}
+
+export interface GboardHandlerParams {
+    editorContainerEl: HTMLElement;
+    getCurrentEditor: () => TipTapEditor | null;
+    processPastedText: (editor: TipTapEditor, text: string) => void;
+}
+
+export interface InitializeEditorParams {
+    placeholderText: string;
+    editorContainerEl: HTMLElement | null;
+    currentEditor: TipTapEditor | null;
+    hasStoredKey: boolean;
+    submitPost: () => Promise<void>;
+    uploadFiles: (files: File[] | FileList) => void;
+    eventCallbacks: EditorEventCallbacks;
+}
+
+export interface InitializeEditorResult {
+    editor: any;
+    unsubscribe: () => void;
+    handlers: EditorEventHandlers;
+    gboardCleanup?: () => void;
+}
+
+export interface CleanupEditorParams {
+    unsubscribe: () => void;
+    handlers: EditorEventHandlers;
+    gboardCleanup?: () => void;
+    currentEditor: TipTapEditor | null;
+    editorContainerEl: HTMLElement | null;
+}
+
 // --- Image Context Menu Store 型定義 ---
 export interface ImageContextMenuStore {
     update: (updater: (state: ImageContextMenuState) => ImageContextMenuState) => void;

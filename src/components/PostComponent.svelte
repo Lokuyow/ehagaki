@@ -2,10 +2,7 @@
   import { _ } from "svelte-i18n";
   import { onMount } from "svelte";
   import { EditorContent } from "svelte-tiptap";
-  import type { Readable } from "svelte/store";
   import type { Editor as TipTapEditor } from "@tiptap/core";
-  import type { Node as PMNode } from "prosemirror-model";
-  import { NodeSelection } from "prosemirror-state";
   import type { RxNostr } from "rx-nostr";
   import type { UploadProgress } from "../lib/types";
   import { videoCompressionProgressStore } from "../stores/appStore.svelte";
@@ -20,7 +17,6 @@
     touchAction,
     keydownAction,
     fileDropActionWithDragState,
-    hasMediaInDoc,
   } from "../lib/editor/editorDomActions.svelte";
   import {
     containsSecretKey,
@@ -28,22 +24,21 @@
   } from "../lib/utils/appUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
   import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
-  import { processPastedText } from "../lib/editor/clipboardExtension";
   import {
     globalContextMenuStore,
     lastClickPositionStore,
     postComponentUIStore,
   } from "../stores/appStore.svelte";
   import {
-    createEditorStore,
     placeholderTextStore,
     editorState,
     updateEditorContent,
     updatePostStatus,
-    updateUploadState,
-    setPostSubmitter,
+    initializeEditor,
+    cleanupEditor,
   } from "../stores/editorStore.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
+  import type { InitializeEditorResult, MenuItem } from "../lib/types";
 
   interface Props {
     rxNostr?: RxNostr;
@@ -53,14 +48,9 @@
     onUploadProgress?: (progress: UploadProgress) => void;
   }
 
-  // EditorStore型
-  type EditorStore = Readable<TipTapEditor | null> & {
-    updatePlaceholder?: (s: string) => void;
-  };
-
   let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
     $props();
-  let editor: EditorStore | null = $state(null);
+  let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
   let fileInput: HTMLInputElement | undefined = $state();
@@ -70,6 +60,7 @@
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
+  let editorResources: InitializeEditorResult | null = null;
 
   // UI状態をストアから取得
   let postComponentUI = $derived(postComponentUIStore.value);
@@ -87,7 +78,6 @@
   let showGlobalContextMenu = $derived(globalContextMenuState.open);
   let globalContextMenuX = $state(0);
   let globalContextMenuY = $state(0);
-  import type { MenuItem } from "../lib/types";
   let globalContextMenuItems = $state<MenuItem[]>([]);
 
   // --- PostManager初期化 ---
@@ -100,14 +90,60 @@
 
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
-    const editorResources = initializeEditor();
-    return () => cleanupEditor(editorResources);
-  });
+    const initialPlaceholder =
+      $_("postComponent.enter_your_text") || "テキストを入力してください";
 
-  // Android Gboard対応: inputイベントでペースト検出
-  $effect(() => {
-    const cleanup = setupGboardHandler();
-    return cleanup;
+    editorResources = initializeEditor({
+      placeholderText: initialPlaceholder,
+      editorContainerEl,
+      currentEditor,
+      hasStoredKey,
+      submitPost,
+      uploadFiles: (files: File[] | FileList) => {
+        uploadFiles({
+          files,
+          currentEditor,
+          fileInput,
+          onUploadProgress,
+          updateUploadState: (isUploading: boolean, message?: string) => {
+            editorState.isUploading = isUploading;
+            editorState.uploadErrorMessage = message || "";
+          },
+          imageOxMap,
+          imageXMap,
+          videoCompressionProgressStore,
+          getUploadFailedText: (key: string) => $_(key),
+        });
+      },
+      eventCallbacks: {
+        onContentUpdate: updateEditorContent,
+        onImageFullscreenRequest: (src: string, alt: string) => {
+          postComponentUIStore.showImageFullscreen(src, alt);
+        },
+        onSelectImageNode: (pos: number) => {
+          // 既に handleSelectImageNode 内で処理済み
+        },
+      },
+    });
+
+    editor = editorResources.editor;
+
+    // エディターの購読
+    const unsubscribe = editor.subscribe(
+      (editorInstance: TipTapEditor | null) => (currentEditor = editorInstance),
+    );
+
+    return () => {
+      if (editorResources) {
+        cleanupEditor({
+          unsubscribe: editorResources.unsubscribe,
+          handlers: editorResources.handlers,
+          gboardCleanup: editorResources.gboardCleanup,
+          currentEditor,
+          editorContainerEl,
+        });
+      }
+    };
   });
 
   function handleFileSelect(event: Event) {
@@ -118,7 +154,10 @@
         currentEditor,
         fileInput,
         onUploadProgress,
-        updateUploadState,
+        updateUploadState: (isUploading: boolean, message?: string) => {
+          editorState.isUploading = isUploading;
+          editorState.uploadErrorMessage = message || "";
+        },
         imageOxMap,
         imageXMap,
         videoCompressionProgressStore,
@@ -295,202 +334,6 @@
 
   export function openFileDialog() {
     fileInput?.click();
-  }
-
-  // エディター初期化関数
-  function initializeEditor() {
-    const initialPlaceholder =
-      $_("postComponent.enter_your_text") || "テキストを入力してください";
-    placeholderTextStore.value = initialPlaceholder;
-    editor = createEditorStore(initialPlaceholder) as EditorStore;
-    const unsubscribe = editor.subscribe(
-      (editorInstance) => (currentEditor = editorInstance),
-    );
-
-    const handlers = setupEventListeners();
-    setPostSubmitter(submitPost);
-
-    if (editorContainerEl) {
-      Object.assign(editorContainerEl, {
-        __uploadFiles: uploadFiles,
-        __currentEditor: () => currentEditor,
-        __hasStoredKey: () => hasStoredKey,
-        __postStatus: () => postStatus,
-        __submitPost: submitPost,
-      });
-    }
-
-    return { unsubscribe, handlers };
-  }
-
-  // エディタークリーンアップ関数
-  function cleanupEditor({
-    unsubscribe,
-    handlers,
-  }: {
-    unsubscribe: () => void;
-    handlers: any;
-  }) {
-    cleanupEventListeners(handlers);
-    unsubscribe();
-    currentEditor?.destroy?.();
-    if (editorContainerEl) {
-      delete (editorContainerEl as any).__uploadFiles;
-      delete (editorContainerEl as any).__currentEditor;
-      delete (editorContainerEl as any).__hasStoredKey;
-      delete (editorContainerEl as any).__postStatus;
-      delete (editorContainerEl as any).__submitPost;
-    }
-  }
-
-  // Android Gboard対応処理
-  function setupGboardHandler() {
-    if (!editorContainerEl) return;
-
-    let lastContent = currentEditor ? currentEditor.getText() : "";
-    let isProcessingPaste = false;
-
-    const handleInput = () => {
-      if (isProcessingPaste) return;
-
-      if (currentEditor) {
-        const currentContent = currentEditor.getText();
-        const addedLength = currentContent.length - lastContent.length;
-
-        if (addedLength > 10 && currentContent.length > lastContent.length) {
-          const addedText = currentContent.substring(lastContent.length);
-
-          if (addedText.includes("\n")) {
-            isProcessingPaste = true;
-
-            currentEditor.chain().focus().clearContent().run();
-
-            setTimeout(() => {
-              if (currentEditor) {
-                const cleanedText = addedText.replace(/\n\n/g, "\n");
-                processPastedText(currentEditor, cleanedText);
-              }
-              isProcessingPaste = false;
-
-              setTimeout(() => {
-                if (currentEditor) {
-                  lastContent = currentEditor.getText();
-                }
-              }, 100);
-            }, 10);
-
-            return;
-          }
-        }
-
-        lastContent = currentContent;
-      }
-    };
-
-    editorContainerEl.addEventListener("input", handleInput);
-
-    return () => {
-      if (editorContainerEl) {
-        editorContainerEl.removeEventListener("input", handleInput);
-      }
-    };
-  }
-
-  // イベントリスナーのセットアップとクリーンアップをヘルパー関数に抽出
-  function setupEventListeners() {
-    const handleContentUpdate = (event: CustomEvent<{ plainText: string }>) => {
-      const plainText = event.detail.plainText;
-      let hasMedia = currentEditor
-        ? hasMediaInDoc(currentEditor.state?.doc as PMNode | undefined)
-        : false;
-      updateEditorContent(plainText, hasMedia);
-    };
-
-    const handleImageFullscreenRequest = (
-      event: CustomEvent<{ src: string; alt?: string }>,
-    ) => {
-      postComponentUIStore.showImageFullscreen(
-        event.detail.src,
-        event.detail.alt || "",
-      );
-    };
-
-    const handleSelectImageNode = (e: CustomEvent<{ pos: number }>) => {
-      const pos = e?.detail?.pos;
-      if (pos == null) return;
-      if (!currentEditor || !currentEditor.view) return;
-      try {
-        if (!("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
-          currentEditor.view.focus();
-        }
-        const sel = NodeSelection.create(currentEditor.state.doc, pos);
-        currentEditor.view.dispatch(
-          currentEditor.state.tr.setSelection(sel).scrollIntoView(),
-        );
-      } catch (err) {
-        console.warn("select-image-node handler failed:", err);
-      }
-    };
-
-    window.addEventListener(
-      "editor-content-changed",
-      handleContentUpdate as EventListener,
-    );
-    window.addEventListener(
-      "image-fullscreen-request",
-      handleImageFullscreenRequest as EventListener,
-    );
-    window.addEventListener(
-      "select-image-node",
-      handleSelectImageNode as EventListener,
-    );
-
-    if (editorContainerEl) {
-      editorContainerEl.addEventListener(
-        "image-fullscreen-request",
-        handleImageFullscreenRequest as EventListener,
-      );
-      editorContainerEl.addEventListener(
-        "select-image-node",
-        handleSelectImageNode as EventListener,
-      );
-    }
-
-    return {
-      handleContentUpdate,
-      handleImageFullscreenRequest,
-      handleSelectImageNode,
-    };
-  }
-
-  function cleanupEventListeners(handlers: {
-    handleContentUpdate: EventListener;
-    handleImageFullscreenRequest: EventListener;
-    handleSelectImageNode: EventListener;
-  }) {
-    window.removeEventListener(
-      "editor-content-changed",
-      handlers.handleContentUpdate,
-    );
-    window.removeEventListener(
-      "image-fullscreen-request",
-      handlers.handleImageFullscreenRequest,
-    );
-    window.removeEventListener(
-      "select-image-node",
-      handlers.handleSelectImageNode,
-    );
-
-    if (editorContainerEl) {
-      editorContainerEl.removeEventListener(
-        "image-fullscreen-request",
-        handlers.handleImageFullscreenRequest,
-      );
-      editorContainerEl.removeEventListener(
-        "select-image-node",
-        handlers.handleSelectImageNode,
-      );
-    }
   }
 </script>
 

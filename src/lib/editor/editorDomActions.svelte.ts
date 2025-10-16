@@ -8,6 +8,12 @@ import { extractContentWithImages } from "../utils/editorUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加
+import { NodeSelection } from "prosemirror-state";
+import type {
+    SetupEventListenersParams,
+    EditorEventHandlers,
+    GboardHandlerParams
+} from "../types";
 
 // ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定
 function isInternalTiptapDrag(dt: DataTransfer | null | undefined): boolean {
@@ -250,4 +256,137 @@ export function hasVideoInDoc(doc: PMNode | undefined | null): boolean {
 // ドキュメント内に画像または動画ノードが存在するか判定
 export function hasMediaInDoc(doc: PMNode | undefined | null): boolean {
     return hasImageInDoc(doc) || hasVideoInDoc(doc);
+}
+
+// --- イベントリスナーのセットアップとクリーンアップ ---
+export function setupEventListeners(params: SetupEventListenersParams): EditorEventHandlers {
+    const { currentEditor, editorContainerEl, callbacks } = params;
+
+    const handleContentUpdate = (event: Event) => {
+        const customEvent = event as CustomEvent<{ plainText: string }>;
+        const plainText = customEvent.detail.plainText;
+        const hasMedia = currentEditor
+            ? hasMediaInDoc(currentEditor.state?.doc as PMNode | undefined)
+            : false;
+        callbacks.onContentUpdate?.(plainText, hasMedia);
+    };
+
+    const handleImageFullscreenRequest = (event: Event) => {
+        const customEvent = event as CustomEvent<{ src: string; alt?: string }>;
+        callbacks.onImageFullscreenRequest?.(
+            customEvent.detail.src,
+            customEvent.detail.alt || ""
+        );
+    };
+
+    const handleSelectImageNode = (event: Event) => {
+        const customEvent = event as CustomEvent<{ pos: number }>;
+        const pos = customEvent?.detail?.pos;
+        if (pos == null) return;
+        if (!currentEditor || !currentEditor.view) return;
+
+        try {
+            if (!("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
+                currentEditor.view.focus();
+            }
+            const sel = NodeSelection.create(currentEditor.state.doc, pos);
+            currentEditor.view.dispatch(
+                currentEditor.state.tr.setSelection(sel).scrollIntoView()
+            );
+        } catch (err) {
+            console.warn("select-image-node handler failed:", err);
+        }
+
+        callbacks.onSelectImageNode?.(pos);
+    };
+
+    // イベントリスナーを登録
+    window.addEventListener("editor-content-changed", handleContentUpdate);
+    window.addEventListener("image-fullscreen-request", handleImageFullscreenRequest);
+    window.addEventListener("select-image-node", handleSelectImageNode);
+
+    if (editorContainerEl) {
+        editorContainerEl.addEventListener("image-fullscreen-request", handleImageFullscreenRequest);
+        editorContainerEl.addEventListener("select-image-node", handleSelectImageNode);
+    }
+
+    return {
+        handleContentUpdate: handleContentUpdate as EventListener,
+        handleImageFullscreenRequest: handleImageFullscreenRequest as EventListener,
+        handleSelectImageNode: handleSelectImageNode as EventListener,
+    };
+}
+
+export function cleanupEventListeners(
+    handlers: EditorEventHandlers,
+    editorContainerEl: HTMLElement | null
+): void {
+    window.removeEventListener("editor-content-changed", handlers.handleContentUpdate);
+    window.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
+    window.removeEventListener("select-image-node", handlers.handleSelectImageNode);
+
+    if (editorContainerEl) {
+        editorContainerEl.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
+        editorContainerEl.removeEventListener("select-image-node", handlers.handleSelectImageNode);
+    }
+}
+
+// --- Android Gboard対応処理 ---
+export function setupGboardHandler(params: GboardHandlerParams): () => void {
+    const { editorContainerEl, getCurrentEditor, processPastedText: processFn } = params;
+
+    let lastContent = "";
+    let isProcessingPaste = false;
+
+    // 初期コンテンツを取得
+    const editor = getCurrentEditor();
+    if (editor) {
+        lastContent = editor.getText();
+    }
+
+    const handleInput = () => {
+        if (isProcessingPaste) return;
+
+        const currentEditor = getCurrentEditor();
+        if (!currentEditor) return;
+
+        const currentContent = currentEditor.getText();
+        const addedLength = currentContent.length - lastContent.length;
+
+        if (addedLength > 10 && currentContent.length > lastContent.length) {
+            const addedText = currentContent.substring(lastContent.length);
+
+            if (addedText.includes("\n")) {
+                isProcessingPaste = true;
+
+                currentEditor.chain().focus().clearContent().run();
+
+                setTimeout(() => {
+                    const editor = getCurrentEditor();
+                    if (editor) {
+                        const cleanedText = addedText.replace(/\n\n/g, "\n");
+                        processFn(editor, cleanedText);
+                    }
+                    isProcessingPaste = false;
+
+                    setTimeout(() => {
+                        const editor = getCurrentEditor();
+                        if (editor) {
+                            lastContent = editor.getText();
+                        }
+                    }, 100);
+                }, 10);
+
+                return;
+            }
+        }
+
+        lastContent = currentContent;
+    };
+
+    editorContainerEl.addEventListener("input", handleInput);
+
+    return () => {
+        editorContainerEl.removeEventListener("input", handleInput);
+    };
 }
