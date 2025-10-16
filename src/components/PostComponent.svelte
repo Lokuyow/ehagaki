@@ -18,12 +18,9 @@
     keydownAction,
     fileDropActionWithDragState,
   } from "../lib/editor/editorDomActions.svelte";
-  import {
-    containsSecretKey,
-    calculateContextMenuPosition,
-  } from "../lib/utils/appUtils";
+  import { containsSecretKey } from "../lib/utils/appUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
-  import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
+  import { prepareGlobalContextMenuItems } from "../lib/utils/imageContextMenuUtils";
   import {
     globalContextMenuStore,
     lastClickPositionStore,
@@ -284,32 +281,17 @@
   // グローバルコンテキストメニューの位置とアイテムを更新
   $effect(() => {
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
-      const nodeId = globalContextMenuState.nodeId;
-      const src = globalContextMenuState.src || "";
-      const pos = Number(nodeId) || 0;
-      const alt = "Image";
-      const node = currentEditor?.state?.doc?.nodeAt(pos);
-      const nodeSize = node ? node.nodeSize : 1;
-      const isSelected = true;
-
-      const items = getImageContextMenuItems(
-        src,
-        alt,
-        () => pos,
-        nodeSize,
-        isSelected,
-        nodeId,
-        { editorObj: currentEditor },
+      const result = prepareGlobalContextMenuItems(
+        globalContextMenuState,
+        currentEditor,
+        lastClickPositionStore.value,
       );
-      globalContextMenuItems = items;
 
-      const lastPos = lastClickPositionStore.value;
-      let menuPos = { x: 0, y: 0 };
-      if (lastPos) {
-        menuPos = calculateContextMenuPosition(lastPos.x, lastPos.y);
+      if (result) {
+        globalContextMenuItems = result.items;
+        globalContextMenuX = result.x;
+        globalContextMenuY = result.y;
       }
-      globalContextMenuX = menuPos.x;
-      globalContextMenuY = menuPos.y;
     }
   });
 

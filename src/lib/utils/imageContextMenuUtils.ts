@@ -198,3 +198,53 @@ export function openContextMenuForImageNode(
     }
     globalContextMenuStore.set({ open: true, nodeId, src });
 }
+
+// prepareGlobalContextMenuItems: グローバルコンテキストメニューのアイテムと位置を生成
+export function prepareGlobalContextMenuItems(
+    globalContextMenuState: ImageContextMenuState,
+    currentEditor: any,
+    lastClickPosition: { x: number; y: number } | null,
+    options?: {
+        windowObj?: Window;
+        navigatorObj?: Navigator;
+        t?: typeof _;
+    }
+): { items: MenuItem[]; x: number; y: number } | null {
+    if (!globalContextMenuState.open || !globalContextMenuState.nodeId) {
+        return null;
+    }
+
+    const nodeId = globalContextMenuState.nodeId;
+    const src = globalContextMenuState.src || "";
+    const pos = Number(nodeId) || 0;
+    const alt = "Image";
+    const node = currentEditor?.state?.doc?.nodeAt(pos);
+    const nodeSize = node ? node.nodeSize : 1;
+    const isSelected = true;
+
+    const items = getImageContextMenuItems(
+        src,
+        alt,
+        () => pos,
+        nodeSize,
+        isSelected,
+        nodeId,
+        {
+            windowObj: options?.windowObj,
+            navigatorObj: options?.navigatorObj,
+            editorObj: currentEditor,
+            t: options?.t
+        }
+    );
+
+    let menuPos = { x: 0, y: 0 };
+    if (lastClickPosition) {
+        menuPos = calculateContextMenuPosition(lastClickPosition.x, lastClickPosition.y);
+    }
+
+    return {
+        items,
+        x: menuPos.x,
+        y: menuPos.y
+    };
+}
