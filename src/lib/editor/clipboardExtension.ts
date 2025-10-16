@@ -20,6 +20,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
+import { TextSelection } from 'prosemirror-state';
 import type { Node as PMNode } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { debugClipboardData, debugPasteResult } from '../utils/clipboardDebug';
@@ -47,7 +48,7 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // 開発モードでデバッグ情報を出力
+                        // デバッグ情報を出力（開発環境のみ）
                         if (import.meta.env.MODE === 'development') {
                             debugClipboardData(clipboardData, 'Paste');
                         }
@@ -64,7 +65,6 @@ export const ClipboardExtension = Extension.create({
                         if (!text) {
                             return false;
                         }
-
                         // HTMLが含まれる場合の処理
                         const hasHtml = clipboardData.types.includes('text/html');
                         let collapseEmptyLines = false;
@@ -122,7 +122,7 @@ export const ClipboardExtension = Extension.create({
                             );
                         });
 
-                        // 開発モードでペースト結果を出力
+                        // ペースト結果を出力（開発環境のみ）
                         if (import.meta.env.MODE === 'development') {
                             debugPasteResult('handlePaste', text, lines, paragraphs.length);
                         }
@@ -185,3 +185,52 @@ export const ClipboardExtension = Extension.create({
         ];
     },
 });
+
+// テキストをペースト処理する関数（Android Gboard対応用）
+export function processPastedText(editor: any, text: string): boolean {
+    if (!editor || !text) {
+        return false;
+    }
+
+    const { state, dispatch } = editor.view;
+
+    // 改行コードを統一し、末尾の改行を適切に処理
+    const { lines } = normalizeClipboardText(text, {
+        collapseEmptyLines: false,
+        maxConsecutiveEmptyLines: 2
+    });
+
+    // 空のテキストの場合は処理しない
+    if (lines.length === 0) {
+        return false;
+    }
+
+    // 各行を段落ノードに変換
+    const paragraphs: PMNode[] = [];
+    const schema = state.schema;
+
+    lines.forEach((line) => {
+        const textNodes = line.length > 0
+            ? [schema.text(line)]
+            : [];
+
+        paragraphs.push(
+            schema.nodes.paragraph.create(null, textNodes)
+        );
+    });
+
+    // 段落ノードからSliceを作成
+    const fragment = Fragment.from(paragraphs);
+    const customSlice = new Slice(fragment, 0, 0);
+
+    // トランザクションを作成して挿入
+    let tr = state.tr.replaceSelection(customSlice);
+
+    // カーソルを挿入したコンテンツの末尾に移動
+    const resolvedPos = tr.doc.resolve(tr.selection.from);
+    tr = tr.setSelection(TextSelection.near(resolvedPos, 1));
+
+    dispatch(tr);
+
+    return true;
+}

@@ -39,6 +39,9 @@ function logToDevFooter(...args: any[]) {
     devLog.update((logs) => [entry, ...logs].slice(0, 250));
 }
 
+// --- devLog追加関数をエクスポート ---
+export { logToDevFooter };
+
 // --- console.logフック ---
 const originalConsoleLog = console.log;
 if (typeof window !== "undefined") {

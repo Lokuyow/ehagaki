@@ -22,6 +22,10 @@ describe('ClipboardExtension', () => {
         });
     });
 
+    afterEach(() => {
+        editor?.destroy();
+    });
+
     describe('ペースト時の改行処理', () => {
         it('単一行のテキストを正しく挿入できる', () => {
             const text = 'Hello World';

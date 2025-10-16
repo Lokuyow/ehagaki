@@ -177,3 +177,26 @@ if (!window.setTimeout) {
 if (!window.clearTimeout) {
     window.clearTimeout = clearTimeout;
 }
+
+// DOM APIのモック - DOMParserの安全な定義
+if (!window.DOMParser) {
+    Object.defineProperty(window, 'DOMParser', {
+        value: class DOMParser {
+            parseFromString(str: string, contentType: string) {
+                // シンプルなHTMLパーサーのモック
+                const parser = new (globalThis as any).DOMParser();
+                return parser.parseFromString(str, contentType);
+            }
+        },
+        writable: true,
+        configurable: true
+    });
+}
+
+// DOM APIのモック - window.addEventListener/removeEventListenerの安全な定義
+if (!window.addEventListener) {
+    window.addEventListener = vi.fn();
+}
+if (!window.removeEventListener) {
+    window.removeEventListener = vi.fn();
+}

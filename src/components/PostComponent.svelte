@@ -38,6 +38,7 @@
   import { extractContentWithImages } from "../lib/utils/editorUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
   import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
+  import { processPastedText } from "../lib/editor/clipboardExtension";
   import {
     globalContextMenuStore,
     lastClickPositionStore,
@@ -216,6 +217,64 @@
         delete (editorContainerEl as any).__submitPost;
       }
     };
+  });
+
+  // Android Gboard対応: inputイベントでペースト検出
+  $effect(() => {
+    if (editorContainerEl) {
+      let lastContent = currentEditor ? currentEditor.getText() : '';
+      let isProcessingPaste = false;
+
+      const handleInput = (event: Event) => {
+        if (isProcessingPaste) {
+          return;
+        }
+
+        if (currentEditor) {
+          const currentContent = currentEditor.getText();
+          const addedLength = currentContent.length - lastContent.length;
+
+          // 大量のテキストが追加され、改行を含む場合（Gboardペーストの可能性）
+          if (addedLength > 10 && currentContent.length > lastContent.length) {
+            const addedText = currentContent.substring(lastContent.length);
+
+            if (addedText.includes('\n')) {
+              isProcessingPaste = true;
+
+              // Gboardが挿入したテキストをクリアして再挿入
+              currentEditor.chain().focus().clearContent().run();
+
+              setTimeout(() => {
+                if (currentEditor) {
+                  // 連続する改行を1つに統一
+                  const cleanedText = addedText.replace(/\n\n/g, '\n');
+                  processPastedText(currentEditor, cleanedText);
+                }
+                isProcessingPaste = false;
+
+                setTimeout(() => {
+                  if (currentEditor) {
+                    lastContent = currentEditor.getText();
+                  }
+                }, 100);
+              }, 10);
+
+              return;
+            }
+          }
+
+          lastContent = currentContent;
+        }
+      };
+
+      editorContainerEl.addEventListener('input', handleInput);
+
+      return () => {
+        if (editorContainerEl) {
+          editorContainerEl.removeEventListener('input', handleInput);
+        }
+      };
+    }
   });
 
   function clearEditorContent() {
