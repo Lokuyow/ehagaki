@@ -1,3 +1,9 @@
+/*
+ * editorDomActions.ts: Svelte アプリケーションのエディタ DOM 操作を管理。
+ * TipTap エディタのドラッグ＆ドロップ、ペースト、タッチ、キーボードイベントを Svelte アクションで処理。
+ * Svelte5 のアクション機能を有効活用。
+ */
+
 import { extractContentWithImages } from "../utils/editorUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
