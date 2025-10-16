@@ -381,6 +381,10 @@ export interface PostManagerDeps {
     createImetaTagFn?: (meta: any) => Promise<string[]>;
     getClientTagFn?: () => string[] | null;
     seckeySignerFn?: (key: string) => any;
+    extractContentWithImagesFn?: (editor: TipTapEditor) => string;
+    extractImageBlurhashMapFn?: (editor: TipTapEditor) => Record<string, string>;
+    resetEditorStateFn?: () => void;
+    resetPostStatusFn?: () => void;
 }
 
 // --- UI and Component types --

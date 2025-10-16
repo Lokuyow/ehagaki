@@ -167,7 +167,7 @@ export function createEditorStore(placeholderText: string) {
                 // エディタの内容を確認（テキストまたは画像/動画があるか）
                 const doc = editor.state.doc;
                 let isEmpty = true;
-                
+
                 doc.descendants((node) => {
                     // テキストがある、または画像/動画ノードがある場合は空ではない
                     if (node.isText && node.text && node.text.trim().length > 0) {
@@ -180,18 +180,24 @@ export function createEditorStore(placeholderText: string) {
                     }
                     return true;
                 });
-                
+
                 // is-editor-emptyクラスをエディタ要素に設定/削除
                 if (isEmpty) {
                     editorElement.classList.add('is-editor-empty');
                 } else {
                     editorElement.classList.remove('is-editor-empty');
                 }
-                
-                // 段落要素のプレースホルダー属性を設定
-                const emptyParagraphs = editorElement.querySelectorAll('p.is-editor-empty, p.is-empty');
-                emptyParagraphs.forEach((p) => {
+
+                // 段落要素のis-editor-emptyクラスを設定
+                const paragraphs = editorElement.querySelectorAll('p');
+                paragraphs.forEach((p, index) => {
                     const paragraph = p as HTMLElement;
+                    if (isEmpty && index === 0) {
+                        paragraph.classList.add('is-editor-empty');
+                    } else {
+                        paragraph.classList.remove('is-editor-empty');
+                    }
+                    // プレースホルダー属性を設定
                     if (!paragraph.getAttribute('data-placeholder')) {
                         const placeholder = editorElement.getAttribute('data-placeholder') || placeholderText;
                         paragraph.setAttribute('data-placeholder', placeholder);

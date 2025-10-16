@@ -1,10 +1,14 @@
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
+import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager";
 import { authState } from "../stores/appStore.svelte";
 import { hashtagDataStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
+import { extractContentWithImages } from "../lib/utils/editorUtils";
+import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
+import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
 import type { PostResult, PostManagerDeps } from "./types";
 
 // --- 純粋関数（依存性なし） ---
@@ -143,6 +147,10 @@ export class PostManager {
     this.deps.createImetaTagFn = deps.createImetaTagFn || createImetaTag;
     this.deps.getClientTagFn = deps.getClientTagFn || getClientTag;
     this.deps.seckeySignerFn = deps.seckeySignerFn || seckeySigner; // ★追加
+    this.deps.extractContentWithImagesFn = deps.extractContentWithImagesFn || extractContentWithImages;
+    this.deps.extractImageBlurhashMapFn = deps.extractImageBlurhashMapFn || extractImageBlurhashMap;
+    this.deps.resetEditorStateFn = deps.resetEditorStateFn || resetEditorState;
+    this.deps.resetPostStatusFn = deps.resetPostStatusFn || resetPostStatus;
   }
 
   setRxNostr(rxNostr: RxNostr) {
@@ -239,5 +247,75 @@ export class PostManager {
   // テスト用の内部コンポーネントへのアクセス
   getEventSender(): PostEventSender | null {
     return this.eventSender;
+  }
+
+  // --- PostComponent 統合メソッド ---
+  preparePostContent(editor: TipTapEditor): string {
+    return this.deps.extractContentWithImagesFn!(editor) || "";
+  }
+
+  prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): Record<string, any> {
+    const rawImageBlurhashMap = this.deps.extractImageBlurhashMapFn!(editor);
+    const imageBlurhashMap: Record<string, any> = {};
+    for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
+      imageBlurhashMap[url] = {
+        m: getMimeTypeFromUrl(url),
+        blurhash,
+        ox: imageOxMap[url],
+        x: imageXMap[url],
+      };
+    }
+    return imageBlurhashMap;
+  }
+
+  async performPostSubmission(
+    editor: TipTapEditor,
+    imageOxMap: Record<string, string>,
+    imageXMap: Record<string, string>,
+    onStart?: () => void,
+    onSuccess?: () => void,
+    onError?: (error: string) => void
+  ): Promise<void> {
+    const postContent = this.preparePostContent(editor);
+    const imageBlurhashMap = this.prepareImageBlurhashMap(editor, imageOxMap, imageXMap);
+
+    onStart?.();
+
+    try {
+      const result = await this.submitPost(postContent, imageBlurhashMap);
+      if (result.success) {
+        onSuccess?.();
+      } else {
+        onError?.(result.error || "post_error");
+      }
+    } catch (error) {
+      onError?.("post_error");
+    }
+  }
+
+  resetPostContent(editor: TipTapEditor): void {
+    editor.chain().clearContent().run();
+    this.deps.resetEditorStateFn!();
+    // プレースホルダーを再設定
+    const editorElement = editor.view.dom as HTMLElement;
+    if (editorElement) {
+      editorElement.classList.add('is-editor-empty');
+      const paragraphs = editorElement.querySelectorAll('p');
+      paragraphs.forEach((p, index) => {
+        const paragraph = p as HTMLElement;
+        if (index === 0) {
+          paragraph.classList.add('is-editor-empty');
+        } else {
+          paragraph.classList.remove('is-editor-empty');
+        }
+        const placeholder = editorElement.getAttribute('data-placeholder') || 'テキストを入力してください';
+        paragraph.setAttribute('data-placeholder', placeholder);
+      });
+    }
+  }
+
+  clearContentAfterSuccess(editor: TipTapEditor): void {
+    this.resetPostContent(editor);
+    this.deps.resetPostStatusFn!();
   }
 }

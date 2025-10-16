@@ -16,10 +16,6 @@
   import ContextMenu from "./ContextMenu.svelte";
   import PopupModal from "./PopupModal.svelte";
   import {
-    extractImageBlurhashMap,
-    getMimeTypeFromUrl,
-  } from "../lib/tags/imetaTag";
-  import {
     fileDropAction as _fileDropAction,
     pasteAction,
     touchAction,
@@ -31,7 +27,6 @@
     containsSecretKey,
     calculateContextMenuPosition,
   } from "../lib/utils/appUtils";
-  import { extractContentWithImages } from "../lib/utils/editorUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
   import { getImageContextMenuItems } from "../lib/utils/imageContextMenuUtils";
   import { processPastedText } from "../lib/editor/clipboardExtension";
@@ -132,44 +127,27 @@
     }
   }
 
-  // ポスト関連の処理をまとめる
-  function preparePostContent(): string {
-    return extractContentWithImages(currentEditor) || "";
-  }
-
-  function prepareImageBlurhashMap(): Record<string, any> {
-    const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
-    const imageBlurhashMap: Record<string, any> = {};
-    for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
-      imageBlurhashMap[url] = {
-        m: getMimeTypeFromUrl(url),
-        blurhash,
-        ox: imageOxMap[url],
-        x: imageXMap[url],
-      };
+  export async function submitPost() {
+    if (!postManager || !currentEditor) return;
+    const postContent = postManager.preparePostContent(currentEditor);
+    if (containsSecretKey(postContent)) {
+      pendingPost = postContent;
+      showSecretKeyDialog = true;
+      return;
     }
-    return imageBlurhashMap;
-  }
-
-  async function performPostSubmission(content?: string) {
-    if (!postManager) return console.error("PostManager is not initialized");
-    const postContent = content || preparePostContent();
-    const imageBlurhashMap = prepareImageBlurhashMap();
-
-    updatePostStatus({
-      sending: true,
-      success: false,
-      error: false,
-      message: "",
-      completed: false,
-    });
-
-    try {
-      const result = await postManager.submitPost(
-        postContent,
-        imageBlurhashMap,
-      );
-      if (result.success) {
+    await postManager.performPostSubmission(
+      currentEditor,
+      imageOxMap,
+      imageXMap,
+      () =>
+        updatePostStatus({
+          sending: true,
+          success: false,
+          error: false,
+          message: "",
+          completed: false,
+        }),
+      () => {
         updatePostStatus({
           sending: false,
           success: true,
@@ -177,51 +155,28 @@
           message: "postComponent.post_success",
           completed: true,
         });
-        clearEditorContent();
+        clearContentAfterSuccess();
         onPostSuccess?.();
-      } else {
+      },
+      (error) =>
         updatePostStatus({
           sending: false,
           success: false,
           error: true,
-          message: result.error || "postComponent.post_error",
+          message: error || "postComponent.post_error",
           completed: false,
-        });
-      }
-    } catch (error) {
-      updatePostStatus({
-        sending: false,
-        success: false,
-        error: true,
-        message: "postComponent.post_error",
-        completed: false,
-      });
-      console.error("投稿処理でエラーが発生:", error);
-    }
-  }
-
-  export async function submitPost() {
-    const postContent = preparePostContent();
-    if (containsSecretKey(postContent)) {
-      pendingPost = postContent;
-      showSecretKeyDialog = true;
-      return;
-    }
-    await performPostSubmission(postContent);
-  }
-
-  async function executePost(content?: string) {
-    await performPostSubmission(content);
+        }),
+    );
   }
 
   export function resetPostContent() {
-    resetEditorState();
-    clearEditorContent();
+    if (postManager && currentEditor)
+      postManager.resetPostContent(currentEditor);
   }
 
   export function clearContentAfterSuccess() {
-    clearEditorContent();
-    resetPostStatus();
+    if (postManager && currentEditor)
+      postManager.clearContentAfterSuccess(currentEditor);
   }
 
   // UI状態管理関連の変数
@@ -234,7 +189,53 @@
   function handleSecretKeyDialog() {
     async function confirmSendWithSecretKey() {
       showSecretKeyDialog = false;
-      await performPostSubmission(pendingPost);
+      if (postManager && currentEditor) {
+        const imageBlurhashMap = postManager.prepareImageBlurhashMap(
+          currentEditor,
+          imageOxMap,
+          imageXMap,
+        );
+        updatePostStatus({
+          sending: true,
+          success: false,
+          error: false,
+          message: "",
+          completed: false,
+        });
+        try {
+          const result = await postManager.submitPost(
+            pendingPost,
+            imageBlurhashMap,
+          );
+          if (result.success) {
+            updatePostStatus({
+              sending: false,
+              success: true,
+              error: false,
+              message: "postComponent.post_success",
+              completed: true,
+            });
+            clearContentAfterSuccess();
+            onPostSuccess?.();
+          } else {
+            updatePostStatus({
+              sending: false,
+              success: false,
+              error: true,
+              message: result.error || "postComponent.post_error",
+              completed: false,
+            });
+          }
+        } catch (error) {
+          updatePostStatus({
+            sending: false,
+            success: false,
+            error: true,
+            message: "postComponent.post_error",
+            completed: false,
+          });
+        }
+      }
       pendingPost = "";
     }
 
@@ -312,7 +313,8 @@
   $effect(() => {
     if (
       currentEditor &&
-      extractContentWithImages(currentEditor) !== editorState.content &&
+      postManager &&
+      postManager.preparePostContent(currentEditor) !== editorState.content &&
       postStatus.error
     ) {
       updatePostStatus({ ...postStatus, error: false, message: "" });
@@ -335,6 +337,7 @@
   function initializeEditor() {
     const initialPlaceholder =
       $_("postComponent.enter_your_text") || "テキストを入力してください";
+    placeholderTextStore.value = initialPlaceholder;
     editor = createEditorStore(initialPlaceholder) as EditorStore;
     const unsubscribe = editor.subscribe(
       (editorInstance) => (currentEditor = editorInstance),
