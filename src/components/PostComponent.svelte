@@ -105,176 +105,14 @@
 
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
-    const initialPlaceholder =
-      $_("postComponent.enter_your_text") || "テキストを入力してください";
-    editor = createEditorStore(initialPlaceholder) as EditorStore;
-    const unsubscribe = editor.subscribe(
-      (editorInstance) => (currentEditor = editorInstance),
-    );
-
-    function handleContentUpdate(event: CustomEvent<{ plainText: string }>) {
-      const plainText = event.detail.plainText;
-      let hasMedia = currentEditor
-        ? hasMediaInDoc(currentEditor.state?.doc as PMNode | undefined)
-        : false;
-      updateEditorContent(plainText, hasMedia);
-    }
-    function handleImageFullscreenRequest(
-      event: CustomEvent<{ src: string; alt?: string }>,
-    ) {
-      fullscreenImageSrc = event.detail.src;
-      fullscreenImageAlt = event.detail.alt || "";
-      showImageFullscreen = true;
-    }
-
-    // 追加: 画像ノード選択要求を受け取り、エディタをフォーカスして NodeSelection をセットする
-    function handleSelectImageNode(e: CustomEvent<{ pos: number }>) {
-      const pos = e?.detail?.pos;
-      if (pos == null) return;
-      if (!currentEditor || !currentEditor.view) return;
-      try {
-        // スマートフォン（タッチデバイス）ではキーボードを立ち上げない
-        if (!("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
-          currentEditor.view.focus();
-        }
-        const sel = NodeSelection.create(currentEditor.state.doc, pos);
-        currentEditor.view.dispatch(
-          currentEditor.state.tr.setSelection(sel).scrollIntoView(),
-        );
-      } catch (err) {
-        // ignore
-        console.warn("select-image-node handler failed:", err);
-      }
-    }
-
-    window.addEventListener(
-      "editor-content-changed",
-      handleContentUpdate as EventListener,
-    );
-    window.addEventListener(
-      "image-fullscreen-request",
-      handleImageFullscreenRequest as EventListener,
-    );
-    window.addEventListener(
-      "select-image-node",
-      handleSelectImageNode as EventListener,
-    );
-    // 追加: editorContainerEl にもイベントリスナーを追加
-    if (editorContainerEl) {
-      editorContainerEl.addEventListener(
-        "image-fullscreen-request",
-        handleImageFullscreenRequest as EventListener,
-      );
-      editorContainerEl.addEventListener(
-        "select-image-node",
-        handleSelectImageNode as EventListener,
-      );
-    }
-
-    setPostSubmitter(submitPost);
-
-    if (editorContainerEl) {
-      Object.assign(editorContainerEl, {
-        __uploadFiles: uploadFiles,
-        __currentEditor: () => currentEditor,
-        __hasStoredKey: () => hasStoredKey,
-        __postStatus: () => postStatus,
-        __submitPost: submitPost,
-      });
-    }
-
-    return () => {
-      window.removeEventListener(
-        "editor-content-changed",
-        handleContentUpdate as EventListener,
-      );
-      window.removeEventListener(
-        "image-fullscreen-request",
-        handleImageFullscreenRequest as EventListener,
-      );
-      window.removeEventListener(
-        "select-image-node",
-        handleSelectImageNode as EventListener,
-      );
-      // 追加: editorContainerEl のイベントリスナーも削除
-      if (editorContainerEl) {
-        editorContainerEl.removeEventListener(
-          "image-fullscreen-request",
-          handleImageFullscreenRequest as EventListener,
-        );
-        editorContainerEl.removeEventListener(
-          "select-image-node",
-          handleSelectImageNode as EventListener,
-        );
-      }
-      unsubscribe();
-      currentEditor?.destroy?.();
-      if (editorContainerEl) {
-        delete (editorContainerEl as any).__uploadFiles;
-        delete (editorContainerEl as any).__currentEditor;
-        delete (editorContainerEl as any).__hasStoredKey;
-        delete (editorContainerEl as any).__postStatus;
-        delete (editorContainerEl as any).__submitPost;
-      }
-    };
+    const editorResources = initializeEditor();
+    return () => cleanupEditor(editorResources);
   });
 
   // Android Gboard対応: inputイベントでペースト検出
   $effect(() => {
-    if (editorContainerEl) {
-      let lastContent = currentEditor ? currentEditor.getText() : '';
-      let isProcessingPaste = false;
-
-      const handleInput = (event: Event) => {
-        if (isProcessingPaste) {
-          return;
-        }
-
-        if (currentEditor) {
-          const currentContent = currentEditor.getText();
-          const addedLength = currentContent.length - lastContent.length;
-
-          // 大量のテキストが追加され、改行を含む場合（Gboardペーストの可能性）
-          if (addedLength > 10 && currentContent.length > lastContent.length) {
-            const addedText = currentContent.substring(lastContent.length);
-
-            if (addedText.includes('\n')) {
-              isProcessingPaste = true;
-
-              // Gboardが挿入したテキストをクリアして再挿入
-              currentEditor.chain().focus().clearContent().run();
-
-              setTimeout(() => {
-                if (currentEditor) {
-                  // 連続する改行を1つに統一
-                  const cleanedText = addedText.replace(/\n\n/g, '\n');
-                  processPastedText(currentEditor, cleanedText);
-                }
-                isProcessingPaste = false;
-
-                setTimeout(() => {
-                  if (currentEditor) {
-                    lastContent = currentEditor.getText();
-                  }
-                }, 100);
-              }, 10);
-
-              return;
-            }
-          }
-
-          lastContent = currentContent;
-        }
-      };
-
-      editorContainerEl.addEventListener('input', handleInput);
-
-      return () => {
-        if (editorContainerEl) {
-          editorContainerEl.removeEventListener('input', handleInput);
-        }
-      };
-    }
+    const cleanup = setupGboardHandler();
+    return cleanup;
   });
 
   function clearEditorContent() {
@@ -286,31 +124,34 @@
     if (input?.files?.length) uploadFiles(input.files);
   }
 
-  const uploadCallbacks: UploadInfoCallbacks | undefined = onUploadProgress
-    ? {
-        onProgress: onUploadProgress as (
-          p: import("../lib/types").UploadProgress,
-        ) => void,
-        onVideoCompressionProgress: (progress: number) => {
-          videoCompressionProgressStore.set(progress);
-        },
-      }
-    : undefined;
+  // アップロード関連の処理をまとめる
+  function createUploadCallbacks(): UploadInfoCallbacks | undefined {
+    return onUploadProgress
+      ? {
+          onProgress: onUploadProgress as (
+            p: import("../lib/types").UploadProgress,
+          ) => void,
+          onVideoCompressionProgress: (progress: number) => {
+            videoCompressionProgressStore.set(progress);
+          },
+        }
+      : undefined;
+  }
 
-  function showUploadError(message: string, duration = 3000) {
+  function showUploadErrorMessage(message: string, duration = 3000) {
     updateUploadState(editorState.isUploading, message);
     setTimeout(() => updateUploadState(editorState.isUploading, ""), duration);
   }
 
-  export async function uploadFiles(files: File[] | FileList) {
+  async function performFileUpload(files: File[] | FileList) {
     if (!files || files.length === 0) return;
 
     const result: UploadHelperResult = await uploadHelper({
       files,
       currentEditor,
       fileInput,
-      uploadCallbacks,
-      showUploadError,
+      uploadCallbacks: createUploadCallbacks(),
+      showUploadError: showUploadErrorMessage,
       updateUploadState,
       devMode: import.meta.env.MODE === "development",
     });
@@ -319,7 +160,7 @@
     Object.assign(imageXMap, result.imageXMap);
 
     if (result.failedResults?.length) {
-      showUploadError(
+      showUploadErrorMessage(
         result.errorMessage ||
           (result.failedResults.length === 1
             ? result.failedResults[0].error || $_("postComponent.upload_failed")
@@ -330,21 +171,16 @@
     if (fileInput) fileInput.value = "";
   }
 
-  export async function submitPost() {
-    if (!postManager) return console.error("PostManager is not initialized");
-    const postContent = extractContentWithImages(currentEditor) || "";
-    if (containsSecretKey(postContent)) {
-      pendingPost = postContent;
-      showSecretKeyDialog = true;
-      return;
-    }
-    await executePost(postContent);
+  export async function uploadFiles(files: File[] | FileList) {
+    await performFileUpload(files);
   }
 
-  async function executePost(content?: string) {
-    if (!postManager) return console.error("PostManager is not initialized");
-    const postContent =
-      content || extractContentWithImages(currentEditor) || "";
+  // ポスト関連の処理をまとめる
+  function preparePostContent(): string {
+    return extractContentWithImages(currentEditor) || "";
+  }
+
+  function prepareImageBlurhashMap(): Record<string, any> {
     const rawImageBlurhashMap = extractImageBlurhashMap(currentEditor);
     const imageBlurhashMap: Record<string, any> = {};
     for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
@@ -355,6 +191,14 @@
         x: imageXMap[url],
       };
     }
+    return imageBlurhashMap;
+  }
+
+  async function performPostSubmission(content?: string) {
+    if (!postManager) return console.error("PostManager is not initialized");
+    const postContent = content || preparePostContent();
+    const imageBlurhashMap = prepareImageBlurhashMap();
+
     updatePostStatus({
       sending: true,
       success: false,
@@ -362,11 +206,9 @@
       message: "",
       completed: false,
     });
+
     try {
-      const result = await postManager.submitPost(
-        postContent,
-        imageBlurhashMap,
-      );
+      const result = await postManager.submitPost(postContent, imageBlurhashMap);
       if (result.success) {
         updatePostStatus({
           sending: false,
@@ -398,6 +240,20 @@
     }
   }
 
+  export async function submitPost() {
+    const postContent = preparePostContent();
+    if (containsSecretKey(postContent)) {
+      pendingPost = postContent;
+      showSecretKeyDialog = true;
+      return;
+    }
+    await performPostSubmission(postContent);
+  }
+
+  async function executePost(content?: string) {
+    await performPostSubmission(content);
+  }
+
   export function resetPostContent() {
     resetEditorState();
     clearEditorContent();
@@ -408,48 +264,68 @@
     resetPostStatus();
   }
 
-  async function confirmSendWithSecretKey() {
-    showSecretKeyDialog = false;
-    await executePost(pendingPost);
-    pendingPost = "";
-  }
-  function cancelSendWithSecretKey() {
-    showSecretKeyDialog = false;
-    pendingPost = "";
-  }
-
-  // ポップアップ表示用の状態を追加
+  // UI状態管理関連の変数
   let showPopupModal = $state(false);
   let popupX = $state(0);
   let popupY = $state(0);
   let popupMessage = $state("");
 
-  // ポップアップ表示ハンドラー
-  function handleShowPopup(x: number, y: number, message: string) {
-    popupX = x;
-    popupY = y;
-    popupMessage = message;
-    showPopupModal = true;
-    setTimeout(() => {
-      showPopupModal = false;
-    }, 1800);
+  // UI状態管理関連の処理をまとめる
+  function handleSecretKeyDialog() {
+    async function confirmSendWithSecretKey() {
+      showSecretKeyDialog = false;
+      await performPostSubmission(pendingPost);
+      pendingPost = "";
+    }
+
+    function cancelSendWithSecretKey() {
+      showSecretKeyDialog = false;
+      pendingPost = "";
+    }
+
+    return { confirmSendWithSecretKey, cancelSendWithSecretKey };
   }
+
+  function handlePopup() {
+    function showPopupMessage(x: number, y: number, message: string) {
+      popupX = x;
+      popupY = y;
+      popupMessage = message;
+      showPopupModal = true;
+      setTimeout(() => {
+        showPopupModal = false;
+      }, 1800);
+    }
+
+    return { showPopupMessage };
+  }
+
+  function handleImageFullscreen() {
+    function closeFullscreen() {
+      showImageFullscreen = false;
+      fullscreenImageSrc = "";
+      fullscreenImageAlt = "";
+      setTimeout(() => {
+        domUtils.querySelector(".tiptap-editor")?.focus();
+      }, 150);
+    }
+
+    return { closeFullscreen };
+  }
+
+  const secretKeyHandlers = handleSecretKeyDialog();
+  const popupHandlers = handlePopup();
+  const fullscreenHandlers = handleImageFullscreen();
 
   // グローバルコンテキストメニューの位置とアイテムを更新
   $effect(() => {
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
-      // nodeIdから src, getPos, nodeSize, isSelected を復元 -> 変更: ストアから直接取得
       const nodeId = globalContextMenuState.nodeId;
-      const src = globalContextMenuState.src || ""; // 変更: ストアからsrcを取得
-      // nodeIdは pos の文字列なので数値化
+      const src = globalContextMenuState.src || "";
       const pos = Number(nodeId) || 0;
-      // altは仮で 1（必要ならストアから取得）
       const alt = "Image";
-      // nodeSizeは仮で 1（必要ならストアから取得）
-      // 変更: メニューを開く時点で正確なノードサイズを取得
       const node = currentEditor?.state?.doc?.nodeAt(pos);
       const nodeSize = node ? node.nodeSize : 1;
-      // isSelectedは true（必要ならストアから取得）
       const isSelected = true;
 
       const items = getImageContextMenuItems(
@@ -458,11 +334,11 @@
         () => pos,
         nodeSize,
         isSelected,
-        nodeId, // 追加: nodeIdを渡す
+        nodeId,
         { editorObj: currentEditor },
       );
       globalContextMenuItems = items;
-      // 位置計算を一度だけ実行し、両方の変数にセット
+
       const lastPos = lastClickPositionStore.value;
       let menuPos = { x: 0, y: 0 };
       if (lastPos) {
@@ -495,14 +371,152 @@
     fileInput?.click();
   }
 
-  function handleImageFullscreenClose() {
-    showImageFullscreen = false;
-    fullscreenImageSrc = "";
-    fullscreenImageAlt = "";
-    setTimeout(() => {
-      // document.querySelector<HTMLElement>(".tiptap-editor")?.focus();
-      domUtils.querySelector(".tiptap-editor")?.focus();
-    }, 150);
+  // エディター初期化関数
+  function initializeEditor() {
+    const initialPlaceholder =
+      $_("postComponent.enter_your_text") || "テキストを入力してください";
+    editor = createEditorStore(initialPlaceholder) as EditorStore;
+    const unsubscribe = editor.subscribe(
+      (editorInstance) => (currentEditor = editorInstance),
+    );
+
+    const handlers = setupEventListeners();
+    setPostSubmitter(submitPost);
+
+    if (editorContainerEl) {
+      Object.assign(editorContainerEl, {
+        __uploadFiles: uploadFiles,
+        __currentEditor: () => currentEditor,
+        __hasStoredKey: () => hasStoredKey,
+        __postStatus: () => postStatus,
+        __submitPost: submitPost,
+      });
+    }
+
+    return { unsubscribe, handlers };
+  }
+
+  // エディタークリーンアップ関数
+  function cleanupEditor({ unsubscribe, handlers }: { unsubscribe: () => void; handlers: any }) {
+    cleanupEventListeners(handlers);
+    unsubscribe();
+    currentEditor?.destroy?.();
+    if (editorContainerEl) {
+      delete (editorContainerEl as any).__uploadFiles;
+      delete (editorContainerEl as any).__currentEditor;
+      delete (editorContainerEl as any).__hasStoredKey;
+      delete (editorContainerEl as any).__postStatus;
+      delete (editorContainerEl as any).__submitPost;
+    }
+  }
+
+  // Android Gboard対応処理
+  function setupGboardHandler() {
+    if (!editorContainerEl) return;
+
+    let lastContent = currentEditor ? currentEditor.getText() : '';
+    let isProcessingPaste = false;
+
+    const handleInput = (event: Event) => {
+      if (isProcessingPaste) return;
+
+      if (currentEditor) {
+        const currentContent = currentEditor.getText();
+        const addedLength = currentContent.length - lastContent.length;
+
+        if (addedLength > 10 && currentContent.length > lastContent.length) {
+          const addedText = currentContent.substring(lastContent.length);
+
+          if (addedText.includes('\n')) {
+            isProcessingPaste = true;
+
+            currentEditor.chain().focus().clearContent().run();
+
+            setTimeout(() => {
+              if (currentEditor) {
+                const cleanedText = addedText.replace(/\n\n/g, '\n');
+                processPastedText(currentEditor, cleanedText);
+              }
+              isProcessingPaste = false;
+
+              setTimeout(() => {
+                if (currentEditor) {
+                  lastContent = currentEditor.getText();
+                }
+              }, 100);
+            }, 10);
+
+            return;
+          }
+        }
+
+        lastContent = currentContent;
+      }
+    };
+
+    editorContainerEl.addEventListener('input', handleInput);
+
+    return () => {
+      if (editorContainerEl) {
+        editorContainerEl.removeEventListener('input', handleInput);
+      }
+    };
+  }
+
+  // イベントリスナーのセットアップとクリーンアップをヘルパー関数に抽出
+  function setupEventListeners() {
+    const handleContentUpdate = (event: CustomEvent<{ plainText: string }>) => {
+      const plainText = event.detail.plainText;
+      let hasMedia = currentEditor
+        ? hasMediaInDoc(currentEditor.state?.doc as PMNode | undefined)
+        : false;
+      updateEditorContent(plainText, hasMedia);
+    };
+
+    const handleImageFullscreenRequest = (event: CustomEvent<{ src: string; alt?: string }>) => {
+      fullscreenImageSrc = event.detail.src;
+      fullscreenImageAlt = event.detail.alt || "";
+      showImageFullscreen = true;
+    };
+
+    const handleSelectImageNode = (e: CustomEvent<{ pos: number }>) => {
+      const pos = e?.detail?.pos;
+      if (pos == null) return;
+      if (!currentEditor || !currentEditor.view) return;
+      try {
+        if (!("ontouchstart" in window || navigator.maxTouchPoints > 0)) {
+          currentEditor.view.focus();
+        }
+        const sel = NodeSelection.create(currentEditor.state.doc, pos);
+        currentEditor.view.dispatch(
+          currentEditor.state.tr.setSelection(sel).scrollIntoView(),
+        );
+      } catch (err) {
+        console.warn("select-image-node handler failed:", err);
+      }
+    };
+
+    window.addEventListener("editor-content-changed", handleContentUpdate as EventListener);
+    window.addEventListener("image-fullscreen-request", handleImageFullscreenRequest as EventListener);
+    window.addEventListener("select-image-node", handleSelectImageNode as EventListener);
+
+    if (editorContainerEl) {
+      editorContainerEl.addEventListener("image-fullscreen-request", handleImageFullscreenRequest as EventListener);
+      editorContainerEl.addEventListener("select-image-node", handleSelectImageNode as EventListener);
+    }
+
+    return { handleContentUpdate, handleImageFullscreenRequest, handleSelectImageNode };
+  }
+
+  function cleanupEventListeners(handlers: { handleContentUpdate: EventListener; handleImageFullscreenRequest: EventListener; handleSelectImageNode: EventListener }) {
+    window.removeEventListener("editor-content-changed", handlers.handleContentUpdate);
+    window.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
+    window.removeEventListener("select-image-node", handlers.handleSelectImageNode);
+
+    if (editorContainerEl) {
+      editorContainerEl.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
+      editorContainerEl.removeEventListener("select-image-node", handlers.handleSelectImageNode);
+    }
   }
 </script>
 
@@ -545,7 +559,7 @@
 <Dialog
   bind:show={showSecretKeyDialog}
   ariaLabel={$_("postComponent.warning")}
-  onClose={cancelSendWithSecretKey}
+  onClose={secretKeyHandlers.cancelSendWithSecretKey}
 >
   <div class="secretkey-dialog-content">
     <div class="secretkey-dialog-message">
@@ -556,7 +570,7 @@
         className="btn-confirm"
         variant="danger"
         shape="square"
-        onClick={confirmSendWithSecretKey}
+        onClick={secretKeyHandlers.confirmSendWithSecretKey}
       >
         {$_("postComponent.post")}
       </Button>
@@ -564,7 +578,7 @@
         className="btn-cancel"
         variant="secondary"
         shape="square"
-        onClick={cancelSendWithSecretKey}
+        onClick={secretKeyHandlers.cancelSendWithSecretKey}
       >
         {$_("postComponent.cancel")}
       </Button>
@@ -576,7 +590,7 @@
   bind:show={showImageFullscreen}
   src={fullscreenImageSrc}
   alt={fullscreenImageAlt}
-  onClose={handleImageFullscreenClose}
+  onClose={fullscreenHandlers.closeFullscreen}
 />
 
 {#if showGlobalContextMenu}
@@ -590,7 +604,7 @@
         nodeId: undefined,
         src: undefined,
       })}
-    onShowPopup={handleShowPopup}
+    onShowPopup={popupHandlers.showPopupMessage}
   />
 {/if}
 
