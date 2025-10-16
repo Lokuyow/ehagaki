@@ -11,7 +11,9 @@ import type {
     FileUploadDependencies,
     AuthService,
     CompressionService,
-    MimeTypeSupportInterface
+    MimeTypeSupportInterface,
+    UploadProgress,
+    UploadInfoCallbacks
 } from "./types";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
@@ -128,7 +130,7 @@ export function insertPlaceholdersIntoEditor(
 
         try {
             let node;
-            
+
             if (isVideo) {
                 // 動画ノードの作成
                 const videoAttrs: any = {
@@ -277,7 +279,7 @@ export async function replacePlaceholdersWithResults(
             const aborted = remainingPlaceholders.shift();
             if (aborted && currentEditor) {
                 const isVideo = aborted.file.type.startsWith('video/');
-                
+
                 dependencies.imageSizeMapStore.update(map => {
                     delete map[aborted.placeholderId];
                     return map;
@@ -287,7 +289,7 @@ export async function replacePlaceholdersWithResults(
                 const doc = state.doc;
                 doc.descendants((node: any, pos: number) => {
                     const nodeType = isVideo ? 'video' : 'image';
-                    if (node.type.name === nodeType && 
+                    if (node.type.name === nodeType &&
                         (node.attrs.src === aborted.placeholderId || node.attrs.id === aborted.placeholderId)) {
                         const tr = state.tr.delete(pos, pos + node.nodeSize);
                         currentEditor.view.dispatch(tr);
@@ -328,7 +330,7 @@ export async function replacePlaceholdersWithResults(
                 remainingPlaceholders.splice(matchedIndex, 1);
 
                 const isVideo = matched.file.type.startsWith('video/');
-                
+
                 if (devMode) {
                     console.log('[uploadHelper] Matched placeholder:', {
                         placeholderId: matched.placeholderId,
@@ -338,14 +340,14 @@ export async function replacePlaceholdersWithResults(
                         resultUrl: result.url
                     });
                 }
-                
+
                 const state = currentEditor.state;
                 const doc = state.doc;
-                
+
                 doc.descendants((node: any, pos: number) => {
                     const nodeType = node.type?.name;
                     const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-                    
+
                     if (devMode) {
                         console.log('[uploadHelper] Checking node:', {
                             nodeType,
@@ -356,7 +358,7 @@ export async function replacePlaceholdersWithResults(
                             isMatch: node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId
                         });
                     }
-                    
+
                     if (isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId)) {
                         if (devMode) {
                             console.log('[uploadHelper] Replacing placeholder with actual URL:', {
@@ -365,7 +367,7 @@ export async function replacePlaceholdersWithResults(
                                 newUrl: result.url
                             });
                         }
-                        
+
                         if (isVideo) {
                             // 動画ノードの更新
                             const newAttrs = {
@@ -443,7 +445,7 @@ export async function replacePlaceholdersWithResults(
             const failed = remainingPlaceholders.shift();
             if (failed && currentEditor) {
                 const isVideo = failed.file.type.startsWith('video/');
-                
+
                 dependencies.imageSizeMapStore.update(map => {
                     const newMap = { ...map };
                     delete newMap[failed.placeholderId];
@@ -455,7 +457,7 @@ export async function replacePlaceholdersWithResults(
                 doc.descendants((node: any, pos: number) => {
                     const nodeType = node.type?.name;
                     const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-                    
+
                     if (isSameNode && (node.attrs?.src === failed.placeholderId || node.attrs?.id === failed.placeholderId)) {
                         const tr = state.tr.delete(pos, pos + node.nodeSize);
                         currentEditor.view.dispatch(tr);
@@ -470,7 +472,7 @@ export async function replacePlaceholdersWithResults(
     for (const remaining of remainingPlaceholders) {
         if (currentEditor) {
             const isVideo = remaining.file.type.startsWith('video/');
-            
+
             dependencies.imageSizeMapStore.update(map => {
                 const newMap = { ...map };
                 delete newMap[remaining.placeholderId];
@@ -482,7 +484,7 @@ export async function replacePlaceholdersWithResults(
             doc.descendants((node: any, pos: number) => {
                 const nodeType = node.type?.name;
                 const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-                
+
                 if (isSameNode && (node.attrs?.src === remaining.placeholderId || node.attrs?.id === remaining.placeholderId)) {
                     const tr = state.tr.delete(pos, pos + node.nodeSize);
                     currentEditor.view.dispatch(tr);
@@ -656,4 +658,143 @@ export async function uploadHelper({
         failedResults,
         errorMessage,
     };
+}
+
+// --- 統合されたアップロード関連関数 ---
+
+export interface CreateUploadCallbacksParams {
+    onUploadProgress?: (progress: UploadProgress) => void;
+    videoCompressionProgressStore: {
+        set: (value: number) => void;
+    };
+}
+
+export function createUploadCallbacks(params: CreateUploadCallbacksParams): UploadInfoCallbacks | undefined {
+    const { onUploadProgress, videoCompressionProgressStore } = params;
+    return onUploadProgress
+        ? {
+            onProgress: onUploadProgress,
+            onVideoCompressionProgress: (progress: number) => {
+                videoCompressionProgressStore.set(progress);
+            },
+        }
+        : undefined;
+}
+
+export interface ShowUploadErrorMessageParams {
+    updateUploadState: (isUploading: boolean, message?: string) => void;
+}
+
+export function showUploadErrorMessage(
+    message: string,
+    duration = 3000,
+    params: ShowUploadErrorMessageParams
+) {
+    params.updateUploadState(false, message);
+    setTimeout(() => params.updateUploadState(false, ""), duration);
+}
+
+export interface PerformFileUploadParams {
+    files: File[] | FileList;
+    currentEditor: TipTapEditor | null;
+    fileInput?: HTMLInputElement;
+    uploadCallbacks?: UploadInfoCallbacks;
+    updateUploadState: (isUploading: boolean, message?: string) => void;
+    devMode: boolean;
+    imageOxMap: Record<string, string>;
+    imageXMap: Record<string, string>;
+    dependencies?: UploadHelperDependencies;
+    getUploadFailedText: (key: string) => string;
+}
+
+export async function performFileUpload(params: PerformFileUploadParams): Promise<void> {
+    const {
+        files,
+        currentEditor,
+        fileInput,
+        uploadCallbacks,
+        updateUploadState,
+        devMode,
+        imageOxMap,
+        imageXMap,
+        dependencies = createDefaultDependencies(),
+        getUploadFailedText,
+    } = params;
+
+    if (!files || files.length === 0) return;
+
+    const result: UploadHelperResult = await uploadHelper({
+        files,
+        currentEditor,
+        fileInput,
+        uploadCallbacks,
+        showUploadError: (msg: string, duration?: number) =>
+            showUploadErrorMessage(msg, duration, { updateUploadState }),
+        updateUploadState,
+        devMode,
+        dependencies,
+    });
+
+    Object.assign(imageOxMap, result.imageOxMap);
+    Object.assign(imageXMap, result.imageXMap);
+
+    if (result.failedResults?.length) {
+        showUploadErrorMessage(
+            result.errorMessage ||
+            (result.failedResults.length === 1
+                ? result.failedResults[0].error || getUploadFailedText("postComponent.upload_failed")
+                : `${result.failedResults.length}個のファイルのアップロードに失敗しました`),
+            5000,
+            { updateUploadState }
+        );
+    }
+    if (fileInput) fileInput.value = "";
+}
+
+export interface UploadFilesParams {
+    files: File[] | FileList;
+    currentEditor: TipTapEditor | null;
+    fileInput?: HTMLInputElement;
+    onUploadProgress?: (progress: UploadProgress) => void;
+    updateUploadState: (isUploading: boolean, message?: string) => void;
+    imageOxMap: Record<string, string>;
+    imageXMap: Record<string, string>;
+    videoCompressionProgressStore: {
+        set: (value: number) => void;
+    };
+    getUploadFailedText: (key: string) => string;
+    dependencies?: UploadHelperDependencies;
+}
+
+export async function uploadFiles(params: UploadFilesParams): Promise<void> {
+    const {
+        files,
+        currentEditor,
+        fileInput,
+        onUploadProgress,
+        updateUploadState,
+        imageOxMap,
+        imageXMap,
+        videoCompressionProgressStore,
+        getUploadFailedText,
+        dependencies,
+    } = params;
+
+    const uploadCallbacks = createUploadCallbacks({
+        onUploadProgress,
+        videoCompressionProgressStore,
+    });
+
+    await performFileUpload({
+        files,
+        currentEditor,
+        fileInput,
+        uploadCallbacks,
+        updateUploadState,
+        devMode: import.meta.env.MODE === "development",
+        imageOxMap,
+        imageXMap,
+        dependencies,
+        getUploadFailedText,
+    });
 }

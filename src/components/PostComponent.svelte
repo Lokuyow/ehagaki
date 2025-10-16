@@ -7,14 +7,10 @@
   import type { Node as PMNode } from "prosemirror-model";
   import { NodeSelection } from "prosemirror-state";
   import type { RxNostr } from "rx-nostr";
-  import type {
-    UploadInfoCallbacks,
-    UploadHelperResult,
-    UploadProgress,
-  } from "../lib/types";
+  import type { UploadProgress } from "../lib/types";
   import { videoCompressionProgressStore } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
-  import { uploadHelper } from "../lib/uploadHelper";
+  import { uploadFiles } from "../lib/uploadHelper";
   import Button from "./Button.svelte";
   import Dialog from "./Dialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -121,58 +117,19 @@
 
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
-    if (input?.files?.length) uploadFiles(input.files);
-  }
-
-  // アップロード関連の処理をまとめる
-  function createUploadCallbacks(): UploadInfoCallbacks | undefined {
-    return onUploadProgress
-      ? {
-          onProgress: onUploadProgress as (
-            p: import("../lib/types").UploadProgress,
-          ) => void,
-          onVideoCompressionProgress: (progress: number) => {
-            videoCompressionProgressStore.set(progress);
-          },
-        }
-      : undefined;
-  }
-
-  function showUploadErrorMessage(message: string, duration = 3000) {
-    updateUploadState(editorState.isUploading, message);
-    setTimeout(() => updateUploadState(editorState.isUploading, ""), duration);
-  }
-
-  async function performFileUpload(files: File[] | FileList) {
-    if (!files || files.length === 0) return;
-
-    const result: UploadHelperResult = await uploadHelper({
-      files,
-      currentEditor,
-      fileInput,
-      uploadCallbacks: createUploadCallbacks(),
-      showUploadError: showUploadErrorMessage,
-      updateUploadState,
-      devMode: import.meta.env.MODE === "development",
-    });
-
-    Object.assign(imageOxMap, result.imageOxMap);
-    Object.assign(imageXMap, result.imageXMap);
-
-    if (result.failedResults?.length) {
-      showUploadErrorMessage(
-        result.errorMessage ||
-          (result.failedResults.length === 1
-            ? result.failedResults[0].error || $_("postComponent.upload_failed")
-            : `${result.failedResults.length}個のファイルのアップロードに失敗しました`),
-        5000,
-      );
+    if (input?.files?.length) {
+      uploadFiles({
+        files: input.files,
+        currentEditor,
+        fileInput,
+        onUploadProgress,
+        updateUploadState,
+        imageOxMap,
+        imageXMap,
+        videoCompressionProgressStore,
+        getUploadFailedText: (key: string) => $_(key),
+      });
     }
-    if (fileInput) fileInput.value = "";
-  }
-
-  export async function uploadFiles(files: File[] | FileList) {
-    await performFileUpload(files);
   }
 
   // ポスト関連の処理をまとめる
@@ -208,7 +165,10 @@
     });
 
     try {
-      const result = await postManager.submitPost(postContent, imageBlurhashMap);
+      const result = await postManager.submitPost(
+        postContent,
+        imageBlurhashMap,
+      );
       if (result.success) {
         updatePostStatus({
           sending: false,
@@ -397,7 +357,13 @@
   }
 
   // エディタークリーンアップ関数
-  function cleanupEditor({ unsubscribe, handlers }: { unsubscribe: () => void; handlers: any }) {
+  function cleanupEditor({
+    unsubscribe,
+    handlers,
+  }: {
+    unsubscribe: () => void;
+    handlers: any;
+  }) {
     cleanupEventListeners(handlers);
     unsubscribe();
     currentEditor?.destroy?.();
@@ -414,7 +380,7 @@
   function setupGboardHandler() {
     if (!editorContainerEl) return;
 
-    let lastContent = currentEditor ? currentEditor.getText() : '';
+    let lastContent = currentEditor ? currentEditor.getText() : "";
     let isProcessingPaste = false;
 
     const handleInput = (event: Event) => {
@@ -427,14 +393,14 @@
         if (addedLength > 10 && currentContent.length > lastContent.length) {
           const addedText = currentContent.substring(lastContent.length);
 
-          if (addedText.includes('\n')) {
+          if (addedText.includes("\n")) {
             isProcessingPaste = true;
 
             currentEditor.chain().focus().clearContent().run();
 
             setTimeout(() => {
               if (currentEditor) {
-                const cleanedText = addedText.replace(/\n\n/g, '\n');
+                const cleanedText = addedText.replace(/\n\n/g, "\n");
                 processPastedText(currentEditor, cleanedText);
               }
               isProcessingPaste = false;
@@ -454,11 +420,11 @@
       }
     };
 
-    editorContainerEl.addEventListener('input', handleInput);
+    editorContainerEl.addEventListener("input", handleInput);
 
     return () => {
       if (editorContainerEl) {
-        editorContainerEl.removeEventListener('input', handleInput);
+        editorContainerEl.removeEventListener("input", handleInput);
       }
     };
   }
@@ -473,7 +439,9 @@
       updateEditorContent(plainText, hasMedia);
     };
 
-    const handleImageFullscreenRequest = (event: CustomEvent<{ src: string; alt?: string }>) => {
+    const handleImageFullscreenRequest = (
+      event: CustomEvent<{ src: string; alt?: string }>,
+    ) => {
       fullscreenImageSrc = event.detail.src;
       fullscreenImageAlt = event.detail.alt || "";
       showImageFullscreen = true;
@@ -496,26 +464,64 @@
       }
     };
 
-    window.addEventListener("editor-content-changed", handleContentUpdate as EventListener);
-    window.addEventListener("image-fullscreen-request", handleImageFullscreenRequest as EventListener);
-    window.addEventListener("select-image-node", handleSelectImageNode as EventListener);
+    window.addEventListener(
+      "editor-content-changed",
+      handleContentUpdate as EventListener,
+    );
+    window.addEventListener(
+      "image-fullscreen-request",
+      handleImageFullscreenRequest as EventListener,
+    );
+    window.addEventListener(
+      "select-image-node",
+      handleSelectImageNode as EventListener,
+    );
 
     if (editorContainerEl) {
-      editorContainerEl.addEventListener("image-fullscreen-request", handleImageFullscreenRequest as EventListener);
-      editorContainerEl.addEventListener("select-image-node", handleSelectImageNode as EventListener);
+      editorContainerEl.addEventListener(
+        "image-fullscreen-request",
+        handleImageFullscreenRequest as EventListener,
+      );
+      editorContainerEl.addEventListener(
+        "select-image-node",
+        handleSelectImageNode as EventListener,
+      );
     }
 
-    return { handleContentUpdate, handleImageFullscreenRequest, handleSelectImageNode };
+    return {
+      handleContentUpdate,
+      handleImageFullscreenRequest,
+      handleSelectImageNode,
+    };
   }
 
-  function cleanupEventListeners(handlers: { handleContentUpdate: EventListener; handleImageFullscreenRequest: EventListener; handleSelectImageNode: EventListener }) {
-    window.removeEventListener("editor-content-changed", handlers.handleContentUpdate);
-    window.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
-    window.removeEventListener("select-image-node", handlers.handleSelectImageNode);
+  function cleanupEventListeners(handlers: {
+    handleContentUpdate: EventListener;
+    handleImageFullscreenRequest: EventListener;
+    handleSelectImageNode: EventListener;
+  }) {
+    window.removeEventListener(
+      "editor-content-changed",
+      handlers.handleContentUpdate,
+    );
+    window.removeEventListener(
+      "image-fullscreen-request",
+      handlers.handleImageFullscreenRequest,
+    );
+    window.removeEventListener(
+      "select-image-node",
+      handlers.handleSelectImageNode,
+    );
 
     if (editorContainerEl) {
-      editorContainerEl.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
-      editorContainerEl.removeEventListener("select-image-node", handlers.handleSelectImageNode);
+      editorContainerEl.removeEventListener(
+        "image-fullscreen-request",
+        handlers.handleImageFullscreenRequest,
+      );
+      editorContainerEl.removeEventListener(
+        "select-image-node",
+        handlers.handleSelectImageNode,
+      );
     }
   }
 </script>
@@ -697,7 +703,9 @@
   }
 
   /* カスタムプレースホルダーの表示 - 最初の段落のみ、かつエディタが完全に空の場合のみ */
-  :global(.tiptap-editor.is-editor-empty > p.is-editor-empty:first-child::before) {
+  :global(
+      .tiptap-editor.is-editor-empty > p.is-editor-empty:first-child::before
+    ) {
     content: attr(data-placeholder) !important;
     position: absolute;
     top: 0;
@@ -712,7 +720,10 @@
   }
 
   /* フォーカス時のプレースホルダー表示を継続（薄く表示） */
-  :global(.tiptap-editor.is-editor-empty:focus > p.is-editor-empty:first-child::before) {
+  :global(
+      .tiptap-editor.is-editor-empty:focus
+        > p.is-editor-empty:first-child::before
+    ) {
     opacity: 0.6 !important;
   }
 
