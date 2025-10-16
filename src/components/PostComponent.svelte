@@ -422,12 +422,9 @@
     outline: none;
     background: var(--bg-input);
     overflow: hidden;
-    touch-action: pan-y; /* 縦スクロールのみ許可 */
-    /* ドラッグ中のスクロール制御を改善 */
+    touch-action: pan-y;
     overscroll-behavior: contain;
-    /* 自動スクロール時はスムーズスクロールを無効化 */
     scroll-behavior: auto;
-    /* タッチデバイスでのフォーカス処理改善 */
     -webkit-tap-highlight-color: transparent;
   }
 
@@ -452,14 +449,10 @@
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;
-    /* スクロール最適化 */
     scroll-behavior: auto;
-    /* GPU加速を有効化 */
     will-change: scroll-position;
     transform: translateZ(0);
-    /* タッチデバイスでのフォーカス処理改善 */
     -webkit-tap-highlight-color: transparent;
-    /* プレースホルダー用の相対配置 */
     position: relative;
   }
 
@@ -543,9 +536,7 @@
   /* タッチデバイス用の追加スタイル */
   @media (hover: none) and (pointer: coarse) {
     .editor-container {
-      /* タッチデバイスでのタップ反応を改善 */
       -webkit-tap-highlight-color: transparent;
-      /* ドラッグ中のパフォーマンス向上 */
       will-change: scroll-position;
     }
 
@@ -555,10 +546,8 @@
     }
 
     :global(.tiptap-editor) {
-      /* タッチデバイスでの選択を改善 */
       -webkit-user-select: text;
       user-select: text;
-      /* スクロールパフォーマンス最適化 */
       -webkit-transform: translateZ(0);
       transform: translateZ(0);
       backface-visibility: hidden;
