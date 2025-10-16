@@ -30,7 +30,7 @@
     keydownAction,
     fileDropActionWithDragState,
     hasMediaInDoc,
-  } from "../lib/editor/editorDomActions";
+  } from "../lib/editor/editorDomActions.svelte";
   import {
     containsSecretKey,
     calculateContextMenuPosition,

@@ -31,7 +31,7 @@ function hasExternalFiles(dt: DataTransfer | null | undefined): boolean {
 
 // fileDropAction
 export function fileDropAction(node: HTMLElement) {
-    let dragOver = false;
+    let dragOver = $state(false);
     function handleDragOver(event: DragEvent) {
         const dt = event.dataTransfer;
         const internal = isInternalTiptapDrag(dt);

@@ -30,7 +30,7 @@ import {
     hasImageInDoc,
     hasVideoInDoc,
     hasMediaInDoc,
-} from "../lib/editor/editorDomActions";
+} from "../lib/editor/editorDomActions.svelte";
 
 // extractContentWithImages をモック
 vi.mock("../lib/utils/editorUtils", () => ({
