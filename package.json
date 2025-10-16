@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "check": "svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest",
+    "test": "vitest run",
     "test:ui": "vitest --ui",
     "deploy": "gh-pages -d dist"
   },
