@@ -7,7 +7,7 @@
   import type { UploadProgress } from "../lib/types";
   import { videoCompressionProgressStore, imageCompressionProgressStore } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
-  import { uploadFiles } from "../lib/uploadHelper";
+  import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
   import ContextMenu from "./ContextMenu.svelte";
   import PopupModal from "./PopupModal.svelte";
   import SecretKeyWarningDialog from "./SecretKeyWarningDialog.svelte";
@@ -86,6 +86,26 @@
     }
   });
 
+  async function performUpload(files: File[] | FileList | null | undefined): Promise<void> {
+    if (!files || files.length === 0) return;
+
+    await uploadFilesHelper({
+      files,
+      currentEditor,
+      fileInput,
+      onUploadProgress,
+      updateUploadState: (isUploading: boolean, message?: string) => {
+        editorState.isUploading = isUploading;
+        editorState.uploadErrorMessage = message || "";
+      },
+      imageOxMap,
+      imageXMap,
+      videoCompressionProgressStore,
+      imageCompressionProgressStore,
+      getUploadFailedText: (key: string) => $_(key),
+    });
+  }
+
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
     const initialPlaceholder =
@@ -98,21 +118,7 @@
       hasStoredKey,
       submitPost,
       uploadFiles: (files: File[] | FileList) => {
-        uploadFiles({
-          files,
-          currentEditor,
-          fileInput,
-          onUploadProgress,
-          updateUploadState: (isUploading: boolean, message?: string) => {
-            editorState.isUploading = isUploading;
-            editorState.uploadErrorMessage = message || "";
-          },
-          imageOxMap,
-          imageXMap,
-          videoCompressionProgressStore,
-          imageCompressionProgressStore,
-          getUploadFailedText: (key: string) => $_(key),
-        });
+        void performUpload(files);
       },
       eventCallbacks: {
         onContentUpdate: updateEditorContent,
@@ -152,22 +158,12 @@
   function handleFileSelect(event: Event) {
     const input = event.target as HTMLInputElement;
     if (input?.files?.length) {
-      uploadFiles({
-        files: input.files,
-        currentEditor,
-        fileInput,
-        onUploadProgress,
-        updateUploadState: (isUploading: boolean, message?: string) => {
-          editorState.isUploading = isUploading;
-          editorState.uploadErrorMessage = message || "";
-        },
-        imageOxMap,
-        imageXMap,
-        videoCompressionProgressStore,
-        imageCompressionProgressStore,
-        getUploadFailedText: (key: string) => $_(key),
-      });
+      void performUpload(input.files);
     }
+  }
+
+  export async function uploadFiles(files: File[] | FileList): Promise<void> {
+    await performUpload(files);
   }
 
   export async function submitPost() {
