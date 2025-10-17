@@ -41,7 +41,75 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     imageSizeMapStore,
 });
 
-// 純粹関数: ファイル処理とプレースホルダー作成
+// 純粋関数: プレースホルダーノードの削除
+export function removePlaceholderNode(
+    placeholderId: string,
+    isVideo: boolean,
+    currentEditor: TipTapEditor | null,
+    dependencies: UploadHelperDependencies,
+    devMode: boolean
+): void {
+    if (!currentEditor) return;
+
+    updateImageSizeMap(dependencies.imageSizeMapStore, placeholderId);
+
+    findAndExecuteOnNode(
+        currentEditor,
+        (node: any, pos: number) => {
+            const nodeType = node.type?.name;
+            const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
+            return isSameNode && (node.attrs?.src === placeholderId || node.attrs?.id === placeholderId);
+        },
+        (node: any, pos: number) => {
+            const tr = currentEditor!.state.tr.delete(pos, pos + node.nodeSize);
+            currentEditor!.view.dispatch(tr);
+
+            if (devMode) {
+                console.log(`[uploadHelper] Deleted placeholder:`, placeholderId);
+            }
+        }
+    );
+}
+
+// 純粋関数: エディターノードの検索と実行
+export function findAndExecuteOnNode(
+    editor: TipTapEditor | null,
+    predicate: (node: any, pos: number) => boolean,
+    action: (node: any, pos: number) => void
+): void {
+    if (!editor) return;
+
+    const doc = editor.state.doc;
+    doc.descendants((node: any, pos: number) => {
+        if (predicate(node, pos)) {
+            action(node, pos);
+            return false; // 最初のマッチで停止
+        }
+    });
+}
+
+// 純粋関数: 画像サイズマップの更新
+export function updateImageSizeMap(
+    store: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    deleteKey?: string,
+    addKey?: string,
+    addValue?: any
+): void {
+    store.update(map => {
+        const newMap = { ...map };
+        if (deleteKey) delete newMap[deleteKey];
+        if (addKey && addValue) newMap[addKey] = addValue;
+        return newMap;
+    });
+}
+
+// 純粋関数: ファイル処理とプレースホルダー作成
+/**
+ * アップロードするファイルを処理し、ハッシュとサイズ情報を計算する
+ * @param files 処理するファイル配列
+ * @param dependencies 依存関係
+ * @returns 処理結果の配列（ファイル、インデックス、ox、dimensions）
+ */
 export async function processFilesForUpload(
     files: File[],
     dependencies: UploadHelperDependencies
@@ -70,7 +138,17 @@ export async function processFilesForUpload(
     return await Promise.all(fileProcessingPromises);
 }
 
-// 純粹関数: プレースホルダー挿入（責務を明確化）
+// 純粋関数: プレースホルダー挿入（責務を明確化）
+/**
+ * エディタにプレースホルダーノードを挿入する
+ * @param fileArray 挿入するファイル配列
+ * @param fileProcessingResults ファイル処理結果
+ * @param currentEditor エディタインスタンス
+ * @param showUploadError エラー表示関数
+ * @param dependencies 依存関係
+ * @param devMode 開発モード
+ * @returns プレースホルダーエントリの配列
+ */
 export function insertPlaceholdersIntoEditor(
     fileArray: File[],
     fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
@@ -190,6 +268,13 @@ export function insertPlaceholdersIntoEditor(
 }
 
 // 純粗関数: Blurhash生成
+/**
+ * プレースホルダーに対応するBlurhashを生成し、エディタノードを更新する
+ * @param placeholderMap プレースホルダーマップ
+ * @param currentEditor エディタインスタンス
+ * @param dependencies 依存関係
+ * @param devMode 開発モード
+ */
 export async function generateBlurhashesForPlaceholders(
     placeholderMap: PlaceholderEntry[],
     currentEditor: TipTapEditor | null,
@@ -204,18 +289,17 @@ export async function generateBlurhashesForPlaceholders(
             if (blurhash) {
                 item.blurhash = blurhash;
                 if (currentEditor) {
-                    const state = currentEditor.state;
-                    const doc = state.doc;
-                    doc.descendants((node: any, pos: number) => {
-                        if (node.type?.name === "image" && node.attrs?.src === item.placeholderId) {
-                            const tr = state.tr.setNodeMarkup(pos, undefined, {
+                    findAndExecuteOnNode(
+                        currentEditor,
+                        (node: any, pos: number) => node.type?.name === "image" && node.attrs?.src === item.placeholderId,
+                        (node: any, pos: number) => {
+                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
                                 ...node.attrs,
                                 blurhash,
                             });
-                            currentEditor.view.dispatch(tr);
-                            return false;
+                            currentEditor!.view.dispatch(tr);
                         }
-                    });
+                    );
                 }
             }
         } catch (error) {
@@ -232,6 +316,11 @@ export async function generateBlurhashesForPlaceholders(
 }
 
 // 純粋関数: メタデータ準備
+/**
+ * アップロード用のメタデータリストを作成する
+ * @param fileArray ファイル配列
+ * @returns メタデータレコードの配列
+ */
 export function prepareMetadataList(fileArray: File[]): Array<Record<string, string | number | undefined>> {
     return fileArray.map((f) => ({
         caption: f.name,
@@ -245,6 +334,17 @@ export function prepareMetadataList(fileArray: File[]): Array<Record<string, str
 }
 
 // 純粋関数: プレースホルダー置換処理
+/**
+ * アップロード結果に基づいてプレースホルダーを実際のURLに置き換える
+ * @param results アップロード結果
+ * @param placeholderMap プレースホルダーマップ
+ * @param currentEditor エディタインスタンス
+ * @param imageOxMap OXマップ
+ * @param imageXMap Xマップ
+ * @param dependencies 依存関係
+ * @param devMode 開発モード
+ * @returns 失敗結果、エラーメッセージ、サーバーBlurhashマップ
+ */
 export async function replacePlaceholdersWithResults(
     results: FileUploadResponse[],
     placeholderMap: PlaceholderEntry[],
@@ -277,28 +377,9 @@ export async function replacePlaceholdersWithResults(
         // 中止されたアップロードの場合、プレースホルダーを削除
         if (result.aborted) {
             const aborted = remainingPlaceholders.shift();
-            if (aborted && currentEditor) {
+            if (aborted) {
                 const isVideo = aborted.file.type.startsWith('video/');
-
-                dependencies.imageSizeMapStore.update(map => {
-                    delete map[aborted.placeholderId];
-                    return map;
-                });
-
-                const state = currentEditor.state;
-                const doc = state.doc;
-                doc.descendants((node: any, pos: number) => {
-                    const nodeType = isVideo ? 'video' : 'image';
-                    if (node.type.name === nodeType &&
-                        (node.attrs.src === aborted.placeholderId || node.attrs.id === aborted.placeholderId)) {
-                        const tr = state.tr.delete(pos, pos + node.nodeSize);
-                        currentEditor.view.dispatch(tr);
-                        if (devMode) {
-                            console.log(`[uploadHelper] Deleted aborted ${nodeType} placeholder:`, aborted.placeholderId);
-                        }
-                        return false;
-                    }
-                });
+                removePlaceholderNode(aborted.placeholderId, isVideo, currentEditor, dependencies, devMode);
             }
             continue;
         }
@@ -344,22 +425,26 @@ export async function replacePlaceholdersWithResults(
                 const state = currentEditor.state;
                 const doc = state.doc;
 
-                doc.descendants((node: any, pos: number) => {
-                    const nodeType = node.type?.name;
-                    const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
+                findAndExecuteOnNode(
+                    currentEditor,
+                    (node: any, pos: number) => {
+                        const nodeType = node.type?.name;
+                        const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
 
-                    if (devMode) {
-                        console.log('[uploadHelper] Checking node:', {
-                            nodeType,
-                            nodeSrc: node.attrs?.src,
-                            nodeId: node.attrs?.id,
-                            placeholderId: matched!.placeholderId,
-                            isSameNode,
-                            isMatch: node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId
-                        });
-                    }
+                        if (devMode) {
+                            console.log('[uploadHelper] Checking node:', {
+                                nodeType,
+                                nodeSrc: node.attrs?.src,
+                                nodeId: node.attrs?.id,
+                                placeholderId: matched!.placeholderId,
+                                isSameNode,
+                                isMatch: node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId
+                            });
+                        }
 
-                    if (isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId)) {
+                        return isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId);
+                    },
+                    (node: any, pos: number) => {
                         if (devMode) {
                             console.log('[uploadHelper] Replacing placeholder with actual URL:', {
                                 isVideo,
@@ -376,8 +461,8 @@ export async function replacePlaceholdersWithResults(
                                 id: result.url,
                                 isPlaceholder: false,
                             };
-                            const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                            currentEditor.view.dispatch(tr);
+                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                            currentEditor!.view.dispatch(tr);
                         } else {
                             // 画像ノードの更新
                             const newAttrs: any = {
@@ -389,20 +474,14 @@ export async function replacePlaceholdersWithResults(
 
                             if (matched!.dimensions) {
                                 newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
-                                dependencies.imageSizeMapStore.update(map => {
-                                    const newMap = { ...map };
-                                    delete newMap[matched!.placeholderId];
-                                    newMap[result.url!] = matched!.dimensions!;
-                                    return newMap;
-                                });
+                                updateImageSizeMap(dependencies.imageSizeMapStore, matched!.placeholderId, result.url!, matched!.dimensions!);
                             }
 
-                            const tr = state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                            currentEditor.view.dispatch(tr);
+                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                            currentEditor!.view.dispatch(tr);
                         }
-                        return false;
                     }
-                });
+                );
 
                 // 画像の場合のみハッシュマップを更新
                 if (!isVideo) {
@@ -443,55 +522,17 @@ export async function replacePlaceholdersWithResults(
             failedResults.push(result);
             // 失敗したファイルに対応するプレースホルダーを削除
             const failed = remainingPlaceholders.shift();
-            if (failed && currentEditor) {
+            if (failed) {
                 const isVideo = failed.file.type.startsWith('video/');
-
-                dependencies.imageSizeMapStore.update(map => {
-                    const newMap = { ...map };
-                    delete newMap[failed.placeholderId];
-                    return newMap;
-                });
-
-                const state = currentEditor.state;
-                const doc = state.doc;
-                doc.descendants((node: any, pos: number) => {
-                    const nodeType = node.type?.name;
-                    const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-
-                    if (isSameNode && (node.attrs?.src === failed.placeholderId || node.attrs?.id === failed.placeholderId)) {
-                        const tr = state.tr.delete(pos, pos + node.nodeSize);
-                        currentEditor.view.dispatch(tr);
-                        return false;
-                    }
-                });
+                removePlaceholderNode(failed.placeholderId, isVideo, currentEditor, dependencies, devMode);
             }
         }
     }
 
     // 残ったプレースホルダーがあれば削除（サーバーから想定より少ない結果が返った場合）
     for (const remaining of remainingPlaceholders) {
-        if (currentEditor) {
-            const isVideo = remaining.file.type.startsWith('video/');
-
-            dependencies.imageSizeMapStore.update(map => {
-                const newMap = { ...map };
-                delete newMap[remaining.placeholderId];
-                return newMap;
-            });
-
-            const state = currentEditor.state;
-            const doc = state.doc;
-            doc.descendants((node: any, pos: number) => {
-                const nodeType = node.type?.name;
-                const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-
-                if (isSameNode && (node.attrs?.src === remaining.placeholderId || node.attrs?.id === remaining.placeholderId)) {
-                    const tr = state.tr.delete(pos, pos + node.nodeSize);
-                    currentEditor.view.dispatch(tr);
-                    return false;
-                }
-            });
-        }
+        const isVideo = remaining.file.type.startsWith('video/');
+        removePlaceholderNode(remaining.placeholderId, isVideo, currentEditor, dependencies, devMode);
     }
 
     if (failedResults.length) {
