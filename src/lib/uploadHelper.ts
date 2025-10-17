@@ -1,11 +1,9 @@
 import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
-import { NodeSelection } from "prosemirror-state";
 import { FileUploadManager } from "./fileUploadManager";
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
-import { findAndExecuteOnNode, updateImageSizeMap } from "./utils/editorUtils";
-import { processFilesForUpload, prepareMetadataList } from "./utils/appUtils";
+import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/appUtils";
 import type {
     UploadHelperParams,
     UploadHelperResult,
@@ -19,371 +17,8 @@ import type {
     MimeTypeSupportInterface,
     UploadProgress,
     UploadInfoCallbacks,
-    ImageDimensions
 } from "./types";
-import { getImageDimensions, generateSimpleUUID } from "./utils/appUtils";
-
-// PlaceholderManagerクラス: プレースホルダー関連の操作を統合
-export class PlaceholderManager {
-    private dependencies: UploadHelperDependencies;
-    private devMode: boolean;
-
-    constructor(dependencies: UploadHelperDependencies, devMode: boolean) {
-        this.dependencies = dependencies;
-        this.devMode = devMode;
-    }
-
-    // プレースホルダーノードの削除
-    removePlaceholderNode(placeholderId: string, isVideo: boolean, currentEditor: TipTapEditor | null): void {
-        if (!currentEditor) return;
-
-        updateImageSizeMap(this.dependencies.imageSizeMapStore, placeholderId);
-
-        findAndExecuteOnNode(
-            currentEditor,
-            (node: any, pos: number) => {
-                const nodeType = node.type?.name;
-                const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-                return isSameNode && (node.attrs?.src === placeholderId || node.attrs?.id === placeholderId);
-            },
-            (node: any, pos: number) => {
-                const tr = currentEditor!.state.tr.delete(pos, pos + node.nodeSize);
-                currentEditor!.view.dispatch(tr);
-
-                if (this.devMode) {
-                    console.log(`[uploadHelper] Deleted placeholder:`, placeholderId);
-                }
-            }
-        );
-    }
-
-    // プレースホルダーの挿入
-    insertPlaceholdersIntoEditor(
-        fileArray: File[],
-        fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
-        currentEditor: TipTapEditor | null,
-        showUploadError: (msg: string, duration?: number) => void
-    ): PlaceholderEntry[] {
-        const placeholderMap: PlaceholderEntry[] = [];
-        const fileUploadManager = new this.dependencies.FileUploadManager();
-        const timestamp = Date.now();
-
-        if (!currentEditor) return placeholderMap;
-
-        const state = currentEditor.state;
-        const selection = state.selection;
-
-        const isImageNodeSelected = selection instanceof NodeSelection && selection.node?.type?.name === 'image';
-
-        if (this.devMode) {
-            console.log('[dev] insertPlaceholdersIntoEditor:', {
-                fileCount: fileArray.length,
-                isImageNodeSelected,
-                selectionType: selection.constructor.name,
-                selectionFrom: selection.from,
-                selectionTo: (selection as any).to,
-                docSize: state.doc.content.size
-            });
-        }
-
-        const isOnlyEmptyParagraph = state.doc.childCount === 1 &&
-            state.doc.firstChild?.type.name === 'paragraph' &&
-            state.doc.firstChild.content.size === 0;
-
-        let tr = state.tr;
-        let currentInsertPos = isImageNodeSelected ? (selection as NodeSelection).to : selection.from;
-
-        fileArray.forEach((file, index) => {
-            const isVideo = file.type.startsWith('video/');
-            const validation = fileUploadManager.validateMediaFile(file);
-            if (!validation.isValid) {
-                showUploadError(validation.errorMessage || "postComponent.upload_failed");
-                return;
-            }
-
-            const placeholderId = `placeholder-${timestamp}-${index}-${generateSimpleUUID()}`;
-            const processingResult = fileProcessingResults[index];
-            const ox = processingResult?.ox;
-            const dimensions = processingResult?.dimensions;
-
-            try {
-                let node;
-
-                if (isVideo) {
-                    const videoAttrs: any = {
-                        src: placeholderId,
-                        id: placeholderId,
-                        isPlaceholder: true
-                    };
-                    node = state.schema.nodes.video.create(videoAttrs);
-                } else {
-                    const imageAttrs: any = {
-                        src: placeholderId,
-                        isPlaceholder: true
-                    };
-
-                    if (dimensions) {
-                        imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
-                        this.dependencies.imageSizeMapStore.update(map => ({
-                            ...map,
-                            [placeholderId]: dimensions
-                        }));
-                    }
-                    node = state.schema.nodes.image.create(imageAttrs);
-                }
-
-                if (isOnlyEmptyParagraph && index === 0) {
-                    tr = tr.replaceWith(0, state.doc.content.size, node);
-                    currentInsertPos = node.nodeSize;
-                } else {
-                    tr = tr.insert(currentInsertPos, node);
-                    currentInsertPos += node.nodeSize;
-                }
-
-                placeholderMap.push({ file, placeholderId, ox, dimensions });
-            } catch (error) {
-                if (this.devMode) {
-                    console.error("[uploadHelper] failed to insert media node", {
-                        placeholderId,
-                        file: file.name,
-                        isVideo,
-                        error,
-                        insertPos: currentInsertPos,
-                        docSize: state.doc.content.size
-                    });
-                }
-                showUploadError(isVideo ? "動画の挿入に失敗しました" : "画像の挿入に失敗しました");
-            }
-        });
-
-        if (placeholderMap.length > 0) {
-            currentEditor.view.dispatch(tr);
-        }
-
-        return placeholderMap;
-    }
-
-    // Blurhash生成
-    async generateBlurhashesForPlaceholders(
-        placeholderMap: PlaceholderEntry[],
-        currentEditor: TipTapEditor | null
-    ): Promise<void> {
-        const fileUploadManager = new this.dependencies.FileUploadManager();
-
-        const blurhashPromises = placeholderMap.map(async (item) => {
-            try {
-                const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
-                if (blurhash) {
-                    item.blurhash = blurhash;
-                    if (currentEditor) {
-                        findAndExecuteOnNode(
-                            currentEditor,
-                            (node: any, pos: number) => node.type?.name === "image" && node.attrs?.src === item.placeholderId,
-                            (node: any, pos: number) => {
-                                const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
-                                    ...node.attrs,
-                                    blurhash,
-                                });
-                                currentEditor!.view.dispatch(tr);
-                            }
-                        );
-                    }
-                }
-            } catch (error) {
-                if (this.devMode) {
-                    console.warn("[uploadHelper] blurhash generation failed", {
-                        file: item.file.name,
-                        error
-                    });
-                }
-            }
-        });
-
-        await Promise.all(blurhashPromises);
-    }
-
-    // プレースホルダーの置換
-    async replacePlaceholdersWithResults(
-        results: FileUploadResponse[],
-        placeholderMap: PlaceholderEntry[],
-        currentEditor: TipTapEditor | null,
-        imageOxMap: Record<string, string>,
-        imageXMap: Record<string, string>
-    ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string; imageServerBlurhashMap: Record<string, string> }> {
-        const failedResults: FileUploadResponse[] = [];
-        const imageServerBlurhashMap: Record<string, string> = {};
-        let errorMessage = "";
-
-        const remainingPlaceholders = [...placeholderMap];
-
-        for (let i = 0; i < results.length; i++) {
-            const result = results[i];
-
-            if (this.devMode) {
-                console.log('[uploadHelper] Processing result', i, ':', {
-                    success: result.success,
-                    url: result.url,
-                    filename: result.filename,
-                    sizeInfo: result.sizeInfo,
-                    aborted: result.aborted
-                });
-            }
-
-            if (result.aborted) {
-                const aborted = remainingPlaceholders.shift();
-                if (aborted) {
-                    const isVideo = aborted.file.type.startsWith('video/');
-                    this.removePlaceholderNode(aborted.placeholderId, isVideo, currentEditor);
-                }
-                continue;
-            }
-
-            if (result.success && result.url) {
-                let matched: PlaceholderEntry | undefined = undefined;
-                let matchedIndex = -1;
-
-                if (result.sizeInfo && result.sizeInfo.originalFilename) {
-                    matchedIndex = remainingPlaceholders.findIndex(
-                        (p) => p.file.name === result.sizeInfo!.originalFilename,
-                    );
-                    if (matchedIndex !== -1) {
-                        matched = remainingPlaceholders[matchedIndex];
-                    }
-                }
-
-                if (!matched && remainingPlaceholders.length > 0) {
-                    matched = remainingPlaceholders[0];
-                    matchedIndex = 0;
-                }
-
-                if (matched && matchedIndex !== -1 && currentEditor) {
-                    remainingPlaceholders.splice(matchedIndex, 1);
-                    const isVideo = matched.file.type.startsWith('video/');
-
-                    if (this.devMode) {
-                        console.log('[uploadHelper] Matched placeholder:', {
-                            placeholderId: matched.placeholderId,
-                            fileName: matched.file.name,
-                            fileType: matched.file.type,
-                            isVideo,
-                            resultUrl: result.url
-                        });
-                    }
-
-                    findAndExecuteOnNode(
-                        currentEditor,
-                        (node: any, pos: number) => {
-                            const nodeType = node.type?.name;
-                            const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-
-                            if (this.devMode) {
-                                console.log('[uploadHelper] Checking node:', {
-                                    nodeType,
-                                    nodeSrc: node.attrs?.src,
-                                    nodeId: node.attrs?.id,
-                                    placeholderId: matched!.placeholderId,
-                                    isSameNode,
-                                    isMatch: node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId
-                                });
-                            }
-
-                            return isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId);
-                        },
-                        (node: any, pos: number) => {
-                            if (this.devMode) {
-                                console.log('[uploadHelper] Replacing placeholder with actual URL:', {
-                                    isVideo,
-                                    placeholderId: matched!.placeholderId,
-                                    newUrl: result.url
-                                });
-                            }
-
-                            if (isVideo) {
-                                const newAttrs = {
-                                    ...node.attrs,
-                                    src: result.url,
-                                    id: result.url,
-                                    isPlaceholder: false,
-                                };
-                                const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                                currentEditor!.view.dispatch(tr);
-                            } else {
-                                const newAttrs: any = {
-                                    ...node.attrs,
-                                    src: result.url,
-                                    isPlaceholder: false,
-                                    blurhash: matched!.blurhash ?? undefined,
-                                };
-
-                                if (matched!.dimensions) {
-                                    newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
-                                    updateImageSizeMap(this.dependencies.imageSizeMapStore, matched!.placeholderId, result.url!, matched!.dimensions!);
-                                }
-
-                                const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                                currentEditor!.view.dispatch(tr);
-                            }
-                        }
-                    );
-
-                    if (!isVideo) {
-                        const nip94 = result.nip94 || {};
-                        const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
-                        if (serverBlurhash && result.url) {
-                            imageServerBlurhashMap[result.url] = serverBlurhash;
-                        }
-                        const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
-                        const xFromServer = nip94['x'] ?? undefined;
-
-                        if (oxFromServer && result.url) {
-                            imageOxMap[result.url] = oxFromServer;
-                        } else if (matched.ox && result.url) {
-                            imageOxMap[result.url] = matched.ox;
-                        }
-
-                        if (result.url) {
-                            if (xFromServer) {
-                                imageXMap[result.url] = xFromServer;
-                            } else {
-                                try {
-                                    const x = await this.dependencies.calculateImageHash(result.url);
-                                    if (x) imageXMap[result.url] = x;
-                                } catch (error) {
-                                    if (this.devMode) {
-                                        console.warn("[uploadHelper] failed to calculate x hash (fallback)", {
-                                            url: result.url,
-                                            error
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if (!result.success) {
-                failedResults.push(result);
-                const failed = remainingPlaceholders.shift();
-                if (failed) {
-                    const isVideo = failed.file.type.startsWith('video/');
-                    this.removePlaceholderNode(failed.placeholderId, isVideo, currentEditor);
-                }
-            }
-        }
-
-        for (const remaining of remainingPlaceholders) {
-            const isVideo = remaining.file.type.startsWith('video/');
-            this.removePlaceholderNode(remaining.placeholderId, isVideo, currentEditor);
-        }
-
-        if (failedResults.length) {
-            errorMessage = failedResults.length === 1
-                ? failedResults[0].error || "postComponent.upload_failed"
-                : `${failedResults.length}個のファイルのアップロードに失敗しました`;
-        }
-
-        return { failedResults, errorMessage, imageServerBlurhashMap };
-    }
-}
+import { insertPlaceholdersIntoEditor, generateBlurhashesForPlaceholders, replacePlaceholdersWithResults } from "../stores/editorStore.svelte";
 
 // UploadManagerクラス: アップロード処理を統合
 export class UploadManager {
@@ -472,18 +107,20 @@ export async function uploadHelper({
     const modeLabel = isPreview ? "[preview]" : "[dev]";
 
     // マネージャーの初期化
-    const placeholderManager = new PlaceholderManager(dependencies, devMode);
     const uploadManager = new UploadManager(dependencies, devMode);
 
     // ファイル処理
     const fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
 
     // プレースホルダー挿入
-    let placeholderMap = placeholderManager.insertPlaceholdersIntoEditor(
+    let placeholderMap = insertPlaceholdersIntoEditor(
         fileArray,
         fileProcessingResults,
         currentEditor as TipTapEditor | null,
-        showUploadError
+        showUploadError,
+        dependencies.imageSizeMapStore,
+        dependencies.FileUploadManager,
+        devMode
     );
 
     // 有効ファイルがない場合は早期リターン
@@ -502,13 +139,15 @@ export async function uploadHelper({
     updateUploadState(true, "");
 
     // Blurhash生成
-    await placeholderManager.generateBlurhashesForPlaceholders(
+    await generateBlurhashesForPlaceholders(
         placeholderMap,
-        currentEditor as TipTapEditor | null
+        currentEditor as TipTapEditor | null,
+        dependencies.FileUploadManager,
+        devMode
     );
 
     // アップロード処理
-    const validFiles = placeholderMap.map(entry => entry.file);
+    const validFiles = placeholderMap.map((entry: PlaceholderEntry) => entry.file);
     let results: FileUploadResponse[] | null = null;
 
     try {
@@ -530,12 +169,18 @@ export async function uploadHelper({
     let imageServerBlurhashMap: Record<string, string> = {};
 
     if (results && placeholderMap.length > 0) {
-        const replacementResult = await placeholderManager.replacePlaceholdersWithResults(
+        const replacementResult = await replacePlaceholdersWithResults(
             results,
             placeholderMap,
             currentEditor as TipTapEditor | null,
             imageOxMap,
-            imageXMap
+            imageXMap,
+            dependencies.imageSizeMapStore,
+            dependencies.extractImageBlurhashMap,
+            dependencies.getMimeTypeFromUrl,
+            dependencies.calculateImageHash,
+            dependencies.createImetaTag,
+            devMode
         );
         failedResults.push(...replacementResult.failedResults);
         errorMessage = replacementResult.errorMessage;

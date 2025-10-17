@@ -377,3 +377,33 @@ export function updateImageSizeMap(
         return newMap;
     });
 }
+
+// === プレースホルダーノードの削除 ===
+export function removePlaceholderNode(
+    placeholderId: string,
+    isVideo: boolean,
+    currentEditor: TipTapEditor | null,
+    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    devMode: boolean = false
+): void {
+    if (!currentEditor) return;
+
+    updateImageSizeMap(imageSizeMapStore, placeholderId);
+
+    findAndExecuteOnNode(
+        currentEditor,
+        (node: any, pos: number) => {
+            const nodeType = node.type?.name;
+            const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
+            return isSameNode && (node.attrs?.src === placeholderId || node.attrs?.id === placeholderId);
+        },
+        (node: any, pos: number) => {
+            const tr = currentEditor!.state.tr.delete(pos, pos + node.nodeSize);
+            currentEditor!.view.dispatch(tr);
+
+            if (devMode) {
+                console.log(`[uploadHelper] Deleted placeholder:`, placeholderId);
+            }
+        }
+    );
+}

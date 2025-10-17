@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadHelper, PlaceholderManager } from "../lib/uploadHelper";
+import { uploadHelper } from "../lib/uploadHelper";
+import { insertPlaceholdersIntoEditor } from "../stores/editorStore.svelte";
 import { processFilesForUpload, prepareMetadataList } from "../lib/utils/appUtils";
 import type {
     UploadHelperDependencies,
@@ -234,12 +235,14 @@ describe("uploadHelper", () => {
             }];
             const showUploadError = vi.fn();
 
-            const placeholderManager = new PlaceholderManager(mockDependencies, false);
-            const placeholderMap = placeholderManager.insertPlaceholdersIntoEditor(
+            const placeholderMap = insertPlaceholdersIntoEditor(
                 [file],
                 processingResults,
                 currentEditor,
-                showUploadError
+                showUploadError,
+                mockDependencies.imageSizeMapStore,
+                mockDependencies.FileUploadManager,
+                false
             );
 
             expect(placeholderMap).toHaveLength(1);
@@ -275,12 +278,14 @@ describe("uploadHelper", () => {
                 })) as new () => FileUploadManagerInterface
             };
 
-            const placeholderManager = new PlaceholderManager(customDependencies, false);
-            const placeholderMap = placeholderManager.insertPlaceholdersIntoEditor(
+            const placeholderMap = insertPlaceholdersIntoEditor(
                 [invalidFile],
                 processingResults,
                 currentEditor,
-                showUploadError
+                showUploadError,
+                customDependencies.imageSizeMapStore,
+                customDependencies.FileUploadManager,
+                false
             );
 
             expect(placeholderMap).toHaveLength(0);
@@ -333,12 +338,14 @@ describe("uploadHelper", () => {
             // NodeSelectionのinstanceofをモック
             Object.setPrototypeOf(mockNodeSelection, NodeSelection.prototype);
 
-            const placeholderManager = new PlaceholderManager(mockDependencies, true);
-            const placeholderMap = placeholderManager.insertPlaceholdersIntoEditor(
+            const placeholderMap = insertPlaceholdersIntoEditor(
                 [file1, file2],
                 processingResults,
                 mockCurrentEditor,
-                showUploadError
+                showUploadError,
+                mockDependencies.imageSizeMapStore,
+                mockDependencies.FileUploadManager,
+                true
             );
 
             expect(placeholderMap).toHaveLength(2);
@@ -644,12 +651,14 @@ describe("uploadHelper", () => {
                 }
             };
 
-            const placeholderManager = new PlaceholderManager(mockDependencies, true);
-            const placeholderMap = placeholderManager.insertPlaceholdersIntoEditor(
+            const placeholderMap = insertPlaceholdersIntoEditor(
                 [file1, file2],
                 processingResults,
                 mockCurrentEditor,
-                showUploadError
+                showUploadError,
+                mockDependencies.imageSizeMapStore,
+                mockDependencies.FileUploadManager,
+                true
             );
 
             expect(placeholderMap).toHaveLength(2);
@@ -677,12 +686,14 @@ describe("uploadHelper", () => {
                 }];
                 const showUploadError = vi.fn();
 
-                const placeholderManager = new PlaceholderManager(mockDependencies, false);
-                const result = placeholderManager.insertPlaceholdersIntoEditor(
+                const result = insertPlaceholdersIntoEditor(
                     [file],
                     processingResults,
                     null,
-                    showUploadError
+                    showUploadError,
+                    mockDependencies.imageSizeMapStore,
+                    mockDependencies.FileUploadManager,
+                    false
                 );
                 expect(result).toEqual([]);
                 expect(showUploadError).not.toHaveBeenCalled();
@@ -723,12 +734,14 @@ describe("uploadHelper", () => {
                     }
                 };
 
-                const placeholderManager = new PlaceholderManager(mockDependencies, true);
-                const result = placeholderManager.insertPlaceholdersIntoEditor(
+                const result = insertPlaceholdersIntoEditor(
                     [file],
                     processingResults,
                     erroringEditor,
-                    showUploadError
+                    showUploadError,
+                    mockDependencies.imageSizeMapStore,
+                    mockDependencies.FileUploadManager,
+                    true
                 );
                 expect(result).toEqual([]);
                 expect(showUploadError).toHaveBeenCalledWith("画像の挿入に失敗しました");
@@ -773,12 +786,14 @@ describe("uploadHelper", () => {
                     }
                 };
 
-                const placeholderManager = new PlaceholderManager(mockDependencies, false);
-                const result = placeholderManager.insertPlaceholdersIntoEditor(
+                const result = insertPlaceholdersIntoEditor(
                     [file],
                     processingResults,
                     mockCurrentEditor,
-                    showUploadError
+                    showUploadError,
+                    mockDependencies.imageSizeMapStore,
+                    mockDependencies.FileUploadManager,
+                    false
                 );
                 expect(result).toHaveLength(1);
                 expect(mockCurrentEditor.state.tr.replaceWith).toHaveBeenCalledTimes(1);
@@ -804,12 +819,14 @@ describe("uploadHelper", () => {
                     }
                 };
 
-                const placeholderManager = new PlaceholderManager(customDependencies, false);
-                const result = placeholderManager.insertPlaceholdersIntoEditor(
+                const result = insertPlaceholdersIntoEditor(
                     [file],
                     processingResults,
                     currentEditor,
-                    showUploadError
+                    showUploadError,
+                    customDependencies.imageSizeMapStore,
+                    customDependencies.FileUploadManager,
+                    false
                 );
                 expect(result).toHaveLength(1);
                 expect(imageSizeMapStoreUpdate).toHaveBeenCalled();
@@ -833,12 +850,14 @@ describe("uploadHelper", () => {
                     }
                 };
 
-                const placeholderManager = new PlaceholderManager(customDependencies, false);
-                const result = placeholderManager.insertPlaceholdersIntoEditor(
+                const result = insertPlaceholdersIntoEditor(
                     [file],
                     processingResults,
                     currentEditor,
-                    showUploadError
+                    showUploadError,
+                    customDependencies.imageSizeMapStore,
+                    customDependencies.FileUploadManager,
+                    false
                 );
                 expect(result).toHaveLength(1);
                 expect(imageSizeMapStoreUpdate).not.toHaveBeenCalled();
@@ -846,5 +865,6 @@ describe("uploadHelper", () => {
         });
     });
 });
+
 
 
