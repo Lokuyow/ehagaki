@@ -301,6 +301,53 @@ export function loadWriteRelaysFromStorage(
 }
 
 /**
+ * 有効なロケールを取得
+ */
+function getEffectiveLocale(
+  storage: StorageAdapter,
+  navigator: NavigatorAdapter
+): string {
+  const storedLocale = storage.getItem(STORAGE_KEYS.LOCALE);
+  const browserLocale = navigator.language;
+  return storedLocale || (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
+}
+
+/**
+ * アップロード先エンドポイントを取得
+ */
+function getEndpoint(
+  effectiveLocale: string,
+  storage: StorageAdapter,
+  selectedEndpoint?: string
+): string {
+  const savedEndpoint = storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
+  if (savedEndpoint && uploadEndpoints.some((ep) => ep.url === savedEndpoint)) {
+    return savedEndpoint;
+  }
+  return selectedEndpoint || getDefaultEndpoint(effectiveLocale);
+}
+
+/**
+ * クライアントタグ設定を取得
+ */
+function getClientTagEnabled(storage: StorageAdapter): boolean {
+  const clientTagSetting = storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
+  const enabled = clientTagSetting === null ? true : clientTagSetting === "true";
+  if (clientTagSetting === null) {
+    storage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, "true");
+  }
+  return enabled;
+}
+
+/**
+ * 圧縮設定を取得
+ */
+function getCompression(storage: StorageAdapter, selectedCompression?: string): string {
+  const savedCompression = storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL);
+  return savedCompression || selectedCompression || "medium";
+}
+
+/**
  * 設定の初期化処理
  */
 export function initializeSettingsValues(
@@ -318,44 +365,10 @@ export function initializeSettingsValues(
     navigator: nav = defaultNavigatorAdapter
   } = options;
 
-  const storedLocale = storage.getItem(STORAGE_KEYS.LOCALE);
-  const browserLocale = nav.language;
-  const effectiveLocale =
-    storedLocale ||
-    (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
-
-  // アップロード先設定
-  let endpoint = "";
-  const savedEndpoint = storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
-  if (
-    savedEndpoint &&
-    uploadEndpoints.some((ep) => ep.url === savedEndpoint)
-  ) {
-    endpoint = savedEndpoint;
-  } else if (selectedEndpoint) {
-    endpoint = selectedEndpoint;
-  } else {
-    endpoint = getDefaultEndpoint(effectiveLocale);
-  }
-
-  // client tag設定
-  const clientTagSetting = storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
-  const clientTagEnabled =
-    clientTagSetting === null ? true : clientTagSetting === "true";
-  if (clientTagSetting === null) {
-    storage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, "true");
-  }
-
-  // 圧縮設定
-  let compression = "";
-  const savedCompression = storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL);
-  if (savedCompression) {
-    compression = savedCompression;
-  } else if (selectedCompression) {
-    compression = selectedCompression;
-  } else {
-    compression = "medium";
-  }
+  const effectiveLocale = getEffectiveLocale(storage, nav);
+  const endpoint = getEndpoint(effectiveLocale, storage, selectedEndpoint);
+  const clientTagEnabled = getClientTagEnabled(storage);
+  const compression = getCompression(storage, selectedCompression);
 
   return {
     endpoint,
@@ -390,8 +403,104 @@ export function handleServiceWorkerRefresh(
 }
 
 // =============================================================================
-// Share Handler Utilities (Pure Functions & Testable)
+// IndexedDB Utilities (Common Operations)
 // =============================================================================
+
+/**
+ * IndexedDBを開いてストアを取得する共通関数
+ */
+async function openIndexedDBStore(
+  dbName: string,
+  version: number,
+  storeName: string,
+  mode: IDBTransactionMode = 'readonly'
+): Promise<{ db: IDBDatabase; transaction: IDBTransaction; store: IDBObjectStore } | null> {
+  return new Promise((resolve) => {
+    try {
+      const request = indexedDB.open(dbName, version);
+
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(storeName)) {
+          db.createObjectStore(storeName, { keyPath: 'id' });
+        }
+      };
+
+      request.onerror = () => resolve(null);
+
+      request.onsuccess = (event) => {
+        try {
+          const db = (event.target as IDBOpenDBRequest).result;
+          if (!db.objectStoreNames.contains(storeName)) {
+            db.close();
+            resolve(null);
+            return;
+          }
+
+          const transaction = db.transaction([storeName], mode);
+          const store = transaction.objectStore(storeName);
+          resolve({ db, transaction, store });
+        } catch {
+          resolve(null);
+        }
+      };
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+/**
+ * IndexedDBからデータを取得する共通関数
+ */
+async function getFromIndexedDB(
+  dbName: string,
+  version: number,
+  storeName: string,
+  key: string
+): Promise<any> {
+  const result = await openIndexedDBStore(dbName, version, storeName, 'readonly');
+  if (!result) return null;
+
+  const { db, store } = result;
+  return new Promise((resolve) => {
+    const getRequest = store.get(key);
+    getRequest.onsuccess = () => {
+      db.close();
+      resolve(getRequest.result);
+    };
+    getRequest.onerror = () => {
+      db.close();
+      resolve(null);
+    };
+  });
+}
+
+/**
+ * IndexedDBからデータを削除する共通関数
+ */
+async function deleteFromIndexedDB(
+  dbName: string,
+  version: number,
+  storeName: string,
+  key: string
+): Promise<boolean> {
+  const result = await openIndexedDBStore(dbName, version, storeName, 'readwrite');
+  if (!result) return false;
+
+  const { db, store } = result;
+  return new Promise((resolve) => {
+    const deleteRequest = store.delete(key);
+    deleteRequest.onsuccess = () => {
+      db.close();
+      resolve(true);
+    };
+    deleteRequest.onerror = () => {
+      db.close();
+      resolve(false);
+    };
+  });
+}
 
 /**
  * URLのクエリパラメータから共有モードかどうかをチェック
@@ -408,64 +517,81 @@ export function generateRequestId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
+// =============================================================================
+// Service Worker Communication Utilities (Common Operations)
+// =============================================================================
+
+/**
+ * Service Workerにメッセージを送信し、レスポンスを待つ共通関数
+ */
+async function sendMessageToServiceWorker(
+  message: any,
+  timeoutMs: number = SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT
+): Promise<any> {
+  if (!navigator.serviceWorker.controller) {
+    throw new Error('No ServiceWorker controller available');
+  }
+
+  const messageChannel = new MessageChannel();
+  const requestId = generateRequestId();
+
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      messageChannel.port1.close();
+      reject(new Error('ServiceWorker communication timeout'));
+    }, timeoutMs);
+
+    messageChannel.port1.onmessage = (event: MessageEvent) => {
+      clearTimeout(timeout);
+      messageChannel.port1.close();
+      const { data } = event.data || {};
+      resolve(data);
+    };
+
+    messageChannel.port1.addEventListener('error', (error) => {
+      clearTimeout(timeout);
+      messageChannel.port1.close();
+      reject(error);
+    });
+
+    try {
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage(
+          { ...message, requestId },
+          [messageChannel.port2]
+        );
+      } else {
+        throw new Error('ServiceWorker controller became unavailable');
+      }
+    } catch (error) {
+      clearTimeout(timeout);
+      messageChannel.port1.close();
+      reject(error);
+    }
+  });
+}
+
 /**
  * IndexedDBから共有フラグをチェックして削除
  */
 export async function checkAndClearSharedFlagInIndexedDB(): Promise<boolean> {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(
-        SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
-        SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION
-      );
+  const flag = await getFromIndexedDB(
+    SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
+    SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
+    SHARE_HANDLER_CONFIG.STORE_NAME,
+    SHARE_HANDLER_CONFIG.FLAG_KEY
+  );
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
-          db.createObjectStore(SHARE_HANDLER_CONFIG.STORE_NAME, { keyPath: 'id' });
-        }
-      };
-
-      request.onerror = () => resolve(false);
-
-      request.onsuccess = (event) => {
-        try {
-          const db = (event.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
-            db.close();
-            resolve(false);
-            return;
-          }
-
-          const transaction = db.transaction([SHARE_HANDLER_CONFIG.STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(SHARE_HANDLER_CONFIG.STORE_NAME);
-          const getRequest = store.get(SHARE_HANDLER_CONFIG.FLAG_KEY);
-
-          getRequest.onsuccess = () => {
-            const flag = getRequest.result;
-            if (flag?.value === true) {
-              store.delete(SHARE_HANDLER_CONFIG.FLAG_KEY).onsuccess = () => {
-                db.close();
-                resolve(true);
-              };
-            } else {
-              db.close();
-              resolve(false);
-            }
-          };
-
-          getRequest.onerror = () => {
-            db.close();
-            resolve(false);
-          };
-        } catch {
-          resolve(false);
-        }
-      };
-    } catch {
-      resolve(false);
-    }
-  });
+  if (flag?.value === true) {
+    await deleteFromIndexedDB(
+      SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
+      SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
+      SHARE_HANDLER_CONFIG.STORE_NAME,
+      SHARE_HANDLER_CONFIG.FLAG_KEY
+    );
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -494,114 +620,52 @@ export async function waitForServiceWorkerController(): Promise<void> {
  * IndexedDBから共有画像データを取得・削除
  */
 export async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | null> {
-  return new Promise((resolve) => {
-    try {
-      const request = indexedDB.open(
-        SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
-        SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION
+  const result = await getFromIndexedDB(
+    SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
+    SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
+    SHARE_HANDLER_CONFIG.STORE_NAME,
+    'sharedImageData'
+  );
+
+  if (result?.data) {
+    await deleteFromIndexedDB(
+      SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
+      SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
+      SHARE_HANDLER_CONFIG.STORE_NAME,
+      'sharedImageData'
+    );
+
+    if (result.data.image?.arrayBuffer && result.data.image._isFile) {
+      const file = new File(
+        [result.data.image.arrayBuffer],
+        result.data.image.name || 'shared-image',
+        {
+          type: result.data.image.type || 'image/jpeg'
+        }
       );
 
-      request.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
-          db.createObjectStore(SHARE_HANDLER_CONFIG.STORE_NAME, { keyPath: 'id' });
-        }
+      return {
+        image: file,
+        metadata: result.data.metadata
       };
-
-      request.onerror = () => resolve(null);
-
-      request.onsuccess = (event) => {
-        try {
-          const db = (event.target as IDBOpenDBRequest).result;
-          if (!db.objectStoreNames.contains(SHARE_HANDLER_CONFIG.STORE_NAME)) {
-            db.close();
-            resolve(null);
-            return;
-          }
-
-          const transaction = db.transaction([SHARE_HANDLER_CONFIG.STORE_NAME], 'readwrite');
-          const store = transaction.objectStore(SHARE_HANDLER_CONFIG.STORE_NAME);
-          const getRequest = store.get('sharedImageData');
-
-          getRequest.onsuccess = () => {
-            const result = getRequest.result;
-            if (result?.data) {
-              store.delete('sharedImageData').onsuccess = () => {
-                db.close();
-
-                if (result.data.image?.arrayBuffer && result.data.image._isFile) {
-                  const file = new File(
-                    [result.data.image.arrayBuffer],
-                    result.data.image.name || 'shared-image',
-                    {
-                      type: result.data.image.type || 'image/jpeg'
-                    }
-                  );
-
-                  resolve({
-                    image: file,
-                    metadata: result.data.metadata
-                  });
-                } else {
-                  resolve(result.data as SharedImageData);
-                }
-              };
-            } else {
-              db.close();
-              resolve(null);
-            }
-          };
-
-          getRequest.onerror = () => {
-            db.close();
-            resolve(null);
-          };
-        } catch {
-          resolve(null);
-        }
-      };
-    } catch {
-      resolve(null);
+    } else {
+      return result.data as SharedImageData;
     }
-  });
+  }
+  return null;
 }
 
 /**
  * MessageChannelを使ってServiceWorkerから共有画像を取得
  */
 export async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
-  if (!navigator.serviceWorker.controller) return null;
-
-  const messageChannel = new MessageChannel();
-  const requestId = generateRequestId();
-
-  const promise = new Promise<SharedImageData | null>((resolve) => {
-    const timeout = setTimeout(() => resolve(null), SHARE_HANDLER_CONFIG.REQUEST_TIMEOUT);
-
-    messageChannel.port1.onmessage = (event: MessageEvent) => {
-      clearTimeout(timeout);
-      const { data } = event.data || {};
-      resolve(data && data.image ? data : null);
-    };
-
-    messageChannel.port1.addEventListener('error', (error) => {
-      clearTimeout(timeout);
-      console.error('MessageChannel error:', error);
-      resolve(null);
-    });
-  });
-
   try {
-    navigator.serviceWorker.controller.postMessage(
-      { action: 'getSharedImage', requestId },
-      [messageChannel.port2]
-    );
+    const data = await sendMessageToServiceWorker({ action: 'getSharedImage' });
+    return data && data.image ? data : null;
   } catch (error) {
     console.error('Failed to send message to ServiceWorker:', error);
     return null;
   }
-
-  return promise;
 }
 
 /**
@@ -639,42 +703,11 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
     }
 
     try {
-      if (navigator.serviceWorker.controller) {
-        const messageChannel = new MessageChannel();
-        const result = await new Promise<SharedImageData | null>((resolve) => {
-          const timeout = setTimeout(() => resolve(null), 1000);
-
-          messageChannel.port1.onmessage = (event) => {
-            clearTimeout(timeout);
-            const { data } = event.data || {};
-            resolve(data && data.image ? data : null);
-          };
-
-          messageChannel.port1.addEventListener('error', () => {
-            clearTimeout(timeout);
-            resolve(null);
-          });
-
-          try {
-            if (navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage(
-                { action: 'getSharedImageForce', requestId: generateRequestId() },
-                [messageChannel.port2]
-              );
-            } else {
-              clearTimeout(timeout);
-              resolve(null);
-            }
-          } catch (error) {
-            clearTimeout(timeout);
-            resolve(null);
-          }
-        });
-
-        if (result) {
-          console.log('Shared image retrieved via forced Service Worker request');
-          return result;
-        }
+      const data = await sendMessageToServiceWorker({ action: 'getSharedImageForce' }, 1000);
+      const result = data && data.image ? data : null;
+      if (result) {
+        console.log('Shared image retrieved via forced Service Worker request');
+        return result;
       }
     } catch (forceError) {
       console.warn('Forced Service Worker request failed:', forceError);
@@ -722,48 +755,15 @@ export async function checkServiceWorkerStatus(): Promise<{
  * Service Workerとの通信テスト
  */
 export async function testServiceWorkerCommunication(): Promise<boolean> {
-  if (!navigator.serviceWorker.controller) {
-    console.warn('No ServiceWorker controller available for communication test');
+  try {
+    const data = await sendMessageToServiceWorker({ type: 'PING_TEST' }, 3000);
+    console.log('ServiceWorker communication test successful:', data);
+    return true;
+  } catch (error) {
+    console.warn('ServiceWorker communication test timeout');
+    console.error('ServiceWorker communication test error:', error);
     return false;
   }
-
-  return new Promise<boolean>((resolve) => {
-    const messageChannel = new MessageChannel();
-    const timeout = setTimeout(() => {
-      console.warn('ServiceWorker communication test timeout');
-      resolve(false);
-    }, 3000);
-
-    messageChannel.port1.onmessage = (event) => {
-      clearTimeout(timeout);
-      console.log('ServiceWorker communication test successful:', event.data);
-      resolve(true);
-    };
-
-    messageChannel.port1.addEventListener('error', (error) => {
-      clearTimeout(timeout);
-      console.error('ServiceWorker communication test error:', error);
-      resolve(false);
-    });
-
-    try {
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage(
-          { type: 'PING_TEST' },
-          [messageChannel.port2]
-        );
-        console.log('ServiceWorker PING_TEST message sent');
-      } else {
-        clearTimeout(timeout);
-        console.warn('No ServiceWorker controller available when sending PING_TEST');
-        resolve(false);
-      }
-    } catch (error) {
-      clearTimeout(timeout);
-      console.error('Failed to send PING_TEST message:', error);
-      resolve(false);
-    }
-  });
 }
 
 /**
@@ -826,17 +826,7 @@ export async function processFilesForUpload(
     const fileProcessingPromises = files.map(async (file, index) => {
         const [oxResult, dimensionsResult] = await Promise.all([
             // ox計算
-            (async () => {
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const hashBuffer = await dependencies.crypto.digest("SHA-256", arrayBuffer);
-                    return Array.from(new Uint8Array(hashBuffer))
-                        .map((b) => b.toString(16).padStart(2, "0"))
-                        .join("");
-                } catch (e) {
-                    return undefined;
-                }
-            })(),
+            calculateSHA256Hex(file, dependencies.crypto),
             // サイズ計算
             dependencies.getImageDimensions(file)
         ]);
