@@ -297,6 +297,7 @@
                 className="post-button {isShowingLoader ? 'loading' : ''}"
                 disabled={!canPost ||
                     postStatus.sending ||
+                    isUploading ||
                     !hasStoredKey ||
                     postStatus.completed}
                 onClick={() => {
