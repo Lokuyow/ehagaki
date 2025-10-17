@@ -136,6 +136,14 @@ export function createEditorStore(placeholderText: string) {
                 }
                 return false;
             },
+            handleKeyDown: (_view, event) => {
+                if ((event.ctrlKey || event.metaKey) && (event.key === 'Enter' || event.key === 'NumpadEnter')) {
+                    event.preventDefault();
+                    submitPost();
+                    return true;
+                }
+                return false;
+            },
         },
         onCreate({ editor }) {
             // エディター作成時にグローバル参照を設定
@@ -627,10 +635,10 @@ export async function replacePlaceholdersWithResults(
     imageOxMap: Record<string, string>,
     imageXMap: Record<string, string>,
     imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
-    extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>,
-    getMimeTypeFromUrl: (url: string) => string,
+    _extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>,
+    _getMimeTypeFromUrl: (url: string) => string,
     calculateImageHash: (url: string) => Promise<string | null>,
-    createImetaTag: (params: any) => Promise<string[]>,
+    _createImetaTag: (params: any) => Promise<string[]>,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string; imageServerBlurhashMap: Record<string, string> }> {
     const failedResults: FileUploadResponse[] = [];
@@ -693,7 +701,7 @@ export async function replacePlaceholdersWithResults(
 
                 findAndExecuteOnNode(
                     currentEditor,
-                    (node: any, pos: number) => {
+                    (node: any, _pos: number) => {
                         const nodeType = node.type?.name;
                         const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
                         return isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId);
