@@ -21,9 +21,14 @@ vi.mock("virtual:pwa-register/svelte", () => ({
     })
 }));
 
-// appStoreのモック（PWA関連の依存関係を含む）
+// appStoreのモック(PWA関連の依存関係を含む)
 vi.mock("../stores/appStore.svelte.ts", () => ({
     // 必要な状態やストアのモック
+    uploadAbortFlagStore: {
+        value: false,
+        set: vi.fn(),
+        reset: vi.fn()
+    }
 }));
 
 // imageSizeMapStoreをモック - パスを修正

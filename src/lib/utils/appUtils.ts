@@ -1,4 +1,5 @@
 import { getPublicKey, nip19 } from "nostr-tools";
+import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 import type {
   FileSizeInfo,
   SizeDisplayInfo,
@@ -199,8 +200,14 @@ export function toNpub(pubkeyHex: string): string {
  * 画像のSHA-256ハッシュ計算
  */
 export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = window.crypto.subtle): Promise<string> {
+  // 中止フラグをチェック（計算開始前のみ）
+  if (uploadAbortFlagStore.value) {
+    throw new Error('Upload aborted by user');
+  }
+  
   const arrayBuffer = await file.arrayBuffer();
   const hashBuffer = await crypto.digest("SHA-256", arrayBuffer);
+  
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -834,7 +841,18 @@ export async function processFilesForUpload(
     files: File[],
     dependencies: UploadHelperDependencies
 ): Promise<Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>> {
-    const fileProcessingPromises = files.map(async (file, index) => {
+    // 中止フラグをインポート
+    const results: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }> = [];
+    
+    // 処理前に1度だけ中止チェック
+    if (uploadAbortFlagStore.value) {
+        throw new Error('Upload aborted by user');
+    }
+    
+    // 順次処理
+    for (let index = 0; index < files.length; index++) {
+        const file = files[index];
+
         const [oxResult, dimensionsResult] = await Promise.all([
             // ox計算
       tryCalculateSHA256Hex(file, dependencies.crypto),
@@ -842,10 +860,10 @@ export async function processFilesForUpload(
             dependencies.getImageDimensions(file)
         ]);
 
-        return { file, index, ox: oxResult, dimensions: dimensionsResult ?? undefined };
-    });
+        results.push({ file, index, ox: oxResult, dimensions: dimensionsResult ?? undefined });
+    }
 
-    return await Promise.all(fileProcessingPromises);
+    return results;
 }
 
 // === メタデータ準備 ===

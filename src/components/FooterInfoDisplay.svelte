@@ -3,14 +3,17 @@
     import {
         imageSizeInfoStore,
         videoCompressionProgressStore,
-        abortVideoCompression,
+        imageCompressionProgressStore,
+        abortAllUploads,
     } from "../stores/appStore.svelte";
+    import { currentEditorStore } from "../stores/editorStore.svelte";
     import type { UploadProgress } from "../lib/types";
     import {
         devLog,
         copyDevLogWithFallback,
         shouldShowDevLog,
     } from "../lib/debug";
+    import { removeAllPlaceholders } from "../lib/utils/editorUtils";
     import Button from "./Button.svelte";
 
     let copied = $state(false);
@@ -140,7 +143,12 @@
         videoCompressionProgressStore.value,
     );
 
-    // 動画圧縮の開始時刻と経過時間
+    // ストアから画像圧縮の進捗を取得
+    let imageCompressionProgress = $derived(
+        imageCompressionProgressStore.value,
+    );
+
+    // 圧縮の開始時刻と経過時間（動画・画像共通）
     let compressionStartTime = $state<number | null>(null);
     let compressionElapsedSeconds = $state(0);
     let compressionTimerInterval: number | null = null;
@@ -172,9 +180,47 @@
         }
     });
 
+    // 画像圧縮の進捗に応じてタイマーを管理
+    $effect(() => {
+        if (imageCompressionProgress > 0 && imageCompressionProgress < 100) {
+            // 圧縮開始
+            if (!compressionStartTime) {
+                compressionStartTime = Date.now();
+                // 新しい画像圧縮が開始されたら過去のimage-size-infoをクリア
+                reset({ imageSizeInfoOnly: true });
+                compressionTimerInterval = window.setInterval(() => {
+                    if (compressionStartTime) {
+                        compressionElapsedSeconds = Math.floor(
+                            (Date.now() - compressionStartTime) / 1000,
+                        );
+                    }
+                }, 1000);
+            }
+        } else {
+            // 圧縮完了または未開始
+            if (compressionTimerInterval !== null) {
+                clearInterval(compressionTimerInterval);
+                compressionTimerInterval = null;
+            }
+            compressionStartTime = null;
+            compressionElapsedSeconds = 0;
+        }
+    });
+
     // ストアから画像サイズ情報を取得
     let imageSizeInfo = $derived(imageSizeInfoStore.value.info);
     let imageSizeInfoVisible = $derived(imageSizeInfoStore.value.visible);
+
+    // アップロード開始時にサイズ情報をクリア
+    let previousUploadInProgress = $state(false);
+    $effect(() => {
+        // アップロードが開始された瞬間を検出（false -> true）
+        if (uploadProgress.inProgress && !previousUploadInProgress) {
+            // 新しいアップロードが開始されたら過去のimage-size-infoをクリア
+            reset({ imageSizeInfoOnly: true });
+        }
+        previousUploadInProgress = uploadProgress.inProgress;
+    });
 
     // 経過時間をフォーマット（秒 → 「Xs」または「Xm Ys」）
     function formatElapsedTime(seconds: number): string {
@@ -186,10 +232,47 @@
         return `${minutes}m ${remainingSeconds}s`;
     }
 
-    // 動画圧縮中止ハンドラー
-    function handleAbortCompression() {
-        console.log("[FooterInfoDisplay] Abort button clicked!");
-        abortVideoCompression();
+    // 統合された中止ハンドラー（動画・画像・アップロード全て）
+    function handleAbortAll() {
+        const isDev = import.meta.env.DEV;
+        if (isDev) console.log("[FooterInfoDisplay] Abort button clicked!");
+
+        // UIを即座にリセット
+        videoCompressionProgressStore.set(0);
+        imageCompressionProgressStore.set(0);
+        if (compressionTimerInterval !== null) {
+            clearInterval(compressionTimerInterval);
+            compressionTimerInterval = null;
+        }
+        compressionStartTime = null;
+        compressionElapsedSeconds = 0;
+
+        // アップロード進捗もリセット
+        uploadProgress = {
+            total: 0,
+            completed: 0,
+            failed: 0,
+            aborted: 0,
+            inProgress: false,
+        };
+
+        // エディター内のプレースホルダーを削除
+        const editor = currentEditorStore.value;
+        if (editor) {
+            removeAllPlaceholders(editor, isDev);
+        }
+
+        // バックグラウンドで統合中断処理を実行
+        abortAllUploads();
+    }
+
+    // 後方互換性のため個別ハンドラーも残す（統合ハンドラーを呼び出すだけ）
+    function handleAbortVideoCompression() {
+        handleAbortAll();
+    }
+
+    function handleAbortImageCompression() {
+        handleAbortAll();
     }
 
     // --- 追加: 拡張子取得用関数（大文字で返す/JPEGはJPGに統一） ---
@@ -271,6 +354,7 @@
             inProgress: false,
         };
         videoCompressionProgressStore.set(0);
+        imageCompressionProgressStore.set(0);
         if (compressionTimerInterval !== null) {
             clearInterval(compressionTimerInterval);
             compressionTimerInterval = null;
@@ -304,6 +388,30 @@
         <div class="shared-image-error">
             <div class="error-text">{sharedImageError}</div>
         </div>
+    {:else if imageCompressionProgress > 0 && imageCompressionProgress < 100}
+        <div class="compression-container">
+            <Button
+                variant="danger"
+                shape="circle"
+                className="abort-button"
+                ariaLabel="圧縮中止"
+                onClick={handleAbortImageCompression}
+            >
+                <div class="stop-icon svg-icon"></div>
+            </Button>
+            <div class="upload-progress">
+                <div class="progress-text">
+                    {$_("imageCompression.compressing")}: {imageCompressionProgress}%
+                    ({formatElapsedTime(compressionElapsedSeconds)})
+                </div>
+                <div class="progress-bar">
+                    <div
+                        class="progress-fill"
+                        style="width: {imageCompressionProgress}%"
+                    ></div>
+                </div>
+            </div>
+        </div>
     {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
         <div class="compression-container">
             <Button
@@ -311,7 +419,7 @@
                 shape="circle"
                 className="abort-button"
                 ariaLabel="圧縮中止"
-                onClick={handleAbortCompression}
+                onClick={handleAbortVideoCompression}
             >
                 <div class="stop-icon svg-icon"></div>
             </Button>
@@ -331,29 +439,68 @@
             </div>
         </div>
     {:else if uploadProgress.inProgress || uploadProgress.total > 0}
-        <div class="upload-progress">
-            <div class="progress-text">
-                {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
-                {#if uploadProgress.failed > 0}
-                    ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
-                {/if}
-                {#if uploadProgress.aborted > 0}
-                    ({$_("footerInfoDisplay.aborted")}: {uploadProgress.aborted})
-                {/if}
+        {#if uploadProgress.inProgress}
+            <!-- アップロード中: 中止ボタンを表示 -->
+            <div class="compression-container">
+                <Button
+                    variant="danger"
+                    shape="circle"
+                    className="abort-button"
+                    ariaLabel="アップロード中止"
+                    onClick={handleAbortImageCompression}
+                >
+                    <div class="stop-icon svg-icon"></div>
+                </Button>
+                <div class="upload-progress">
+                    <div class="progress-text">
+                        {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
+                        {#if uploadProgress.failed > 0}
+                            ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
+                        {/if}
+                        {#if uploadProgress.aborted > 0}
+                            ({$_("footerInfoDisplay.aborted")}: {uploadProgress.aborted})
+                        {/if}
+                    </div>
+                    <div class="progress-bar">
+                        <div
+                            class="progress-fill"
+                            style="width: {uploadProgress.total > 0
+                                ? Math.round(
+                                      (uploadProgress.completed /
+                                          uploadProgress.total) *
+                                          100,
+                                  )
+                                : 0}%"
+                        ></div>
+                    </div>
+                </div>
             </div>
-            <div class="progress-bar">
-                <div
-                    class="progress-fill"
-                    style="width: {uploadProgress.total > 0
-                        ? Math.round(
-                              (uploadProgress.completed /
-                                  uploadProgress.total) *
-                                  100,
-                          )
-                        : 0}%"
-                ></div>
+        {:else}
+            <!-- アップロード完了/結果表示: 中止ボタンなし -->
+            <div class="upload-progress">
+                <div class="progress-text">
+                    {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
+                    {#if uploadProgress.failed > 0}
+                        ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
+                    {/if}
+                    {#if uploadProgress.aborted > 0}
+                        ({$_("footerInfoDisplay.aborted")}: {uploadProgress.aborted})
+                    {/if}
+                </div>
+                <div class="progress-bar">
+                    <div
+                        class="progress-fill"
+                        style="width: {uploadProgress.total > 0
+                            ? Math.round(
+                                  (uploadProgress.completed /
+                                      uploadProgress.total) *
+                                      100,
+                              )
+                            : 0}%"
+                    ></div>
+                </div>
             </div>
-        </div>
+        {/if}
     {:else if imageSizeInfoVisible && imageSizeInfo}
         <div class="image-size-info">
             <div class="size-label">{$_("footerInfoDisplay.data_size")}:</div>

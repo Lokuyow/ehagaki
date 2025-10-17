@@ -1,7 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
-import { showImageSizeInfo, setVideoCompressionService } from "../stores/appStore.svelte";
+import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
 import { VideoCompressionService } from "./videoCompressionService";
 import type {
@@ -26,6 +26,8 @@ import {
 import { getToken } from "nostr-tools/nip98";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { showCompressedImagePreview } from "./debug";
+
+import { uploadAbortFlagStore } from '../stores/appStore.svelte';
 
 // --- MIMEタイプサポート検出クラス ---
 export class MimeTypeSupport implements MimeTypeSupportInterface {
@@ -77,10 +79,32 @@ export class MimeTypeSupport implements MimeTypeSupportInterface {
 
 // --- 画像圧縮サービス ---
 export class ImageCompressionService implements CompressionService {
+  private onProgress?: (progress: number) => void;
+
   constructor(
     private mimeSupport: MimeTypeSupportInterface,
     private localStorage: Storage
   ) { }
+
+  /**
+   * 圧縮処理を中止（グローバルフラグで管理）
+   */
+  public abort(): void {
+    const isDev = import.meta.env.DEV;
+    if (isDev) console.log('[ImageCompressionService] Abort requested');
+
+    // 進捗を0にリセット
+    if (this.onProgress) {
+      this.onProgress(0);
+    }
+  }
+
+  /**
+   * 進捗コールバックを設定
+   */
+  public setProgressCallback(callback?: (progress: number) => void): void {
+    this.onProgress = callback;
+  }
 
   private getCompressionOptions(): any {
     const level = (this.localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
@@ -97,13 +121,27 @@ export class ImageCompressionService implements CompressionService {
     return this.getCompressionOptions() !== null;
   }
 
-  async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean }> {
+  async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
+    // グローバル中止フラグをチェック
+    if (uploadAbortFlagStore.value) {
+      return { file, wasCompressed: false, aborted: true };
+    }
+
     if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
     if (file.size <= 20 * 1024) return { file, wasCompressed: false, wasSkipped: true };
+
     const options = this.getCompressionOptions();
     if (!options) return { file, wasCompressed: false, wasSkipped: true };
 
-    let usedOptions: any = { ...options };
+    let usedOptions: any = {
+      ...options,
+      onProgress: (progress: number) => {
+        // 進捗を通知（0-100のパーセンテージ）
+        if (this.onProgress) {
+          this.onProgress(Math.round(progress * 100));
+        }
+      }
+    };
 
     // WebPサポートチェックとfallback処理を改善
     if (usedOptions.fileType === "image/webp") {
@@ -114,6 +152,11 @@ export class ImageCompressionService implements CompressionService {
       }
     }
 
+    // 中止チェック
+    if (uploadAbortFlagStore.value) {
+      return { file, wasCompressed: false, aborted: true };
+    }
+
     let targetMime: string = usedOptions.fileType || file.type;
     if (!this.mimeSupport.canEncodeMimeType(targetMime)) {
       // ターゲットMIMEタイプがサポートされていない場合、元のタイプを使用
@@ -121,9 +164,21 @@ export class ImageCompressionService implements CompressionService {
       delete usedOptions.fileType;
     }
 
+
     try {
       const compressed = await imageCompression(file, usedOptions);
-      if ((compressed as File).size >= file.size) return { file, wasCompressed: false };
+
+      // 中止チェック
+      if (uploadAbortFlagStore.value) {
+        if (this.onProgress) {
+          this.onProgress(0);
+        }
+        return { file, wasCompressed: false, aborted: true };
+      }
+
+      if ((compressed as File).size >= file.size) {
+        return { file, wasCompressed: false };
+      }
 
       // 出力ファイルのタイプと名前を正しく設定
       const outType = usedOptions.fileType || (compressed as File).type || targetMime || file.type;
@@ -133,6 +188,15 @@ export class ImageCompressionService implements CompressionService {
       showCompressedImagePreview(outFile);
       return { file: outFile, wasCompressed: true };
     } catch (error) {
+
+      // 中止による終了の場合
+      if (uploadAbortFlagStore.value) {
+        if (this.onProgress) {
+          this.onProgress(0);
+        }
+        return { file, wasCompressed: false, aborted: true };
+      }
+
       // 圧縮に失敗した場合もログを出力
       console.warn("[ImageCompressionService] Compression failed:", error);
       return { file, wasCompressed: false, wasSkipped: true };
@@ -190,6 +254,12 @@ export class FileUploadManager implements FileUploadManagerInterface {
       setVideoCompressionService(this.videoCompressionService);
       console.log('[FileUploadManager] VideoCompressionService registered to store');
     }
+
+    // ImageCompressionServiceインスタンスをストアに登録
+    if (this.imageCompressionService instanceof ImageCompressionService) {
+      setImageCompressionService(this.imageCompressionService);
+      console.log('[FileUploadManager] ImageCompressionService registered to store');
+    }
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -233,7 +303,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
     maxWaitTime: number = UPLOAD_POLLING_CONFIG.MAX_WAIT_TIME
   ): Promise<any> {
     const startTime = Date.now();
+    
     while (true) {
+      // ポーリング中の中止チェック
+      if (uploadAbortFlagStore.value) {
+        throw new Error('Upload aborted by user');
+      }
+      
       if (Date.now() - startTime > maxWaitTime) throw new Error(UPLOAD_POLLING_CONFIG.TIMEOUT_MESSAGE);
       const response = await this.dependencies.fetch(processingUrl, {
         method: "GET",
@@ -278,6 +354,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
     metadata?: Record<string, string | number | undefined>,
     callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse> {
+    let sizeInfo: any = undefined; // sizeInfoを関数スコープで宣言
+    
     try {
       if (!file) return { success: false, error: "No file selected" };
 
@@ -290,6 +368,12 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       const originalSize = file.size;
 
+      // 圧縮開始前に中止チェック
+      if (uploadAbortFlagStore.value) {
+        if (devMode) console.log('[FileUploadManager] Upload aborted before compression');
+        return { success: false, error: 'Upload aborted by user', aborted: true };
+      }
+
       // ファイルタイプに応じて適切な圧縮サービスを選択
       const isVideo = file.type.startsWith('video/');
       const compressionService = isVideo ? this.videoCompressionService : this.imageCompressionService;
@@ -299,11 +383,18 @@ export class FileUploadManager implements FileUploadManagerInterface {
         (this.videoCompressionService as VideoCompressionService).setProgressCallback(callbacks.onVideoCompressionProgress);
       }
 
+      // 画像圧縮の進捗コールバックを設定
+      if (!isVideo && callbacks?.onImageCompressionProgress) {
+        (this.imageCompressionService as ImageCompressionService).setProgressCallback(callbacks.onImageCompressionProgress);
+      }
+
       const { file: uploadFile, wasCompressed, wasSkipped, aborted } = await compressionService.compress(file);
 
       // 圧縮完了後はコールバックをクリア
       if (isVideo) {
         (this.videoCompressionService as VideoCompressionService).setProgressCallback(undefined);
+      } else {
+        (this.imageCompressionService as ImageCompressionService).setProgressCallback(undefined);
       }
 
       // 中止された場合はアップロードを中止
@@ -318,7 +409,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
       const hasCompressionSettings = isVideo
         ? (this.videoCompressionService as VideoCompressionService).hasCompressionSettings()
         : (this.imageCompressionService as ImageCompressionService).hasCompressionSettings();
-      const sizeInfo = createFileSizeInfo(
+      sizeInfo = createFileSizeInfo(
         originalSize,
         compressedSize,
         hasCompressionSettings || wasCompressed,
@@ -347,6 +438,16 @@ export class FileUploadManager implements FileUploadManagerInterface {
         body: formData
       });
 
+      // 重要な処理前後のみ中止チェック
+      if (uploadAbortFlagStore.value) {
+        return { 
+          success: false, 
+          error: 'Upload aborted by user', 
+          sizeInfo,
+          aborted: true 
+        };
+      }
+
       // レスポンスの処理
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
@@ -371,6 +472,16 @@ export class FileUploadManager implements FileUploadManagerInterface {
         try {
           const processingAuthToken = await this.authService.buildAuthHeader(data.processing_url, "GET");
           data = await this.pollUploadStatus(data.processing_url, processingAuthToken);
+          
+          // ポーリング後の中止チェック
+          if (uploadAbortFlagStore.value) {
+            return { 
+              success: false, 
+              error: 'Upload aborted by user', 
+              sizeInfo,
+              aborted: true 
+            };
+          }
         } catch (e) {
           return { success: false, error: e instanceof Error ? e.message : String(e), sizeInfo };
         }
@@ -397,10 +508,31 @@ export class FileUploadManager implements FileUploadManagerInterface {
         nip94: Object.keys(parsedNip94).length ? parsedNip94 : undefined
       };
     } catch (error) {
+      // エラーハンドリング時の中止チェック
+      if (uploadAbortFlagStore.value) {
+        return { 
+          success: false, 
+          error: 'Upload aborted by user', 
+          sizeInfo,
+          aborted: true 
+        };
+      }
+      
       if (devMode) {
         console.error("[dev] Upload error:", error);
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // ユーザーによる中止の場合
+      if (errorMessage.includes('aborted by user')) {
+        return { 
+          success: false, 
+          error: errorMessage,
+          sizeInfo,
+          aborted: true 
+        };
+      }
+      
       // Service Workerが原因の可能性がある場合のヒントを追加
       const enhancedError = errorMessage.includes('Failed to fetch')
         ? `${errorMessage} (Service Workerが画像アップロードをブロックしている可能性があります)`
@@ -424,7 +556,21 @@ export class FileUploadManager implements FileUploadManagerInterface {
       completed, failed, aborted, total: files.length, inProgress: completed + failed + aborted < files.length
     });
     updateProgress();
-    await Promise.all(files.map(async (file, index) => {
+
+    // 順次実行に変更し、中止時は即座に終了
+    for (let index = 0; index < files.length; index++) {
+      // 中止フラグチェック
+      if (uploadAbortFlagStore.value) {
+        // 残りのファイルをabortedとしてマーク
+        for (let i = index; i < files.length; i++) {
+          results[i] = { success: false, aborted: true };
+          aborted++;
+        }
+        updateProgress();
+        break;
+      }
+
+      const file = files[index];
       try {
         const meta = metadataList ? metadataList[index] : undefined;
         const result = await this.uploadFile(file, apiUrl, devMode, meta, callbacks);
@@ -439,9 +585,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
         updateProgress();
       } catch (error) {
         results[index] = { success: false, error: error instanceof Error ? error.message : String(error) };
-        failed++; updateProgress();
+        failed++; 
+        updateProgress();
       }
-    }));
+    }
+
     return results;
   }
 
@@ -462,7 +610,9 @@ export class FileUploadManager implements FileUploadManagerInterface {
         total: 1,
         inProgress: false
       });
-      if (result.success && result.sizeInfo) {
+      
+      // 中止された場合はサイズ情報表示をスキップ
+      if (result.success && result.sizeInfo && !result.aborted) {
         const displayInfo = generateSizeDisplayInfo(result.sizeInfo);
         if (displayInfo) showImageSizeInfo(displayInfo);
       }
@@ -480,6 +630,16 @@ export class FileUploadManager implements FileUploadManagerInterface {
     metadataList?: Array<Record<string, string | number | undefined> | undefined>
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
+
+    // 処理開始を即座に通知（圧縮開始前）
+    callbacks?.onProgress?.({
+      completed: 0,
+      failed: 0,
+      aborted: 0,
+      total: files.length,
+      inProgress: true
+    });
+
     const results = await this.uploadMultipleFiles(
       files,
       apiUrl,
@@ -488,33 +648,19 @@ export class FileUploadManager implements FileUploadManagerInterface {
       metadataList,
       callbacks
     );
-    const firstSuccess = results.find(r => r.success && r.sizeInfo);
-    if (firstSuccess?.sizeInfo) {
-      const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
-      if (displayInfo) showImageSizeInfo(displayInfo);
+
+    // 中止された場合はサイズ情報表示をスキップ
+    if (!uploadAbortFlagStore.value) {
+      const firstSuccess = results.find(r => r.success && r.sizeInfo);
+      if (firstSuccess?.sizeInfo) {
+        const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
+        if (displayInfo) showImageSizeInfo(displayInfo);
+      }
     }
+
     return results;
   }
 
-  private createSWMessagePromise(useShareTarget: boolean): Promise<SharedImageData | null> {
-    return new Promise((resolve) => {
-      if (!this.dependencies.navigator?.serviceWorker?.controller) return resolve(null);
-      const channel = new MessageChannel();
-      channel.port1.onmessage = (event) => {
-        if (event.data && event.data.image) {
-          resolve(event.data as SharedImageData);
-        } else {
-          resolve(null);
-        }
-      };
-      this.dependencies.navigator.serviceWorker.controller.postMessage(
-        { type: useShareTarget ? "getSharedImage" : "getSharedImageFallback" },
-        [channel.port2]
-      );
-      // 応答がない場合のタイムアウト
-      setTimeout(() => resolve(null), 3000);
-    });
-  }
 
   // --- 共有画像処理の統一メソッド ---
   async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {

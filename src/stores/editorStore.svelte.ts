@@ -16,6 +16,7 @@ import { updateHashtagData } from '../lib/tags/hashtagManager';
 import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '../lib/editor/editorDomActions.svelte';
 import { processPastedText } from '../lib/editor/clipboardExtension';
 import type { Editor as TipTapEditor } from '@tiptap/core';
+import { uploadAbortFlagStore } from './appStore.svelte';
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -253,6 +254,14 @@ export function createEditorStore(placeholderText: string) {
 
 // --- エディター専用状態管理 ---
 export let placeholderTextStore = $state({ value: '' });
+
+// エディターインスタンスの管理
+let currentEditorInstance = $state<TipTapEditor | null>(null);
+
+export const currentEditorStore = {
+    get value() { return currentEditorInstance; },
+    set: (editor: TipTapEditor | null) => { currentEditorInstance = editor; }
+};
 
 export let editorState = $state<EditorState>({
     content: '',
@@ -550,11 +559,30 @@ export async function generateBlurhashesForPlaceholders(
     FileUploadManager: any,
     devMode: boolean = false
 ): Promise<void> {
+    // 中止フラグをチェック
+    if (uploadAbortFlagStore.value) {
+        if (devMode) console.log('[generateBlurhashesForPlaceholders] Aborted before blurhash generation');
+        return;
+    }
+
     const fileUploadManager = new FileUploadManager();
 
     const blurhashPromises = placeholderMap.map(async (item) => {
+        // 各ファイルごとに中止チェック
+        if (uploadAbortFlagStore.value) {
+            if (devMode) console.log('[generateBlurhashesForPlaceholders] Aborted during blurhash generation');
+            return;
+        }
+
         try {
             const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
+
+            // Blurhash生成後に中止チェック
+            if (uploadAbortFlagStore.value) {
+                if (devMode) console.log('[generateBlurhashesForPlaceholders] Aborted after blurhash generation');
+                return;
+            }
+
             if (blurhash) {
                 item.blurhash = blurhash;
                 if (currentEditor) {

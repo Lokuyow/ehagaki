@@ -16,6 +16,15 @@ export const imageSizeInfoStore = {
     set: (value: { info: SizeDisplayInfo | null; visible: boolean }) => { imageSizeInfo = value; }
 };
 
+// --- グローバルアップロード中止フラグ ---
+let globalUploadAbortFlag = $state(false);
+
+export const uploadAbortFlagStore = {
+    get value() { return globalUploadAbortFlag; },
+    set: (value: boolean) => { globalUploadAbortFlag = value; },
+    reset: () => { globalUploadAbortFlag = false; }
+};
+
 // --- 動画圧縮サービスインスタンス管理 ---
 let videoCompressionServiceInstance: VideoCompressionService | null = null;
 
@@ -24,13 +33,63 @@ export function setVideoCompressionService(service: VideoCompressionService | nu
 }
 
 export function abortVideoCompression(): void {
-    console.log('[appStore] abortVideoCompression called, instance:', videoCompressionServiceInstance);
+    const isDev = import.meta.env.DEV;
+    if (isDev) console.log('[appStore] abortVideoCompression called');
+    
+    // グローバル中止フラグを設定
+    uploadAbortFlagStore.set(true);
+    
+    // サービスインスタンスへ通知（FFmpeg終了など）
     if (videoCompressionServiceInstance) {
-        console.log('[appStore] Calling abort on service instance');
         videoCompressionServiceInstance.abort();
-    } else {
-        console.warn('[appStore] VideoCompressionService instance is null!');
     }
+    
+    // 進捗をリセット
+    videoCompressionProgressStore.set(0);
+}
+
+// --- 画像圧縮サービスインスタンス管理 ---
+let imageCompressionServiceInstance: any | null = null;
+
+export function setImageCompressionService(service: any | null): void {
+    imageCompressionServiceInstance = service;
+}
+
+export function abortImageCompression(): void {
+    const isDev = import.meta.env.DEV;
+    if (isDev) console.log('[appStore] abortImageCompression called');
+
+    // グローバル中止フラグを設定
+    uploadAbortFlagStore.set(true);
+
+    // サービスインスタンスへ通知
+    if (imageCompressionServiceInstance) {
+        imageCompressionServiceInstance.abort();
+    }
+    
+    // 進捗をリセット
+    imageCompressionProgressStore.set(0);
+}
+
+// 統合された中止処理（画像・動画・アップロード全て）
+export function abortAllUploads(): void {
+    const isDev = import.meta.env.DEV;
+    if (isDev) console.log('[appStore] abortAllUploads called');
+    
+    // グローバル中止フラグを設定
+    uploadAbortFlagStore.set(true);
+    
+    // 各サービスへ通知
+    if (videoCompressionServiceInstance) {
+        videoCompressionServiceInstance.abort();
+    }
+    if (imageCompressionServiceInstance) {
+        imageCompressionServiceInstance.abort();
+    }
+    
+    // 全進捗をリセット
+    videoCompressionProgressStore.set(0);
+    imageCompressionProgressStore.set(0);
 }
 
 // --- 認証状態管理 ---
@@ -279,6 +338,19 @@ export const videoCompressionProgressStore = {
     subscribe: (callback: (value: number) => void) => {
         $effect(() => {
             callback(videoCompressionProgress);
+        });
+    }
+};
+
+// --- 画像圧縮進捗管理 ---
+let imageCompressionProgress = $state(0);
+
+export const imageCompressionProgressStore = {
+    get value() { return imageCompressionProgress; },
+    set: (value: number) => { imageCompressionProgress = value; },
+    subscribe: (callback: (value: number) => void) => {
+        $effect(() => {
+            callback(imageCompressionProgress);
         });
     }
 };

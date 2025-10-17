@@ -24,7 +24,13 @@ vi.mock("virtual:pwa-register/svelte", () => ({
 // appStore.svelte.tsのモック
 vi.mock("../stores/appStore.svelte.ts", () => ({
     showImageSizeInfo: vi.fn(),
-    setVideoCompressionService: vi.fn()
+    setVideoCompressionService: vi.fn(),
+    setImageCompressionService: vi.fn(),
+    uploadAbortFlagStore: {
+        value: false,
+        set: vi.fn(),
+        reset: vi.fn()
+    }
 }));
 
 // その他の依存関係をモック
@@ -400,7 +406,9 @@ describe('FileUploadManager', () => {
                     wasCompressed: false,
                     wasSkipped: false
                 }),
-                hasCompressionSettings: vi.fn().mockReturnValue(true)
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
             } as CompressionService & { hasCompressionSettings: () => boolean };
 
             uploadManager = new FileUploadManager(
@@ -442,7 +450,9 @@ describe('FileUploadManager', () => {
                     wasCompressed: false,
                     wasSkipped: false
                 }),
-                hasCompressionSettings: vi.fn().mockReturnValue(true)
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
             } as CompressionService & { hasCompressionSettings: () => boolean };
 
             uploadManager = new FileUploadManager(
@@ -511,7 +521,9 @@ describe('FileUploadManager', () => {
                     wasCompressed: false,
                     wasSkipped: false
                 })),
-                hasCompressionSettings: vi.fn().mockReturnValue(true)
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
             } as CompressionService & { hasCompressionSettings: () => boolean };
 
             uploadManager = new FileUploadManager(

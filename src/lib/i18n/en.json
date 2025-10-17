@@ -135,6 +135,9 @@
     "uploading": "Uploading video...",
     "not_supported": "Your browser does not support the video tag."
   },
+  "imageCompression": {
+    "compressing": "Compressing image"
+  },
   "videoCompressionLabelSuffix": " compression",
   "welcomeDialog": {
     "title": "Welcome to eHagaki",

@@ -9,7 +9,8 @@ vi.mock("../stores/appStore.svelte.ts", () => ({
     clearSharedImageStore: vi.fn(),
     getSharedImageFile: vi.fn(() => null),
     getSharedImageMetadata: vi.fn(() => undefined),
-    setVideoCompressionService: vi.fn()
+    setVideoCompressionService: vi.fn(),
+    setImageCompressionService: vi.fn()
 }));
 
 // モック用ファイル生成

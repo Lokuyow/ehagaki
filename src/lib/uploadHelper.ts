@@ -1,6 +1,8 @@
 import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { FileUploadManager } from "./fileUploadManager";
+import { uploadAbortFlagStore } from '../stores/appStore.svelte';
+import { removeAllPlaceholders } from './utils/editorUtils';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/appUtils";
@@ -69,6 +71,42 @@ export class UploadManager {
     }
 }
 
+// 中止チェック用のヘルパー関数
+function handleAbortedUpload(
+    fileArray: File[],
+    placeholderMap: PlaceholderEntry[],
+    currentEditor: TipTapEditor | null,
+    updateUploadState: (isUploading: boolean, errorMessage?: string) => void,
+    uploadCallbacks?: UploadInfoCallbacks,
+    devMode: boolean = false,
+    cleanupPlaceholders: boolean = false
+): UploadHelperResult {
+    updateUploadState(false);
+    
+    if (cleanupPlaceholders && currentEditor) {
+        removeAllPlaceholders(currentEditor, devMode);
+    }
+    
+    if (uploadCallbacks?.onProgress) {
+        uploadCallbacks.onProgress({
+            completed: 0,
+            failed: 0,
+            aborted: fileArray.length,
+            total: fileArray.length,
+            inProgress: false
+        });
+    }
+    
+    return {
+        placeholderMap: cleanupPlaceholders ? [] : placeholderMap,
+        results: null,
+        imageOxMap: {},
+        imageXMap: {},
+        failedResults: [],
+        errorMessage: "Upload aborted by user",
+    };
+}
+
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({
     localStorage: window.localStorage,
@@ -106,11 +144,57 @@ export async function uploadHelper({
     const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
     const modeLabel = isPreview ? "[preview]" : "[dev]";
 
+    // 処理開始を即座に通知（プレースホルダー挿入前）
+    if (uploadCallbacks?.onProgress) {
+        uploadCallbacks.onProgress({
+            completed: 0,
+            failed: 0,
+            aborted: 0,
+            total: fileArray.length,
+            inProgress: true
+        });
+    }
+
+    // 中止フラグをリセット
+    uploadAbortFlagStore.reset();
+
     // マネージャーの初期化
     const uploadManager = new UploadManager(dependencies, devMode);
 
     // ファイル処理
-    const fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
+    let fileProcessingResults;
+    try {
+        fileProcessingResults = await processFilesForUpload(fileArray, dependencies);
+    } catch (error) {
+        // 中止された場合
+        if (error instanceof Error && error.message === 'Upload aborted by user') {
+            updateUploadState(false);
+            if (uploadCallbacks?.onProgress) {
+                uploadCallbacks.onProgress({
+                    completed: 0,
+                    failed: 0,
+                    aborted: fileArray.length,
+                    total: fileArray.length,
+                    inProgress: false
+                });
+            }
+            return {
+                placeholderMap: [],
+                results: null,
+                imageOxMap,
+                imageXMap,
+                failedResults: [],
+                errorMessage: "Upload aborted by user",
+            };
+        }
+        // その他のエラーは再スロー
+        throw error;
+    }
+
+    // 中止チェック（ファイル処理後）
+    if (uploadAbortFlagStore.value) {
+        return handleAbortedUpload(fileArray, [], currentEditor, updateUploadState, uploadCallbacks, devMode, false);
+    }
 
     // プレースホルダー挿入
     let placeholderMap = insertPlaceholdersIntoEditor(
@@ -135,7 +219,12 @@ export async function uploadHelper({
         };
     }
 
-    // アップロード状態を更新
+    // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
+    if (uploadAbortFlagStore.value) {
+        return handleAbortedUpload(fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true);
+    }
+
+    // アップロード状態を更新（圧縮開始前に設定）
     updateUploadState(true, "");
 
     // Blurhash生成
@@ -145,6 +234,11 @@ export async function uploadHelper({
         dependencies.FileUploadManager,
         devMode
     );
+
+    // 中止チェック（Blurhash生成後）
+    if (uploadAbortFlagStore.value) {
+        return handleAbortedUpload(fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true);
+    }
 
     // アップロード処理
     const validFiles = placeholderMap.map((entry: PlaceholderEntry) => entry.file);
@@ -159,6 +253,19 @@ export async function uploadHelper({
         results = null;
     } finally {
         updateUploadState(false);
+    }
+
+    // 中止された場合は後続処理をスキップ
+    if (uploadAbortFlagStore.value) {
+        if (fileInput) fileInput.value = "";
+        return {
+            placeholderMap: [],
+            results: null,
+            imageOxMap,
+            imageXMap,
+            failedResults: [],
+            errorMessage: "Upload aborted by user",
+        };
     }
 
     await dependencies.tick();
@@ -237,15 +344,21 @@ export interface CreateUploadCallbacksParams {
     videoCompressionProgressStore: {
         set: (value: number) => void;
     };
+    imageCompressionProgressStore: {
+        set: (value: number) => void;
+    };
 }
 
 export function createUploadCallbacks(params: CreateUploadCallbacksParams): UploadInfoCallbacks | undefined {
-    const { onUploadProgress, videoCompressionProgressStore } = params;
+    const { onUploadProgress, videoCompressionProgressStore, imageCompressionProgressStore } = params;
     return onUploadProgress
         ? {
             onProgress: onUploadProgress,
             onVideoCompressionProgress: (progress: number) => {
                 videoCompressionProgressStore.set(progress);
+            },
+            onImageCompressionProgress: (progress: number) => {
+                imageCompressionProgressStore.set(progress);
             },
         }
         : undefined;
@@ -332,6 +445,9 @@ export interface UploadFilesParams {
     videoCompressionProgressStore: {
         set: (value: number) => void;
     };
+    imageCompressionProgressStore: {
+        set: (value: number) => void;
+    };
     getUploadFailedText: (key: string) => string;
     dependencies?: UploadHelperDependencies;
 }
@@ -346,6 +462,7 @@ export async function uploadFiles(params: UploadFilesParams): Promise<void> {
         imageOxMap,
         imageXMap,
         videoCompressionProgressStore,
+        imageCompressionProgressStore,
         getUploadFailedText,
         dependencies,
     } = params;
@@ -353,6 +470,7 @@ export async function uploadFiles(params: UploadFilesParams): Promise<void> {
     const uploadCallbacks = createUploadCallbacks({
         onUploadProgress,
         videoCompressionProgressStore,
+        imageCompressionProgressStore,
     });
 
     await performFileUpload({

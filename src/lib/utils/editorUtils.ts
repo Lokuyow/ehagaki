@@ -407,3 +407,43 @@ export function removePlaceholderNode(
         }
     );
 }
+
+// === 全プレースホルダーノードの削除 ===
+export function removeAllPlaceholders(
+    currentEditor: TipTapEditor | null,
+    devMode: boolean = false
+): void {
+    if (!currentEditor) return;
+
+    const { state } = currentEditor;
+    const { doc } = state;
+    const tr = state.tr;
+    let deletedCount = 0;
+
+    // 後ろから削除（位置がずれないように）
+    const nodesToDelete: { pos: number; size: number }[] = [];
+
+    doc.descendants((node, pos) => {
+        const nodeType = node.type?.name;
+        const isPlaceholder = node.attrs?.isPlaceholder === true || 
+                            node.attrs?.src?.startsWith('placeholder-') ||
+                            node.attrs?.src?.startsWith('blob:');
+        
+        if ((nodeType === 'image' || nodeType === 'video') && isPlaceholder) {
+            nodesToDelete.push({ pos, size: node.nodeSize });
+        }
+    });
+
+    // 後ろから削除
+    nodesToDelete.reverse().forEach(({ pos, size }) => {
+        tr.delete(pos, pos + size);
+        deletedCount++;
+    });
+
+    if (deletedCount > 0) {
+        currentEditor.view.dispatch(tr);
+        if (devMode) {
+            console.log(`[editorUtils] Deleted ${deletedCount} placeholder(s)`);
+        }
+    }
+}

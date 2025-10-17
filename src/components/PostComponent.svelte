@@ -5,7 +5,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { RxNostr } from "rx-nostr";
   import type { UploadProgress } from "../lib/types";
-  import { videoCompressionProgressStore } from "../stores/appStore.svelte";
+  import { videoCompressionProgressStore, imageCompressionProgressStore } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadFiles } from "../lib/uploadHelper";
   import ContextMenu from "./ContextMenu.svelte";
@@ -33,6 +33,7 @@
     updatePostStatus,
     initializeEditor,
     cleanupEditor,
+    currentEditorStore,
   } from "../stores/editorStore.svelte";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
@@ -109,6 +110,7 @@
           imageOxMap,
           imageXMap,
           videoCompressionProgressStore,
+          imageCompressionProgressStore,
           getUploadFailedText: (key: string) => $_(key),
         });
       },
@@ -127,7 +129,11 @@
 
     // エディターの購読
     const unsubscribe = editor.subscribe(
-      (editorInstance: TipTapEditor | null) => (currentEditor = editorInstance),
+      (editorInstance: TipTapEditor | null) => {
+        currentEditor = editorInstance;
+        // ストアにも設定
+        currentEditorStore.set(editorInstance);
+      },
     );
 
     return () => {
@@ -158,6 +164,7 @@
         imageOxMap,
         imageXMap,
         videoCompressionProgressStore,
+        imageCompressionProgressStore,
         getUploadFailedText: (key: string) => $_(key),
       });
     }

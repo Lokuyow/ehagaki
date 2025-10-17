@@ -1,5 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
+import { uploadAbortFlagStore } from '../stores/appStore.svelte';
 
 /**
  * 動画圧縮設定のマップ
@@ -39,19 +40,16 @@ export class VideoCompressionService {
     private isLoaded = false;
     private loadPromise: Promise<void> | null = null;
     private onProgress?: (progress: number) => void;
-    private abortFlag = false;
     private isCompressing = false;
 
     constructor(private localStorage: Storage) { }
 
     /**
-     * 圧縮処理を中止
+     * 圧縮処理を中止（グローバルフラグで管理）
      */
     public abort(): void {
         const isDev = import.meta.env.DEV;
         if (isDev) console.log('[VideoCompressionService] Abort requested');
-
-        this.abortFlag = true;
 
         // 進捗を0にリセット
         if (this.onProgress) {
@@ -163,9 +161,14 @@ export class VideoCompressionService {
     async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
         const isDev = import.meta.env.DEV;
 
-        // 中止フラグをリセット
-        this.abortFlag = false;
+        // 圧縮フラグをリセット
         this.isCompressing = false;
+
+        // グローバル中止フラグをチェック
+        if (uploadAbortFlagStore.value) {
+            if (isDev) console.log('[VideoCompressionService] Compression aborted by global flag');
+            return { file, wasCompressed: false, wasSkipped: true, aborted: true };
+        }
 
         // 動画ファイル以外はスキップ
         if (!file.type.startsWith('video/')) {
@@ -193,7 +196,7 @@ export class VideoCompressionService {
             await this.loadFFmpeg();
 
             // 中止チェック
-            if (this.abortFlag) {
+            if (uploadAbortFlagStore.value) {
                 if (isDev) console.log('[VideoCompressionService] Compression aborted by user');
                 return { file, wasCompressed: false, wasSkipped: true, aborted: true };
             }
@@ -240,7 +243,7 @@ export class VideoCompressionService {
             args.push('-movflags', '+faststart', '-y', outputName);
 
             // 中止チェック
-            if (this.abortFlag) {
+            if (uploadAbortFlagStore.value) {
                 if (isDev) console.log('[VideoCompressionService] Compression aborted before execution');
                 await this.ffmpeg.deleteFile(inputName);
                 return { file, wasCompressed: false, wasSkipped: true, aborted: true };
@@ -257,7 +260,7 @@ export class VideoCompressionService {
                 await this.ffmpeg.exec(args);
             } catch (error) {
                 // 中止による終了の場合はエラーログを出さない
-                if (this.abortFlag) {
+                if (uploadAbortFlagStore.value) {
                     if (isDev) console.log('[VideoCompressionService] Compression aborted during execution');
                 } else {
                     if (isDev) console.error('[VideoCompressionService] FFmpeg execution error:', error);
@@ -267,19 +270,16 @@ export class VideoCompressionService {
                 this.isCompressing = false;
             }
 
-            // 中止チェック
-            if (this.abortFlag) {
+            // 中止チェック（exec後の主要ポイントのみ）
+            if (uploadAbortFlagStore.value) {
                 if (isDev) console.log('[VideoCompressionService] Cleaning up after abort');
                 try {
                     await this.ffmpeg.deleteFile(inputName);
-                } catch { }
-                try {
                     await this.ffmpeg.deleteFile(outputName);
                 } catch { }
                 return { file, wasCompressed: false, wasSkipped: true, aborted: true };
             }
 
-            // 出力ファイルを読み取り
             const data = await this.ffmpeg.readFile(outputName);
             const blob = new Blob([data as BlobPart], { type: 'video/mp4' });
 
@@ -314,7 +314,7 @@ export class VideoCompressionService {
             this.isCompressing = false;
 
             // 中止による終了の場合
-            if (this.abortFlag) {
+            if (uploadAbortFlagStore.value) {
                 if (isDev) console.log('[VideoCompressionService] Compression aborted, using original file');
                 return { file, wasCompressed: false, wasSkipped: true, aborted: true };
             }

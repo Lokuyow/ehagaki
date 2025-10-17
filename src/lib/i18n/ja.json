@@ -25,6 +25,9 @@
     "uploading": "動画をアップロード中...",
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
   },
+  "imageCompression": {
+    "compressing": "画像圧縮中"
+  },
   "videoCompressionLabelSuffix": "圧縮",
   "welcomeDialog": {
     "title": "eHagaki へようこそ",

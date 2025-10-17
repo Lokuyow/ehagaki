@@ -3,6 +3,7 @@
 import { generateEventTemplate } from "nostr-tools/nip94";
 import type { FileMetadataObject } from "nostr-tools/nip94";
 import { encode, decode } from "blurhash";
+import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 
 export interface ImetaField extends Partial<FileMetadataObject> {
     url: string;
@@ -99,6 +100,11 @@ export async function createImetaTagAsync(fields: ImetaField): Promise<string[]>
  */
 export async function generateBlurhash(file: File): Promise<string | null> {
     try {
+        // 中止フラグをチェック
+        if (uploadAbortFlagStore.value) {
+            return null;
+        }
+
         const img = await new Promise<HTMLImageElement>((resolve, reject) => {
             const url = URL.createObjectURL(file);
             const image = new window.Image();
@@ -112,6 +118,12 @@ export async function generateBlurhash(file: File): Promise<string | null> {
             };
             image.src = url;
         });
+
+        // 画像読み込み後に中止チェック
+        if (uploadAbortFlagStore.value) {
+            return null;
+        }
+
         const canvas = document.createElement("canvas");
         canvas.width = Math.min(img.width, 64); // blurhash推奨:小さめ
         canvas.height = Math.min(img.height, 64);
@@ -121,6 +133,7 @@ export async function generateBlurhash(file: File): Promise<string | null> {
         }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
         // component数は4x4固定
         const hash = encode(imageData.data, imageData.width, imageData.height, 4, 4);
         return hash;
