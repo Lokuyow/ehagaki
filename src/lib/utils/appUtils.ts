@@ -206,6 +206,17 @@ export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = wind
     .join("");
 }
 
+async function tryCalculateSHA256Hex(
+  file: File,
+  crypto: SubtleCrypto
+): Promise<string | undefined> {
+  try {
+    return await calculateSHA256Hex(file, crypto);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * 画像サイズ取得関数
  */
@@ -826,7 +837,7 @@ export async function processFilesForUpload(
     const fileProcessingPromises = files.map(async (file, index) => {
         const [oxResult, dimensionsResult] = await Promise.all([
             // ox計算
-            calculateSHA256Hex(file, dependencies.crypto),
+      tryCalculateSHA256Hex(file, dependencies.crypto),
             // サイズ計算
             dependencies.getImageDimensions(file)
         ]);

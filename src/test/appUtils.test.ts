@@ -7,6 +7,7 @@ import {
     createFileSizeInfo,
     hasFileSizeChanges,
     generateSizeDisplayInfo,
+    processFilesForUpload,
 
     // Nostr Key Utilities
     containsSecretKey,
@@ -23,8 +24,31 @@ import type {
     StorageAdapter,
     NavigatorAdapter,
     WindowAdapter,
-    TimeoutAdapter
+    TimeoutAdapter,
+    UploadHelperDependencies,
+    ImageDimensions
 } from '../lib/types';
+
+const createDependencies = (
+    overrides: Partial<UploadHelperDependencies> = {}
+): UploadHelperDependencies => {
+    const base = {
+        localStorage: {} as Storage,
+        crypto: { digest: vi.fn() } as unknown as SubtleCrypto,
+        tick: vi.fn(),
+        FileUploadManager: vi.fn() as unknown as UploadHelperDependencies['FileUploadManager'],
+        getImageDimensions: vi.fn().mockResolvedValue(null),
+        extractImageBlurhashMap: vi.fn().mockReturnValue({}),
+        calculateImageHash: vi.fn().mockResolvedValue(null),
+        getMimeTypeFromUrl: vi.fn().mockReturnValue('image/png'),
+        createImetaTag: vi.fn().mockResolvedValue([]),
+        imageSizeMapStore: {
+            update: vi.fn()
+        }
+    } as UploadHelperDependencies;
+
+    return { ...base, ...overrides };
+};
 
 describe('File Size Utilities', () => {
     describe('formatFileSize', () => {
@@ -129,6 +153,60 @@ describe('File Size Utilities', () => {
                 wasSkipped: undefined
             });
         });
+    });
+});
+
+describe('File Processing Utilities', () => {
+    it('should continue when crypto digest rejects', async () => {
+        const digestMock = vi.fn().mockRejectedValue(new Error('unsupported'));
+    const getImageDimensionsMock = vi.fn().mockResolvedValue(null);
+        const dependencies = createDependencies({
+            crypto: { digest: digestMock } as unknown as SubtleCrypto,
+            getImageDimensions: getImageDimensionsMock
+        });
+
+        const arrayBufferMock = vi.fn().mockResolvedValue(new ArrayBuffer(8));
+        const file = {
+            name: 'mobile-photo.jpg',
+            type: 'image/jpeg',
+            arrayBuffer: arrayBufferMock
+        } as unknown as File;
+        const [result] = await processFilesForUpload([file], dependencies);
+
+        expect(result.file).toBe(file);
+        expect(result.ox).toBeUndefined();
+        expect(result.dimensions).toBeUndefined();
+        expect(arrayBufferMock).toHaveBeenCalled();
+        expect(digestMock).toHaveBeenCalled();
+        expect(getImageDimensionsMock).toHaveBeenCalledWith(file);
+    });
+
+    it('should populate ox when crypto digest succeeds', async () => {
+        const digestMock = vi.fn().mockResolvedValue(new Uint8Array([0, 1, 2, 3]).buffer);
+        const dimensions: ImageDimensions = {
+            width: 100,
+            height: 50,
+            displayWidth: 80,
+            displayHeight: 40
+        };
+        const getImageDimensionsMock = vi.fn().mockResolvedValue(dimensions);
+        const dependencies = createDependencies({
+            crypto: { digest: digestMock } as unknown as SubtleCrypto,
+            getImageDimensions: getImageDimensionsMock
+        });
+        const arrayBufferMock = vi.fn().mockResolvedValue(new ArrayBuffer(8));
+        const file = {
+            name: 'desktop-photo.png',
+            type: 'image/png',
+            arrayBuffer: arrayBufferMock
+        } as unknown as File;
+        const [result] = await processFilesForUpload([file], dependencies);
+
+        expect(result.ox).toBe('00010203');
+        expect(result.dimensions).toEqual(dimensions);
+        expect(arrayBufferMock).toHaveBeenCalled();
+        expect(digestMock).toHaveBeenCalled();
+        expect(getImageDimensionsMock).toHaveBeenCalledWith(file);
     });
 });
 
