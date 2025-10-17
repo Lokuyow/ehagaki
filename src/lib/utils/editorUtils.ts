@@ -1,6 +1,7 @@
 import type { NodeData, CleanUrlResult } from "../types";
 import { blurEditorAndBody } from "./appDomUtils";
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
+import type { Editor as TipTapEditor } from "@tiptap/core";
 
 // === URL検証・正規関数） ===
 export function normalizeUrl(url: string): string {
@@ -343,4 +344,36 @@ export function setDraggingFalse(viewOrEditorView: any) {
     viewOrEditorView.dispatch(
         viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
     );
+}
+
+// === エディターノードの検索と実行 ===
+export function findAndExecuteOnNode(
+    editor: TipTapEditor | null,
+    predicate: (node: any, pos: number) => boolean,
+    action: (node: any, pos: number) => void
+): void {
+    if (!editor) return;
+
+    const doc = editor.state.doc;
+    doc.descendants((node: any, pos: number) => {
+        if (predicate(node, pos)) {
+            action(node, pos);
+            return false; // 最初のマッチで停止
+        }
+    });
+}
+
+// === 画像サイズマップの更新 ===
+export function updateImageSizeMap(
+    store: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    deleteKey?: string,
+    addKey?: string,
+    addValue?: any
+): void {
+    store.update(map => {
+        const newMap = { ...map };
+        if (deleteKey) delete newMap[deleteKey];
+        if (addKey && addValue) newMap[addKey] = addValue;
+        return newMap;
+    });
 }

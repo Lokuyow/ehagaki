@@ -4,6 +4,8 @@ import { NodeSelection } from "prosemirror-state";
 import { FileUploadManager } from "./fileUploadManager";
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
+import { findAndExecuteOnNode, updateImageSizeMap } from "./utils/editorUtils";
+import { processFilesForUpload, prepareMetadataList } from "./utils/appUtils";
 import type {
     UploadHelperParams,
     UploadHelperResult,
@@ -450,91 +452,6 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     createImetaTag: async (params: any) => await createImetaTag(params),
     imageSizeMapStore,
 });
-
-// 純粋関数: エディターノードの検索と実行
-export function findAndExecuteOnNode(
-    editor: TipTapEditor | null,
-    predicate: (node: any, pos: number) => boolean,
-    action: (node: any, pos: number) => void
-): void {
-    if (!editor) return;
-
-    const doc = editor.state.doc;
-    doc.descendants((node: any, pos: number) => {
-        if (predicate(node, pos)) {
-            action(node, pos);
-            return false; // 最初のマッチで停止
-        }
-    });
-}
-
-// 純粋関数: 画像サイズマップの更新
-export function updateImageSizeMap(
-    store: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
-    deleteKey?: string,
-    addKey?: string,
-    addValue?: any
-): void {
-    store.update(map => {
-        const newMap = { ...map };
-        if (deleteKey) delete newMap[deleteKey];
-        if (addKey && addValue) newMap[addKey] = addValue;
-        return newMap;
-    });
-}
-
-// 純粋関数: ファイル処理とプレースホルダー作成
-/**
- * アップロードするファイルを処理し、ハッシュとサイズ情報を計算する
- * @param files 処理するファイル配列
- * @param dependencies 依存関係
- * @returns 処理結果の配列（ファイル、インデックス、ox、dimensions）
- */
-export async function processFilesForUpload(
-    files: File[],
-    dependencies: UploadHelperDependencies
-): Promise<Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>> {
-    const fileProcessingPromises = files.map(async (file, index) => {
-        const [oxResult, dimensionsResult] = await Promise.all([
-            // ox計算
-            (async () => {
-                try {
-                    const arrayBuffer = await file.arrayBuffer();
-                    const hashBuffer = await dependencies.crypto.digest("SHA-256", arrayBuffer);
-                    return Array.from(new Uint8Array(hashBuffer))
-                        .map((b) => b.toString(16).padStart(2, "0"))
-                        .join("");
-                } catch (e) {
-                    return undefined;
-                }
-            })(),
-            // サイズ計算
-            dependencies.getImageDimensions(file)
-        ]);
-
-        return { file, index, ox: oxResult, dimensions: dimensionsResult ?? undefined };
-    });
-
-    return await Promise.all(fileProcessingPromises);
-}
-
-// 純粋関数: メタデータ準備
-/**
- * アップロード用のメタデータリストを作成する
- * @param fileArray ファイル配列
- * @returns メタデータレコードの配列
- */
-export function prepareMetadataList(fileArray: File[]): Array<Record<string, string | number | undefined>> {
-    return fileArray.map((f) => ({
-        caption: f.name,
-        expiration: "",
-        size: f.size,
-        alt: f.name,
-        media_type: undefined,
-        content_type: f.type || "",
-        no_transform: "true"
-    }));
-}
 
 export async function uploadHelper({
     files,

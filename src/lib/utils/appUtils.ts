@@ -8,6 +8,7 @@ import type {
   NavigatorAdapter,
   WindowAdapter,
   TimeoutAdapter,
+  UploadHelperDependencies,
   ImageDimensions
 } from "../types";
 import {
@@ -809,5 +810,58 @@ export function calculateContextMenuPosition(
     x: Math.max(safeMargin, Math.min(maxX, x)),
     y: Math.max(safeMargin, Math.min(maxY, y)),
   };
+}
+
+// === ファイル処理とプレースホルダー作成 ===
+/**
+ * アップロードするファイルを処理し、ハッシュとサイズ情報を計算する
+ * @param files 処理するファイル配列
+ * @param dependencies 依存関係
+ * @returns 処理結果の配列（ファイル、インデックス、ox、dimensions）
+ */
+export async function processFilesForUpload(
+    files: File[],
+    dependencies: UploadHelperDependencies
+): Promise<Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>> {
+    const fileProcessingPromises = files.map(async (file, index) => {
+        const [oxResult, dimensionsResult] = await Promise.all([
+            // ox計算
+            (async () => {
+                try {
+                    const arrayBuffer = await file.arrayBuffer();
+                    const hashBuffer = await dependencies.crypto.digest("SHA-256", arrayBuffer);
+                    return Array.from(new Uint8Array(hashBuffer))
+                        .map((b) => b.toString(16).padStart(2, "0"))
+                        .join("");
+                } catch (e) {
+                    return undefined;
+                }
+            })(),
+            // サイズ計算
+            dependencies.getImageDimensions(file)
+        ]);
+
+        return { file, index, ox: oxResult, dimensions: dimensionsResult ?? undefined };
+    });
+
+    return await Promise.all(fileProcessingPromises);
+}
+
+// === メタデータ準備 ===
+/**
+ * アップロード用のメタデータリストを作成する
+ * @param fileArray ファイル配列
+ * @returns メタデータレコードの配列
+ */
+export function prepareMetadataList(fileArray: File[]): Array<Record<string, string | number | undefined>> {
+    return fileArray.map((f) => ({
+        caption: f.name,
+        expiration: "",
+        size: f.size,
+        alt: f.name,
+        media_type: undefined,
+        content_type: f.type || "",
+        no_transform: "true"
+    }));
 }
 

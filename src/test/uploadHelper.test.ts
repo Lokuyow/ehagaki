@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadHelper, processFilesForUpload, prepareMetadataList, PlaceholderManager } from "../lib/uploadHelper";
+import { uploadHelper, PlaceholderManager } from "../lib/uploadHelper";
+import { processFilesForUpload, prepareMetadataList } from "../lib/utils/appUtils";
 import type {
     UploadHelperDependencies,
     FileUploadManagerInterface,
@@ -41,11 +42,33 @@ vi.mock("../lib/fileUploadManager", () => ({
     }))
 }));
 
+vi.mock("../lib/utils/editorUtils", () => ({
+    findAndExecuteOnNode: vi.fn(),
+    updateImageSizeMap: vi.fn()
+}));
+
 vi.mock("../lib/utils/appUtils", () => ({
     getImageDimensions: vi.fn(),
     calculateSHA256Hex: vi.fn(),
     renameByMimeType: vi.fn(),
-    generateSimpleUUID: vi.fn(() => "mock-uuid-123")
+    generateSimpleUUID: vi.fn(() => "mock-uuid-123"),
+    processFilesForUpload: vi.fn().mockImplementation(async (files: File[]) => 
+        files.map((file: File, index: number) => ({
+            file,
+            index,
+            ox: undefined,
+            dimensions: { width: 100, height: 200, displayWidth: 100, displayHeight: 200 }
+        }))
+    ),
+    prepareMetadataList: vi.fn((files) => files.map((f: File) => ({
+        caption: f.name,
+        expiration: "",
+        size: f.size,
+        alt: f.name,
+        media_type: undefined,
+        content_type: f.type || "",
+        no_transform: "true"
+    })))
 }));
 
 vi.mock("../lib/tags/imetaTag", () => ({
