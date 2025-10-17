@@ -737,7 +737,7 @@
 
     :global(.sw-update-btn) {
         height: 54px;
-        width: 154px;
+        width: 164px;
     }
 
     :global(.sw-update-btn.loading) {
