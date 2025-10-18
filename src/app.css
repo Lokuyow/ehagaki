@@ -1,13 +1,12 @@
 :root {
   --theme: hsl(152, 74%, 43%);
-  --text-black: hsl(0, 0%, 24%);
+  --text-black: hsl(0, 0%, 22%);
   --nostr-bg: hsl(270, 100%, 98%);
   --yellow: hsl(50, 100%, 50%);
   --danger: hsl(0, 84%, 60%);
   --blue: #2196f3;
   --darker: rgba(0, 0, 0, 0.8);
   --dark-gray: hsl(0, 0%, 66%);
-  --gray: hsl(0, 0%, 50%);
   --light-gray: hsl(0, 0%, 83%);
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
@@ -70,7 +69,7 @@ select {
   font-size: 1rem;
   font-weight: 500;
   color: var(--text);
-  border: 1px solid var(--btn-border);
+  border: none;
   background-color: var(--btn-bg);
   cursor: pointer;
   text-decoration: none;
@@ -124,13 +123,13 @@ select {
 @media (prefers-color-scheme: light) {
   :root {
     /* ライトモード用カラー変数 */
-    --bg: hsl(152, 5%, 93%);
+    --bg: hsl(152, 8%, 94%);
     --bg-input: hsl(0, 0%, 100%);
-    --bg-footer: hsl(0, 0%, 87%);
+    --bg-footer: hsl(0, 0%, 84%);
     --bg-translucent: #EDEDEDcc;
 
-    --btn-bg: #fff;
-    --btn-border: hsl(0, 0%, 86%);
+    --btn-bg: hsl(0, 0%, 94%);
+    --btn-border: hsl(0, 0%, 75%);
 
     --border: var(--light-gray);
     --border-hr: hsl(0, 0%, 84%);
@@ -143,7 +142,7 @@ select {
     --link: #1a0dab;
     --link-visited: #681da8;
 
-    --dialog: hsl(0, 0%, 98%);
+    --dialog: white;
     --dialog-overlay: rgba(0, 0, 0, 0.6);
 
     --svg: hsl(0, 0%, 32%);
@@ -161,15 +160,7 @@ select {
     button:hover:not(:disabled),
     a:hover,
     select:hover {
-      background-color: color-mix(in srgb, var(--btn-bg), black 5%);
-    }
-
-    .btn-text {
-      color: color-mix(in srgb, var(--text-light), black 5%);
-    }
-
-    .svg-icon {
-      background-color: color-mix(in srgb, var(--svg), black 5%);
+      filter: brightness(96%);
     }
   }
 }
@@ -177,15 +168,15 @@ select {
 @media (prefers-color-scheme: dark) {
   :root {
     /* ダークモード用カラー変数 */
-    --bg: hsl(152, 3%, 13%);
+    --bg: hsl(152, 3%, 12%);
     --bg-input: hsl(0, 0%, 20%);
     --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
 
-    --btn-bg: hsl(0, 0%, 27%);
+    --btn-bg: hsl(0, 0%, 24%);
     --btn-border: hsl(0, 0%, 30%);
 
-    --border: var(--gray);
+    --border: gray;
     --border-hr: hsl(0, 0%, 30%);
 
     --text: hsl(0, 0%, 90%);
@@ -196,10 +187,10 @@ select {
     --link: #99c3ff;
     --link-visited: #c58af9;
 
-    --dialog: hsl(0, 0%, 18%);
-    --dialog-overlay: rgba(0, 0, 0, 0.7);
+    --dialog: hsl(0, 0%, 14%);
+    --dialog-overlay: rgba(0, 0, 0, 0.8);
 
-    --svg: #f0f0f0;
+    --svg: hsl(0, 0%, 94%);
     --svg-light: var(--text-light);
 
     --shadow: rgba(255, 255, 255, 0.1);
@@ -215,15 +206,7 @@ select {
     button:hover:not(:disabled),
     a:hover,
     select:hover {
-      background-color: color-mix(in srgb, var(--btn-bg), white 5%);
-    }
-
-    .btn-text {
-      color: color-mix(in srgb, var(--text-light), white 5%);
-    }
-
-    .svg-icon {
-      background-color: color-mix(in srgb, var(--svg), white 5%);
+      filter: brightness(110%);
     }
   }
 }

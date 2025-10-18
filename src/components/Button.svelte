@@ -5,7 +5,13 @@
         type?: "button" | "submit" | "reset";
         ariaLabel?: string;
         style?: string;
-        variant?: "default" | "primary" | "danger" | "secondary" | "warning";
+        variant?:
+            | "default"
+            | "primary"
+            | "danger"
+            | "secondary"
+            | "warning"
+            | "header";
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void; // 追加
@@ -42,7 +48,6 @@
 <style>
     /* --- Variant Styles --- */
     .default {
-        border: 1px solid var(--btn-border);
         background-color: var(--btn-bg);
         padding: 12px 18px 12px 16px;
         gap: 8px;
@@ -53,9 +58,18 @@
         }
 
         :global(.btn-text) {
-            color: var(--text-light);
             font-size: 1rem;
             font-weight: 500;
+        }
+
+        @media (prefers-color-scheme: light) {
+            --text: hsl(0, 0%, 24%);
+            --svg: hsl(0, 0%, 20%);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            --text: hsl(0, 0%, 92%);
+            --svg: hsl(0, 0%, 99%);
         }
     }
 
@@ -82,29 +96,52 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                background-color: color-mix(in srgb, var(--btn-bg), black 5%);
-                color: color-mix(in srgb, var(--text), black 5%);
-                :global(.btn-text) {
-                    color: color-mix(in srgb, var(--text), black 5%);
+                @media (prefers-color-scheme: light) {
+                    filter: brightness(96%);
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    filter: brightness(90%);
                 }
             }
         }
     }
 
     .secondary {
+        border: 1px solid var(--btn-border);
         --btn-bg: white;
         --text: var(--text-black);
         --border: var(--light-gray);
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                background-color: color-mix(in srgb, var(--btn-bg), black 5%);
-                color: color-mix(in srgb, var(--text), black 5%);
-                :global(.btn-text) {
-                    color: color-mix(in srgb, var(--text), black 5%);
+                @media (prefers-color-scheme: light) {
+                    filter: brightness(97%);
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    filter: brightness(90%);
                 }
             }
         }
+    }
+
+    .header {
+        border: 1px solid var(--hagaki);
+        @media (min-width: 601px) {
+            @media (prefers-color-scheme: light) {
+                &:hover:not(:disabled) {
+                    border-color: color-mix(in srgb, var(--hagaki), black 3%);
+                }
+            }
+        }
+
+        @media (prefers-color-scheme: light) {
+            --btn-bg: white;
+        }
+        /* @media (prefers-color-scheme: dark) {
+            --btn-bg: black;
+        } */
     }
 
     .danger {
@@ -114,10 +151,12 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                background-color: color-mix(in srgb, var(--btn-bg), black 5%);
-                color: color-mix(in srgb, var(--text), black 5%);
-                :global(.btn-text) {
-                    color: color-mix(in srgb, var(--text), black 5%);
+                @media (prefers-color-scheme: light) {
+                    filter: brightness(94%);
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    filter: brightness(90%);
                 }
             }
         }
@@ -130,10 +169,12 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                background-color: color-mix(in srgb, var(--btn-bg), black 5%);
-                color: color-mix(in srgb, var(--text), black 5%);
-                :global(.btn-text) {
-                    color: color-mix(in srgb, var(--text), black 5%);
+                @media (prefers-color-scheme: light) {
+                    filter: brightness(96%);
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    filter: brightness(90%);
                 }
             }
         }

@@ -266,7 +266,7 @@
     <div class="post-actions">
         <div class="buttons-container">
             <Button
-                variant="default"
+                variant="header"
                 shape="square"
                 className="clear-button"
                 disabled={!canPost ||
@@ -279,7 +279,7 @@
                 <div class="trash-icon svg-icon"></div>
             </Button>
             <Button
-                variant="default"
+                variant="header"
                 shape="square"
                 className="image-button"
                 disabled={!hasStoredKey ||
@@ -292,7 +292,7 @@
                 <div class="image-icon svg-icon"></div>
             </Button>
             <Button
-                variant="default"
+                variant="header"
                 shape="square"
                 className="post-button {isShowingLoader ? 'loading' : ''}"
                 disabled={!canPost ||
@@ -355,7 +355,7 @@
         height: 100%;
 
         &:hover {
-            background-color: transparent;
+            filter: brightness(100%);
         }
     }
 
@@ -381,29 +381,11 @@
         height: 100%;
     }
 
-    :global(
-            .default.post-button,
-            .default.image-button,
-            .default.clear-button
-        ) {
-        border: 1px solid var(--hagaki);
+    :global(.header.post-button, .header.image-button, .header.clear-button) {
         width: 58px;
-
-        @media (min-width: 601px) {
-            @media (prefers-color-scheme: light) {
-                &:hover:not(:disabled) {
-                    border-color: color-mix(in srgb, var(--hagaki), black 5%);
-                }
-            }
-            @media (prefers-color-scheme: dark) {
-                &:hover:not(:disabled) {
-                    border-color: color-mix(in srgb, var(--hagaki), white 5%);
-                }
-            }
-        }
     }
 
-    :global(.default.post-button.loading) {
+    :global(.header.post-button.loading) {
         border: 1px solid var(--theme);
     }
 

@@ -277,13 +277,13 @@
         font-family: monospace;
         font-size: 1rem;
         padding: 0.6rem;
-        background-color: var(--bg-input);
-        border: 1px solid var(--btn-border);
+        background-color: var(--btn-bg);
+        border: none;
         width: 100%;
         height: 60px;
     }
 
-    :global(.nostr-login-button) {
+    :global(.nostr-login-button.default) {
         height: 74px;
         margin-top: 44px;
         margin-bottom: 16px;
@@ -294,6 +294,7 @@
         gap: 8px;
         position: relative;
         overflow: hidden;
+        border-radius: 8px;
         .nostr-login-icon {
             width: 34px;
             height: 34px;
@@ -301,7 +302,6 @@
         }
 
         .btn-text {
-            color: var(--text);
             font-size: 1.125rem;
         }
     }

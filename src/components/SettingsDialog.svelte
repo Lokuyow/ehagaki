@@ -722,7 +722,7 @@
     }
     .relay-toggle-icon {
         font-size: 1.2rem;
-        color: var(--gray);
+        color: gray;
     }
 
     .sw-update-section {
