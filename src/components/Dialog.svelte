@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import Button from "./Button.svelte";
-    import { generateSimpleUUID } from '../lib/utils/appUtils';
+    import { generateSimpleUUID } from "../lib/utils/appUtils";
 
     interface Props {
         show?: boolean;
@@ -182,11 +182,33 @@
         align-items: center;
 
         :global(.modal-close) {
-            background-color: transparent;
+            background-color: var(--dialog);
             border: none;
             border-radius: 0;
             width: 100%;
             height: 47px;
+
+            @media (min-width: 601px) {
+                @media (prefers-color-scheme: light) {
+                    :global(&:hover:not(:disabled)) {
+                        background-color: color-mix(
+                            in srgb,
+                            var(--dialog),
+                            black 5%
+                        );
+                    }
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    :global(&:hover:not(:disabled)) {
+                        background-color: color-mix(
+                            in srgb,
+                            var(--dialog),
+                            white 5%
+                        );
+                    }
+                }
+            }
 
             .xmark-icon {
                 mask-image: url("/icons/xmark-solid-full.svg");
