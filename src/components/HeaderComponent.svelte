@@ -337,6 +337,10 @@
         display: flex;
         flex-direction: row;
         align-items: center;
+
+        @media (min-width: 801px) {
+            padding: 0;
+        }
     }
 
     .header-left {
