@@ -384,6 +384,19 @@
         ) {
         border: 1px solid var(--hagaki);
         width: 58px;
+
+        @media (min-width: 601px) {
+            @media (prefers-color-scheme: light) {
+                &:hover:not(:disabled) {
+                    border-color: color-mix(in srgb, var(--hagaki), black 5%);
+                }
+            }
+            @media (prefers-color-scheme: dark) {
+                &:hover:not(:disabled) {
+                    border-color: color-mix(in srgb, var(--hagaki), white 5%);
+                }
+            }
+        }
     }
 
     :global(.default.post-button.loading) {

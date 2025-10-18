@@ -159,8 +159,17 @@ select {
   @media (min-width: 601px) {
 
     button:hover:not(:disabled),
-    & a:hover {
+    a:hover,
+    select:hover {
       background-color: color-mix(in srgb, var(--btn-bg), black 5%);
+    }
+
+    .btn-text {
+      color: color-mix(in srgb, var(--text-light), black 5%);
+    }
+
+    .svg-icon {
+      background-color: color-mix(in srgb, var(--svg), black 5%);
     }
   }
 }
@@ -204,8 +213,17 @@ select {
   @media (min-width: 601px) {
 
     button:hover:not(:disabled),
-    & a:hover {
-      background-color: color-mix(in srgb, var(--btn-bg), black 15%);
+    a:hover,
+    select:hover {
+      background-color: color-mix(in srgb, var(--btn-bg), white 5%);
+    }
+
+    .btn-text {
+      color: color-mix(in srgb, var(--text-light), white 5%);
+    }
+
+    .svg-icon {
+      background-color: color-mix(in srgb, var(--svg), white 5%);
     }
   }
 }
