@@ -5,7 +5,10 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { RxNostr } from "rx-nostr";
   import type { UploadProgress } from "../lib/types";
-  import { videoCompressionProgressStore, imageCompressionProgressStore } from "../stores/appStore.svelte";
+  import {
+    videoCompressionProgressStore,
+    imageCompressionProgressStore,
+  } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
   import ContextMenu from "./ContextMenu.svelte";
@@ -86,7 +89,9 @@
     }
   });
 
-  async function performUpload(files: File[] | FileList | null | undefined): Promise<void> {
+  async function performUpload(
+    files: File[] | FileList | null | undefined,
+  ): Promise<void> {
     if (!files || files.length === 0) return;
 
     await uploadFilesHelper({

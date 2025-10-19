@@ -106,21 +106,33 @@ export function fileDropActionWithDragState(
     params: { dragOver: (v: boolean) => void }
 ) {
     const action = fileDropAction(node);
-    function setDragOverTrue() {
-        params.dragOver(true);
+    function handleDragOver(event: DragEvent) {
+        const dt = event.dataTransfer;
+        const internal = isInternalTiptapDrag(dt);
+        const externalFiles = hasExternalFiles(dt);
+
+        // 内部ドラッグ（エディタ内ノード移動）は dragOver を false に
+        if (externalFiles && !internal) {
+            params.dragOver(true);
+        } else {
+            params.dragOver(false);
+        }
     }
-    function setDragOverFalse() {
+    function handleDragLeave(event: DragEvent) {
         params.dragOver(false);
     }
-    node.addEventListener("dragover", setDragOverTrue);
-    node.addEventListener("dragleave", setDragOverFalse);
-    node.addEventListener("drop", setDragOverFalse);
+    function handleDrop(event: DragEvent) {
+        params.dragOver(false);
+    }
+    node.addEventListener("dragover", handleDragOver);
+    node.addEventListener("dragleave", handleDragLeave);
+    node.addEventListener("drop", handleDrop);
     return {
         destroy() {
             action?.destroy?.();
-            node.removeEventListener("dragover", setDragOverTrue);
-            node.removeEventListener("dragleave", setDragOverFalse);
-            node.removeEventListener("drop", setDragOverFalse);
+            node.removeEventListener("dragover", handleDragOver);
+            node.removeEventListener("dragleave", handleDragLeave);
+            node.removeEventListener("drop", handleDrop);
         },
     };
 }
