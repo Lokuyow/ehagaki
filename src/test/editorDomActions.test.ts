@@ -422,6 +422,9 @@ describe("fileDropActionWithDragState", () => {
 
     it("calls dragOver(true) on dragover", () => {
         const event = new DragEvent("dragover", { bubbles: true, cancelable: true });
+        Object.defineProperty(event, "dataTransfer", {
+            value: { types: ["Files"] },
+        });
         node.dispatchEvent(event);
         expect(dragOverState).toBe(true);
     });
