@@ -1,15 +1,30 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { validateAndNormalizeImageUrl } from '../utils/editorUtils';
+import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUtils';
 
-// 画像URLリストをテキストから抽出
-function extractImageUrls(text: string): string[] {
+// メディアURL（画像または動画）をテキストから抽出
+interface MediaUrl {
+    url: string;
+    type: 'image' | 'video';
+}
+
+function extractMediaUrls(text: string): MediaUrl[] {
     return text
         .split(/[\n ]+/)
         .map(line => line.trim())
         .filter(Boolean)
-        .map(line => validateAndNormalizeImageUrl(line))
-        .filter((url): url is string => typeof url === 'string' && Boolean(url));
+        .map(line => {
+            const imageUrl = validateAndNormalizeImageUrl(line);
+            if (imageUrl) {
+                return { url: imageUrl, type: 'image' as const };
+            }
+            const videoUrl = validateAndNormalizeVideoUrl(line);
+            if (videoUrl) {
+                return { url: videoUrl, type: 'video' as const };
+            }
+            return null;
+        })
+        .filter((item): item is MediaUrl => item !== null);
 }
 
 // 空パラグラフ判定（改善版）
@@ -34,14 +49,20 @@ function getCurrentEmptyParagraphRange(state: any): { start: number; end: number
     return null;
 }
 
-// 画像ノード配列生成
-function createImageNodes(urls: string[], schema: any) {
-    return urls.map(url =>
-        schema.nodes.image.create({
-            src: url,
-            alt: 'Pasted image'
-        })
-    );
+// メディアノード配列生成（画像または動画）
+function createMediaNodes(mediaUrls: MediaUrl[], schema: any) {
+    return mediaUrls.map(media => {
+        if (media.type === 'image') {
+            return schema.nodes.image.create({
+                src: media.url,
+                alt: 'Pasted image'
+            });
+        } else {
+            return schema.nodes.video.create({
+                src: media.url
+            });
+        }
+    });
 }
 
 // 空パラグラフを削除（改善版）
@@ -54,23 +75,23 @@ function removeEmptyParagraphs(tx: any) {
     doc.descendants((node: any, pos: number) => {
         if (node.type.name !== 'paragraph') return;
 
-        // 空のパラグラフかつ画像を含まない場合に削除対象とする
+        // 空のパラグラフかつメディア（画像・動画）を含まない場合に削除対象とする
         if (node.textContent.trim().length === 0) {
             // ドキュメント全体が空のパラグラフ1つだけの場合は削除しない
             if (doc.childCount === 1 && doc.firstChild === node) {
                 return;
             }
 
-            let hasImage = false;
+            let hasMedia = false;
             node.descendants((n: any) => {
-                if (n.type && n.type.name === 'image') {
-                    hasImage = true;
+                if (n.type && (n.type.name === 'image' || n.type.name === 'video')) {
+                    hasMedia = true;
                     return false;
                 }
                 return true;
             });
 
-            if (!hasImage) {
+            if (!hasMedia) {
                 deletions.push([pos, pos + node.nodeSize]);
             }
         }
@@ -95,41 +116,41 @@ export const ImagePasteExtension = Extension.create({
                 props: {
                     handlePaste: (view, event) => {
                         const text = event.clipboardData?.getData('text/plain') || '';
-                        const imageUrls = extractImageUrls(text);
+                        const mediaUrls = extractMediaUrls(text);
 
-                        if (imageUrls.length > 0) {
+                        if (mediaUrls.length > 0) {
                             event.preventDefault();
 
                             const { state, dispatch } = view;
                             const { tr, selection, schema } = state;
 
-                            const imageNodes = createImageNodes(imageUrls, schema);
+                            const mediaNodes = createMediaNodes(mediaUrls, schema);
                             let transaction = tr;
 
                             // 現在位置が空のパラグラフ内かチェック
                             const emptyParagraphRange = getCurrentEmptyParagraphRange(state);
 
-                            if (emptyParagraphRange && imageNodes.length > 0) {
-                                // 空のパラグラフを最初の画像で置換（フォーカスを維持）
+                            if (emptyParagraphRange && mediaNodes.length > 0) {
+                                // 空のパラグラフを最初のメディアで置換（フォーカスを維持）
                                 transaction = transaction.replaceWith(
                                     emptyParagraphRange.start,
                                     emptyParagraphRange.end,
-                                    imageNodes[0]
+                                    mediaNodes[0]
                                 );
 
-                                // 残りの画像を順次追加
-                                let insertPos = emptyParagraphRange.start + imageNodes[0].nodeSize;
-                                for (let i = 1; i < imageNodes.length; i++) {
-                                    transaction = transaction.insert(insertPos, imageNodes[i]);
-                                    insertPos += imageNodes[i].nodeSize;
+                                // 残りのメディアを順次追加
+                                let insertPos = emptyParagraphRange.start + mediaNodes[0].nodeSize;
+                                for (let i = 1; i < mediaNodes.length; i++) {
+                                    transaction = transaction.insert(insertPos, mediaNodes[i]);
+                                    insertPos += mediaNodes[i].nodeSize;
                                 }
                             } else {
                                 // 通常の挿入処理（フォーカスを維持）
                                 let insertPos = selection.from;
 
-                                imageNodes.forEach((imageNode, idx) => {
-                                    transaction = transaction.insert(insertPos, imageNode);
-                                    insertPos += imageNode.nodeSize;
+                                mediaNodes.forEach((mediaNode: any) => {
+                                    transaction = transaction.insert(insertPos, mediaNode);
+                                    insertPos += mediaNode.nodeSize;
                                 });
                             }
 
@@ -147,23 +168,23 @@ export const ImagePasteExtension = Extension.create({
                     handleTextInput: (view, from, to, text) => {
                         // 改行を含む長いテキストが入力された場合のみ処理
                         if (text.includes('\n') || text.length > 20) {
-                            const imageUrls = extractImageUrls(text);
+                            const mediaUrls = extractMediaUrls(text);
 
-                            if (imageUrls.length > 0) {
+                            if (mediaUrls.length > 0) {
                                 const { state, dispatch } = view;
                                 const { tr, schema } = state;
 
-                                const imageNodes = createImageNodes(imageUrls, schema);
+                                const mediaNodes = createMediaNodes(mediaUrls, schema);
                                 let transaction = tr;
 
                                 // 入力されたテキストを削除
                                 transaction = transaction.delete(from, to);
 
-                                // 画像ノードを挿入（フォーカスを維持）
+                                // メディアノードを挿入（フォーカスを維持）
                                 let insertPos = from;
-                                imageNodes.forEach((imageNode) => {
-                                    transaction = transaction.insert(insertPos, imageNode);
-                                    insertPos += imageNode.nodeSize;
+                                mediaNodes.forEach((mediaNode: any) => {
+                                    transaction = transaction.insert(insertPos, mediaNode);
+                                    insertPos += mediaNode.nodeSize;
                                 });
 
                                 // 空のパラグラフを削除

@@ -1,6 +1,6 @@
 import type { NodeData, CleanUrlResult } from "../types";
 import { blurEditorAndBody } from "./appDomUtils";
-import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS } from "../constants";
+import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "../constants";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
 // === URL検証・正規関数） ===
@@ -15,6 +15,11 @@ export function isValidProtocol(protocol: string): boolean {
 export function isValidImageExtension(pathname: string): boolean {
     const lower = pathname.toLowerCase();
     return ALLOWED_IMAGE_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
+export function isValidVideoExtension(pathname: string): boolean {
+    const lower = pathname.toLowerCase();
+    return ALLOWED_VIDEO_EXTENSIONS.some(ext => lower.endsWith(ext));
 }
 
 export function validateAndNormalizeUrl(url: string): string | null {
@@ -35,6 +40,19 @@ export function validateAndNormalizeImageUrl(url: string): string | null {
     try {
         const u = new URL(baseUrl);
         if (!isValidImageExtension(u.pathname)) return null;
+        return baseUrl;
+    } catch {
+        return null;
+    }
+}
+
+export function validateAndNormalizeVideoUrl(url: string): string | null {
+    const baseUrl = validateAndNormalizeUrl(url);
+    if (!baseUrl) return null;
+
+    try {
+        const u = new URL(baseUrl);
+        if (!isValidVideoExtension(u.pathname)) return null;
         return baseUrl;
     } catch {
         return null;
@@ -94,6 +112,16 @@ export function createImageNodeData(url: string, alt: string = 'Image'): NodeDat
     };
 }
 
+export function createVideoNodeData(url: string): NodeData | null {
+    const normalizedUrl = validateAndNormalizeVideoUrl(url);
+    if (!normalizedUrl) return null;
+
+    return {
+        type: 'video',
+        attrs: { src: normalizedUrl }
+    };
+}
+
 export function createParagraphNodeData(text: string): NodeData {
     return {
         type: 'paragraph',
@@ -108,9 +136,12 @@ export function parseTextToNodes(text: string): NodeData[] {
     for (const line of lines) {
         const trimmed = line.trim();
         const imageNode = createImageNodeData(trimmed);
+        const videoNode = !imageNode ? createVideoNodeData(trimmed) : null;
 
         if (imageNode) {
             nodes.push(imageNode);
+        } else if (videoNode) {
+            nodes.push(videoNode);
         } else {
             nodes.push(createParagraphNodeData(line));
         }
@@ -131,6 +162,8 @@ export function createNodeFromData(schema: any, nodeData: NodeData): any {
     switch (nodeData.type) {
         case 'image':
             return schema.nodes.image.create(nodeData.attrs);
+        case 'video':
+            return schema.nodes.video.create(nodeData.attrs);
         case 'paragraph':
             if (nodeData.content?.length) {
                 const textNodes = nodeData.content.map((textData: any) =>
