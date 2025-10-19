@@ -272,19 +272,37 @@ export function extractContentWithImages(editor: any): string {
 // === ドラッグ＆ドロップ計算 ===
 export function calculateDragPositions(
     dropPos: number,
-    originalPos: number
+    originalPos: number,
+    doc?: any
 ): { insertPos: number; deleteStart: number; deleteEnd: number } | null {
     if (dropPos === originalPos) return null;
 
-    if (dropPos < originalPos) {
+    // ドロップ位置がテキスト内（ノード内部）の場合の調整
+    // docが提供されている場合、正確なノード単位の位置を計算する
+    let adjustedDropPos = dropPos;
+    if (doc) {
+        // ドロップ位置にあるノードを取得
+        const $dropPos = doc.resolve(dropPos);
+        const dropNode = $dropPos.parent;
+
+        // ドロップ位置がパラグラフなどのテキストノード内の場合
+        // parentOffset > 0 の場合（テキスト中へのドロップ）または parentOffset === 0（先頭へのドロップ）で、
+        // パラグラフ内へのドロップと判定する
+        if (dropNode.type.name === 'paragraph') {
+            // パラグラフノード内のどこへのドロップでも、パラグラフの後に移動するようにポジション調整
+            adjustedDropPos = $dropPos.after();
+        }
+    }
+
+    if (adjustedDropPos < originalPos) {
         return {
-            insertPos: dropPos,
+            insertPos: adjustedDropPos,
             deleteStart: originalPos + 1,
             deleteEnd: originalPos + 2
         };
-    } else if (dropPos > originalPos + 1) {
+    } else if (adjustedDropPos > originalPos + 1) {
         return {
-            insertPos: dropPos - 1,
+            insertPos: adjustedDropPos - 1,
             deleteStart: originalPos,
             deleteEnd: originalPos + 1
         };
@@ -310,10 +328,10 @@ export function createMoveTransaction(
 }
 
 export function moveImageNode(view: any, nodeData: any, dropPos: number): boolean {
-    const { tr, schema } = view.state;
+    const { tr, doc, schema } = view.state;
     const originalPos = nodeData.pos;
 
-    const positions = calculateDragPositions(dropPos, originalPos);
+    const positions = calculateDragPositions(dropPos, originalPos, doc);
     if (!positions) return true;
 
     const imageNode = schema.nodes.image.create(nodeData.attrs);
@@ -425,10 +443,10 @@ export function removeAllPlaceholders(
 
     doc.descendants((node, pos) => {
         const nodeType = node.type?.name;
-        const isPlaceholder = node.attrs?.isPlaceholder === true || 
-                            node.attrs?.src?.startsWith('placeholder-') ||
-                            node.attrs?.src?.startsWith('blob:');
-        
+        const isPlaceholder = node.attrs?.isPlaceholder === true ||
+            node.attrs?.src?.startsWith('placeholder-') ||
+            node.attrs?.src?.startsWith('blob:');
+
         if ((nodeType === 'image' || nodeType === 'video') && isPlaceholder) {
             nodesToDelete.push({ pos, size: node.nodeSize });
         }
