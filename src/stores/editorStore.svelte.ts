@@ -156,21 +156,11 @@ export function createEditorStore(placeholderText: string) {
                 editorElement.classList.add('is-editor-empty');
                 editorElement.setAttribute('data-placeholder', placeholderText);
 
-                // 段落要素にもプレースホルダー属性を設定
-                const paragraphs = editorElement.querySelectorAll('p');
-                paragraphs.forEach((p: HTMLElement) => {
-                    p.setAttribute('data-placeholder', placeholderText);
-                });
-
-                // 次のフレームでも再設定（レンダリングタイミング対応）
-                setTimeout(() => {
-                    const updatedParagraphs = editorElement.querySelectorAll('p');
-                    updatedParagraphs.forEach((p: HTMLElement) => {
-                        if (!p.getAttribute('data-placeholder')) {
-                            p.setAttribute('data-placeholder', placeholderText);
-                        }
-                    });
-                }, 0);
+                // 最初の段落要素にのみプレースホルダー属性を設定（以降、onUpdateで管理）
+                const firstParagraph = editorElement.querySelector('p:first-child') as HTMLElement | null;
+                if (firstParagraph) {
+                    firstParagraph.setAttribute('data-placeholder', placeholderText);
+                }
             }
         },
         onUpdate({ editor }) {
@@ -194,28 +184,40 @@ export function createEditorStore(placeholderText: string) {
                     return true;
                 });
 
-                // is-editor-emptyクラスをエディタ要素に設定/削除
-                if (isEmpty) {
-                    editorElement.classList.add('is-editor-empty');
-                } else {
-                    editorElement.classList.remove('is-editor-empty');
+                // is-editor-emptyクラスの現在の状態を確認
+                const currentHasEmptyClass = editorElement.classList.contains('is-editor-empty');
+                const shouldHaveEmptyClass = isEmpty;
+
+                // 明示的な変更がある場合のみクラスを操作（点滅防止）
+                if (currentHasEmptyClass !== shouldHaveEmptyClass) {
+                    if (isEmpty) {
+                        editorElement.classList.add('is-editor-empty');
+                    } else {
+                        editorElement.classList.remove('is-editor-empty');
+                    }
                 }
 
-                // 段落要素のis-editor-emptyクラスを設定
-                const paragraphs = editorElement.querySelectorAll('p');
-                paragraphs.forEach((p, index) => {
-                    const paragraph = p as HTMLElement;
-                    if (isEmpty && index === 0) {
-                        paragraph.classList.add('is-editor-empty');
-                    } else {
-                        paragraph.classList.remove('is-editor-empty');
+                // 段落要素のis-editor-emptyクラスを設定（最初の段落のみ対象）
+                const firstParagraph = editorElement.querySelector('p:first-child') as HTMLElement | null;
+                if (firstParagraph) {
+                    const currentHasEmptyClass = firstParagraph.classList.contains('is-editor-empty');
+                    const shouldHaveEmptyClass = isEmpty;
+                    
+                    // 明示的な変更がある場合のみクラスを操作
+                    if (currentHasEmptyClass !== shouldHaveEmptyClass) {
+                        if (isEmpty) {
+                            firstParagraph.classList.add('is-editor-empty');
+                        } else {
+                            firstParagraph.classList.remove('is-editor-empty');
+                        }
                     }
-                    // プレースホルダー属性を設定
-                    if (!paragraph.getAttribute('data-placeholder')) {
+
+                    // プレースホルダー属性は初回のみ設定（以降は不変）
+                    if (!firstParagraph.getAttribute('data-placeholder')) {
                         const placeholder = editorElement.getAttribute('data-placeholder') || placeholderText;
-                        paragraph.setAttribute('data-placeholder', placeholder);
+                        firstParagraph.setAttribute('data-placeholder', placeholder);
                     }
-                });
+                }
             }
         },
         onDestroy() {
@@ -228,16 +230,22 @@ export function createEditorStore(placeholderText: string) {
     const updatePlaceholder = (newPlaceholder: string) => {
         const currentEditor = (window as any).__currentEditor;
         if (currentEditor && currentEditor.view) {
-            // エディターDOM要素のdata-placeholder属性を更新
+            // エディターDOM要素のdata-placeholder属性を更新（現在の値と異なる場合のみ）
             const editorElement = currentEditor.view.dom as HTMLElement;
             if (editorElement) {
-                editorElement.setAttribute('data-placeholder', newPlaceholder);
+                const currentPlaceholder = editorElement.getAttribute('data-placeholder');
+                if (currentPlaceholder !== newPlaceholder) {
+                    editorElement.setAttribute('data-placeholder', newPlaceholder);
+                }
 
-                // すべての段落要素のプレースホルダー属性も更新
-                const paragraphs = editorElement.querySelectorAll('p');
-                paragraphs.forEach((p: HTMLElement) => {
-                    p.setAttribute('data-placeholder', newPlaceholder);
-                });
+                // 最初の段落要素のプレースホルダー属性も更新（現在の値と異なる場合のみ）
+                const firstParagraph = editorElement.querySelector('p:first-child') as HTMLElement | null;
+                if (firstParagraph) {
+                    const currentAttr = firstParagraph.getAttribute('data-placeholder');
+                    if (currentAttr !== newPlaceholder) {
+                        firstParagraph.setAttribute('data-placeholder', newPlaceholder);
+                    }
+                }
             }
 
             // Placeholder拡張の設定も更新
@@ -245,11 +253,14 @@ export function createEditorStore(placeholderText: string) {
                 (ext: any) => ext.name === 'placeholder'
             );
             if (placeholderExt) {
-                placeholderExt.options.placeholder = newPlaceholder;
-                // 強制的に再描画
-                currentEditor.view.dispatch(
-                    currentEditor.state.tr.setMeta('addToHistory', false)
-                );
+                const currentPlaceholder = placeholderExt.options.placeholder;
+                if (currentPlaceholder !== newPlaceholder) {
+                    placeholderExt.options.placeholder = newPlaceholder;
+                    // 強制的に再描画
+                    currentEditor.view.dispatch(
+                        currentEditor.state.tr.setMeta('addToHistory', false)
+                    );
+                }
             }
         }
     };
