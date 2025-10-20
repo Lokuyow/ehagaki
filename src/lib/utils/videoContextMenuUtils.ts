@@ -97,6 +97,7 @@ export function getVideoContextMenuItems(
                 if (!isSelected) return;
                 const view = editorObj?.view;
                 if (view?.state && view?.dispatch) {
+                    // 変更: ID属性でノードを特定して削除
                     let found = false;
                     interface DescendantNode {
                         type: { name: string };
@@ -104,23 +105,15 @@ export function getVideoContextMenuItems(
                         nodeSize: number;
                     }
 
-                    const targetPos = Number(nodeId);
-
                     (view.state.doc as {
                         descendants: (
                             callback: (node: DescendantNode, pos: number) => boolean | void
                         ) => void;
                     }).descendants((node: DescendantNode, pos: number) => {
-                        if (!found && node.type.name === 'video') {
-                            // id属性がある場合はidで照合、ない場合は位置で照合
-                            const matchById = node.attrs.id && node.attrs.id === nodeId;
-                            const matchByPos = !node.attrs.id && pos === targetPos;
-
-                            if (matchById || matchByPos) {
-                                view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
-                                found = true;
-                                return false;
-                            }
+                        if (!found && node.type.name === 'video' && node.attrs.id === nodeId) {
+                            view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
+                            found = true;
+                            return false; // 走査停止
                         }
                     });
                 }
@@ -211,14 +204,34 @@ export function prepareGlobalVideoContextMenuItems(
     const nodeId = globalContextMenuState.nodeId;
     const src = globalContextMenuState.src || "";
     const videoElement = globalContextMenuState.videoElement;
-    const pos = Number(nodeId) || 0;
-    const node = currentEditor?.state?.doc?.nodeAt(pos);
-    const nodeSize = node ? node.nodeSize : 1;
+    
+    // nodeIdを使って実際のノードを探す
+    let nodePos = 0;
+    let nodeSize = 1;
+    if (currentEditor?.state?.doc) {
+        interface DescendantNode {
+            type: { name: string };
+            attrs: { id?: string };
+            nodeSize: number;
+        }
+        (currentEditor.state.doc as {
+            descendants: (
+                callback: (node: DescendantNode, pos: number) => boolean | void
+            ) => void;
+        }).descendants((node: DescendantNode, pos: number) => {
+            if (node.attrs.id === nodeId) {
+                nodePos = pos;
+                nodeSize = node.nodeSize;
+                return false; // 見つかったので走査停止
+            }
+        });
+    }
+    
     const isSelected = true;
 
     const items = getVideoContextMenuItems(
         src,
-        () => pos,
+        () => nodePos,
         nodeSize,
         isSelected,
         nodeId,

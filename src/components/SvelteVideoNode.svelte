@@ -32,20 +32,9 @@
     );
 
     // ノード固有のID（id属性を使用、なければ位置）
-    let nodeId = $derived(() => {
-        if (node.attrs.id) {
-            return node.attrs.id;
-        }
-        if (typeof getPos === "function") {
-            try {
-                return getPos().toString();
-            } catch (e) {
-                console.warn("[SvelteVideoNode] Failed to get position:", e);
-                return "unknown";
-            }
-        }
-        return "unknown";
-    });
+    let nodeId = $derived(
+        node.attrs.id || (typeof getPos === "function" ? getPos().toString() : "unknown")
+    );
 
     // 動画の読み込み完了時
     function handleVideoLoad() {
@@ -97,7 +86,7 @@
         // コンテキストメニューを開く
         openContextMenuForVideoNode(
             globalContextMenuStore,
-            nodeId(),
+            nodeId,
             pos,
             node.attrs.src || "",
             videoElement,
@@ -144,7 +133,7 @@
         // コンテキストメニューを開く
         openContextMenuForVideoNode(
             globalContextMenuStore,
-            nodeId(),
+            nodeId,
             pos,
             node.attrs.src || "",
             videoElement,
@@ -162,7 +151,7 @@
             if (!isPlaceholder) {
                 openContextMenuForVideoNode(
                     globalContextMenuStore,
-                    nodeId(),
+                    nodeId,
                     pos,
                     node.attrs.src || "",
                     videoElement,
@@ -238,7 +227,7 @@
                 // コンテキストメニューを開く
                 openContextMenuForVideoNode(
                     globalContextMenuStore,
-                    nodeId(),
+                    nodeId,
                     pos,
                     node.attrs.src || "",
                 );
@@ -307,7 +296,7 @@
                 loop
                 class="editor-video"
                 class:loaded={isLoaded}
-                data-node-id={nodeId()}
+                data-node-id={nodeId}
                 onloadeddata={handleVideoLoad}
                 onerror={handleVideoError}
                 onclick={handleVideoClick}

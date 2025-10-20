@@ -216,16 +216,36 @@ export function prepareGlobalContextMenuItems(
 
     const nodeId = globalContextMenuState.nodeId;
     const src = globalContextMenuState.src || "";
-    const pos = Number(nodeId) || 0;
     const alt = "Image";
-    const node = currentEditor?.state?.doc?.nodeAt(pos);
-    const nodeSize = node ? node.nodeSize : 1;
+    
+    // nodeIdを使って実際のノードを探す
+    let nodePos = 0;
+    let nodeSize = 1;
+    if (currentEditor?.state?.doc) {
+        interface DescendantNode {
+            type: { name: string };
+            attrs: { id?: string };
+            nodeSize: number;
+        }
+        (currentEditor.state.doc as {
+            descendants: (
+                callback: (node: DescendantNode, pos: number) => boolean | void
+            ) => void;
+        }).descendants((node: DescendantNode, pos: number) => {
+            if (node.attrs.id === nodeId) {
+                nodePos = pos;
+                nodeSize = node.nodeSize;
+                return false; // 見つかったので走査停止
+            }
+        });
+    }
+    
     const isSelected = true;
 
     const items = getImageContextMenuItems(
         src,
         alt,
-        () => pos,
+        () => nodePos,
         nodeSize,
         isSelected,
         nodeId,

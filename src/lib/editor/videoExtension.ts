@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteVideoNode from '../../components/SvelteVideoNode.svelte';
+import { generateSimpleUUID } from '../utils/appUtils';
 
 export const Video = Node.create({
     name: 'video',
@@ -15,7 +16,7 @@ export const Video = Node.create({
                 default: null,
             },
             id: {
-                default: null,
+                default: () => generateSimpleUUID(),
             },
             isPlaceholder: {
                 default: false,

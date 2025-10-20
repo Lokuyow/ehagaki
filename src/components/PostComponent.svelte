@@ -300,9 +300,25 @@
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
       // ノードの種類を判定（画像か動画か）
       const nodeId = globalContextMenuState.nodeId;
-      const pos = Number(nodeId) || 0;
-      const node = currentEditor?.state?.doc?.nodeAt(pos);
-      const isVideoNode = node?.type?.name === 'video';
+      
+      // nodeIdを使ってノードを探す
+      let isVideoNode = false;
+      if (currentEditor?.state?.doc) {
+        interface DescendantNode {
+          type: { name: string };
+          attrs: { id?: string };
+        }
+        (currentEditor.state.doc as {
+          descendants: (
+            callback: (node: DescendantNode, pos: number) => boolean | void
+          ) => void;
+        }).descendants((node: DescendantNode) => {
+          if (node.attrs.id === nodeId) {
+            isVideoNode = node.type.name === 'video';
+            return false; // 見つかったので走査停止
+          }
+        });
+      }
 
       let result;
       if (isVideoNode) {
