@@ -341,7 +341,7 @@
         gap: 14px;
         width: 100%;
         padding: 10px 16px;
-        background: none;
+        background: var(--dialog);
         border: none;
         text-align: left;
         cursor: pointer;
@@ -361,6 +361,18 @@
             width: 24px;
             height: 24px;
             min-width: 24px;
+        }
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                @media (prefers-color-scheme: light) {
+                    filter: brightness(96%);
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    filter: brightness(130%);
+                }
+            }
         }
     }
     .expand-icon {
