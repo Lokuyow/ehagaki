@@ -21,10 +21,46 @@
     let left: number = $state(x);
     let top: number = $state(y);
     let menuElement: HTMLDivElement | undefined = $state();
+    let justOpened = $state(true); // 追加: メニューが開いた直後かどうか
+
+    // タッチ処理用の状態
+    let lastTouchTime = 0;
+    let isTouchDevice = false;
 
     // メニュー外クリックで閉じる
     function handleClickOutside(event: MouseEvent) {
+        // メニューが開いた直後のクリックイベントは無視
+        if (justOpened) {
+            return;
+        }
+
+        // タッチデバイスの場合、タッチイベント後のクリックイベントを無視
+        const now = Date.now();
+        if (isTouchDevice && now - lastTouchTime < 500) {
+            return;
+        }
+
         if (menuElement && !menuElement.contains(event.target as Node)) {
+            onClose();
+            globalContextMenuStore.set({ open: false, nodeId: undefined });
+        }
+    }
+
+    // タッチ外クリックで閉じる（Android対応）
+    function handleTouchOutside(event: TouchEvent) {
+        // メニューが開いた直後のタッチイベントは無視
+        if (justOpened) {
+            return;
+        }
+
+        isTouchDevice = true;
+        lastTouchTime = Date.now();
+
+        if (
+            menuElement &&
+            event.target instanceof Node &&
+            !menuElement.contains(event.target)
+        ) {
             onClose();
             globalContextMenuStore.set({ open: false, nodeId: undefined });
         }
@@ -45,7 +81,9 @@
 
         // menuElementが存在すればサイズを取得（getBoundingClientRect を優先）
         let width = menuElement ? menuElement.getBoundingClientRect().width : 0;
-        let height = menuElement ? menuElement.getBoundingClientRect().height : 0;
+        let height = menuElement
+            ? menuElement.getBoundingClientRect().height
+            : 0;
 
         // フォールバック値（極端に小さい場合の保険）
         if (!width || width < 8) width = menuElement?.offsetWidth ?? 160;
@@ -53,7 +91,13 @@
 
         // 余白を少し取る（見た目調整／端寄せ回避）
         const margin = 8;
-        const menuPos = calculateContextMenuPosition(targetX, targetY, margin, width, height);
+        const menuPos = calculateContextMenuPosition(
+            targetX,
+            targetY,
+            margin,
+            width,
+            height,
+        );
 
         left = menuPos.x;
         top = menuPos.y;
@@ -71,7 +115,14 @@
     }
 
     onMount(() => {
-        document.addEventListener("click", handleClickOutside);
+        // クリックイベントリスナーを次のイベントループで登録
+        // これにより、コンテキストメニューを開いたクリックイベントが処理された後に登録される
+        setTimeout(() => {
+            justOpened = false;
+            document.addEventListener("click", handleClickOutside);
+            document.addEventListener("touchend", handleTouchOutside);
+        }, 0);
+
         document.addEventListener("keydown", handleKeyDown);
         window.addEventListener("resize", handleResize);
         // 非同期関数なので呼び出しは void で（返り値の Promise を無視）
@@ -80,6 +131,7 @@
 
     onDestroy(() => {
         document.removeEventListener("click", handleClickOutside);
+        document.removeEventListener("touchend", handleTouchOutside);
         document.removeEventListener("keydown", handleKeyDown);
         window.removeEventListener("resize", handleResize);
     });
@@ -107,6 +159,24 @@
         return typeof translator === "function" ? translator(key) : String(key);
     };
 
+    // メニューの種類を判定（画像か動画か）
+    const menuType = $derived(() => {
+        // アイテムのラベルから推測
+        const firstItem = items[0];
+        if (firstItem && firstItem.label) {
+            const label =
+                typeof firstItem.label === "string" ? firstItem.label : "";
+            // 動画コンテキストメニューのラベルを確認
+            if (
+                label === t("videoContextMenu.copyUrl") ||
+                label === t("videoContextMenu.delete")
+            ) {
+                return "video";
+            }
+        }
+        return "image";
+    });
+
     // 追加: コピー成功時のポップアップ表示関数（親に通知）
     function showCopySuccessPopup(event?: MouseEvent) {
         // 簡素化: イベント座標があればそれを使用し、なければコンポーネントに渡された x,y を使用する（ストアや menu の近傍フォールバックは削除）
@@ -122,7 +192,12 @@
         }
 
         const pos = calculateContextMenuPosition(source.x, source.y);
-        onShowPopup(pos.x, pos.y, t("imageContextMenu.copySuccess"));
+        const type = menuType();
+        const messageKey =
+            type === "video"
+                ? "videoContextMenu.copySuccess"
+                : "imageContextMenu.copySuccess";
+        onShowPopup(pos.x, pos.y, t(messageKey));
         // devログ
         if (import.meta.env.MODE === "development") {
             console.log("[dev] ContextMenu.showCopySuccessPopup()", {
@@ -132,7 +207,8 @@
                 calculated: pos,
                 popupX: pos.x,
                 popupY: pos.y,
-                popupMessage: t("imageContextMenu.copySuccess"),
+                menuType: type,
+                popupMessage: t(messageKey),
             });
         }
     }
@@ -150,12 +226,18 @@
             source = { x: x, y: y };
         }
         const pos = calculateContextMenuPosition(source.x, source.y);
-        onShowPopup(pos.x, pos.y, t("imageContextMenu.copyFailed"));
+        const type = menuType();
+        const messageKey =
+            type === "video"
+                ? "videoContextMenu.copyFailed"
+                : "imageContextMenu.copyFailed";
+        onShowPopup(pos.x, pos.y, t(messageKey));
         if (import.meta.env.MODE === "development") {
             console.log("[dev] ContextMenu.showCopyFailurePopup()", {
                 source,
                 calculated: pos,
-                popupMessage: t("imageContextMenu.copyFailed"),
+                menuType: type,
+                popupMessage: t(messageKey),
             });
         }
     }
@@ -190,7 +272,7 @@
                 if (isCopyAction) {
                     try {
                         // コピーアクションは Promise を返すので await
-                        await item.action();
+                        item.action();
                         showCopySuccessPopup(event as MouseEvent);
                     } catch (error) {
                         console.warn("Copy failed:", error);

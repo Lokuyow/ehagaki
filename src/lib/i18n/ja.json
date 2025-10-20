@@ -21,6 +21,12 @@
     "copySuccess": "コピーしました",
     "copyFailed": "コピーに失敗しました"
   },
+  "videoContextMenu": {
+    "delete": "削除",
+    "copyUrl": "URLをコピー",
+    "copySuccess": "コピーしました",
+    "copyFailed": "コピーに失敗しました"
+  },
   "videoNode": {
     "uploading": "動画をアップロード中...",
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"

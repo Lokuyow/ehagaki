@@ -51,15 +51,19 @@ function getCurrentEmptyParagraphRange(state: any): { start: number; end: number
 
 // メディアノード配列生成（画像または動画）
 function createMediaNodes(mediaUrls: MediaUrl[], schema: any) {
-    return mediaUrls.map(media => {
+    return mediaUrls.map((media, index) => {
+        const timestamp = Date.now();
         if (media.type === 'image') {
             return schema.nodes.image.create({
                 src: media.url,
                 alt: 'Pasted image'
             });
         } else {
+            // 動画ノードにはid属性を追加（削除機能のため）
+            const videoId = `pasted-video-${timestamp}-${index}`;
             return schema.nodes.video.create({
-                src: media.url
+                src: media.url,
+                id: videoId
             });
         }
     });

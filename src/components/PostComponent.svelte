@@ -24,6 +24,7 @@
   import { containsSecretKey } from "../lib/utils/appUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
   import { prepareGlobalContextMenuItems } from "../lib/utils/imageContextMenuUtils";
+  import { prepareGlobalVideoContextMenuItems } from "../lib/utils/videoContextMenuUtils";
   import {
     globalContextMenuStore,
     lastClickPositionStore,
@@ -75,11 +76,19 @@
   let popupMessage = $derived(postComponentUI.popupMessage);
 
   // グローバルコンテキストメニューの状態
-  let globalContextMenuState = $derived($globalContextMenuStore);
+  let globalContextMenuState = $state($globalContextMenuStore);
   let showGlobalContextMenu = $derived(globalContextMenuState.open);
   let globalContextMenuX = $state(0);
   let globalContextMenuY = $state(0);
   let globalContextMenuItems = $state<MenuItem[]>([]);
+
+  // グローバルコンテキストメニューストアの変更を監視
+  $effect(() => {
+    const unsubscribe = globalContextMenuStore.subscribe((state) => {
+      globalContextMenuState = state;
+    });
+    return unsubscribe;
+  });
 
   // --- PostManager初期化 ---
   $effect(() => {
@@ -289,11 +298,28 @@
   // グローバルコンテキストメニューの位置とアイテムを更新
   $effect(() => {
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
-      const result = prepareGlobalContextMenuItems(
-        globalContextMenuState,
-        currentEditor,
-        lastClickPositionStore.value,
-      );
+      // ノードの種類を判定（画像か動画か）
+      const nodeId = globalContextMenuState.nodeId;
+      const pos = Number(nodeId) || 0;
+      const node = currentEditor?.state?.doc?.nodeAt(pos);
+      const isVideoNode = node?.type?.name === 'video';
+
+      let result;
+      if (isVideoNode) {
+        // 動画ノード用のコンテキストメニュー
+        result = prepareGlobalVideoContextMenuItems(
+          globalContextMenuState,
+          currentEditor,
+          lastClickPositionStore.value,
+        );
+      } else {
+        // 画像ノード用のコンテキストメニュー
+        result = prepareGlobalContextMenuItems(
+          globalContextMenuState,
+          currentEditor,
+          lastClickPositionStore.value,
+        );
+      }
 
       if (result) {
         globalContextMenuItems = result.items;
