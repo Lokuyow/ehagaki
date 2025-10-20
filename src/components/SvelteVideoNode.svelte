@@ -60,10 +60,25 @@
         }
     }
 
+    // 全画面状態を判定
+    function isFullscreen(): boolean {
+        return !!(
+            document.fullscreenElement ||
+            (document as any).webkitFullscreenElement ||
+            (document as any).mozFullScreenElement ||
+            (document as any).msFullscreenElement
+        );
+    }
+
     // クリックハンドラー（動画コントロールと干渉しないように）
     function handleWrapperClick(event: MouseEvent) {
         // プレースホルダーの場合もコンテキストメニューを表示しない
         if (isPlaceholder) {
+            return;
+        }
+
+        // 全画面表示中はコンテキストメニューを無効化（通常の動画コントロールを優先）
+        if (isFullscreen()) {
             return;
         }
 
@@ -92,6 +107,11 @@
     // 動画要素のクリックハンドラー
     function handleVideoClick(event: MouseEvent) {
         if (isPlaceholder) {
+            return;
+        }
+
+        // 全画面表示中はコンテキストメニューを無効化（通常の動画コントロールを優先）
+        if (isFullscreen()) {
             return;
         }
 
@@ -169,6 +189,11 @@
 
     function handleVideoTouchEnd(event: TouchEvent) {
         if (isPlaceholder) {
+            return;
+        }
+
+        // 全画面表示中はコンテキストメニューを無効化（通常の動画コントロールを優先）
+        if (isFullscreen()) {
             return;
         }
 
