@@ -134,6 +134,7 @@
   "videoContextMenu": {
     "delete": "Delete",
     "copyUrl": "Copy URL",
+    "playPause": "Play/Pause",
     "copySuccess": "Copied!",
     "copyFailed": "Copy failed"
   },

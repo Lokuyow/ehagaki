@@ -24,6 +24,7 @@
   "videoContextMenu": {
     "delete": "削除",
     "copyUrl": "URLをコピー",
+    "playPause": "再生/停止",
     "copySuccess": "コピーしました",
     "copyFailed": "コピーに失敗しました"
   },

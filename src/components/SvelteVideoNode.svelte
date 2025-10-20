@@ -85,6 +85,7 @@
             nodeId(),
             pos,
             node.attrs.src || "",
+            videoElement,
         );
     }
 
@@ -126,6 +127,7 @@
             nodeId(),
             pos,
             node.attrs.src || "",
+            videoElement,
         );
     }
 
@@ -143,6 +145,7 @@
                     nodeId(),
                     pos,
                     node.attrs.src || "",
+                    videoElement,
                 );
             }
         }
@@ -279,6 +282,7 @@
                 loop
                 class="editor-video"
                 class:loaded={isLoaded}
+                data-node-id={nodeId()}
                 onloadeddata={handleVideoLoad}
                 onerror={handleVideoError}
                 onclick={handleVideoClick}

@@ -16,16 +16,40 @@ export function getVideoContextMenuItems(
         windowObj?: Window;
         navigatorObj?: Navigator;
         editorObj?: any;
+        videoElement?: HTMLVideoElement;
         t?: typeof _;
     }
 ): MenuItem[] {
     const windowObj = options?.windowObj ?? window;
     const navigatorObj = options?.navigatorObj ?? navigator;
     const editorObj = options?.editorObj ?? (window as any).__currentEditor;
+    const videoElement = options?.videoElement;
     const tRaw = options?.t ?? _;
     const t = typeof tRaw === "function" ? tRaw : getStore(tRaw);
 
     return [
+        {
+            label: t("videoContextMenu.playPause"),
+            action: () => {
+                // 実行時にDOM検索でvideo要素を取得（モバイル対応）
+                const video = document.querySelector<HTMLVideoElement>(
+                    `video[data-node-id="${nodeId}"]`
+                );
+                if (video) {
+                    if (video.paused) {
+                        video.play().catch((error) => {
+                            console.warn("Failed to play video:", error);
+                        });
+                    } else {
+                        video.pause();
+                    }
+                } else {
+                    console.warn("Video element not found for nodeId:", nodeId);
+                }
+            },
+            src,
+            icon: "/icons/play_pause_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg",
+        },
         {
             label: t("videoContextMenu.copyUrl"),
             action: async () => {
@@ -91,7 +115,7 @@ export function getVideoContextMenuItems(
                             // id属性がある場合はidで照合、ない場合は位置で照合
                             const matchById = node.attrs.id && node.attrs.id === nodeId;
                             const matchByPos = !node.attrs.id && pos === targetPos;
-                            
+
                             if (matchById || matchByPos) {
                                 view.dispatch(view.state.tr.delete(pos, pos + node.nodeSize));
                                 found = true;
@@ -119,7 +143,7 @@ export function openContextMenuAtButton(
     const rect = buttonElement.getBoundingClientRect();
     const targetX = rect.left + rect.width / 2;
     const targetY = rect.bottom + 8;
-    
+
     return calculateContextMenuPosition(targetX, targetY);
 }
 
@@ -138,6 +162,7 @@ export function openContextMenuForVideoNode(
     nodeId: string,
     clickPosition: { x: number; y: number },
     src: string,
+    videoElement?: HTMLVideoElement,
     options?: {
         setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any
     }
@@ -145,25 +170,25 @@ export function openContextMenuForVideoNode(
     const setTimeoutFn = options?.setTimeoutFn ?? ((fn: (...args: any[]) => void, ms?: number, ...args: any[]) => {
         return setTimeout(fn as TimerHandler, ms, ...args);
     });
-    
+
     let alreadyOpen = false;
     let prevNodeId: string | undefined;
-    
+
     globalContextMenuStore.update((state: any) => {
         alreadyOpen = state.open && state.nodeId !== nodeId;
         prevNodeId = state.nodeId;
         return state;
     });
-    
+
     if (alreadyOpen && prevNodeId) {
-        globalContextMenuStore.set({ open: false, nodeId: undefined, src: undefined });
+        globalContextMenuStore.set({ open: false, nodeId: undefined, src: undefined, videoElement: undefined });
         setTimeoutFn(() => {
-            globalContextMenuStore.set({ open: true, nodeId, src });
+            globalContextMenuStore.set({ open: true, nodeId, src, videoElement });
         }, 0);
         return;
     }
-    
-    globalContextMenuStore.set({ open: true, nodeId, src });
+
+    globalContextMenuStore.set({ open: true, nodeId, src, videoElement });
 }
 
 /**
@@ -185,6 +210,7 @@ export function prepareGlobalVideoContextMenuItems(
 
     const nodeId = globalContextMenuState.nodeId;
     const src = globalContextMenuState.src || "";
+    const videoElement = globalContextMenuState.videoElement;
     const pos = Number(nodeId) || 0;
     const node = currentEditor?.state?.doc?.nodeAt(pos);
     const nodeSize = node ? node.nodeSize : 1;
@@ -200,6 +226,7 @@ export function prepareGlobalVideoContextMenuItems(
             windowObj: options?.windowObj,
             navigatorObj: options?.navigatorObj,
             editorObj: currentEditor,
+            videoElement,
             t: options?.t
         }
     );

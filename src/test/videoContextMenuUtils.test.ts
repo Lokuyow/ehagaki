@@ -28,7 +28,7 @@ describe("videoContextMenuUtils", () => {
     });
 
     describe("getVideoContextMenuItems", () => {
-        it("returns 2 menu items (copy URL and delete)", () => {
+        it("returns 3 menu items (play/pause, copy URL, and delete)", () => {
             const t = createMockTranslator();
             const mockEditor = createMockEditor();
 
@@ -41,11 +41,13 @@ describe("videoContextMenuUtils", () => {
                 { editorObj: mockEditor, t }
             );
 
-            expect(items).toHaveLength(2);
-            expect(items[0].label).toBe("Copy URL");
-            expect(items[0].icon).toBe("/icons/copy-solid-full.svg");
-            expect(items[1].label).toBe("Delete");
-            expect(items[1].icon).toBe("/icons/trash-solid-full.svg");
+            expect(items).toHaveLength(3);
+            expect(items[0].label).toBe("Play/Pause");
+            expect(items[0].icon).toBe("/icons/play_pause_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+            expect(items[1].label).toBe("Copy URL");
+            expect(items[1].icon).toBe("/icons/copy-solid-full.svg");
+            expect(items[2].label).toBe("Delete");
+            expect(items[2].icon).toBe("/icons/trash-solid-full.svg");
         });
 
         it("copy action uses navigator.clipboard.writeText", async () => {
@@ -59,7 +61,7 @@ describe("videoContextMenuUtils", () => {
                 { t }
             );
 
-            await items[0].action();
+            await items[1].action();
             expect(navigator.clipboard.writeText).toHaveBeenCalledWith(src);
         });
 
@@ -97,7 +99,7 @@ describe("videoContextMenuUtils", () => {
                 { windowObj: mockWindow as any, t }
             );
 
-            await items[0].action();
+            await items[1].action();
 
             expect(mockDocument.createElement).toHaveBeenCalledWith("textarea");
             expect(mockTextarea.value).toBe(src);
@@ -138,7 +140,7 @@ describe("videoContextMenuUtils", () => {
                 { windowObj: mockWindow as any, t }
             );
 
-            await expect(items[0].action()).rejects.toThrow();
+            await expect(items[1].action()).rejects.toThrow();
         });
 
         it("delete action removes video node when selected (with id attribute)", () => {
@@ -154,7 +156,7 @@ describe("videoContextMenuUtils", () => {
                 { editorObj: mockEditor, t }
             );
 
-            items[1].action();
+            items[2].action();
 
             expect(mockEditor.view.dispatch).toHaveBeenCalledWith("TRANSACTION");
             expect(mockEditor.view.state.doc.descendants).toHaveBeenCalled();
@@ -191,7 +193,7 @@ describe("videoContextMenuUtils", () => {
                 { editorObj: mockEditor, t }
             );
 
-            items[1].action();
+            items[2].action();
 
             expect(mockEditor.view.dispatch).toHaveBeenCalledWith("TRANSACTION");
             expect(mockEditor.view.state.doc.descendants).toHaveBeenCalled();
@@ -210,7 +212,7 @@ describe("videoContextMenuUtils", () => {
                 { editorObj: mockEditor, t }
             );
 
-            items[1].action();
+            items[2].action();
 
             expect(mockEditor.view.dispatch).not.toHaveBeenCalled();
         });
@@ -228,7 +230,97 @@ describe("videoContextMenuUtils", () => {
                 { editorObj: mockEditor, t }
             );
 
-            expect(items[1].disabled).toBe(true);
+            expect(items[2].disabled).toBe(true);
+        });
+
+        it("play/pause action plays video when paused", () => {
+            const t = createMockTranslator();
+            const mockVideoElement = {
+                paused: true,
+                play: vi.fn().mockResolvedValue(undefined),
+                pause: vi.fn(),
+                getAttribute: vi.fn().mockReturnValue(nodeId)
+            } as any;
+
+            // document.querySelectorをモック
+            const originalQuerySelector = document.querySelector;
+            document.querySelector = vi.fn().mockReturnValue(mockVideoElement);
+
+            const items = getVideoContextMenuItems(
+                src,
+                getPos,
+                nodeSize,
+                true,
+                nodeId,
+                { t }
+            );
+
+            items[0].action();
+
+            expect(document.querySelector).toHaveBeenCalledWith(`video[data-node-id="${nodeId}"]`);
+            expect(mockVideoElement.play).toHaveBeenCalled();
+            expect(mockVideoElement.pause).not.toHaveBeenCalled();
+
+            // モックを元に戻す
+            document.querySelector = originalQuerySelector;
+        });
+
+        it("play/pause action pauses video when playing", () => {
+            const t = createMockTranslator();
+            const mockVideoElement = {
+                paused: false,
+                play: vi.fn().mockResolvedValue(undefined),
+                pause: vi.fn(),
+                getAttribute: vi.fn().mockReturnValue(nodeId)
+            } as any;
+
+            // document.querySelectorをモック
+            const originalQuerySelector = document.querySelector;
+            document.querySelector = vi.fn().mockReturnValue(mockVideoElement);
+
+            const items = getVideoContextMenuItems(
+                src,
+                getPos,
+                nodeSize,
+                true,
+                nodeId,
+                { t }
+            );
+
+            items[0].action();
+
+            expect(document.querySelector).toHaveBeenCalledWith(`video[data-node-id="${nodeId}"]`);
+            expect(mockVideoElement.pause).toHaveBeenCalled();
+            expect(mockVideoElement.play).not.toHaveBeenCalled();
+
+            // モックを元に戻す
+            document.querySelector = originalQuerySelector;
+        });
+
+        it("play/pause action does nothing when videoElement is not found", () => {
+            const t = createMockTranslator();
+
+            // document.querySelectorがnullを返すようにモック
+            const originalQuerySelector = document.querySelector;
+            const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            document.querySelector = vi.fn().mockReturnValue(null);
+
+            const items = getVideoContextMenuItems(
+                src,
+                getPos,
+                nodeSize,
+                true,
+                nodeId,
+                { t }
+            );
+
+            // エラーが発生しないことを確認
+            expect(() => items[0].action()).not.toThrow();
+            expect(console.warn).toHaveBeenCalledWith("Video element not found for nodeId:", nodeId);
+
+            // モックを元に戻す
+            document.querySelector = originalQuerySelector;
+            consoleWarnSpy.mockRestore();
         });
     });
 
@@ -275,7 +367,8 @@ describe("videoContextMenuUtils", () => {
             expect(mockStore.set).toHaveBeenCalledWith({
                 open: true,
                 nodeId,
-                src
+                src,
+                videoElement: undefined
             });
         });
 
@@ -293,6 +386,7 @@ describe("videoContextMenuUtils", () => {
                 nodeId,
                 clickPosition,
                 src,
+                undefined,
                 { setTimeoutFn: mockSetTimeout as any }
             );
 
@@ -300,7 +394,8 @@ describe("videoContextMenuUtils", () => {
             expect(mockStore.set).toHaveBeenCalledWith({
                 open: false,
                 nodeId: undefined,
-                src: undefined
+                src: undefined,
+                videoElement: undefined
             });
 
             // コールバックを実行
@@ -312,7 +407,8 @@ describe("videoContextMenuUtils", () => {
             expect(mockStore.set).toHaveBeenCalledWith({
                 open: true,
                 nodeId,
-                src
+                src,
+                videoElement: undefined
             });
         });
 
@@ -322,8 +418,15 @@ describe("videoContextMenuUtils", () => {
 
             openContextMenuForVideoNode(mockStore, nodeId, clickPosition, src);
 
-            // updateは呼ばれるが、setは呼ばれない（同じノードなので）
+            // updateは呼ばれるが、setは呼ばれる（同じノードでも再オープン）
             expect(mockStore.update).toHaveBeenCalled();
+            // 新しいsetは呼ばれる（同じノードでも再オープン）
+            expect(mockStore.set).toHaveBeenCalledWith({
+                open: true,
+                nodeId,
+                src,
+                videoElement: undefined
+            });
             // 新しいsetは呼ばれる（同じノードでも再オープン）
             expect(mockStore.set).toHaveBeenCalledWith({
                 open: true,
@@ -376,7 +479,7 @@ describe("videoContextMenuUtils", () => {
             );
 
             expect(result).not.toBeNull();
-            expect(result?.items).toHaveLength(2);
+            expect(result?.items).toHaveLength(3);
             expect(result?.x).toBeDefined();
             expect(result?.y).toBeDefined();
         });
@@ -409,6 +512,7 @@ function createMockTranslator() {
                 const key = typeof id === "string" ? id : id.id;
                 const map: Record<string, string> = {
                     "videoContextMenu.copyUrl": "Copy URL",
+                    "videoContextMenu.playPause": "Play/Pause",
                     "videoContextMenu.delete": "Delete"
                 };
                 return map[key] ?? key;

@@ -292,6 +292,8 @@
                     class:expand-icon={item.icon ===
                         "/icons/expand-solid-full.svg"}
                     class:copy-icon={item.icon === "/icons/copy-solid-full.svg"}
+                    class:play-pause-icon={item.icon ===
+                        "/icons/play_pause_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg"}
                     class:trash-icon={item.icon ===
                         "/icons/trash-solid-full.svg"}
                     aria-hidden="true"
@@ -366,6 +368,9 @@
     }
     .copy-icon {
         mask-image: url("/icons/copy-solid-full.svg");
+    }
+    .menu-icon.play-pause-icon {
+        mask-image: url("/icons/play_pause_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
