@@ -25,7 +25,7 @@
                 alt="ehagaki icon"
                 class="site-icon"
             />
-            <h1>{$_("welcomeDialog.title")}</h1>
+            <h2>{$_("welcomeDialog.title")}</h2>
         </div>
         <p>{$_("welcomeDialog.description")}</p>
         <pre class="features">{$_("welcomeDialog.features")}</pre>
@@ -56,11 +56,11 @@
     }
 
     .site-icon {
-        width: 44px;
-        height: 44px;
+        width: 38px;
+        height: 38px;
     }
 
-    h1 {
+    h2 {
         color: var(--text-light);
         margin-bottom: 1rem;
         margin: 0;

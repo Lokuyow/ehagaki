@@ -171,6 +171,7 @@
         max-height: 85svh;
         padding: 16px;
         box-sizing: border-box;
+        overflow-y: auto;
     }
 
     .dialog-footer {
