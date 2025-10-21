@@ -1,4 +1,3 @@
-<!-- filepath: d:\ドキュメント\GitHub\ehagaki\src\components\ImagePlaceholder.svelte -->
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { renderBlurhashToCanvas } from "../lib/tags/imetaTag";
