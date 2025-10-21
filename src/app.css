@@ -123,7 +123,7 @@ select {
 @media (prefers-color-scheme: light) {
   :root {
     /* ライトモード用カラー変数 */
-    --bg: hsl(152, 8%, 94%);
+    --bg: hsl(152, 0%, 94%);
     --bg-input: hsl(0, 0%, 100%);
     --bg-footer: hsl(0, 0%, 84%);
     --bg-translucent: #EDEDEDcc;
@@ -168,7 +168,7 @@ select {
 @media (prefers-color-scheme: dark) {
   :root {
     /* ダークモード用カラー変数 */
-    --bg: hsl(152, 3%, 12%);
+    --bg: hsl(152, 0%, 12%);
     --bg-input: hsl(0, 0%, 20%);
     --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
