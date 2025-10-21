@@ -34,6 +34,9 @@
     isUploadingStore,
     relayListUpdatedStore,
     showWelcomeDialogStore,
+    urlQueryContentStore,
+    updateUrlQueryContentStore,
+    clearUrlQueryContentStore,
   } from "./stores/appStore.svelte";
   import { updatePlaceholderText } from "./stores/editorStore.svelte";
   import type { UploadProgress, BalloonMessage } from "./lib/types";
@@ -45,6 +48,11 @@
     getSharedImageWithFallback,
   } from "./lib/utils/appUtils";
   import { checkIfOpenedFromShare } from "./lib/shareHandler";
+  import {
+    getContentFromUrlQuery,
+    cleanupContentQueryParam,
+    hasContentQueryParam,
+  } from "./lib/urlQueryHandler";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -335,6 +343,16 @@
         showWelcomeDialogStore.set(true);
         localStorage.setItem("firstVisit", "1");
       }
+
+      // URLクエリパラメータからコンテンツを取得
+      if (hasContentQueryParam()) {
+        const queryContent = getContentFromUrlQuery();
+        if (queryContent) {
+          updateUrlQueryContentStore(queryContent);
+          // URLからクエリパラメータを削除
+          cleanupContentQueryParam();
+        }
+      }
     };
 
     // Call the async initializer
@@ -363,6 +381,18 @@
       localStorage.setItem("sharedImageProcessed", "1");
       // 受信直後に一度クリア（次回共有のため）
       setTimeout(() => localStorage.removeItem("sharedImageProcessed"), 500);
+    }
+  });
+
+  // URLクエリコンテンツをエディターに挿入
+  $effect(() => {
+    if (
+      urlQueryContentStore.received &&
+      urlQueryContentStore.content &&
+      postComponentRef
+    ) {
+      postComponentRef.insertTextContent(urlQueryContentStore.content);
+      clearUrlQueryContentStore();
     }
   });
 

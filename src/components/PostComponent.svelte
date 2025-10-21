@@ -180,6 +180,30 @@
     await performUpload(files);
   }
 
+  export function insertTextContent(content: string): void {
+    if (!currentEditor || !content) return;
+    
+    const editor = currentEditor; // nullチェック済みのローカル変数
+    
+    // 改行で分割してパラグラフの配列を作成
+    const lines = content.split('\n');
+    
+    // Tiptapのパラグラフノードとして構造化
+    const paragraphNodes = lines.map(line => ({
+      type: 'paragraph',
+      content: line ? [{ type: 'text', text: line }] : undefined
+    }));
+    
+    // アクセス時の処理なので、常に直接挿入（既存内容を置き換え）
+    editor.commands.setContent({
+      type: 'doc',
+      content: paragraphNodes
+    });
+    
+    // カーソルを末尾に移動
+    editor.commands.focus('end');
+  }
+
   export async function submitPost() {
     if (!postManager || !currentEditor) return;
     const postContent = postManager.preparePostContent(currentEditor);

@@ -198,6 +198,25 @@ export function clearSharedImageStore(): void {
     sharedImageStore.received = false;
 }
 
+// --- URLクエリコンテンツ管理 ---
+export const urlQueryContentStore = $state<{
+    content: string | null;
+    received: boolean;
+}>({
+    content: null,
+    received: false
+});
+
+export function updateUrlQueryContentStore(content: string | null): void {
+    urlQueryContentStore.content = content;
+    urlQueryContentStore.received = !!content;
+}
+
+export function clearUrlQueryContentStore(): void {
+    urlQueryContentStore.content = null;
+    urlQueryContentStore.received = false;
+}
+
 export function getSharedImageFile(): File | null {
     return sharedImageStore.file;
 }
