@@ -17,6 +17,12 @@ eHagaki（えはがき）は、画像圧縮機能付きの投稿専用Nostrク�
 - **Tiptapエディター**: 画像・リンク・ハッシュタグ対応のリッチエディター搭載
 - **PWA対応**: モバイル・デスクトップ両対応、androidは画像アプリの共有ボタンから画像アップロード可能
 
+## URLクエリ
+アクセス時にエディターにテキストを入れる
+```
+https://lokuyow.github.io/ehagaki/?content={url-encoded-text-here}
+```
+
 ## 技術スタック
 
 - Svelte + Vite
