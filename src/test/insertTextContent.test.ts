@@ -3,6 +3,7 @@ import { Editor } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
+import { normalizeLineBreaks } from '../lib/utils/editorUtils';
 
 /**
  * insertTextContent関数のロジックをテスト用に抽出
@@ -15,7 +16,7 @@ function insertTextContentLogic(
   if (!content) return { type: 'doc', content: [] };
 
   // 実際の関数と同じく改行コードを正規化
-  const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const normalizedContent = normalizeLineBreaks(content);
   
   // 改行で分割してパラグラフの配列を作成
   const lines = normalizedContent.split('\n');

@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { normalizeClipboardText } from '../lib/utils/clipboardUtils';
+import { normalizeLineBreaks } from '../lib/utils/editorUtils';
 
 describe('Twitter/X.com ペースト処理', () => {
     describe('Twitterからの実際のテキストパターン', () => {
@@ -114,7 +115,7 @@ describe('Twitter/X.com ペースト処理', () => {
             const text = 'Line 1\n\n\nLine 3';
             
             // 連続した空行を1つに削減する処理
-            const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+            const normalized = normalizeLineBreaks(text);
             const collapsedEmptyLines = normalized.replace(/\n\n+/g, '\n\n'); // 連続する\nを最大2つに
             let lines = collapsedEmptyLines.split('\n');
             

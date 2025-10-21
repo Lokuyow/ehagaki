@@ -4,6 +4,7 @@
  * クリップボードのテキスト処理における改行コードの正規化と
  * 末尾の改行処理を統一的に管理
  */
+import { normalizeLineBreaks } from './editorUtils';
 
 /**
  * テキストの改行コードを統一し、末尾の改行を適切に処理
@@ -28,7 +29,7 @@ export function normalizeClipboardText(
     } = options;
 
     // 1. 改行コードを統一 (CRLF, CR → LF)
-    let normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let normalized = normalizeLineBreaks(text);
     
     // 2. 連続した空行を制限（オプション）
     if (collapseEmptyLines) {
@@ -99,7 +100,7 @@ export function analyzeLineBreaks(text: string): {
     const lfCount = (text.match(/(?<!\r)\n/g) || []).length;
     const crCount = (text.match(/\r(?!\n)/g) || []).length;
     
-    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const normalized = normalizeLineBreaks(text);
     const lines = normalized.split('\n');
     const hasTrailingNewline = normalized.endsWith('\n');
     

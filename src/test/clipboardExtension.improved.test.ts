@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { ClipboardExtension } from '../lib/editor/clipboardExtension';
+import { normalizeLineBreaks } from '../lib/utils/editorUtils';
 
 describe('ClipboardExtension - 改行処理', () => {
     let editor: Editor;
@@ -31,7 +32,7 @@ describe('ClipboardExtension - 改行処理', () => {
             const text = 'Line 1\r\nLine 2\r\nLine 3';
             
             // Windows形式のテキストを段落として挿入
-            const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            const lines = normalizeLineBreaks(text).split('\n');
             const content = lines.map(line => ({
                 type: 'paragraph',
                 content: line ? [{ type: 'text', text: line }] : []
@@ -52,7 +53,7 @@ describe('ClipboardExtension - 改行処理', () => {
         it('混在する改行コード(\\r\\nと\\n)を正しく処理できる', () => {
             const text = 'Line 1\r\nLine 2\nLine 3\r\nLine 4';
             
-            const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            const lines = normalizeLineBreaks(text).split('\n');
             const content = lines.map(line => ({
                 type: 'paragraph',
                 content: line ? [{ type: 'text', text: line }] : []
@@ -97,7 +98,7 @@ describe('ClipboardExtension - 改行処理', () => {
         it('Windows形式で末尾に改行がある場合も正しく処理', () => {
             const text = 'Line 1\r\nLine 2\r\n';
             
-            let lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            let lines = normalizeLineBreaks(text).split('\n');
             // 末尾の空要素を削除
             if (lines.length > 0 && lines[lines.length - 1] === '') {
                 lines = lines.slice(0, -1);
@@ -143,7 +144,7 @@ describe('ClipboardExtension - 改行処理', () => {
         it('空行を正しく保持する（CRLF）', () => {
             const text = 'Line 1\r\n\r\nLine 3';
             
-            const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            const lines = normalizeLineBreaks(text).split('\n');
             const content = lines.map(line => ({
                 type: 'paragraph',
                 content: line ? [{ type: 'text', text: line }] : []
@@ -221,7 +222,7 @@ describe('ClipboardExtension - 改行処理', () => {
             // メモ帳は通常CRLF形式
             const notepadText = '今日の予定\r\n\r\n1. 朝食\r\n2. 散歩\r\n3. 昼食\r\n';
             
-            let lines = notepadText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+            let lines = normalizeLineBreaks(notepadText).split('\n');
             if (lines.length > 0 && lines[lines.length - 1] === '') {
                 lines = lines.slice(0, -1);
             }

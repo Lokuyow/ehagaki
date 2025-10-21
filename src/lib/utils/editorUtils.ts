@@ -60,6 +60,10 @@ export function validateAndNormalizeVideoUrl(url: string): string | null {
 }
 
 // === 文字列処理（純粋関数） ===
+export function normalizeLineBreaks(text: string): string {
+    return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+
 export function isWordBoundary(char: string | undefined): boolean {
     return !char || /[\s\n\u3000]/.test(char);
 }

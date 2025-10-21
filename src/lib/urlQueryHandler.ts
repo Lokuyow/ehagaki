@@ -1,6 +1,7 @@
 /**
  * URLクエリパラメータからコンテンツを取得する
  */
+import { normalizeLineBreaks } from './utils/editorUtils';
 export function getContentFromUrlQuery(): string | null {
   if (typeof window === 'undefined' || !window.location) return null;
   
@@ -12,8 +13,8 @@ export function getContentFromUrlQuery(): string | null {
   try {
     // URLエンコードされたテキストをデコード
     const decoded = decodeURIComponent(content);
-    // 改行コードを統一（\r\n, \r を \n に変換）
-    return decoded.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    // 改行コードを統一
+    return normalizeLineBreaks(decoded);
   } catch (error) {
     console.error('URLクエリパラメータのデコードに失敗:', error);
     return null;
