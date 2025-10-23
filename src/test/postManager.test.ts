@@ -95,6 +95,81 @@ function createMockObservable(nextData?: any, shouldError = false, delay = 0) {
     };
 }
 
+class MockClassList {
+    private classes = new Set<string>();
+
+    add(...tokens: string[]) {
+        tokens.forEach((token) => this.classes.add(token));
+    }
+
+    remove(...tokens: string[]) {
+        tokens.forEach((token) => this.classes.delete(token));
+    }
+
+    contains(token: string): boolean {
+        return this.classes.has(token);
+    }
+}
+
+class MockParagraph {
+    classList = new MockClassList();
+    private attributes = new Map<string, string>();
+
+    setAttribute(name: string, value: string) {
+        this.attributes.set(name, value);
+    }
+
+    getAttribute(name: string) {
+        return this.attributes.get(name) ?? null;
+    }
+}
+
+class MockEditorDom {
+    classList = new MockClassList();
+    paragraphs: MockParagraph[];
+    private placeholder: string | null;
+
+    constructor({ paragraphCount = 2, placeholder = 'テキストを入力してください' }: { paragraphCount?: number; placeholder?: string | null } = {}) {
+        this.paragraphs = Array.from({ length: paragraphCount }, () => new MockParagraph());
+        this.placeholder = placeholder;
+    }
+
+    getAttribute(name: string) {
+        if (name === 'data-placeholder') {
+            return this.placeholder;
+        }
+        return null;
+    }
+
+    setAttribute(name: string, value: string) {
+        if (name === 'data-placeholder') {
+            this.placeholder = value;
+        }
+    }
+
+    querySelectorAll(selector: string) {
+        if (selector === 'p') {
+            return this.paragraphs;
+        }
+        return [];
+    }
+}
+
+function createMockEditor(options?: { paragraphCount?: number; placeholder?: string | null }) {
+    const dom = new MockEditorDom(options);
+    const run = vi.fn();
+    const clearContent = vi.fn().mockReturnValue({ run });
+    const chain = vi.fn().mockReturnValue({ clearContent });
+    const editor = {
+        chain,
+        view: {
+            dom,
+        },
+    } as any;
+
+    return { editor, dom, run, clearContent, chain };
+}
+
 describe('PostValidator', () => {
     describe('validatePost', () => {
         it('有効な投稿を受け入れる', () => {
@@ -125,6 +200,62 @@ describe('PostValidator', () => {
             expect(result.valid).toBe(false);
             expect(result.error).toBe('nostr_not_ready');
         });
+    });
+});
+
+describe('PostManager editor state helpers', () => {
+    let mockDeps: PostManagerDeps;
+
+    beforeEach(() => {
+        mockDeps = {
+            extractContentWithImagesFn: vi.fn(),
+            extractImageBlurhashMapFn: vi.fn(),
+            resetEditorStateFn: vi.fn(),
+            resetPostStatusFn: vi.fn(),
+            console: {
+                log: vi.fn(),
+                error: vi.fn(),
+            } as any,
+        };
+    });
+
+    it('clearContentAfterSuccess clears editor without resetting post status', () => {
+        const manager = new PostManager(undefined, mockDeps);
+        const { editor, dom, run } = createMockEditor({ placeholder: 'Initial placeholder' });
+
+        manager.clearContentAfterSuccess(editor);
+
+        expect(run).toHaveBeenCalled();
+        expect(dom.classList.contains('is-editor-empty')).toBe(true);
+        expect(dom.paragraphs[0].classList.contains('is-editor-empty')).toBe(true);
+        expect(dom.paragraphs[1].classList.contains('is-editor-empty')).toBe(false);
+        expect(dom.paragraphs[0].getAttribute('data-placeholder')).toBe('Initial placeholder');
+        expect(mockDeps.resetEditorStateFn).not.toHaveBeenCalled();
+        expect(mockDeps.resetPostStatusFn).not.toHaveBeenCalled();
+    });
+
+    it('resetPostContent clears editor and resets state', () => {
+        const manager = new PostManager(undefined, mockDeps);
+        const { editor, dom, run } = createMockEditor({ placeholder: 'Initial placeholder' });
+
+        manager.resetPostContent(editor);
+
+        expect(run).toHaveBeenCalled();
+        expect(dom.classList.contains('is-editor-empty')).toBe(true);
+        expect(dom.paragraphs[0].classList.contains('is-editor-empty')).toBe(true);
+        expect(dom.paragraphs[1].classList.contains('is-editor-empty')).toBe(false);
+        expect(dom.paragraphs[0].getAttribute('data-placeholder')).toBe('Initial placeholder');
+        expect(mockDeps.resetEditorStateFn).toHaveBeenCalledTimes(1);
+        expect(mockDeps.resetPostStatusFn).toHaveBeenCalledTimes(1);
+    });
+
+    it('clearContentAfterSuccess assigns fallback placeholder when undefined', () => {
+        const manager = new PostManager(undefined, mockDeps);
+        const { editor, dom } = createMockEditor({ placeholder: null });
+
+        manager.clearContentAfterSuccess(editor);
+
+        expect(dom.paragraphs[0].getAttribute('data-placeholder')).toBe('テキストを入力してください');
     });
 });
 

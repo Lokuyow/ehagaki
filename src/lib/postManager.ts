@@ -220,14 +220,12 @@ export class PostManager {
             const signedEvent = await (windowObj.nostr as { signEvent: (event: any) => Promise<any> }).signEvent(event);
             this.deps.console?.log("署名済みイベント:", signedEvent);
             const result = await this.eventSender.sendEvent(signedEvent);
-            
             // 投稿結果をiframe親ウィンドウに通知
             if (result.success) {
               this.deps.iframeMessageService?.notifyPostSuccess();
             } else {
               this.deps.iframeMessageService?.notifyPostError(result.error);
             }
-            
             return result;
           } else {
             this.deps.iframeMessageService?.notifyPostError("nostr_sign_event_not_supported");
@@ -261,14 +259,12 @@ export class PostManager {
         ? this.deps.seckeySignerFn(storedKey)
         : seckeySigner(storedKey);
       const result = await this.eventSender.sendEvent(event, signer);
-      
       // 投稿結果をiframe親ウィンドウに通知
       if (result.success) {
         this.deps.iframeMessageService?.notifyPostSuccess();
       } else {
         this.deps.iframeMessageService?.notifyPostError(result.error);
       }
-      
       return result;
 
     } catch (err) {
@@ -327,29 +323,32 @@ export class PostManager {
     }
   }
 
-  resetPostContent(editor: TipTapEditor): void {
+  private applyEmptyStateToEditor(editor: TipTapEditor): void {
     editor.chain().clearContent().run();
-    this.deps.resetEditorStateFn!();
-    // プレースホルダーを再設定
     const editorElement = editor.view.dom as HTMLElement;
-    if (editorElement) {
-      editorElement.classList.add('is-editor-empty');
-      const paragraphs = editorElement.querySelectorAll('p');
-      paragraphs.forEach((p, index) => {
-        const paragraph = p as HTMLElement;
-        if (index === 0) {
-          paragraph.classList.add('is-editor-empty');
-        } else {
-          paragraph.classList.remove('is-editor-empty');
-        }
-        const placeholder = editorElement.getAttribute('data-placeholder') || 'テキストを入力してください';
-        paragraph.setAttribute('data-placeholder', placeholder);
-      });
-    }
+    if (!editorElement) return;
+    editorElement.classList.add("is-editor-empty");
+    const paragraphs = editorElement.querySelectorAll("p");
+    const placeholder =
+      editorElement.getAttribute("data-placeholder") || "テキストを入力してください";
+    paragraphs.forEach((p, index) => {
+      const paragraph = p as HTMLElement;
+      if (index === 0) {
+        paragraph.classList.add("is-editor-empty");
+      } else {
+        paragraph.classList.remove("is-editor-empty");
+      }
+      paragraph.setAttribute("data-placeholder", placeholder);
+    });
+  }
+
+  resetPostContent(editor: TipTapEditor): void {
+    this.applyEmptyStateToEditor(editor);
+    this.deps.resetEditorStateFn?.();
+    this.deps.resetPostStatusFn?.();
   }
 
   clearContentAfterSuccess(editor: TipTapEditor): void {
-    this.resetPostContent(editor);
-    this.deps.resetPostStatusFn!();
+    this.applyEmptyStateToEditor(editor);
   }
 }
