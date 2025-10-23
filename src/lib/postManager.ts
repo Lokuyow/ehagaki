@@ -10,6 +10,7 @@ import { extractContentWithImages } from "../lib/utils/editorUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
 import type { PostResult, PostManagerDeps } from "./types";
+import { iframeMessageService } from "./iframeMessageService";
 
 // --- 純粋関数（依存性なし） ---
 export class PostValidator {
@@ -151,6 +152,7 @@ export class PostManager {
     this.deps.extractImageBlurhashMapFn = deps.extractImageBlurhashMapFn || extractImageBlurhashMap;
     this.deps.resetEditorStateFn = deps.resetEditorStateFn || resetEditorState;
     this.deps.resetPostStatusFn = deps.resetPostStatusFn || resetPostStatus;
+    this.deps.iframeMessageService = deps.iframeMessageService || iframeMessageService;
   }
 
   setRxNostr(rxNostr: RxNostr) {
@@ -173,9 +175,14 @@ export class PostManager {
     imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>
   ): Promise<PostResult> {
     const validation = this.validatePost(content);
-    if (!validation.valid) return { success: false, error: validation.error };
+    if (!validation.valid) {
+      // 投稿失敗をiframe親ウィンドウに通知
+      this.deps.iframeMessageService?.notifyPostError(validation.error);
+      return { success: false, error: validation.error };
+    }
 
     if (!this.eventSender) {
+      this.deps.iframeMessageService?.notifyPostError("nostr_not_ready");
       return { success: false, error: "nostr_not_ready" };
     }
 
@@ -193,7 +200,10 @@ export class PostManager {
       if (isNostrLoginAuth && keyMgr.isWindowNostrAvailable() && windowObj?.nostr) {
         try {
           const pubkey = auth.pubkey;
-          if (!pubkey) return { success: false, error: "pubkey_not_found" };
+          if (!pubkey) {
+            this.deps.iframeMessageService?.notifyPostError("pubkey_not_found");
+            return { success: false, error: "pubkey_not_found" };
+          }
 
           const event = await PostEventBuilder.buildEvent(
             content,
@@ -209,19 +219,33 @@ export class PostManager {
           if (typeof (windowObj.nostr as any).signEvent === "function") {
             const signedEvent = await (windowObj.nostr as { signEvent: (event: any) => Promise<any> }).signEvent(event);
             this.deps.console?.log("署名済みイベント:", signedEvent);
-            return await this.eventSender.sendEvent(signedEvent);
+            const result = await this.eventSender.sendEvent(signedEvent);
+            
+            // 投稿結果をiframe親ウィンドウに通知
+            if (result.success) {
+              this.deps.iframeMessageService?.notifyPostSuccess();
+            } else {
+              this.deps.iframeMessageService?.notifyPostError(result.error);
+            }
+            
+            return result;
           } else {
+            this.deps.iframeMessageService?.notifyPostError("nostr_sign_event_not_supported");
             return { success: false, error: "nostr_sign_event_not_supported" };
           }
         } catch (err) {
           this.deps.console?.error("window.nostrでの投稿エラー:", err);
+          this.deps.iframeMessageService?.notifyPostError("post_error");
           return { success: false, error: "post_error" };
         }
       }
 
       // ローカルキーを使用（秘密鍵直入れの場合）
       const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage();
-      if (!storedKey) return { success: false, error: "key_not_found" };
+      if (!storedKey) {
+        this.deps.iframeMessageService?.notifyPostError("key_not_found");
+        return { success: false, error: "key_not_found" };
+      }
 
       const event = await PostEventBuilder.buildEvent(
         content,
@@ -236,10 +260,20 @@ export class PostManager {
       const signer = this.deps.seckeySignerFn
         ? this.deps.seckeySignerFn(storedKey)
         : seckeySigner(storedKey);
-      return await this.eventSender.sendEvent(event, signer);
+      const result = await this.eventSender.sendEvent(event, signer);
+      
+      // 投稿結果をiframe親ウィンドウに通知
+      if (result.success) {
+        this.deps.iframeMessageService?.notifyPostSuccess();
+      } else {
+        this.deps.iframeMessageService?.notifyPostError(result.error);
+      }
+      
+      return result;
 
     } catch (err) {
       this.deps.console?.error("投稿エラー:", err);
+      this.deps.iframeMessageService?.notifyPostError("post_error");
       return { success: false, error: "post_error" };
     }
   }

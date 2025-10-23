@@ -551,6 +551,159 @@ describe('PostManager統合テスト', () => {
     it('内部コンポーネントへのアクセスが可能', () => {
         expect(manager.getEventSender()).toBeInstanceOf(PostEventSender);
     });
+
+    describe('iframe postMessage統合', () => {
+        it('投稿成功時にnotifyPostSuccessが呼ばれる', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            // 成功レスポンスのモック
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.next({
+                            from: 'relay1',
+                            ok: true,
+                            done: true,
+                            eventId: 'test-event-id',
+                            type: 'ok',
+                            message: ''
+                        });
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            const result = await manager.submitPost('Test post content');
+
+            expect(result.success).toBe(true);
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
+            expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
+        });
+
+        it('投稿失敗時にnotifyPostErrorが呼ばれる', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            // エラーレスポンスのモック
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.error(new Error('Network error'));
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            const result = await manager.submitPost('Test post content');
+
+            expect(result.success).toBe(false);
+            expect(mockIframeService.notifyPostError).toHaveBeenCalledWith('post_error');
+            expect(mockIframeService.notifyPostSuccess).not.toHaveBeenCalled();
+        });
+
+        it('バリデーションエラー時にnotifyPostErrorが呼ばれる', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('empty_content');
+            expect(mockIframeService.notifyPostError).toHaveBeenCalledWith('empty_content');
+            expect(mockIframeService.notifyPostSuccess).not.toHaveBeenCalled();
+        });
+
+        it('認証エラー時にnotifyPostErrorが呼ばれる', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+
+            mockAuthState.isAuthenticated = false;
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const result = await manager.submitPost('Test content');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('login_required');
+            expect(mockIframeService.notifyPostError).toHaveBeenCalledWith('login_required');
+            expect(mockIframeService.notifyPostSuccess).not.toHaveBeenCalled();
+        });
+
+        it('nostr-login認証の投稿成功時にnotifyPostSuccessが呼ばれる', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+
+            // nostr-login認証に設定
+            mockAuthState.type = 'nostr-login';
+            mockKeyManager = new MockKeyManager(null, null, true);
+
+            const mockWindow = {
+                nostr: {
+                    signEvent: vi.fn().mockResolvedValue({
+                        kind: 1,
+                        content: 'Test post content',
+                        pubkey: 'testpubkey123',
+                        sig: 'mock-signature'
+                    })
+                }
+            };
+
+            mockDeps.keyManager = mockKeyManager;
+            mockDeps.window = mockWindow;
+            mockDeps.iframeMessageService = mockIframeService;
+
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            // 成功レスポンスのモック
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.next({
+                            from: 'relay1',
+                            ok: true,
+                            done: true,
+                            eventId: 'test-event-id',
+                            type: 'ok',
+                            message: ''
+                        });
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            const result = await manager.submitPost('Test post content');
+
+            expect(result.success).toBe(true);
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
+            expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
+        });
+    });
 });
 
 // テスト環境フラグをセット

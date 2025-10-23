@@ -23,6 +23,104 @@ eHagaki（えはがき）は、画像圧縮機能付きの投稿専用Nostrク�
 https://lokuyow.github.io/ehagaki/?content={url-encoded-text-here}
 ```
 
+## iframe埋め込み
+
+eHagakiは他のWebサイトにiframeとして埋め込むことができます。投稿の成功・失敗時には親ウィンドウへ`postMessage`で通知されます。
+
+### 基本的な埋め込み例
+
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <title>eHagaki 埋め込み例</title>
+</head>
+<body>
+  <h1>Nostr投稿フォーム</h1>
+  
+  <!-- eHagakiをiframeで埋め込み -->
+  <iframe 
+    id="ehagaki-iframe"
+    src="https://lokuyow.github.io/ehagaki/"
+    width="600" 
+    height="400"
+    style="border: 1px solid #ccc;">
+  </iframe>
+
+  <div id="status"></div>
+
+  <script>
+    // postMessageを受信
+    window.addEventListener('message', (event) => {
+      // セキュリティ: 送信元のオリジンを確認
+      if (event.origin !== 'https://lokuyow.github.io') {
+        return;
+      }
+
+      const data = event.data;
+      const statusDiv = document.getElementById('status');
+
+      if (data.type === 'POST_SUCCESS') {
+        console.log('投稿成功:', data);
+        statusDiv.textContent = '✅ 投稿に成功しました！';
+        statusDiv.style.color = 'green';
+      } 
+      else if (data.type === 'POST_ERROR') {
+        console.error('投稿失敗:', data);
+        statusDiv.textContent = `❌ 投稿に失敗: ${data.error || '不明なエラー'}`;
+        statusDiv.style.color = 'red';
+      }
+    });
+  </script>
+</body>
+</html>
+```
+
+### メッセージフォーマット
+
+#### 投稿成功時
+```javascript
+{
+  type: 'POST_SUCCESS',
+  timestamp: 1729788000000  // Unix timestamp (ミリ秒)
+}
+```
+
+#### 投稿失敗時
+```javascript
+{
+  type: 'POST_ERROR',
+  timestamp: 1729788000000,
+  error: 'empty_content'  // エラーコード
+}
+```
+
+### エラーコード一覧
+
+| エラーコード      | 説明                                  |
+| ----------------- | ------------------------------------- |
+| `empty_content`   | 投稿内容が空                          |
+| `login_required`  | ログインが必要                        |
+| `nostr_not_ready` | Nostrクライアントが初期化されていない |
+| `key_not_found`   | 秘密鍵が見つからない                  |
+| `post_error`      | 一般的な投稿エラー                    |
+
+### セキュリティに関する注意
+
+iframe埋め込みを使用する際は、必ず送信元のオリジンを確認してください：
+
+```javascript
+window.addEventListener('message', (event) => {
+  // 必ずオリジンをチェック
+  if (event.origin !== 'https://lokuyow.github.io') {
+    return; // 信頼できないオリジンからのメッセージは無視
+  }
+  
+  // メッセージを処理
+  // ...
+});
+```
+
 ## 技術スタック
 
 - Svelte + Vite
@@ -30,8 +128,3 @@ https://lokuyow.github.io/ehagaki/?content={url-encoded-text-here}
 - [nostr-tools](https://github.com/nbd-wtf/nostr-tools)
 - [rx-nostr](https://github.com/nostr-dev-kit/rx-nostr)
 - TypeScript
-
-## 注意事項
-
-- 本アプリはNostr投稿専用です。タイムライン閲覧等はできません。
-- 秘密鍵の管理には十分ご注意ください。

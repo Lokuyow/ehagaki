@@ -386,6 +386,10 @@ export interface PostManagerDeps {
     extractImageBlurhashMapFn?: (editor: TipTapEditor) => Record<string, string>;
     resetEditorStateFn?: () => void;
     resetPostStatusFn?: () => void;
+    iframeMessageService?: {
+        notifyPostSuccess: () => boolean;
+        notifyPostError: (error?: string) => boolean;
+    };
 }
 
 // --- UI and Component types --
