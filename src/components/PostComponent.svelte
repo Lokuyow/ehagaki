@@ -255,6 +255,10 @@
       postManager.clearContentAfterSuccess(currentEditor);
   }
 
+  export function focusEditor() {
+    domUtils.querySelector(".tiptap-editor")?.focus();
+  }
+
   // UI状態管理をストアから取得して使用
   async function confirmSendWithSecretKey() {
     const pendingPost = postComponentUIStore.getPendingPost();
