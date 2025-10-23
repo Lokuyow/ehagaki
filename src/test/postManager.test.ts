@@ -326,7 +326,7 @@ describe('PostEventSender', () => {
         const resultPromise = sender.sendEvent(event);
 
         // 3秒経過させる
-        vi.advanceTimersByTime(3000);
+        vi.advanceTimersByTime(10000);
 
         const result = await resultPromise;
 

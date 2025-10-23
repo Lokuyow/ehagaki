@@ -124,7 +124,7 @@ export class PostEventSender {
           safeUnsubscribe();
           resolve(hasSuccess ? { success: true } : { success: false, error: "post_error" });
         }
-      }, 3000);
+      }, 10000);
     });
   }
 }
