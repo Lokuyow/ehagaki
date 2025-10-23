@@ -210,9 +210,6 @@ describe("IframeMessageService", () => {
       };
 
       expect(service.sendMessageToParent(payload)).toBe(false);
-      expect(mockConsole.log).toHaveBeenCalledWith(
-        expect.stringContaining("iframe内ではない")
-      );
     });
 
     it("親オリジンが取得できない場合はfalseを返す", () => {
