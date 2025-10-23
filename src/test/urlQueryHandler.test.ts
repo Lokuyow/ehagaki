@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getContentFromUrlQuery,
-  cleanupContentQueryParam,
+  cleanupAllQueryParams,
   hasContentQueryParam,
 } from '../lib/urlQueryHandler';
 
@@ -146,7 +146,7 @@ describe('urlQueryHandler', () => {
     });
   });
 
-  describe('cleanupContentQueryParam', () => {
+  describe('cleanupAllQueryParams', () => {
     it('contentパラメータを削除する', () => {
       const mockReplaceState = vi.fn();
       // @ts-ignore
@@ -159,13 +159,26 @@ describe('urlQueryHandler', () => {
         replaceState: mockReplaceState,
       } as History;
 
-      cleanupContentQueryParam();
+      cleanupAllQueryParams();
 
-      expect(mockReplaceState).toHaveBeenCalledWith(
-        {},
-        '',
-        '/test?other=value'
-      );
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
+    });
+
+    it('空のcontentパラメータを削除する', () => {
+      const mockReplaceState = vi.fn();
+      // @ts-ignore
+      window.location = {
+        search: '?content=',
+        pathname: '/test',
+      } as Location;
+      // @ts-ignore
+      window.history = {
+        replaceState: mockReplaceState,
+      } as History;
+
+      cleanupAllQueryParams();
+
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
     });
 
     it('contentパラメータのみの場合、クエリ文字列全体を削除する', () => {
@@ -180,16 +193,16 @@ describe('urlQueryHandler', () => {
         replaceState: mockReplaceState,
       } as History;
 
-      cleanupContentQueryParam();
+      cleanupAllQueryParams();
 
       expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
     });
 
-    it('contentパラメータがない場合は何もしない', () => {
+    it('想定外のパラメータを削除する', () => {
       const mockReplaceState = vi.fn();
       // @ts-ignore
       window.location = {
-        search: '?other=value',
+        search: '?unknown=value&other=test',
         pathname: '/test',
       } as Location;
       // @ts-ignore
@@ -197,9 +210,43 @@ describe('urlQueryHandler', () => {
         replaceState: mockReplaceState,
       } as History;
 
-      cleanupContentQueryParam();
+      cleanupAllQueryParams();
+
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
+    });
+
+    it('クエリパラメータがない場合は何もしない', () => {
+      const mockReplaceState = vi.fn();
+      // @ts-ignore
+      window.location = {
+        search: '',
+        pathname: '/test',
+      } as Location;
+      // @ts-ignore
+      window.history = {
+        replaceState: mockReplaceState,
+      } as History;
+
+      cleanupAllQueryParams();
 
       expect(mockReplaceState).not.toHaveBeenCalled();
+    });
+
+    it('contentと他のパラメータが混在する場合、すべて削除する', () => {
+      const mockReplaceState = vi.fn();
+      // @ts-ignore
+      window.location = {
+        search: '?content=test&foo=bar&baz=qux',
+        pathname: '/test',
+      } as Location;
+      // @ts-ignore
+      window.history = {
+        replaceState: mockReplaceState,
+      } as History;
+
+      cleanupAllQueryParams();
+
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
     });
   });
 });

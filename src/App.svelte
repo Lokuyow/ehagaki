@@ -50,8 +50,8 @@
   import { checkIfOpenedFromShare } from "./lib/shareHandler";
   import {
     getContentFromUrlQuery,
-    cleanupContentQueryParam,
     hasContentQueryParam,
+    cleanupAllQueryParams,
   } from "./lib/urlQueryHandler";
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -349,10 +349,12 @@
         const queryContent = getContentFromUrlQuery();
         if (queryContent) {
           updateUrlQueryContentStore(queryContent);
-          // URLからクエリパラメータを削除
-          cleanupContentQueryParam();
         }
       }
+
+      // すべての不要なクエリパラメータをクリーンアップ
+      // （空のcontentや想定外のパラメータを削除）
+      cleanupAllQueryParams();
     };
 
     // Call the async initializer
