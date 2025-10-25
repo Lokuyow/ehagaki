@@ -372,6 +372,7 @@ export interface PostManagerDeps {
         value: AuthState;
     };
     hashtagStore?: HashtagStore;
+    hashtagSnapshotFn?: (store: HashtagStore) => HashtagData;
     keyManager?: KeyManagerInterface;
     window?: {
         nostr?: {

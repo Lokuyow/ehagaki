@@ -3,13 +3,13 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager";
 import { authState } from "../stores/appStore.svelte";
-import { hashtagDataStore } from "../stores/tagsStore.svelte";
+import { hashtagDataStore, getHashtagDataSnapshot } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
 import { extractContentWithImages } from "../lib/utils/editorUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
-import type { PostResult, PostManagerDeps } from "./types";
+import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 
 // --- 純粋関数（依存性なし） ---
@@ -187,10 +187,11 @@ export class PostManager {
     }
 
     try {
-      // 依存性から認証状態とストアを取得
-      const authStateStore = this.deps.authStateStore || { value: authState.value };
-      const hashtagStore = this.deps.hashtagStore || hashtagDataStore;
-      const keyMgr = this.deps.keyManager || keyManager;
+    // 依存性から認証状態とストアを取得
+    const authStateStore = this.deps.authStateStore || { value: authState.value };
+    const hashtagStore = this.deps.hashtagStore || hashtagDataStore;
+    const { hashtags, tags } = this.getHashtagArrays(hashtagStore);
+    const keyMgr = this.deps.keyManager || keyManager;
       const windowObj = this.deps.window || (typeof window !== 'undefined' ? window : undefined);
 
       const auth = authStateStore.value;
@@ -207,8 +208,8 @@ export class PostManager {
 
           const event = await PostEventBuilder.buildEvent(
             content,
-            hashtagStore.hashtags,
-            hashtagStore.tags,
+            hashtags,
+            tags,
             pubkey,
             imageImetaMap,
             this.deps.createImetaTagFn,
@@ -247,8 +248,8 @@ export class PostManager {
 
       const event = await PostEventBuilder.buildEvent(
         content,
-        hashtagStore.hashtags,
-        hashtagStore.tags,
+        hashtags,
+        tags,
         undefined,
         imageImetaMap,
         this.deps.createImetaTagFn,
@@ -277,6 +278,36 @@ export class PostManager {
   // テスト用の内部コンポーネントへのアクセス
   getEventSender(): PostEventSender | null {
     return this.eventSender;
+  }
+
+  private getHashtagArrays(store?: HashtagStore): { hashtags: string[]; tags: string[][] } {
+    const resolvedStore = store || hashtagDataStore;
+
+    const snapshotFn = this.deps.hashtagSnapshotFn;
+    if (snapshotFn) {
+      const snapshot = snapshotFn(resolvedStore);
+      return {
+        hashtags: Array.isArray(snapshot?.hashtags) ? [...snapshot.hashtags] : [],
+        tags: Array.isArray(snapshot?.tags) ? snapshot.tags.map((tag) => [...tag]) : []
+      };
+    }
+
+    if (resolvedStore === hashtagDataStore) {
+      try {
+        const snapshot = getHashtagDataSnapshot();
+        return {
+          hashtags: Array.isArray(snapshot?.hashtags) ? [...snapshot.hashtags] : [],
+          tags: Array.isArray(snapshot?.tags) ? snapshot.tags.map((tag) => [...tag]) : []
+        };
+      } catch (error) {
+        this.deps.console?.warn("hashtag_snapshot_failed", error);
+      }
+    }
+
+    return {
+      hashtags: Array.isArray(resolvedStore?.hashtags) ? [...resolvedStore.hashtags] : [],
+      tags: Array.isArray(resolvedStore?.tags) ? resolvedStore.tags.map((tag) => [...tag]) : []
+    };
   }
 
   // --- PostComponent 統合メソッド ---

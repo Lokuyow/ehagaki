@@ -38,6 +38,8 @@ import type {
     HashtagStore,
     KeyManagerInterface
 } from '../lib/types';
+import { updateHashtagData } from '../lib/tags/hashtagManager';
+import { hashtagDataStore } from '../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
 
 // RxNostrのモック
@@ -613,6 +615,81 @@ describe('PostManager統合テスト', () => {
             }),
             undefined
         );
+    });
+
+    it('nostr-loginでハッシュタグストアのProxyをstructuredClone可能な配列にする', async () => {
+        hashtagDataStore.content = '';
+        hashtagDataStore.hashtags = [];
+        hashtagDataStore.tags = [];
+        updateHashtagData('Post with #SnapshotTag');
+
+        const nostrAuthState: AuthState = {
+            ...mockAuthState,
+            type: 'nostr-login'
+        };
+
+        const signEvent = vi.fn().mockImplementation(async (event: any) => {
+            const cloneFn = globalThis.structuredClone ?? ((value: any) => JSON.parse(JSON.stringify(value)));
+            const cloned = cloneFn(event);
+            return { ...cloned, sig: 'mock-signature' };
+        });
+
+        const nostrDeps: PostManagerDeps = {
+            authStateStore: { value: nostrAuthState },
+            keyManager: new MockKeyManager(null, null, true),
+            console: {
+                log: vi.fn(),
+                error: vi.fn(),
+                warn: vi.fn()
+            } as any,
+            window: {
+                nostr: {
+                    signEvent
+                }
+            } as any,
+            getClientTagFn: () => ['client', 'snapshot-tester']
+        };
+
+        const managerWithSnapshot = new PostManager(mockRxNostr, nostrDeps);
+
+        const mockObservable = {
+            subscribe: vi.fn((observer: any) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'relay1',
+                        ok: true,
+                        done: true,
+                        eventId: 'test-event-id',
+                        type: 'ok',
+                        message: ''
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            })
+        };
+
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await managerWithSnapshot.submitPost('Post with #SnapshotTag');
+
+        expect(result.success).toBe(true);
+        expect(signEvent).toHaveBeenCalledTimes(1);
+
+        const eventArg = signEvent.mock.calls[0][0];
+        const tTagFromEvent = (eventArg.tags as string[][]).find((tag) => tag[0] === 't');
+        const tTagFromStore = hashtagDataStore.tags.find((tag) => tag[0] === 't');
+
+        if (!tTagFromEvent || !tTagFromStore) {
+            throw new Error('hashtags not found');
+        }
+
+        expect(tTagFromEvent).toEqual(['t', 'snapshottag']);
+        expect(tTagFromStore).toEqual(['t', 'snapshottag']);
+        expect(tTagFromEvent).not.toBe(tTagFromStore);
+
+        hashtagDataStore.content = '';
+        hashtagDataStore.hashtags = [];
+        hashtagDataStore.tags = [];
     });
 
     it('画像付き投稿を処理する', async () => {

@@ -4,7 +4,7 @@
 interface HashtagData {
     content: string;
     hashtags: string[];
-    tags: [string, string][];
+    tags: string[][];
 }
 
 // ストアの宣言（$stateを直接使用）
@@ -15,6 +15,10 @@ let svelteHashtagDataStore = $state<HashtagData>({
 });
 
 export const hashtagDataStore = svelteHashtagDataStore;
+
+export function getHashtagDataSnapshot(): HashtagData {
+    return $state.snapshot(svelteHashtagDataStore);
+}
 
 // --- imeta情報の一時保存ストア ---
 export interface ImageImetaMap {
