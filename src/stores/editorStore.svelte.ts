@@ -4,7 +4,7 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { Video } from '../lib/editor/videoExtension';
 import { validateAndNormalizeUrl, findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editorUtils';
@@ -97,31 +97,44 @@ export function createEditorStore(placeholderText: string) {
                 'data-placeholder': placeholderText,
             },
             // タッチデバイス対応のイベントハンドリング
-            handleClickOn(view, _pos, _node, _nodePos, event, _direct) {
+            handleClickOn(view, pos, _node, _nodePos, event, _direct) {
                 // クリックターゲットがリンクかどうか判定
                 let target = event.target as HTMLElement | null;
                 while (target && target !== view.dom) {
                     if (target.tagName === 'A' && target.hasAttribute('href')) {
-                        // タッチデバイスでのリンククリック時にキーボードを隠す
-                        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-                        if (isTouchDevice) {
-                            // エディターからフォーカスを外してキーボードを隠す
-                            const editorElement = view.dom as HTMLElement;
-                            if (editorElement) {
-                                editorElement.blur();
-                            }
-                            document.body.focus();
-                        }
-
                         // Ctrl（またはCmd）+クリック時のみ遷移許可
                         if (event.ctrlKey || event.metaKey) {
-                            // 通常遷移
                             return false;
-                        } else {
-                            // デフォルト遷移を抑制
-                            event.preventDefault();
-                            return true;
                         }
+
+                        // 通常タップ/クリックは編集モードで扱う
+                        event.preventDefault();
+
+                        const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+                        const mouseEvent = event as MouseEvent;
+                        const coords = {
+                            left: mouseEvent.clientX,
+                            top: mouseEvent.clientY
+                        };
+
+                        const resolvedPos = (Number.isFinite(coords.left) && Number.isFinite(coords.top))
+                            ? view.posAtCoords(coords)
+                            : null;
+
+                        const selectionPos = resolvedPos?.pos ?? pos;
+                        const docSize = view.state.doc.content.size;
+                        const clampedPos = Math.max(0, Math.min(selectionPos, docSize));
+                        const textSelection = TextSelection.near(view.state.doc.resolve(clampedPos));
+
+                        view.dispatch(view.state.tr.setSelection(textSelection).scrollIntoView());
+                        view.focus();
+
+                        // タッチ端末では直後にキーボードが表示されないことがあるため、リクエストを遅延
+                        if (isTouchDevice && typeof requestAnimationFrame === 'function') {
+                            requestAnimationFrame(() => view.focus());
+                        }
+
+                        return true;
                     }
                     target = target.parentElement;
                 }
@@ -193,7 +206,7 @@ export function createEditorStore(placeholderText: string) {
                 if (firstParagraph) {
                     const currentHasEmptyClass = firstParagraph.classList.contains('is-editor-empty');
                     const shouldHaveEmptyClass = isEmpty;
-                    
+
                     // 明示的な変更がある場合のみクラスを操作
                     if (currentHasEmptyClass !== shouldHaveEmptyClass) {
                         if (isEmpty) {
