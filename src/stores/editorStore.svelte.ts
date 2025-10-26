@@ -12,7 +12,6 @@ import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams, PlaceholderEntry, FileUploadResponse, ImageDimensions } from '../lib/types';
-import { updateHashtagData } from '../lib/tags/hashtagManager';
 import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '../lib/editor/editorDomActions.svelte';
 import { processPastedText } from '../lib/editor/clipboardExtension';
 import type { Editor as TipTapEditor } from '@tiptap/core';
