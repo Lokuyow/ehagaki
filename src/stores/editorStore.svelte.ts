@@ -73,16 +73,7 @@ export function createEditorStore(placeholderText: string) {
                     return SvelteNodeViewRenderer(SvelteImageNode as any);
                 },
             }),
-            ContentTrackingExtension.configure({
-                onContentChanged: (plainText: string) => {
-                    updateHashtagData(plainText);
-                    // カスタムイベントもここで発火
-                    const event = new CustomEvent('editor-content-changed', {
-                        detail: { plainText }
-                    });
-                    window.dispatchEvent(event);
-                }
-            }),
+            ContentTrackingExtension,
             Video,
             ClipboardExtension, // ← クリップボード処理を追加（ImagePasteExtensionの前に配置）
             ImagePasteExtension,
