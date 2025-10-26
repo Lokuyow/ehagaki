@@ -249,16 +249,16 @@
         width: 100%;
         max-width: 500px;
         background: var(--dialog);
-        color: var(--text-light);
+        color: var(--text);
         padding: 4px 10px 10px 10px;
-        border-radius: 0 0 6px 6px;
+        border-radius: 0 0 10px 10px;
         z-index: 101;
         font-size: 0.96rem;
         display: flex;
         flex-direction: column;
         align-items: flex-start;
-        gap: 6px;
-        opacity: 0.8;
+        gap: 2px;
+        opacity: 0.9;
         margin-bottom: 8px;
         word-break: break-all;
     }
