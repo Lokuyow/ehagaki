@@ -459,6 +459,15 @@ export interface CleanUrlResult {
     actualLength: number;
 }
 
+// --- ContentTracking Extension types ---
+export interface ContentTrackingOptions {
+    debounceDelay?: number;
+    enableHashtags?: boolean;
+    enableAutoLink?: boolean;
+    enableImageConversion?: boolean;
+}
+
+// --- Service Worker types ---
 export interface ServiceWorkerStatus {
     isReady: boolean;
     hasController: boolean;

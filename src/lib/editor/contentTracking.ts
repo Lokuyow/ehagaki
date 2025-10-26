@@ -3,6 +3,8 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from '../utils/editorUtils';
 import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
+import { CONTENT_TRACKING_CONFIG } from '../constants';
+import type { ContentTrackingOptions } from '../types';
 
 /**
  * ハッシュタグのデコレーション（装飾）を生成する関数
@@ -11,7 +13,7 @@ import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManag
 function createHashtagDecorations(doc: import('@tiptap/pm/model').Node): DecorationSet {
     const ranges = getHashtagRangesFromDoc(doc);
     const decorations = ranges.map(({ from, to }) =>
-        Decoration.inline(from, to, { class: 'hashtag' })
+        Decoration.inline(from, to, { class: CONTENT_TRACKING_CONFIG.HASHTAG_CLASS })
     );
     return DecorationSet.create(doc, decorations);
 }
@@ -76,7 +78,9 @@ function processLinkMark(
  * ProseMirror appendTransaction: ドキュメント変更後に追加のトランザクションを適用
  */
 function processLinksAndImages(
-    newState: import('@tiptap/pm/state').EditorState
+    newState: import('@tiptap/pm/state').EditorState,
+    enableAutoLink: boolean,
+    enableImageConversion: boolean
 ): import('@tiptap/pm/state').Transaction | null {
     const linkMark = newState.schema.marks.link;
     const imageNodeType = newState.schema.nodes.image;
@@ -85,7 +89,6 @@ function processLinksAndImages(
 
     let tr = newState.tr;
     let hasChanges = false;
-    const urlRegex = /https?:\/\/[^\s\u3000]+/gi;
 
     newState.doc.descendants((node, pos) => {
         if (!node.isText || !node.text) return;
@@ -101,7 +104,7 @@ function processLinksAndImages(
 
         // URL検出と処理
         let urlMatch: RegExpExecArray | null;
-        while ((urlMatch = urlRegex.exec(text)) !== null) {
+        while ((urlMatch = CONTENT_TRACKING_CONFIG.URL_REGEX.exec(text)) !== null) {
             if (typeof urlMatch.index !== 'number') continue;
 
             const matchStart = urlMatch.index;
@@ -116,20 +119,25 @@ function processLinksAndImages(
             const start = pos + matchStart;
             const end = pos + matchEnd;
 
-            // 画像URL処理
-            const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
-            if (normalizedImageUrl && imageNodeType) {
-                tr = processImageUrl(tr, newState, imageNodeType, normalizedImageUrl, start, end);
-                hasChanges = true;
-                break; // 画像ノード挿入後は処理を中断
+            // 画像URL処理（有効な場合のみ）
+            if (enableImageConversion) {
+                const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
+                if (normalizedImageUrl && imageNodeType) {
+                    tr = processImageUrl(tr, newState, imageNodeType, normalizedImageUrl, start, end);
+                    hasChanges = true;
+                    break; // 画像ノード挿入後は処理を中断
+                }
             }
 
-            // 通常のURL処理
-            const isValidUrl = /^https?:\/\/[a-zA-Z0-9]/.test(cleanUrl) && cleanUrl.length > 8;
-            if (isValidUrl) {
-                const normalizedUrl = validateAndNormalizeUrl(cleanUrl) || cleanUrl;
-                tr = processLinkMark(tr, linkMark, normalizedUrl, start, end);
-                hasChanges = true;
+            // 通常のURL処理（有効な場合のみ）
+            if (enableAutoLink) {
+                const isValidUrl = CONTENT_TRACKING_CONFIG.VALID_URL_PATTERN.test(cleanUrl) &&
+                    cleanUrl.length > CONTENT_TRACKING_CONFIG.MIN_URL_LENGTH;
+                if (isValidUrl) {
+                    const normalizedUrl = validateAndNormalizeUrl(cleanUrl) || cleanUrl;
+                    tr = processLinkMark(tr, linkMark, normalizedUrl, start, end);
+                    hasChanges = true;
+                }
             }
         }
     });
@@ -146,8 +154,17 @@ function processLinksAndImages(
  * 2. URL/画像URLの自動変換 (LinkAndImagePlugin)
  * 3. コンテンツ変更の追跡・通知 (ContentUpdatePlugin)
  */
-export const ContentTrackingExtension = Extension.create({
+export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>({
     name: 'contentTracking',
+
+    addOptions() {
+        return {
+            debounceDelay: CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY,
+            enableHashtags: CONTENT_TRACKING_CONFIG.ENABLE_HASHTAGS,
+            enableAutoLink: CONTENT_TRACKING_CONFIG.ENABLE_AUTO_LINK,
+            enableImageConversion: CONTENT_TRACKING_CONFIG.ENABLE_IMAGE_CONVERSION
+        };
+    },
 
     addStorage() {
         return {
@@ -158,45 +175,54 @@ export const ContentTrackingExtension = Extension.create({
     // ProseMirrorプラグインを追加するメソッド
     addProseMirrorPlugins() {
         const storage = this.storage;
+        const options = this.options;
 
         return [
             // Plugin 1: ハッシュタグの装飾
             // ProseMirror Decoration: ドキュメントの見た目を変更（DOMに反映）
-            new Plugin({
-                key: new PluginKey('hashtag-decoration'),
-                state: {
-                    init: (_, { doc }) => createHashtagDecorations(doc),
-                    apply(tr, oldDecoSet) {
-                        // ドキュメント変更時のみ再計算
-                        if (tr.docChanged) {
-                            return createHashtagDecorations(tr.doc);
+            ...(options.enableHashtags ? [
+                new Plugin({
+                    key: new PluginKey(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS.HASHTAG_DECORATION),
+                    state: {
+                        init: (_, { doc }) => createHashtagDecorations(doc),
+                        apply(tr, oldDecoSet) {
+                            // ドキュメント変更時のみ再計算
+                            if (tr.docChanged) {
+                                return createHashtagDecorations(tr.doc);
+                            }
+                            // マッピング: 位置の変更を追跡（挿入・削除時にデコレーションの位置を調整）
+                            return oldDecoSet.map(tr.mapping, tr.doc);
                         }
-                        // マッピング: 位置の変更を追跡（挿入・削除時にデコレーションの位置を調整）
-                        return oldDecoSet.map(tr.mapping, tr.doc);
+                    },
+                    props: {
+                        decorations(state) {
+                            return this.getState(state);
+                        }
                     }
-                },
-                props: {
-                    decorations(state) {
-                        return this.getState(state);
-                    }
-                }
-            }),
+                })
+            ] : []),
 
             // Plugin 2: URL/画像URLの自動変換
             // ProseMirror appendTransaction: 他のトランザクション後に追加処理を実行
-            new Plugin({
-                key: new PluginKey('link-and-image-conversion'),
-                appendTransaction: (transactions, _oldState, newState) => {
-                    // ドキュメント変更がある場合のみ処理
-                    if (!transactions.some(tr => tr.docChanged)) return null;
-                    return processLinksAndImages(newState);
-                }
-            }),
+            ...(options.enableAutoLink || options.enableImageConversion ? [
+                new Plugin({
+                    key: new PluginKey(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS.LINK_AND_IMAGE_CONVERSION),
+                    appendTransaction: (transactions, _oldState, newState) => {
+                        // ドキュメント変更がある場合のみ処理
+                        if (!transactions.some(tr => tr.docChanged)) return null;
+                        return processLinksAndImages(
+                            newState,
+                            options.enableAutoLink ?? true,
+                            options.enableImageConversion ?? true
+                        );
+                    }
+                })
+            ] : []),
 
             // Plugin 3: コンテンツ更新の追跡・通知
             // Debounce処理: 連続した変更を一定時間後にまとめて処理
             new Plugin({
-                key: new PluginKey('content-update-tracker'),
+                key: new PluginKey(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS.CONTENT_UPDATE_TRACKER),
                 state: {
                     init: () => null,
                     apply(tr) {
@@ -206,13 +232,13 @@ export const ContentTrackingExtension = Extension.create({
                                 clearTimeout(storage.updateTimeout);
                             }
 
-                            // 300ms後にハッシュタグデータ更新とイベント発火
+                            // 設定されたディレイ後にハッシュタグデータ更新とイベント発火
                             storage.updateTimeout = setTimeout(() => {
                                 updateHashtagData(tr.doc);
                                 window.dispatchEvent(new CustomEvent('editor-content-changed', {
                                     detail: { plainText: tr.doc.textContent }
                                 }));
-                            }, 300);
+                            }, options.debounceDelay ?? CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY);
                         }
                         return null;
                     }

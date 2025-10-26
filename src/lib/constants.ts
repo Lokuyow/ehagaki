@@ -140,6 +140,30 @@ export const SELECTORS = {
     EDITOR: ".tiptap-editor",
 } as const;
 
+// --- ContentTracking Extension用定数 ---
+export const CONTENT_TRACKING_CONFIG = {
+    // URL検出用正規表現
+    URL_REGEX: /https?:\/\/[^\s\u3000]+/gi,
+    VALID_URL_PATTERN: /^https?:\/\/[a-zA-Z0-9]/,
+    MIN_URL_LENGTH: 8,
+
+    // デフォルト設定
+    DEBOUNCE_DELAY: 300, // ms
+    ENABLE_HASHTAGS: true,
+    ENABLE_AUTO_LINK: true,
+    ENABLE_IMAGE_CONVERSION: true,
+
+    // CSS クラス名
+    HASHTAG_CLASS: 'hashtag',
+
+    // プラグインキー名
+    PLUGIN_KEYS: {
+        HASHTAG_DECORATION: 'hashtag-decoration',
+        LINK_AND_IMAGE_CONVERSION: 'link-and-image-conversion',
+        CONTENT_UPDATE_TRACKER: 'content-update-tracker'
+    }
+} as const;
+
 // --- バルーンメッセージ用キー配列 ---
 // ページ表示時などのinfoカテゴリ
 export const BALLOON_MESSAGE_INFO_KEYS: readonly string[] = [
