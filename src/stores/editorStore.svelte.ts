@@ -9,7 +9,7 @@ import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { Video } from '../lib/editor/videoExtension';
 import { validateAndNormalizeUrl, findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editorUtils';
 import { generateSimpleUUID } from '../lib/utils/appUtils';
-import { ContentTrackingExtension, ImagePasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
+import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams, PlaceholderEntry, FileUploadResponse, ImageDimensions } from '../lib/types';
 import { updateHashtagData } from '../lib/tags/hashtagManager';
@@ -75,8 +75,8 @@ export function createEditorStore(placeholderText: string) {
             }),
             ContentTrackingExtension,
             Video,
-            ClipboardExtension, // ← クリップボード処理を追加（ImagePasteExtensionの前に配置）
-            ImagePasteExtension,
+            ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）
+            MediaPasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
             GapCursorNewlineExtension,

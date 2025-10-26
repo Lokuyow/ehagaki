@@ -110,8 +110,8 @@ function removeEmptyParagraphs(tx: any) {
     return tx;
 }
 
-export const ImagePasteExtension = Extension.create({
-    name: 'imagePaste',
+export const MediaPasteExtension = Extension.create({
+    name: 'mediaPaste',
 
     addProseMirrorPlugins() {
         return [

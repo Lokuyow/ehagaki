@@ -16,11 +16,11 @@ vi.mock('../utils/editorUtils', () => ({
     })
 }));
 
-describe('imagePaste Extension - Media URL Support', () => {
-    it('should load ImagePasteExtension successfully', async () => {
-        const { ImagePasteExtension } = await import('../lib/editor/imagePaste');
-        expect(ImagePasteExtension).toBeDefined();
-        expect(ImagePasteExtension.name).toBe('imagePaste');
+describe('MediaPaste Extension - Media URL Support', () => {
+    it('should load MediaPasteExtension successfully', async () => {
+        const { MediaPasteExtension } = await import('../lib/editor/mediaPaste');
+        expect(MediaPasteExtension).toBeDefined();
+        expect(MediaPasteExtension.name).toBe('mediaPaste');
     });
 
     describe('Video URL validation functions', () => {
@@ -264,17 +264,17 @@ describe('imagePaste Extension - Media URL Support', () => {
     });
 
     describe('Media paste extension integration', () => {
-        it('should export ImagePasteExtension for use in editor', async () => {
-            const { ImagePasteExtension } = await import('../lib/editor/imagePaste');
+        it('should export MediaPasteExtension for use in editor', async () => {
+            const { MediaPasteExtension } = await import('../lib/editor/mediaPaste');
             
-            expect(ImagePasteExtension).toBeDefined();
-            expect(ImagePasteExtension.name).toBe('imagePaste');
+            expect(MediaPasteExtension).toBeDefined();
+            expect(MediaPasteExtension.name).toBe('mediaPaste');
         });
 
         it('should support both image and video URLs in paste handler', async () => {
             // This is an integration test to verify the paste extension
             // can handle both images and videos
-            const { ImagePasteExtension } = await import('../lib/editor/imagePaste');
+            const { MediaPasteExtension } = await import('../lib/editor/mediaPaste');
             const editorUtils = await import('../lib/utils/editorUtils');
             
             // Verify utilities are available
@@ -284,7 +284,7 @@ describe('imagePaste Extension - Media URL Support', () => {
             expect(editorUtils.createVideoNodeData).toBeDefined();
             
             // Verify extension is configured
-            expect(ImagePasteExtension.name).toBe('imagePaste');
+            expect(MediaPasteExtension.name).toBe('mediaPaste');
         });
     });
 });

@@ -56,7 +56,7 @@ export const ClipboardExtension = Extension.create({
                         // 画像ファイルのペーストは別処理に委譲
                         const hasFiles = clipboardData.files && clipboardData.files.length > 0;
                         if (hasFiles) {
-                            // ImagePasteExtensionに処理を委譲
+                            // MediaPasteExtensionに処理を委譲
                             return false;
                         }
 
