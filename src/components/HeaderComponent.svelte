@@ -246,7 +246,6 @@
     <div class="header-left">
         <a
             href="https://lokuyow.github.io/ehagaki/"
-            rel="noopener noreferrer"
             class="site-icon-link"
             aria-label="ehagaki"
         >

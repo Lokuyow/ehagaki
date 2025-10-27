@@ -253,7 +253,6 @@
                 <span>{$_("settingsDialog.author_info") || "制作："}</span><a
                     href="https://lokuyow.github.io/"
                     target="_blank"
-                    rel="noopener noreferrer"
                     >{$_("settingsDialog.author_name") || " Lokuyow"}</a
                 >
             </div>
