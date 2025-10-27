@@ -33,7 +33,7 @@
 
     // ノード固有のID（id属性を使用、なければ位置）
     let nodeId = $derived(
-        node.attrs.id || (typeof getPos === "function" ? getPos().toString() : "unknown")
+        node.attrs.id || (typeof getPos === "function" ? (getPos() ?? "unknown").toString() : "unknown")
     );
 
     // 動画の読み込み完了時

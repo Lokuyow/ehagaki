@@ -38,13 +38,8 @@ export function createEditorStore(placeholderText: string) {
                         class: 'editor-paragraph',
                     },
                 },
-                history: {
-                    // 編集履歴の設定を明示的に指定
-                    depth: 100,              // 履歴の深さ
-                    newGroupDelay: 300,      // 新しい履歴グループを作成するまでの遅延（ミリ秒）
-                    // 300ms: 通常の連続入力は適度にグループ化される
-                    // カスタムHistoryプラグインがペースト前後の入力を独立させる
-                },
+                // Tiptap v3: history オプションは StarterKit から削除されました
+                // History 拡張機能を個別にインポートして設定する必要があります
             }),
             Link.configure({
                 HTMLAttributes: {

@@ -86,7 +86,7 @@ export function getPlaceholderDefaultSize(): ImageDimensions {
 export function createDragEventDetail(
     type: DragEvent['type'],
     details?: any,
-    getPos?: () => number
+    getPos?: () => number | undefined
 ): any {
     const eventDetails = {
         start: { nodePos: getPos?.() },
@@ -113,7 +113,7 @@ export function getEventName(type: DragEvent['type']): string {
     return eventMap[type];
 }
 
-export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos?: () => number) {
+export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos?: () => number | undefined) {
     const eventName = getEventName(type);
     const eventDetail = createDragEventDetail(type, details, getPos);
 
@@ -281,9 +281,10 @@ export function shouldPreventInteraction(
     return false;
 }
 
-export function requestNodeSelection(getPos: () => number) {
+export function requestNodeSelection(getPos: () => number | undefined) {
     const pos = getPos();
-    // スマートフォン（タッチデバイス）ではキーボードを閉じる
+    if (pos === undefined) return;
+    // スマートフォン(タッチデバイス)ではキーボードを閉じる
     if (isTouchDevice()) {
         blurEditorAndBody();
     }
@@ -301,7 +302,7 @@ export function handleImageInteraction(
     justSelected: boolean,
     imageSrc: string,
     imageAlt: string,
-    getPos: () => number
+    getPos: () => number | undefined
 ): boolean {
     if (shouldPreventInteraction(isDragging, isPlaceholder, justSelected, isTouch)) {
         event.preventDefault();
