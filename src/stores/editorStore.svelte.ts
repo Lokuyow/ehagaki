@@ -45,7 +45,6 @@ export function createEditorStore(placeholderText: string) {
                 HTMLAttributes: {
                     class: 'preview-link',
                     target: '_blank',
-                    rel: 'noopener noreferrer',
                 },
                 autolink: true,
                 linkOnPaste: true,
