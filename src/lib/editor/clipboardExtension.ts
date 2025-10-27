@@ -196,7 +196,34 @@ export const ClipboardExtension = Extension.create({
                         // ProseMirror Sliceを作成して挿入
                         const fragment = Fragment.from(paragraphs);
                         const customSlice = new Slice(fragment, 0, 0);
-                        const tr = state.tr.replaceSelection(customSlice);
+                        
+                        // トランザクションを作成し、編集履歴に追加するメタデータを設定
+                        // 
+                        // ProseMirror History拡張の重要な仕様:
+                        // - newGroupDelay内の連続トランザクションは同じ履歴グループに統合される
+                        // - ペースト操作を確実に独立した履歴エントリにするため、
+                        //   'addToHistory'とともに時刻情報を記録し、強制的に新グループを開始
+                        //
+                        // メタデータ:
+                        // - paste: ペースト操作であることを示す（appendTransactionで判定）
+                        // - addToHistory: 履歴に記録する
+                        // - rebased: undefinedまたはfalseに設定（新しい履歴グループを開始）
+                        const tr = state.tr
+                            .replaceSelection(customSlice)
+                            .setMeta('paste', true)
+                            .setMeta('addToHistory', true)
+                            .setMeta('rebased', 0)  // 強制的に新しい履歴グループを開始
+                            .setTime(Date.now());   // タイムスタンプを更新
+                        
+                        if (import.meta.env.MODE === 'development') {
+                            console.log('📋 handlePaste: dispatching transaction', {
+                                docChanged: tr.docChanged,
+                                steps: tr.steps.length,
+                                paragraphs: paragraphs.length,
+                                time: tr.time
+                            });
+                        }
+                        
                         dispatch(tr);
 
                         return true;
@@ -269,7 +296,14 @@ export function processPastedText(editor: any, text: string): boolean {
     const customSlice = new Slice(fragment, 0, 0);
 
     // トランザクションを作成して挿入
-    let tr = state.tr.replaceSelection(customSlice);
+    // addToHistory: ペースト操作を編集履歴に記録（Ctrl+Zで元に戻せるようにする）
+    // rebased: 0を設定して、強制的に新しい履歴グループを開始
+    let tr = state.tr
+        .replaceSelection(customSlice)
+        .setMeta('paste', true)
+        .setMeta('addToHistory', true)
+        .setMeta('rebased', 0)
+        .setTime(Date.now());
 
     // カーソルを挿入したコンテンツの末尾に移動
     const resolvedPos = tr.doc.resolve(tr.selection.from);

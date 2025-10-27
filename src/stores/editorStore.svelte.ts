@@ -11,6 +11,7 @@ import { validateAndNormalizeUrl, findAndExecuteOnNode, removePlaceholderNode } 
 import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
+import { CustomHistoryPlugin } from '../lib/editor/customHistoryPlugin';
 import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams, PlaceholderEntry, FileUploadResponse, ImageDimensions } from '../lib/types';
 import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '../lib/editor/editorDomActions.svelte';
 import { processPastedText } from '../lib/editor/clipboardExtension';
@@ -36,6 +37,13 @@ export function createEditorStore(placeholderText: string) {
                     HTMLAttributes: {
                         class: 'editor-paragraph',
                     },
+                },
+                history: {
+                    // 編集履歴の設定を明示的に指定
+                    depth: 100,              // 履歴の深さ
+                    newGroupDelay: 300,      // 新しい履歴グループを作成するまでの遅延（ミリ秒）
+                    // 300ms: 通常の連続入力は適度にグループ化される
+                    // カスタムHistoryプラグインがペースト前後の入力を独立させる
                 },
             }),
             Link.configure({
@@ -79,7 +87,12 @@ export function createEditorStore(placeholderText: string) {
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
             GapCursorNewlineExtension,
-            placeholderExtension,
+            placeholderExtension.extend({
+                // カスタムHistoryプラグインを追加
+                addProseMirrorPlugins() {
+                    return [CustomHistoryPlugin];
+                }
+            }),
         ],
         // HTMLではなくJSONノード構造で初期化
         content: {

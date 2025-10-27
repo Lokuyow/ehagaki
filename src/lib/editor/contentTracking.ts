@@ -90,6 +90,16 @@ function processLinksAndImages(
     let tr = newState.tr;
     let hasChanges = false;
 
+    // ProseMirror重要仕様: descendants走査中にドキュメント構造を変更すると
+    // 位置がずれるため、まず変更内容を収集してから一括適用する
+    const changes: Array<{
+        type: 'removeMark' | 'addMark' | 'replaceImage';
+        from: number;
+        to: number;
+        mark?: any;
+        imageUrl?: string;
+    }> = [];
+
     newState.doc.descendants((node, pos) => {
         if (!node.isText || !node.text) return;
 
@@ -98,8 +108,11 @@ function processLinksAndImages(
 
         // 既存のリンクマークを削除（再処理のため）
         if (hasLinkMark) {
-            tr.removeMark(pos, pos + text.length, linkMark);
-            hasChanges = true;
+            changes.push({
+                type: 'removeMark',
+                from: pos,
+                to: pos + text.length
+            });
         }
 
         // URL検出と処理
@@ -123,8 +136,12 @@ function processLinksAndImages(
             if (enableImageConversion) {
                 const normalizedImageUrl = validateAndNormalizeImageUrl(cleanUrl);
                 if (normalizedImageUrl && imageNodeType) {
-                    tr = processImageUrl(tr, newState, imageNodeType, normalizedImageUrl, start, end);
-                    hasChanges = true;
+                    changes.push({
+                        type: 'replaceImage',
+                        from: start,
+                        to: end,
+                        imageUrl: normalizedImageUrl
+                    });
                     break; // 画像ノード挿入後は処理を中断
                 }
             }
@@ -135,12 +152,33 @@ function processLinksAndImages(
                     cleanUrl.length > CONTENT_TRACKING_CONFIG.MIN_URL_LENGTH;
                 if (isValidUrl) {
                     const normalizedUrl = validateAndNormalizeUrl(cleanUrl) || cleanUrl;
-                    tr = processLinkMark(tr, linkMark, normalizedUrl, start, end);
-                    hasChanges = true;
+                    const mark = linkMark.create({ href: normalizedUrl });
+                    changes.push({
+                        type: 'addMark',
+                        from: start,
+                        to: end,
+                        mark
+                    });
                 }
             }
         }
     });
+
+    // 変更を後ろから適用（位置のずれを防ぐ）
+    changes.sort((a, b) => b.from - a.from);
+
+    for (const change of changes) {
+        if (change.type === 'removeMark') {
+            tr = tr.removeMark(change.from, change.to, linkMark);
+            hasChanges = true;
+        } else if (change.type === 'addMark' && change.mark) {
+            tr = tr.addMark(change.from, change.to, change.mark);
+            hasChanges = true;
+        } else if (change.type === 'replaceImage' && change.imageUrl) {
+            tr = processImageUrl(tr, newState, imageNodeType, change.imageUrl, change.from, change.to);
+            hasChanges = true;
+        }
+    }
 
     // トランザクションに変更があり、かつドキュメントが変更された場合のみ返す
     return (hasChanges && tr.docChanged) ? tr : null;
@@ -210,11 +248,55 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                     appendTransaction: (transactions, _oldState, newState) => {
                         // ドキュメント変更がある場合のみ処理
                         if (!transactions.some(tr => tr.docChanged)) return null;
-                        return processLinksAndImages(
+                        
+                        // ペースト操作かどうかをチェック（ペースト直後はURL変換をスキップ）
+                        // これにより、ペーストと通常入力の履歴が分離される
+                        const isPaste = transactions.some(tr => tr.getMeta('paste'));
+                        
+                        if (import.meta.env.MODE === 'development') {
+                            console.log('🔗 appendTransaction check:', { 
+                                isPaste,
+                                hasTr: transactions.length,
+                                docChanged: transactions.some(tr => tr.docChanged)
+                            });
+                        }
+                        
+                        // ペースト直後の場合、次のトランザクションまで処理を遅延
+                        // これにより編集履歴の整合性を保つ
+                        if (isPaste) {
+                            if (import.meta.env.MODE === 'development') {
+                                console.log('🔗 Skipping URL conversion for paste (will process on next edit)');
+                            }
+                            return null;
+                        }
+                        
+                        const resultTr = processLinksAndImages(
                             newState,
                             options.enableAutoLink ?? true,
                             options.enableImageConversion ?? true
                         );
+                        
+                        // appendTransactionで返すトランザクションは
+                        // デフォルトで元のトランザクションと同じ履歴エントリに統合される
+                        // 
+                        // ProseMirror History仕様:
+                        // appendTransactionは元のトランザクションに付随する変更として扱われ、
+                        // 同じ履歴グループに統合される。これにより、Undo時に一緒に戻る。
+                        // 
+                        // addToHistory: false を明示的に設定して、
+                        // このトランザクションが履歴として独立しないことを確認
+                        if (resultTr) {
+                            resultTr.setMeta('addToHistory', false);
+                            
+                            if (import.meta.env.MODE === 'development') {
+                                console.log('🔗 Applying URL conversion:', {
+                                    steps: resultTr.steps.length,
+                                    docChanged: resultTr.docChanged
+                                });
+                            }
+                        }
+                        
+                        return resultTr;
                     }
                 })
             ] : []),
