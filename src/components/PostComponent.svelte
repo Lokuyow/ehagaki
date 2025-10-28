@@ -336,11 +336,13 @@
           type: { name: string };
           attrs: { id?: string };
         }
-        (currentEditor.state.doc as {
-          descendants: (
-            callback: (node: DescendantNode, pos: number) => boolean | void
-          ) => void;
-        }).descendants((node: DescendantNode) => {
+        (
+          currentEditor.state.doc as {
+            descendants: (
+              callback: (node: DescendantNode, pos: number) => boolean | void,
+            ) => void;
+          }
+        ).descendants((node: DescendantNode) => {
           if (node.attrs.id === nodeId) {
             isVideoNode = node.type.name === "video";
             return false; // 見つかったので走査停止

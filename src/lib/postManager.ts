@@ -187,11 +187,11 @@ export class PostManager {
     }
 
     try {
-    // 依存性から認証状態とストアを取得
-    const authStateStore = this.deps.authStateStore || { value: authState.value };
-    const hashtagStore = this.deps.hashtagStore || hashtagDataStore;
-    const { hashtags, tags } = this.getHashtagArrays(hashtagStore);
-    const keyMgr = this.deps.keyManager || keyManager;
+      // 依存性から認証状態とストアを取得
+      const authStateStore = this.deps.authStateStore || { value: authState.value };
+      const hashtagStore = this.deps.hashtagStore || hashtagDataStore;
+      const { hashtags, tags } = this.getHashtagArrays(hashtagStore);
+      const keyMgr = this.deps.keyManager || keyManager;
       const windowObj = this.deps.window || (typeof window !== 'undefined' ? window : undefined);
 
       const auth = authStateStore.value;

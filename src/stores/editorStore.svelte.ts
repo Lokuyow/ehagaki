@@ -295,7 +295,7 @@ export function resetPostStatus(): void {
 
 export function updatePlaceholderText(text: string): void {
     placeholderTextStore.value = text;
-    
+
     // エディターインスタンスがあれば、Placeholderエクステンションのオプションを更新
     if (currentEditorInstance) {
         const placeholderExt = currentEditorInstance.extensionManager.extensions.find(

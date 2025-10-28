@@ -35,15 +35,15 @@ export function setVideoCompressionService(service: VideoCompressionService | nu
 export function abortVideoCompression(): void {
     const isDev = import.meta.env.DEV;
     if (isDev) console.log('[appStore] abortVideoCompression called');
-    
+
     // グローバル中止フラグを設定
     uploadAbortFlagStore.set(true);
-    
+
     // サービスインスタンスへ通知（FFmpeg終了など）
     if (videoCompressionServiceInstance) {
         videoCompressionServiceInstance.abort();
     }
-    
+
     // 進捗をリセット
     videoCompressionProgressStore.set(0);
 }
@@ -66,7 +66,7 @@ export function abortImageCompression(): void {
     if (imageCompressionServiceInstance) {
         imageCompressionServiceInstance.abort();
     }
-    
+
     // 進捗をリセット
     imageCompressionProgressStore.set(0);
 }
@@ -75,10 +75,10 @@ export function abortImageCompression(): void {
 export function abortAllUploads(): void {
     const isDev = import.meta.env.DEV;
     if (isDev) console.log('[appStore] abortAllUploads called');
-    
+
     // グローバル中止フラグを設定
     uploadAbortFlagStore.set(true);
-    
+
     // 各サービスへ通知
     if (videoCompressionServiceInstance) {
         videoCompressionServiceInstance.abort();
@@ -86,7 +86,7 @@ export function abortAllUploads(): void {
     if (imageCompressionServiceInstance) {
         imageCompressionServiceInstance.abort();
     }
-    
+
     // 全進捗をリセット
     videoCompressionProgressStore.set(0);
     imageCompressionProgressStore.set(0);
