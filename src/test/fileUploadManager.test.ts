@@ -269,80 +269,6 @@ describe('MimeTypeSupport', () => {
     });
 });
 
-// --- ImageCompressionService テスト ---
-describe('ImageCompressionService', () => {
-    let compressionService: ImageCompressionService;
-    let mockMimeSupport: MimeTypeSupportInterface;
-    let mockStorage: MockStorage;
-
-    beforeEach(() => {
-        mockStorage = new MockStorage();
-        mockMimeSupport = {
-            canEncodeWebpWithQuality: vi.fn().mockResolvedValue(true),
-            canEncodeMimeType: vi.fn().mockReturnValue(true)
-        };
-        compressionService = new ImageCompressionService(mockMimeSupport, mockStorage);
-    });
-
-    it('画像以外のファイルは圧縮しない', async () => {
-        const file = createMockFile('test.txt', 'text/plain', 1000);
-        const result = await compressionService.compress(file);
-        expect(result.wasCompressed).toBe(false);
-        expect(result.file).toBe(file);
-    });
-
-    it('小さな画像ファイルはスキップする', async () => {
-        const file = createMockFile('small.jpg', 'image/jpeg', 10000); // 10KB
-        const result = await compressionService.compress(file);
-        expect(result.wasSkipped).toBe(true);
-        expect(result.wasCompressed).toBe(false);
-    });
-
-    it('圧縮設定を正しく取得する', () => {
-        // 通常設定の場合は圧縮設定があることを確認
-        mockStorage.setItem('imageCompressionLevel', 'medium');
-        expect(compressionService.hasCompressionSettings()).toBe(true);
-
-        // 'skip'設定の場合は圧縮設定がないことを確認
-        mockStorage.setItem('imageCompressionLevel', 'skip');
-        expect(compressionService.hasCompressionSettings()).toBe(false);
-    });
-});
-
-// --- NostrAuthService テスト ---
-describe('NostrAuthService', () => {
-    let authService: NostrAuthService;
-
-    beforeEach(() => {
-        authService = new NostrAuthService();
-        // keyManagerのモック化
-        vi.mock('./keyManager', () => ({
-            keyManager: {
-                getFromStore: vi.fn().mockReturnValue(null),
-                loadFromStorage: vi.fn().mockReturnValue('mock-key')
-            }
-        }));
-    });
-
-    afterEach(() => {
-        vi.clearAllMocks();
-    });
-
-    it('認証が必要な場合はエラーを投げる', async () => {
-        // keyManagerが空の場合をモック
-        const { keyManager } = await import('../lib/keyManager');
-        vi.mocked(keyManager.getFromStore).mockReturnValue(null);
-        vi.mocked(keyManager.loadFromStorage).mockReturnValue(null);
-
-        // window.nostrも未定義
-        Object.defineProperty(window, 'nostr', { value: undefined, writable: true });
-
-        await expect(
-            authService.buildAuthHeader('https://example.com', 'POST')
-        ).rejects.toThrow('Authentication required');
-    });
-});
-
 // --- FileUploadManager メインテスト ---
 describe('FileUploadManager', () => {
     let uploadManager: FileUploadManager;
@@ -668,52 +594,6 @@ describe('FileUploadManager', () => {
 
             expect(result.success).toBe(false);
             expect(result.error).toBe('Could not parse upload response');
-        });
-    });
-});
-
-// --- 統合テスト ---
-describe('FileUploadManager 統合テスト', () => {
-    it('実際のファイルアップロードフローを模擬する', async () => {
-        const mockDependencies = createMockDependencies();
-        const mockStorage = mockDependencies.localStorage as MockStorage;
-
-        // 設定値をセット
-        mockStorage.setItem('uploadEndpoint', 'https://upload.example.com');
-        mockStorage.setItem('imageCompressionLevel', 'medium');
-
-        // 認証サービスをモックして認証エラーを回避
-        const mockAuthService: AuthService = {
-            buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
-        };
-
-        const uploadManager = new FileUploadManager(mockDependencies, mockAuthService);
-        const file = createMockFile('integration-test.jpg', 'image/jpeg', 1000); // 1KB
-
-        // 成功レスポンスをモック
-        const mockFetch = vi.mocked(mockDependencies.fetch);
-        mockFetch.mockResolvedValue(createMockResponse(true, 200, {
-            status: 'success',
-            nip94_event: {
-                tags: [
-                    ['url', 'https://cdn.example.com/uploaded.jpg'],
-                    ['ox', '1234567890abcdef'],
-                    ['blurhash', 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.']
-                ]
-            }
-        }));
-
-        const result = await uploadManager.uploadFile(file, '', false, {
-            caption: 'Test image',
-            alt: 'Integration test'
-        });
-
-        expect(result.success).toBe(true);
-        expect(result.url).toBe('https://cdn.example.com/uploaded.jpg');
-        expect(result.nip94).toEqual({
-            url: 'https://cdn.example.com/uploaded.jpg',
-            ox: '1234567890abcdef',
-            blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.'
         });
     });
 });

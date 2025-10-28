@@ -69,6 +69,7 @@ describe("fileDropAction", () => {
 
     afterEach(() => {
         destroy();
+        vi.clearAllMocks();
     });
 
     it("adds drag-over class on external dragover", () => {
@@ -155,6 +156,7 @@ describe("pasteAction", () => {
 
     afterEach(() => {
         destroy();
+        vi.clearAllMocks();
     });
 
     it("calls __uploadFiles with pasted image files", () => {
@@ -206,6 +208,7 @@ describe("touchAction", () => {
 
     afterEach(() => {
         destroy();
+        vi.clearAllMocks();
     });
 
     it("removes drop-zone-hover and adds drop-zone-fade-out on touchend", () => {
@@ -278,16 +281,22 @@ describe("keydownAction", () => {
 
     afterEach(() => {
         destroy();
+        vi.clearAllMocks();
     });
 
-    it("calls __submitPost on Ctrl+Enter if conditions met", () => {
+    it.each([
+        { key: "Enter", ctrlKey: true, metaKey: false, description: "Ctrl+Enter" },
+        { key: "Enter", ctrlKey: false, metaKey: true, description: "Meta+Enter" },
+        { key: "NumpadEnter", ctrlKey: true, metaKey: false, description: "Ctrl+NumpadEnter" },
+    ])("calls __submitPost on $description if conditions met", ({ key, ctrlKey, metaKey }) => {
         // extractContentWithImages を非空に
         mockedExtractContentWithImages.mockReturnValue("content");
 
         const event = new KeyboardEvent("keydown", {
             bubbles: true,
-            ctrlKey: true,
-            key: "Enter",
+            ctrlKey,
+            metaKey,
+            key,
         });
         node.dispatchEvent(event);
         // @ts-ignore
@@ -320,30 +329,6 @@ describe("keydownAction", () => {
         node.dispatchEvent(event);
         // @ts-ignore
         expect(node.__submitPost).not.toHaveBeenCalled();
-    });
-
-    it("calls __submitPost on Meta+Enter if conditions met", () => {
-        mockedExtractContentWithImages.mockReturnValue("content");
-        const event = new KeyboardEvent("keydown", {
-            bubbles: true,
-            metaKey: true,
-            key: "Enter",
-        });
-        node.dispatchEvent(event);
-        // @ts-ignore
-        expect(node.__submitPost).toHaveBeenCalled();
-    });
-
-    it("calls __submitPost on Ctrl+NumpadEnter if conditions met", () => {
-        mockedExtractContentWithImages.mockReturnValue("content");
-        const event = new KeyboardEvent("keydown", {
-            bubbles: true,
-            ctrlKey: true,
-            key: "NumpadEnter",
-        });
-        node.dispatchEvent(event);
-        // @ts-ignore
-        expect(node.__submitPost).toHaveBeenCalled();
     });
 
     it("does not call __submitPost if hasStoredKey is false", () => {
@@ -418,6 +403,7 @@ describe("fileDropActionWithDragState", () => {
 
     afterEach(() => {
         destroy();
+        vi.clearAllMocks();
     });
 
     it("calls dragOver(true) on dragover", () => {
@@ -443,6 +429,9 @@ describe("fileDropActionWithDragState", () => {
 });
 
 describe("hasImageInDoc", () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
     it("returns false if doc is undefined", () => {
         expect(hasImageInDoc(undefined)).toBe(false);
     });
@@ -481,6 +470,9 @@ describe("hasImageInDoc", () => {
 });
 
 describe("hasVideoInDoc", () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
     it("returns false if doc is undefined", () => {
         expect(hasVideoInDoc(undefined)).toBe(false);
     });
@@ -519,6 +511,9 @@ describe("hasVideoInDoc", () => {
 });
 
 describe("hasMediaInDoc", () => {
+    afterEach(() => {
+        vi.clearAllMocks();
+    });
     it("returns false if doc is undefined", () => {
         expect(hasMediaInDoc(undefined)).toBe(false);
     });
