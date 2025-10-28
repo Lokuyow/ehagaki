@@ -45,7 +45,7 @@ export function createEditorStore(placeholderText: string) {
                         target: '_blank',
                     },
                     autolink: false, // ContentTrackingExtensionで動的な判定・判定解除を行うため無効化
-                    linkOnPaste: true,
+                    linkOnPaste: false, // ペースト時のリンク化を無効化（TiptapデフォルトのLink機能）
                     defaultProtocol: 'https',
                     // Tiptap v3の新しいAPI: URL検証をより詳細に制御
                     // ペースト時のリンク検証に使用される
@@ -124,6 +124,8 @@ export function createEditorStore(placeholderText: string) {
                 }
             }),
         ],
+        // カスタムのClipboardExtensionのみ有効化（他のペーストルールを無効化して競合を回避）
+        enablePasteRules: ['clipboardExtension'],
         // HTMLではなくJSONノード構造で初期化
         content: {
             type: 'doc',

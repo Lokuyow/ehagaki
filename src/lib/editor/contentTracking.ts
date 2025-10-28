@@ -297,8 +297,7 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                         // ドキュメント変更がある場合のみ処理
                         if (!transactions.some(tr => tr.docChanged)) return null;
 
-                        // ペースト操作かどうかをチェック（ペースト直後はURL変換をスキップ）
-                        // これにより、ペーストと通常入力の履歴が分離される
+                        // ペースト操作かどうかをチェック
                         const isPaste = transactions.some(tr => tr.getMeta('paste'));
 
                         if (import.meta.env.MODE === 'development') {
@@ -309,23 +308,19 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                             });
                         }
 
-                        // ペースト直後の場合、次のトランザクションまで処理を遅延
-                        // これにより編集履歴の整合性を保つ
-                        if (isPaste) {
-                            if (import.meta.env.MODE === 'development') {
-                                console.log('🔗 Skipping URL/image conversion for paste (will process on next edit)');
-                            }
-                            return null;
-                        }
+                        // ペースト直後もURL処理を実行（リンク化を即座に適用）
+                        // ただし、画像URLの変換のみ次の入力まで遅延する
+                        // これにより、ペースト→Undoでテキストとリンクが一緒に戻る
+                        const enableImageConversionForThisTr = !isPaste;
 
                         // URL/画像URL処理を実行
                         // - 既存のリンクマークを削除して動的に再評価
                         // - URLをリンクマークに変換（Tiptap Link拡張の検証ルールを適用）
-                        // - 画像URLを画像ノードに変換
+                        // - 画像URLを画像ノードに変換（ペースト時はスキップ）
                         const resultTr = processUrlsAndImages(
                             newState,
                             options.enableAutoLink ?? true,
-                            options.enableImageConversion ?? true
+                            enableImageConversionForThisTr && (options.enableImageConversion ?? true)
                         );
 
                         // appendTransactionで返すトランザクションは
@@ -343,7 +338,9 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                             if (import.meta.env.MODE === 'development') {
                                 console.log('🔗 Applying URL/image conversion:', {
                                     steps: resultTr.steps.length,
-                                    docChanged: resultTr.docChanged
+                                    docChanged: resultTr.docChanged,
+                                    isPaste,
+                                    imageConversionEnabled: enableImageConversionForThisTr
                                 });
                             }
                         }

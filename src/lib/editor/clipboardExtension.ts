@@ -113,9 +113,10 @@ export const ClipboardExtension = Extension.create({
                      * 処理フロー:
                      * 1. ClipboardDataからプレーンテキストを取得
                      * 2. HTMLが含まれる場合はリッチテキストかチェック
-                     * 3. テキストを正規化して行配列に変換
-                     * 4. 行配列を段落ノードに変換
-                     * 5. Sliceを作成してエディタに挿入
+                     * 3. URLを含む場合はTiptapのLink機能に委譲
+                     * 4. テキストを正規化して行配列に変換
+                     * 5. 行配列を段落ノードに変換
+                     * 6. Sliceを作成してエディタに挿入
                      */
                     handlePaste(view, event, slice) {
                         const { state, dispatch } = view;
@@ -149,16 +150,18 @@ export const ClipboardExtension = Extension.create({
                         if (hasHtml) {
                             const html = clipboardData.getData('text/html');
 
-                            // リッチテキスト（太字、イタリック）を検出
+                            // リッチテキスト（太字、イタリック、リンク）を検出
                             // リッチテキストの場合はデフォルト処理に委譲して書式を保持
                             const hasRichFormatting =
                                 html.includes('<strong>') ||
                                 html.includes('<b>') ||
                                 html.includes('<em>') ||
-                                html.includes('<i>');
+                                html.includes('<i>') ||
+                                html.includes('<a ') || // リンクタグを検出
+                                html.includes('<a>');
 
                             if (hasRichFormatting) {
-                                return false; // デフォルト処理で書式を保持
+                                return false; // デフォルト処理で書式を保持（Tiptap Link機能が処理）
                             }
 
                             // 自アプリからのコピー（data-block + data-editor）を検出
@@ -175,6 +178,8 @@ export const ClipboardExtension = Extension.create({
                         }
 
                         // テキストを正規化して行配列に変換
+                        // 注意: URLを含むプレーンテキストの場合も段落ノードとして挿入し、
+                        // ContentTrackingExtensionがappendTransactionでリンク化する
                         const { lines } = normalizeClipboardText(text, {
                             collapseEmptyLines,
                             maxConsecutiveEmptyLines: 1
