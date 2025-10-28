@@ -162,45 +162,6 @@ describe("videoContextMenuUtils", () => {
             expect(mockEditor.view.state.doc.descendants).toHaveBeenCalled();
         });
 
-        // Note: このテストは削除されました。動画ノードには常にid属性が設定されるため、
-        // 位置ベースのフォールバックは不要になりました。
-        it.skip("delete action removes video node by position when id attribute is missing", () => {
-            const t = createMockTranslator();
-            const mockTr = { delete: vi.fn().mockReturnValue("TRANSACTION") } as any;
-            const mockDoc = {
-                descendants: vi.fn((callback) => {
-                    const mockNode = {
-                        type: { name: 'video' },
-                        attrs: {}, // id属性なし
-                        nodeSize: 1
-                    };
-                    callback(mockNode, 5); // nodeIdと同じ位置
-                }),
-                nodeAt: vi.fn().mockReturnValue({
-                    nodeSize: 3
-                })
-            };
-            const mockView = {
-                state: { tr: mockTr, doc: mockDoc },
-                dispatch: vi.fn()
-            };
-            const mockEditor = { view: mockView };
-
-            const items = getVideoContextMenuItems(
-                src,
-                getPos,
-                nodeSize,
-                true,
-                "5", // 位置を示すnodeId
-                { editorObj: mockEditor, t }
-            );
-
-            items[2].action();
-
-            expect(mockEditor.view.dispatch).toHaveBeenCalledWith("TRANSACTION");
-            expect(mockEditor.view.state.doc.descendants).toHaveBeenCalled();
-        });
-
         it("delete action does nothing when not selected", () => {
             const t = createMockTranslator();
             const mockEditor = createMockEditor();
@@ -304,7 +265,7 @@ describe("videoContextMenuUtils", () => {
 
             // document.querySelectorがnullを返すようにモック
             const originalQuerySelector = document.querySelector;
-            const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => { });
             document.querySelector = vi.fn().mockReturnValue(null);
 
             const items = getVideoContextMenuItems(
