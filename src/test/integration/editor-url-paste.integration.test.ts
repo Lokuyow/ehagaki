@@ -28,7 +28,6 @@ vi.mock("virtual:pwa-register/svelte", () => ({
 // ヘルパー関数: コンテンツをペーストし、リンク化を検証
 async function pasteAndVerify(editor: Editor, content: string, expectedLinks: number = 1, shouldContainLink: boolean = true) {
     editor.commands.insertContent(content);
-    await new Promise(resolve => setTimeout(resolve, 100));
     const html = editor.getHTML();
     if (shouldContainLink) {
         expect(html).toContain('<a');
@@ -126,7 +125,6 @@ describe('エディター・URLペースト統合テスト', () => {
             ['Check https://example.com/ for info', ['Check', 'https://example.com/']]
         ])('%s をペーストしてUndoした場合、正しく元に戻る', async (content, expectedContents) => {
             editor.commands.insertContent(content);
-            await new Promise(resolve => setTimeout(resolve, 100));
             
             let html = editor.getHTML();
             expect(html).toContain('<a');
@@ -144,9 +142,6 @@ describe('エディター・URLペースト統合テスト', () => {
             const imageUrl = 'https://example.com/image.jpg';
             editor.commands.insertContent(imageUrl);
             
-            // 短時間待機（リンク化のみ実行される）
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
             const html = editor.getHTML();
             // リンク化はされている
             expect(html).toContain('<a');
@@ -162,8 +157,6 @@ describe('エディター・URLペースト統合テスト', () => {
             const imageUrl = 'https://example.com/photo.png';
             editor.commands.insertContent(imageUrl);
             
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
             let html = editor.getHTML();
             // 最初はリンクのみ
             expect(html).toContain('<a');
@@ -171,8 +164,6 @@ describe('エディター・URLペースト統合テスト', () => {
             
             // 文字を入力（通常の編集操作）
             editor.commands.insertContent(' ');
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
             
             html = editor.getHTML();
             // 現在の実装では、一度リンク化された画像URLは画像ノードに変換されない
