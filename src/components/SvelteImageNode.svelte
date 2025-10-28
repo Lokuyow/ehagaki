@@ -113,8 +113,8 @@
     // ストアからクリック位置を取得
     let lastClickPosition = $derived(lastClickPositionStore.value);
 
-    // ノード固有のID（src+posで一意化） -> 変更: id属性を使用、なければ位置
-    const nodeId = node.attrs.id || (typeof getPos === "function" ? (getPos() ?? "").toString() : "");
+    // ノード固有のID（常に最新のnode.attrs.idを参照）
+    const nodeId = $derived(node.attrs.id || `fallback-${typeof getPos === "function" ? getPos() : "unknown"}`);
 
     // グローバルストア監視
     $effect(() => {
@@ -129,6 +129,7 @@
     // コンテキストメニューを開く処理（位置設定のみ）
     function openContextMenuAtPositionHandler() {
         if (!lastClickPosition) return;
+        
         openContextMenuForImageNode(
             globalContextMenuStore,
             nodeId,

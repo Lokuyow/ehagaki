@@ -23,9 +23,6 @@ export function getImageContextMenuItems(
     const editorObj = options?.editorObj ?? (window as any).__currentEditor;
     const tRaw = options?.t ?? _;
     const t = typeof tRaw === "function" ? tRaw : getStore(tRaw);
-    if (import.meta.env.MODE === "development") {
-        console.log("[dev] getImageContextMenuItems", { src, alt, nodeSize, isSelected });
-    }
 
     return [
         {
@@ -176,9 +173,6 @@ export function openContextMenuForImageNode(
         setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any
     }
 ) {
-    if (import.meta.env.MODE === "development") {
-        console.log("[dev] openContextMenuForImageNode called", { nodeId, clickPosition, src });
-    }
     const setTimeoutFn = options?.setTimeoutFn ?? ((fn: (...args: any[]) => void, ms?: number, ...args: any[]) => {
         return setTimeout(fn as TimerHandler, ms, ...args);
     });

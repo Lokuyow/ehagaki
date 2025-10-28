@@ -2,12 +2,12 @@ import { createEditor } from 'svelte-tiptap';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
+import UniqueID from '@tiptap/extension-unique-id';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { Video } from '../lib/editor/videoExtension';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editorUtils';
-import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import { CustomHistoryPlugin } from '../lib/editor/customHistoryPlugin';
@@ -16,6 +16,11 @@ import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '
 import { processPastedText } from '../lib/editor/clipboardExtension';
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import { uploadAbortFlagStore } from './appStore.svelte';
+
+// 簡易的なUUID生成関数（プレースホルダー用）
+function generatePlaceholderId(): string {
+    return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
+}
 
 /**
  * Tiptap v2のエディターストアを作成
@@ -52,10 +57,10 @@ export function createEditorStore(placeholderText: string) {
                     isAllowedUri: (url: string, ctx: any) => {
                         // デフォルトの検証を実行
                         if (!ctx.defaultValidate(url)) return false;
-                        
+
                         // 相対URLを拒否
                         if (url.startsWith('./') || url.startsWith('../')) return false;
-                        
+
                         // 許可されたプロトコルのみ（http, https）
                         // protocols配列に含まれているかチェック
                         try {
@@ -70,13 +75,13 @@ export function createEditorStore(placeholderText: string) {
                     shouldAutoLink: (url: string) => {
                         // 最小長チェック
                         if (url.length < 8) return false;
-                        
+
                         // 有効なドメイン形式かチェック
                         try {
                             const urlObj = new URL(url);
                             // ドメイン名が存在し、適切な形式であることを確認
-                            return urlObj.hostname.length > 0 && 
-                                   /^https?:\/\/[a-zA-Z0-9]/.test(url);
+                            return urlObj.hostname.length > 0 &&
+                                /^https?:\/\/[a-zA-Z0-9]/.test(url);
                         } catch {
                             return false;
                         }
@@ -100,15 +105,19 @@ export function createEditorStore(placeholderText: string) {
                     return {
                         src: { default: null },
                         blurhash: { default: null },
-                        isPlaceholder: { default: false },
-                        id: {
-                            default: () => generateSimpleUUID(),  // 変更: 簡易UUIDのみ使用
-                        },
+                        isPlaceholder: { default: null },
+                        dim: { default: null },
+                        alt: { default: null },
                     };
                 },
                 addNodeView() {
                     return SvelteNodeViewRenderer(SvelteImageNode as any);
                 },
+            }),
+            // UniqueID extension: 画像・動画ノードに自動的にIDを付与
+            UniqueID.configure({
+                types: ['image', 'video'],
+                attributeName: 'id',
             }),
             ContentTrackingExtension,
             Video,
@@ -555,7 +564,7 @@ export function insertPlaceholdersIntoEditor(
             return;
         }
 
-        const placeholderId = `placeholder-${timestamp}-${index}-${generateSimpleUUID()}`;
+        const placeholderId = `placeholder-${timestamp}-${index}-${generatePlaceholderId()}`;
         const processingResult = fileProcessingResults[index];
         const ox = processingResult?.ox;
         const dimensions = processingResult?.dimensions;
@@ -566,14 +575,15 @@ export function insertPlaceholdersIntoEditor(
             if (isVideo) {
                 const videoAttrs: any = {
                     src: placeholderId,
-                    id: placeholderId,
                     isPlaceholder: true
+                    // id属性は設定しない - UniqueID extensionが自動生成する
                 };
                 node = state.schema.nodes.video.create(videoAttrs);
             } else {
                 const imageAttrs: any = {
                     src: placeholderId,
                     isPlaceholder: true
+                    // id属性は設定しない - UniqueID extensionが自動生成する
                 };
 
                 if (dimensions) {
@@ -763,15 +773,16 @@ export async function replacePlaceholdersWithResults(
                     (node: any, _pos: number) => {
                         const nodeType = node.type?.name;
                         const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-                        return isSameNode && (node.attrs?.src === matched!.placeholderId || node.attrs?.id === matched!.placeholderId);
+                        // プレースホルダーはsrc属性で検索（UniqueID extensionがid属性を管理）
+                        return isSameNode && node.attrs?.src === matched!.placeholderId;
                     },
                     (node: any, pos: number) => {
                         if (isVideo) {
                             const newAttrs: any = {
                                 ...node.attrs,
                                 src: result.url,
-                                id: result.url,
                                 isPlaceholder: false,
+                                // id属性は保持（UniqueID extensionが管理）
                             };
                             const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
                             currentEditor!.view.dispatch(tr);

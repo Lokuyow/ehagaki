@@ -37,6 +37,7 @@ function processImageUrl(
     const isOnlyImageUrlInParagraph = isParagraphWithOnlyImageUrl(parentNode, end - start);
     const isDocEmpty = isEditorDocEmpty(state);
 
+    // UniqueID extensionが自動的にIDを付与するため、明示的なID設定は不要
     const imageNode = imageNodeType.create({
         src: normalizedImageUrl,
         alt: 'Image'
@@ -299,14 +300,6 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
 
                         // ペースト操作かどうかをチェック
                         const isPaste = transactions.some(tr => tr.getMeta('paste'));
-
-                        if (import.meta.env.MODE === 'development') {
-                            console.log('🔗 appendTransaction check:', {
-                                isPaste,
-                                hasTr: transactions.length,
-                                docChanged: transactions.some(tr => tr.docChanged)
-                            });
-                        }
 
                         // ペースト直後もURL処理を実行（リンク化を即座に適用）
                         // ただし、画像URLの変換のみ次の入力まで遅延する
