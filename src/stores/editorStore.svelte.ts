@@ -1,13 +1,12 @@
 import { createEditor } from 'svelte-tiptap';
 import StarterKit from '@tiptap/starter-kit';
-import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import Placeholder from '@tiptap/extension-placeholder';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import SvelteImageNode from '../components/SvelteImageNode.svelte';
 import { Video } from '../lib/editor/videoExtension';
-import { validateAndNormalizeUrl, findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editorUtils';
+import { findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editorUtils';
 import { generateSimpleUUID } from '../lib/utils/appUtils';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
@@ -38,20 +37,57 @@ export function createEditorStore(placeholderText: string) {
                         class: 'editor-paragraph',
                     },
                 },
+                // Tiptap v3: Link extension が StarterKit に含まれています
+                link: {
+                    HTMLAttributes: {
+                        class: 'preview-link',
+                        rel: null,
+                        target: '_blank',
+                    },
+                    autolink: false, // ContentTrackingExtensionで動的な判定・判定解除を行うため無効化
+                    linkOnPaste: true,
+                    defaultProtocol: 'https',
+                    // Tiptap v3の新しいAPI: URL検証をより詳細に制御
+                    // ペースト時のリンク検証に使用される
+                    isAllowedUri: (url: string, ctx: any) => {
+                        // デフォルトの検証を実行
+                        if (!ctx.defaultValidate(url)) return false;
+                        
+                        // 相対URLを拒否
+                        if (url.startsWith('./') || url.startsWith('../')) return false;
+                        
+                        // 許可されたプロトコルのみ（http, https）
+                        // protocols配列に含まれているかチェック
+                        try {
+                            const urlObj = new URL(url, `${ctx.defaultProtocol}://`);
+                            return ctx.protocols.includes(urlObj.protocol.replace(':', ''));
+                        } catch {
+                            return false;
+                        }
+                    },
+                    // Tiptap v3の新しいAPI: 自動リンク化の条件を制御
+                    // ペースト時のリンク判定に使用される
+                    shouldAutoLink: (url: string) => {
+                        // 最小長チェック
+                        if (url.length < 8) return false;
+                        
+                        // 有効なドメイン形式かチェック
+                        try {
+                            const urlObj = new URL(url);
+                            // ドメイン名が存在し、適切な形式であることを確認
+                            return urlObj.hostname.length > 0 && 
+                                   /^https?:\/\/[a-zA-Z0-9]/.test(url);
+                        } catch {
+                            return false;
+                        }
+                    },
+                    protocols: [
+                        { scheme: 'http', optionalSlashes: false },
+                        { scheme: 'https', optionalSlashes: false }
+                    ]
+                },
                 // Tiptap v3: history オプションは StarterKit から削除されました
                 // History 拡張機能を個別にインポートして設定する必要があります
-            }),
-            Link.configure({
-                HTMLAttributes: {
-                    class: 'preview-link',
-                    target: '_blank',
-                },
-                autolink: true,
-                linkOnPaste: true,
-                validate: (url) => {
-                    // utilsのバリデーション関数を利用
-                    return !!validateAndNormalizeUrl(url);
-                }
             }),
             // Image拡張の設定
             Image.configure({

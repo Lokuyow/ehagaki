@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { validateAndNormalizeUrl, validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from '../utils/editorUtils';
+import { validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from '../utils/editorUtils';
 import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
 import { CONTENT_TRACKING_CONFIG } from '../constants';
 import type { ContentTrackingOptions } from '../types';
@@ -59,25 +59,18 @@ function processImageUrl(
     return tr.replaceWith(start, end, imageNode);
 }
 
-/**
- * リンクマーク処理: URLにリンクマークを適用
- */
-function processLinkMark(
-    tr: import('@tiptap/pm/state').Transaction,
-    linkMark: import('@tiptap/pm/model').MarkType,
-    normalizedUrl: string,
-    start: number,
-    end: number
-): import('@tiptap/pm/state').Transaction {
-    const mark = linkMark.create({ href: normalizedUrl });
-    return tr.addMark(start, end, mark);
-}
 
 /**
- * テキスト中のURLや画像URLを検出し、リンクや画像ノードへ変換する関数
+ * テキスト中のURLと画像URLを検出し、動的にリンク化・画像ノード変換を行う関数
+ * 
+ * 機能:
+ * 1. 既存のリンクマークを削除（動的な再評価を可能にする）
+ * 2. URLパターンを検出してリンクマークを追加（Tiptap Link拡張の検証ルールを使用）
+ * 3. 画像URLを画像ノードに変換
+ * 
  * ProseMirror appendTransaction: ドキュメント変更後に追加のトランザクションを適用
  */
-function processLinksAndImages(
+function processUrlsAndImages(
     newState: import('@tiptap/pm/state').EditorState,
     enableAutoLink: boolean,
     enableImageConversion: boolean
@@ -100,37 +93,63 @@ function processLinksAndImages(
         imageUrl?: string;
     }> = [];
 
+    // Step 1: 既存のリンクマークを全て削除（動的な再評価のため）
+    // リンクマークがあるテキスト範囲を全て収集
+    if (enableAutoLink) {
+        newState.doc.descendants((node, pos) => {
+            if (!node.isText) return;
+            
+            // このテキストノードにリンクマークがあるかチェック
+            const linkMarkInNode = node.marks.find(m => m.type === linkMark);
+            if (linkMarkInNode) {
+                // リンクマーク付きの範囲を削除対象に追加
+                changes.push({
+                    type: 'removeMark',
+                    from: pos,
+                    to: pos + node.nodeSize
+                });
+            }
+        });
+    }
+
+    // Step 2: URLパターンを検出してリンクマーク追加または画像変換
+    // ProseMirror重要仕様: マークによってテキストノードが分割されるため、
+    // 段落/ブロックレベルで処理する必要がある
     newState.doc.descendants((node, pos) => {
-        if (!node.isText || !node.text) return;
+        // テキストを含むブロックノード（段落など）のみ処理
+        if (!node.isTextblock || node.childCount === 0) return;
 
-        const text = node.text;
-        const hasLinkMark = node.marks?.some(m => m.type === linkMark) ?? false;
+        // ブロック内の全テキストを結合
+        let fullText = '';
+        const textMapping: Array<{ textOffset: number; docPos: number }> = [];
+        
+        node.forEach((child, offset) => {
+            if (child.isText && child.text) {
+                textMapping.push({ textOffset: fullText.length, docPos: pos + 1 + offset });
+                fullText += child.text;
+            }
+        });
 
-        // 既存のリンクマークを削除（再処理のため）
-        if (hasLinkMark) {
-            changes.push({
-                type: 'removeMark',
-                from: pos,
-                to: pos + text.length
-            });
-        }
+        if (!fullText) return;
 
         // URL検出と処理
         let urlMatch: RegExpExecArray | null;
-        while ((urlMatch = CONTENT_TRACKING_CONFIG.URL_REGEX.exec(text)) !== null) {
+        while ((urlMatch = CONTENT_TRACKING_CONFIG.URL_REGEX.exec(fullText)) !== null) {
             if (typeof urlMatch.index !== 'number') continue;
 
             const matchStart = urlMatch.index;
             const originalUrl = urlMatch[0];
-            const prevChar = matchStart > 0 ? text[matchStart - 1] : undefined;
+            const prevChar = matchStart > 0 ? fullText[matchStart - 1] : undefined;
 
             // 単語境界チェック
             if (!isWordBoundary(prevChar)) continue;
 
             const { cleanUrl, actualLength } = cleanUrlEnd(originalUrl);
             const matchEnd = matchStart + actualLength;
-            const start = pos + matchStart;
-            const end = pos + matchEnd;
+            
+            // テキストオフセットをドキュメント位置に変換
+            const startDocPos = pos + 1 + matchStart;
+            const endDocPos = pos + 1 + matchEnd;
 
             // 画像URL処理（有効な場合のみ）
             if (enableImageConversion) {
@@ -138,8 +157,8 @@ function processLinksAndImages(
                 if (normalizedImageUrl && imageNodeType) {
                     changes.push({
                         type: 'replaceImage',
-                        from: start,
-                        to: end,
+                        from: startDocPos,
+                        to: endDocPos,
                         imageUrl: normalizedImageUrl
                     });
                     break; // 画像ノード挿入後は処理を中断
@@ -147,18 +166,37 @@ function processLinksAndImages(
             }
 
             // 通常のURL処理（有効な場合のみ）
+            // Tiptap v3のLink拡張の検証ルールに従う
             if (enableAutoLink) {
-                const isValidUrl = CONTENT_TRACKING_CONFIG.VALID_URL_PATTERN.test(cleanUrl) &&
-                    cleanUrl.length > CONTENT_TRACKING_CONFIG.MIN_URL_LENGTH;
-                if (isValidUrl) {
-                    const normalizedUrl = validateAndNormalizeUrl(cleanUrl) || cleanUrl;
-                    const mark = linkMark.create({ href: normalizedUrl });
-                    changes.push({
-                        type: 'addMark',
-                        from: start,
-                        to: end,
-                        mark
-                    });
+                // 最小長チェック（8文字以上）
+                if (cleanUrl.length < 8) continue;
+
+                // 基本的なURL形式チェック
+                if (!/^https?:\/\/[a-zA-Z0-9]/.test(cleanUrl)) continue;
+
+                // URLオブジェクトとして検証
+                try {
+                    const urlObj = new URL(cleanUrl);
+                    // ドメイン名が存在し、かつTLD（トップレベルドメイン）を含むことを確認
+                    // 例: "example.c" は無効、"example.com" は有効
+                    const hostname = urlObj.hostname;
+                    if (hostname.length > 0 && hostname.includes('.')) {
+                        // ドメイン名の最後の部分（TLD）が2文字以上であることを確認
+                        const parts = hostname.split('.');
+                        const tld = parts[parts.length - 1];
+                        if (tld && tld.length >= 2) {
+                            const mark = linkMark.create({ href: cleanUrl });
+                            changes.push({
+                                type: 'addMark',
+                                from: startDocPos,
+                                to: endDocPos,
+                                mark
+                            });
+                        }
+                    }
+                } catch {
+                    // URL解析エラーの場合はスキップ
+                    continue;
                 }
             }
         }
@@ -189,8 +227,15 @@ function processLinksAndImages(
  * 
  * 責務:
  * 1. ハッシュタグの装飾 (HashtagDecorationPlugin)
- * 2. URL/画像URLの自動変換 (LinkAndImagePlugin)
+ * 2. URL/画像URLの動的変換 (LinkAndImageConversionPlugin)
+ *    - 既存のリンクマークを削除して動的に再評価（URL判定解除）
+ *    - URLをリンクマークに変換（動的なURL判定）
+ *    - 画像URLを画像ノードに変換
  * 3. コンテンツ変更の追跡・通知 (ContentUpdatePlugin)
+ * 
+ * 注意: Tiptap v3のLink拡張機能の検証ルール（isAllowedUri, shouldAutoLink）は
+ * 初期入力時のみ適用され、既存テキストの動的な再評価は行いません。
+ * そのため、このプラグインで動的な判定・判定解除を実装しています。
  */
 export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>({
     name: 'contentTracking',
@@ -240,7 +285,10 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                 })
             ] : []),
 
-            // Plugin 2: URL/画像URLの自動変換
+            // Plugin 2: URL/画像URLの動的変換
+            // - 既存のリンクマークを削除して動的に再評価（URL判定解除）
+            // - URLをリンクマークに変換（動的なURL判定）
+            // - 画像URLを画像ノードに変換
             // ProseMirror appendTransaction: 他のトランザクション後に追加処理を実行
             ...(options.enableAutoLink || options.enableImageConversion ? [
                 new Plugin({
@@ -248,34 +296,38 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                     appendTransaction: (transactions, _oldState, newState) => {
                         // ドキュメント変更がある場合のみ処理
                         if (!transactions.some(tr => tr.docChanged)) return null;
-                        
+
                         // ペースト操作かどうかをチェック（ペースト直後はURL変換をスキップ）
                         // これにより、ペーストと通常入力の履歴が分離される
                         const isPaste = transactions.some(tr => tr.getMeta('paste'));
-                        
+
                         if (import.meta.env.MODE === 'development') {
-                            console.log('🔗 appendTransaction check:', { 
+                            console.log('🔗 appendTransaction check:', {
                                 isPaste,
                                 hasTr: transactions.length,
                                 docChanged: transactions.some(tr => tr.docChanged)
                             });
                         }
-                        
+
                         // ペースト直後の場合、次のトランザクションまで処理を遅延
                         // これにより編集履歴の整合性を保つ
                         if (isPaste) {
                             if (import.meta.env.MODE === 'development') {
-                                console.log('🔗 Skipping URL conversion for paste (will process on next edit)');
+                                console.log('🔗 Skipping URL/image conversion for paste (will process on next edit)');
                             }
                             return null;
                         }
-                        
-                        const resultTr = processLinksAndImages(
+
+                        // URL/画像URL処理を実行
+                        // - 既存のリンクマークを削除して動的に再評価
+                        // - URLをリンクマークに変換（Tiptap Link拡張の検証ルールを適用）
+                        // - 画像URLを画像ノードに変換
+                        const resultTr = processUrlsAndImages(
                             newState,
                             options.enableAutoLink ?? true,
                             options.enableImageConversion ?? true
                         );
-                        
+
                         // appendTransactionで返すトランザクションは
                         // デフォルトで元のトランザクションと同じ履歴エントリに統合される
                         // 
@@ -287,15 +339,15 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                         // このトランザクションが履歴として独立しないことを確認
                         if (resultTr) {
                             resultTr.setMeta('addToHistory', false);
-                            
+
                             if (import.meta.env.MODE === 'development') {
-                                console.log('🔗 Applying URL conversion:', {
+                                console.log('🔗 Applying URL/image conversion:', {
                                     steps: resultTr.steps.length,
                                     docChanged: resultTr.docChanged
                                 });
                             }
                         }
-                        
+
                         return resultTr;
                     }
                 })

@@ -142,15 +142,13 @@ export const SELECTORS = {
 
 // --- ContentTracking Extension用定数 ---
 export const CONTENT_TRACKING_CONFIG = {
-    // URL検出用正規表現
+    // URL検出用正規表現（画像URL検出およびリンク判定用）
     URL_REGEX: /https?:\/\/[^\s\u3000]+/gi,
-    VALID_URL_PATTERN: /^https?:\/\/[a-zA-Z0-9]/,
-    MIN_URL_LENGTH: 8,
 
     // デフォルト設定
     DEBOUNCE_DELAY: 300, // ms
     ENABLE_HASHTAGS: true,
-    ENABLE_AUTO_LINK: true,
+    ENABLE_AUTO_LINK: true, // ContentTrackingで動的なURL判定・判定解除を処理
     ENABLE_IMAGE_CONVERSION: true,
 
     // CSS クラス名
