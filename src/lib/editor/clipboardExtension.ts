@@ -202,30 +202,27 @@ export const ClipboardExtension = Extension.create({
                         const fragment = Fragment.from(paragraphs);
                         const customSlice = new Slice(fragment, 0, 0);
                         
-                        // トランザクションを作成し、編集履歴に追加するメタデータを設定
+                        // トランザクションを作成
                         // 
-                        // ProseMirror History拡張の重要な仕様:
-                        // - newGroupDelay内の連続トランザクションは同じ履歴グループに統合される
-                        // - ペースト操作を確実に独立した履歴エントリにするため、
-                        //   'addToHistory'とともに時刻情報を記録し、強制的に新グループを開始
+                        // Tiptap v3 UndoRedo拡張の仕様:
+                        // - paste: trueを設定すると、このトランザクションがペースト操作として認識される
+                        // - addToHistory: trueで履歴に記録（デフォルト動作だが明示的に設定）
+                        // - uiEvent: 'paste'でペーストイベントとして記録
                         //
-                        // メタデータ:
-                        // - paste: ペースト操作であることを示す（appendTransactionで判定）
-                        // - addToHistory: 履歴に記録する
-                        // - rebased: undefinedまたはfalseに設定（新しい履歴グループを開始）
+                        // UndoRedoの動作:
+                        // - ペースト操作は自動的に独立した履歴グループとして扱われる
+                        // - newGroupDelay内でも、ペースト操作は必ず新しいグループを開始する
                         const tr = state.tr
                             .replaceSelection(customSlice)
                             .setMeta('paste', true)
-                            .setMeta('addToHistory', true)
-                            .setMeta('rebased', 0)  // 強制的に新しい履歴グループを開始
-                            .setTime(Date.now());   // タイムスタンプを更新
+                            .setMeta('uiEvent', 'paste')
+                            .setMeta('addToHistory', true);
                         
                         if (import.meta.env.MODE === 'development') {
                             console.log('📋 handlePaste: dispatching transaction', {
                                 docChanged: tr.docChanged,
                                 steps: tr.steps.length,
-                                paragraphs: paragraphs.length,
-                                time: tr.time
+                                paragraphs: paragraphs.length
                             });
                         }
                         
@@ -301,14 +298,12 @@ export function processPastedText(editor: any, text: string): boolean {
     const customSlice = new Slice(fragment, 0, 0);
 
     // トランザクションを作成して挿入
-    // addToHistory: ペースト操作を編集履歴に記録（Ctrl+Zで元に戻せるようにする）
-    // rebased: 0を設定して、強制的に新しい履歴グループを開始
+    // Tiptap v3 UndoRedo拡張: ペースト操作として記録
     let tr = state.tr
         .replaceSelection(customSlice)
         .setMeta('paste', true)
-        .setMeta('addToHistory', true)
-        .setMeta('rebased', 0)
-        .setTime(Date.now());
+        .setMeta('uiEvent', 'paste')
+        .setMeta('addToHistory', true);
 
     // カーソルを挿入したコンテンツの末尾に移動
     const resolvedPos = tr.doc.resolve(tr.selection.from);

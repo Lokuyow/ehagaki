@@ -319,7 +319,7 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                         // appendTransactionで返すトランザクションは
                         // デフォルトで元のトランザクションと同じ履歴エントリに統合される
                         // 
-                        // ProseMirror History仕様:
+                        // Tiptap v3 UndoRedo拡張の仕様:
                         // appendTransactionは元のトランザクションに付随する変更として扱われ、
                         // 同じ履歴グループに統合される。これにより、Undo時に一緒に戻る。
                         // 

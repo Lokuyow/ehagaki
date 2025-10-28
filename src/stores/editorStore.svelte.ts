@@ -33,6 +33,11 @@ export function createEditorStore(placeholderText: string) {
                         class: 'editor-paragraph',
                     },
                 },
+                // Tiptap v3: UndoRedo extension が StarterKit に含まれています
+                undoRedo: {
+                    depth: 100, // 履歴の最大保存数
+                    newGroupDelay: 500, // 連続入力を同じグループにまとめる時間（ミリ秒）
+                },
                 // Tiptap v3: Link extension が StarterKit に含まれています
                 link: {
                     HTMLAttributes: {
@@ -82,8 +87,6 @@ export function createEditorStore(placeholderText: string) {
                         { scheme: 'https', optionalSlashes: false }
                     ]
                 },
-                // Tiptap v3: history オプションは StarterKit から削除されました
-                // History 拡張機能を個別にインポートして設定する必要があります
             }),
             // Image拡張の設定
             Image.configure({
