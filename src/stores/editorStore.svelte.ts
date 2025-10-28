@@ -198,7 +198,7 @@ export function createEditorStore(placeholderText: string) {
             // エディター作成時にグローバル参照を設定
             (window as any).__currentEditor = editor;
         },
-        onUpdate({ editor }) {
+        onUpdate() {
             // コンテンツ更新処理のみ（プレースホルダーはPlaceholderエクステンションが自動管理）
         },
         onDestroy() {
@@ -329,7 +329,6 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
     const {
         placeholderText,
         editorContainerEl,
-        currentEditor,
         hasStoredKey,
         submitPost,
         uploadFiles,

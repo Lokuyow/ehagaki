@@ -31,7 +31,6 @@
     postComponentUIStore,
   } from "../stores/appStore.svelte";
   import {
-    placeholderTextStore,
     editorState,
     updateEditorContent,
     updatePostStatus,
