@@ -182,26 +182,26 @@
 
   export function insertTextContent(content: string): void {
     if (!currentEditor || !content) return;
-    
+
     const editor = currentEditor; // nullチェック済みのローカル変数
-    
+
     // 改行で分割してパラグラフの配列を作成
-    const lines = content.split('\n');
-    
+    const lines = content.split("\n");
+
     // Tiptapのパラグラフノードとして構造化
-    const paragraphNodes = lines.map(line => ({
-      type: 'paragraph',
-      content: line ? [{ type: 'text', text: line }] : undefined
+    const paragraphNodes = lines.map((line) => ({
+      type: "paragraph",
+      content: line ? [{ type: "text", text: line }] : undefined,
     }));
-    
+
     // アクセス時の処理なので、常に直接挿入（既存内容を置き換え）
     editor.commands.setContent({
-      type: 'doc',
-      content: paragraphNodes
+      type: "doc",
+      content: paragraphNodes,
     });
-    
+
     // カーソルを末尾に移動
-    editor.commands.focus('end');
+    editor.commands.focus("end");
   }
 
   export async function submitPost() {
@@ -328,7 +328,7 @@
     if (showGlobalContextMenu && globalContextMenuState.nodeId) {
       // ノードの種類を判定（画像か動画か）
       const nodeId = globalContextMenuState.nodeId;
-      
+
       // nodeIdを使ってノードを探す
       let isVideoNode = false;
       if (currentEditor?.state?.doc) {
@@ -342,7 +342,7 @@
           ) => void;
         }).descendants((node: DescendantNode) => {
           if (node.attrs.id === nodeId) {
-            isVideoNode = node.type.name === 'video';
+            isVideoNode = node.type.name === "video";
             return false; // 見つかったので走査停止
           }
         });
@@ -383,14 +383,6 @@
       updatePostStatus({ ...postStatus, error: false, message: "" });
     }
   });
-  $effect(() => {
-    if (placeholderTextStore.value && editor?.updatePlaceholder) {
-      setTimeout(
-        () => editor && editor.updatePlaceholder?.(placeholderTextStore.value),
-        0,
-      );
-    }
-  });
 
   export function openFileDialog() {
     fileInput?.click();
@@ -416,7 +408,6 @@
       <!-- svelte-tiptap の Editor 型差異を回避するためここでは any キャスト -->
       <EditorContent editor={currentEditor as any} class="editor-content" />
     {/if}
-    <!-- ImagePlaceholderは文字プレースホルダーと重複するため削除 -->
   </div>
 
   <input
@@ -534,37 +525,14 @@
     position: relative;
   }
 
-  /* Tiptap標準のプレースホルダーを完全に無効化 */
-  :global(.tiptap-editor .is-empty::before),
-  :global(.tiptap-editor p.is-empty::before),
-  :global(.tiptap-editor .ProseMirror-placeholder::before) {
-    display: none !important;
-    content: none !important;
-  }
-
-  /* カスタムプレースホルダーの表示 - 最初の段落のみ、かつエディタが完全に空の場合のみ */
-  :global(
-      .tiptap-editor.is-editor-empty > p.is-editor-empty:first-child::before
-    ) {
-    content: attr(data-placeholder) !important;
-    position: absolute;
-    top: 0;
-    left: 0;
-    color: var(--text-placeholder, #999) !important;
+  /* Placeholderのスタイル（Tiptap公式ドキュメントに従う） */
+  :global(.tiptap-editor p.is-editor-empty:first-child::before) {
+    color: var(--text);
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
     pointer-events: none;
-    font-size: 1.25rem;
-    line-height: 1.4;
     opacity: 0.6;
-    z-index: 1;
-    display: block !important;
-  }
-
-  /* フォーカス時のプレースホルダー表示を継続（薄く表示） */
-  :global(
-      .tiptap-editor.is-editor-empty:focus
-        > p.is-editor-empty:first-child::before
-    ) {
-    opacity: 0.6 !important;
   }
 
   /* エディタ内の要素スタイル */

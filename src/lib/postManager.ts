@@ -356,21 +356,6 @@ export class PostManager {
 
   private applyEmptyStateToEditor(editor: TipTapEditor): void {
     editor.chain().clearContent().run();
-    const editorElement = editor.view.dom as HTMLElement;
-    if (!editorElement) return;
-    editorElement.classList.add("is-editor-empty");
-    const paragraphs = editorElement.querySelectorAll("p");
-    const placeholder =
-      editorElement.getAttribute("data-placeholder") || "テキストを入力してください";
-    paragraphs.forEach((p, index) => {
-      const paragraph = p as HTMLElement;
-      if (index === 0) {
-        paragraph.classList.add("is-editor-empty");
-      } else {
-        paragraph.classList.remove("is-editor-empty");
-      }
-      paragraph.setAttribute("data-placeholder", placeholder);
-    });
   }
 
   resetPostContent(editor: TipTapEditor): void {

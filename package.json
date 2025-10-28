@@ -35,7 +35,7 @@
     "@rx-nostr/crypto": "^0.0.0",
     "@tiptap/core": "^3.9.0",
     "@tiptap/extension-image": "^3.9.0",
-    "@tiptap/extension-placeholder": "^3.9.0",
+    "@tiptap/extensions": "^3.9.0",
     "@tiptap/extension-unique-id": "^3.9.0",
     "@tiptap/starter-kit": "^3.9.0",
     "blurhash": "^2.0.5",

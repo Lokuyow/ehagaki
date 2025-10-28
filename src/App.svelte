@@ -38,7 +38,6 @@
     updateUrlQueryContentStore,
     clearUrlQueryContentStore,
   } from "./stores/appStore.svelte";
-  import { updatePlaceholderText } from "./stores/editorStore.svelte";
   import type { UploadProgress, BalloonMessage } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
   import { BalloonMessageManager } from "./lib/balloonMessageManager";
@@ -241,15 +240,6 @@
     if ($locale) localStorage.setItem("locale", $locale);
   });
 
-  // locale変更時にプレースホルダーを更新
-  $effect(() => {
-    if ($locale) {
-      const text =
-        $_("postComponent.enter_your_text") || "テキストを入力してください";
-      updatePlaceholderText(text);
-    }
-  });
-
   let localeInitialized = $state(false);
 
   // 共有画像取得済みフラグ
@@ -263,11 +253,6 @@
       if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
       await waitLocale();
       localeInitialized = true;
-
-      // プレースホルダーテキストを初期化
-      const initialPlaceholder =
-        $_("postComponent.enter_your_text") || "テキストを入力してください";
-      updatePlaceholderText(initialPlaceholder);
 
       // 認証サービスの認証ハンドラーを先にセット
       authService.setNostrLoginHandler(handleNostrLoginAuth);

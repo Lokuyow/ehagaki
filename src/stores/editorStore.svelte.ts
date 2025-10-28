@@ -1,7 +1,7 @@
 import { createEditor } from 'svelte-tiptap';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
-import Placeholder from '@tiptap/extension-placeholder';
+import { Placeholder } from '@tiptap/extensions';
 import UniqueID from '@tiptap/extension-unique-id';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
@@ -10,7 +10,6 @@ import { Video } from '../lib/editor/videoExtension';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editorUtils';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
-import { CustomHistoryPlugin } from '../lib/editor/customHistoryPlugin';
 import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams, PlaceholderEntry, FileUploadResponse, ImageDimensions } from '../lib/types';
 import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '../lib/editor/editorDomActions.svelte';
 import { processPastedText } from '../lib/editor/clipboardExtension';
@@ -26,14 +25,6 @@ function generatePlaceholderId(): string {
  * Tiptap v2のエディターストアを作成
  */
 export function createEditorStore(placeholderText: string) {
-    let placeholderExtension = Placeholder.configure({
-        placeholder: placeholderText,
-        emptyEditorClass: 'is-editor-empty',
-        showOnlyWhenEditable: true,
-        showOnlyCurrent: true,  // 変更: 現在の段落のみに表示
-        includeChildren: false, // 変更: 子要素には表示しない
-    });
-
     const editorStore = createEditor({
         extensions: [
             StarterKit.configure({
@@ -126,11 +117,13 @@ export function createEditorStore(placeholderText: string) {
             ImageDragDropExtension,
             SmartBackspaceExtension, // ←追加
             GapCursorNewlineExtension,
-            placeholderExtension.extend({
-                // カスタムHistoryプラグインを追加
-                addProseMirrorPlugins() {
-                    return [CustomHistoryPlugin];
-                }
+            // Placeholderエクステンションの設定
+            Placeholder.configure({
+                placeholder: placeholderText,
+                emptyEditorClass: 'is-editor-empty',
+                showOnlyWhenEditable: true,
+                showOnlyCurrent: false,
+                includeChildren: false,
             }),
         ],
         // カスタムのClipboardExtensionのみ有効化（他のペーストルールを無効化して競合を回避）
@@ -147,7 +140,6 @@ export function createEditorStore(placeholderText: string) {
         editorProps: {
             attributes: {
                 class: 'tiptap-editor',
-                'data-placeholder': placeholderText,
             },
             // タッチデバイス対応のイベントハンドリング
             handleClickOn(view, pos, _node, _nodePos, event, _direct) {
@@ -205,125 +197,15 @@ export function createEditorStore(placeholderText: string) {
         onCreate({ editor }) {
             // エディター作成時にグローバル参照を設定
             (window as any).__currentEditor = editor;
-
-            // プレースホルダー属性を設定
-            const editorElement = editor.view.dom as HTMLElement;
-            if (editorElement) {
-                // 初期状態では空なのでis-editor-emptyクラスを追加
-                editorElement.classList.add('is-editor-empty');
-                editorElement.setAttribute('data-placeholder', placeholderText);
-
-                // 最初の段落要素にのみプレースホルダー属性を設定（以降、onUpdateで管理）
-                const firstParagraph = editorElement.querySelector('p:first-child') as HTMLElement | null;
-                if (firstParagraph) {
-                    firstParagraph.setAttribute('data-placeholder', placeholderText);
-                }
-            }
         },
         onUpdate({ editor }) {
-            // 更新時にエディタ全体が空かどうかを判定
-            const editorElement = editor.view.dom as HTMLElement;
-            if (editorElement) {
-                // エディタの内容を確認（テキストまたは画像/動画があるか）
-                const doc = editor.state.doc;
-                let isEmpty = true;
-
-                doc.descendants((node) => {
-                    // テキストがある、または画像/動画ノードがある場合は空ではない
-                    if (node.isText && node.text && node.text.trim().length > 0) {
-                        isEmpty = false;
-                        return false; // 探索を中止
-                    }
-                    if (node.type.name === 'image' || node.type.name === 'video') {
-                        isEmpty = false;
-                        return false; // 探索を中止
-                    }
-                    return true;
-                });
-
-                // is-editor-emptyクラスの現在の状態を確認
-                const currentHasEmptyClass = editorElement.classList.contains('is-editor-empty');
-                const shouldHaveEmptyClass = isEmpty;
-
-                // 明示的な変更がある場合のみクラスを操作（点滅防止）
-                if (currentHasEmptyClass !== shouldHaveEmptyClass) {
-                    if (isEmpty) {
-                        editorElement.classList.add('is-editor-empty');
-                    } else {
-                        editorElement.classList.remove('is-editor-empty');
-                    }
-                }
-
-                // 段落要素のis-editor-emptyクラスを設定（最初の段落のみ対象）
-                const firstParagraph = editorElement.querySelector('p:first-child') as HTMLElement | null;
-                if (firstParagraph) {
-                    const currentHasEmptyClass = firstParagraph.classList.contains('is-editor-empty');
-                    const shouldHaveEmptyClass = isEmpty;
-
-                    // 明示的な変更がある場合のみクラスを操作
-                    if (currentHasEmptyClass !== shouldHaveEmptyClass) {
-                        if (isEmpty) {
-                            firstParagraph.classList.add('is-editor-empty');
-                        } else {
-                            firstParagraph.classList.remove('is-editor-empty');
-                        }
-                    }
-
-                    // プレースホルダー属性は初回のみ設定（以降は不変）
-                    if (!firstParagraph.getAttribute('data-placeholder')) {
-                        const placeholder = editorElement.getAttribute('data-placeholder') || placeholderText;
-                        firstParagraph.setAttribute('data-placeholder', placeholder);
-                    }
-                }
-            }
+            // コンテンツ更新処理のみ（プレースホルダーはPlaceholderエクステンションが自動管理）
         },
         onDestroy() {
             // エディター破棄時にグローバル参照をクリア
             delete (window as any).__currentEditor;
         }
     });
-
-    // プレースホルダー更新機能を修正
-    const updatePlaceholder = (newPlaceholder: string) => {
-        const currentEditor = (window as any).__currentEditor;
-        if (currentEditor && currentEditor.view) {
-            // エディターDOM要素のdata-placeholder属性を更新（現在の値と異なる場合のみ）
-            const editorElement = currentEditor.view.dom as HTMLElement;
-            if (editorElement) {
-                const currentPlaceholder = editorElement.getAttribute('data-placeholder');
-                if (currentPlaceholder !== newPlaceholder) {
-                    editorElement.setAttribute('data-placeholder', newPlaceholder);
-                }
-
-                // 最初の段落要素のプレースホルダー属性も更新（現在の値と異なる場合のみ）
-                const firstParagraph = editorElement.querySelector('p:first-child') as HTMLElement | null;
-                if (firstParagraph) {
-                    const currentAttr = firstParagraph.getAttribute('data-placeholder');
-                    if (currentAttr !== newPlaceholder) {
-                        firstParagraph.setAttribute('data-placeholder', newPlaceholder);
-                    }
-                }
-            }
-
-            // Placeholder拡張の設定も更新
-            const placeholderExt = currentEditor.extensionManager.extensions.find(
-                (ext: any) => ext.name === 'placeholder'
-            );
-            if (placeholderExt) {
-                const currentPlaceholder = placeholderExt.options.placeholder;
-                if (currentPlaceholder !== newPlaceholder) {
-                    placeholderExt.options.placeholder = newPlaceholder;
-                    // 強制的に再描画
-                    currentEditor.view.dispatch(
-                        currentEditor.state.tr.setMeta('addToHistory', false)
-                    );
-                }
-            }
-        }
-    };
-
-    // ストアにメソッドを追加
-    (editorStore as any).updatePlaceholder = updatePlaceholder;
 
     return editorStore;
 }
@@ -413,6 +295,20 @@ export function resetPostStatus(): void {
 
 export function updatePlaceholderText(text: string): void {
     placeholderTextStore.value = text;
+    
+    // エディターインスタンスがあれば、Placeholderエクステンションのオプションを更新
+    if (currentEditorInstance) {
+        const placeholderExt = currentEditorInstance.extensionManager.extensions.find(
+            (ext: any) => ext.name === 'placeholder'
+        );
+        if (placeholderExt && placeholderExt.options) {
+            placeholderExt.options.placeholder = text;
+            // エディターの状態を更新してプレースホルダーを再描画
+            currentEditorInstance.view.dispatch(
+                currentEditorInstance.state.tr.setMeta('addToHistory', false)
+            );
+        }
+    }
 }
 
 // --- 投稿機能の統合 ---
