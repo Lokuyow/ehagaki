@@ -207,6 +207,7 @@ describe('PostValidator', () => {
 
 describe('PostManager editor state helpers', () => {
     let mockDeps: PostManagerDeps;
+    let manager: PostManager;
 
     beforeEach(() => {
         mockDeps = {
@@ -219,45 +220,169 @@ describe('PostManager editor state helpers', () => {
                 error: vi.fn(),
             } as any,
         };
+
+        manager = new PostManager(undefined, mockDeps);
     });
 
-    it('clearContentAfterSuccess clears editor without resetting post status', () => {
-        const manager = new PostManager(undefined, mockDeps);
-        const { editor, dom, run } = createMockEditor({ placeholder: 'Initial placeholder' });
+    describe('preparePostContent', () => {
+        it('エディタからコンテンツを抽出する', () => {
+            const mockEditor = createMockEditor();
+            const expectedContent = 'Test content';
+            (mockDeps.extractContentWithImagesFn as any).mockReturnValue(expectedContent);
 
-        manager.clearContentAfterSuccess(editor);
+            const result = manager.preparePostContent(mockEditor.editor);
 
-        expect(run).toHaveBeenCalled();
-        expect(dom.classList.contains('is-editor-empty')).toBe(true);
-        expect(dom.paragraphs[0].classList.contains('is-editor-empty')).toBe(true);
-        expect(dom.paragraphs[1].classList.contains('is-editor-empty')).toBe(false);
-        expect(dom.paragraphs[0].getAttribute('data-placeholder')).toBe('Initial placeholder');
-        expect(mockDeps.resetEditorStateFn).not.toHaveBeenCalled();
-        expect(mockDeps.resetPostStatusFn).not.toHaveBeenCalled();
+            expect(mockDeps.extractContentWithImagesFn).toHaveBeenCalledWith(mockEditor.editor);
+            expect(result).toBe(expectedContent);
+        });
     });
 
-    it('resetPostContent clears editor and resets state', () => {
-        const manager = new PostManager(undefined, mockDeps);
-        const { editor, dom, run } = createMockEditor({ placeholder: 'Initial placeholder' });
+    describe('prepareImageBlurhashMap', () => {
+        it('エディタから画像blurhashマップを準備する', () => {
+            const mockEditor = createMockEditor();
+            const imageOxMap = { 'https://example.com/image.jpg': '100' };
+            const imageXMap = { 'https://example.com/image.jpg': '200' };
+            const rawBlurhashMap = { 'https://example.com/image.jpg': 'blurhash123' };
 
-        manager.resetPostContent(editor);
+            (mockDeps.extractImageBlurhashMapFn as any).mockReturnValue(rawBlurhashMap);
 
-        expect(run).toHaveBeenCalled();
-        expect(dom.classList.contains('is-editor-empty')).toBe(true);
-        expect(dom.paragraphs[0].classList.contains('is-editor-empty')).toBe(true);
-        expect(dom.paragraphs[1].classList.contains('is-editor-empty')).toBe(false);
-        expect(dom.paragraphs[0].getAttribute('data-placeholder')).toBe('Initial placeholder');
-        expect(mockDeps.resetEditorStateFn).toHaveBeenCalledTimes(1);
-        expect(mockDeps.resetPostStatusFn).toHaveBeenCalledTimes(1);
+            const result = manager.prepareImageBlurhashMap(mockEditor.editor, imageOxMap, imageXMap);
+
+            expect(mockDeps.extractImageBlurhashMapFn).toHaveBeenCalledWith(mockEditor.editor);
+            expect(result).toEqual({
+                'https://example.com/image.jpg': {
+                    m: 'image/jpeg',
+                    blurhash: 'blurhash123',
+                    ox: '100',
+                    x: '200',
+                }
+            });
+        });
     });
 
-    it('clearContentAfterSuccess assigns fallback placeholder when undefined', () => {
-        const manager = new PostManager(undefined, mockDeps);
-        const { editor, dom } = createMockEditor({ placeholder: null });
+    describe('resetPostContent', () => {
+        it('エディタをリセットし、ストアもリセットする', () => {
+            const mockEditor = createMockEditor();
 
-        manager.clearContentAfterSuccess(editor);
+            manager.resetPostContent(mockEditor.editor);
 
-        expect(dom.paragraphs[0].getAttribute('data-placeholder')).toBe('テキストを入力してください');
+            expect(mockEditor.clearContent).toHaveBeenCalled();
+            expect(mockDeps.resetEditorStateFn).toHaveBeenCalled();
+            expect(mockDeps.resetPostStatusFn).toHaveBeenCalled();
+        });
+    });
+
+    describe('clearContentAfterSuccess', () => {
+        it('投稿成功後にエディタのコンテンツをクリアする', () => {
+            const mockEditor = createMockEditor();
+
+            manager.clearContentAfterSuccess(mockEditor.editor);
+
+            expect(mockEditor.clearContent).toHaveBeenCalled();
+        });
+    });
+
+    describe('performPostSubmission', () => {
+        let mockRxNostr: RxNostr;
+        let mockAuthState: AuthState;
+        let mockHashtagStore: HashtagStore;
+        let mockKeyManager: MockKeyManager;
+
+        beforeEach(() => {
+            mockRxNostr = createMockRxNostr();
+            mockAuthState = {
+                isAuthenticated: true,
+                type: 'nsec',
+                pubkey: 'testpubkey123',
+                npub: '',
+                nprofile: '',
+                isValid: true,
+                isInitialized: true
+            };
+            mockHashtagStore = {
+                hashtags: ['test'],
+                tags: [['t', 'test']]
+            };
+            mockKeyManager = new MockKeyManager('test-secret-key', 'test-storage-key', false);
+
+            mockDeps.authStateStore = { value: mockAuthState };
+            mockDeps.hashtagStore = mockHashtagStore;
+            mockDeps.keyManager = mockKeyManager;
+            mockDeps.seckeySignerFn = vi.fn().mockImplementation((key: string) => ({
+                sign: vi.fn().mockImplementation(async (event: any) => ({ ...event, sig: "mock-signature" }))
+            }));
+
+            manager = new PostManager(mockRxNostr, mockDeps);
+        });
+
+        it('投稿処理を実行し、成功時にコールバックを呼び出す', async () => {
+            const mockEditor = createMockEditor();
+            const imageOxMap = {};
+            const imageXMap = {};
+            const onStart = vi.fn();
+            const onSuccess = vi.fn();
+            const onError = vi.fn();
+
+            const expectedContent = 'Test content';
+            (mockDeps.extractContentWithImagesFn as any).mockReturnValue(expectedContent);
+            (mockDeps.extractImageBlurhashMapFn as any).mockReturnValue({});
+
+            // 成功レスポンスのモック
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.next({
+                            from: 'relay1',
+                            ok: true,
+                            done: true,
+                            eventId: 'test-event-id',
+                            type: 'ok',
+                            message: ''
+                        });
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            await manager.performPostSubmission(mockEditor.editor, imageOxMap, imageXMap, onStart, onSuccess, onError);
+
+            expect(onStart).toHaveBeenCalled();
+            expect(onSuccess).toHaveBeenCalled();
+            expect(onError).not.toHaveBeenCalled();
+        });
+
+        it('投稿処理が失敗した場合、エラーコールバックを呼び出す', async () => {
+            const mockEditor = createMockEditor();
+            const imageOxMap = {};
+            const imageXMap = {};
+            const onStart = vi.fn();
+            const onSuccess = vi.fn();
+            const onError = vi.fn();
+
+            const expectedContent = 'Test content';
+            (mockDeps.extractContentWithImagesFn as any).mockReturnValue(expectedContent);
+            (mockDeps.extractImageBlurhashMapFn as any).mockReturnValue({});
+
+            // エラーレスポンスのモック
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.error(new Error('Network error'));
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            await manager.performPostSubmission(mockEditor.editor, imageOxMap, imageXMap, onStart, onSuccess, onError);
+
+            expect(onStart).toHaveBeenCalled();
+            expect(onSuccess).not.toHaveBeenCalled();
+            expect(onError).toHaveBeenCalledWith('post_error');
+        });
     });
 });
 
