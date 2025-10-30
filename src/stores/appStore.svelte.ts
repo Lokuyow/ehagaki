@@ -32,6 +32,10 @@ export function setVideoCompressionService(service: VideoCompressionService | nu
     videoCompressionServiceInstance = service;
 }
 
+export function getVideoCompressionService(): VideoCompressionService | null {
+    return videoCompressionServiceInstance;
+}
+
 export function abortVideoCompression(): void {
     const isDev = import.meta.env.DEV;
     if (isDev) console.log('[appStore] abortVideoCompression called');
@@ -53,6 +57,10 @@ let imageCompressionServiceInstance: any | null = null;
 
 export function setImageCompressionService(service: any | null): void {
     imageCompressionServiceInstance = service;
+}
+
+export function getImageCompressionService(): any | null {
+    return imageCompressionServiceInstance;
 }
 
 export function abortImageCompression(): void {

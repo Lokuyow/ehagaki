@@ -26,10 +26,12 @@ import { insertPlaceholdersIntoEditor, generateBlurhashesForPlaceholders, replac
 export class UploadManager {
     private dependencies: UploadHelperDependencies;
     private devMode: boolean;
+    private fileUploadManager: FileUploadManagerInterface;
 
     constructor(dependencies: UploadHelperDependencies, devMode: boolean) {
         this.dependencies = dependencies;
         this.devMode = devMode;
+        this.fileUploadManager = new this.dependencies.FileUploadManager();
     }
 
     async uploadFiles(
@@ -38,12 +40,10 @@ export class UploadManager {
         uploadCallbacks?: UploadInfoCallbacks,
         metadataList?: Array<Record<string, string | number | undefined>>
     ): Promise<FileUploadResponse[] | null> {
-        const fileUploadManager = new this.dependencies.FileUploadManager();
-
         try {
             if (validFiles.length === 1) {
                 return [
-                    await fileUploadManager.uploadFileWithCallbacks(
+                    await this.fileUploadManager.uploadFileWithCallbacks(
                         validFiles[0],
                         endpoint,
                         uploadCallbacks,
@@ -52,7 +52,7 @@ export class UploadManager {
                     ),
                 ];
             } else if (validFiles.length > 1) {
-                return await fileUploadManager.uploadMultipleFilesWithCallbacks(
+                return await this.fileUploadManager.uploadMultipleFilesWithCallbacks(
                     validFiles,
                     endpoint,
                     uploadCallbacks,

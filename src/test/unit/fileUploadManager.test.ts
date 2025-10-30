@@ -27,8 +27,34 @@ vi.mock("../../lib/utils/appUtils", () => ({
     renameByMimeType: vi.fn((name, type) => name)
 }));
 
-vi.mock("../lib/debug", () => ({
-    debugLog: vi.fn()
+vi.mock("../../lib/debug", () => ({
+    showCompressedImagePreview: vi.fn()
+}));
+
+vi.mock("../../stores/appStore.svelte", () => ({
+    showImageSizeInfo: vi.fn(),
+    setVideoCompressionService: vi.fn(),
+    setImageCompressionService: vi.fn(),
+    getVideoCompressionService: vi.fn(() => null),
+    getImageCompressionService: vi.fn(() => null),
+    uploadAbortFlagStore: {
+        value: false,
+        set: vi.fn(),
+        reset: vi.fn()
+    }
+}));
+
+vi.mock("../../stores/appStore.svelte", () => ({
+    showImageSizeInfo: vi.fn(),
+    setVideoCompressionService: vi.fn(),
+    setImageCompressionService: vi.fn(),
+    getVideoCompressionService: vi.fn(() => null),
+    getImageCompressionService: vi.fn(() => null),
+    uploadAbortFlagStore: {
+        value: false,
+        set: vi.fn(),
+        reset: vi.fn()
+    }
 }));
 
 vi.mock("../lib/tags/imetaTag", () => ({

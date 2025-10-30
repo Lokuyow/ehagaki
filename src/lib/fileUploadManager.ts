@@ -1,7 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
-import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService } from "../stores/appStore.svelte";
+import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
 import { VideoCompressionService } from "./videoCompressionService";
 import type {
@@ -250,13 +250,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
     this.authService = authService || new NostrAuthService();
 
     // VideoCompressionServiceインスタンスをストアに登録
-    if (this.videoCompressionService instanceof VideoCompressionService) {
+    if (this.videoCompressionService instanceof VideoCompressionService && !getVideoCompressionService()) {
       setVideoCompressionService(this.videoCompressionService);
       console.log('[FileUploadManager] VideoCompressionService registered to store');
     }
 
     // ImageCompressionServiceインスタンスをストアに登録
-    if (this.imageCompressionService instanceof ImageCompressionService) {
+    if (this.imageCompressionService instanceof ImageCompressionService && !getImageCompressionService()) {
       setImageCompressionService(this.imageCompressionService);
       console.log('[FileUploadManager] ImageCompressionService registered to store');
     }

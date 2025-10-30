@@ -1,7 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { ShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare } from "../../lib/shareHandler";
-import * as appStore from "../../stores/appStore.svelte";
 import type { SharedImageMetadata } from "../../lib/types";
+
+vi.mock("../../stores/appStore.svelte", () => ({
+    clearSharedImageStore: vi.fn(),
+    updateSharedImageStore: vi.fn(),
+    getSharedImageFile: vi.fn(() => null),
+    getSharedImageMetadata: vi.fn(() => undefined),
+    getVideoCompressionService: vi.fn(() => null),
+    getImageCompressionService: vi.fn(() => null),
+    setVideoCompressionService: vi.fn(),
+    setImageCompressionService: vi.fn()
+}));
+
+const mockAppStore = vi.mocked(await import("../../stores/appStore.svelte"));
+
+vi.mock("../../lib/debug", () => ({
+    showCompressedImagePreview: vi.fn()
+}));
 
 // モック用ファイル生成
 function createMockFile(name = "test.jpg", type = "image/jpeg", size = 1234): File {
@@ -45,7 +61,7 @@ describe("ShareHandler", () => {
 
     it("clearSharedImageはclearSharedImageStoreを呼び出す", () => {
         handler.clearSharedImage();
-        expect(appStore.clearSharedImageStore).toHaveBeenCalled();
+        expect(mockAppStore.clearSharedImageStore).toHaveBeenCalled();
     });
 
     it("SHARED_IMAGEメッセージでupdateSharedImageStoreが呼ばれる", () => {
@@ -54,7 +70,7 @@ describe("ShareHandler", () => {
         const event = { data: { type: "SHARED_IMAGE", data: { image: file, metadata } } };
         // @ts-ignore
         handler["handleServiceWorkerMessage"](event);
-        expect(appStore.updateSharedImageStore).toHaveBeenCalledWith(file, metadata);
+        expect(mockAppStore.updateSharedImageStore).toHaveBeenCalledWith(file, metadata);
     });
 
     it("ServiceWorkerコントローラーが無い場合getSharedImageFromServiceWorkerはnullを返す", async () => {
@@ -95,7 +111,7 @@ describe("ShareHandler", () => {
         });
         const result = await handler.checkForSharedImageOnLaunch();
         expect(result.success).toBe(true);
-        expect(appStore.updateSharedImageStore).toHaveBeenCalledWith(file, metadata);
+        expect(mockAppStore.updateSharedImageStore).toHaveBeenCalledWith(file, metadata);
     });
 
     it("isProcessingは初期状態でfalseを返す", () => {
