@@ -523,7 +523,6 @@
     will-change: scroll-position;
     transform: translateZ(0);
     -webkit-tap-highlight-color: transparent;
-    position: relative;
   }
 
   /* Placeholderのスタイル（Tiptap公式ドキュメントに従う） */
