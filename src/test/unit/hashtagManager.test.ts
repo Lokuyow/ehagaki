@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { extractHashtagsFromContent, updateHashtagData } from '../lib/tags/hashtagManager';
-import { hashtagDataStore } from '../stores/tagsStore.svelte';
+import { extractHashtagsFromContent, updateHashtagData } from '../../lib/tags/hashtagManager';
+import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 
 describe('hashtagManager', () => {
 	beforeEach(() => {

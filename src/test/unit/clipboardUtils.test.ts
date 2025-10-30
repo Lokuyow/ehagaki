@@ -8,7 +8,7 @@ import {
     serializeParagraphs, 
     visualizeLineBreaks,
     analyzeLineBreaks 
-} from '../lib/utils/clipboardUtils';
+} from '../../lib/utils/clipboardUtils';
 
 describe('clipboardUtils', () => {
     describe('normalizeClipboardText', () => {

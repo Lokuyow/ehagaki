@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { IframeMessageService } from "../lib/iframeMessageService";
-import type { IframeMessagePayload } from "../lib/iframeMessageService";
+import { IframeMessageService } from "../../lib/iframeMessageService";
+import type { IframeMessagePayload } from "../../lib/iframeMessageService";
 
 describe("IframeMessageService", () => {
   let mockWindow: any;

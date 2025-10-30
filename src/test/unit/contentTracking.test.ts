@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { CONTENT_TRACKING_CONFIG } from '../../lib/constants';
 
 /**
@@ -12,7 +12,7 @@ describe('ContentTracking 定数', () => {
         it('HTTP/HTTPS URLを正しく検出すること', () => {
             const text = 'Check out https://example.com/image.png and http://test.org/photo.jpg!';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(2);
             expect(matches[0][0]).toBe('https://example.com/image.png');
             expect(matches[1][0]).toBe('http://test.org/photo.jpg!');
@@ -21,7 +21,7 @@ describe('ContentTracking 定数', () => {
         it('日本語全角スペースで区切られたURLを検出すること', () => {
             const text = 'URLは　https://example.com/image.png　です';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(1);
             expect(matches[0][0]).toBe('https://example.com/image.png');
         });
@@ -31,21 +31,21 @@ describe('ContentTracking 定数', () => {
 Second line: https://second.com/b.jpg
 Third line: https://third.com/c.webp`;
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(3);
         });
 
         it('URLでないテキストは検出しないこと', () => {
             const text = 'This is just text without URLs';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(0);
         });
 
         it('不完全なURLパターンを検出すること', () => {
             const text = 'Visit https://example';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(1);
             expect(matches[0][0]).toBe('https://example');
         });
@@ -69,7 +69,7 @@ Third line: https://third.com/c.webp`;
         it('一意なプラグインキーが定義されていること', () => {
             const keys = Object.values(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS);
             const uniqueKeys = new Set(keys);
-            
+
             expect(keys.length).toBe(uniqueKeys.size);
         });
 
@@ -92,7 +92,7 @@ describe('ContentTracking 画像URL検出', () => {
         it('URLの末尾に句読点がある場合を処理できること', () => {
             const text = 'Check https://example.com/a.png, https://test.org/b.jpg! and https://demo.net/c.webp.';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(3);
             // 実際のcleanUrlEnd関数で処理されることを想定
         });
@@ -100,14 +100,14 @@ describe('ContentTracking 画像URL検出', () => {
         it('連続するURLを検出できること', () => {
             const text = 'https://first.com/a.png https://second.com/b.jpg';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(2);
         });
 
         it('URLにクエリパラメータが含まれる場合', () => {
             const text = 'https://example.com/image.png?param=value&other=123';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(1);
             expect(matches[0][0]).toContain('?param=value');
         });
@@ -115,7 +115,7 @@ describe('ContentTracking 画像URL検出', () => {
         it('URLにハッシュフラグメントが含まれる場合', () => {
             const text = 'https://example.com/photo.jpg#section';
             const matches = Array.from(text.matchAll(CONTENT_TRACKING_CONFIG.URL_REGEX));
-            
+
             expect(matches).toHaveLength(1);
             expect(matches[0][0]).toContain('#section');
         });

@@ -6,8 +6,8 @@ import {
     NostrLoginInitializer,
     NostrLoginLauncher,
     NostrLoginEventEmitter
-} from '../lib/nostrLogin';
-import type { NostrLoginOptions, NostrLoginDependencies, NostrLoginEventHandler } from '../lib/types';
+} from '../../lib/nostrLogin';
+import type { NostrLoginOptions, NostrLoginDependencies, NostrLoginEventHandler } from '../../lib/types';
 
 // --- モッククラス定義 ---
 class MockDocument {

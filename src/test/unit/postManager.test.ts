@@ -6,15 +6,15 @@ import {
     PostValidator,
     PostEventBuilder,
     PostEventSender
-} from '../lib/postManager';
+} from '../../lib/postManager';
 import type {
     PostManagerDeps,
     AuthState,
     HashtagStore,
     KeyManagerInterface
-} from '../lib/types';
-import { updateHashtagData } from '../lib/tags/hashtagManager';
-import { hashtagDataStore } from '../stores/tagsStore.svelte';
+} from '../../lib/types';
+import { updateHashtagData } from '../../lib/tags/hashtagManager';
+import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
 
 // RxNostrのモック

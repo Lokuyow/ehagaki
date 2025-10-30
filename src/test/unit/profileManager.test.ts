@@ -5,8 +5,8 @@ import {
     ProfileNetworkFetcher,
     ProfileDataFactory,
     ProfileUrlUtils
-} from '../lib/profileManager';
-import type { ProfileManagerDeps } from '../lib/types';
+} from '../../lib/profileManager';
+import type { ProfileManagerDeps } from '../../lib/types';
 
 // RxNostrのモック
 const createMockRxNostr = () => ({

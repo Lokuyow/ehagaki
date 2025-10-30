@@ -5,7 +5,7 @@ import {
     openContextMenuAtPosition,
     createCloseContextMenuHandler,
     openContextMenuForImageNode
-} from "../lib/utils/imageContextMenuUtils";
+} from "../../lib/utils/imageContextMenuUtils";
 
 describe("imageContextMenuUtils", () => {
     const src = "https://example.com/image.jpg";
@@ -299,7 +299,7 @@ describe("imageContextMenuUtils", () => {
         await items[1].action();
 
         // ポップアップ表示コールバックを呼ぶ（ContextMenuの showCopySuccessPopup 相当）
-        const { calculateContextMenuPosition } = await import("../lib/utils/appUtils");
+        const { calculateContextMenuPosition } = await import("../../lib/utils/appUtils");
         const x = 123, y = 456;
         const pos = calculateContextMenuPosition(x, y);
         onShowPopup(pos.x, pos.y, "Copied!");

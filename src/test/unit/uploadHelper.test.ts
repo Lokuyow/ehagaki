@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadHelper } from "../lib/uploadHelper";
-import { insertPlaceholdersIntoEditor } from "../stores/editorStore.svelte";
-import { processFilesForUpload, prepareMetadataList } from "../lib/utils/appUtils";
+import { uploadHelper } from "../../lib/uploadHelper";
+import { insertPlaceholdersIntoEditor } from "../../stores/editorStore.svelte";
+import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/appUtils";
 import type {
     UploadHelperDependencies,
     FileUploadManagerInterface,
@@ -10,18 +10,18 @@ import type {
     AuthService,
     CompressionService,
     MimeTypeSupportInterface
-} from "../lib/types";
+} from "../../lib/types";
 import { NodeSelection } from "prosemirror-state";
 
 // imageSizeMapStoreをモック - パスを修正
-vi.mock("../stores/tagsStore.svelte", () => ({
+vi.mock("../../stores/tagsStore.svelte", () => ({
     imageSizeMapStore: {
         update: vi.fn()
     }
 }));
 
 // その他の依存関係をモック
-vi.mock("../lib/fileUploadManager", () => ({
+vi.mock("../../lib/fileUploadManager", () => ({
     FileUploadManager: vi.fn().mockImplementation(() => ({
         validateImageFile: vi.fn(),
         generateBlurhashForFile: vi.fn(),
@@ -30,17 +30,17 @@ vi.mock("../lib/fileUploadManager", () => ({
     }))
 }));
 
-vi.mock("../lib/utils/editorUtils", () => ({
+vi.mock("../../lib/utils/editorUtils", () => ({
     findAndExecuteOnNode: vi.fn(),
     updateImageSizeMap: vi.fn()
 }));
 
-vi.mock("../lib/utils/appUtils", () => ({
+vi.mock("../../lib/utils/appUtils", () => ({
     getImageDimensions: vi.fn(),
     calculateSHA256Hex: vi.fn(),
     renameByMimeType: vi.fn(),
     generateSimpleUUID: vi.fn(() => "mock-uuid-123"),
-    processFilesForUpload: vi.fn().mockImplementation(async (files: File[]) => 
+    processFilesForUpload: vi.fn().mockImplementation(async (files: File[]) =>
         files.map((file: File, index: number) => ({
             file,
             index,
@@ -59,7 +59,7 @@ vi.mock("../lib/utils/appUtils", () => ({
     })))
 }));
 
-vi.mock("../lib/tags/imetaTag", () => ({
+vi.mock("../../lib/tags/imetaTag", () => ({
     extractImageBlurhashMap: vi.fn(),
     getMimeTypeFromUrl: vi.fn(),
     calculateImageHash: vi.fn(),

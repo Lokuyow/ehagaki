@@ -19,7 +19,7 @@ import {
     loadWriteRelaysFromStorage,
     initializeSettingsValues,
     handleServiceWorkerRefresh
-} from '../lib/utils/appUtils';
+} from '../../lib/utils/appUtils';
 import type {
     StorageAdapter,
     NavigatorAdapter,
@@ -27,7 +27,7 @@ import type {
     TimeoutAdapter,
     UploadHelperDependencies,
     ImageDimensions
-} from '../lib/types';
+} from '../../lib/types';
 
 const createDependencies = (
     overrides: Partial<UploadHelperDependencies> = {}

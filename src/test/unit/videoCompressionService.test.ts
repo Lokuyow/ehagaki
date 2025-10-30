@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { VideoCompressionService, VIDEO_COMPRESSION_OPTIONS_MAP } from '../lib/videoCompressionService';
+import { VideoCompressionService, VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/videoCompressionService';
 
 // FFmpegのモックインスタンス（グローバルスコープ）
 const mockFFmpegInstance = {

@@ -7,8 +7,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { ClipboardExtension } from '../lib/editor/clipboardExtension';
-import { normalizeLineBreaks } from '../lib/utils/editorUtils';
+import { ClipboardExtension } from '../../lib/editor/clipboardExtension';
+import { normalizeLineBreaks } from '../../lib/utils/editorUtils';
 
 describe('ClipboardExtension - 改行処理', () => {
     let editor: Editor;

@@ -5,7 +5,7 @@ import {
     openContextMenuAtPosition,
     openContextMenuForVideoNode,
     prepareGlobalVideoContextMenuItems
-} from "../lib/utils/videoContextMenuUtils";
+} from "../../lib/utils/videoContextMenuUtils";
 
 describe("videoContextMenuUtils", () => {
     const src = "https://example.com/video.mp4";

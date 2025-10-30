@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare } from "../lib/shareHandler";
-import * as appStore from "../stores/appStore.svelte";
-import type { SharedImageMetadata } from "../lib/types";
+import { ShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare } from "../../lib/shareHandler";
+import * as appStore from "../../stores/appStore.svelte";
+import type { SharedImageMetadata } from "../../lib/types";
 
 // モック用ファイル生成
 function createMockFile(name = "test.jpg", type = "image/jpeg", size = 1234): File {

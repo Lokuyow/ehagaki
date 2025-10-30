@@ -11,7 +11,7 @@ import {
     blurEditorAndBody,
     defaultTimeoutAdapter,
     focusEditor
-} from '../lib/utils/appDomUtils';
+} from '../../lib/utils/appDomUtils';
 
 describe('appDomUtils', () => {
     beforeEach(() => {

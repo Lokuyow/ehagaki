@@ -12,7 +12,7 @@ import {
     handlePointerStart,
     handlePointerMove,
     handlePointerEnd
-} from '../lib/utils/imageFullscreenUtils';
+} from '../../lib/utils/imageFullscreenUtils';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 describe('imageFullscreenUtils', () => {
@@ -125,27 +125,27 @@ describe('imageFullscreenUtils', () => {
     });
 
     it('clamp が範囲内の値を返す', async () => {
-        const { clamp } = await import('../lib/utils/imageFullscreenUtils');
+        const { clamp } = await import('../../lib/utils/imageFullscreenUtils');
         expect(clamp(5, 1, 10)).toBe(5);
         expect(clamp(-1, 0, 10)).toBe(0);
         expect(clamp(20, 0, 10)).toBe(10);
     });
 
     it('isNearScale がしきい値内であれば true を返す', async () => {
-        const { isNearScale } = await import('../lib/utils/imageFullscreenUtils');
+        const { isNearScale } = await import('../../lib/utils/imageFullscreenUtils');
         expect(isNearScale(1.05, 1, 0.1)).toBe(true);
         expect(isNearScale(1.2, 1, 0.1)).toBe(false);
     });
 
     it('calculateDistance が正しい値を返す', async () => {
-        const { calculateDistance } = await import('../lib/utils/imageFullscreenUtils');
+        const { calculateDistance } = await import('../../lib/utils/imageFullscreenUtils');
         const t1 = { clientX: 0, clientY: 0 } as Touch;
         const t2 = { clientX: 3, clientY: 4 } as Touch;
         expect(calculateDistance(t1, t2)).toBe(5);
     });
 
     it('calculatePinchZoomParams が正しいパラメータを返す', async () => {
-        const { calculatePinchZoomParams } = await import('../lib/utils/imageFullscreenUtils');
+        const { calculatePinchZoomParams } = await import('../../lib/utils/imageFullscreenUtils');
         div.getBoundingClientRect = vi.fn(() => ({
             left: 10, top: 20, width: 200, height: 100
         })) as any;
@@ -156,7 +156,7 @@ describe('imageFullscreenUtils', () => {
     });
 
     it('calculatePinchZoom が正しい計算を返す', async () => {
-        const { calculatePinchZoom } = await import('../lib/utils/imageFullscreenUtils');
+        const { calculatePinchZoom } = await import('../../lib/utils/imageFullscreenUtils');
         div.getBoundingClientRect = vi.fn(() => ({
             left: 10, top: 20, width: 200, height: 100
         })) as any;
@@ -167,19 +167,19 @@ describe('imageFullscreenUtils', () => {
     });
 
     it('getMousePosition が正しい座標を返す', async () => {
-        const { getMousePosition } = await import('../lib/utils/imageFullscreenUtils');
+        const { getMousePosition } = await import('../../lib/utils/imageFullscreenUtils');
         const event = { clientX: 123, clientY: 456 } as MouseEvent;
         expect(getMousePosition(event)).toEqual({ x: 123, y: 456 });
     });
 
     it('calculateElementCenter が正しい中心を返す', async () => {
-        const { calculateElementCenter } = await import('../lib/utils/imageFullscreenUtils');
+        const { calculateElementCenter } = await import('../../lib/utils/imageFullscreenUtils');
         const rect = { width: 200, height: 100 } as DOMRect;
         expect(calculateElementCenter(rect)).toEqual({ x: 100, y: 50 });
     });
 
     it('calculateDragVelocity が正しい速度を返す', async () => {
-        const { calculateDragVelocity } = await import('../lib/utils/imageFullscreenUtils');
+        const { calculateDragVelocity } = await import('../../lib/utils/imageFullscreenUtils');
         const last = { x: 0, y: 0 };
         const current = { x: 32, y: 16 };
         const timeDelta = 8;
@@ -189,7 +189,7 @@ describe('imageFullscreenUtils', () => {
     });
 
     it('applyMomentumAnimation が onUpdate と onComplete を呼び出す', async () => {
-        const { applyMomentumAnimation } = await import('../lib/utils/imageFullscreenUtils');
+        const { applyMomentumAnimation } = await import('../../lib/utils/imageFullscreenUtils');
         // モック定数
         const MOMENTUM_CONFIG = { FRICTION: 0.5, MIN_VELOCITY: 0.1 };
         // グローバル定数を上書き

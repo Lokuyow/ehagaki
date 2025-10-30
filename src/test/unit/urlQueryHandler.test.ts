@@ -3,7 +3,7 @@ import {
   getContentFromUrlQuery,
   cleanupAllQueryParams,
   hasContentQueryParam,
-} from '../lib/urlQueryHandler';
+} from '../../lib/urlQueryHandler';
 
 describe('urlQueryHandler', () => {
   let originalLocation: Location;

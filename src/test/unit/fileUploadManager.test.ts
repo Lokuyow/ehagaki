@@ -1,19 +1,16 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
     FileUploadManager,
-    MimeTypeSupport,
-    ImageCompressionService,
-    NostrAuthService
-} from '../lib/fileUploadManager';
+    MimeTypeSupport
+} from '../../lib/fileUploadManager';
 import type {
     FileUploadDependencies,
     CompressionService,
     AuthService,
-    MimeTypeSupportInterface,
     SharedImageData
-} from '../lib/types';
+} from '../../lib/types';
 
-vi.mock("../lib/utils/appUtils", () => ({
+vi.mock("../../lib/utils/appUtils", () => ({
     createFileSizeInfo: vi.fn((original, compressed, wasCompressed, originalName, compressedName, wasSkipped) => ({
         originalSize: original,
         compressedSize: compressed,

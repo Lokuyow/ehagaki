@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
-import * as editorUtils from '../lib/utils/editorUtils';
+import * as editorUtils from '../../lib/utils/editorUtils';
 
 // モック設定
-vi.mock('../constants', () => ({
+vi.mock('../../constants', () => ({
     ALLOWED_PROTOCOLS: ['http:', 'https:'],
     ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp']
 }));

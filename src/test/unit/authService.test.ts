@@ -8,11 +8,11 @@ import {
     ProfileCacheCleaner,
     NostrLoginStorageManager,
     AuthInitializer
-} from '../lib/authService';
-import type { AuthServiceDependencies, NostrLoginManagerInterface } from '../lib/types';
-import { type NostrLoginAuth } from '../lib/types';
+} from '../../lib/authService';
+import type { AuthServiceDependencies, NostrLoginManagerInterface } from '../../lib/types';
+import { type NostrLoginAuth } from '../../lib/types';
 
-vi.mock("../lib/nostrLogin", () => ({
+vi.mock("../../lib/nostrLogin", () => ({
     nostrLoginManager: {
         isInitialized: false,
         init: vi.fn(),

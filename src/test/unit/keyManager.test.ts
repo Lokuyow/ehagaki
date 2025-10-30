@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
 
 // keyManagerモジュールを部分的にモックして本物の実装を使う
-vi.mock('../lib/keyManager', async () => {
-    const actual = await import('../lib/keyManager');
+vi.mock('../../lib/keyManager', async () => {
+    const actual = await import('../../lib/keyManager');
     return {
         KeyManager: actual.KeyManager,
         KeyStorage: actual.KeyStorage,
@@ -19,8 +19,8 @@ import {
     ExternalAuthChecker,
     PublicKeyState,
     KeyValidator
-} from '../lib/keyManager';
-import type { KeyManagerDeps, NostrLoginAuth } from '../lib/types';
+} from '../../lib/keyManager';
+import type { KeyManagerDeps, NostrLoginAuth } from '../../lib/types';
 
 // StorageのモックImplementation
 class MockStorage implements Storage {
