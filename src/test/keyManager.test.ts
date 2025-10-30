@@ -1,13 +1,14 @@
-// 仮想モジュールのモック（Vite環境で必須） ※必ずimportより前に記述
 import { vi } from 'vitest';
-vi.mock("virtual:pwa-register/svelte", () => {
+
+// keyManagerモジュールを部分的にモックして本物の実装を使う
+vi.mock('../lib/keyManager', async () => {
+    const actual = await import('../lib/keyManager');
     return {
-        __esModule: true,
-        useRegisterSW: () => ({
-            needRefresh: false,
-            updateServiceWorker: vi.fn(),
-            offlineReady: false
-        })
+        KeyManager: actual.KeyManager,
+        KeyStorage: actual.KeyStorage,
+        ExternalAuthChecker: actual.ExternalAuthChecker,
+        PublicKeyState: actual.PublicKeyState,
+        KeyValidator: actual.KeyValidator,
     };
 });
 
@@ -48,21 +49,6 @@ class MockStorage implements Storage {
         return keys[index] || null;
     }
 }
-
-// appStore.svelte.tsのモック（完全版）
-const secretKeyStore = {
-    value: null as string | null,
-    set: vi.fn((value: string | null) => {
-        // 実際に値を更新
-        secretKeyStore.value = value;
-    })
-};
-
-vi.mock("../stores/appStore.svelte.ts", () => ({
-    setNostrLoginAuth: vi.fn(), // 追加
-    clearAuthState: vi.fn(), // 追加
-    secretKeyStore
-}));
 
 // appUtilsのモック（実際の関数を実装）
 vi.mock("../lib/utils/appUtils", () => ({

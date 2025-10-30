@@ -12,92 +12,6 @@ import {
 import type { AuthServiceDependencies, NostrLoginManagerInterface } from '../lib/types';
 import { type NostrLoginAuth } from '../lib/types';
 
-// PWA関連のモック
-vi.mock("virtual:pwa-register/svelte", () => ({
-    useRegisterSW: () => ({
-        needRefresh: false,
-        updateServiceWorker: vi.fn()
-    })
-}));
-
-// appStore.svelte.tsのモック（追加のエクスポートを含む）
-vi.mock("../stores/appStore.svelte.ts", () => ({
-    setAuthInitialized: vi.fn(),
-    setNsecAuth: vi.fn(),
-    setNostrLoginAuth: vi.fn(), // 追加
-    clearAuthState: vi.fn(), // 追加
-    secretKeyStore: {
-        value: null,
-        set: vi.fn()
-    }
-}));
-
-// その他の依存関係をモック
-vi.mock("../lib/keyManager", () => ({
-    keyManager: {
-        isValidNsec: vi.fn(),
-        saveToStorage: vi.fn(),
-        derivePublicKey: vi.fn(),
-        loadFromStorage: vi.fn()
-    },
-    KeyManager: vi.fn().mockImplementation(() => ({
-        isValidNsec: vi.fn(),
-        saveToStorage: vi.fn(),
-        derivePublicKey: vi.fn(),
-        loadFromStorage: vi.fn(),
-        pubkeyToNpub: vi.fn(),
-        getFromStore: vi.fn(),
-        hasStoredKey: vi.fn().mockReturnValue(false),
-        isWindowNostrAvailable: vi.fn().mockReturnValue(false),
-        getPublicKeyFromWindowNostr: vi.fn()
-    })),
-    PublicKeyState: vi.fn().mockImplementation(() => {
-        let _currentIsValid = false;
-        let _currentIsNostrLogin = false;
-        let _currentHex = '';
-
-        return {
-            setNsec: vi.fn((nsec) => {
-                // 簡易的な実装（テスト用）
-                if (nsec && nsec.startsWith('nsec')) {
-                    _currentIsValid = true;
-                    _currentHex = 'test-hex';
-                    _currentIsNostrLogin = false;
-                } else {
-                    _currentIsValid = false;
-                    _currentHex = '';
-                }
-            }),
-            setNostrLoginAuth: vi.fn((auth) => {
-                if (auth.type === 'login' && auth.pubkey) {
-                    _currentIsValid = true;
-                    _currentHex = auth.pubkey;
-                    _currentIsNostrLogin = true;
-                } else if (auth.type === 'logout') {
-                    _currentIsValid = false;
-                    _currentHex = '';
-                    _currentIsNostrLogin = false;
-
-                }
-            }),
-            clear: vi.fn(() => {
-                _currentIsValid = false;
-                _currentIsNostrLogin = false;
-                _currentHex = '';
-            }),
-            get currentIsValid() {
-                return _currentIsValid;
-            },
-            get currentIsNostrLogin() {
-                return _currentIsNostrLogin;
-            },
-            get currentHex() {
-                return _currentHex;
-            }
-        };
-    })
-}));
-
 vi.mock("../lib/nostrLogin", () => ({
     nostrLoginManager: {
         isInitialized: false,
@@ -112,6 +26,8 @@ vi.mock("../lib/nostrLogin", () => ({
 vi.mock("../lib/debug", () => ({
     debugLog: vi.fn()
 }));
+
+// --- モッククラス定義 ---
 
 // --- モッククラス定義 ---
 class MockStorage implements Storage {

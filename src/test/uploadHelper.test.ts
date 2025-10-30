@@ -13,24 +13,6 @@ import type {
 } from "../lib/types";
 import { NodeSelection } from "prosemirror-state";
 
-// PWA関連のモック
-vi.mock("virtual:pwa-register/svelte", () => ({
-    useRegisterSW: () => ({
-        needRefresh: false,
-        updateServiceWorker: vi.fn()
-    })
-}));
-
-// appStoreのモック(PWA関連の依存関係を含む)
-vi.mock("../stores/appStore.svelte.ts", () => ({
-    // 必要な状態やストアのモック
-    uploadAbortFlagStore: {
-        value: false,
-        set: vi.fn(),
-        reset: vi.fn()
-    }
-}));
-
 // imageSizeMapStoreをモック - パスを修正
 vi.mock("../stores/tagsStore.svelte", () => ({
     imageSizeMapStore: {

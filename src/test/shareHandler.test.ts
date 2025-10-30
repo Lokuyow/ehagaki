@@ -3,16 +3,6 @@ import { ShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare }
 import * as appStore from "../stores/appStore.svelte";
 import type { SharedImageMetadata } from "../lib/types";
 
-// appStore.svelte.tsの直接モック（pwa-register依存を回避）
-vi.mock("../stores/appStore.svelte.ts", () => ({
-    updateSharedImageStore: vi.fn(),
-    clearSharedImageStore: vi.fn(),
-    getSharedImageFile: vi.fn(() => null),
-    getSharedImageMetadata: vi.fn(() => undefined),
-    setVideoCompressionService: vi.fn(),
-    setImageCompressionService: vi.fn()
-}));
-
 // モック用ファイル生成
 function createMockFile(name = "test.jpg", type = "image/jpeg", size = 1234): File {
     return new File([new Uint8Array(size)], name, { type });
@@ -36,11 +26,6 @@ describe("ShareHandler", () => {
             configurable: true,
             writable: true
         });
-        // appStoreの関数をクリア
-        (appStore.updateSharedImageStore as any).mockClear();
-        (appStore.clearSharedImageStore as any).mockClear();
-        (appStore.getSharedImageFile as any).mockReturnValue(null);
-        (appStore.getSharedImageMetadata as any).mockReturnValue(undefined);
         handler = new ShareHandler();
     });
 

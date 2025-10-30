@@ -13,34 +13,6 @@ import type {
     SharedImageData
 } from '../lib/types';
 
-// PWA関連のモック
-vi.mock("virtual:pwa-register/svelte", () => ({
-    useRegisterSW: () => ({
-        needRefresh: false,
-        updateServiceWorker: vi.fn()
-    })
-}));
-
-// appStore.svelte.tsのモック
-vi.mock("../stores/appStore.svelte.ts", () => ({
-    showImageSizeInfo: vi.fn(),
-    setVideoCompressionService: vi.fn(),
-    setImageCompressionService: vi.fn(),
-    uploadAbortFlagStore: {
-        value: false,
-        set: vi.fn(),
-        reset: vi.fn()
-    }
-}));
-
-// その他の依存関係をモック
-vi.mock("../lib/keyManager", () => ({
-    keyManager: {
-        getFromStore: vi.fn(() => null),
-        loadFromStorage: vi.fn(() => null)
-    }
-}));
-
 vi.mock("../lib/utils/appUtils", () => ({
     createFileSizeInfo: vi.fn((original, compressed, wasCompressed, originalName, compressedName, wasSkipped) => ({
         originalSize: original,

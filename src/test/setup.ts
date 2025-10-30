@@ -1,5 +1,13 @@
 import { vi } from 'vitest';
 
+// 共通モックのインポートと設定
+import mockAppStore from './mocks/appStore';
+import mockKeyManager from './mocks/keyManager';
+
+// グローバルモックを設定
+vi.mock('../stores/appStore.svelte.ts', () => mockAppStore);
+vi.mock('../lib/keyManager.ts', () => mockKeyManager);
+
 // テスト環境の識別子を設定
 (globalThis as any).__VITEST__ = true;
 

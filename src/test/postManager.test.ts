@@ -1,29 +1,4 @@
 import { vi } from 'vitest';
-// 仮想モジュールのモック（Vite環境で必須） ※必ずimportより前に記述
-vi.mock("virtual:pwa-register/svelte", () => {
-    return {
-        __esModule: true,
-        useRegisterSW: () => ({
-            needRefresh: false,
-            updateServiceWorker: vi.fn(),
-            offlineReady: false
-        })
-    };
-});
-
-// 追加: appStore.svelte.tsの完全モック
-vi.mock("../stores/appStore.svelte.ts", () => {
-    return {
-        __esModule: true,
-        authState: {
-            value: {
-                isAuthenticated: true,
-                type: "nsec",
-                pubkey: "testpubkey123"
-            }
-        }
-    };
-});
 
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import {
