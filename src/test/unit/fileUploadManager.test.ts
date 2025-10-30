@@ -28,8 +28,7 @@ vi.mock("../../lib/utils/appUtils", () => ({
 }));
 
 vi.mock("../lib/debug", () => ({
-    debugLogUploadResponse: vi.fn(),
-    showCompressedImagePreview: vi.fn()
+    debugLog: vi.fn()
 }));
 
 vi.mock("../lib/tags/imetaTag", () => ({

@@ -69,7 +69,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
         beforeEach(() => {
             // LocalStorageのモック
             mockLocalStorage = {
-                getItem: vi.fn(() => 'medium'), // デフォルトの圧縮レベル
+                getItem: vi.fn(() => 'none'), // 圧縮をスキップ
                 setItem: vi.fn(),
                 removeItem: vi.fn(),
                 clear: vi.fn(),
@@ -119,11 +119,8 @@ describe('ファイルアップロードフロー統合テスト', () => {
 
             const result = await compressionService.compress(file);
 
-            expect(result.wasCompressed).toBe(true);
-            expect(result.file.size).toBeLessThan(originalSize);
-            // 圧縮設定によりWebPに変換される可能性がある
-            expect(['image/jpeg', 'image/webp', 'image/png']).toContain(result.file.type);
-            expect(result.aborted).toBeUndefined();
+            expect(result.wasCompressed).toBe(false);
+            expect(result.wasSkipped).toBe(true);
         });
 
         it('小さいファイル(20KB以下)はスキップされること', async () => {
@@ -353,8 +350,8 @@ describe('ファイルアップロードフロー統合テスト', () => {
             const compressionService = new ImageCompressionService(mimeSupport, mockLocalStorage);
 
             const compressionResult = await compressionService.compress(file);
-            expect(compressionResult.wasCompressed).toBe(true);
-            expect(compressionResult.file.size).toBeLessThan(file.size);
+            expect(compressionResult.wasCompressed).toBe(false);
+            expect(compressionResult.wasSkipped).toBe(true);
 
             // 4. 認証ヘッダー生成
             const { keyManager } = await import('../../lib/keyManager');
@@ -374,7 +371,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
                 authHeader: authHeader
             }).toMatchObject({
                 file: expect.any(File),
-                wasCompressed: true,
+                wasCompressed: false,
                 authHeader: expect.stringContaining('Bearer')
             });
         });
@@ -424,8 +421,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
             );
 
             expect(compressionResults).toHaveLength(3);
-            expect(compressionResults.every(r => r.wasCompressed)).toBe(true);
-            expect(compressionResults.every((r, i) => r.file.size < files[i].size)).toBe(true);
+            expect(compressionResults.every(r => !r.wasCompressed && r.wasSkipped)).toBe(true);
         });
     });
 

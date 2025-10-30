@@ -11,6 +11,7 @@ import {
 } from '../../lib/authService';
 import type { AuthServiceDependencies, NostrLoginManagerInterface } from '../../lib/types';
 import { type NostrLoginAuth } from '../../lib/types';
+import { MockStorage, MockKeyManager } from '../helpers';
 
 vi.mock("../../lib/nostrLogin", () => ({
     nostrLoginManager: {
@@ -23,70 +24,11 @@ vi.mock("../../lib/nostrLogin", () => ({
     }
 }));
 
-vi.mock("../lib/debug", () => ({
-    debugLog: vi.fn()
-}));
-
 // --- モッククラス定義 ---
-
-// --- モッククラス定義 ---
-class MockStorage implements Storage {
-    private store: Record<string, string> = {};
-
-    get length() { return Object.keys(this.store).length; }
-
-    getItem(key: string): string | null {
-        return this.store[key] || null;
-    }
-
-    setItem(key: string, value: string): void {
-        this.store[key] = value;
-    }
-
-    removeItem(key: string): void {
-        delete this.store[key];
-    }
-
-    clear(): void {
-        this.store = {};
-    }
-
-    key(index: number): string | null {
-        const keys = Object.keys(this.store);
-        return keys[index] || null;
-    }
-}
 
 class MockPublicKeyState {
     setNsec = vi.fn();
     setNostrLoginAuth = vi.fn();
-}
-
-// KeyManagerと完全に互換性のあるモッククラス
-class MockKeyManager {
-    // 実際のKeyManagerと同じ構造でプライベートプロパティを定義
-    private storage: any;
-    private externalAuth: any;
-
-    // パブリックメソッド
-    isValidNsec = vi.fn();
-    saveToStorage = vi.fn();
-    derivePublicKey = vi.fn();
-    loadFromStorage = vi.fn();
-    pubkeyToNpub = vi.fn();
-    getFromStore = vi.fn();
-    hasStoredKey = vi.fn().mockReturnValue(false);
-    isWindowNostrAvailable = vi.fn().mockReturnValue(false);
-    getPublicKeyFromWindowNostr = vi.fn();
-
-    constructor() {
-        this.storage = {};
-        this.externalAuth = {};
-    }
-
-    // プライベートプロパティにアクセスするためのゲッター
-    getStorage = vi.fn().mockImplementation(() => this.storage);
-    getExternalAuth = vi.fn().mockImplementation(() => this.externalAuth);
 }
 
 // NostrLoginManagerの完全なモック

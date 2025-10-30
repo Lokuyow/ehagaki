@@ -7,6 +7,9 @@ import mockKeyManager from './mocks/keyManager';
 // グローバルモックを設定
 vi.mock('../stores/appStore.svelte.ts', () => mockAppStore);
 vi.mock('../lib/keyManager.ts', () => mockKeyManager);
+vi.mock('../lib/debug', () => ({
+    debugLog: vi.fn()
+}));
 
 // テスト環境の識別子を設定
 (globalThis as any).__VITEST__ = true;

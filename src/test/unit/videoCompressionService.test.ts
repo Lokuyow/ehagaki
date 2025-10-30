@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { VideoCompressionService, VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/videoCompressionService';
+import { MockStorage } from '../helpers';
 
 // FFmpegのモックインスタンス（グローバルスコープ）
 const mockFFmpegInstance = {
@@ -25,34 +26,6 @@ vi.mock('@ffmpeg/util', () => ({
         return new Uint8Array(0);
     }),
 }));
-
-// --- モッククラス定義 ---
-class MockStorage implements Storage {
-    private store: Record<string, string> = {};
-
-    get length() { return Object.keys(this.store).length; }
-
-    getItem(key: string): string | null {
-        return this.store[key] || null;
-    }
-
-    setItem(key: string, value: string): void {
-        this.store[key] = value;
-    }
-
-    removeItem(key: string): void {
-        delete this.store[key];
-    }
-
-    clear(): void {
-        this.store = {};
-    }
-
-    key(index: number): string | null {
-        const keys = Object.keys(this.store);
-        return keys[index] || null;
-    }
-}
 
 // --- ヘルパー関数 ---
 function createMockVideoFile(size: number = 5 * 1024 * 1024, name: string = 'test.mp4'): File {

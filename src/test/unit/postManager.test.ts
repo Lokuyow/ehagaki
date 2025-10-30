@@ -10,67 +10,12 @@ import {
 import type {
     PostManagerDeps,
     AuthState,
-    HashtagStore,
-    KeyManagerInterface
+    HashtagStore
 } from '../../lib/types';
 import { updateHashtagData } from '../../lib/tags/hashtagManager';
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
-
-// RxNostrのモック
-const createMockRxNostr = (): RxNostr => ({
-    send: vi.fn(),
-    use: vi.fn(),
-    setDefaultRelays: vi.fn(),
-    // 他の必要なメソッドをモック
-} as any);
-
-// モッククラス定義
-class MockKeyManager implements KeyManagerInterface {
-    constructor(
-        private storedKey: string | null = null,
-        private storageKey: string | null = null,
-        private windowNostrAvailable = false
-    ) { }
-
-    getFromStore(): string | null {
-        return this.storedKey;
-    }
-
-    loadFromStorage(): string | null {
-        return this.storageKey;
-    }
-
-    isWindowNostrAvailable(): boolean {
-        return this.windowNostrAvailable;
-    }
-}
-
-// モックObservable作成ヘルパー
-function createMockObservable(nextData?: any, shouldError = false, delay = 0) {
-    return {
-        subscribe: (observer: any) => {
-            const subscription = { unsubscribe: vi.fn() };
-
-            if (shouldError) {
-                // setTimeoutの代わりにPromise.resolve().thenを使用
-                Promise.resolve().then(() => {
-                    observer.error(new Error('Network error'));
-                });
-            } else if (nextData) {
-                // setTimeoutの代わりにPromise.resolve().thenを使用
-                Promise.resolve().then(() => {
-                    observer.next(nextData);
-                    observer.complete?.();
-                });
-            } else {
-                // 何もしない（タイムアウトテスト用）
-            }
-
-            return subscription;
-        }
-    };
-}
+import { createMockRxNostr, MockKeyManager } from '../helpers';
 
 class MockClassList {
     private classes = new Set<string>();
