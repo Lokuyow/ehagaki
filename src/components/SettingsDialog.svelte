@@ -618,10 +618,10 @@
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 8px;
     }
     .setting-label {
-        font-size: 1.1rem;
+        font-size: 1.125rem;
         font-weight: 500;
         display: flex;
         align-items: center;
@@ -704,11 +704,12 @@
     .relay-list ul {
         margin: 0;
         padding-left: 20px;
-        font-size: 0.95rem;
+        font-size: 0.9375rem;
     }
     .relay-list li {
         word-break: break-all;
         color: var(--text-light);
+        margin: 6px 0;
     }
     .relay-toggle-label {
         user-select: none;

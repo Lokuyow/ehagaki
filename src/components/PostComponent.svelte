@@ -514,8 +514,8 @@
     min-height: 200px;
     padding: 10px;
     font-family: inherit;
-    font-size: 1.25rem;
-    line-height: 1.4;
+    font-size: 1.375rem;
+    line-height: 1.5;
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;
@@ -523,6 +523,33 @@
     will-change: scroll-position;
     transform: translateZ(0);
     -webkit-tap-highlight-color: transparent;
+
+    :global(.editor-paragraph) {
+      margin: 0;
+      padding: 0;
+      color: var(--text);
+      white-space: break-spaces;
+      position: relative;
+      z-index: 2;
+    }
+
+    :global(.hashtag) {
+      color: var(--hashtag-text);
+      font-weight: 600;
+      background: var(--hashtag-bg);
+      padding: 2px 4px;
+      border-radius: 4px;
+      word-break: break-all;
+    }
+
+    :global(.preview-link) {
+      color: var(--link);
+      word-break: break-all;
+    }
+
+    :global(.preview-link:visited) {
+      color: var(--link-visited);
+    }
   }
 
   /* Placeholderのスタイル（Tiptap公式ドキュメントに従う） */
@@ -533,34 +560,6 @@
     height: 0;
     pointer-events: none;
     opacity: 0.6;
-  }
-
-  /* エディタ内の要素スタイル */
-  :global(.tiptap-editor .editor-paragraph) {
-    margin: 0;
-    padding: 0;
-    color: var(--text);
-    white-space: break-spaces;
-    position: relative;
-    z-index: 2;
-  }
-
-  :global(.tiptap-editor .hashtag) {
-    color: var(--hashtag-text);
-    font-weight: 600;
-    background: var(--hashtag-bg);
-    padding: 2px 4px;
-    border-radius: 4px;
-    word-break: break-all;
-  }
-
-  :global(.tiptap-editor .preview-link) {
-    color: var(--link);
-    word-break: break-all;
-  }
-
-  :global(.tiptap-editor .preview-link:visited) {
-    color: var(--link-visited);
   }
 
   /* ドロップゾーンのフェードアウトアニメーション（改善版） */

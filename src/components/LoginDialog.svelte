@@ -246,21 +246,22 @@
         top: 0px;
         left: 50%;
         transform: translateX(-50%);
+        display: flex;
         width: 100%;
         max-width: 500px;
         background: var(--dialog);
         color: var(--text);
-        padding: 4px 10px 10px 10px;
         border-radius: 0 0 10px 10px;
         z-index: 101;
-        font-size: 0.96rem;
-        display: flex;
+        font-size: 0.9375rem;
+        line-height: 1.2;
+        word-break: break-all;
         flex-direction: column;
         align-items: flex-start;
-        gap: 2px;
+        gap: 6px;
         opacity: 0.9;
+        padding: 8px 14px 14px 14px;
         margin-bottom: 8px;
-        word-break: break-all;
     }
     @keyframes toast-fadein {
         from {

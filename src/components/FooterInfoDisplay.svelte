@@ -545,22 +545,22 @@
         flex-direction: column;
         align-items: flex-start;
         justify-content: center;
-        font-size: 0.9rem;
+        font-size: 0.9375rem;
+        line-height: 1.1;
         white-space: normal;
         text-align: left;
         max-width: 100%;
-        line-height: 1;
         gap: 2px;
     }
 
     .size-label {
         color: var(--text-light);
-        font-size: 0.8rem;
+        font-size: 0.8125rem;
         opacity: 0.8;
     }
 
     .size-details {
-        font-size: 0.9rem;
+        font-size: 0.9375rem;
         font-weight: 500;
     }
 
@@ -578,7 +578,6 @@
         color: var(--text);
         text-align: center;
         white-space: normal;
-        line-height: 1.2;
         flex: 1;
     }
 
@@ -680,6 +679,5 @@
         font-size: 0.9rem;
         color: var(--balloon-error-color, #dc2626);
         text-align: center;
-        line-height: 1.2;
     }
 </style>

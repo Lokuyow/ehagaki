@@ -47,6 +47,7 @@
         color: var(--text);
         font-size: 1.2rem;
         font-weight: bold;
+        line-height: 1.5;
         word-break: auto-phrase;
     }
     .secretkey-dialog-buttons {

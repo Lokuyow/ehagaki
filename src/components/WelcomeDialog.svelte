@@ -80,6 +80,7 @@
         border-radius: 8px;
         margin-bottom: 1rem;
         line-height: 1.6;
+        
     }
 
     :global(.welcome-dialog) {

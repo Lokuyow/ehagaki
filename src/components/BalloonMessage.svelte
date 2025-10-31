@@ -46,6 +46,7 @@
         height: fit-content;
         padding: 6px 8px;
         font-size: 1.125rem;
+        line-height: 1.2;
         color: #333;
         margin: auto 0 auto 8px;
     }
