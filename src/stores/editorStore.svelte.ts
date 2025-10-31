@@ -11,8 +11,7 @@ import { findAndExecuteOnNode, removePlaceholderNode } from '../lib/utils/editor
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '../lib/editor';
 import { GapCursorNewlineExtension } from '../lib/editor/gapCursorNewline';
 import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams, PlaceholderEntry, FileUploadResponse, ImageDimensions } from '../lib/types';
-import { setupEventListeners, cleanupEventListeners, setupGboardHandler } from '../lib/editor/editorDomActions.svelte';
-import { processPastedText } from '../lib/editor/clipboardExtension';
+import { setupEventListeners, cleanupEventListeners } from '../lib/editor/editorDomActions.svelte';
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import { uploadAbortFlagStore } from './appStore.svelte';
 
@@ -371,29 +370,14 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         });
     }
 
-    // Android Gboard対応のセットアップ
-    let gboardCleanup: (() => void) | undefined;
-    if (editorContainerEl) {
-        gboardCleanup = setupGboardHandler({
-            editorContainerEl,
-            getCurrentEditor: () => latestEditor,
-            processPastedText,
-        });
-    }
-
-    return { editor, unsubscribe, handlers, gboardCleanup };
+    return { editor, unsubscribe, handlers };
 }
 
 export function cleanupEditor(params: CleanupEditorParams): void {
-    const { unsubscribe, handlers, gboardCleanup, currentEditor, editorContainerEl } = params;
+    const { unsubscribe, handlers, currentEditor, editorContainerEl } = params;
 
     // イベントリスナーのクリーンアップ
     cleanupEventListeners(handlers, editorContainerEl);
-
-    // Gboardハンドラーのクリーンアップ
-    if (gboardCleanup) {
-        gboardCleanup();
-    }
 
     // エディターの購読解除
     unsubscribe();

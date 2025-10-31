@@ -23,7 +23,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
-import { TextSelection } from 'prosemirror-state';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
 import { debugClipboardData, debugPasteResult } from '../utils/clipboardDebug';
@@ -251,66 +250,3 @@ export const ClipboardExtension = Extension.create({
         ];
     },
 });
-
-// ================================================================================
-// エクスポート関数（Android Gboard対応用）
-// ================================================================================
-
-/**
- * テキストをペースト処理する関数（Android Gboard対応用）
- * 
- * 用途: Android GboardのIME処理で直接呼び出される
- *      通常のペーストイベントがトリガーされない場合の代替処理
- * 
- * ProseMirror仕様:
- * - EditorViewのstateとdispatchを使用してトランザクションを実行
- * - replaceSelectionで選択範囲をSliceで置換
- * - setSelectionでカーソル位置を更新
- * 
- * @param editor - Tiptapエディタインスタンス
- * @param text - ペーストするテキスト
- * @returns 処理が成功したかどうか
- */
-export function processPastedText(editor: any, text: string): boolean {
-    if (!editor || !text) {
-        return false;
-    }
-
-    const { state, dispatch } = editor.view;
-
-    // テキストを正規化して行配列に変換
-    // Gboard経由の場合は連続空行を緩く制限（maxConsecutiveEmptyLines=2）
-    const { lines } = normalizeClipboardText(text, {
-        collapseEmptyLines: false,
-        maxConsecutiveEmptyLines: 2
-    });
-
-    // 空のテキストの場合は処理しない
-    if (lines.length === 0) {
-        return false;
-    }
-
-    // 行配列を段落ノードに変換
-    const paragraphs = createParagraphNodes(lines, state.schema);
-
-    // ProseMirror Sliceを作成して挿入
-    const fragment = Fragment.from(paragraphs);
-    const customSlice = new Slice(fragment, 0, 0);
-
-    // トランザクションを作成して挿入
-    // Tiptap v3 UndoRedo拡張: ペースト操作として記録
-    let tr = state.tr
-        .replaceSelection(customSlice)
-        .setMeta('paste', true)
-        .setMeta('uiEvent', 'paste')
-        .setMeta('addToHistory', true);
-
-    // カーソルを挿入したコンテンツの末尾に移動
-    const resolvedPos = tr.doc.resolve(tr.selection.from);
-    tr = tr.setSelection(TextSelection.near(resolvedPos, 1));
-
-    dispatch(tr);
-
-    return true;
-}
-

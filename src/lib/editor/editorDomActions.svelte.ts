@@ -12,7 +12,6 @@ import { NodeSelection } from "prosemirror-state";
 import type {
     SetupEventListenersParams,
     EditorEventHandlers,
-    GboardHandlerParams
 } from "../types";
 
 // ヘルパー: dataTransfer から「内部ドラッグ（エディタ内ノード移動）」か「外部ファイルドラッグ」か判定
@@ -341,64 +340,4 @@ export function cleanupEventListeners(
         editorContainerEl.removeEventListener("image-fullscreen-request", handlers.handleImageFullscreenRequest);
         editorContainerEl.removeEventListener("select-image-node", handlers.handleSelectImageNode);
     }
-}
-
-// --- Android Gboard対応処理 ---
-export function setupGboardHandler(params: GboardHandlerParams): () => void {
-    const { editorContainerEl, getCurrentEditor, processPastedText: processFn } = params;
-
-    let lastContent = "";
-    let isProcessingPaste = false;
-
-    // 初期コンテンツを取得
-    const editor = getCurrentEditor();
-    if (editor) {
-        lastContent = editor.getText();
-    }
-
-    const handleInput = () => {
-        if (isProcessingPaste) return;
-
-        const currentEditor = getCurrentEditor();
-        if (!currentEditor) return;
-
-        const currentContent = currentEditor.getText();
-        const addedLength = currentContent.length - lastContent.length;
-
-        if (addedLength > 10 && currentContent.length > lastContent.length) {
-            const addedText = currentContent.substring(lastContent.length);
-
-            if (addedText.includes("\n")) {
-                isProcessingPaste = true;
-
-                currentEditor.chain().focus().clearContent().run();
-
-                setTimeout(() => {
-                    const editor = getCurrentEditor();
-                    if (editor) {
-                        const cleanedText = addedText.replace(/\n\n/g, "\n");
-                        processFn(editor, cleanedText);
-                    }
-                    isProcessingPaste = false;
-
-                    setTimeout(() => {
-                        const editor = getCurrentEditor();
-                        if (editor) {
-                            lastContent = editor.getText();
-                        }
-                    }, 100);
-                }, 10);
-
-                return;
-            }
-        }
-
-        lastContent = currentContent;
-    };
-
-    editorContainerEl.addEventListener("input", handleInput);
-
-    return () => {
-        editorContainerEl.removeEventListener("input", handleInput);
-    };
 }

@@ -220,22 +220,4 @@ describe('ClipboardExtension - 履歴管理テスト', () => {
             expect(() => state.apply(tr)).not.toThrow();
         });
     });
-
-    describe('Android Gboard対応（processPastedText）', () => {
-        it('processPastedText も同じメタデータを設定すること', () => {
-            // processPastedText の動作を模擬
-            const now = Date.now();
-            const tr = state.tr
-                .insertText('gboard paste', 1)
-                .setMeta('paste', true)
-                .setMeta('addToHistory', true)
-                .setMeta('rebased', 0)
-                .setTime(now);
-            
-            expect(tr.getMeta('paste')).toBe(true);
-            expect(tr.getMeta('addToHistory')).toBe(true);
-            expect(tr.getMeta('rebased')).toBe(0);
-            expect(tr.time).toBe(now);
-        });
-    });
 });

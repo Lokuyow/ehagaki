@@ -160,7 +160,6 @@
         cleanupEditor({
           unsubscribe: editorResources.unsubscribe,
           handlers: editorResources.handlers,
-          gboardCleanup: editorResources.gboardCleanup,
           currentEditor,
           editorContainerEl,
         });

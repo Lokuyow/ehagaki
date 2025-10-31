@@ -1,4 +1,4 @@
-import type { RxNostr, createRxNostr } from "rx-nostr";
+import type { createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
 // --- App Store types ---
@@ -581,12 +581,6 @@ export interface SetupEventListenersParams {
     callbacks: EditorEventCallbacks;
 }
 
-export interface GboardHandlerParams {
-    editorContainerEl: HTMLElement;
-    getCurrentEditor: () => TipTapEditor | null;
-    processPastedText: (editor: TipTapEditor, text: string) => void;
-}
-
 export interface InitializeEditorParams {
     placeholderText: string;
     editorContainerEl: HTMLElement | null;
@@ -601,13 +595,11 @@ export interface InitializeEditorResult {
     editor: any;
     unsubscribe: () => void;
     handlers: EditorEventHandlers;
-    gboardCleanup?: () => void;
 }
 
 export interface CleanupEditorParams {
     unsubscribe: () => void;
     handlers: EditorEventHandlers;
-    gboardCleanup?: () => void;
     currentEditor: TipTapEditor | null;
     editorContainerEl: HTMLElement | null;
 }
