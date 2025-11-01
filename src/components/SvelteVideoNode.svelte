@@ -316,7 +316,7 @@
 
 <style>
     :global(.node-video) {
-        padding: 12px 0;
+        margin: 12px 0;
         pointer-events: none;
     }
     :global([data-node-view-wrapper]) {

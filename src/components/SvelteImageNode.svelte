@@ -473,8 +473,7 @@
         max-height: 240px;
         line-height: 0;
         pointer-events: none;
-        margin: 0;
-        padding: 8px 0;
+        margin: 10px 0;
     }
 
     /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
