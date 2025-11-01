@@ -6,3 +6,14 @@ export { SmartBackspaceExtension } from './smartBackspace';
 export { GapCursorNewlineExtension } from './gapCursorNewline';
 export { Video } from './videoExtension';
 export { ClipboardExtension } from './clipboardExtension';
+
+// エディター設定
+export { createEditorStore, updateEditorPlaceholder } from './editorConfig';
+export type { EditorConfigOptions } from './editorConfig';
+
+// プレースホルダー管理
+export {
+    insertPlaceholdersIntoEditor,
+    generateBlurhashesForPlaceholders,
+    replacePlaceholdersWithResults
+} from './placeholderManager';
