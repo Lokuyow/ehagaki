@@ -114,7 +114,10 @@
     let lastClickPosition = $derived(lastClickPositionStore.value);
 
     // ノード固有のID（常に最新のnode.attrs.idを参照）
-    const nodeId = $derived(node.attrs.id || `fallback-${typeof getPos === "function" ? getPos() : "unknown"}`);
+    const nodeId = $derived(
+        node.attrs.id ||
+            `fallback-${typeof getPos === "function" ? getPos() : "unknown"}`,
+    );
 
     // グローバルストア監視
     $effect(() => {
@@ -129,12 +132,12 @@
     // コンテキストメニューを開く処理（位置設定のみ）
     function openContextMenuAtPositionHandler() {
         if (!lastClickPosition) return;
-        
+
         openContextMenuForImageNode(
             globalContextMenuStore,
             nodeId,
             lastClickPosition,
-            node.attrs.src,  // 追加: srcを渡す
+            node.attrs.src, // 追加: srcを渡す
         );
     }
 
