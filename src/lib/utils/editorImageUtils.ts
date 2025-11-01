@@ -309,9 +309,7 @@ export function handleImageInteraction(
         return false;
     }
 
-    if (!selected) {
-        requestNodeSelection(getPos);
-    }
+    requestNodeSelection(getPos);
 
     event.preventDefault();
     if (!isTouch) {

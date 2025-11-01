@@ -6,6 +6,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { openContextMenuForVideoNode } from "../lib/utils/videoContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
+    import { requestNodeSelection } from "../lib/utils/editorImageUtils";
     import {
         globalContextMenuStore,
         lastClickPositionStore,
@@ -83,6 +84,8 @@
         event.stopPropagation();
         event.preventDefault();
 
+        requestNodeSelection(getPos);
+
         const pos = getEventPosition(event);
         lastClickPositionStore.set(pos);
 
@@ -130,6 +133,8 @@
         event.stopPropagation();
         event.preventDefault();
 
+        requestNodeSelection(getPos);
+
         const pos = getEventPosition(event);
         lastClickPositionStore.set(pos);
 
@@ -147,6 +152,7 @@
     function handleWrapperKeydown(event: KeyboardEvent) {
         if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
+            requestNodeSelection(getPos);
             // クリックイベントと同じ処理を実行
             const pos = { x: 0, y: 0 }; // キーボード操作の場合は座標が取れないため、デフォルト値
             lastClickPositionStore.set(pos);
@@ -224,6 +230,8 @@
                 event.stopPropagation();
                 event.preventDefault();
 
+                requestNodeSelection(getPos);
+
                 const pos = { x: touch.clientX, y: touch.clientY };
                 lastClickPositionStore.set(pos);
 
@@ -273,7 +281,6 @@
 <NodeViewWrapper>
     <div
         class="video-wrapper"
-        class:selected
         data-video-node
         bind:this={wrapperElement}
         onclick={handleWrapperClick}
@@ -317,12 +324,10 @@
 <style>
     :global(.node-video) {
         margin: 12px 0;
-        pointer-events: none;
     }
     :global([data-node-view-wrapper]) {
         display: block;
         margin: 0;
-        pointer-events: none;
     }
 
     .video-wrapper {
@@ -344,12 +349,14 @@
         }
     }
 
-    .video-wrapper.selected {
+    :global(.node-video.is-node-focused .video-wrapper) {
         outline: 2px solid var(--theme);
+    }
 
-        :global(span.placeholder-text.loading-text) {
-            font-size: 1.125rem;
-        }
+    :global(
+        .node-video.is-node-focused span.placeholder-text.loading-text
+    ) {
+        font-size: 1.125rem;
     }
 
     .editor-video {

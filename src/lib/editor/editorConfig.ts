@@ -2,12 +2,57 @@ import { createEditor } from 'svelte-tiptap';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-import { Placeholder } from '@tiptap/extensions';
+import { Placeholder, Focus } from '@tiptap/extensions';
 import UniqueID from '@tiptap/extension-unique-id';
+import { Extension } from '@tiptap/core';
+import { GapCursor } from '@tiptap/pm/gapcursor';
+import { NodeSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '.';
+
+const MEDIA_NODE_TYPES = new Set(['image', 'video']);
+const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused';
+
+const GapCursorFocusReset = Extension.create({
+    name: 'gapCursorFocusReset',
+
+    onSelectionUpdate() {
+        const { state, view } = this.editor;
+        const selection = state.selection;
+
+        const clearFocus = (keep?: Element | null) => {
+            view.dom.querySelectorAll(MEDIA_FOCUS_SELECTOR).forEach((node) => {
+                if (keep && node === keep) return;
+                node.classList.remove('is-node-focused');
+            });
+        };
+
+        if (
+            selection instanceof NodeSelection &&
+            MEDIA_NODE_TYPES.has(selection.node.type.name)
+        ) {
+            const dom = view.nodeDOM(selection.from) as HTMLElement | null;
+            const target = dom?.matches('.node-image, .node-video')
+                ? dom
+                : (dom?.closest('.node-image, .node-video') as HTMLElement | null);
+
+            if (target) {
+                clearFocus(target);
+                target.classList.add('is-node-focused');
+                return;
+            }
+        }
+
+        if (selection instanceof GapCursor) {
+            clearFocus();
+            return;
+        }
+
+        clearFocus();
+    },
+});
 
 export interface EditorConfigOptions {
     placeholderText: string;
@@ -124,6 +169,11 @@ export function createEditorStore(options: EditorConfigOptions) {
                 types: ['image', 'video'],
                 attributeName: 'id',
             }),
+            Focus.configure({
+                className: 'is-node-focused',
+                mode: 'all',
+            }),
+            GapCursorFocusReset,
             ContentTrackingExtension,
             Video,
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）

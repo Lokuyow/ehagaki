@@ -428,7 +428,6 @@
         bind:this={buttonElement}
         type="button"
         class="editor-image-button"
-        data-highlighted={selected}
         data-dragging={dragState.isDragging}
         onclick={handleClick}
         tabindex="0"
@@ -469,20 +468,17 @@
     /* ProseMirrorが生成する外側のラッパーも制御 */
     :global(.node-image) {
         display: block;
-        max-width: 100%;
+        width: fit-content;
         max-height: 240px;
         line-height: 0;
-        pointer-events: none;
         margin: 10px 0;
     }
 
     /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
     :global([data-node-view-wrapper]) {
         display: block;
-        width: 100%;
         margin: 0;
         padding: 0;
-        pointer-events: none;
     }
 
     /* ボタンを画像サイズに完全に合わせる */
@@ -514,10 +510,9 @@
         }
     }
 
-    /* 統合されたハイライト状態 */
-    .editor-image-button[data-highlighted="true"] .editor-image,
-    .editor-image-button[data-highlighted="true"]
-        .blurhash-canvas.is-placeholder {
+    /* Focus extensionが付与するクラスで選択状態を表現 */
+    :global(.node-image.is-node-focused .editor-image),
+    :global(.node-image.is-node-focused .blurhash-canvas.is-placeholder) {
         outline: 2px solid var(--theme, #2196f3);
         outline-offset: -1px;
     }
