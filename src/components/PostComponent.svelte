@@ -549,16 +549,15 @@
     :global(.preview-link:visited) {
       color: var(--link-visited);
     }
-  }
 
-  /* Placeholderのスタイル（Tiptap公式ドキュメントに従う） */
-  :global(.tiptap-editor p.is-editor-empty:first-child::before) {
-    color: var(--text);
-    content: attr(data-placeholder);
-    float: left;
-    height: 0;
-    pointer-events: none;
-    opacity: 0.6;
+    :global(p.is-editor-empty:first-child::before) {
+      color: var(--text);
+      content: attr(data-placeholder);
+      float: left;
+      height: 0;
+      pointer-events: none;
+      opacity: 0.6;
+    }
   }
 
   /* ドロップゾーンのフェードアウトアニメーション（改善版） */
