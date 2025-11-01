@@ -463,23 +463,24 @@
 </NodeViewWrapper>
 
 <style>
-    /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
-    :global([data-node-view-wrapper]) {
-        display: block;
-        width: 100%;
-        padding: 0;
-        pointer-events: none;
-    }
-
     /* ProseMirrorが生成する外側のラッパーも制御 */
-    :global(.node-image),
-    :global(.node-image.svelte-renderer) {
+    :global(.node-image) {
         display: block;
         max-width: 100%;
         max-height: 240px;
         line-height: 0;
         pointer-events: none;
-        margin: 8px 0;
+        margin: 0;
+        padding: 8px 0;
+    }
+
+    /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
+    :global([data-node-view-wrapper]) {
+        display: block;
+        width: 100%;
+        margin: 0;
+        padding: 0;
+        pointer-events: none;
     }
 
     /* ボタンを画像サイズに完全に合わせる */

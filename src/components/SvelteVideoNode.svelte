@@ -312,9 +312,14 @@
 </NodeViewWrapper>
 
 <style>
+    :global(.node-video) {
+        padding: 12px 0;
+        pointer-events: none;
+    }
     :global([data-node-view-wrapper]) {
         display: block;
-        margin: 8px 0;
+        margin: 0;
+        pointer-events: none;
     }
 
     .video-wrapper {
@@ -332,7 +337,7 @@
         cursor: pointer;
 
         &:active {
-            transform: scale(1.0);
+            transform: scale(1);
             transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
         }
     }
