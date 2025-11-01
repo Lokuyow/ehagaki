@@ -510,8 +510,7 @@
             outline: none;
         }
         &:active {
-            transform: scale(0.99);
-            transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
+            transform: scale(1);
         }
     }
 

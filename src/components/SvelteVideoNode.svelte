@@ -341,7 +341,6 @@
 
         &:active {
             transform: scale(1);
-            transition: transform 0.1s cubic-bezier(0, 1, 0.5, 1);
         }
     }
 
