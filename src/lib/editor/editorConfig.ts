@@ -6,7 +6,7 @@ import { Placeholder, Focus } from '@tiptap/extensions';
 import UniqueID from '@tiptap/extension-unique-id';
 import { Extension } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
-import { NodeSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
@@ -51,6 +51,53 @@ const GapCursorFocusReset = Extension.create({
         }
 
         clearFocus();
+    },
+
+    // エディター外のクリック/タッチでフォーカスを外す
+    onCreate() {
+        const handleOutsideClick = (event: MouseEvent | TouchEvent) => {
+            const { view } = this.editor;
+            const target = event.target as HTMLElement;
+
+            // エディターDOM内のクリックは無視
+            if (view.dom.contains(target)) {
+                return;
+            }
+
+            // エディター外のクリック/タッチならメディアノードのフォーカスを全てクリア
+            view.dom.querySelectorAll(MEDIA_FOCUS_SELECTOR).forEach((node) => {
+                node.classList.remove('is-node-focused');
+            });
+
+            // 選択をテキスト選択に戻す（メディアノードの選択を解除）
+            const { state } = view;
+            const { selection } = state;
+            if (selection instanceof NodeSelection && MEDIA_NODE_TYPES.has(selection.node.type.name)) {
+                // エディターの最後の位置にテキストカーソルを移動
+                const endPos = state.doc.content.size;
+                const $pos = state.doc.resolve(endPos);
+                const tr = state.tr.setSelection(
+                    TextSelection.near($pos)
+                ).setMeta('addToHistory', false);
+                view.dispatch(tr);
+            }
+        };
+
+        // マウスとタッチの両方に対応
+        document.addEventListener('mousedown', handleOutsideClick);
+        document.addEventListener('touchstart', handleOutsideClick);
+
+        // クリーンアップ用に参照を保存
+        (this.editor as any).__outsideClickHandler = handleOutsideClick;
+    },
+
+    onDestroy() {
+        const handleOutsideClick = (this.editor as any).__outsideClickHandler;
+        if (handleOutsideClick) {
+            document.removeEventListener('mousedown', handleOutsideClick);
+            document.removeEventListener('touchstart', handleOutsideClick);
+            delete (this.editor as any).__outsideClickHandler;
+        }
     },
 });
 
