@@ -327,15 +327,6 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                         // このトランザクションが履歴として独立しないことを確認
                         if (resultTr) {
                             resultTr.setMeta('addToHistory', false);
-
-                            if (import.meta.env.MODE === 'development') {
-                                console.log('🔗 Applying URL/image conversion:', {
-                                    steps: resultTr.steps.length,
-                                    docChanged: resultTr.docChanged,
-                                    isPaste,
-                                    imageConversionEnabled: enableImageConversionForThisTr
-                                });
-                            }
                         }
 
                         return resultTr;
