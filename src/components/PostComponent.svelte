@@ -511,7 +511,7 @@
     width: 100%;
     height: 100%;
     min-height: 200px;
-    padding: 10px;
+    padding: 16px 10px;
     font-family: inherit;
     font-size: 1.375rem;
     line-height: 1.5;
