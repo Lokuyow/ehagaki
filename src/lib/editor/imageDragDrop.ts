@@ -12,6 +12,8 @@ export const ImageDragDropExtension = Extension.create({
         const imageDragDropKey = new PluginKey('image-drag-drop');
         const dropZoneKey = new PluginKey('drop-zone-indicator');
 
+        // PC（マウス操作）では Tiptap の Dropcursor extension を使用
+        // タッチデバイスでは独自のドロップゾーン表示（視覚的なバー）を使用
         return [
             new Plugin({
                 key: imageDragDropKey,

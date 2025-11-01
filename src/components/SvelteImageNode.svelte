@@ -619,7 +619,7 @@
         max-width: 260px;
         height: 6px;
         border-radius: 9999px;
-        background: var(--blue);
+        background: dodgerblue;
         margin: 0 auto;
     }
 

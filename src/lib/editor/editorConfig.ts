@@ -2,7 +2,7 @@ import { createEditor } from 'svelte-tiptap';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
-import { Placeholder, Focus } from '@tiptap/extensions';
+import { Placeholder, Focus, Dropcursor } from '@tiptap/extensions';
 import UniqueID from '@tiptap/extension-unique-id';
 import { Extension } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
@@ -219,6 +219,11 @@ export function createEditorStore(options: EditorConfigOptions) {
             Focus.configure({
                 className: 'is-node-focused',
                 mode: 'all',
+            }),
+            Dropcursor.configure({
+                color: 'dodgerblue',
+                width: 3,
+                class: 'tiptap-dropcursor',
             }),
             GapCursorFocusReset,
             ContentTrackingExtension,
