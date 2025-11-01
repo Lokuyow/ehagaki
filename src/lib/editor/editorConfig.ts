@@ -8,7 +8,6 @@ import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '.';
-import { GapCursorNewlineExtension } from './gapCursorNewline';
 
 export interface EditorConfigOptions {
     placeholderText: string;
@@ -131,7 +130,6 @@ export function createEditorStore(options: EditorConfigOptions) {
             MediaPasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension,
-            GapCursorNewlineExtension,
             // Placeholderエクステンションの設定
             Placeholder.configure({
                 placeholder: placeholderText,
