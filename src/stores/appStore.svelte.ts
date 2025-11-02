@@ -3,7 +3,7 @@ import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreS
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { writable } from "svelte/store";
-import type { VideoCompressionService } from '../lib/videoCompressionService';
+import type { VideoCompressionService } from '../lib/videoCompression/videoCompressionService';
 
 // --- アプリ全体の状態管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({

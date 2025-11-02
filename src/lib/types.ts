@@ -1,5 +1,6 @@
 import type { createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import { VIDEO_COMPRESSION_OPTIONS_MAP } from "./constants";
 
 // --- App Store types ---
 export interface AuthState {
@@ -160,9 +161,19 @@ export interface FileUploadDependencies {
 }
 
 export interface CompressionService {
-    compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }>;
+    compress(file: File): Promise<VideoCompressionResult>;
     hasCompressionSettings?(): boolean;
 }
+
+// --- Video Compression types ---
+export interface VideoCompressionResult {
+    file: File;
+    wasCompressed: boolean;
+    wasSkipped?: boolean;
+    aborted?: boolean;
+}
+
+export type VideoCompressionLevel = keyof typeof VIDEO_COMPRESSION_OPTIONS_MAP;
 
 export interface AuthService {
     buildAuthHeader(url: string, method: string): Promise<string>;

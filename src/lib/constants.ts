@@ -1,3 +1,5 @@
+import { QUALITY_MEDIUM, QUALITY_LOW, QUALITY_VERY_LOW } from 'mediabunny';
+
 export const BOOTSTRAP_RELAYS = [
     "wss://purplepag.es/",
     "wss://directory.yabu.me/",
@@ -40,6 +42,40 @@ export const COMPRESSION_OPTIONS_MAP = {
         initialQuality: 0.50,
         useWebWorker: true,
     }
+} as const;
+
+export const VIDEO_COMPRESSION_OPTIONS_MAP = {
+    none: { skip: true },
+    low: {
+        crf: 20,
+        preset: 'superfast',
+        maxSize: 1280,
+        audioBitrate: '128k',
+        // Mediabunny用の設定
+        mediabunnyVideoQuality: QUALITY_MEDIUM,
+        mediabunnyAudioQuality: QUALITY_MEDIUM,
+    },
+    medium: {
+        crf: 26,
+        preset: 'superfast',
+        maxSize: 640,
+        audioBitrate: '64k',
+        audioSampleRate: 44100,
+        // Mediabunny用の設定
+        mediabunnyVideoQuality: QUALITY_LOW,
+        mediabunnyAudioQuality: QUALITY_LOW,
+    },
+    high: {
+        crf: 28,
+        preset: 'medium',
+        maxSize: 320,
+        audioBitrate: '32k',
+        audioSampleRate: 16000,
+        audioChannels: 1,
+        // Mediabunny用の設定
+        mediabunnyVideoQuality: QUALITY_VERY_LOW,
+        mediabunnyAudioQuality: QUALITY_VERY_LOW,
+    },
 } as const;
 
 export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;

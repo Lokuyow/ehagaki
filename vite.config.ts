@@ -2,6 +2,7 @@ import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { VitePWA } from 'vite-plugin-pwa';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 
 // previewモード判定（vite preview時は process.argv に 'preview' が含まれる）
 const isPreview = process.argv.some(arg => arg.includes('preview')) ||
@@ -36,6 +37,7 @@ export default defineConfig({
       ]
     }),
     svelte(),
+    // basicSsl(),
     VitePWA({
       registerType: 'prompt',
       strategies: 'injectManifest',

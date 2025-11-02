@@ -3,7 +3,7 @@ import { keyManager } from "./keyManager";
 import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
 import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
 import imageCompression from "browser-image-compression";
-import { VideoCompressionService } from "./videoCompressionService";
+import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
   FileUploadResponse,
   UploadProgress,
