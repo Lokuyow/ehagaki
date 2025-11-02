@@ -286,8 +286,9 @@
 
     :global(.nostr-login-button.default) {
         height: 74px;
-        margin-top: 44px;
-        margin-bottom: 16px;
+        flex-shrink: 0;
+        margin-top: 26px;
+        margin-bottom: 8px;
         padding: 12px 24px 12px 22px;
         display: flex;
         align-items: center;
