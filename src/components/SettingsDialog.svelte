@@ -309,157 +309,173 @@
         <!-- SW更新セクション -->
         {#if $swNeedRefresh}
             <div class="setting-section sw-update-section">
-                <span class="setting-label sw-update-label">
-                    {$_("settingsDialog.sw_update_available") ||
-                        "アプリの更新があります"}
-                </span>
-                <div class="setting-control">
-                    <Button
-                        variant="primary"
-                        shape="rounded"
-                        className="sw-update-btn {isUpdating ? 'loading' : ''}"
-                        onClick={handleSwRefresh}
-                        disabled={isUpdating}
-                        ariaLabel={$_("settingsDialog.update_app") ||
-                            "アプリを更新"}
-                    >
-                        {#if isUpdating}
-                            <LoadingPlaceholder
-                                showLoader={true}
-                                text={$_("settingsDialog.updating") ||
-                                    "更新中..."}
-                            />
-                        {:else}
-                            <div
-                                class="rotate-right-icon svg-icon"
-                                aria-label={$_("settingsDialog.refresh") ||
-                                    "更新"}
-                            ></div>
-                            <span class="btn-text">
-                                {$_("settingsDialog.update_app") || "更新"}
-                            </span>
-                        {/if}
-                    </Button>
+                <div class="setting-row">
+                    <span class="setting-label sw-update-label">
+                        {$_("settingsDialog.sw_update_available") ||
+                            "アプリの更新があります"}
+                    </span>
+                    <div class="setting-control">
+                        <Button
+                            variant="primary"
+                            shape="rounded"
+                            className="sw-update-btn {isUpdating
+                                ? 'loading'
+                                : ''}"
+                            onClick={handleSwRefresh}
+                            disabled={isUpdating}
+                            ariaLabel={$_("settingsDialog.update_app") ||
+                                "アプリを更新"}
+                        >
+                            {#if isUpdating}
+                                <LoadingPlaceholder
+                                    showLoader={true}
+                                    text={$_("settingsDialog.updating") ||
+                                        "更新中..."}
+                                />
+                            {:else}
+                                <div
+                                    class="rotate-right-icon svg-icon"
+                                    aria-label={$_("settingsDialog.refresh") ||
+                                        "更新"}
+                                ></div>
+                                <span class="btn-text">
+                                    {$_("settingsDialog.update_app") || "更新"}
+                                </span>
+                            {/if}
+                        </Button>
+                    </div>
                 </div>
             </div>
         {/if}
 
         <!-- 言語設定セクション -->
         <div class="setting-section">
-            <span class="setting-label"> Language/言語 </span>
-            <div class="setting-control">
-                <Button
-                    variant="default"
-                    shape="rounded"
-                    className="lang-btn"
-                    onClick={toggleLanguage}
-                >
-                    <div
-                        class="lang-icon-btn svg-icon"
-                        aria-label={$_("settingsDialog.change") || "変更"}
-                    ></div>
-                    <span class="btn-text"
-                        >{$_("settingsDialog.change") || "変更"}</span
+            <div class="setting-row">
+                <span class="setting-label"> Language/言語 </span>
+                <div class="setting-control">
+                    <Button
+                        variant="default"
+                        shape="rounded"
+                        className="lang-btn"
+                        onClick={toggleLanguage}
                     >
-                </Button>
+                        <div
+                            class="lang-icon-btn svg-icon"
+                            aria-label={$_("settingsDialog.change") || "変更"}
+                        ></div>
+                        <span class="btn-text"
+                            >{$_("settingsDialog.change") || "変更"}</span
+                        >
+                    </Button>
+                </div>
             </div>
         </div>
 
         <!-- 画像圧縮設定セクション -->
         <div class="setting-section">
-            <span class="setting-label"
-                >{$_("settingsDialog.compression_setting") ||
-                    "画像圧縮設定"}</span
-            >
-            <div class="setting-control">
-                <select
-                    id="compression-select"
-                    bind:value={_selectedCompression}
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.compression_setting") ||
+                        "画像圧縮設定"}</span
                 >
-                    {#each compressionLevels as level}
-                        <option value={level.value}>{level.label}</option>
-                    {/each}
-                </select>
+                <div class="setting-control">
+                    <select
+                        id="compression-select"
+                        bind:value={_selectedCompression}
+                    >
+                        {#each compressionLevels as level}
+                            <option value={level.value}>{level.label}</option>
+                        {/each}
+                    </select>
+                </div>
             </div>
         </div>
 
         <!-- 動画圧縮設定セクション -->
         <div class="setting-section">
-            <span class="setting-label"
-                >{$_("settingsDialog.video_compression_setting") ||
-                    "動画圧縮設定"}</span
-            >
-            <div class="setting-control">
-                <select
-                    id="video-compression-select"
-                    bind:value={_selectedVideoCompression}
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.video_compression_setting") ||
+                        "動画圧縮設定"}</span
                 >
-                    {#each videoCompressionLevels as level}
-                        <option value={level.value}>{level.label}</option>
-                    {/each}
-                </select>
+                <div class="setting-control">
+                    <select
+                        id="video-compression-select"
+                        bind:value={_selectedVideoCompression}
+                    >
+                        {#each videoCompressionLevels as level}
+                            <option value={level.value}>{level.label}</option>
+                        {/each}
+                    </select>
+                </div>
             </div>
         </div>
 
         <!-- アップロード先設定セクション -->
         <div class="setting-section">
-            <span class="setting-label"
-                >{$_("settingsDialog.upload_destination") ||
-                    "アップロード先"}</span
-            >
-            <div class="setting-control">
-                <select id="endpoint-select" bind:value={_selectedEndpoint}>
-                    {#each uploadEndpoints as ep}
-                        <option value={ep.url}>{ep.label}</option>
-                    {/each}
-                </select>
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.upload_destination") ||
+                        "アップロード先"}</span
+                >
+                <div class="setting-control">
+                    <select id="endpoint-select" bind:value={_selectedEndpoint}>
+                        {#each uploadEndpoints as ep}
+                            <option value={ep.url}>{ep.label}</option>
+                        {/each}
+                    </select>
+                </div>
             </div>
         </div>
 
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
-            <span class="setting-label"
-                >{$_("settingsDialog.client_tag_label") ||
-                    "投稿詳細にクライアント名をつける（Client tag）"}</span
-            >
-            <div class="setting-control">
-                <label class="toggle-switch" for="client-tag-toggle">
-                    <input
-                        id="client-tag-toggle"
-                        type="checkbox"
-                        bind:checked={clientTagEnabled}
-                    />
-                    <span class="slider"></span>
-                </label>
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.client_tag_label") ||
+                        "投稿詳細にクライアント名をつける（Client tag）"}</span
+                >
+                <div class="setting-control">
+                    <label class="toggle-switch" for="client-tag-toggle">
+                        <input
+                            id="client-tag-toggle"
+                            type="checkbox"
+                            bind:checked={clientTagEnabled}
+                        />
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
         </div>
 
         <!-- リレー・プロフィール再取得セクション -->
         <div class="setting-section">
-            <span class="setting-label"
-                >{$_("settingsDialog.refresh_relays_and_profile") ||
-                    "リレーリスト・プロフィール再取得"}</span
-            >
-            <div class="setting-control">
-                <Button
-                    variant="default"
-                    shape="rounded"
-                    className="refresh-relays-profile-btn"
-                    onClick={() =>
-                        onRefreshRelaysAndProfile &&
-                        onRefreshRelaysAndProfile()}
-                    ariaLabel={$_(
-                        "settingsDialog.refresh_relays_and_profile",
-                    ) || "再取得"}
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.refresh_relays_and_profile") ||
+                        "リレーリスト・プロフィール再取得"}</span
                 >
-                    <div
-                        class="rotate-right-icon svg-icon"
-                        aria-label={$_("settingsDialog.refresh") || "更新"}
-                    ></div>
-                    <span class="btn-text"
-                        >{$_("settingsDialog.refresh") || "更新"}</span
+                <div class="setting-control">
+                    <Button
+                        variant="default"
+                        shape="rounded"
+                        className="refresh-relays-profile-btn"
+                        onClick={() =>
+                            onRefreshRelaysAndProfile &&
+                            onRefreshRelaysAndProfile()}
+                        ariaLabel={$_(
+                            "settingsDialog.refresh_relays_and_profile",
+                        ) || "再取得"}
                     >
-                </Button>
+                        <div
+                            class="rotate-right-icon svg-icon"
+                            aria-label={$_("settingsDialog.refresh") || "更新"}
+                        ></div>
+                        <span class="btn-text"
+                            >{$_("settingsDialog.refresh") || "更新"}</span
+                        >
+                    </Button>
+                </div>
             </div>
 
             <!-- 投稿先リレー表示セクション（折りたたみ対応） -->
@@ -611,28 +627,34 @@
         font-size: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: 26px;
         width: 100%;
         overflow-y: auto;
     }
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 6px
+    }
+    .setting-row {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
     }
     .setting-label {
         font-size: 1.125rem;
         font-weight: 500;
+        line-height: 1.3;
         display: flex;
         align-items: center;
-        gap: 6px;
+        white-space: pre-line;
     }
 
     .setting-control {
         display: flex;
         align-items: center;
         height: fit-content;
-        padding-left: 10px;
     }
 
     .lang-icon-btn {
@@ -697,9 +719,6 @@
     }
     .toggle-switch input:checked + .slider:before {
         transform: translateX(46px);
-    }
-    .setting-info {
-        padding-left: 20px;
     }
     .relay-list ul {
         margin: 0;
