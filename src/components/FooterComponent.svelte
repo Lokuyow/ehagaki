@@ -1,5 +1,5 @@
 <script lang="ts">
-    import ProfileComponent from "./ProfileComponent.svelte";
+    import type { ProfileData } from "../lib/types";
     import FooterInfoDisplay from "./FooterInfoDisplay.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -10,7 +10,7 @@
         isAuthInitialized: boolean;
         isLoadingProfile: boolean;
         profileLoaded: boolean;
-        profileData: any;
+        profileData: ProfileData | null;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
         onOpenSettingsDialog: () => void;
@@ -30,6 +30,68 @@
     }: Props = $props();
 
     let footerInfoDisplayRef: any = $state();
+
+    // プロフィール画像読み込みエラー状態
+    let imageLoadError = $state(false);
+
+    // プロフィール画像のaltテキスト取得
+    const getProfileAlt = () =>
+        profileData?.name
+            ? profileData.name
+            : profileData?.npub
+                ? profileData.npub
+                : "User";
+
+    // 画像読み込みエラーハンドラ
+    function handleImageError(event: Event) {
+        console.log("プロフィール画像の読み込みに失敗しました:", event);
+        imageLoadError = true;
+
+        // Service Workerが利用可能な場合、キャッシュの問題かどうかをチェック
+        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+            console.log("Service Workerによるキャッシュ処理の可能性があります");
+        }
+    }
+
+    // 同一オリジン判定（外部テストからも利用できる純粋関数としてエクスポート）
+    export function isSameOriginPictureUrl(
+        pictureUrl: string | undefined | null,
+    ): boolean {
+        if (!pictureUrl) return false;
+        try {
+            const picUrl = new URL(pictureUrl, location.href);
+            return picUrl.origin === location.origin;
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // プロフィール画像が同一オリジンかどうか（クロスオリジンなら SW の no-cors キャッシュと整合するため crossorigin を付けない）
+    let isSameOriginPicture = $state(false);
+
+    // プロフィールデータが変更されたら画像エラー状態をリセット
+    $effect(() => {
+        if (profileData?.picture) {
+            imageLoadError = false;
+
+            // Service Workerでのキャッシュ処理をログ出力
+            if (
+                "serviceWorker" in navigator &&
+                navigator.serviceWorker.controller &&
+                profileData.picture.includes("profile=true")
+            ) {
+                console.log(
+                    "Service Workerでプロフィール画像をキャッシュ処理予定:",
+                    profileData.picture,
+                );
+            }
+
+            // 同一オリジン判定（失敗時は外部オリジン扱い）
+            isSameOriginPicture = isSameOriginPictureUrl(profileData.picture);
+        } else {
+            isSameOriginPicture = false;
+        }
+    });
 
     // 外部から呼び出せるようにメソッドをexport
     export function updateProgress(progress: number) {
@@ -58,12 +120,32 @@
             <LoadingPlaceholder showLoader={true} />
         </Button>
     {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
-        <ProfileComponent
-            {profileData}
-            hasStoredKey={isAuthenticated}
-            {isLoadingProfile}
-            showLogoutDialog={onOpenLogoutDialog}
-        />
+        <Button
+            variant="default"
+            shape="circle"
+            className={`profile-display${isLoadingProfile ? " loading" : ""}`}
+            disabled={isLoadingProfile}
+            onClick={() => {
+                if (!isLoadingProfile) onOpenLogoutDialog();
+            }}
+        >
+            {#if isLoadingProfile}
+                <LoadingPlaceholder showLoader={true} />
+            {:else if profileData?.picture && !imageLoadError}
+                <img
+                    src={profileData.picture}
+                    alt={getProfileAlt()}
+                    class="profile-picture"
+                    loading="lazy"
+                    {...isSameOriginPicture
+                        ? { crossorigin: "anonymous", referrerpolicy: "no-referrer" }
+                        : {}}
+                    onerror={handleImageError}
+                />
+            {:else}
+                <div class="profile-picture default svg-icon" aria-label="User"></div>
+            {/if}
+        </Button>
     {:else if !isLoadingProfile && !isAuthenticated}
         <Button
             className="login-btn"
@@ -146,5 +228,27 @@
     :global(.profile-display.loading) {
         opacity: 0.7;
         gap: 2px;
+    }
+    
+    /* プロフィール表示のスタイル */
+    :global(.default.profile-display) {
+        z-index: 10;
+
+        &:hover:not(:disabled) {
+            filter: brightness(94%);
+        }
+    }
+
+    .profile-picture {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        object-fit: cover;
+    }
+
+    .profile-picture.default {
+        mask-image: url("/icons/circle-user-solid-full.svg");
+        width: 100%;
+        height: 100%;
     }
 </style>
