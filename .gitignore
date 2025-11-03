@@ -27,5 +27,5 @@ public/ffmpeg-core
 *.sw?
 
 references
-AiAgentDocument
+aiAgentDocument
 .github
