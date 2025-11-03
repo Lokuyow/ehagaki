@@ -49,6 +49,7 @@
 
 <Dialog
     {show}
+    showFooter={true}
     useHistory={true}
     {onClose}
     ariaLabel={$_("profileDialog.title")}
@@ -135,30 +136,19 @@
             </div>
 
             <!-- ログアウトボタン -->
-            <div class="dialog-buttons">
-                <Button
-                    onClick={handleLogout}
-                    className="logout-btn {isLoggingOut ? 'loading' : ''}"
-                    variant="danger"
-                    shape="square"
-                    disabled={isLoggingOut}
-                >
-                    {#if isLoggingOut}
-                        <LoadingPlaceholder text={true} showLoader={true} />
-                    {:else}
-                        {$_("logoutDialog.logout")}
-                    {/if}
-                </Button>
-                <Button
-                    onClick={close}
-                    className="cancel-btn"
-                    variant="secondary"
-                    shape="square"
-                    disabled={isLoggingOut}
-                >
-                    {$_("logoutDialog.cancel")}
-                </Button>
-            </div>
+            <Button
+                onClick={handleLogout}
+                className="logout-btn {isLoggingOut ? 'loading' : ''}"
+                variant="danger"
+                shape="square"
+                disabled={isLoggingOut}
+            >
+                {#if isLoggingOut}
+                    <LoadingPlaceholder text={true} showLoader={true} />
+                {:else}
+                    {$_("logoutDialog.logout")}
+                {/if}
+            </Button>
         </div>
     {/snippet}
 </Dialog>
@@ -249,19 +239,11 @@
         mask-image: url("/icons/copy-solid-full.svg");
     }
 
-    .dialog-buttons {
-        display: flex;
-        justify-content: flex-end;
-        gap: 12px;
+    :global(button.logout-btn) {
         width: 100%;
-        height: 50px;
 
-        :global(button) {
-            flex: 1;
-
-            :global(.square) {
-                background-color: whitesmoke;
-            }
+        :global(.square) {
+            background-color: whitesmoke;
         }
     }
 </style>
