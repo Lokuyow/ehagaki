@@ -549,6 +549,7 @@ export interface ProfileData {
     name: string;
     picture: string;
     npub?: string;
+    nprofile?: string;
 }
 
 // --- Global Window extensions ---

@@ -32,6 +32,12 @@
     "logout": "Logout",
     "cancel": "Cancel"
   },
+  "profileDialog": {
+    "anonymous": "Anonymous",
+    "npub": "Public Key",
+    "copy_npub": "Copy npub",
+    "copy_nprofile": "Copy nprofile"
+  },
   "settingsDialog": {
     "client_tag_label": "Add client name to post \n(Client tag)",
     "refresh_relays_and_profile": "Refresh\nrelay list & profile",

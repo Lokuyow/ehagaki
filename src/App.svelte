@@ -8,7 +8,7 @@
   import { RelayManager } from "./lib/relayManager";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
-  import LogoutDialog from "./components/LogoutDialog.svelte";
+  import ProfileComponent from "./components/ProfileComponent.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
   import WelcomeDialog from "./components/WelcomeDialog.svelte";
   import { authService } from "./lib/authService";
@@ -162,7 +162,14 @@
     try {
       const profile = await profileManager.fetchProfileData(pubkeyHex, opts);
       if (profile) {
-        profileDataStore.set(profile);
+        // authStateからnpubとnprofileを追加
+        const currentAuthState = authState.value;
+        const enrichedProfile = {
+          ...profile,
+          npub: currentAuthState.npub || profile.npub,
+          nprofile: currentAuthState.nprofile
+        };
+        profileDataStore.set(enrichedProfile);
         profileLoadedStore.set(true);
       }
     } catch (error) {
@@ -204,7 +211,7 @@
   function logout() {
     isLoggingOut = true; // 追加: ログアウト開始時にローディング状態をtrueに
     authService.logout();
-    profileDataStore.set({ name: "", picture: "" });
+    profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
     profileLoadedStore.set(false);
     if (postComponentRef?.resetPostContent) postComponentRef.resetPostContent();
     if (footerInfoDisplay?.updateProgress) {
@@ -572,11 +579,12 @@
       />
     {/if}
     {#if showLogoutDialogStore.value}
-      <LogoutDialog
+      <ProfileComponent
         show={showLogoutDialogStore.value}
         onClose={closeLogoutDialog}
         onLogout={logout}
         {isLoggingOut}
+        profile={profileDataStore.value}
       />
     {/if}
     {#if showWelcomeDialogStore.value}
