@@ -93,7 +93,7 @@
 {#if hasStoredKey}
   <Button
     variant="default"
-    shape="pill"
+    shape="circle"
     className={`profile-display${isLoadingProfile ? " loading" : ""}`}
     disabled={isLoadingProfile}
     onClick={() => {
@@ -101,47 +101,45 @@
     }}
   >
     {#if isLoadingProfile}
-      <LoadingPlaceholder text={$_("loading")} showImage={true} />
+      <LoadingPlaceholder showLoader={true} />
+    {:else if profileData?.picture && !imageLoadError}
+      <img
+        src={profileData.picture}
+        alt={getProfileAlt()}
+        class="profile-picture"
+        loading="lazy"
+        {...isSameOriginPicture
+          ? { crossorigin: "anonymous", referrerpolicy: "no-referrer" }
+          : {}}
+        onerror={handleImageError}
+      />
     {:else}
-      {#if profileData?.picture && !imageLoadError}
-        <img
-          src={profileData.picture}
-          alt={getProfileAlt()}
-          class="profile-picture"
-          loading="lazy"
-          {...isSameOriginPicture
-            ? { crossorigin: "anonymous", referrerpolicy: "no-referrer" }
-            : {}}
-          onerror={handleImageError}
-        />
-      {:else}
-        <div class="profile-picture default svg-icon" aria-label="User"></div>
-      {/if}
-      <span class="profile-name">{getProfileName()}</span>
+      <div class="profile-picture default svg-icon" aria-label="User"></div>
     {/if}
   </Button>
 {/if}
 
 <style>
   /* プロフィール表示のスタイル */
-  :global(.default.pill.profile-display) {
-    gap: 6px;
-    padding: 0 10px 0 4px;
+  :global(.default.profile-display) {
     z-index: 10;
-    border: none;
+
+    &:hover:not(:disabled) {
+      filter: brightness(94%);
+    }
   }
 
   .profile-picture {
-    width: 42px;
-    height: 42px;
+    width: 100%;
+    height: 100%;
     border-radius: 50%;
     object-fit: cover;
   }
 
   .profile-picture.default {
     mask-image: url("/icons/circle-user-solid-full.svg");
-    width: 42px;
-    height: 42px;
+    width: 100%;
+    height: 100%;
   }
 
   .profile-name {

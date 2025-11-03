@@ -43,19 +43,19 @@
 <div class="footer-bar">
     {#if !isAuthInitialized}
         <Button
-            shape="pill"
+            shape="circle"
             className="profile-display loading"
             disabled={true}
         >
-            <LoadingPlaceholder text={true} showImage={true} />
+            <LoadingPlaceholder showLoader={true} />
         </Button>
     {:else if isAuthenticated && isLoadingProfile}
         <Button
-            shape="pill"
+            shape="circle"
             className="profile-display loading"
             disabled={true}
         >
-            <LoadingPlaceholder text={true} showImage={true} />
+            <LoadingPlaceholder showLoader={true} />
         </Button>
     {:else if isAuthenticated && (profileLoaded || isLoadingProfile)}
         <ProfileComponent

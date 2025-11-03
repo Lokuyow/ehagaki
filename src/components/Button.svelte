@@ -203,8 +203,8 @@
     }
     .circle {
         border-radius: 50%;
-        width: 50px;
-        height: 50px;
+        min-height: 50px;
+        min-width: 50px;
         padding: 0;
         display: flex;
         align-items: center;
