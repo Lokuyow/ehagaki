@@ -15,6 +15,7 @@
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void; // 追加
+        selected?: boolean; // 選択状態のプロパティを追加
     }
 
     let {
@@ -27,6 +28,7 @@
         shape = "rounded",
         children,
         onClick = undefined, // 追加
+        selected = false, // 選択状態のデフォルト値を追加
     }: Props = $props();
 
     function handleClick(event: MouseEvent) {
@@ -36,7 +38,7 @@
 
 <button
     {type}
-    class={`${className} ${variant} ${shape}`}
+    class={`${className} ${variant} ${shape} ${selected ? "selected" : ""}`}
     {disabled}
     aria-label={ariaLabel}
     {style}
@@ -209,6 +211,19 @@
         :global(.svg-icon) {
             width: 28px;
             height: 28px;
+        }
+    }
+
+    /* --- Selected Styles --- */
+    @media (prefers-color-scheme: light) {
+        .selected {
+            filter: brightness(80%);
+        }
+    }
+
+    @media (prefers-color-scheme: dark) {
+        .selected {
+            filter: brightness(150%);
         }
     }
 </style>

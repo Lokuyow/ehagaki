@@ -3,6 +3,7 @@
     import { locale, _ } from "svelte-i18n";
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
+    import RadioButton from "./RadioButton.svelte";
     import {
         authState,
         relayListUpdatedStore,
@@ -378,15 +379,20 @@
                     >{$_("settingsDialog.compression_setting") ||
                         "画像圧縮設定"}</span
                 >
-                <div class="setting-control">
-                    <select
-                        id="compression-select"
-                        bind:value={_selectedCompression}
-                    >
-                        {#each compressionLevels as level}
-                            <option value={level.value}>{level.label}</option>
-                        {/each}
-                    </select>
+                <div class="setting-control radio-group">
+                    {#each compressionLevels as level}
+                        <RadioButton
+                            value={level.value}
+                            name="compression"
+                            checked={_selectedCompression === level.value}
+                            variant="default"
+                            shape="rounded"
+                            onChange={(value) => (_selectedCompression = value)}
+                            ariaLabel={level.label}
+                        >
+                            {level.label}
+                        </RadioButton>
+                    {/each}
                 </div>
             </div>
         </div>
@@ -398,15 +404,21 @@
                     >{$_("settingsDialog.video_compression_setting") ||
                         "動画圧縮設定"}</span
                 >
-                <div class="setting-control">
-                    <select
-                        id="video-compression-select"
-                        bind:value={_selectedVideoCompression}
-                    >
-                        {#each videoCompressionLevels as level}
-                            <option value={level.value}>{level.label}</option>
-                        {/each}
-                    </select>
+                <div class="setting-control radio-group">
+                    {#each videoCompressionLevels as level}
+                        <RadioButton
+                            value={level.value}
+                            name="videoCompression"
+                            checked={_selectedVideoCompression === level.value}
+                            variant="default"
+                            shape="rounded"
+                            onChange={(value) =>
+                                (_selectedVideoCompression = value)}
+                            ariaLabel={level.label}
+                        >
+                            {level.label}
+                        </RadioButton>
+                    {/each}
                 </div>
             </div>
         </div>
@@ -634,7 +646,7 @@
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 6px
+        gap: 6px;
     }
     .setting-row {
         display: flex;
@@ -657,6 +669,11 @@
         height: fit-content;
     }
 
+    .radio-group {
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+
     .lang-icon-btn {
         mask-image: url("/icons/language-solid-full.svg");
     }
@@ -668,12 +685,12 @@
     #endpoint-select {
         font-size: 1rem;
     }
-    #compression-select,
+    /* #compression-select,
     #video-compression-select {
         font-size: 1rem;
         min-width: 200px;
         height: 50px;
-    }
+    } */
     .rotate-right-icon {
         mask-image: url("/icons/rotate-right-solid-full.svg");
     }
