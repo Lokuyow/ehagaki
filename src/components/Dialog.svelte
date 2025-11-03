@@ -124,6 +124,8 @@
                     {#if footer}{@render footer({ close: closeModal })}{:else}
                         <Button
                             className="modal-close"
+                            variant="default"
+                            shape="square"
                             onClick={closeModal}
                             ariaLabel="閉じる"
                         >

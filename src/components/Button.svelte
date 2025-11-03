@@ -194,6 +194,8 @@
     }
     .rounded {
         border-radius: 6px;
+        min-height: 50px;
+        min-width: 50px;
     }
     .pill {
         border-radius: 50px;
@@ -216,13 +218,13 @@
 
     /* --- Selected Styles --- */
     @media (prefers-color-scheme: light) {
-        .selected {
-            filter: brightness(80%);
+        button.selected {
+            filter: brightness(85%);
         }
     }
 
     @media (prefers-color-scheme: dark) {
-        .selected {
+        button.selected {
             filter: brightness(150%);
         }
     }

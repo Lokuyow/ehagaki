@@ -206,7 +206,7 @@ select {
     button:hover:not(:disabled),
     a:hover,
     select:hover {
-      filter: brightness(110%);
+      filter: brightness(115%);
     }
   }
 }

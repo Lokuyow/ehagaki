@@ -376,8 +376,7 @@
         <div class="setting-section">
             <div class="setting-row">
                 <span class="setting-label"
-                    >{$_("settingsDialog.compression_setting") ||
-                        "画像圧縮設定"}</span
+                    >{$_("settingsDialog.compression_setting")}</span
                 >
                 <div class="setting-control radio-group">
                     {#each compressionLevels as level}
@@ -401,8 +400,7 @@
         <div class="setting-section">
             <div class="setting-row">
                 <span class="setting-label"
-                    >{$_("settingsDialog.video_compression_setting") ||
-                        "動画圧縮設定"}</span
+                    >{$_("settingsDialog.video_compression_setting")}</span
                 >
                 <div class="setting-control radio-group">
                     {#each videoCompressionLevels as level}
@@ -512,7 +510,7 @@
                         "書き込み先リレーリスト"}
                 </button>
                 {#if showRelays}
-                    <div class="setting-control relay-list">
+                    <div class="relay-list">
                         {#if writeRelays.length > 0}
                             <ul>
                                 {#each writeRelays as relay}
@@ -646,7 +644,7 @@
     .setting-section {
         display: flex;
         flex-direction: column;
-        gap: 6px;
+        gap: 8px;
     }
     .setting-row {
         display: flex;
@@ -660,18 +658,33 @@
         line-height: 1.3;
         display: flex;
         align-items: center;
+        justify-content: flex-start;
         white-space: pre-line;
     }
 
     .setting-control {
         display: flex;
         align-items: center;
+        justify-content: flex-end;
         height: fit-content;
+    }
+
+    .setting-info {
+        margin-left: 10px;
     }
 
     .radio-group {
         gap: 6px;
         flex-wrap: wrap;
+        flex-shrink: 0;
+
+        :global(button) {
+            font-size: 0.875rem;
+            padding: 10px;
+            min-height: 50px;
+            min-width: 50px;
+            font-weight: normal;
+        }
     }
 
     .lang-icon-btn {
@@ -685,12 +698,7 @@
     #endpoint-select {
         font-size: 1rem;
     }
-    /* #compression-select,
-    #video-compression-select {
-        font-size: 1rem;
-        min-width: 200px;
-        height: 50px;
-    } */
+
     .rotate-right-icon {
         mask-image: url("/icons/rotate-right-solid-full.svg");
     }
@@ -737,15 +745,21 @@
     .toggle-switch input:checked + .slider:before {
         transform: translateX(46px);
     }
-    .relay-list ul {
-        margin: 0;
-        padding-left: 20px;
-        font-size: 0.9375rem;
-    }
-    .relay-list li {
-        word-break: break-all;
-        color: var(--text-light);
-        margin: 6px 0;
+
+    .relay-list {
+        margin-left: 10px;
+
+        ul {
+            margin: 0;
+            padding-left: 20px;
+            font-size: 0.9375rem;
+        }
+
+        li {
+            word-break: break-all;
+            color: var(--text-light);
+            margin: 6px 0;
+        }
     }
     .relay-toggle-label {
         user-select: none;
