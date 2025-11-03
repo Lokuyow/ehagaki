@@ -1,4 +1,4 @@
-import { QUALITY_MEDIUM, QUALITY_LOW, QUALITY_VERY_LOW } from 'mediabunny';
+import { QUALITY_MEDIUM, QUALITY_LOW, QUALITY_VERY_LOW, QUALITY_HIGH } from 'mediabunny';
 
 export const BOOTSTRAP_RELAYS = [
     "wss://purplepag.es/",
@@ -52,8 +52,8 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         maxSize: 1280,
         audioBitrate: '128k',
         // Mediabunny用の設定
-        mediabunnyVideoQuality: QUALITY_MEDIUM,
-        mediabunnyAudioQuality: QUALITY_MEDIUM,
+        mediabunnyVideoQuality: QUALITY_HIGH,
+        mediabunnyAudioQuality: QUALITY_HIGH,
     },
     medium: {
         crf: 26,
@@ -62,8 +62,8 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         audioBitrate: '64k',
         audioSampleRate: 44100,
         // Mediabunny用の設定
-        mediabunnyVideoQuality: QUALITY_LOW,
-        mediabunnyAudioQuality: QUALITY_LOW,
+        mediabunnyVideoQuality: QUALITY_MEDIUM,
+        mediabunnyAudioQuality: QUALITY_MEDIUM,
     },
     high: {
         crf: 28,
