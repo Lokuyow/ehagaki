@@ -637,7 +637,7 @@
         font-size: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 26px;
+        gap: 30px;
         width: 100%;
         overflow-y: auto;
     }
