@@ -376,7 +376,7 @@
         <div class="setting-section">
             <div class="setting-row">
                 <span class="setting-label"
-                    >{$_("settingsDialog.compression_setting")}</span
+                    >{$_("settingsDialog.quality_setting")}</span
                 >
                 <div class="setting-control radio-group">
                     {#each compressionLevels as level}
@@ -400,7 +400,7 @@
         <div class="setting-section">
             <div class="setting-row">
                 <span class="setting-label"
-                    >{$_("settingsDialog.video_compression_setting")}</span
+                    >{$_("settingsDialog.video_quality_setting")}</span
                 >
                 <div class="setting-control radio-group">
                     {#each videoCompressionLevels as level}

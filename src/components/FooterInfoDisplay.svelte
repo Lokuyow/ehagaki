@@ -295,15 +295,15 @@
     function getVideoCompressionLevelLabel(level: string): string {
         switch (level) {
             case "none":
-                return $_("settingsDialog.compression_none");
+                return $_("settingsDialog.quality_lossless");
             case "low":
-                return $_("settingsDialog.compression_low");
+                return $_("settingsDialog.quality_high");
             case "medium":
-                return $_("settingsDialog.compression_medium");
+                return $_("settingsDialog.quality_medium");
             case "high":
-                return $_("settingsDialog.compression_high");
+                return $_("settingsDialog.quality_low");
             default:
-                return $_("settingsDialog.compression_medium");
+                return $_("settingsDialog.quality_medium");
         }
     }
     // 画像サイズ情報から拡張子を取得
