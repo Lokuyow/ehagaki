@@ -4,6 +4,7 @@ import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreS
 import { useRegisterSW } from "virtual:pwa-register/svelte";
 import { writable } from "svelte/store";
 import type { VideoCompressionService } from '../lib/videoCompression/videoCompressionService';
+import { RelayConfigUtils, type RelayManager } from '../lib/relayManager';
 
 // --- アプリ全体の状態管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
@@ -413,6 +414,9 @@ export const secretKeyStore = {
     }
 };
 
+// --- リレー設定管理 ---
+let relayManagerInstance: RelayManager | null = null;
+
 // --- 設定ダイアログ管理 ---
 let writeRelays = $state<string[]>([]);
 let relayConfig = $state<RelayConfig | null>(null); // リレー設定全体を保持
@@ -465,55 +469,31 @@ export const relayListUpdatedStore = {
 
 // --- リレーリスト管理ヘルパー関数 ---
 /**
+ * RelayManagerインスタンスを設定（依存性注入）
+ */
+export function setRelayManager(relayManager: RelayManager): void {
+    relayManagerInstance = relayManager;
+}
+
+/**
  * localStorageからリレー設定を読み込んでストアに設定
  */
 export function loadRelayConfigFromStorage(pubkeyHex: string): void {
-    if (!pubkeyHex) {
+    if (!relayManagerInstance || !pubkeyHex) {
         relayConfigStore.set(null);
         writeRelaysStore.set([]);
         return;
     }
 
-    const relayKey = `nostr-relays-${pubkeyHex}`;
-    try {
-        const stored = localStorage.getItem(relayKey);
-        if (!stored) {
-            relayConfigStore.set(null);
-            writeRelaysStore.set([]);
-            return;
-        }
-
-        const relays = JSON.parse(stored);
-        relayConfigStore.set(relays);
-
-        // writeRelaysを抽出
-        const writeRelaysList = extractWriteRelays(relays);
-        writeRelaysStore.set(writeRelaysList);
-    } catch (error) {
-        console.error('リレー設定の読み込みエラー:', error);
+    const result = relayManagerInstance.loadRelayConfigForUI(pubkeyHex);
+    if (!result) {
         relayConfigStore.set(null);
         writeRelaysStore.set([]);
+        return;
     }
-}
 
-/**
- * RelayConfigから書き込み可能なリレーを抽出
- */
-function extractWriteRelays(relays: RelayConfig): string[] {
-    if (Array.isArray(relays)) {
-        return relays;
-    } else if (relays && typeof relays === "object") {
-        return Object.entries(relays)
-            .filter(
-                ([, conf]) =>
-                    conf &&
-                    typeof conf === "object" &&
-                    "write" in conf &&
-                    (conf as { write?: boolean }).write,
-            )
-            .map(([url]) => url);
-    }
-    return [];
+    relayConfigStore.set(result.relayConfig);
+    writeRelaysStore.set(result.writeRelays);
 }
 
 /**
@@ -528,7 +508,7 @@ export function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig)
         relayConfigStore.set(config);
         
         // writeRelaysを抽出して更新
-        const writeRelaysList = extractWriteRelays(config);
+        const writeRelaysList = RelayConfigUtils.extractWriteRelays(config);
         writeRelaysStore.set(writeRelaysList);
 
         // リレーリスト更新を通知

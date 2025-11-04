@@ -325,37 +325,6 @@ export function generateSimpleUUID(): string {
 // =============================================================================
 
 /**
- * 書き込み先リレーリストを取得
- */
-export function loadWriteRelaysFromStorage(
-  pubkeyHex: string,
-  storage: StorageAdapter = defaultStorageAdapter
-): string[] {
-  if (!pubkeyHex) return [];
-
-  const relayKey = `${STORAGE_KEYS.NOSTR_RELAYS}${pubkeyHex}`;
-  try {
-    const relays = JSON.parse(storage.getItem(relayKey) ?? "null");
-    if (Array.isArray(relays)) {
-      return relays;
-    } else if (relays && typeof relays === "object") {
-      return Object.entries(relays)
-        .filter(
-          ([, conf]) =>
-            conf &&
-            typeof conf === "object" &&
-            "write" in conf &&
-            (conf as { write?: boolean }).write,
-        )
-        .map(([url]) => url);
-    }
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-/**
  * 有効なロケールを取得
  */
 function getEffectiveLocale(

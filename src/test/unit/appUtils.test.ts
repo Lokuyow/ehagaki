@@ -17,7 +17,6 @@ import {
     toNprofile,
 
     // Settings Utilities
-    loadWriteRelaysFromStorage,
     initializeSettingsValues,
     handleServiceWorkerRefresh
 } from '../../lib/utils/appUtils';
@@ -332,39 +331,6 @@ describe('Settings Utilities', () => {
         mockTimeout = {
             setTimeout: vi.fn()
         };
-    });
-
-    describe('loadWriteRelaysFromStorage', () => {
-        it('should return empty array for empty pubkey', () => {
-            expect(loadWriteRelaysFromStorage('', mockStorage)).toEqual([]);
-        });
-
-        it('should return empty array when no data', () => {
-            (mockStorage.getItem as any).mockReturnValue(null);
-            expect(loadWriteRelaysFromStorage('pubkey', mockStorage)).toEqual([]);
-        });
-
-        it('should return array from storage', () => {
-            (mockStorage.getItem as any).mockReturnValue('["relay1", "relay2"]');
-            expect(loadWriteRelaysFromStorage('pubkey', mockStorage)).toEqual(['relay1', 'relay2']);
-        });
-
-        it('should extract write relays from object format', () => {
-            const relayData = {
-                'relay1': { write: true, read: false },
-                'relay2': { write: false, read: true },
-                'relay3': { write: true, read: true }
-            };
-            (mockStorage.getItem as any).mockReturnValue(JSON.stringify(relayData));
-
-            const result = loadWriteRelaysFromStorage('pubkey', mockStorage);
-            expect(result).toEqual(['relay1', 'relay3']);
-        });
-
-        it('should handle invalid JSON gracefully', () => {
-            (mockStorage.getItem as any).mockReturnValue('invalid json');
-            expect(loadWriteRelaysFromStorage('pubkey', mockStorage)).toEqual([]);
-        });
     });
 
     describe('initializeSettingsValues', () => {

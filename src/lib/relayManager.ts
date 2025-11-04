@@ -541,4 +541,20 @@ export class RelayManager {
     getNetworkFetcher(): RelayNetworkFetcher {
         return this.networkFetcher;
     }
+
+    /**
+     * UI用のリレー設定読み込みメソッド
+     * ローカルストレージからリレー設定を読み込み、writeリレーリストも返す
+     * @param pubkeyHex 公開鍵
+     * @returns リレー設定とwriteリレーのタプル、存在しない場合はnull
+     */
+    loadRelayConfigForUI(pubkeyHex: string): { relayConfig: RelayConfig; writeRelays: string[] } | null {
+        const relayConfig = this.storage.get(pubkeyHex);
+        if (!relayConfig) {
+            return null;
+        }
+
+        const writeRelays = RelayConfigUtils.extractWriteRelays(relayConfig);
+        return { relayConfig, writeRelays };
+    }
 }

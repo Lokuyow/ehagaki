@@ -38,7 +38,7 @@
     urlQueryContentStore,
     updateUrlQueryContentStore,
     clearUrlQueryContentStore,
-    loadRelayConfigFromStorage,
+    setRelayManager,
   } from "./stores/appStore.svelte";
   import type { UploadProgress, BalloonMessage } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
@@ -119,6 +119,9 @@
       relayManager,
       profileManager,
     );
+
+    // RelayManagerをappStoreに設定
+    setRelayManager(relayManager);
 
     await relayProfileService.initializeRelays(pubkeyHex);
   }
@@ -232,8 +235,11 @@
   // 認証状態が変わったら自動的にリレー設定を読み込む
   $effect(() => {
     const pubkey = authState.value?.pubkey;
-    if (pubkey && authState.value?.isAuthenticated) {
-      loadRelayConfigFromStorage(pubkey);
+    if (pubkey && authState.value?.isAuthenticated && relayProfileService) {
+      const result = relayProfileService.getRelayManager().loadRelayConfigForUI(pubkey);
+      if (result) {
+        // TODO: 必要に応じてストアを更新
+      }
     }
   });
 
