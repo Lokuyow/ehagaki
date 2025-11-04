@@ -2,6 +2,7 @@ import { _ } from "svelte-i18n";
 import { get as getStore } from "svelte/store";
 import type { MenuItem, ImageContextMenuStore, ImageContextMenuState } from "../types";
 import { calculateContextMenuPosition } from "./appUtils";
+import { copyToClipboard } from "./clipboardUtils";
 
 // getImageContextMenuItems: 依存関係を引数で注入可能に
 export function getImageContextMenuItems(
@@ -58,46 +59,8 @@ export function getImageContextMenuItems(
                     console.log("[dev] imageContextMenu.copyUrl action", { src });
                 }
 
-                // 1) 標準Clipboard APIをまず試す
-                try {
-                    if (navigatorObj?.clipboard && typeof navigatorObj.clipboard.writeText === "function") {
-                        await navigatorObj.clipboard.writeText(src);
-                        return true;
-                    }
-                } catch (err) {
-                    // 明示的に続行してフォールバックへ（最終的に失敗なら throw する）
-                    if (import.meta.env.MODE === "development") {
-                        console.warn("[dev] clipboard.writeText failed, trying fallback:", err);
-                    }
-                }
-
-                // 2) フォールバック: textarea + execCommand('copy')
-                try {
-                    const doc = (windowObj && (windowObj as any).document) || document;
-                    const textarea = doc.createElement("textarea");
-                    textarea.value = src;
-                    // ページ表示を汚さないため off-screen に配置
-                    textarea.style.position = "fixed";
-                    textarea.style.left = "-9999px";
-                    textarea.style.top = "0";
-                    textarea.setAttribute("readonly", "true");
-                    doc.body.appendChild(textarea);
-                    textarea.focus();
-                    textarea.select();
-
-                    // execCommandの戻りを確認
-                    const successful = doc.execCommand && doc.execCommand("copy");
-                    doc.body.removeChild(textarea);
-
-                    if (!successful) {
-                        throw new Error("fallback_copy_failed");
-                    }
-                    return true;
-                } catch (error) {
-                    // ここで失敗を握りつぶさず伝播させる
-                    console.warn("Failed to copy URL (both clipboard API and fallback failed):", error);
-                    throw error;
-                }
+                // clipboardUtils.tsのcopyToClipboard関数を使用
+                copyToClipboard(src, "image URL", navigatorObj, windowObj);
             },
             src,
             icon: "/icons/copy-solid-full.svg",

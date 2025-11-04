@@ -129,8 +129,8 @@ describe("imageContextMenuUtils", () => {
 
         const copyAction = items[1].action;
 
-        // コピーアクションが失敗して例外を投げることを確認
-        await expect(copyAction()).rejects.toThrow();
+        // コピーアクションが失敗しても例外を投げないことを確認（ContextMenuの動作に合わせる）
+        await expect(copyAction()).resolves.toBeUndefined();
 
         // Clipboard API が呼ばれたことを確認
         expect(navigator.clipboard.writeText).toHaveBeenCalledWith(src);

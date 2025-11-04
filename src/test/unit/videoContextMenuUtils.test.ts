@@ -96,11 +96,12 @@ describe("videoContextMenuUtils", () => {
                 nodeSize,
                 true,
                 nodeId,
-                { windowObj: mockWindow as any, t }
+                { windowObj: mockWindow as any, navigatorObj: globalThis.navigator, t }
             );
 
             await items[1].action();
 
+            // フォールバックが試されたことを確認
             expect(mockDocument.createElement).toHaveBeenCalledWith("textarea");
             expect(mockTextarea.value).toBe(src);
             expect(mockDocument.body.appendChild).toHaveBeenCalledWith(mockTextarea);
@@ -140,7 +141,7 @@ describe("videoContextMenuUtils", () => {
                 { windowObj: mockWindow as any, t }
             );
 
-            await expect(items[1].action()).rejects.toThrow();
+            await expect(items[1].action()).resolves.toBeUndefined();
         });
 
         it("delete action removes video node when selected (with id attribute)", () => {

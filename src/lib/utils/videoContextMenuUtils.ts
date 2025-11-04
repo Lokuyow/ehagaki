@@ -2,6 +2,7 @@ import { _ } from "svelte-i18n";
 import { get as getStore } from "svelte/store";
 import type { MenuItem } from "../types";
 import { calculateContextMenuPosition } from "./appUtils";
+import { copyToClipboard } from "./clipboardUtils";
 
 /**
  * 動画ノード用のコンテキストメニューアイテムを生成
@@ -53,40 +54,8 @@ export function getVideoContextMenuItems(
         {
             label: t("videoContextMenu.copyUrl"),
             action: async () => {
-                // 1) 標準Clipboard APIをまず試す
-                try {
-                    if (navigatorObj?.clipboard && typeof navigatorObj.clipboard.writeText === "function") {
-                        await navigatorObj.clipboard.writeText(src);
-                        return true;
-                    }
-                } catch (err) {
-                    // フォールバックへ
-                }
-
-                // 2) フォールバック: textarea + execCommand('copy')
-                try {
-                    const doc = (windowObj && (windowObj as any).document) || document;
-                    const textarea = doc.createElement("textarea");
-                    textarea.value = src;
-                    textarea.style.position = "fixed";
-                    textarea.style.left = "-9999px";
-                    textarea.style.top = "0";
-                    textarea.setAttribute("readonly", "true");
-                    doc.body.appendChild(textarea);
-                    textarea.focus();
-                    textarea.select();
-
-                    const successful = doc.execCommand && doc.execCommand("copy");
-                    doc.body.removeChild(textarea);
-
-                    if (!successful) {
-                        throw new Error("fallback_copy_failed");
-                    }
-                    return true;
-                } catch (error) {
-                    console.warn("Failed to copy URL (both clipboard API and fallback failed):", error);
-                    throw error;
-                }
+                // clipboardUtils.tsのcopyToClipboard関数を使用
+                copyToClipboard(src, "video URL", navigatorObj, windowObj);
             },
             src,
             icon: "/icons/copy-solid-full.svg",

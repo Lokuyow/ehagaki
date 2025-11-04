@@ -5,6 +5,7 @@
  * - テキストの改行コード正規化（CRLF/CR/LF → LF）
  * - 末尾改行の適切な処理
  * - 段落配列とテキストの相互変換
+ * - テキストのクリップボードコピー（スマートフォン対応）
  * 
  * 注意: ProseMirror/Tiptapのノード操作は含まない（clipboardExtension.tsが担当）
  */
@@ -154,4 +155,76 @@ export function analyzeLineBreaks(text: string): LineBreakAnalysis {
         totalLines: hasTrailingNewline ? lines.length - 1 : lines.length,
         hasTrailingNewline
     };
+}
+
+// ================================================================================
+// クリップボードコピー機能
+// ================================================================================
+
+/**
+ * テキストをクリップボードにコピー（スマートフォン対応）
+ * 
+ * 処理フロー:
+ * 1. 標準Clipboard APIをまず試す
+ * 2. 失敗したらtextarea + execCommand('copy')のフォールバックを使用
+ * 3. 両方失敗したらエラーをログ出力
+ * 
+ * @param text - コピーするテキスト
+ * @param type - テキストの種類（ログ出力用）
+ * @param navigatorObj - Navigatorオブジェクト（テスト用）
+ */
+export async function copyToClipboard(text: string, type: "npub" | "nprofile" | string = "", navigatorObj?: Navigator, windowObj?: Window): Promise<void> {
+    const nav = navigatorObj ?? navigator;
+    // 1) 標準Clipboard APIをまず試す
+    try {
+        if (nav?.clipboard && typeof nav.clipboard.writeText === "function") {
+            await nav.clipboard.writeText(text);
+            console.log(`${type} copied to clipboard`);
+            return;
+        }
+    } catch (err) {
+        console.error(`Failed to copy ${type}:`, err);
+        // フォールバックを試す
+        await fallbackCopy(text, type, windowObj);
+        return;
+    }
+
+    // 2) フォールバック: textarea + execCommand('copy')
+    await fallbackCopy(text, type, windowObj);
+}
+
+/**
+ * フォールバックコピー処理（textarea + execCommand）
+ * 
+ * @param text - コピーするテキスト
+ * @param type - テキストの種類（ログ出力用）
+ * @param windowObj - Windowオブジェクト（テスト用）
+ */
+async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "", windowObj?: Window): Promise<void> {
+    const win = windowObj ?? window;
+    try {
+        const doc = (win && (win as any).document) || document;
+        const textarea = doc.createElement("textarea");
+        textarea.value = text;
+        // ページ表示を汚さないため off-screen に配置
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        textarea.style.top = "0";
+        textarea.setAttribute("readonly", "true");
+        doc.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+
+        // execCommandの戻りを確認
+        const successful = doc.execCommand && doc.execCommand("copy");
+        doc.body.removeChild(textarea);
+
+        if (successful) {
+            console.log(`${type} copied to clipboard (fallback)`);
+        } else {
+            throw new Error("fallback_copy_failed");
+        }
+    } catch (error) {
+        console.warn(`Failed to copy ${type} (both clipboard API and fallback failed):`, error);
+    }
 }

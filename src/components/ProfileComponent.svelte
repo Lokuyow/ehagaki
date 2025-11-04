@@ -4,6 +4,7 @@
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { profileDataStore } from "../stores/appStore.svelte";
+    import { copyToClipboard } from "../lib/utils/clipboardUtils";
 
     interface Props {
         show: boolean;
@@ -34,17 +35,6 @@
 
     function handleLogout() {
         onLogout?.();
-    }
-
-    function copyToClipboard(text: string, type: "npub" | "nprofile") {
-        navigator.clipboard
-            .writeText(text)
-            .then(() => {
-                console.log(`${type} copied to clipboard`);
-            })
-            .catch((err) => {
-                console.error(`Failed to copy ${type}:`, err);
-            });
     }
 </script>
 
@@ -95,6 +85,8 @@
                                         copyToClipboard(
                                             displayedProfile.npub!,
                                             "npub",
+                                            navigator,
+                                            window
                                         )}
                                     aria-label={$_("profileDialog.copy_npub")}
                                 >
@@ -120,6 +112,8 @@
                                         copyToClipboard(
                                             displayedProfile.nprofile!,
                                             "nprofile",
+                                            navigator,
+                                            window
                                         )}
                                     aria-label={$_(
                                         "profileDialog.copy_nprofile",

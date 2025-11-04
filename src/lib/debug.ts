@@ -1,6 +1,7 @@
 import { writable, type Writable } from "svelte/store";
 import { swNeedRefresh } from "../stores/appStore.svelte";
 import { editorState } from "../stores/editorStore.svelte";
+import { copyToClipboard } from "./utils/clipboardUtils";
 
 // --- dev環境判定ストア ---
 export const isDev = writable(import.meta.env.MODE === "development");
@@ -81,11 +82,9 @@ export function copyDevLog(): Promise<void> {
             resolve();
             return;
         }
-        if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-            navigator.clipboard.writeText(joined).then(resolve).catch(reject);
-        } else {
-            reject(new Error("Clipboard API not available"));
-        }
+        // clipboardUtils.tsのcopyToClipboard関数を使用
+        copyToClipboard(joined, "dev log", navigator, window);
+        resolve();
     });
 }
 
@@ -99,32 +98,8 @@ export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> 
     const joined = logs?.join("\n") ?? "";
     if (!joined) return;
 
-    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
-        try {
-            await navigator.clipboard.writeText(joined);
-            return;
-        } catch { }
-    }
-    try {
-        const textarea = document.createElement("textarea");
-        textarea.value = joined;
-        textarea.setAttribute("readonly", "");
-        textarea.style.position = "absolute";
-        textarea.style.left = "-9999px";
-        textarea.style.fontSize = "12px";
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        try {
-            textarea.setSelectionRange(0, textarea.value.length);
-        } catch { }
-        const successful = document.execCommand && document.execCommand("copy");
-        document.body.removeChild(textarea);
-        if (successful) return;
-        throw new Error("execCommand copy failed");
-    } catch (err) {
-        throw err;
-    }
+    // clipboardUtils.tsのcopyToClipboard関数を使用
+    copyToClipboard(joined, "dev log", navigator, window);
 }
 
 // --- デバッグ用ユーティリティ ---
