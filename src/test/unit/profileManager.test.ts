@@ -79,7 +79,7 @@ describe('ProfileDataFactory', () => {
     it('forceRemoteがtrueの場合、キャッシュバスターを追加する', () => {
         const content = { picture: 'https://example.com/pic.jpg' };
 
-        const result = factory.createProfileData(content, 'pubkey123', true);
+        const result = factory.createProfileData(content, 'pubkey123', { forceRemote: true });
 
         expect(result.picture).toMatch(/https:\/\/example\.com\/pic\.jpg\?cb=\d+&profile=true/);
     });
@@ -102,7 +102,7 @@ describe('ProfileStorage', () => {
     });
 
     it('プロフィールを保存する', () => {
-        const profile = { name: 'Test', picture: '', npub: 'npub123' };
+        const profile = { name: 'Test', picture: '', npub: 'npub123', nprofile: '' };
 
         storage.save('pubkey123', profile);
 

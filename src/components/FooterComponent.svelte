@@ -1,16 +1,17 @@
 <script lang="ts">
-    import type { ProfileData } from "../lib/types";
     import FooterInfoDisplay from "./FooterInfoDisplay.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { _ } from "svelte-i18n";
+    import {
+        profileDataStore,
+        isLoadingProfileStore,
+        profileLoadedStore,
+    } from "../stores/appStore.svelte";
 
     interface Props {
         isAuthenticated: boolean;
         isAuthInitialized: boolean;
-        isLoadingProfile: boolean;
-        profileLoaded: boolean;
-        profileData: ProfileData | null;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
         onOpenSettingsDialog: () => void;
@@ -20,14 +21,16 @@
     let {
         isAuthenticated,
         isAuthInitialized,
-        isLoadingProfile,
-        profileLoaded,
-        profileData,
         swNeedRefresh,
         onShowLoginDialog,
         onOpenSettingsDialog,
         onOpenLogoutDialog,
     }: Props = $props();
+
+    // ストアから直接プロフィール情報を取得
+    let profileData = $derived(profileDataStore.value);
+    let isLoadingProfile = $derived(isLoadingProfileStore.value);
+    let profileLoaded = $derived(profileLoadedStore.value);
 
     let footerInfoDisplayRef: any = $state();
 

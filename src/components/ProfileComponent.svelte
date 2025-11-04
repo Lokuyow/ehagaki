@@ -3,14 +3,13 @@
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import type { ProfileData } from "../lib/types";
+    import { profileDataStore } from "../stores/appStore.svelte";
 
     interface Props {
         show: boolean;
         onClose: () => void;
         onLogout: () => void;
         isLoggingOut?: boolean;
-        profile: ProfileData;
     }
 
     let {
@@ -18,15 +17,17 @@
         onClose,
         onLogout,
         isLoggingOut = false,
-        profile,
     }: Props = $props();
 
+    // ストアから直接プロフィールデータを取得
+    let profile = $derived(profileDataStore.value);
+
     // ログアウト中の場合、プロフィールデータを保持して表示を維持
-    let displayedProfile = $state<ProfileData>(profile);
+    let displayedProfile = $state(profileDataStore.value);
 
     $effect(() => {
         // ログアウト中でない場合のみ、プロフィールデータを更新
-        if (!isLoggingOut) {
+        if (!isLoggingOut && profile) {
             displayedProfile = profile;
         }
     });

@@ -548,8 +548,8 @@ export interface ProfileManagerDeps {
 export interface ProfileData {
     name: string;
     picture: string;
-    npub?: string;
-    nprofile?: string;
+    npub: string;
+    nprofile: string;
 }
 
 // --- Global Window extensions ---

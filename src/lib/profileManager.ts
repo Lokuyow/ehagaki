@@ -1,6 +1,6 @@
 import type { createRxNostr } from 'rx-nostr';
 import { createRxForwardReq } from 'rx-nostr';
-import { toNpub } from "./utils/appUtils";
+import { toNpub, toNprofile } from "./utils/appUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
 
 // --- URL処理の純粋関数（依存性なし） ---
@@ -42,8 +42,11 @@ export class ProfileDataFactory {
   createProfileData(
     content: any,
     pubkeyHex: string,
-    forceRemote = false
+    options?: { relays?: string[]; forceRemote?: boolean }
   ): ProfileData {
+    const relays = options?.relays || [];
+    const forceRemote = options?.forceRemote || false;
+
     let picture = content?.picture || "";
 
     if (picture) {
@@ -57,7 +60,8 @@ export class ProfileDataFactory {
     return {
       name: content?.name || "",
       picture,
-      npub: toNpub(pubkeyHex)
+      npub: toNpub(pubkeyHex),
+      nprofile: toNprofile(pubkeyHex, relays)
     };
   }
 }
@@ -89,8 +93,15 @@ export class ProfileStorage {
       if (!profileString) return null;
 
       const parsed = JSON.parse(profileString);
-      // ローカルストレージから取得時は常にキャッシュ優先
-      return this.profileDataFactory.createProfileData(parsed, pubkeyHex, false);
+      
+      // ローカルストレージから取得時は、保存されたデータをそのまま返す
+      // (npubとnprofileはすでに生成済みのため、再生成せずに使用)
+      if (parsed.npub && parsed.nprofile) {
+        return parsed as ProfileData;
+      }
+      
+      // 古いデータ形式の場合のみ、再生成する（後方互換性のため）
+      return this.profileDataFactory.createProfileData(parsed, pubkeyHex, { forceRemote: false });
     } catch (e) {
       this.console.error("プロフィール情報の取得に失敗:", e);
       return null;
@@ -114,7 +125,7 @@ export class ProfileNetworkFetcher {
 
   async fetchFromNetwork(
     pubkeyHex: string,
-    opts?: { forceRemote?: boolean; timeoutMs?: number }
+    opts?: { relays?: string[]; forceRemote?: boolean; timeoutMs?: number }
   ): Promise<ProfileData | null> {
     const timeoutMs = opts?.timeoutMs ?? 3000;
 
@@ -156,7 +167,10 @@ export class ProfileNetworkFetcher {
               const profile = this.profileDataFactory.createProfileData(
                 content,
                 pubkeyHex,
-                opts?.forceRemote
+                {
+                  relays: opts?.relays,
+                  forceRemote: opts?.forceRemote
+                }
               );
               this.console.log("Kind 0からプロフィール情報を取得:", profile);
               safeResolve(profile);
@@ -181,7 +195,10 @@ export class ProfileNetworkFetcher {
           const defaultProfile = this.profileDataFactory.createProfileData(
             {},
             pubkeyHex,
-            opts?.forceRemote
+            {
+              relays: opts?.relays,
+              forceRemote: opts?.forceRemote
+            }
           );
           safeResolve(defaultProfile);
         }
@@ -233,7 +250,7 @@ export class ProfileManager {
 
   async fetchProfileData(
     pubkeyHex: string,
-    opts?: { forceRemote?: boolean; timeoutMs?: number }
+    opts?: { relays?: string[]; forceRemote?: boolean; timeoutMs?: number }
   ): Promise<ProfileData | null> {
     const consoleObj = this.networkFetcher['console'];
     consoleObj.log(`プロフィール取得開始: ${pubkeyHex}`);

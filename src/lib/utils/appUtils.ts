@@ -192,6 +192,20 @@ export function toNpub(pubkeyHex: string): string {
   }
 }
 
+/**
+ * 公開鍵hexとリレーリストからnprofile文字列を生成
+ */
+export function toNprofile(pubkeyHex: string, relays: string[] = []): string {
+  try {
+    return nip19.nprofileEncode({
+      pubkey: pubkeyHex,
+      relays: relays.slice(0, 3) // 最大3つまで
+    });
+  } catch {
+    return "";
+  }
+}
+
 // =============================================================================
 // File Upload Utilities (Pure Functions)
 // =============================================================================

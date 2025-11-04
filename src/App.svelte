@@ -160,16 +160,31 @@
     if (!relayManager || !profileManager) await initializeNostr();
     isLoadingProfileStore.set(true);
     try {
-      const profile = await profileManager.fetchProfileData(pubkeyHex, opts);
+      // リレー情報をローカルストレージから取得
+      const relayKey = `nostr-relays-${pubkeyHex}`;
+      const relayData = localStorage.getItem(relayKey);
+      let relays: string[] = [];
+      
+      if (relayData) {
+        try {
+          const parsed = JSON.parse(relayData);
+          // writeリレーのみ抽出
+          if (Array.isArray(parsed)) {
+            relays = parsed;
+          } else if (typeof parsed === 'object') {
+            relays = Object.keys(parsed).filter(url => parsed[url]?.write !== false);
+          }
+        } catch (e) {
+          console.warn("リレーデータのパースに失敗:", e);
+        }
+      }
+
+      const profile = await profileManager.fetchProfileData(pubkeyHex, {
+        ...opts,
+        relays
+      });
       if (profile) {
-        // authStateからnpubとnprofileを追加
-        const currentAuthState = authState.value;
-        const enrichedProfile = {
-          ...profile,
-          npub: currentAuthState.npub || profile.npub,
-          nprofile: currentAuthState.nprofile
-        };
-        profileDataStore.set(enrichedProfile);
+        profileDataStore.set(profile);
         profileLoadedStore.set(true);
       }
     } catch (error) {
@@ -560,9 +575,6 @@
       bind:this={footerComponentRef}
       {isAuthenticated}
       {isAuthInitialized}
-      isLoadingProfile={isLoadingProfileStore.value}
-      profileLoaded={profileLoadedStore.value}
-      profileData={profileDataStore.value}
       swNeedRefresh={$swNeedRefresh}
       onShowLoginDialog={showLoginDialog}
       onOpenSettingsDialog={openSettingsDialog}
@@ -584,7 +596,6 @@
         onClose={closeLogoutDialog}
         onLogout={logout}
         {isLoggingOut}
-        profile={profileDataStore.value}
       />
     {/if}
     {#if showWelcomeDialogStore.value}
