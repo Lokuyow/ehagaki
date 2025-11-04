@@ -521,7 +521,9 @@ describe('RelayManager統合テスト', () => {
 
             const result = await manager.fetchUserRelays('testpubkey', { forceRemote: false });
 
-            expect(result).toBe(true);
+            expect(result.success).toBe(true);
+            expect(result.source).toBe('localStorage');
+            expect(result.relayConfig).toEqual(config);
             expect(mockRxNostr.setDefaultRelays).toHaveBeenCalledWith(config);
         });
 
@@ -546,7 +548,11 @@ describe('RelayManager統合テスト', () => {
 
             const result = await manager.fetchUserRelays('testpubkey', { forceRemote: true });
 
-            expect(result).toBe(true);
+            expect(result.success).toBe(true);
+            expect(result.source).toBe('kind10002');
+            expect(result.relayConfig).toEqual({
+                'wss://remote-relay.example.com': { read: true, write: true }
+            });
             expect(mockRxNostr.use).toHaveBeenCalled(); // リモート取得が実行された
         });
 
@@ -568,7 +574,17 @@ describe('RelayManager統合テスト', () => {
 
             const result = await manager.fetchUserRelays('testpubkey', { timeoutMs: 1 });
 
-            expect(result).toBe(false); // 取得失敗
+            expect(result.success).toBe(false); // 取得失敗
+            expect(result.source).toBe('fallback');
+            expect(result.relayConfig).toEqual([
+                "wss://relay.nostr.band/",
+                "wss://nos.lol/",
+                "wss://relay.damus.io/",
+                "wss://relay-jp.nostr.wirednet.jp/",
+                "wss://yabu.me/",
+                "wss://r.kojira.io/",
+                "wss://nrelay-jp.c-stellar.net/",
+            ]);
             // フォールバックリレーが設定されたことを確認
             expect(globalConsoleLog.mock.calls.some(
                 (call) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
