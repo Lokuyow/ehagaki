@@ -2,6 +2,7 @@ import { createRxForwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult } from "./types";
+import { saveRelayConfigToStorage } from "../stores/appStore.svelte";
 
 // --- 純粋関数（依存性なし） ---
 export class RelayConfigParser {
@@ -72,8 +73,13 @@ export class RelayStorage {
     constructor(
         private localStorage: Storage,
         private console: Console,
-        private relayListUpdatedStore?: RelayManagerDeps['relayListUpdatedStore']
+        private relayListUpdatedStore?: RelayManagerDeps['relayListUpdatedStore'],
+        private pubkeyHex?: string // pubkeyを保持してストア更新に使用
     ) { }
+
+    setPubkey(pubkeyHex: string): void {
+        this.pubkeyHex = pubkeyHex;
+    }
 
     save(pubkeyHex: string, relays: RelayConfig | null): void {
         try {
@@ -82,6 +88,15 @@ export class RelayStorage {
             if (relays === null) {
                 this.localStorage.removeItem(key);
                 this.console.log(`リレーリストを削除: ${pubkeyHex}`);
+
+                // ストアもクリア
+                if (typeof window !== 'undefined') {
+                    try {
+                        saveRelayConfigToStorage(pubkeyHex, {} as RelayConfig);
+                    } catch (e) {
+                        // ストア更新失敗は無視
+                    }
+                }
                 return;
             }
 
@@ -92,7 +107,17 @@ export class RelayStorage {
 
             this.localStorage.setItem(key, JSON.stringify(relays));
 
-            // リレーリスト更新を通知
+            // ストアを更新（ブラウザ環境の場合のみ）
+            if (typeof window !== 'undefined') {
+                try {
+                    saveRelayConfigToStorage(pubkeyHex, relays);
+                } catch (e) {
+                    // ストア更新失敗は無視（localStorage保存は成功）
+                    this.console.warn('ストアの更新に失敗:', e);
+                }
+            }
+
+            // リレーリスト更新を通知（既存の処理）
             if (this.relayListUpdatedStore) {
                 this.relayListUpdatedStore.set(this.relayListUpdatedStore.value + 1);
             }

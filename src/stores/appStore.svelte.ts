@@ -1,4 +1,4 @@
-import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreState, ProfileData, HashtagData } from '../lib/types';
+import type { SizeDisplayInfo, SharedImageMetadata, AuthState, SharedImageStoreState, ProfileData, HashtagData, RelayConfig } from '../lib/types';
 /// <reference types="vite/client" />
 // @ts-expect-error: virtual module provided by Vite plugin
 import { useRegisterSW } from "virtual:pwa-register/svelte";
@@ -415,6 +415,7 @@ export const secretKeyStore = {
 
 // --- 設定ダイアログ管理 ---
 let writeRelays = $state<string[]>([]);
+let relayConfig = $state<RelayConfig | null>(null); // リレー設定全体を保持
 let showRelays = $state(false);
 let isSwUpdating = $state(false);
 
@@ -424,6 +425,17 @@ export const writeRelaysStore = {
     subscribe: (callback: (value: string[]) => void) => {
         $effect(() => {
             callback(writeRelays);
+        });
+    }
+};
+
+// リレー設定全体を管理するストア
+export const relayConfigStore = {
+    get value() { return relayConfig; },
+    set: (value: RelayConfig | null) => { relayConfig = value; },
+    subscribe: (callback: (value: RelayConfig | null) => void) => {
+        $effect(() => {
+            callback(relayConfig);
         });
     }
 };
@@ -450,6 +462,81 @@ export const relayListUpdatedStore = {
         });
     }
 };
+
+// --- リレーリスト管理ヘルパー関数 ---
+/**
+ * localStorageからリレー設定を読み込んでストアに設定
+ */
+export function loadRelayConfigFromStorage(pubkeyHex: string): void {
+    if (!pubkeyHex) {
+        relayConfigStore.set(null);
+        writeRelaysStore.set([]);
+        return;
+    }
+
+    const relayKey = `nostr-relays-${pubkeyHex}`;
+    try {
+        const stored = localStorage.getItem(relayKey);
+        if (!stored) {
+            relayConfigStore.set(null);
+            writeRelaysStore.set([]);
+            return;
+        }
+
+        const relays = JSON.parse(stored);
+        relayConfigStore.set(relays);
+
+        // writeRelaysを抽出
+        const writeRelaysList = extractWriteRelays(relays);
+        writeRelaysStore.set(writeRelaysList);
+    } catch (error) {
+        console.error('リレー設定の読み込みエラー:', error);
+        relayConfigStore.set(null);
+        writeRelaysStore.set([]);
+    }
+}
+
+/**
+ * RelayConfigから書き込み可能なリレーを抽出
+ */
+function extractWriteRelays(relays: RelayConfig): string[] {
+    if (Array.isArray(relays)) {
+        return relays;
+    } else if (relays && typeof relays === "object") {
+        return Object.entries(relays)
+            .filter(
+                ([, conf]) =>
+                    conf &&
+                    typeof conf === "object" &&
+                    "write" in conf &&
+                    (conf as { write?: boolean }).write,
+            )
+            .map(([url]) => url);
+    }
+    return [];
+}
+
+/**
+ * リレー設定をlocalStorageに保存してストアを更新
+ */
+export function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig): void {
+    if (!pubkeyHex) return;
+
+    const relayKey = `nostr-relays-${pubkeyHex}`;
+    try {
+        localStorage.setItem(relayKey, JSON.stringify(config));
+        relayConfigStore.set(config);
+        
+        // writeRelaysを抽出して更新
+        const writeRelaysList = extractWriteRelays(config);
+        writeRelaysStore.set(writeRelaysList);
+
+        // リレーリスト更新を通知
+        relayListUpdatedStore.set(relayListUpdated + 1);
+    } catch (error) {
+        console.error('リレー設定の保存エラー:', error);
+    }
+}
 
 // --- グローバルなコンテキストメニュー表示状態ストア ---
 export const globalContextMenuStore = writable<{ open: boolean; nodeId?: string; src?: string }>({ open: false, nodeId: undefined, src: undefined });

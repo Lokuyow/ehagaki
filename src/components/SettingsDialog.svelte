@@ -14,6 +14,7 @@
         writeRelaysStore,
         showRelaysStore,
         isSwUpdatingStore,
+        loadRelayConfigFromStorage,
     } from "../stores/appStore.svelte";
     import {
         uploadEndpoints,
@@ -22,10 +23,8 @@
         getDefaultEndpoint,
         STORAGE_KEYS,
         SW_UPDATE_TIMEOUT,
-        RELAY_LIST_REFRESH_DELAY,
     } from "../lib/constants";
     import {
-        loadWriteRelaysFromStorage,
         initializeSettingsValues,
         handleServiceWorkerRefresh,
     } from "../lib/utils/appUtils";
@@ -139,11 +138,6 @@
         );
     }
 
-    function loadWriteRelays() {
-        const relays = loadWriteRelaysFromStorage(authState.value.pubkey);
-        writeRelaysStore.set(relays);
-    }
-
     // 設定の初期化処理
     function initializeSettings() {
         const settings = initializeSettingsValues({
@@ -184,13 +178,18 @@
 
     onMount(() => {
         initializeSettings();
-        loadWriteRelays();
         fetchSwVersion();
+        // 初回のリレー読み込み（認証済みの場合のみ）
+        if (authState.value?.pubkey && authState.value?.isAuthenticated) {
+            loadRelayConfigFromStorage(authState.value.pubkey);
+        }
     });
 
-    // showがtrueのたびにリレーリストを再取得
+    // showがtrueのたびにリレーリストを再取得（認証済みの場合のみ）
     $effect(() => {
-        if (show) loadWriteRelays();
+        if (show && authState.value?.pubkey && authState.value?.isAuthenticated) {
+            loadRelayConfigFromStorage(authState.value.pubkey);
+        }
     });
     // showがtrueのたびにnostr-zap-viewを再初期化
     $effect(() => {
@@ -219,14 +218,6 @@
         locale.set($locale === "ja" ? "en" : "ja");
     }
 
-    function onRelaysUpdated() {
-        loadWriteRelays();
-    }
-
-    relayListUpdatedStore.subscribe(() => {
-        setTimeout(loadWriteRelays, RELAY_LIST_REFRESH_DELAY);
-    });
-
     // Store values for template
     let writeRelays = $derived(writeRelaysStore.value);
     let showRelays = $derived(showRelaysStore.value);
@@ -239,7 +230,6 @@
     {onClose}
     ariaLabel={$_("settings") || "設定"}
     className="settings-dialog"
-    on:relays-updated={onRelaysUpdated}
     showFooter={true}
 >
     <div class="settings-header">

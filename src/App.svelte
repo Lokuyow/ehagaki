@@ -37,6 +37,7 @@
     urlQueryContentStore,
     updateUrlQueryContentStore,
     clearUrlQueryContentStore,
+    loadRelayConfigFromStorage,
   } from "./stores/appStore.svelte";
   import type { UploadProgress, BalloonMessage } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
@@ -260,6 +261,14 @@
 
   $effect(() => {
     if ($locale) localStorage.setItem("locale", $locale);
+  });
+
+  // 認証状態が変わったら自動的にリレー設定を読み込む
+  $effect(() => {
+    const pubkey = authState.value?.pubkey;
+    if (pubkey && authState.value?.isAuthenticated) {
+      loadRelayConfigFromStorage(pubkey);
+    }
   });
 
   let localeInitialized = $state(false);
