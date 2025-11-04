@@ -1,7 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
-    import { tick } from "svelte";
-    import { calculateContextMenuPosition } from "../lib/utils/appUtils"; // 追加
+    import { onMount, onDestroy, tick } from "svelte";
 
     // Runesモード: $props() で受ける（let にして親からの更新を反映）
     let {
@@ -69,26 +67,48 @@
     let popupX = $state(x);
     let popupY = $state(y);
 
+    // 画面端の余白
+    const SCREEN_PADDING = 10;
+
     $effect(() => {
-        // 非同期に DOM 更新を待ってからサイズを取得し位置計算する
-        (async () => {
-            await tick();
-            // containerが存在する場合はサイズを取得して位置を計算
-            let width = container?.offsetWidth ?? 0;
-            let height = container?.offsetHeight ?? 0;
-            // 初回は0なので fallback
-            if (width < 10) width = 320;
-            if (height < 10) height = 40;
-            const pos = calculateContextMenuPosition(
-                x,
-                y,
-                undefined,
-                width,
-                height,
-            );
-            popupX = pos.x;
-            popupY = pos.y;
-        })();
+        if (show && container) {
+            // DOM 更新を待ってから位置計算（要素が body に移動済みでサイズが確定している）
+            (async () => {
+                await tick();
+                if (container.parentElement === document.body) {
+                    const rect = container.getBoundingClientRect();
+                    const width = rect.width;
+                    const height = rect.height;
+                    const vw = window.innerWidth;
+                    const vh = window.innerHeight;
+
+                    // 左上基準の座標補正
+                    let finalX = x;
+                    let finalY = y;
+
+                    // 1. 右端チェック (はみ出し補正)
+                    if (finalX + width + SCREEN_PADDING > vw) {
+                        finalX = vw - width - SCREEN_PADDING;
+                    }
+                    // 2. 左端チェック (はみ出し補正)
+                    if (finalX - SCREEN_PADDING < 0) {
+                        finalX = SCREEN_PADDING;
+                    }
+
+                    // 3. 下端チェック (はみ出し補正)
+                    if (finalY + height + SCREEN_PADDING > vh) {
+                        finalY = vh - height - SCREEN_PADDING;
+                    }
+                    // 4. 上端チェック (はみ出し補正)
+                    if (finalY - SCREEN_PADDING < 0) {
+                        finalY = SCREEN_PADDING;
+                    }
+
+                    popupX = finalX;
+                    popupY = finalY;
+                }
+            })();
+        }
     });
 </script>
 

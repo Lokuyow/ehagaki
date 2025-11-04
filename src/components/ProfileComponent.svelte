@@ -3,8 +3,10 @@
     import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PopupModal from "./PopupModal.svelte";
     import { profileDataStore } from "../stores/appStore.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
+    import { calculateContextMenuPosition } from "../lib/utils/appUtils";
 
     interface Props {
         show: boolean;
@@ -26,6 +28,11 @@
     // ログアウト中の場合、プロフィールデータを保持して表示を維持
     let displayedProfile = $state(profileDataStore.value);
 
+    // コピー成功ポップアップの状態
+    let showPopup = $state(false);
+    let popupX = $state(0);
+    let popupY = $state(0);
+
     $effect(() => {
         // ログアウト中でない場合のみ、プロフィールデータを更新
         if (!isLoggingOut && profile) {
@@ -35,6 +42,23 @@
 
     function handleLogout() {
         onLogout?.();
+    }
+
+    async function handleCopy(text: string, type: string, event: MouseEvent) {
+        try {
+            await copyToClipboard(text, type, navigator, window);
+            // コピー成功時にポップアップを表示
+            const pos = calculateContextMenuPosition(event.clientX, event.clientY);
+            popupX = pos.x;
+            popupY = pos.y;
+            showPopup = true;
+            // 1.8秒後に自動で消す
+            setTimeout(() => {
+                showPopup = false;
+            }, 1800);
+        } catch (error) {
+            console.warn("Copy failed:", error);
+        }
     }
 </script>
 
@@ -81,13 +105,7 @@
                                 >
                                 <button
                                     class="copy-button"
-                                    onclick={() =>
-                                        copyToClipboard(
-                                            displayedProfile.npub!,
-                                            "npub",
-                                            navigator,
-                                            window
-                                        )}
+                                    onclick={(event) => handleCopy(displayedProfile.npub!, "npub", event)}
                                     aria-label={$_("profileDialog.copy_npub")}
                                 >
                                     <div
@@ -108,13 +126,7 @@
                                 >
                                 <button
                                     class="copy-button"
-                                    onclick={() =>
-                                        copyToClipboard(
-                                            displayedProfile.nprofile!,
-                                            "nprofile",
-                                            navigator,
-                                            window
-                                        )}
+                                    onclick={(event) => handleCopy(displayedProfile.nprofile!, "nprofile", event)}
                                     aria-label={$_(
                                         "profileDialog.copy_nprofile",
                                     )}
@@ -147,6 +159,15 @@
         </div>
     {/snippet}
 </Dialog>
+
+<PopupModal
+    show={showPopup}
+    x={popupX}
+    y={popupY}
+    onClose={() => showPopup = false}
+>
+    <div class="copy-success-message">{$_("imageContextMenu.copySuccess")}</div>
+</PopupModal>
 
 <style>
     .profile-container {
