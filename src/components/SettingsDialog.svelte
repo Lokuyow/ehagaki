@@ -6,7 +6,6 @@
     import RadioButton from "./RadioButton.svelte";
     import {
         authState,
-        relayListUpdatedStore,
         swVersionStore,
         fetchSwVersion,
         swNeedRefresh,

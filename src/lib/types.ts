@@ -550,6 +550,7 @@ export interface ProfileData {
     picture: string;
     npub: string;
     nprofile: string;
+    profileRelays?: string[]; // kind:0を受信したリレーのリスト
 }
 
 // --- Global Window extensions ---

@@ -14,6 +14,7 @@ import {
     isValidNsec,
     derivePublicKeyFromNsec,
     toNpub,
+    toNprofile,
 
     // Settings Utilities
     loadWriteRelaysFromStorage,
@@ -257,6 +258,54 @@ describe('Nostr Key Utilities', () => {
         it('should fallback for invalid hex', () => {
             const npub = toNpub('invalidhex');
             expect(npub.startsWith('npub1invalidhex')).toBe(true);
+        });
+    });
+
+    describe('toNprofile', () => {
+        it('kind:0受信リレー1つ + writeリレー2つを含む', () => {
+            const pubkeyHex = '0'.repeat(64);
+            const profileRelays = ['wss://relay1.example.com'];
+            const writeRelays = ['wss://relay2.example.com', 'wss://relay3.example.com', 'wss://relay4.example.com'];
+            
+            const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
+            
+            expect(nprofile.startsWith('nprofile1')).toBe(true);
+            expect(nprofile.length).toBeGreaterThan(10);
+        });
+
+        it('profileRelaysが空の場合はwriteRelaysのみ使用', () => {
+            const pubkeyHex = '0'.repeat(64);
+            const profileRelays: string[] = [];
+            const writeRelays = ['wss://relay1.example.com', 'wss://relay2.example.com'];
+            
+            const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
+            
+            expect(nprofile.startsWith('nprofile1')).toBe(true);
+        });
+
+        it('重複するリレーを除外する', () => {
+            const pubkeyHex = '0'.repeat(64);
+            const profileRelays = ['wss://relay1.example.com'];
+            const writeRelays = ['wss://relay1.example.com', 'wss://relay2.example.com'];
+            
+            const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
+            
+            expect(nprofile.startsWith('nprofile1')).toBe(true);
+        });
+
+        it('最大3つのリレーのみ含める', () => {
+            const pubkeyHex = '0'.repeat(64);
+            const profileRelays = ['wss://relay1.example.com'];
+            const writeRelays = ['wss://relay2.example.com', 'wss://relay3.example.com', 'wss://relay4.example.com', 'wss://relay5.example.com'];
+            
+            const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
+            
+            expect(nprofile.startsWith('nprofile1')).toBe(true);
+        });
+
+        it('無効なhexに対して空文字列を返す', () => {
+            const nprofile = toNprofile('invalidhex', [], []);
+            expect(nprofile).toBe('');
         });
     });
 });

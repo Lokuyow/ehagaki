@@ -194,12 +194,35 @@ export function toNpub(pubkeyHex: string): string {
 
 /**
  * 公開鍵hexとリレーリストからnprofile文字列を生成
+ * @param pubkeyHex 公開鍵のhex形式
+ * @param profileRelays kind:0を受信したリレーのリスト
+ * @param writeRelays 書き込み先リレーのリスト
+ * @returns nprofile文字列
  */
-export function toNprofile(pubkeyHex: string, relays: string[] = []): string {
+export function toNprofile(
+  pubkeyHex: string,
+  profileRelays: string[] = [],
+  writeRelays: string[] = []
+): string {
   try {
+    // kind:0を受信したリレー1つ + writeリレー上から2つ = 最大3つ
+    const relays: string[] = [];
+    
+    // 1. kind:0を受信したリレーから1つ
+    if (profileRelays.length > 0) {
+      relays.push(profileRelays[0]);
+    }
+    
+    // 2. writeリレーから2つ（profileRelaysと重複しないもの）
+    const remainingSlots = 3 - relays.length;
+    if (remainingSlots > 0) {
+      const uniqueWriteRelays = writeRelays.filter(r => !relays.includes(r));
+      relays.push(...uniqueWriteRelays.slice(0, Math.min(remainingSlots, 2)));
+    }
+    
     return nip19.nprofileEncode({
       pubkey: pubkeyHex,
-      relays: relays.slice(0, 3) // 最大3つまで
+      relays
     });
   } catch {
     return "";

@@ -60,12 +60,15 @@ describe('ProfileDataFactory', () => {
     it('基本的なプロフィールデータを作成する', () => {
         const content = { name: 'Test User', picture: 'https://example.com/pic.jpg' };
         const pubkeyHex = '1234567890abcdef';
+        const profileRelays = ['wss://relay1.example.com'];
+        const writeRelays = ['wss://relay2.example.com', 'wss://relay3.example.com'];
 
-        const result = factory.createProfileData(content, pubkeyHex);
+        const result = factory.createProfileData(content, pubkeyHex, { profileRelays, writeRelays });
 
         expect(result.name).toBe('Test User');
         expect(result.picture).toBe('https://example.com/pic.jpg?profile=true');
         expect(result.npub).toMatch(/npub1/); // toNpubの結果を想定
+        expect(result.profileRelays).toEqual(profileRelays);
     });
 
     it('空のcontentでデフォルトプロフィールを作成する', () => {
@@ -74,6 +77,7 @@ describe('ProfileDataFactory', () => {
         expect(result.name).toBe('');
         expect(result.picture).toBe('');
         expect(result.npub).toBeTruthy();
+        expect(result.profileRelays).toBeUndefined();
     });
 
     it('forceRemoteがtrueの場合、キャッシュバスターを追加する', () => {
@@ -196,7 +200,8 @@ describe('ProfileNetworkFetcher', () => {
                         kind: 0,
                         pubkey: 'testpubkey',
                         content: JSON.stringify(profileContent)
-                    }
+                    },
+                    from: 'wss://relay1.example.com' // rx-nostr v3: リレーURL
                 });
                 // observer.completeが存在する場合のみ呼び出し
                 if (typeof observer.complete === 'function') {
@@ -206,10 +211,12 @@ describe('ProfileNetworkFetcher', () => {
             return mockSubscription;
         });
 
-        const result = await fetcher.fetchFromNetwork('testpubkey');
+        const writeRelays = ['wss://relay2.example.com', 'wss://relay3.example.com'];
+        const result = await fetcher.fetchFromNetwork('testpubkey', { writeRelays });
 
         expect(result).toBeTruthy();
         expect(result?.name).toBe('Network User');
+        expect(result?.profileRelays).toEqual(['wss://relay1.example.com/']);
         expect(mockSubscription.unsubscribe).toHaveBeenCalled();
     });
 

@@ -164,16 +164,16 @@
       // リレー情報をローカルストレージから取得
       const relayKey = `nostr-relays-${pubkeyHex}`;
       const relayData = localStorage.getItem(relayKey);
-      let relays: string[] = [];
+      let writeRelays: string[] = [];
       
       if (relayData) {
         try {
           const parsed = JSON.parse(relayData);
           // writeリレーのみ抽出
           if (Array.isArray(parsed)) {
-            relays = parsed;
+            writeRelays = parsed;
           } else if (typeof parsed === 'object') {
-            relays = Object.keys(parsed).filter(url => parsed[url]?.write !== false);
+            writeRelays = Object.keys(parsed).filter(url => parsed[url]?.write !== false);
           }
         } catch (e) {
           console.warn("リレーデータのパースに失敗:", e);
@@ -182,7 +182,7 @@
 
       const profile = await profileManager.fetchProfileData(pubkeyHex, {
         ...opts,
-        relays
+        writeRelays
       });
       if (profile) {
         profileDataStore.set(profile);

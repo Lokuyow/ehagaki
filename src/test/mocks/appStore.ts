@@ -27,7 +27,34 @@ const mockAppStore = {
         value: false,
         set: vi.fn(),
         reset: vi.fn()
-    }
+    },
+    // リレー関連のストア
+    writeRelaysStore: {
+        value: [],
+        set: vi.fn()
+    },
+    relayListUpdatedStore: {
+        value: 0,
+        set: vi.fn()
+    },
+    profileDataStore: {
+        value: { name: '', picture: '', npub: '', nprofile: '' },
+        set: vi.fn()
+    },
+    profileLoadedStore: {
+        value: false,
+        set: vi.fn()
+    },
+    isLoadingProfileStore: {
+        value: false,
+        set: vi.fn()
+    },
+    isUploadingStore: {
+        value: false,
+        set: vi.fn()
+    },
+    // リレー設定保存関数
+    saveRelayConfigToStorage: vi.fn()
 };
 
 export default mockAppStore;
