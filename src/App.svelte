@@ -39,8 +39,8 @@
     clearUrlQueryContentStore,
     loadRelayConfigFromStorage,
   } from "./stores/appStore.svelte";
-  import type { UploadProgress, BalloonMessage } from "./lib/types";
-  import { getDefaultEndpoint } from "./lib/constants";
+  import type { UploadProgress, BalloonMessage, RelayConfig } from "./lib/types";
+  import { getDefaultEndpoint, BOOTSTRAP_RELAYS } from "./lib/constants";
   import { BalloonMessageManager } from "./lib/balloonMessageManager";
   import {
     checkServiceWorkerStatus,
@@ -53,6 +53,25 @@
     hasContentQueryParam,
     cleanupAllQueryParams,
   } from "./lib/urlQueryHandler";
+
+  // --- リレーリストをマージするヘルパー関数 ---
+  function mergeRelays(relayConfig: RelayConfig, bootstrapRelays: string[]): string[] {
+    const relaySet = new Set<string>();
+    
+    // relayConfigから全リレーを抽出
+    if (Array.isArray(relayConfig)) {
+      relayConfig.forEach(url => relaySet.add(url.endsWith('/') ? url : url + '/'));
+    } else if (typeof relayConfig === 'object') {
+      Object.keys(relayConfig).forEach(url => {
+        relaySet.add(url.endsWith('/') ? url : url + '/');
+      });
+    }
+    
+    // BOOTSTRAP_RELAYSを追加
+    bootstrapRelays.forEach(url => relaySet.add(url.endsWith('/') ? url : url + '/'));
+    
+    return Array.from(relaySet);
+  }
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -141,7 +160,8 @@
 
       try {
         await initializeNostr();
-        await relayManager.fetchUserRelays(result.pubkeyHex);
+        const relayResult = await relayManager.fetchUserRelays(result.pubkeyHex);
+        // リレー取得結果を使用してプロフィールを取得
         await loadProfileForPubkey(result.pubkeyHex);
       } catch (error) {
         console.error("nostr-login認証処理中にエラー:", error);
@@ -165,6 +185,7 @@
       const relayKey = `nostr-relays-${pubkeyHex}`;
       const relayData = localStorage.getItem(relayKey);
       let writeRelays: string[] = [];
+      let additionalRelays: string[] = [];
       
       if (relayData) {
         try {
@@ -175,14 +196,23 @@
           } else if (typeof parsed === 'object') {
             writeRelays = Object.keys(parsed).filter(url => parsed[url]?.write !== false);
           }
+          
+          // リレーリストとBOOTSTRAP_RELAYSをマージしてkind:0取得用リレーリストを作成
+          additionalRelays = mergeRelays(parsed, BOOTSTRAP_RELAYS);
         } catch (e) {
           console.warn("リレーデータのパースに失敗:", e);
+          // パース失敗時はBOOTSTRAP_RELAYSのみ使用
+          additionalRelays = BOOTSTRAP_RELAYS;
         }
+      } else {
+        // リレーデータがない場合はBOOTSTRAP_RELAYSのみ使用
+        additionalRelays = BOOTSTRAP_RELAYS;
       }
 
       const profile = await profileManager.fetchProfileData(pubkeyHex, {
         ...opts,
-        writeRelays
+        writeRelays,
+        additionalRelays
       });
       if (profile) {
         profileDataStore.set(profile);
@@ -209,12 +239,12 @@
 
     try {
       if (result.pubkeyHex) {
-        if (
-          relayManager &&
-          !relayManager.useRelaysFromLocalStorageIfExists(result.pubkeyHex)
-        ) {
+        // リレーリストを取得（ローカルストレージにない場合のみリモート取得）
+        const cachedRelays = relayManager?.getFromLocalStorage(result.pubkeyHex);
+        if (!cachedRelays) {
           await relayManager.fetchUserRelays(result.pubkeyHex);
         }
+        // リレー取得結果を使用してプロフィールを取得
         await loadProfileForPubkey(result.pubkeyHex);
       } else {
         isLoadingProfileStore.set(false);
@@ -457,11 +487,11 @@
     // ローカルストレージのキャッシュを使わず必ずリモート取得
     // 1. リレーリスト再取得
     if (relayManager) {
-      await relayManager.fetchUserRelays(authState.value.pubkey, {
+      const relayResult = await relayManager.fetchUserRelays(authState.value.pubkey, {
         forceRemote: true,
       });
     }
-    // 2. プロフィール再取得
+    // 2. プロフィール再取得（loadProfileForPubkey内でリレーリスト+BOOTSTRAP_RELAYSをマージしてkind:0取得）
     if (profileManager) {
       // プロフィールキャッシュ削除
       profileManager.saveToLocalStorage(authState.value.pubkey, null);

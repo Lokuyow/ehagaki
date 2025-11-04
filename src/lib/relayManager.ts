@@ -1,7 +1,7 @@
 import { createRxForwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
-import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult } from "./types";
+import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
 import { saveRelayConfigToStorage } from "../stores/appStore.svelte";
 
 // --- 純粋関数（依存性なし） ---
@@ -378,15 +378,23 @@ export class RelayManager {
     async fetchUserRelays(
         pubkeyHex: string,
         opts: RelayFetchOptions = {}
-    ): Promise<boolean> {
+    ): Promise<UserRelaysFetchResult> {
         const timeoutMs = opts.timeoutMs || 3000;
 
         console.log(`リレー取得開始: ${pubkeyHex}`);
 
         // forceRemoteがfalseまたは未指定ならローカルストレージ利用
-        if (!opts.forceRemote && this.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
-            console.log("ローカルストレージからリレーを復元しました");
-            return true;
+        if (!opts.forceRemote) {
+            const cachedRelays = this.storage.get(pubkeyHex);
+            if (cachedRelays) {
+                this.rxNostr.setDefaultRelays(cachedRelays);
+                console.log("ローカルストレージからリレーを復元しました");
+                return {
+                    success: true,
+                    relayConfig: cachedRelays,
+                    source: 'localStorage'
+                };
+            }
         }
 
         console.log("リモートからリレー情報を取得中...");
@@ -402,7 +410,11 @@ export class RelayManager {
             this.rxNostr.setDefaultRelays(kind10002Result.relayConfig);
             this.storage.save(pubkeyHex, kind10002Result.relayConfig);
             console.log("Kind 10002からリレー取得成功");
-            return true;
+            return {
+                success: true,
+                relayConfig: kind10002Result.relayConfig,
+                source: 'kind10002'
+            };
         }
 
         // Kind 3を試行
@@ -416,7 +428,11 @@ export class RelayManager {
             this.rxNostr.setDefaultRelays(kind3Result.relayConfig);
             this.storage.save(pubkeyHex, kind3Result.relayConfig);
             console.log("Kind 3からリレー取得成功");
-            return true;
+            return {
+                success: true,
+                relayConfig: kind3Result.relayConfig,
+                source: 'kind3'
+            };
         }
 
         // フォールバックリレー使用
@@ -424,7 +440,11 @@ export class RelayManager {
         this.rxNostr.setDefaultRelays(FALLBACK_RELAYS);
         console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
         this.storage.save(pubkeyHex, FALLBACK_RELAYS);
-        return false;
+        return {
+            success: false,
+            relayConfig: FALLBACK_RELAYS,
+            source: 'fallback'
+        };
     }
 
     // テスト用の内部コンポーネントへのアクセス

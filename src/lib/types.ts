@@ -372,6 +372,12 @@ export interface RelayFetchResult {
     error?: string;
 }
 
+export interface UserRelaysFetchResult {
+    success: boolean;
+    relayConfig: RelayConfig;
+    source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
+}
+
 // --- Post Manager types ---
 export interface HashtagStore {
     hashtags: string[];

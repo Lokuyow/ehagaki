@@ -131,9 +131,10 @@ export class ProfileNetworkFetcher {
 
   async fetchFromNetwork(
     pubkeyHex: string,
-    opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number }
+    opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
     const timeoutMs = opts?.timeoutMs ?? 3000;
+    const additionalRelays = opts?.additionalRelays ?? [];
 
     return new Promise<ProfileData | null>((resolve) => {
       const rxReq = createRxForwardReq();
@@ -163,7 +164,16 @@ export class ProfileNetworkFetcher {
         }
       };
 
-      subscription = this.rxNostr.use(rxReq).subscribe({
+      // additionalRelaysが指定されている場合はそれを使用、なければデフォルトリレーを使用
+      const useOptions = additionalRelays.length > 0
+        ? { on: { relays: additionalRelays } }
+        : undefined;
+
+      const rxNostrUse = useOptions
+        ? this.rxNostr.use(rxReq, useOptions)
+        : this.rxNostr.use(rxReq);
+
+      subscription = rxNostrUse.subscribe({
         next: (packet) => {
           if (resolved) return;
           if (packet.event?.kind === 0 && packet.event.pubkey === pubkeyHex) {
@@ -265,7 +275,7 @@ export class ProfileManager {
 
   async fetchProfileData(
     pubkeyHex: string,
-    opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number }
+    opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
     const consoleObj = this.networkFetcher['console'];
     consoleObj.log(`プロフィール取得開始: ${pubkeyHex}`);
