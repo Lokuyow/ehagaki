@@ -65,7 +65,11 @@ describe('SettingsDialog リレー・プロフィール更新統合テスト', (
             const testPubkey = 'test-pubkey-123';
 
             // モックを設定
-            const fetchUserRelaysSpy = vi.spyOn(relayManager, 'fetchUserRelays').mockResolvedValue(true);
+            const fetchUserRelaysSpy = vi.spyOn(relayManager, 'fetchUserRelays').mockResolvedValue({
+                success: true,
+                relayConfig: ['wss://relay1.example.com/', 'wss://relay2.example.com/'],
+                source: 'kind10002'
+            });
 
             const fetchProfileDataSpy = vi.spyOn(profileManager, 'fetchProfileData').mockResolvedValue({
                 name: 'Test User',
@@ -176,7 +180,11 @@ describe('SettingsDialog リレー・プロフィール更新統合テスト', (
             };
 
             // モックを設定
-            vi.spyOn(relayManager, 'fetchUserRelays').mockResolvedValue(true);
+            vi.spyOn(relayManager, 'fetchUserRelays').mockResolvedValue({
+                success: true,
+                relayConfig: ['wss://integrated-relay1.example.com/'],
+                source: 'kind10002'
+            });
             vi.spyOn(profileManager, 'fetchProfileData').mockResolvedValue(newProfile);
             vi.spyOn(profileManager, 'saveToLocalStorage').mockImplementation(() => {});
 

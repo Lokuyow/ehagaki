@@ -68,6 +68,61 @@ export class RelayConfigParser {
     }
 }
 
+// --- リレー設定操作ユーティリティ（純粋関数） ---
+export class RelayConfigUtils {
+    /**
+     * リレーURLに末尾スラッシュを追加
+     */
+    static normalizeRelayUrl(url: string): string {
+        return url.endsWith('/') ? url : url + '/';
+    }
+
+    /**
+     * 複数のリレー設定をマージして正規化されたURL配列を返す
+     */
+    static mergeRelayConfigs(...configs: (RelayConfig | string[])[]): string[] {
+        const relaySet = new Set<string>();
+
+        configs.forEach(config => {
+            if (Array.isArray(config)) {
+                config.forEach(url => relaySet.add(this.normalizeRelayUrl(url)));
+            } else if (typeof config === 'object') {
+                Object.keys(config).forEach(url => {
+                    relaySet.add(this.normalizeRelayUrl(url));
+                });
+            }
+        });
+
+        return Array.from(relaySet);
+    }
+
+    /**
+     * リレー設定からwriteリレーのみを抽出
+     */
+    static extractWriteRelays(config: RelayConfig): string[] {
+        if (Array.isArray(config)) {
+            return config.map(url => this.normalizeRelayUrl(url));
+        } else if (typeof config === 'object') {
+            return Object.keys(config)
+                .filter(url => config[url]?.write !== false)
+                .map(url => this.normalizeRelayUrl(url));
+        }
+        return [];
+    }
+
+    /**
+     * リレー設定から全リレーを抽出
+     */
+    static extractAllRelays(config: RelayConfig): string[] {
+        if (Array.isArray(config)) {
+            return config.map(url => this.normalizeRelayUrl(url));
+        } else if (typeof config === 'object') {
+            return Object.keys(config).map(url => this.normalizeRelayUrl(url));
+        }
+        return [];
+    }
+}
+
 // --- ストレージ操作の分離 ---
 export class RelayStorage {
     constructor(
@@ -445,6 +500,37 @@ export class RelayManager {
             relayConfig: FALLBACK_RELAYS,
             source: 'fallback'
         };
+    }
+
+    /**
+     * ローカルストレージからリレー情報を取得し、プロフィール取得用のリレーリストを構築
+     * @param pubkeyHex 公開鍵
+     * @param bootstrapRelays マージするブートストラップリレー（デフォルト: BOOTSTRAP_RELAYS）
+     * @returns writeリレーとマージされた全リレーのリスト
+     */
+    getRelayListsForProfile(
+        pubkeyHex: string,
+        bootstrapRelays: string[] = BOOTSTRAP_RELAYS
+    ): {
+        writeRelays: string[];
+        additionalRelays: string[];
+    } {
+        const relayConfig = this.storage.get(pubkeyHex);
+        let writeRelays: string[] = [];
+        let additionalRelays: string[] = [];
+
+        if (relayConfig) {
+            // writeリレーのみ抽出
+            writeRelays = RelayConfigUtils.extractWriteRelays(relayConfig);
+
+            // リレーリストとBOOTSTRAP_RELAYSをマージしてkind:0取得用リレーリストを作成
+            additionalRelays = RelayConfigUtils.mergeRelayConfigs(relayConfig, bootstrapRelays);
+        } else {
+            // リレーデータがない場合はBOOTSTRAP_RELAYSのみ使用
+            additionalRelays = bootstrapRelays.map(url => RelayConfigUtils.normalizeRelayUrl(url));
+        }
+
+        return { writeRelays, additionalRelays };
     }
 
     // テスト用の内部コンポーネントへのアクセス
