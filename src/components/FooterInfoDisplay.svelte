@@ -297,26 +297,15 @@
             case "none":
                 return $_("settingsDialog.quality_lossless");
             case "low":
-                return $_("settingsDialog.quality_high");
+                return $_("footerInfoDisplay.videoQualityLevel.high");
             case "medium":
-                return $_("settingsDialog.quality_medium");
+                return $_("footerInfoDisplay.videoQualityLevel.medium");
             case "high":
-                return $_("settingsDialog.quality_low");
+                return $_("footerInfoDisplay.videoQualityLevel.low");
             default:
-                return $_("settingsDialog.quality_medium");
+                return $_("footerInfoDisplay.videoQualityLevel.medium");
         }
     }
-    // 画像サイズ情報から拡張子を取得
-    let originalExt = $derived(
-        imageSizeInfo?.originalFilename
-            ? getExtension(imageSizeInfo.originalFilename)
-            : "",
-    );
-    let compressedExt = $derived(
-        imageSizeInfo?.compressedFilename
-            ? getExtension(imageSizeInfo.compressedFilename)
-            : "",
-    );
 
     /**
      * 進捗情報の更新

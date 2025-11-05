@@ -77,7 +77,12 @@
     "no_image": "Shared image not found",
     "upload_failed": "Image upload failed",
     "network_error": "Network error occurred",
-    "client_error": "Error occurred during image sharing process"
+    "client_error": "Error occurred during image sharing process",
+    "videoQualityLevel": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    }
   },
   "loadingPlaceholder": {
     "loading": "Loading..."
@@ -157,7 +162,7 @@
   "imageCompression": {
     "compressing": "Compressing image"
   },
-  "videoCompressionLabelSuffix": " compression",
+  "videoCompressionLabelSuffix": " Quality",
   "welcomeDialog": {
     "title": "Welcome to eHagaki",
     "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",

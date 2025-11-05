@@ -1,4 +1,4 @@
-import { QUALITY_MEDIUM, QUALITY_LOW, QUALITY_VERY_LOW, QUALITY_HIGH } from 'mediabunny';
+import { QUALITY_MEDIUM, QUALITY_VERY_LOW, QUALITY_HIGH } from 'mediabunny';
 
 export const BOOTSTRAP_RELAYS = [
     "wss://purplepag.es/",
