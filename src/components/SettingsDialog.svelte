@@ -186,7 +186,11 @@
 
     // showがtrueのたびにリレーリストを再取得（認証済みの場合のみ）
     $effect(() => {
-        if (show && authState.value?.pubkey && authState.value?.isAuthenticated) {
+        if (
+            show &&
+            authState.value?.pubkey &&
+            authState.value?.isAuthenticated
+        ) {
             loadRelayConfigFromStorage(authState.value.pubkey);
         }
     });
@@ -782,8 +786,6 @@
     }
 
     :global(.sw-update-btn.loading) {
-        padding: 0;
-
         :global(.square) {
             background-color: whitesmoke;
         }
