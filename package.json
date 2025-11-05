@@ -48,7 +48,7 @@
     "nostr-zap-view": "^1.4.6",
     "rx-nostr": "^3.6.1",
     "svelte-i18n": "^4.0.1",
-    "svelte-tiptap": "^3.0.0"
+    "svelte-tiptap": "^3.0.1"
   },
   "overrides": {
     "esbuild": "^0.25.8"
