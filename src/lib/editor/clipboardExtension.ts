@@ -189,17 +189,20 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // 行配列を段落ノードに変換
-                        const paragraphs = createParagraphNodes(lines, state.schema);
-
-                        // ペースト結果を出力（開発環境のみ）
-                        if (import.meta.env.MODE === 'development') {
-                            debugPasteResult('handlePaste', text, lines, paragraphs.length);
-                        }
-
-                        // ProseMirror Sliceを作成して挿入
-                        const fragment = Fragment.from(paragraphs);
+                        // 常にインライン挿入（改行を保持したテキストとして挿入）
+                        // ペースト内容の改行は保持されるが、新しい段落は作成しない
+                        const textWithLineBreaks = lines.join('\n');
+                        const textNode = state.schema.text(textWithLineBreaks);
+                        const fragment = Fragment.from(textNode);
                         const customSlice = new Slice(fragment, 0, 0);
+                        
+                        if (import.meta.env.MODE === 'development') {
+                            console.log('📋 handlePaste: inline paste with line breaks', {
+                                originalText: text,
+                                lines: lines.length,
+                                textWithLineBreaks
+                            });
+                        }
                         
                         // トランザクションを作成
                         // 
@@ -221,7 +224,7 @@ export const ClipboardExtension = Extension.create({
                             console.log('📋 handlePaste: dispatching transaction', {
                                 docChanged: tr.docChanged,
                                 steps: tr.steps.length,
-                                paragraphs: paragraphs.length
+                                linesCount: lines.length
                             });
                         }
                         
