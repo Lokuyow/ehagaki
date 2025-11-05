@@ -774,9 +774,11 @@
         font-weight: 600;
     }
 
-    :global(.sw-update-btn) {
+    :global(.sw-update-btn.primary) {
         height: 54px;
-        width: 164px;
+        width: auto;
+        padding: 12px 10px 12px 8px;
+        flex-shrink: 0;
     }
 
     :global(.sw-update-btn.loading) {
