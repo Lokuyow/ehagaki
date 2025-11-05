@@ -33,10 +33,14 @@
     "cancel": "Cancel"
   },
   "profileDialog": {
+    "title": "Profile",
     "anonymous": "Anonymous",
     "npub": "Public Key",
     "copy_npub": "Copy npub",
-    "copy_nprofile": "Copy nprofile"
+    "copy_nprofile": "Copy nprofile",
+    "login_method": "Login Method",
+    "login_method_nsec": "Secret Key",
+    "login_method_extension": "Browser Extension"
   },
   "settingsDialog": {
     "client_tag_label": "Add client name to post \n(Client tag)",

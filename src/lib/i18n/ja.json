@@ -61,10 +61,14 @@
     "cancel": "キャンセル"
   },
   "profileDialog": {
+    "title": "プロフィール",
     "anonymous": "名無し",
     "npub": "公開鍵",
     "copy_npub": "npubをコピー",
-    "copy_nprofile": "nprofileをコピー"
+    "copy_nprofile": "nprofileをコピー",
+    "login_method": "ログイン方法",
+    "login_method_nsec": "秘密鍵",
+    "login_method_extension": "ブラウザ拡張機能"
   },
   "settingsDialog": {
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
