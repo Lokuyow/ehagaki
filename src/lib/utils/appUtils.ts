@@ -55,22 +55,43 @@ export const defaultTimeoutAdapter: TimeoutAdapter = {
  */
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0KB';
-  const kb = Math.round(bytes / 1024);
-  return `${kb}KB`;
+  const kb = bytes / 1024;
+  if (kb >= 1000) {
+    // 1000KB以上の場合はMB表記、小数点以下第二位まで
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(2)}MB`;
+  } else {
+    // それ以下の場合はKB表記
+    return `${Math.round(kb)}KB`;
+  }
 }
 
 /**
- * 圧縮率を計算
+ * 圧縮率を計算（有効数字2桁）
  */
 export function calculateCompressionRatio(originalSize: number, compressedSize: number): number {
-  return originalSize > 0 ? Math.round((compressedSize / originalSize) * 100) : 100;
+  if (originalSize <= 0) return 100;
+  const ratio = (compressedSize / originalSize) * 100;
+  return Number(ratio.toPrecision(2));
 }
 
 /**
- * サイズ削減表示文字列を生成
+ * サイズ削減表示文字列を生成（圧縮前後の単位を統一）
  */
 export function createSizeReductionText(originalSize: number, compressedSize: number): string {
-  return `${formatFileSize(originalSize)} → ${formatFileSize(compressedSize)}`;
+  const useMB = (originalSize / 1024) >= 1000; // 圧縮前が1000KB以上の場合MB表記を使用
+
+  const formatSize = (bytes: number): string => {
+    if (useMB) {
+      const mb = bytes / (1024 * 1024);
+      return `${mb.toFixed(2)}MB`;
+    } else {
+      const kb = Math.round(bytes / 1024);
+      return `${kb}KB`;
+    }
+  };
+
+  return `${formatSize(originalSize)} → ${formatSize(compressedSize)}`;
 }
 
 /**
@@ -114,10 +135,22 @@ export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisp
     return null;
   }
 
+  const useMB = (sizeInfo.originalSize / 1024) >= 1000; // 圧縮前が1000KB以上の場合MB表記を使用
+
+  const formatSize = (bytes: number): string => {
+    if (useMB) {
+      const mb = bytes / (1024 * 1024);
+      return `${mb.toFixed(2)}MB`;
+    } else {
+      const kb = Math.round(bytes / 1024);
+      return `${kb}KB`;
+    }
+  };
+
   return {
     wasCompressed: sizeInfo.wasCompressed,
-    originalSize: formatFileSize(sizeInfo.originalSize),
-    compressedSize: formatFileSize(sizeInfo.compressedSize),
+    originalSize: formatSize(sizeInfo.originalSize),
+    compressedSize: formatSize(sizeInfo.compressedSize),
     compressionRatio: sizeInfo.compressionRatio,
     originalFilename: sizeInfo.originalFilename,
     compressedFilename: sizeInfo.compressedFilename,
