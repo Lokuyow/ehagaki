@@ -35,7 +35,7 @@
   "imageCompression": {
     "compressing": "画像圧縮中"
   },
-  "videoCompressionLabelSuffix": "品質",
+  "videoQualityLabelSuffix": "品質",
   "welcomeDialog": {
     "title": "eHagaki へようこそ",
     "description": "eHagaki（えはがき）は投稿専用のNostrクライアントです。画像、動画を圧縮してから送信できます。",

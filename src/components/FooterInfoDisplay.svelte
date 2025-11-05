@@ -416,7 +416,7 @@
                 <div class="progress-text">
                     {getVideoCompressionLevelLabel(
                         getVideoCompressionLevel(),
-                    )}{$_("videoCompressionLabelSuffix")}: {videoCompressionProgress}%
+                    )}{$_("videoQualityLabelSuffix")}: {videoCompressionProgress}%
                     ({formatElapsedTime(compressionElapsedSeconds)})
                 </div>
                 <div class="progress-bar">

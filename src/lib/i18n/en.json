@@ -162,7 +162,7 @@
   "imageCompression": {
     "compressing": "Compressing image"
   },
-  "videoCompressionLabelSuffix": " Quality",
+  "videoQualityLabelSuffix": " Quality",
   "welcomeDialog": {
     "title": "Welcome to eHagaki",
     "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
