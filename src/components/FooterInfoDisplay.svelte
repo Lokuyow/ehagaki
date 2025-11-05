@@ -584,7 +584,6 @@
     :global(.compression-container .abort-button) {
         width: 40px;
         height: 40px;
-        min-width: 40px;
         flex-shrink: 0;
         cursor: pointer;
         pointer-events: auto;

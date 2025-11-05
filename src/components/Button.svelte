@@ -205,8 +205,6 @@
     }
     .circle {
         border-radius: 50%;
-        min-height: 50px;
-        min-width: 50px;
         padding: 0;
         display: flex;
         align-items: center;
