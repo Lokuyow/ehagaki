@@ -68,7 +68,9 @@
     "copy_nprofile": "nprofileをコピー",
     "login_method": "ログイン方法",
     "login_method_nsec": "秘密鍵",
-    "login_method_extension": "ブラウザ拡張機能"
+    "login_method_nostr_login_connect": "Nostr Login Connect",
+    "login_method_nostr_login_extension": "Nostr Login Extension",
+    "login_method_nostr_login_local": "Nostr Login Local"
   },
   "settingsDialog": {
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",

@@ -348,8 +348,9 @@ describe('PublicKeyState', () => {
 
             expect(mockSetNostrLoginAuth).toHaveBeenCalledWith(
                 auth.pubkey,
-                expect.stringMatching(/^npub1/),
-                expect.stringMatching(/^nprofile1/)
+                auth.npub,
+                'nprofile1qqsqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq8uzqt',
+                undefined
             );
         });
 

@@ -298,12 +298,13 @@ export class AuthService {
 
     constructor(dependencies: AuthServiceDependencies = {}) {
         // デフォルト依存関係の設定
+        const localStorage = dependencies.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
         const keyMgr = dependencies.keyManager || new KeyManager({
             secretKeyStore: dependencies.secretKeyStore || secretKeyStore,
-            setNostrLoginAuthFn: dependencies.setNsecAuth || setNsecAuth,
-            clearAuthStateFn: dependencies.clearAuthState || clearAuthState
+            setNostrLoginAuthFn: dependencies.setNostrLoginAuth || setNostrLoginAuth,
+            clearAuthStateFn: dependencies.clearAuthState || clearAuthState,
+            localStorage
         });
-        const localStorage = dependencies.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
         const windowObj = dependencies.window || (typeof window !== 'undefined' ? window : {} as Window);
         const navigator = dependencies.navigator || (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
         const console = dependencies.console || (typeof window !== 'undefined' ? window.console : {} as Console);
@@ -315,7 +316,8 @@ export class AuthService {
         // 内部コンポーネントの初期化
         this.publicKeyState = new PublicKeyState({
             setNostrLoginAuthFn: dependencies.setNostrLoginAuth || setNostrLoginAuth,
-            clearAuthStateFn: dependencies.clearAuthState || clearAuthState
+            clearAuthStateFn: dependencies.clearAuthState || clearAuthState,
+            localStorage
         });
         this.nsecAuthenticator = new NsecAuthenticator(keyMgr, setNsecAuthFn, console);
         this.nostrLoginAuthenticator = new NostrLoginAuthenticator(this.publicKeyState, console);

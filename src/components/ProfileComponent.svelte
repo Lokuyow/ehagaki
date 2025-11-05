@@ -158,15 +158,23 @@
             <div class="auth-controls">
                 <!-- ログイン方法 -->
                 <div class="auth-container">
-                    {#if auth?.isExtensionLogin || auth?.type === "nsec"}
+                    {#if auth?.type === "nsec" || auth?.type === "nostr-login"}
                         <div class="profile-info-label">
                             {$_("profileDialog.login_method")}
                         </div>
                         <span class="profile-info-text">
-                            {#if auth?.isExtensionLogin}
-                                {$_("profileDialog.login_method_extension")}
-                            {:else if auth?.type === "nsec"}
+                            {#if auth?.type === "nsec"}
                                 {$_("profileDialog.login_method_nsec")}
+                            {:else if auth?.type === "nostr-login"}
+                                {#if auth?.nostrLoginAuthMethod === "connect"}
+                                    {$_("profileDialog.login_method_nostr_login_connect")}
+                                {:else if auth?.nostrLoginAuthMethod === "extension"}
+                                    {$_("profileDialog.login_method_nostr_login_extension")}
+                                {:else if auth?.nostrLoginAuthMethod === "local"}
+                                    {$_("profileDialog.login_method_nostr_login_local")}
+                                {:else}
+                                    {$_("profileDialog.login_method_nostr_login_connect")}
+                                {/if}
                             {/if}
                         </span>
                     {/if}

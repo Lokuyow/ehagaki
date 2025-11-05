@@ -142,8 +142,9 @@ export class PublicKeyState {
 
   constructor(
     private deps: {
-      setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string) => void;
+      setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: 'connect' | 'extension' | 'local') => void;
       clearAuthStateFn?: () => void;
+      localStorage?: Storage;
     } = {}
   ) {
     // nsecが変更されたら自動的に公開鍵情報を更新
@@ -171,6 +172,28 @@ export class PublicKeyState {
       const npub = auth.npub || nip19.npubEncode(auth.pubkey);
       const nprofile = nip19.nprofileEncode({ pubkey: auth.pubkey, relays: [] });
 
+      // LocalStorageからauthMethodを取得
+      let authMethod: 'connect' | 'extension' | 'local' | undefined = undefined;
+      if (this.deps.localStorage && typeof this.deps.localStorage.getItem === 'function') {
+        try {
+          const accountsRaw = this.deps.localStorage.getItem('__nostrlogin_accounts');
+          if (accountsRaw) {
+            const accounts = JSON.parse(accountsRaw);
+            if (Array.isArray(accounts)) {
+              const account = accounts.find((acc: any) => acc?.pubkey === auth.pubkey);
+              if (account?.authMethod) {
+                const method = account.authMethod;
+                if (method === 'connect' || method === 'extension' || method === 'local') {
+                  authMethod = method;
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.warn('Failed to get authMethod from localStorage:', error);
+        }
+      }
+
       this._dataStore.set({ hex: auth.pubkey, npub, nprofile });
       this._isValidStore.set(true);
       this._isNostrLoginStore.set(true);
@@ -178,12 +201,12 @@ export class PublicKeyState {
 
       // グローバル認証状態を更新（依存性注入を優先）
       if (this.deps.setNostrLoginAuthFn) {
-        this.deps.setNostrLoginAuthFn(auth.pubkey, npub, nprofile);
+        this.deps.setNostrLoginAuthFn(auth.pubkey, npub, nprofile, authMethod);
       } else {
         // 依存関係がまだ読み込まれていない場合は遅延実行
         setTimeout(() => {
           if (this.deps.setNostrLoginAuthFn) {
-            this.deps.setNostrLoginAuthFn!(auth.pubkey!, npub, nprofile);
+            this.deps.setNostrLoginAuthFn!(auth.pubkey!, npub, nprofile, authMethod);
           }
         }, 10);
       }
@@ -191,7 +214,8 @@ export class PublicKeyState {
       console.log('[PublicKeyState] NostrLogin認証状態を設定:', {
         pubkey: auth.pubkey,
         npub,
-        type: auth.type
+        type: auth.type,
+        authMethod
       });
     } catch (error) {
       console.error("Failed to set NostrLogin auth:", error);

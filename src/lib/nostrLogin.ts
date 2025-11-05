@@ -63,6 +63,38 @@ export class NostrLoginUtils {
         }
         return null;
     }
+
+    /**
+     * LocalStorageから現在のユーザーのNostr Login認証方法を取得
+     * @param pubkey 対象のpubkey
+     * @param localStorage LocalStorageインスタンス
+     * @returns 'connect' | 'extension' | 'local' | undefined
+     */
+    static getNostrLoginAuthMethod(
+        pubkey: string,
+        localStorage: Storage
+    ): 'connect' | 'extension' | 'local' | undefined {
+        try {
+            const accountsRaw = localStorage.getItem('__nostrlogin_accounts');
+            if (!accountsRaw) return undefined;
+
+            const accounts = JSON.parse(accountsRaw);
+            if (!Array.isArray(accounts)) return undefined;
+
+            // pubkeyが一致するアカウントを検索
+            const account = accounts.find((acc: any) => acc?.pubkey === pubkey);
+            if (!account || !account.authMethod) return undefined;
+
+            const authMethod = account.authMethod;
+            if (authMethod === 'connect' || authMethod === 'extension' || authMethod === 'local') {
+                return authMethod;
+            }
+
+            return undefined;
+        } catch (error) {
+            return undefined;
+        }
+    }
 }
 
 // --- 認証コールバック処理の分離 ---

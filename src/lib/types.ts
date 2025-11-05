@@ -3,6 +3,8 @@ import type { Editor as TipTapEditor } from "@tiptap/core";
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from "./constants";
 
 // --- App Store types ---
+export type NostrLoginAuthMethod = 'connect' | 'extension' | 'local' | undefined;
+
 export interface AuthState {
     type: 'none' | 'nsec' | 'nostr-login';
     isAuthenticated: boolean;
@@ -12,6 +14,7 @@ export interface AuthState {
     isValid: boolean;
     isInitialized: boolean;
     isExtensionLogin?: boolean;
+    nostrLoginAuthMethod?: NostrLoginAuthMethod; // Nostr Loginの認証方法
     serviceWorkerReady?: boolean;
 }
 
@@ -309,7 +312,7 @@ export interface AuthServiceDependencies {
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setAuthInitialized?: () => void;
     clearAuthState?: () => void;
-    setNostrLoginAuth?: (pubkey: string, npub: string, nprofile: string) => void;
+    setNostrLoginAuth?: (pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: NostrLoginAuthMethod) => void;
 
     // Stores
     secretKeyStore?: {
@@ -336,7 +339,7 @@ export interface KeyManagerDeps {
         set: (value: string | null) => void;
     };
     window?: Window;
-    setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string) => void;
+    setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: NostrLoginAuthMethod) => void;
     clearAuthStateFn?: () => void;
 }
 

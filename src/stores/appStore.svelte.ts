@@ -163,7 +163,7 @@ export function setNsecAuth(pubkey: string, npub: string, nprofile: string): voi
     updateAuthState({ type: 'nsec', pubkey, npub, nprofile, isValid: true });
 }
 
-export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string): void {
+export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: 'connect' | 'extension' | 'local'): void {
     if (!pubkey || !npub || !nprofile) {
         console.warn('setNostrLoginAuth: All parameters are required');
         return;
@@ -172,7 +172,8 @@ export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string
     console.log('[setNostrLoginAuth] NostrLogin認証状態を更新:', {
         pubkey: pubkey.substring(0, 8) + '...',
         npub: npub.substring(0, 12) + '...',
-        type: 'nostr-login'
+        type: 'nostr-login',
+        nostrLoginAuthMethod
     });
 
     updateAuthState({
@@ -180,7 +181,8 @@ export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string
         pubkey,
         npub,
         nprofile,
-        isValid: true
+        isValid: true,
+        nostrLoginAuthMethod
     });
 }
 

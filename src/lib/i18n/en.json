@@ -40,7 +40,9 @@
     "copy_nprofile": "Copy nprofile",
     "login_method": "Login Method",
     "login_method_nsec": "Secret Key",
-    "login_method_extension": "Browser Extension"
+    "login_method_nostr_login_connect": "Nostr Login Connect",
+    "login_method_nostr_login_extension": "Nostr Login Extension",
+    "login_method_nostr_login_local": "Nostr Login Local"
   },
   "settingsDialog": {
     "client_tag_label": "Add client name to post \n(Client tag)",
