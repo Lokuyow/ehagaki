@@ -42,8 +42,8 @@
         profileData?.name
             ? profileData.name
             : profileData?.npub
-                ? profileData.npub
-                : "User";
+              ? profileData.npub
+              : "User";
 
     // 画像読み込みエラーハンドラ
     function handleImageError(event: Event) {
@@ -51,7 +51,10 @@
         imageLoadError = true;
 
         // Service Workerが利用可能な場合、キャッシュの問題かどうかをチェック
-        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+        if (
+            "serviceWorker" in navigator &&
+            navigator.serviceWorker.controller
+        ) {
             console.log("Service Workerによるキャッシュ処理の可能性があります");
         }
     }
@@ -141,12 +144,18 @@
                     class="profile-picture"
                     loading="lazy"
                     {...isSameOriginPicture
-                        ? { crossorigin: "anonymous", referrerpolicy: "no-referrer" }
+                        ? {
+                              crossorigin: "anonymous",
+                              referrerpolicy: "no-referrer",
+                          }
                         : {}}
                     onerror={handleImageError}
                 />
             {:else}
-                <div class="profile-picture default svg-icon" aria-label="User"></div>
+                <div
+                    class="profile-picture default svg-icon"
+                    aria-label="User"
+                ></div>
             {/if}
         </Button>
     {:else if !isLoadingProfile && !isAuthenticated}
@@ -199,6 +208,12 @@
         width: 140px;
         font-size: 1.1rem;
     }
+
+    :global(.settings-btn.default) {
+        width: 50px;
+        height: 50px;
+    }
+
     .settings-icon {
         mask-image: url("/icons/gear-solid-full.svg");
     }
@@ -218,7 +233,12 @@
     @keyframes pulse {
         0% {
             opacity: 1;
-            animation-timing-function: cubic-bezier(0.4, 0.1, 0.8, 0.6); /* 滅 */
+            animation-timing-function: cubic-bezier(
+                0.4,
+                0.1,
+                0.8,
+                0.6
+            ); /* 滅 */
         }
         50% {
             opacity: 0;
@@ -232,9 +252,11 @@
         opacity: 0.7;
         gap: 2px;
     }
-    
+
     /* プロフィール表示のスタイル */
-    :global(.default.profile-display) {
+    :global(.profile-display.default) {
+        width: 50px;
+        height: 50px;
         z-index: 10;
 
         &:hover:not(:disabled) {
