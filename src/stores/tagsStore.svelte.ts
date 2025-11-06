@@ -75,3 +75,13 @@ export const imageSizeMapStore = {
         return () => { }; // cleanup function
     }
 };
+
+// --- Content Warning (NIP-36) ストア ---
+let svelteContentWarningEnabled = $state<boolean>(false);
+
+export const contentWarningStore = {
+    get value() { return svelteContentWarningEnabled; },
+    set: (value: boolean) => { svelteContentWarningEnabled = value; },
+    toggle: () => { svelteContentWarningEnabled = !svelteContentWarningEnabled; },
+    reset: () => { svelteContentWarningEnabled = false; }
+};
