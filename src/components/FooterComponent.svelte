@@ -1,5 +1,5 @@
 <script lang="ts">
-    import FooterInfoDisplay from "./FooterInfoDisplay.svelte";
+    import FooterInfoDisplay from "./FooterMiddleDisplay.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { _ } from "svelte-i18n";
