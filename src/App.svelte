@@ -15,6 +15,7 @@
   import { authService } from "./lib/authService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
+  import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import {
     authState,
     sharedImageStore,
@@ -236,7 +237,9 @@
   $effect(() => {
     const pubkey = authState.value?.pubkey;
     if (pubkey && authState.value?.isAuthenticated && relayProfileService) {
-      const result = relayProfileService.getRelayManager().loadRelayConfigForUI(pubkey);
+      const result = relayProfileService
+        .getRelayManager()
+        .loadRelayConfigForUI(pubkey);
       if (result) {
         // TODO: 必要に応じてストアを更新
       }
@@ -558,6 +561,7 @@
         onUploadProgress={handleUploadProgress}
       />
     </div>
+    <KeyboardButtonBar />
     <FooterComponent
       bind:this={footerComponentRef}
       {isAuthenticated}

@@ -7,7 +7,6 @@
         abortAllUploads,
     } from "../stores/appStore.svelte";
     import { currentEditorStore } from "../stores/editorStore.svelte";
-    import { contentWarningStore } from "../stores/tagsStore.svelte";
     import type { UploadProgress } from "../lib/types";
     import {
         devLog,
@@ -355,14 +354,6 @@
         sharedImageError = null; // 共有画像エラーもクリア
     }
 
-    // Content Warning状態を取得
-    let contentWarningEnabled = $derived(contentWarningStore.value);
-
-    // Content Warningトグル
-    function toggleContentWarning() {
-        contentWarningStore.toggle();
-    }
-
     // アップロード中やその他の情報表示中かどうか
     let showingInfo = $derived(
         sharedImageError !== null ||
@@ -535,19 +526,6 @@
                 </div>
             </div>
         {/if}
-    {:else}
-        <!-- 通常時: ボタンエリア -->
-        <div class="button-container">
-            <Button
-                variant="footer"
-                shape="square"
-                selected={contentWarningEnabled}
-                onClick={toggleContentWarning}
-                ariaLabel="Content Warning切り替え"
-            >
-                <div class="content-warning-icon svg-icon"></div>
-            </Button>
-        </div>
     {/if}
 </div>
 
@@ -705,22 +683,5 @@
         font-size: 0.9rem;
         color: var(--balloon-error-color, #dc2626);
         text-align: center;
-    }
-
-    .button-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 12px;
-        height: 100%;
-    }
-
-    :global(.button-container .footer) {
-        width: 50px;
-        height: 50px;
-
-        .content-warning-icon {
-            mask-image: url("/icons/eye-slash-solid-full.svg");
-        }
     }
 </style>
