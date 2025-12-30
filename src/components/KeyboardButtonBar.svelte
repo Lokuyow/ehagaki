@@ -60,14 +60,13 @@
         align-items: center;
         width: 100%;
         max-width: 800px;
-        height: 58px;
-        padding: 4px 8px;
+        height: 50px;
+        padding: 0 8px;
         margin: auto;
-        background: var(--bg-footer);
+        background: var(--bg-buttonbar);
         position: fixed;
         left: 0;
         right: 0;
-        box-shadow: 0 -2px 8px var(--shadow);
         z-index: 98;
         transition: bottom 0.2s ease;
     }
