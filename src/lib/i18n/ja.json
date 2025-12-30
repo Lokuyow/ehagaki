@@ -12,7 +12,9 @@
     "cancel": "キャンセル",
     "clear_editor": "エディターをクリア",
     "upload_image": "画像をアップロード",
-    "only_images_allowed": "画像ファイルのみアップロード可能です"
+    "only_images_allowed": "画像ファイルのみアップロード可能です",
+    "content_warning_reason_placeholder": "理由を入力...",
+    "content_warning_reason_label": "Content Warning理由"
   },
   "imageContextMenu": {
     "delete": "削除",

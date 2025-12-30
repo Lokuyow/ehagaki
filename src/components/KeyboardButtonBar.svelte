@@ -1,13 +1,29 @@
 <script lang="ts">
+    import { _ } from "svelte-i18n";
     import Button from "./Button.svelte";
-    import { contentWarningStore } from "../stores/tagsStore.svelte";
+    import {
+        contentWarningStore,
+        contentWarningReasonStore,
+    } from "../stores/tagsStore.svelte";
 
     // Content Warning状態を取得
     let contentWarningEnabled = $derived(contentWarningStore.value);
+    let contentWarningReason = $derived(contentWarningReasonStore.value);
+    let showReasonInput = $derived(contentWarningEnabled);
 
     // Content Warningトグル
     function toggleContentWarning() {
         contentWarningStore.toggle();
+        if (!contentWarningStore.value) {
+            // disabledになった時はreasonをクリア
+            contentWarningReasonStore.reset();
+        }
+    }
+
+    // Reasonテキスト変更時
+    function handleReasonInput(event: Event) {
+        const target = event.target as HTMLInputElement;
+        contentWarningReasonStore.set(target.value);
     }
 
     // キーボード追従のための位置調整
@@ -52,6 +68,23 @@
             <div class="content-warning-icon svg-icon"></div>
         </Button>
     </div>
+
+    {#if showReasonInput}
+        <div class="reason-input-area">
+            <input
+                id="content-warning-reason-input"
+                type="text"
+                placeholder={$_(
+                    "postComponent.content_warning_reason_placeholder",
+                )}
+                value={contentWarningReason}
+                onchange={handleReasonInput}
+                oninput={handleReasonInput}
+                aria-label={$_("postComponent.content_warning_reason_label")}
+                class="reason-input"
+            />
+        </div>
+    {/if}
 </div>
 
 <style>
@@ -76,7 +109,7 @@
         justify-content: flex-start;
         align-items: center;
         gap: 8px;
-        width: 100%;
+        width: auto;
     }
 
     :global(.footer-button-bar .footer) {
@@ -86,5 +119,34 @@
 
     .content-warning-icon {
         mask-image: url("/icons/eye-slash-solid-full.svg");
+    }
+
+    .reason-input-area {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        height: 100%;
+    }
+
+    .reason-input {
+        width: 100%;
+        height: 36px;
+        padding: 0 10px;
+        border: 1px solid var(--border-color, #ccc);
+        border-radius: 4px;
+        background: var(--bg-input, #fff);
+        color: var(--text-primary);
+        font-size: 1.125rem;
+        font-family: inherit;
+    }
+
+    .reason-input::placeholder {
+        color: var(--text-secondary, #999);
+    }
+
+    .reason-input:focus {
+        outline: none;
+        border-color: var(--border-active, #2196f3);
+        box-shadow: 0 0 4px rgba(33, 150, 243, 0.3);
     }
 </style>

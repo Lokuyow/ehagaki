@@ -12,7 +12,9 @@
     "cancel": "Cancel",
     "clear_editor": "Clear editor",
     "upload_image": "Upload Image",
-    "only_images_allowed": "Only image files are allowed"
+    "only_images_allowed": "Only image files are allowed",
+    "content_warning_reason_placeholder": "Enter reason...",
+    "content_warning_reason_label": "Content Warning reason"
   },
   "loginDialog": {
     "input_secret": "Enter Secret Key",

@@ -3,7 +3,7 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager";
 import { authState } from "../stores/appStore.svelte";
-import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore } from "../stores/tagsStore.svelte";
+import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
 import { extractContentWithImages } from "../lib/utils/editorUtils";
@@ -31,7 +31,8 @@ export class PostEventBuilder {
     imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>,
     createImetaTagFn?: (meta: any) => Promise<string[]>,
     getClientTagFn?: () => string[] | null,
-    contentWarningEnabled?: boolean
+    contentWarningEnabled?: boolean,
+    contentWarningReason?: string
   ): Promise<any> {
     // 既にストアに tags が作られていればそれをコピー、なければ hashtags から小文字化して作成
     const eventTags: string[][] = Array.isArray(tags) && tags.length
@@ -40,7 +41,11 @@ export class PostEventBuilder {
 
     // Content Warning タグ追加 (NIP-36)
     if (contentWarningEnabled) {
-      eventTags.push(['content-warning']);
+      if (contentWarningReason && contentWarningReason.trim()) {
+        eventTags.push(['content-warning', contentWarningReason.trim()]);
+      } else {
+        eventTags.push(['content-warning']);
+      }
     }
 
     // Client tag 追加
@@ -202,6 +207,7 @@ export class PostManager {
 
       // Content Warning状態を取得
       const contentWarningEnabled = contentWarningStore.value;
+      const contentWarningReason = contentWarningReasonStore.value;
 
       const auth = authStateStore.value;
       const isNostrLoginAuth = auth.type === 'nostr-login';
@@ -223,7 +229,8 @@ export class PostManager {
             imageImetaMap,
             this.deps.createImetaTagFn,
             this.deps.getClientTagFn,
-            contentWarningEnabled
+            contentWarningEnabled,
+            contentWarningReason
           );
 
           // 型ガードで signEvent の存在を確認
@@ -264,7 +271,8 @@ export class PostManager {
         imageImetaMap,
         this.deps.createImetaTagFn,
         this.deps.getClientTagFn,
-        contentWarningEnabled
+        contentWarningEnabled,
+        contentWarningReason
       );
 
       const signer = this.deps.seckeySignerFn
@@ -374,10 +382,12 @@ export class PostManager {
     this.deps.resetEditorStateFn?.();
     this.deps.resetPostStatusFn?.();
     contentWarningStore.reset(); // Content Warningもリセット
+    contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
   }
 
   clearContentAfterSuccess(editor: TipTapEditor): void {
     this.applyEmptyStateToEditor(editor);
     contentWarningStore.reset(); // Content Warningもリセット
+    contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
   }
 }

@@ -78,10 +78,17 @@ export const imageSizeMapStore = {
 
 // --- Content Warning (NIP-36) ストア ---
 let svelteContentWarningEnabled = $state<boolean>(false);
+let svelteContentWarningReason = $state<string>('');
 
 export const contentWarningStore = {
     get value() { return svelteContentWarningEnabled; },
     set: (value: boolean) => { svelteContentWarningEnabled = value; },
     toggle: () => { svelteContentWarningEnabled = !svelteContentWarningEnabled; },
     reset: () => { svelteContentWarningEnabled = false; }
+};
+
+export const contentWarningReasonStore = {
+    get value() { return svelteContentWarningReason; },
+    set: (value: string) => { svelteContentWarningReason = value; },
+    reset: () => { svelteContentWarningReason = ''; }
 };
