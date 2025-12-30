@@ -11,7 +11,8 @@
             | "danger"
             | "secondary"
             | "warning"
-            | "header";
+            | "header"
+            | "footer";
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void; // 追加
@@ -179,6 +180,31 @@
                     filter: brightness(90%);
                 }
             }
+        }
+    }
+
+    .footer {
+        --btn-bg: transparent;
+        border: none;
+        transition: all 0.2s ease;
+        opacity: 0.5;
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                @media (prefers-color-scheme: light) {
+                    --text: hsl(0, 0%, 24%);
+                    --svg: hsl(0, 0%, 20%);
+                }
+
+                @media (prefers-color-scheme: dark) {
+                    --text: hsl(0, 0%, 92%);
+                    --svg: hsl(0, 0%, 99%);
+                }
+            }
+        }
+
+        &.selected {
+            opacity: 1;
         }
     }
 
