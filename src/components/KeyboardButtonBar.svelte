@@ -37,6 +37,10 @@
     $effect(() => {
         if (typeof window === "undefined" || !window.visualViewport) return;
 
+        // キーボードが開いていると判定する最小の高さ（px）
+        // PWAモードでのステータスバーやナビゲーションバーの差分を無視するため
+        const KEYBOARD_THRESHOLD = 100;
+
         function handleResize() {
             const viewport = window.visualViewport;
             if (!viewport) return;
@@ -45,7 +49,9 @@
             const keyboardHeight = window.innerHeight - viewport.height;
 
             // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
-            bottomPosition = keyboardHeight > 0 ? keyboardHeight : 66;
+            // 閾値を設けて、PWAモードでの小さな差分を無視する
+            bottomPosition =
+                keyboardHeight > KEYBOARD_THRESHOLD ? keyboardHeight : 66;
         }
 
         // 初期値を設定
