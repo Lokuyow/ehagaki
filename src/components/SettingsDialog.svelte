@@ -46,6 +46,9 @@
         onOpenWelcomeDialog = undefined,
     }: SettingsDialogProps = $props();
 
+    // ユニークID生成
+    const uid = $props.id();
+
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
     let videoCompressionLevels = $derived(getVideoCompressionLevels($_));
@@ -55,6 +58,12 @@
     let _selectedVideoCompression: string = $state("medium");
     let _selectedEndpoint: string = $state(selectedEndpoint);
     let isInitialized = $state(false); // 初期化完了フラグ
+
+    // Store派生値
+    let swVersion = $derived(swVersionStore.value);
+    let writeRelays = $derived(writeRelaysStore.value);
+    let showRelays = $derived(showRelaysStore.value);
+    let isUpdating = $derived(isSwUpdatingStore.value);
 
     // 直接同期処理（$effectを使用）
     $effect(() => {
@@ -126,10 +135,6 @@
         }
     });
 
-    // swVersion from store
-    let swVersion: string | null = $state(null);
-    swVersionStore.subscribe((v) => (swVersion = v));
-
     function handleSwRefresh() {
         handleServiceWorkerRefresh(
             handleSwUpdate,
@@ -181,38 +186,29 @@
     onMount(() => {
         initializeSettings();
         fetchSwVersion();
-        // 初回のリレー読み込み（認証済みの場合のみ）
         if (authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
         }
     });
 
-    // showがtrueのたびにリレーリストを再取得（認証済みの場合のみ）
+    // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化
     $effect(() => {
-        if (
-            show &&
-            authState.value?.pubkey &&
-            authState.value?.isAuthenticated
-        ) {
+        if (!show) {
+            showRelaysStore.set(false);
+            return;
+        }
+        // 認証済みの場合のみリレーリスト再取得
+        if (authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
         }
+        // nostr-zap-view初期化
+        (async () => {
+            await tick();
+            nostrZapView();
+            window.nostrZap?.initTargets();
+        })();
     });
-    // showがtrueのたびにnostr-zap-viewを再初期化
-    $effect(() => {
-        if (show) {
-            (async () => {
-                await tick();
-                nostrZapView();
-                if (window.nostrZap) {
-                    window.nostrZap.initTargets();
-                }
-            })();
-        }
-    });
-    // showがfalseになったらリレーリストの折り畳みも閉じる
-    $effect(() => {
-        if (!show) showRelaysStore.set(false);
-    });
+
     // $locale変更時、保存がなければデフォルトエンドポイントを再設定
     $effect(() => {
         if ($locale && !localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)) {
@@ -223,11 +219,6 @@
     function toggleLanguage() {
         locale.set($locale === "ja" ? "en" : "ja");
     }
-
-    // Store values for template
-    let writeRelays = $derived(writeRelaysStore.value);
-    let showRelays = $derived(showRelaysStore.value);
-    let isUpdating = $derived(isSwUpdatingStore.value);
 </script>
 
 <Dialog
@@ -548,7 +539,7 @@
                         "アップロード先"}</span
                 >
                 <div class="setting-control">
-                    <select id="endpoint-select" bind:value={_selectedEndpoint}>
+                    <select id="{uid}-endpoint" bind:value={_selectedEndpoint}>
                         {#each uploadEndpoints as ep}
                             <option value={ep.url}>{ep.label}</option>
                         {/each}
@@ -565,9 +556,9 @@
                         "投稿詳細にクライアント名をつける（Client tag）"}</span
                 >
                 <div class="setting-control">
-                    <label class="toggle-switch" for="client-tag-toggle">
+                    <label class="toggle-switch" for="{uid}-client-tag">
                         <input
-                            id="client-tag-toggle"
+                            id="{uid}-client-tag"
                             type="checkbox"
                             bind:checked={clientTagEnabled}
                         />
@@ -844,8 +835,6 @@
         padding: 6px;
         min-width: 200px;
         height: 50px;
-    }
-    #endpoint-select {
         font-size: 1rem;
     }
 
