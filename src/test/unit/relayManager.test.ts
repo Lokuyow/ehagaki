@@ -303,18 +303,19 @@ describe('RelayNetworkFetcher', () => {
         });
 
         it('タイムアウト時に適切に処理する', async () => {
-            mockSetTimeout.mockImplementation((fn: () => void) => {
-                queueMicrotask(fn);
-                return 'timeout-id';
+            // Backward Strategy: イベントなしでcompleteを呼ぶ
+            subscribeFn.mockImplementation((observer: any) => {
+                queueMicrotask(() => {
+                    observer.complete();
+                });
+                return mockSubscription;
             });
-
-            subscribeFn.mockImplementation((_observer: any) => mockSubscription);
 
             const result = await fetcher.fetchKind10002('testpubkey', ['wss://bootstrap.example.com'], 1);
 
             expect(result.success).toBe(false);
-            expect(result.error).toBe('timeout');
-            expect(mockClearTimeout).toHaveBeenCalledWith('timeout-id');
+            expect(result.error).toBe('not_found');
+            expect(mockSubscription.unsubscribe).toHaveBeenCalled();
         });
 
         it('エラー発生時にfalseを返す', async () => {
@@ -373,19 +374,16 @@ describe('RelayNetworkFetcher', () => {
                             content: 'invalid json'
                         }
                     });
+                    // Backward Strategy: completeも呼ぶ
+                    observer.complete();
                 });
                 return mockSubscription;
-            });
-
-            mockSetTimeout.mockImplementation((fn: () => void) => {
-                queueMicrotask(fn);
-                return 'timeout-id';
             });
 
             const result = await fetcher.fetchKind3('testpubkey', ['wss://bootstrap.example.com'], 1);
 
             expect(result.success).toBe(false);
-            expect(result.error).toBe('timeout');
+            expect(result.error).toBe('not_found');
         });
     });
 });
@@ -557,17 +555,15 @@ describe('RelayManager統合テスト', () => {
         });
 
         it('Kind 10002とKind 3の両方が失敗した場合フォールバックを使用', async () => {
-            mockSetTimeout = vi.fn((fn: () => void) => {
-                queueMicrotask(fn);
-                return 'timeout-id';
+            // Backward Strategy: イベントなしでcompleteを呼ぶ
+            subscribeFn.mockImplementation((observer: any) => {
+                queueMicrotask(() => {
+                    observer.complete();
+                });
+                return { unsubscribe: vi.fn() };
             });
 
-            subscribeFn.mockImplementation((_observer: any) => ({ unsubscribe: vi.fn() }));
-
-            manager = new RelayManager(mockRxNostr, {
-                ...mockDeps,
-                setTimeoutFn: mockSetTimeout
-            });
+            manager = new RelayManager(mockRxNostr, mockDeps);
 
             // グローバルconsole.logをspyして検証
             const globalConsoleLog = vi.spyOn(global.console, 'log');

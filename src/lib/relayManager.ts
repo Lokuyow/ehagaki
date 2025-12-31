@@ -1,4 +1,4 @@
-import { createRxForwardReq } from "rx-nostr";
+import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
@@ -220,17 +220,12 @@ export class RelayNetworkFetcher {
         this.console.log(`Kind 10002取得試行: ${pubkeyHex}`);
 
         return new Promise((resolve) => {
-            const rxReq = createRxForwardReq();
+            const rxReq = createRxBackwardReq();
             let found = false;
-            let timeoutId: any = null;
             let resolved = false;
             let subscription: any = undefined;
 
             const cleanup = () => {
-                if (timeoutId != null) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = null;
-                }
                 if (subscription && typeof subscription.unsubscribe === "function") {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -267,6 +262,13 @@ export class RelayNetworkFetcher {
                             }
                         }
                     },
+                    complete: () => {
+                        if (resolved) return;
+                        if (!found) {
+                            this.console.log("Kind 10002: EOSE受信、イベントなし");
+                        }
+                        safeResolve({ success: found, error: found ? undefined : 'not_found' });
+                    },
                     error: (error: any) => {
                         if (resolved) return;
                         this.console.error("Kind 10002取得エラー:", error);
@@ -274,17 +276,13 @@ export class RelayNetworkFetcher {
                     }
                 });
 
-                // リクエスト送信
-                rxReq.emit({ authors: [pubkeyHex], kinds: [10002] });
-
-                // タイムアウト設定
-                timeoutId = this.setTimeoutFn(() => {
-                    if (resolved) return;
-                    if (!found) {
-                        this.console.log("Kind 10002: タイムアウト");
-                    }
-                    safeResolve({ success: found, error: found ? undefined : 'timeout' });
-                }, timeoutMs);
+                // リクエスト送信（untilパラメータで未来のイベントをキャプチャしない）
+                rxReq.emit({
+                    authors: [pubkeyHex],
+                    kinds: [10002],
+                    until: Math.floor(Date.now() / 1000)
+                });
+                rxReq.over();
 
             } catch (error) {
                 this.console.error("Kind 10002リクエスト作成エラー:", error);
@@ -301,17 +299,12 @@ export class RelayNetworkFetcher {
         this.console.log(`Kind 3取得試行: ${pubkeyHex}`);
 
         return new Promise((resolve) => {
-            const rxReq = createRxForwardReq();
+            const rxReq = createRxBackwardReq();
             let found = false;
-            let timeoutId: any = null;
             let resolved = false;
             let subscription: any = undefined;
 
             const cleanup = () => {
-                if (timeoutId != null) {
-                    this.clearTimeoutFn(timeoutId);
-                    timeoutId = null;
-                }
                 if (subscription && typeof subscription.unsubscribe === "function") {
                     subscription.unsubscribe();
                     subscription = undefined;
@@ -344,6 +337,13 @@ export class RelayNetworkFetcher {
                             }
                         }
                     },
+                    complete: () => {
+                        if (resolved) return;
+                        if (!found) {
+                            this.console.log("Kind 3: EOSE受信、イベントなし");
+                        }
+                        safeResolve({ success: found, error: found ? undefined : 'not_found' });
+                    },
                     error: (error: any) => {
                         if (resolved) return;
                         this.console.error("Kind 3取得エラー:", error);
@@ -351,17 +351,13 @@ export class RelayNetworkFetcher {
                     }
                 });
 
-                // リクエスト送信
-                rxReq.emit({ authors: [pubkeyHex], kinds: [3] });
-
-                // タイムアウト設定
-                timeoutId = this.setTimeoutFn(() => {
-                    if (resolved) return;
-                    if (!found) {
-                        this.console.log("Kind 3: タイムアウト");
-                    }
-                    safeResolve({ success: found, error: found ? undefined : 'timeout' });
-                }, timeoutMs);
+                // リクエスト送信（untilパラメータで未来のイベントをキャプチャしない）
+                rxReq.emit({
+                    authors: [pubkeyHex],
+                    kinds: [3],
+                    until: Math.floor(Date.now() / 1000)
+                });
+                rxReq.over();
 
             } catch (error) {
                 this.console.error("Kind 3リクエスト作成エラー:", error);
@@ -404,7 +400,7 @@ export class RelayManager {
 
     setBootstrapRelays(): void {
         try {
-            this.rxNostr.use(createRxForwardReq(), {
+            this.rxNostr.use(createRxBackwardReq(), {
                 on: {
                     relays: BOOTSTRAP_RELAYS,
                 },

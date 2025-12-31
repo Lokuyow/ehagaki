@@ -221,11 +221,12 @@ describe('ProfileNetworkFetcher', () => {
     });
 
     it('タイムアウト時にデフォルトプロフィールを返す', async () => {
-        // setTimeoutをすぐに実行してタイムアウトをシミュレート
-        mockSetTimeout = vi.fn((fn: () => void) => {
-            // すぐにタイムアウトコールバックを実行
-            queueMicrotask(fn);
-            return 'timeout-id';
+        // Backward Strategy: イベントなしでcompleteを呼ぶ
+        mockRxNostr.use().subscribe.mockImplementation((observer: any) => {
+            queueMicrotask(() => {
+                observer.complete();
+            });
+            return mockSubscription;
         });
 
         fetcher = new ProfileNetworkFetcher(
@@ -236,14 +237,10 @@ describe('ProfileNetworkFetcher', () => {
             mockConsole
         );
 
-        // subscribeが何も返さないようにモック
-        mockRxNostr.use().subscribe.mockReturnValue(mockSubscription);
-
         const result = await fetcher.fetchFromNetwork('testpubkey', { timeoutMs: 1 });
 
         expect(result).toBeTruthy();
         expect(result?.name).toBe(''); // デフォルトプロフィール
-        expect(mockClearTimeout).toHaveBeenCalledWith('timeout-id');
     });
 
     it('エラー発生時にnullを返す', async () => {
@@ -319,10 +316,12 @@ describe('ProfileManager統合テスト', () => {
             unsubscribe: vi.fn()
         };
 
-        // setTimeout/clearTimeoutのモック - タイムアウトを即座に実行
-        mockSetTimeout = vi.fn((fn: () => void) => {
-            queueMicrotask(fn);
-            return 'timeout-id';
+        // Backward Strategy: イベントなしでcompleteを呼ぶ
+        mockRxNostr.use().subscribe.mockImplementation((observer: any) => {
+            queueMicrotask(() => {
+                observer.complete();
+            });
+            return mockSubscription;
         });
 
         mockDeps = {
@@ -338,21 +337,12 @@ describe('ProfileManager統合テスト', () => {
 
         manager = new ProfileManager(mockRxNostr, mockDeps);
 
-        // RxNostrのsubscribeもモック
-        mockRxNostr.use.mockReturnValue({
-            subscribe: vi.fn().mockImplementation((observer: any) => {
-                // 何もイベントを発行せず、タイムアウト待ちにする
-                return mockSubscription;
-            })
-        });
-
         const result = await manager.fetchProfileData('testpubkey', { forceRemote: true });
 
         // ネットワークリクエストが発生することを確認
         expect(mockRxNostr.use).toHaveBeenCalled();
         expect(result).toBeTruthy();
         expect(result?.name).toBe(''); // デフォルトプロフィール
-        expect(mockClearTimeout).toHaveBeenCalledWith('timeout-id');
     });
 
     it('内部コンポーネントへのアクセスが可能', () => {

@@ -1,5 +1,5 @@
 import type { createRxNostr } from 'rx-nostr';
-import { createRxForwardReq } from 'rx-nostr';
+import { createRxBackwardReq } from 'rx-nostr';
 import { toNpub, toNprofile } from "./utils/appUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
 
@@ -95,7 +95,7 @@ export class ProfileStorage {
       if (!profileString) return null;
 
       const parsed = JSON.parse(profileString);
-      
+
       // ローカルストレージから取得時は、保存されたデータをそのまま返す
       // (npubとnprofileはすでに生成済みのため、再生成せずに使用)
       if (parsed.npub && parsed.nprofile) {
@@ -105,7 +105,7 @@ export class ProfileStorage {
           profileRelays: parsed.profileRelays || undefined
         } as ProfileData;
       }
-      
+
       // 古いデータ形式の場合のみ、再生成する（後方互換性のため）
       return this.profileDataFactory.createProfileData(parsed, pubkeyHex, { forceRemote: false });
     } catch (e) {
@@ -137,19 +137,14 @@ export class ProfileNetworkFetcher {
     const additionalRelays = opts?.additionalRelays ?? [];
 
     return new Promise<ProfileData | null>((resolve) => {
-      const rxReq = createRxForwardReq();
+      const rxReq = createRxBackwardReq();
       let found = false;
-      let timeoutId: any = null;
       let resolved = false;
 
       // サブスクリプションの型安全な保持
       let subscription: any = undefined;
 
       const cleanup = () => {
-        if (timeoutId != null) {
-          this.clearTimeoutFn(timeoutId);
-          timeoutId = null;
-        }
         if (subscription && typeof subscription.unsubscribe === "function") {
           subscription.unsubscribe();
           subscription = undefined;
@@ -180,14 +175,14 @@ export class ProfileNetworkFetcher {
             found = true;
             try {
               const content = JSON.parse(packet.event.content);
-              
+
               // rx-nostr v3: packet.from でリレーURLを取得（末尾にスラッシュを付ける）
               const profileRelays: string[] = [];
               if (packet.from && typeof packet.from === 'string') {
                 const relayUrl = packet.from.endsWith('/') ? packet.from : packet.from + '/';
                 profileRelays.push(relayUrl);
               }
-              
+
               const profile = this.profileDataFactory.createProfileData(
                 content,
                 pubkeyHex,
@@ -205,6 +200,21 @@ export class ProfileNetworkFetcher {
             }
           }
         },
+        complete: () => {
+          if (resolved) return;
+          if (!found) {
+            this.console.log("プロフィール取得EOSE、デフォルトプロフィールを使用");
+            const defaultProfile = this.profileDataFactory.createProfileData(
+              {},
+              pubkeyHex,
+              {
+                writeRelays: opts?.writeRelays,
+                forceRemote: opts?.forceRemote
+              }
+            );
+            safeResolve(defaultProfile);
+          }
+        },
         error: (error) => {
           if (resolved) return;
           this.console.error("プロフィール取得エラー:", error);
@@ -212,25 +222,13 @@ export class ProfileNetworkFetcher {
         }
       });
 
-      // タイムアウト設定
-      timeoutId = this.setTimeoutFn(() => {
-        if (resolved) return;
-        if (!found) {
-          this.console.log("プロフィール取得タイムアウト、デフォルトプロフィールを使用");
-          const defaultProfile = this.profileDataFactory.createProfileData(
-            {},
-            pubkeyHex,
-            {
-              writeRelays: opts?.writeRelays,
-              forceRemote: opts?.forceRemote
-            }
-          );
-          safeResolve(defaultProfile);
-        }
-      }, timeoutMs);
-
-      // リクエスト送信
-      rxReq.emit({ authors: [pubkeyHex], kinds: [0] });
+      // リクエスト送信（untilパラメータで未来のイベントをキャプチャしない）
+      rxReq.emit({
+        authors: [pubkeyHex],
+        kinds: [0],
+        until: Math.floor(Date.now() / 1000)
+      });
+      rxReq.over();
     });
   }
 }
