@@ -130,7 +130,7 @@
 
     .reason-input {
         width: 100%;
-        height: 36px;
+        height: 38px;
         padding: 0 10px;
         border: 1px solid var(--border-color, #ccc);
         border-radius: 4px;
