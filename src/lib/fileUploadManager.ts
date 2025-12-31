@@ -206,13 +206,40 @@ export class ImageCompressionService implements CompressionService {
 
 // --- 認証サービス ---
 export class NostrAuthService implements AuthService {
+  /**
+   * window.nostrが利用可能になるまで待機する（nostr-login初期化用）
+   * @param maxWaitMs 最大待機時間（ミリ秒）
+   * @param pollIntervalMs ポーリング間隔（ミリ秒）
+   * @returns window.nostrオブジェクト（利用可能な場合）またはnull
+   */
+  private async waitForWindowNostr(maxWaitMs: number = 3000, pollIntervalMs: number = 100): Promise<any | null> {
+    const startTime = Date.now();
+
+    while (Date.now() - startTime < maxWaitMs) {
+      const nostr = (window as any)?.nostr;
+      if (nostr?.signEvent) {
+        return nostr;
+      }
+      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+    }
+
+    return null;
+  }
+
   async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
     const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
     let signFunc: (event: any) => Promise<any>;
     if (storedKey) {
       signFunc = (event) => seckeySigner(storedKey).signEvent(event);
     } else {
-      const nostr = (window as any)?.nostr;
+      // まずwindow.nostrを即時チェック
+      let nostr = (window as any)?.nostr;
+
+      // window.nostrがない場合、nostr-loginの初期化を待機
+      if (!nostr?.signEvent) {
+        nostr = await this.waitForWindowNostr();
+      }
+
       if (nostr?.signEvent) {
         signFunc = (event) => nostr.signEvent(event);
       } else {
@@ -303,13 +330,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
     maxWaitTime: number = UPLOAD_POLLING_CONFIG.MAX_WAIT_TIME
   ): Promise<any> {
     const startTime = Date.now();
-    
+
     while (true) {
       // ポーリング中の中止チェック
       if (uploadAbortFlagStore.value) {
         throw new Error('Upload aborted by user');
       }
-      
+
       if (Date.now() - startTime > maxWaitTime) throw new Error(UPLOAD_POLLING_CONFIG.TIMEOUT_MESSAGE);
       const response = await this.dependencies.fetch(processingUrl, {
         method: "GET",
@@ -355,7 +382,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     callbacks?: UploadInfoCallbacks
   ): Promise<FileUploadResponse> {
     let sizeInfo: any = undefined; // sizeInfoを関数スコープで宣言
-    
+
     try {
       if (!file) return { success: false, error: "No file selected" };
 
@@ -440,11 +467,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       // 重要な処理前後のみ中止チェック
       if (uploadAbortFlagStore.value) {
-        return { 
-          success: false, 
-          error: 'Upload aborted by user', 
+        return {
+          success: false,
+          error: 'Upload aborted by user',
           sizeInfo,
-          aborted: true 
+          aborted: true
         };
       }
 
@@ -472,14 +499,14 @@ export class FileUploadManager implements FileUploadManagerInterface {
         try {
           const processingAuthToken = await this.authService.buildAuthHeader(data.processing_url, "GET");
           data = await this.pollUploadStatus(data.processing_url, processingAuthToken);
-          
+
           // ポーリング後の中止チェック
           if (uploadAbortFlagStore.value) {
-            return { 
-              success: false, 
-              error: 'Upload aborted by user', 
+            return {
+              success: false,
+              error: 'Upload aborted by user',
               sizeInfo,
-              aborted: true 
+              aborted: true
             };
           }
         } catch (e) {
@@ -510,29 +537,29 @@ export class FileUploadManager implements FileUploadManagerInterface {
     } catch (error) {
       // エラーハンドリング時の中止チェック
       if (uploadAbortFlagStore.value) {
-        return { 
-          success: false, 
-          error: 'Upload aborted by user', 
+        return {
+          success: false,
+          error: 'Upload aborted by user',
           sizeInfo,
-          aborted: true 
+          aborted: true
         };
       }
-      
+
       if (devMode) {
         console.error("[dev] Upload error:", error);
       }
       const errorMessage = error instanceof Error ? error.message : String(error);
-      
+
       // ユーザーによる中止の場合
       if (errorMessage.includes('aborted by user')) {
-        return { 
-          success: false, 
+        return {
+          success: false,
           error: errorMessage,
           sizeInfo,
-          aborted: true 
+          aborted: true
         };
       }
-      
+
       // Service Workerが原因の可能性がある場合のヒントを追加
       const enhancedError = errorMessage.includes('Failed to fetch')
         ? `${errorMessage} (Service Workerが画像アップロードをブロックしている可能性があります)`
@@ -585,7 +612,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
         updateProgress();
       } catch (error) {
         results[index] = { success: false, error: error instanceof Error ? error.message : String(error) };
-        failed++; 
+        failed++;
         updateProgress();
       }
     }
@@ -610,7 +637,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
         total: 1,
         inProgress: false
       });
-      
+
       // 中止された場合はサイズ情報表示をスキップ
       if (result.success && result.sizeInfo && !result.aborted) {
         const displayInfo = generateSizeDisplayInfo(result.sizeInfo);
