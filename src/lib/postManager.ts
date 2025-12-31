@@ -46,6 +46,11 @@ export class PostEventBuilder {
       } else {
         eventTags.push(['content-warning']);
       }
+      // 'nsfw' ハッシュタグを自動追加（重複チェック）
+      const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
+      if (!hasNsfwTag) {
+        eventTags.push(['t', 'nsfw']);
+      }
     }
 
     // Client tag 追加
