@@ -2,26 +2,31 @@
   "app": {
     "login": "Login"
   },
-  "postComponent": {
-    "enter_your_text": "What's happening?",
-    "post": "Post",
-    "posting": "Posting",
-    "upload_failed": "Upload failed",
-    "warning": "Warning",
-    "secret_key_detected": "Your post contains a private key. Are you sure you want to post it?",
-    "cancel": "Cancel",
-    "clear_editor": "Clear editor",
-    "upload_image": "Upload Image",
-    "only_images_allowed": "Only image files are allowed",
-    "content_warning_reason_placeholder": "Sensitive content: Enter reason...",
-    "content_warning_reason_label": "Content Warning reason"
+  "global": {
+    "close": "Close",
+    "error_saving": "Error saving the key",
+    "key_not_found": "Key not found",
+    "login_required": "Login required",
+    "nostr_login": "Nostr Login",
+    "nostr_not_ready": "Nostr is not connected",
+    "preview": "Preview",
+    "profile": "Profile",
+    "service_worker_error": "Service Worker error occurred",
+    "shared_image_failed": "Failed to get shared image",
+    "upload_destination_settings": "Upload Destination Settings"
+  },
+  "welcomeDialog": {
+    "title": "Welcome to eHagaki",
+    "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
+    "features": "Advantages:\n• Save data usage\n• Avoid upload failures in poor network conditions\n• Upload images from the share button of external apps (Android)",
+    "get_started": "Get Started"
   },
   "loginDialog": {
     "input_secret": "Enter Secret Key",
+    "hint_input_secret": "Enter a secret key starting with nsec1",
     "save": "Save",
     "clear": "Clear",
     "or": "or",
-    "hint_input_secret": "Enter a secret key starting with nsec1",
     "secret_required": "Please enter your secret key",
     "secret_must_start_nsec1": "Secret key must start with 'nsec1'",
     "secret_too_short": "Secret key is too short (must be 63 characters)",
@@ -47,29 +52,65 @@
     "login_method_nostr_login_local": "Nostr Login Local"
   },
   "settingsDialog": {
-    "client_tag_label": "Add client name to post \n(Client tag)",
-    "refresh_relays_and_profile": "Refresh\nrelay list & profile",
-    "change": "Change",
-    "refresh": "Refresh",
+    "info_header_setting": "Setting",
+    "info_header_pixels": "Maximum Pixels",
+    "info_header_quality": "Quality",
     "image_quality_setting": "Image Quality",
     "video_quality_setting": "Video Quality",
     "quality_lossless": "Lossless",
     "quality_high": "Hi",
     "quality_medium": "Mid",
     "quality_low": "Lo",
-    "info_header_setting": "Setting",
-    "info_header_pixels": "Maximum Pixels",
-    "info_header_quality": "Quality",
     "upload_destination": "Upload Destination",
+    "change": "Change",
     "write_relays_list": "Write relays list",
+    "toggle_write_relays_list": "Toggle write relays list",
+    "no_relay_info": "No relay info",
+    "client_tag_label": "Add client name to post \n(Client tag)",
+    "refresh_relays_and_profile": "Refresh\nrelay list & profile",
+    "refresh": "Refresh",
     "sw_update_available": "A new update is available",
     "update_app": "Update app",
     "updating": "Updating...",
-    "toggle_write_relays_list": "Toggle write relays list",
-    "no_relay_info": "No relay info",
     "author_info": "Author by:",
     "author_name": "Lokuyow"
   },
+  "postComponent": {
+    "enter_your_text": "What's happening?",
+    "post": "Post",
+    "posting": "Posting",
+    "cancel": "Cancel",
+    "clear_editor": "Clear editor",
+    "upload_image": "Upload Image",
+    "upload_failed": "Upload failed",
+    "only_images_allowed": "Only image files are allowed",
+    "content_warning_reason_label": "Content Warning reason",
+    "content_warning_reason_placeholder": "Sensitive content: Enter reason...",
+    "warning": "Warning",
+    "secret_key_detected": "Your post contains a private key. Are you sure you want to post it?"
+  },
+  "imageContextMenu": {
+    "delete": "Delete",
+    "fullscreen": "Fullscreen",
+    "copyUrl": "Copy URL",
+    "copySuccess": "Copied!",
+    "copyFailed": "Copy failed"
+  },
+  "videoContextMenu": {
+    "delete": "Delete",
+    "playPause": "Play/Pause",
+    "copyUrl": "Copy URL",
+    "copySuccess": "Copied!",
+    "copyFailed": "Copy failed"
+  },
+  "imageCompression": {
+    "compressing": "Compressing image"
+  },
+  "videoNode": {
+    "uploading": "Uploading video...",
+    "not_supported": "Your browser does not support the video tag."
+  },
+  "videoQualityLabelSuffix": " Quality",
   "footerInfoDisplay": {
     "uploading": "Uploading",
     "failed": "Failed",
@@ -77,33 +118,20 @@
     "data_size": "Transmission size",
     "no_compression": "No compression",
     "video_compressing": "Compressing video",
+    "videoQualityLevel": {
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    },
     "shared_image_error": "Shared image error",
     "processing_error": "Error occurred while processing shared image",
     "no_image": "Shared image not found",
     "upload_failed": "Image upload failed",
     "network_error": "Network error occurred",
-    "client_error": "Error occurred during image sharing process",
-    "videoQualityLevel": {
-      "high": "High",
-      "medium": "Medium",
-      "low": "Low"
-    }
+    "client_error": "Error occurred during image sharing process"
   },
   "loadingPlaceholder": {
     "loading": "Loading..."
-  },
-  "global": {
-    "close": "Close",
-    "error_saving": "Error saving the key",
-    "login_required": "Login required",
-    "nostr_not_ready": "Nostr is not connected",
-    "key_not_found": "Key not found",
-    "profile": "Profile",
-    "preview": "Preview",
-    "upload_destination_settings": "Upload Destination Settings",
-    "nostr_login": "Nostr Login",
-    "service_worker_error": "Service Worker error occurred",
-    "shared_image_failed": "Failed to get shared image"
   },
   "balloonMessage": {
     "success": {
@@ -145,33 +173,5 @@
       "kit-ten_ketten": "So, what's Kit-ten's weak spot?",
       "such_is_life": "That's life."
     }
-  },
-  "imageContextMenu": {
-    "delete": "Delete",
-    "fullscreen": "Fullscreen",
-    "copyUrl": "Copy URL",
-    "copySuccess": "Copied!",
-    "copyFailed": "Copy failed"
-  },
-  "videoContextMenu": {
-    "delete": "Delete",
-    "copyUrl": "Copy URL",
-    "playPause": "Play/Pause",
-    "copySuccess": "Copied!",
-    "copyFailed": "Copy failed"
-  },
-  "videoNode": {
-    "uploading": "Uploading video...",
-    "not_supported": "Your browser does not support the video tag."
-  },
-  "imageCompression": {
-    "compressing": "Compressing image"
-  },
-  "videoQualityLabelSuffix": " Quality",
-  "welcomeDialog": {
-    "title": "Welcome to eHagaki",
-    "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
-    "features": "Advantages:\n• Save data usage\n• Avoid upload failures in poor network conditions\n• Upload images from the share button of external apps (Android)",
-    "get_started": "Get Started"
   }
 }

@@ -2,42 +2,19 @@
   "app": {
     "login": "ログイン"
   },
-  "postComponent": {
-    "enter_your_text": "いまどうしてる？",
-    "post": "投稿",
-    "posting": "投稿中",
-    "upload_failed": "アップロードに失敗しました",
-    "warning": "警告",
-    "secret_key_detected": "投稿内容に秘密鍵が含まれています。本当に投稿しますか？",
-    "cancel": "キャンセル",
-    "clear_editor": "エディターをクリア",
-    "upload_image": "画像をアップロード",
-    "only_images_allowed": "画像ファイルのみアップロード可能です",
-    "content_warning_reason_placeholder": "センシティブコンテンツ：理由を入力...",
-    "content_warning_reason_label": "Content Warning理由"
+  "global": {
+    "close": "閉じる",
+    "error_saving": "鍵の保存中にエラーが発生しました",
+    "key_not_found": "鍵が見つかりません",
+    "login_required": "ログインしてください",
+    "nostr_login": "Nostr Login",
+    "nostr_not_ready": "Nostrに接続できていません",
+    "preview": "プレビュー",
+    "profile": "プロフィール",
+    "service_worker_error": "Service Workerでエラーが発生しました",
+    "shared_image_failed": "共有画像の取得に失敗しました",
+    "upload_destination_settings": "アップロード先設定"
   },
-  "imageContextMenu": {
-    "delete": "削除",
-    "fullscreen": "全画面表示",
-    "copyUrl": "URLをコピー",
-    "copySuccess": "コピーしました",
-    "copyFailed": "コピーに失敗しました"
-  },
-  "videoContextMenu": {
-    "delete": "削除",
-    "copyUrl": "URLをコピー",
-    "playPause": "再生/停止",
-    "copySuccess": "コピーしました",
-    "copyFailed": "コピーに失敗しました"
-  },
-  "videoNode": {
-    "uploading": "動画をアップロード中...",
-    "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
-  },
-  "imageCompression": {
-    "compressing": "画像圧縮中"
-  },
-  "videoQualityLabelSuffix": "品質",
   "welcomeDialog": {
     "title": "eHagaki へようこそ",
     "description": "eHagaki（えはがき）は投稿専用のNostrクライアントです。画像、動画を圧縮してから送信できます。",
@@ -46,10 +23,10 @@
   },
   "loginDialog": {
     "input_secret": "秘密鍵の入力",
+    "hint_input_secret": "nsec1から始まる秘密鍵を入力",
     "save": "保存",
     "clear": "クリア",
     "or": "または",
-    "hint_input_secret": "nsec1から始まる秘密鍵を入力",
     "secret_required": "秘密鍵を入力してください",
     "secret_must_start_nsec1": "秘密鍵は「nsec1」で始まる必要があります",
     "secret_too_short": "秘密鍵が短すぎます（63文字必要です）",
@@ -75,29 +52,65 @@
     "login_method_nostr_login_local": "Nostr Login Local"
   },
   "settingsDialog": {
-    "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
-    "refresh_relays_and_profile": "リレーリスト・プロフィール\n再取得",
-    "change": "変更",
-    "refresh": "更新",
+    "info_header_setting": "設定",
+    "info_header_pixels": "最大画素数",
+    "info_header_quality": "品質",
     "image_quality_setting": "画像品質",
     "video_quality_setting": "動画品質",
     "quality_lossless": "オリジナル",
     "quality_high": "高",
     "quality_medium": "中",
     "quality_low": "低",
-    "info_header_setting": "設定",
-    "info_header_pixels": "最大画素数",
-    "info_header_quality": "品質",
     "upload_destination": "アップロード先",
+    "change": "変更",
     "write_relays_list": "書き込み先リレーリスト",
+    "toggle_write_relays_list": "投稿先リレーの表示切替",
+    "no_relay_info": "リレー情報なし",
+    "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
+    "refresh_relays_and_profile": "リレーリスト・プロフィール\n再取得",
+    "refresh": "更新",
     "sw_update_available": "アプリの更新があります",
     "update_app": "アプリを更新",
     "updating": "更新中...",
-    "toggle_write_relays_list": "投稿先リレーの表示切替",
-    "no_relay_info": "リレー情報なし",
     "author_info": "制作:",
     "author_name": "ロクヨウ"
   },
+  "postComponent": {
+    "enter_your_text": "いまどうしてる？",
+    "post": "投稿",
+    "posting": "投稿中",
+    "cancel": "キャンセル",
+    "clear_editor": "エディターをクリア",
+    "upload_image": "画像をアップロード",
+    "upload_failed": "アップロードに失敗しました",
+    "only_images_allowed": "画像ファイルのみアップロード可能です",
+    "content_warning_reason_label": "Content Warning理由",
+    "content_warning_reason_placeholder": "センシティブコンテンツ：理由を入力...",
+    "warning": "警告",
+    "secret_key_detected": "投稿内容に秘密鍵が含まれています。本当に投稿しますか？"
+  },
+  "imageContextMenu": {
+    "delete": "削除",
+    "fullscreen": "全画面表示",
+    "copyUrl": "URLをコピー",
+    "copySuccess": "コピーしました",
+    "copyFailed": "コピーに失敗しました"
+  },
+  "videoContextMenu": {
+    "delete": "削除",
+    "playPause": "再生/停止",
+    "copyUrl": "URLをコピー",
+    "copySuccess": "コピーしました",
+    "copyFailed": "コピーに失敗しました"
+  },
+  "imageCompression": {
+    "compressing": "画像圧縮中"
+  },
+  "videoNode": {
+    "uploading": "動画をアップロード中...",
+    "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
+  },
+  "videoQualityLabelSuffix": "品質",
   "footerInfoDisplay": {
     "uploading": "アップロード中",
     "failed": "失敗",
@@ -105,33 +118,20 @@
     "data_size": "送信サイズ",
     "no_compression": "圧縮なし",
     "video_compressing": "動画圧縮中",
+    "videoQualityLevel": {
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    },
     "shared_image_error": "共有画像エラー",
     "processing_error": "共有画像の処理中にエラーが発生しました",
     "no_image": "共有画像が見つかりませんでした",
     "upload_failed": "画像のアップロードに失敗しました",
     "network_error": "ネットワークエラーが発生しました",
-    "client_error": "画像共有処理でエラーが発生しました",
-    "videoQualityLevel": {
-      "high": "高",
-      "medium": "中",
-      "low": "低"
-    }
+    "client_error": "画像共有処理でエラーが発生しました"
   },
   "loadingPlaceholder": {
     "loading": "読み込み中..."
-  },
-  "global": {
-    "close": "閉じる",
-    "error_saving": "鍵の保存中にエラーが発生しました",
-    "login_required": "ログインしてください",
-    "nostr_not_ready": "Nostrに接続できていません",
-    "key_not_found": "鍵が見つかりません",
-    "profile": "プロフィール",
-    "preview": "プレビュー",
-    "upload_destination_settings": "アップロード先設定",
-    "nostr_login": "Nostr Login",
-    "service_worker_error": "Service Workerでエラーが発生しました",
-    "shared_image_failed": "共有画像の取得に失敗しました"
   },
   "balloonMessage": {
     "success": {
