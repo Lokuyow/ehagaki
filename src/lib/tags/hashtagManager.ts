@@ -1,7 +1,7 @@
 import { HASHTAG_REGEX } from '../constants';
 
 // ストアは tags.svelte.ts (Svelte rune ファイル) に移動
-import { hashtagDataStore } from '../../stores/tagsStore.svelte';
+import { hashtagDataStore, contentWarningStore } from '../../stores/tagsStore.svelte';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 // 追加: ドキュメント走査でハッシュタグの位置情報を返す型とユーティリティ
@@ -82,6 +82,10 @@ export function updateHashtagData(contentOrDoc: string | PMNode): void {
 
     // 投稿用の 't' タグは英字をすべて小文字にする（エディター表示は元のまま）
     const tags: [string, string][] = hashtags.map(hashtag => ['t', hashtag.toLowerCase()]);
+
+    // nsfw ハッシュタグの有無に応じて Content Warning を自動切り替え
+    const hasNsfwHashtag = tags.some(tag => tag[1] === 'nsfw');
+    contentWarningStore.set(hasNsfwHashtag);
 
     hashtagDataStore.content = content;
     hashtagDataStore.hashtags = hashtags;
