@@ -22,6 +22,8 @@
         getDefaultEndpoint,
         STORAGE_KEYS,
         SW_UPDATE_TIMEOUT,
+        COMPRESSION_OPTIONS_MAP,
+        VIDEO_COMPRESSION_OPTIONS_MAP,
     } from "../lib/constants";
     import {
         initializeSettingsValues,
@@ -31,6 +33,7 @@
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import InfoPopoverButton from "./InfoPopoverButton.svelte";
 
     let {
         show = false,
@@ -368,9 +371,82 @@
         <!-- 画像圧縮設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.image_quality_setting")}</span
-                >
+                <div class="setting-label-wrapper">
+                    <span class="setting-label"
+                        >{$_("settingsDialog.image_quality_setting")}</span
+                    >
+                    <InfoPopoverButton
+                        side="bottom"
+                        ariaLabel="画像圧縮設定の説明"
+                    >
+                        <table class="popover-table">
+                            <thead>
+                                <tr>
+                                    <th
+                                        >{$_(
+                                            "settingsDialog.info_header_setting",
+                                        )}</th
+                                    >
+                                    <th
+                                        >{$_(
+                                            "settingsDialog.info_header_pixels",
+                                        )}</th
+                                    >
+                                    <th
+                                        >{$_(
+                                            "settingsDialog.info_header_quality",
+                                        )}</th
+                                    >
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>{$_("settingsDialog.quality_high")}</td>
+                                    <td
+                                        >{COMPRESSION_OPTIONS_MAP.low
+                                            .maxWidthOrHeight}px</td
+                                    >
+                                    <td
+                                        >{Math.round(
+                                            COMPRESSION_OPTIONS_MAP.low
+                                                .initialQuality * 100,
+                                        )}%</td
+                                    >
+                                </tr>
+                                <tr>
+                                    <td
+                                        >{$_(
+                                            "settingsDialog.quality_medium",
+                                        )}</td
+                                    >
+                                    <td
+                                        >{COMPRESSION_OPTIONS_MAP.medium
+                                            .maxWidthOrHeight}px</td
+                                    >
+                                    <td
+                                        >{Math.round(
+                                            COMPRESSION_OPTIONS_MAP.medium
+                                                .initialQuality * 100,
+                                        )}%</td
+                                    >
+                                </tr>
+                                <tr>
+                                    <td>{$_("settingsDialog.quality_low")}</td>
+                                    <td
+                                        >{COMPRESSION_OPTIONS_MAP.high
+                                            .maxWidthOrHeight}px</td
+                                    >
+                                    <td
+                                        >{Math.round(
+                                            COMPRESSION_OPTIONS_MAP.high
+                                                .initialQuality * 100,
+                                        )}%</td
+                                    >
+                                </tr>
+                            </tbody>
+                        </table>
+                    </InfoPopoverButton>
+                </div>
                 <div class="setting-control radio-group">
                     {#each compressionLevels as level}
                         <RadioButton
@@ -392,9 +468,59 @@
         <!-- 動画圧縮設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.video_quality_setting")}</span
-                >
+                <div class="setting-label-wrapper">
+                    <span class="setting-label"
+                        >{$_("settingsDialog.video_quality_setting")}</span
+                    >
+                    <InfoPopoverButton
+                        side="bottom"
+                        ariaLabel="動画圧縮設定の説明"
+                    >
+                        <table class="popover-table">
+                            <thead>
+                                <tr>
+                                    <th
+                                        >{$_(
+                                            "settingsDialog.info_header_setting",
+                                        )}</th
+                                    >
+                                    <th
+                                        >{$_(
+                                            "settingsDialog.info_header_pixels",
+                                        )}</th
+                                    >
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>{$_("settingsDialog.quality_high")}</td>
+                                    <td
+                                        >{VIDEO_COMPRESSION_OPTIONS_MAP.low
+                                            .maxSize}px</td
+                                    >
+                                </tr>
+                                <tr>
+                                    <td
+                                        >{$_(
+                                            "settingsDialog.quality_medium",
+                                        )}</td
+                                    >
+                                    <td
+                                        >{VIDEO_COMPRESSION_OPTIONS_MAP.medium
+                                            .maxSize}px</td
+                                    >
+                                </tr>
+                                <tr>
+                                    <td>{$_("settingsDialog.quality_low")}</td>
+                                    <td
+                                        >{VIDEO_COMPRESSION_OPTIONS_MAP.high
+                                            .maxSize}px</td
+                                    >
+                                </tr>
+                            </tbody>
+                        </table>
+                    </InfoPopoverButton>
+                </div>
                 <div class="setting-control radio-group">
                     {#each videoCompressionLevels as level}
                         <RadioButton
@@ -653,6 +779,12 @@
         align-items: center;
         justify-content: flex-start;
         white-space: pre-line;
+        flex-shrink: 0;
+    }
+
+    .setting-label-wrapper {
+        display: inline-flex;
+        align-items: center;
     }
 
     .setting-control {
@@ -666,10 +798,35 @@
         margin-left: 10px;
     }
 
+    :global(.info-trigger) {
+        height: 40px;
+        width: 40px;
+    }
+
+    :global(.popover-table) {
+        border-collapse: collapse;
+        font-size: 0.9375rem;
+
+        th,
+        td {
+            padding: 4px 8px;
+            text-align: left;
+        }
+
+        th {
+            font-weight: 600;
+            border-bottom: 1px solid var(--border);
+        }
+
+        td {
+            font-weight: normal;
+        }
+    }
+
     .radio-group {
         gap: 6px;
         flex-wrap: wrap;
-        flex-shrink: 0;
+        /* flex-shrink: 0; */
 
         :global(button) {
             font-size: 0.875rem;
