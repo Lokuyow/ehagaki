@@ -39,6 +39,7 @@
     "@tiptap/extension-unique-id": "^3.10.1",
     "@tiptap/extensions": "^3.10.1",
     "@tiptap/starter-kit": "^3.10.1",
+    "bits-ui": "^2.14.4",
     "blurhash": "^2.0.5",
     "browser-image-compression": "^2.0.2",
     "mediabunny": "^1.24.2",
