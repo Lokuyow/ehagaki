@@ -13,7 +13,7 @@
     "clear_editor": "Clear editor",
     "upload_image": "Upload Image",
     "only_images_allowed": "Only image files are allowed",
-    "content_warning_reason_placeholder": "Enter reason...",
+    "content_warning_reason_placeholder": "Sensitive content: Enter reason...",
     "content_warning_reason_label": "Content Warning reason"
   },
   "loginDialog": {
