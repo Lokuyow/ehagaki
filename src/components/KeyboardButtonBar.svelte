@@ -29,6 +29,11 @@
     // キーボード追従のための位置調整
     let bottomPosition = $state(66); // 初期値: フッターの高さ(66px)
 
+    // ボタン押下時にフォーカスを奪わない（キーボードを閉じさせない）
+    function preventFocusLoss(event: Event) {
+        event.preventDefault();
+    }
+
     $effect(() => {
         if (typeof window === "undefined" || !window.visualViewport) return;
 
@@ -57,7 +62,12 @@
 </script>
 
 <div class="footer-button-bar" style="bottom: {bottomPosition}px;">
-    <div class="button-container">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="button-container"
+        onmousedown={preventFocusLoss}
+        ontouchstart={preventFocusLoss}
+    >
         <Button
             variant="footer"
             shape="square"
