@@ -40,15 +40,16 @@ export class PostEventBuilder {
       : (Array.isArray(hashtags) ? hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]) : []);
 
     // Content Warning タグ追加 (NIP-36)
-    if (contentWarningEnabled) {
+    // nsfw ハッシュタグがある場合も自動的に content-warning タグを追加
+    const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
+    if (contentWarningEnabled || hasNsfwTag) {
       if (contentWarningReason && contentWarningReason.trim()) {
         eventTags.push(['content-warning', contentWarningReason.trim()]);
       } else {
         eventTags.push(['content-warning']);
       }
-      // 'nsfw' ハッシュタグを自動追加（重複チェック）
-      const hasNsfwTag = eventTags.some(tag => tag[0] === 't' && tag[1] === 'nsfw');
-      if (!hasNsfwTag) {
+      // Content Warning有効時は 'nsfw' ハッシュタグも自動追加（重複チェック）
+      if (contentWarningEnabled && !hasNsfwTag) {
         eventTags.push(['t', 'nsfw']);
       }
     }
