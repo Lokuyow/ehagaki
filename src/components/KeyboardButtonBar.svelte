@@ -188,13 +188,13 @@
     }
 
     :global(.tooltip-content) {
-        background: var(--bg);
+        background: var(--dialog);
         color: var(--text);
+        border: 1px solid var(--border);
         border-radius: 6px;
         padding: 12px;
         font-size: 1rem;
         font-weight: 600;
-        box-shadow: 0 2px 8px var(--shadow);
         z-index: 100;
     }
 </style>
