@@ -1,6 +1,5 @@
 <script lang="ts">
     import { Popover } from "bits-ui";
-    import { fly } from "svelte/transition";
 
     interface Props {
         /** ポップオーバーの表示位置 */
@@ -19,11 +18,9 @@
         ariaLabel = "情報を表示",
         children,
     }: Props = $props();
-
-    let open = $state(false);
 </script>
 
-<Popover.Root bind:open>
+<Popover.Root>
     <Popover.Trigger class="info-trigger" aria-label={ariaLabel}>
         <div class="info-icon svg-icon"></div>
     </Popover.Trigger>
@@ -32,49 +29,19 @@
             {side}
             {sideOffset}
             class="popover-content"
-            forceMount
             trapFocus={false}
             onCloseAutoFocus={(e) => e.preventDefault()}
         >
-            {#snippet child({ wrapperProps, props, open: isOpen })}
-                {#if isOpen}
-                    <div {...wrapperProps}>
-                        <div
-                            {...props}
-                            class="popover-content"
-                            transition:fly={{ y: -4, duration: 150 }}
-                        >
-                            <div class="popover-body">
-                                <div class="popover-children">
-                                    {@render children?.()}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                {/if}
-            {/snippet}
+            <div class="popover-body">
+                <div class="popover-children">
+                    {@render children?.()}
+                </div>
+            </div>
         </Popover.Content>
     </Popover.Portal>
 </Popover.Root>
 
 <style>
-    .info-trigger {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: none;
-        padding: 4px;
-        border-radius: 50%;
-        cursor: pointer;
-        transition: opacity 0.15s ease;
-        opacity: 0.6;
-
-        &:hover {
-            opacity: 1;
-        }
-    }
-
     :global(button.info-trigger) {
         background: transparent;
     }
@@ -85,7 +52,7 @@
         height: 28px;
     }
 
-    .popover-content {
+    :global(.popover-content) {
         background: var(--dialog, #fff);
         color: var(--text, #000);
         border: 1px solid var(--border, #ccc);
@@ -95,6 +62,36 @@
         max-width: 320px;
         z-index: 100001;
         outline: none;
+    }
+
+    :global(.popover-content[data-state="open"]) {
+        animation: popover-in 150ms ease-out;
+    }
+
+    :global(.popover-content[data-state="closed"]) {
+        animation: popover-out 100ms ease-in;
+    }
+
+    @keyframes popover-in {
+        from {
+            opacity: 0;
+            transform: translateY(-4px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes popover-out {
+        from {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateY(-4px);
+        }
     }
 
     .popover-body {
