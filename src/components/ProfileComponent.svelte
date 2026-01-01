@@ -1,12 +1,14 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import Dialog from "./Dialog.svelte";
+    import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PopupModal from "./PopupModal.svelte";
     import { profileDataStore, authState } from "../stores/appStore.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
+    import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
 
     interface Props {
         show: boolean;
@@ -15,7 +17,21 @@
         isLoggingOut?: boolean;
     }
 
-    let { show, onClose, onLogout, isLoggingOut = false }: Props = $props();
+    let {
+        show = $bindable(false),
+        onClose,
+        onLogout,
+        isLoggingOut = false,
+    }: Props = $props();
+
+    // ダイアログを閉じるハンドラ
+    function handleClose() {
+        show = false;
+        onClose?.();
+    }
+
+    // ブラウザ履歴統合
+    useDialogHistory(() => show, handleClose, true);
 
     // ストアから直接プロフィールデータを取得
     let profile = $derived(profileDataStore.value);
@@ -61,143 +77,163 @@
     }
 </script>
 
-<Dialog
-    {show}
-    showFooter={true}
-    useHistory={true}
-    {onClose}
-    ariaLabel={$_("profileDialog.title")}
-    className="profile-dialog"
+<DialogWrapper
+    bind:open={show}
+    onOpenChange={(open) => !open && handleClose()}
+    title={$_("profileDialog.title")}
+    description={$_("profileDialog.npub")}
+    contentClass="profile-dialog"
+    footerVariant="close-button"
 >
-    {#snippet children({ close })}
-        <div class="profile-container">
-            <div class="profile-summary">
-                <!-- プロフィール画像 -->
-                <div class="profile-image-container">
-                    {#if displayedProfile.picture}
-                        <img
-                            src={displayedProfile.picture}
-                            alt={displayedProfile.name || "Profile"}
-                            class="profile-image"
-                        />
-                    {:else}
-                        <div
-                            class="profile-image-placeholder svg-icon"
-                            aria-label="Profile image placeholder"
-                        ></div>
-                    {/if}
-                </div>
-
-                <!-- 名前 -->
-                <div class="profile-name">
-                    {displayedProfile.name || $_("profileDialog.anonymous")}
-                </div>
+    <div class="profile-container">
+        <div class="profile-summary">
+            <!-- プロフィール画像 -->
+            <div class="profile-image-container">
+                {#if displayedProfile.picture}
+                    <img
+                        src={displayedProfile.picture}
+                        alt={displayedProfile.name || "Profile"}
+                        class="profile-image"
+                    />
+                {:else}
+                    <div
+                        class="profile-image-placeholder svg-icon"
+                        aria-label="Profile image placeholder"
+                    ></div>
+                {/if}
             </div>
 
-            <div class="nostr-ids">
-                <div class="profile-info-label">
-                    {$_("profileDialog.npub")}
-                </div>
-                <div class="profile-info-container">
-                    <!-- npub -->
-                    {#if displayedProfile.npub}
-                        <div class="profile-info-row">
-                            <div class="profile-info-content">
-                                <span class="profile-info-text"
-                                    >{displayedProfile.npub}</span
-                                >
-                                <button
-                                    class="copy-button"
-                                    onclick={(event) =>
-                                        handleCopy(
-                                            displayedProfile.npub!,
-                                            "npub",
-                                            event,
-                                        )}
-                                    aria-label={$_("profileDialog.copy_npub")}
-                                >
-                                    <div
-                                        class="copy-icon svg-icon"
-                                        aria-label="Copy npub"
-                                    ></div>
-                                </button>
-                            </div>
-                        </div>
-                    {/if}
-
-                    <!-- nprofile -->
-                    {#if displayedProfile.nprofile}
-                        <div class="profile-info-row">
-                            <div class="profile-info-content">
-                                <span class="profile-info-text"
-                                    >{displayedProfile.nprofile}</span
-                                >
-                                <button
-                                    class="copy-button"
-                                    onclick={(event) =>
-                                        handleCopy(
-                                            displayedProfile.nprofile!,
-                                            "nprofile",
-                                            event,
-                                        )}
-                                    aria-label={$_(
-                                        "profileDialog.copy_nprofile",
-                                    )}
-                                >
-                                    <div
-                                        class="copy-icon svg-icon"
-                                        aria-label="Copy nprofile"
-                                    ></div>
-                                </button>
-                            </div>
-                        </div>
-                    {/if}
-                </div>
-            </div>
-
-            <div class="auth-controls">
-                <!-- ログイン方法 -->
-                <div class="auth-container">
-                    {#if auth?.type === "nsec" || auth?.type === "nostr-login"}
-                        <div class="profile-info-label">
-                            {$_("profileDialog.login_method")}
-                        </div>
-                        <span class="profile-info-text">
-                            {#if auth?.type === "nsec"}
-                                {$_("profileDialog.login_method_nsec")}
-                            {:else if auth?.type === "nostr-login"}
-                                {#if auth?.nostrLoginAuthMethod === "connect"}
-                                    {$_("profileDialog.login_method_nostr_login_connect")}
-                                {:else if auth?.nostrLoginAuthMethod === "extension"}
-                                    {$_("profileDialog.login_method_nostr_login_extension")}
-                                {:else if auth?.nostrLoginAuthMethod === "local"}
-                                    {$_("profileDialog.login_method_nostr_login_local")}
-                                {:else}
-                                    {$_("profileDialog.login_method_nostr_login_connect")}
-                                {/if}
-                            {/if}
-                        </span>
-                    {/if}
-                </div>
-
-                <!-- ログアウトボタン -->
-                <Button
-                    onClick={handleLogout}
-                    className="logout-btn {isLoggingOut ? 'loading' : ''}"
-                    variant="danger"
-                    shape="square"
-                    disabled={isLoggingOut}
-                >
-                    {#if isLoggingOut}
-                        <LoadingPlaceholder text={true} showLoader={true} />
-                    {:else}
-                        {$_("logoutDialog.logout")}
-                    {/if}
-                </Button>
+            <!-- 名前 -->
+            <div class="profile-name">
+                {displayedProfile.name || $_("profileDialog.anonymous")}
             </div>
         </div>
+
+        <div class="nostr-ids">
+            <div class="profile-info-label">
+                {$_("profileDialog.npub")}
+            </div>
+            <div class="profile-info-container">
+                <!-- npub -->
+                {#if displayedProfile.npub}
+                    <div class="profile-info-row">
+                        <div class="profile-info-content">
+                            <span class="profile-info-text"
+                                >{displayedProfile.npub}</span
+                            >
+                            <button
+                                class="copy-button"
+                                onclick={(event) =>
+                                    handleCopy(
+                                        displayedProfile.npub!,
+                                        "npub",
+                                        event,
+                                    )}
+                                aria-label={$_("profileDialog.copy_npub")}
+                            >
+                                <div
+                                    class="copy-icon svg-icon"
+                                    aria-label="Copy npub"
+                                ></div>
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+
+                <!-- nprofile -->
+                {#if displayedProfile.nprofile}
+                    <div class="profile-info-row">
+                        <div class="profile-info-content">
+                            <span class="profile-info-text"
+                                >{displayedProfile.nprofile}</span
+                            >
+                            <button
+                                class="copy-button"
+                                onclick={(event) =>
+                                    handleCopy(
+                                        displayedProfile.nprofile!,
+                                        "nprofile",
+                                        event,
+                                    )}
+                                aria-label={$_("profileDialog.copy_nprofile")}
+                            >
+                                <div
+                                    class="copy-icon svg-icon"
+                                    aria-label="Copy nprofile"
+                                ></div>
+                            </button>
+                        </div>
+                    </div>
+                {/if}
+            </div>
+        </div>
+
+        <div class="auth-controls">
+            <!-- ログイン方法 -->
+            <div class="auth-container">
+                {#if auth?.type === "nsec" || auth?.type === "nostr-login"}
+                    <div class="profile-info-label">
+                        {$_("profileDialog.login_method")}
+                    </div>
+                    <span class="profile-info-text">
+                        {#if auth?.type === "nsec"}
+                            {$_("profileDialog.login_method_nsec")}
+                        {:else if auth?.type === "nostr-login"}
+                            {#if auth?.nostrLoginAuthMethod === "connect"}
+                                {$_(
+                                    "profileDialog.login_method_nostr_login_connect",
+                                )}
+                            {:else if auth?.nostrLoginAuthMethod === "extension"}
+                                {$_(
+                                    "profileDialog.login_method_nostr_login_extension",
+                                )}
+                            {:else if auth?.nostrLoginAuthMethod === "local"}
+                                {$_(
+                                    "profileDialog.login_method_nostr_login_local",
+                                )}
+                            {:else}
+                                {$_(
+                                    "profileDialog.login_method_nostr_login_connect",
+                                )}
+                            {/if}
+                        {/if}
+                    </span>
+                {/if}
+            </div>
+
+            <!-- ログアウトボタン -->
+            <Button
+                onClick={handleLogout}
+                className="logout-btn {isLoggingOut ? 'loading' : ''}"
+                variant="danger"
+                shape="square"
+                disabled={isLoggingOut}
+            >
+                {#if isLoggingOut}
+                    <LoadingPlaceholder text={true} showLoader={true} />
+                {:else}
+                    {$_("logoutDialog.logout")}
+                {/if}
+            </Button>
+        </div>
+    </div>
+
+    {#snippet footer()}
+        <Dialog.Close>
+            {#snippet child({ props })}
+                <Button
+                    {...props}
+                    className="modal-close"
+                    variant="default"
+                    shape="square"
+                    ariaLabel="閉じる"
+                >
+                    <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+                </Button>
+            {/snippet}
+        </Dialog.Close>
     {/snippet}
-</Dialog>
+</DialogWrapper>
 
 <PopupModal
     show={showPopup}
@@ -209,6 +245,10 @@
 </PopupModal>
 
 <style>
+    .xmark-icon {
+        mask-image: url("/icons/xmark-solid-full.svg");
+    }
+
     .profile-container {
         display: flex;
         flex-direction: column;

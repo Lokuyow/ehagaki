@@ -1,8 +1,9 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
-    import Dialog from "./Dialog.svelte";
+    import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import DialogWrapper from "./DialogWrapper.svelte";
     import RadioButton from "./RadioButton.svelte";
     import {
         authState,
@@ -34,9 +35,10 @@
     import "nostr-zap";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
+    import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
 
     let {
-        show = false,
+        show = $bindable(false),
         onClose,
         onRefreshRelaysAndProfile = () => {},
         selectedCompression = "medium",
@@ -45,6 +47,15 @@
         onSelectedEndpointChange = undefined,
         onOpenWelcomeDialog = undefined,
     }: SettingsDialogProps = $props();
+
+    // ダイアログを閉じるハンドラ
+    function handleClose() {
+        show = false;
+        onClose?.();
+    }
+
+    // ブラウザ履歴統合
+    useDialogHistory(() => show, handleClose, true);
 
     // ユニークID生成
     const uid = $props.id();
@@ -221,13 +232,13 @@
     }
 </script>
 
-<Dialog
-    {show}
-    useHistory={true}
-    {onClose}
-    ariaLabel={$_("settings") || "設定"}
-    className="settings-dialog"
-    showFooter={true}
+<DialogWrapper
+    bind:open={show}
+    onOpenChange={(open) => !open && handleClose()}
+    title={$_("settings") || "設定"}
+    description={$_("settingsDialog.image_quality_setting")}
+    contentClass="settings-dialog"
+    footerVariant="close-button"
 >
     <div class="settings-header">
         <div class="first-row">
@@ -251,7 +262,7 @@
                 variant="default"
                 className="help-btn"
                 onClick={() => {
-                    onClose();
+                    handleClose();
                     onOpenWelcomeDialog?.();
                 }}
                 ariaLabel="Help"
@@ -638,12 +649,34 @@
             </div>
         </div>
     </div>
-</Dialog>
+
+    {#snippet footer()}
+        <Dialog.Close>
+            {#snippet child({ props })}
+                <Button
+                    {...props}
+                    className="modal-close"
+                    variant="default"
+                    shape="square"
+                    ariaLabel="閉じる"
+                >
+                    <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+                </Button>
+            {/snippet}
+        </Dialog.Close>
+    {/snippet}
+</DialogWrapper>
 
 <style>
+    /* SettingsDialog固有: paddingなしのdialog-content */
     :global(.settings-dialog .dialog-content) {
         padding: 0;
     }
+
+    .xmark-icon {
+        mask-image: url("/icons/xmark-solid-full.svg");
+    }
+
     .settings-header {
         display: flex;
         flex-direction: column;

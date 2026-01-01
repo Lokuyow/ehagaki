@@ -1,5 +1,7 @@
 <script lang="ts">
-    interface Props {
+    import type { HTMLButtonAttributes } from "svelte/elements";
+
+    interface Props extends HTMLButtonAttributes {
         className?: string;
         disabled?: boolean;
         type?: "button" | "submit" | "reset";
@@ -15,8 +17,8 @@
             | "footer";
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
-        onClick?: (event: MouseEvent) => void; // 追加
-        selected?: boolean; // 選択状態のプロパティを追加
+        onClick?: (event: MouseEvent) => void;
+        selected?: boolean;
     }
 
     let {
@@ -28,8 +30,9 @@
         variant = "default",
         shape = "rounded",
         children,
-        onClick = undefined, // 追加
-        selected = false, // 選択状態のデフォルト値を追加
+        onClick = undefined,
+        selected = false,
+        ...restProps
     }: Props = $props();
 
     function handleClick(event: MouseEvent) {
@@ -44,6 +47,7 @@
     aria-label={ariaLabel}
     {style}
     onclick={handleClick}
+    {...restProps}
 >
     {@render children?.()}
 </button>

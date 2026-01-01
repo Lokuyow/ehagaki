@@ -1,9 +1,11 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { Dialog } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager";
-    import Dialog from "./Dialog.svelte";
     import Button from "./Button.svelte";
+    import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
 
     interface Props {
         show: boolean;
@@ -15,13 +17,22 @@
     }
 
     let {
-        show,
+        show = $bindable(false),
         secretKey = $bindable(),
         onClose,
         onSave,
         onNostrLogin,
         isLoadingNostrLogin = false,
     }: Props = $props();
+
+    // ダイアログを閉じるハンドラ
+    function handleClose() {
+        show = false;
+        onClose?.();
+    }
+
+    // ブラウザ履歴統合
+    useDialogHistory(() => show, handleClose, true);
 
     // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
@@ -137,88 +148,104 @@
     </div>
 {/if}
 
-<Dialog
-    {show}
-    useHistory={true}
-    {onClose}
-    ariaLabel={$_("loginDialog.input_secret")}
-    className="login-dialog"
-    showFooter={true}
+<DialogWrapper
+    bind:open={show}
+    onOpenChange={(open) => !open && handleClose()}
+    title={$_("loginDialog.input_secret")}
+    description={$_("loginDialog.hint_input_secret")}
+    contentClass="login-dialog"
+    footerVariant="close-button"
 >
-    {#snippet children()}
-        <Button
-            variant="default"
-            shape="rounded"
-            className="nostr-login-button {isLoadingNostrLogin
-                ? 'loading'
-                : ''}"
-            onClick={handleNostrLogin}
-            disabled={isLoadingNostrLogin}
-        >
-            {#if isLoadingNostrLogin}
-                <LoadingPlaceholder
-                    text={true}
-                    showLoader={true}
-                    customClass="nostr-login-placeholder"
-                />
-            {:else}
-                <img
-                    src="./icons/nostr-login.svg"
-                    alt="nostr-login"
-                    class="nostr-login-icon"
-                />
-                <span class="btn-text">Nostr Login</span>
-            {/if}
-        </Button>
-
-        <div class="divider">
-            <span>{$_("loginDialog.or")}</span>
-        </div>
-
-        <h3>{$_("loginDialog.input_secret")}</h3>
-        <form onsubmit={handleFormSubmit}>
-            <input
-                type="password"
-                bind:value={secretKey}
-                placeholder="nsec1…"
-                class="secret-input"
-                id="secretKey"
-                name="secretKey"
-                autocomplete="current-password"
-                required
-                minlength="63"
-                maxlength="63"
-                bind:this={inputEl}
-                title={$_("loginDialog.hint_input_secret")}
-                onkeydown={(e) => {
-                    if (e.key === "Enter") handleSave();
-                }}
-                oninput={() => {
-                    // 入力時はエラーをクリアするだけ
-                    if (inputEl) inputEl.setCustomValidity("");
-                }}
+    <Button
+        variant="default"
+        shape="rounded"
+        className="nostr-login-button {isLoadingNostrLogin ? 'loading' : ''}"
+        onClick={handleNostrLogin}
+        disabled={isLoadingNostrLogin}
+    >
+        {#if isLoadingNostrLogin}
+            <LoadingPlaceholder
+                text={true}
+                showLoader={true}
+                customClass="nostr-login-placeholder"
             />
+        {:else}
+            <img
+                src="./icons/nostr-login.svg"
+                alt="nostr-login"
+                class="nostr-login-icon"
+            />
+            <span class="btn-text">Nostr Login</span>
+        {/if}
+    </Button>
 
-            <div class="dialog-buttons">
+    <div class="divider">
+        <span>{$_("loginDialog.or")}</span>
+    </div>
+
+    <h3>{$_("loginDialog.input_secret")}</h3>
+    <form onsubmit={handleFormSubmit}>
+        <input
+            type="password"
+            bind:value={secretKey}
+            placeholder="nsec1…"
+            class="secret-input"
+            id="secretKey"
+            name="secretKey"
+            autocomplete="current-password"
+            required
+            minlength="63"
+            maxlength="63"
+            bind:this={inputEl}
+            title={$_("loginDialog.hint_input_secret")}
+            onkeydown={(e) => {
+                if (e.key === "Enter") handleSave();
+            }}
+            oninput={() => {
+                // 入力時はエラーをクリアするだけ
+                if (inputEl) inputEl.setCustomValidity("");
+            }}
+        />
+
+        <div class="dialog-buttons">
+            <Button
+                variant="warning"
+                shape="square"
+                type="button"
+                onClick={handleClear}
+                className="clear-btn">{$_("loginDialog.clear")}</Button
+            >
+            <Button
+                variant="primary"
+                shape="square"
+                type="submit"
+                className="save-btn">{$_("loginDialog.save")}</Button
+            >
+        </div>
+    </form>
+
+    {#snippet footer()}
+        <Dialog.Close>
+            {#snippet child({ props })}
                 <Button
-                    variant="warning"
+                    {...props}
+                    className="modal-close"
+                    variant="default"
                     shape="square"
-                    type="button"
-                    onClick={handleClear}
-                    className="clear-btn">{$_("loginDialog.clear")}</Button
+                    ariaLabel="閉じる"
                 >
-                <Button
-                    variant="primary"
-                    shape="square"
-                    type="submit"
-                    className="save-btn">{$_("loginDialog.save")}</Button
-                >
-            </div>
-        </form>
+                    <div class="xmark-icon svg-icon" aria-label="閉じる"></div>
+                </Button>
+            {/snippet}
+        </Dialog.Close>
     {/snippet}
-</Dialog>
+</DialogWrapper>
 
 <style>
+    .xmark-icon {
+        mask-image: url("/icons/xmark-solid-full.svg");
+    }
+
     h3 {
         margin: 0 0 16px 0;
     }

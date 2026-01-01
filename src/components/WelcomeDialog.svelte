@@ -1,22 +1,33 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import Dialog from "./Dialog.svelte";
+    import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import DialogWrapper from "./DialogWrapper.svelte";
+    import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
 
     interface Props {
         show?: boolean;
         onClose: () => void;
     }
 
-    let { show = false, onClose }: Props = $props();
+    let { show = $bindable(false), onClose }: Props = $props();
+
+    // ダイアログを閉じるハンドラ
+    function handleClose() {
+        show = false;
+        onClose?.();
+    }
+
+    // ブラウザ履歴統合
+    useDialogHistory(() => show, handleClose, true);
 </script>
 
-<Dialog
-    {show}
-    {onClose}
-    ariaLabel={$_("welcomeDialog.title")}
-    showFooter={true}
-    className="welcome-dialog"
+<DialogWrapper
+    bind:open={show}
+    onOpenChange={(open) => !open && handleClose()}
+    title={$_("welcomeDialog.title")}
+    description={$_("welcomeDialog.description")}
+    contentClass="welcome-dialog"
 >
     <div class="welcome-content">
         <div class="title-section">
@@ -30,17 +41,22 @@
         <p>{$_("welcomeDialog.description")}</p>
         <pre class="features">{$_("welcomeDialog.features")}</pre>
     </div>
+
     {#snippet footer()}
-        <Button
-            variant="primary"
-            shape="square"
-            onClick={onClose}
-            className="get-started-btn"
-        >
-            {$_("welcomeDialog.get_started")}
-        </Button>
+        <Dialog.Close>
+            {#snippet child({ props })}
+                <Button
+                    {...props}
+                    variant="primary"
+                    shape="square"
+                    className="get-started-btn"
+                >
+                    {$_("welcomeDialog.get_started")}
+                </Button>
+            {/snippet}
+        </Dialog.Close>
     {/snippet}
-</Dialog>
+</DialogWrapper>
 
 <style>
     .welcome-content {
@@ -80,21 +96,14 @@
         border-radius: 8px;
         margin-bottom: 1rem;
         line-height: 1.6;
-        
     }
 
-    :global(.welcome-dialog) {
-        :global(.dialog-footer) {
-            height: 58px;
-            border: none;
-        }
+    :global(.welcome-dialog .get-started-btn) {
+        width: 100%;
+        font-size: 1.0625rem;
+    }
 
-        :global(.get-started-btn) {
-            width: 100%;
-            font-size: 1.0625rem;
-            &:active {
-                transform: scale(1);
-            }
-        }
+    :global(.welcome-dialog .get-started-btn:active) {
+        transform: scale(1);
     }
 </style>

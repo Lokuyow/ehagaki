@@ -1,7 +1,9 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
-    import Dialog from "./Dialog.svelte";
+    import DialogWrapper from "./DialogWrapper.svelte";
+    import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
 
     interface Props {
         show?: boolean;
@@ -10,9 +12,24 @@
     }
 
     let { show = $bindable(false), onConfirm, onCancel }: Props = $props();
+
+    // ダイアログを閉じるハンドラ
+    function handleClose() {
+        show = false;
+        onCancel?.();
+    }
+
+    // ブラウザ履歴統合（このダイアログは履歴に追加しない）
+    useDialogHistory(() => show, handleClose, false);
 </script>
 
-<Dialog bind:show ariaLabel={$_("postComponent.warning")} onClose={onCancel}>
+<DialogWrapper
+    bind:open={show}
+    onOpenChange={(open) => !open && handleClose()}
+    title={$_("postComponent.warning")}
+    description={$_("postComponent.secret_key_detected")}
+    contentClass="secretkey-warning-dialog"
+>
     <div class="secretkey-dialog-content">
         <div class="secretkey-dialog-message">
             {$_("postComponent.secret_key_detected")}
@@ -26,17 +43,21 @@
             >
                 {$_("postComponent.post")}
             </Button>
-            <Button
-                className="btn-cancel"
-                variant="secondary"
-                shape="square"
-                onClick={onCancel}
-            >
-                {$_("postComponent.cancel")}
-            </Button>
+            <Dialog.Close>
+                {#snippet child({ props })}
+                    <Button
+                        {...props}
+                        className="btn-cancel"
+                        variant="secondary"
+                        shape="square"
+                    >
+                        {$_("postComponent.cancel")}
+                    </Button>
+                {/snippet}
+            </Dialog.Close>
         </div>
     </div>
-</Dialog>
+</DialogWrapper>
 
 <style>
     .secretkey-dialog-content {
