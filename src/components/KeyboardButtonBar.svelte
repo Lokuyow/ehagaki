@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { Tooltip } from "bits-ui";
     import Button from "./Button.svelte";
     import {
         contentWarningStore,
@@ -74,15 +75,35 @@
         onmousedown={preventFocusLoss}
         ontouchstart={preventFocusLoss}
     >
-        <Button
-            variant="footer"
-            shape="square"
-            selected={contentWarningEnabled}
-            onClick={toggleContentWarning}
-            ariaLabel="Content Warning切り替え"
-        >
-            <div class="content-warning-icon svg-icon"></div>
-        </Button>
+        <Tooltip.Root delayDuration={500}>
+            <Tooltip.Trigger>
+                {#snippet child({ props })}
+                    {@const { onclick: tooltipOnclick, ...restProps } = props}
+                    <Button
+                        variant="footer"
+                        shape="square"
+                        selected={contentWarningEnabled}
+                        onClick={(e) => {
+                            toggleContentWarning();
+                            if (typeof tooltipOnclick === "function") {
+                                tooltipOnclick(e);
+                            }
+                        }}
+                        ariaLabel={$_(
+                            "keyboardButtonBar.content_warning_toggle",
+                        )}
+                        {...restProps}
+                    >
+                        <div class="content-warning-icon svg-icon"></div>
+                    </Button>
+                {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Content sideOffset={8} class="tooltip-content">
+                    {$_("keyboardButtonBar.content_warning_tooltip")}
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
     </div>
 
     {#if showReasonInput}
@@ -164,5 +185,16 @@
         outline: none;
         border-color: var(--border-active, #2196f3);
         box-shadow: 0 0 4px rgba(33, 150, 243, 0.3);
+    }
+
+    :global(.tooltip-content) {
+        background: var(--bg);
+        color: var(--text);
+        border-radius: 6px;
+        padding: 12px;
+        font-size: 1rem;
+        font-weight: 600;
+        box-shadow: 0 2px 8px var(--shadow);
+        z-index: 100;
     }
 </style>

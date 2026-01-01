@@ -4,6 +4,7 @@
   import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
+  import { Tooltip } from "bits-ui";
   import { ProfileManager } from "./lib/profileManager";
   import { RelayManager } from "./lib/relayManager";
   import { RelayProfileService } from "./lib/relayProfileService";
@@ -543,69 +544,71 @@
 </script>
 
 {#if $locale && localeInitialized}
-  <main>
-    <div class="main-content">
-      <HeaderComponent
-        onUploadImage={() => postComponentRef?.openFileDialog()}
-        onResetPostContent={handleResetPostContent}
-        balloonMessage={showHeaderBalloon && headerBalloonMessage
-          ? headerBalloonMessage
-          : null}
+  <Tooltip.Provider>
+    <main>
+      <div class="main-content">
+        <HeaderComponent
+          onUploadImage={() => postComponentRef?.openFileDialog()}
+          onResetPostContent={handleResetPostContent}
+          balloonMessage={showHeaderBalloon && headerBalloonMessage
+            ? headerBalloonMessage
+            : null}
+        />
+        <PostComponent
+          bind:this={postComponentRef}
+          {rxNostr}
+          hasStoredKey={isAuthenticated}
+          onPostSuccess={handlePostSuccess}
+          onUploadStatusChange={handleUploadStatusChange}
+          onUploadProgress={handleUploadProgress}
+        />
+      </div>
+      <KeyboardButtonBar />
+      <FooterComponent
+        bind:this={footerComponentRef}
+        {isAuthenticated}
+        {isAuthInitialized}
+        swNeedRefresh={$swNeedRefresh}
+        onShowLoginDialog={showLoginDialog}
+        onOpenSettingsDialog={openSettingsDialog}
+        onOpenLogoutDialog={openLogoutDialog}
       />
-      <PostComponent
-        bind:this={postComponentRef}
-        {rxNostr}
-        hasStoredKey={isAuthenticated}
-        onPostSuccess={handlePostSuccess}
-        onUploadStatusChange={handleUploadStatusChange}
-        onUploadProgress={handleUploadProgress}
+      {#if showLoginDialogStore.value}
+        <LoginDialog
+          show={showLoginDialogStore.value}
+          bind:secretKey
+          onClose={closeLoginDialog}
+          onSave={saveSecretKey}
+          onNostrLogin={loginWithNostrLogin}
+          {isLoadingNostrLogin}
+        />
+      {/if}
+      {#if showLogoutDialogStore.value}
+        <ProfileComponent
+          show={showLogoutDialogStore.value}
+          onClose={closeLogoutDialog}
+          onLogout={logout}
+          {isLoggingOut}
+        />
+      {/if}
+      {#if showWelcomeDialogStore.value}
+        <WelcomeDialog
+          show={showWelcomeDialogStore.value}
+          onClose={() => showWelcomeDialogStore.set(false)}
+        />
+      {/if}
+      <SettingsDialog
+        show={showSettingsDialogStore.value}
+        onClose={closeSettingsDialog}
+        onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
+        {selectedCompression}
+        onSelectedCompressionChange={handleSelectedCompressionChange}
+        {selectedEndpoint}
+        onSelectedEndpointChange={handleSelectedEndpointChange}
+        onOpenWelcomeDialog={() => showWelcomeDialogStore.set(true)}
       />
-    </div>
-    <KeyboardButtonBar />
-    <FooterComponent
-      bind:this={footerComponentRef}
-      {isAuthenticated}
-      {isAuthInitialized}
-      swNeedRefresh={$swNeedRefresh}
-      onShowLoginDialog={showLoginDialog}
-      onOpenSettingsDialog={openSettingsDialog}
-      onOpenLogoutDialog={openLogoutDialog}
-    />
-    {#if showLoginDialogStore.value}
-      <LoginDialog
-        show={showLoginDialogStore.value}
-        bind:secretKey
-        onClose={closeLoginDialog}
-        onSave={saveSecretKey}
-        onNostrLogin={loginWithNostrLogin}
-        {isLoadingNostrLogin}
-      />
-    {/if}
-    {#if showLogoutDialogStore.value}
-      <ProfileComponent
-        show={showLogoutDialogStore.value}
-        onClose={closeLogoutDialog}
-        onLogout={logout}
-        {isLoggingOut}
-      />
-    {/if}
-    {#if showWelcomeDialogStore.value}
-      <WelcomeDialog
-        show={showWelcomeDialogStore.value}
-        onClose={() => showWelcomeDialogStore.set(false)}
-      />
-    {/if}
-    <SettingsDialog
-      show={showSettingsDialogStore.value}
-      onClose={closeSettingsDialog}
-      onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
-      {selectedCompression}
-      onSelectedCompressionChange={handleSelectedCompressionChange}
-      {selectedEndpoint}
-      onSelectedEndpointChange={handleSelectedEndpointChange}
-      onOpenWelcomeDialog={() => showWelcomeDialogStore.set(true)}
-    />
-  </main>
+    </main>
+  </Tooltip.Provider>
 {/if}
 
 <style>

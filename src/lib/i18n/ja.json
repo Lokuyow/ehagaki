@@ -106,6 +106,10 @@
   "imageCompression": {
     "compressing": "画像圧縮中"
   },
+  "keyboardButtonBar": {
+    "content_warning_toggle": "Content Warning切り替え",
+    "content_warning_tooltip": "センシティブコンテンツ設定"
+  },
   "videoNode": {
     "uploading": "動画をアップロード中...",
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
