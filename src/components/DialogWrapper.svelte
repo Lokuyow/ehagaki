@@ -123,13 +123,13 @@
     .dialog-footer.close-button-footer {
         height: 50px;
         border-top: 1px solid var(--border-hr);
-    }
 
-    :global(.modal-close) {
-        background-color: var(--dialog);
-        border: none;
-        border-radius: 0;
-        width: 100%;
+        :global(.modal-close) {
+            background-color: var(--dialog);
+            border: none;
+            border-radius: 0;
+            width: 100%;
+        }
     }
 
     :global(.modal-close:active:not(:disabled)) {
