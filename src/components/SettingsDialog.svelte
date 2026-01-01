@@ -367,7 +367,7 @@
                         >{$_("settingsDialog.image_quality_setting")}</span
                     >
                     <InfoPopoverButton
-                        side="bottom"
+                        side="top"
                         ariaLabel="画像圧縮設定の説明"
                     >
                         <table class="popover-table">
@@ -464,7 +464,7 @@
                         >{$_("settingsDialog.video_quality_setting")}</span
                     >
                     <InfoPopoverButton
-                        side="bottom"
+                        side="top"
                         ariaLabel="動画圧縮設定の説明"
                     >
                         <table class="popover-table">

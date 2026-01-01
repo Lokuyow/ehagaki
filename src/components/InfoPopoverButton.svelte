@@ -14,8 +14,8 @@
     }
 
     let {
-        side = "bottom",
-        sideOffset = 8,
+        side = "top",
+        sideOffset = 2,
         ariaLabel = "情報を表示",
         children,
     }: Props = $props();
@@ -49,7 +49,6 @@
                                     {@render children?.()}
                                 </div>
                             </div>
-                            <Popover.Arrow class="popover-arrow" />
                         </div>
                     </div>
                 {/if}
@@ -108,11 +107,5 @@
     .popover-children {
         padding: 0 2px;
         line-height: 1.4;
-    }
-
-    :global([data-popover-arrow]) {
-        fill: var(--dialog, #fff);
-        stroke: var(--border, #ccc);
-        stroke-width: 1px;
     }
 </style>
