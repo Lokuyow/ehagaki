@@ -14,7 +14,7 @@
 
     let {
         side = "top",
-        sideOffset = 2,
+        sideOffset = 0,
         ariaLabel = "情報を表示",
         children,
     }: Props = $props();
