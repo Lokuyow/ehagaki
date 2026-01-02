@@ -29,6 +29,7 @@
     import {
         initializeSettingsValues,
         handleServiceWorkerRefresh,
+        chunkArray,
     } from "../lib/utils/appUtils";
     import type { SettingsDialogProps } from "../lib/types";
     import { nostrZapView } from "nostr-zap-view";
@@ -63,6 +64,10 @@
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
     let videoCompressionLevels = $derived(getVideoCompressionLevels($_));
+
+    // 圧縮レベルを2つずつペアにグループ化
+    let compressionPairs = $derived(chunkArray(compressionLevels, 2));
+    let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(true);
     let _selectedCompression: string = $state(selectedCompression);
@@ -450,18 +455,24 @@
                     </InfoPopoverButton>
                 </div>
                 <div class="setting-control radio-group">
-                    {#each compressionLevels as level}
-                        <RadioButton
-                            value={level.value}
-                            name="compression"
-                            checked={_selectedCompression === level.value}
-                            variant="default"
-                            shape="rounded"
-                            onChange={(value) => (_selectedCompression = value)}
-                            ariaLabel={level.label}
-                        >
-                            {level.label}
-                        </RadioButton>
+                    {#each compressionPairs as pair}
+                        <div class="radio-pair">
+                            {#each pair as level}
+                                <RadioButton
+                                    value={level.value}
+                                    name="compression"
+                                    checked={_selectedCompression ===
+                                        level.value}
+                                    variant="default"
+                                    shape="rounded"
+                                    onChange={(value) =>
+                                        (_selectedCompression = value)}
+                                    ariaLabel={level.label}
+                                >
+                                    {level.label}
+                                </RadioButton>
+                            {/each}
+                        </div>
                     {/each}
                 </div>
             </div>
@@ -524,19 +535,24 @@
                     </InfoPopoverButton>
                 </div>
                 <div class="setting-control radio-group">
-                    {#each videoCompressionLevels as level}
-                        <RadioButton
-                            value={level.value}
-                            name="videoCompression"
-                            checked={_selectedVideoCompression === level.value}
-                            variant="default"
-                            shape="rounded"
-                            onChange={(value) =>
-                                (_selectedVideoCompression = value)}
-                            ariaLabel={level.label}
-                        >
-                            {level.label}
-                        </RadioButton>
+                    {#each videoCompressionPairs as pair}
+                        <div class="radio-pair">
+                            {#each pair as level}
+                                <RadioButton
+                                    value={level.value}
+                                    name="videoCompression"
+                                    checked={_selectedVideoCompression ===
+                                        level.value}
+                                    variant="default"
+                                    shape="rounded"
+                                    onChange={(value) =>
+                                        (_selectedVideoCompression = value)}
+                                    ariaLabel={level.label}
+                                >
+                                    {level.label}
+                                </RadioButton>
+                            {/each}
+                        </div>
                     {/each}
                 </div>
             </div>
@@ -848,6 +864,7 @@
     }
 
     .radio-group {
+        display: flex;
         gap: 6px;
         flex-wrap: wrap;
         /* flex-shrink: 0; */
@@ -859,6 +876,11 @@
             min-width: 50px;
             font-weight: normal;
         }
+    }
+
+    .radio-pair {
+        display: flex;
+        gap: 6px;
     }
 
     .lang-icon-btn {

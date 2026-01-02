@@ -240,19 +240,19 @@ export function toNprofile(
   try {
     // kind:0を受信したリレー1つ + writeリレー上から2つ = 最大3つ
     const relays: string[] = [];
-    
+
     // 1. kind:0を受信したリレーから1つ
     if (profileRelays.length > 0) {
       relays.push(profileRelays[0]);
     }
-    
+
     // 2. writeリレーから2つ（profileRelaysと重複しないもの）
     const remainingSlots = 3 - relays.length;
     if (remainingSlots > 0) {
       const uniqueWriteRelays = writeRelays.filter(r => !relays.includes(r));
       relays.push(...uniqueWriteRelays.slice(0, Math.min(remainingSlots, 2)));
     }
-    
+
     return nip19.nprofileEncode({
       pubkey: pubkeyHex,
       relays
@@ -274,10 +274,10 @@ export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = wind
   if (uploadAbortFlagStore.value) {
     throw new Error('Upload aborted by user');
   }
-  
+
   const arrayBuffer = await file.arrayBuffer();
   const hashBuffer = await crypto.digest("SHA-256", arrayBuffer);
-  
+
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -350,7 +350,7 @@ export function renameByMimeType(filename: string, mime: string): string {
  * 簡易UUID生成関数
  */
 export function generateSimpleUUID(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
+  return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
 }
 
 // =============================================================================
@@ -877,32 +877,32 @@ export function calculateContextMenuPosition(
  * @returns 処理結果の配列（ファイル、インデックス、ox、dimensions）
  */
 export async function processFilesForUpload(
-    files: File[],
-    dependencies: UploadHelperDependencies
+  files: File[],
+  dependencies: UploadHelperDependencies
 ): Promise<Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>> {
-    // 中止フラグをインポート
-    const results: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }> = [];
-    
-    // 処理前に1度だけ中止チェック
-    if (uploadAbortFlagStore.value) {
-        throw new Error('Upload aborted by user');
-    }
-    
-    // 順次処理
-    for (let index = 0; index < files.length; index++) {
-        const file = files[index];
+  // 中止フラグをインポート
+  const results: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }> = [];
 
-        const [oxResult, dimensionsResult] = await Promise.all([
-            // ox計算
+  // 処理前に1度だけ中止チェック
+  if (uploadAbortFlagStore.value) {
+    throw new Error('Upload aborted by user');
+  }
+
+  // 順次処理
+  for (let index = 0; index < files.length; index++) {
+    const file = files[index];
+
+    const [oxResult, dimensionsResult] = await Promise.all([
+      // ox計算
       tryCalculateSHA256Hex(file, dependencies.crypto),
-            // サイズ計算
-            dependencies.getImageDimensions(file)
-        ]);
+      // サイズ計算
+      dependencies.getImageDimensions(file)
+    ]);
 
-        results.push({ file, index, ox: oxResult, dimensions: dimensionsResult ?? undefined });
-    }
+    results.push({ file, index, ox: oxResult, dimensions: dimensionsResult ?? undefined });
+  }
 
-    return results;
+  return results;
 }
 
 // === メタデータ準備 ===
@@ -912,14 +912,32 @@ export async function processFilesForUpload(
  * @returns メタデータレコードの配列
  */
 export function prepareMetadataList(fileArray: File[]): Array<Record<string, string | number | undefined>> {
-    return fileArray.map((f) => ({
-        caption: f.name,
-        expiration: "",
-        size: f.size,
-        alt: f.name,
-        media_type: undefined,
-        content_type: f.type || "",
-        no_transform: "true"
-    }));
+  return fileArray.map((f) => ({
+    caption: f.name,
+    expiration: "",
+    size: f.size,
+    alt: f.name,
+    media_type: undefined,
+    content_type: f.type || "",
+    no_transform: "true"
+  }));
+}
+
+// =============================================================================
+// Array Utilities
+// =============================================================================
+
+/**
+ * 配列を指定サイズのチャンクに分割する
+ * @param array 分割する配列
+ * @param size 各チャンクのサイズ
+ * @returns チャンクの配列
+ */
+export function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
 }
 
