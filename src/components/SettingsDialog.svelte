@@ -819,7 +819,6 @@
         align-items: center;
         justify-content: flex-start;
         white-space: pre-line;
-        flex-shrink: 0;
     }
 
     .setting-label-wrapper {
@@ -867,7 +866,6 @@
         display: flex;
         gap: 6px;
         flex-wrap: wrap;
-        /* flex-shrink: 0; */
 
         :global(button) {
             font-size: 0.875rem;
@@ -888,7 +886,6 @@
     }
     select {
         padding: 6px;
-        min-width: 200px;
         height: 50px;
         font-size: 1rem;
     }
