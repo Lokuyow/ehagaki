@@ -824,6 +824,7 @@
     .setting-label-wrapper {
         display: inline-flex;
         align-items: center;
+        flex-shrink: 0;
     }
 
     .setting-control {
