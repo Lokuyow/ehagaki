@@ -127,7 +127,7 @@ select {
     --bg-input: hsl(0, 0%, 100%);
     --bg-footer: hsl(0, 0%, 84%);
     --bg-translucent: #EDEDEDcc;
-    --bg-buttonbar: hsl(0, 0%, 95%);
+    --bg-buttonbar: hsl(0, 0%, 94%);
 
     --btn-bg: hsl(0, 0%, 94%);
     --btn-border: hsl(0, 0%, 75%);
@@ -170,10 +170,10 @@ select {
   :root {
     /* ダークモード用カラー変数 */
     --bg: hsl(152, 0%, 12%);
-    --bg-input: hsl(0, 0%, 20%);
+    --bg-input: hsl(0, 0%, 19%);
     --bg-footer: hsl(0, 0%, 10%);
     --bg-translucent: #212121cc;
-    --bg-buttonbar: hsl(0, 0%, 25%);
+    --bg-buttonbar: hsl(0, 0%, 28%);
 
     --btn-bg: hsl(0, 0%, 25%);
     --btn-border: hsl(0, 0%, 30%);
