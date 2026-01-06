@@ -490,10 +490,6 @@
     cursor: text;
     outline: none;
     background: var(--bg-input);
-    overflow: hidden;
-    touch-action: pan-y;
-    overscroll-behavior: contain;
-    scroll-behavior: auto;
     -webkit-tap-highlight-color: transparent;
   }
 

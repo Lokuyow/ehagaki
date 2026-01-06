@@ -630,7 +630,7 @@
     align-items: center;
     margin-top: 12px;
     width: 100%;
-    height: calc(100% - 78px);
+    height: calc(100% - 128px);
     overflow: hidden;
   }
 </style>
