@@ -468,10 +468,14 @@
     max-width: 800px;
     width: 100%;
     height: 100%;
+    /* キーボード表示時に高さを動的に調整（キーボード高さ + ボタンバー高さ分を引く） */
+    /* キーボードが閉じている時は --keyboard-height: 0px なので影響なし */
+    max-height: calc(100% - var(--keyboard-height, 0px) - 8px);
     display: flex;
     flex-direction: column;
     align-items: center;
     overflow: hidden;
+    transition: max-height 0.25s ease-out;
   }
 
   .upload-error {
@@ -507,7 +511,7 @@
     width: 100%;
     height: 100%;
     min-height: 200px;
-    padding: 16px 10px;
+    padding: 16px 10px 0 10px;
     font-family: inherit;
     font-size: 1.375rem;
     line-height: 1.5;

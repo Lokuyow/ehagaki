@@ -16,6 +16,23 @@ const KEYBOARD_THRESHOLD = 100;
 // --- bottomPosition ストア ---
 let bottomPosition = $state(FOOTER_HEIGHT);
 
+// --- keyboardHeight ストア ---
+/** キーボードの高さ（px）。キーボードが閉じている時は 0 */
+let keyboardHeight = $state(0);
+
+/**
+ * キーボード高さストア
+ * キーボードが開いている時のみ正の値、閉じている時は 0
+ */
+export const keyboardHeightStore = {
+    get value() {
+        return keyboardHeight;
+    },
+    set: (v: number) => {
+        keyboardHeight = v;
+    },
+};
+
 /**
  * キーボード追従のための位置調整ストア
  * visualViewportを監視してキーボード表示時に位置を調整
@@ -53,12 +70,22 @@ export function setupViewportListener(): (() => void) | undefined {
             const visibleBottom = viewport.height + (viewport.offsetTop || 0);
 
             // キーボード高さはレイアウト（window.innerHeight）と可視領域の差分
-            const keyboardHeight = Math.max(0, window.innerHeight - visibleBottom);
+            const calculatedKeyboardHeight = Math.max(0, window.innerHeight - visibleBottom);
+
+            // キーボードが開いているかどうかを閾値で判定
+            const isKeyboardOpen = calculatedKeyboardHeight > KEYBOARD_THRESHOLD;
 
             // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
             // 閾値を設けて、PWAモードでの小さな差分を無視する
-            bottomPosition =
-                keyboardHeight > KEYBOARD_THRESHOLD ? keyboardHeight : FOOTER_HEIGHT;
+            bottomPosition = isKeyboardOpen ? calculatedKeyboardHeight : FOOTER_HEIGHT;
+
+            // キーボード高さストアを更新（閾値以下は 0 として扱う）
+            keyboardHeight = isKeyboardOpen ? calculatedKeyboardHeight : 0;
+
+            // CSS 変数を更新（エディターの高さ調整に使用）
+            const root = document.documentElement;
+            root.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
+            root.style.setProperty('--visible-viewport-height', `${viewport.height}px`);
         });
     }
 

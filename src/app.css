@@ -1,4 +1,8 @@
 :root {
+  /* キーボード表示対応用 CSS 変数（setupViewportListener で動的に更新） */
+  --keyboard-height: 0px;
+  --visible-viewport-height: 100svh;
+
   --theme: hsl(152, 74%, 43%);
   --text-black: hsl(0, 0%, 22%);
   --nostr-bg: hsl(270, 100%, 98%);
