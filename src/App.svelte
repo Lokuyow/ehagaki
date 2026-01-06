@@ -565,7 +565,9 @@
         />
       </div>
       <ReasonInput />
-      <KeyboardButtonBar />
+      <KeyboardButtonBar
+        onUploadImage={() => postComponentRef?.openFileDialog()}
+      />
       <FooterComponent
         bind:this={footerComponentRef}
         {isAuthenticated}

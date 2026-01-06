@@ -81,7 +81,7 @@
     "posting": "投稿中",
     "cancel": "キャンセル",
     "clear_editor": "エディターをクリア",
-    "upload_image": "画像をアップロード",
+    "upload_image": "メディアアップロード",
     "upload_failed": "アップロードに失敗しました",
     "only_images_allowed": "画像ファイルのみアップロード可能です",
     "content_warning_reason_label": "Content Warning理由",
@@ -108,7 +108,8 @@
   },
   "keyboardButtonBar": {
     "content_warning_toggle": "Content Warning切り替え",
-    "content_warning_tooltip": "センシティブコンテンツ設定"
+    "content_warning_tooltip": "センシティブコンテンツ設定",
+    "upload_image_tooltip": "メディアアップロード"
   },
   "videoNode": {
     "uploading": "動画をアップロード中...",

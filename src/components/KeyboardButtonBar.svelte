@@ -10,6 +10,27 @@
         bottomPositionStore,
         setupViewportListener,
     } from "../stores/uiStore.svelte";
+    import { authState } from "../stores/appStore.svelte";
+    import { editorState } from "../stores/editorStore.svelte";
+
+    interface Props {
+        onUploadImage?: () => void;
+    }
+
+    let { onUploadImage }: Props = $props();
+
+    // 認証状態を購読
+    let hasStoredKey = $state(false);
+    $effect(() => {
+        const unsubscribe = authState.subscribe((val) => {
+            hasStoredKey = val && val.isAuthenticated;
+        });
+        return unsubscribe;
+    });
+
+    // エディタ状態を取得
+    let postStatus = $derived(editorState.postStatus);
+    let isUploading = $derived(editorState.isUploading);
 
     // Content Warning状態を取得
     let contentWarningEnabled = $derived(contentWarningStore.value);
@@ -73,6 +94,37 @@
                 </Tooltip.Content>
             </Tooltip.Portal>
         </Tooltip.Root>
+
+        <Tooltip.Root delayDuration={500}>
+            <Tooltip.Trigger>
+                {#snippet child({ props })}
+                    {@const { onclick: tooltipOnclick, ...restProps } = props}
+                    <Button
+                        variant="footer"
+                        shape="square"
+                        className="image-button"
+                        disabled={!hasStoredKey ||
+                            postStatus.sending ||
+                            isUploading}
+                        onClick={(e) => {
+                            onUploadImage?.();
+                            if (typeof tooltipOnclick === "function") {
+                                tooltipOnclick(e);
+                            }
+                        }}
+                        ariaLabel={$_("postComponent.upload_image")}
+                        {...restProps}
+                    >
+                        <div class="image-icon svg-icon"></div>
+                    </Button>
+                {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Content sideOffset={8} class="tooltip-content">
+                    {$_("keyboardButtonBar.upload_image_tooltip")}
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
     </div>
 </div>
 
@@ -108,6 +160,12 @@
 
     .content-warning-icon {
         mask-image: url("/icons/eye-slash-solid-full.svg");
+    }
+
+    .image-icon {
+        mask-image: url("/icons/image-solid-full.svg");
+        width: 32px;
+        height: 32px;
     }
 
     :global(.tooltip-content) {
