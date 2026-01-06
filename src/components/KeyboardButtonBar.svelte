@@ -72,36 +72,6 @@
                     <Button
                         variant="footer"
                         shape="square"
-                        selected={contentWarningEnabled}
-                        onClick={(e) => {
-                            toggleContentWarning();
-                            if (typeof tooltipOnclick === "function") {
-                                tooltipOnclick(e);
-                            }
-                        }}
-                        ariaLabel={$_(
-                            "keyboardButtonBar.content_warning_toggle",
-                        )}
-                        {...restProps}
-                    >
-                        <div class="content-warning-icon svg-icon"></div>
-                    </Button>
-                {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-                <Tooltip.Content sideOffset={8} class="tooltip-content">
-                    {$_("keyboardButtonBar.content_warning_tooltip")}
-                </Tooltip.Content>
-            </Tooltip.Portal>
-        </Tooltip.Root>
-
-        <Tooltip.Root delayDuration={500}>
-            <Tooltip.Trigger>
-                {#snippet child({ props })}
-                    {@const { onclick: tooltipOnclick, ...restProps } = props}
-                    <Button
-                        variant="footer"
-                        shape="square"
                         className="image-button"
                         disabled={!hasStoredKey ||
                             postStatus.sending ||
@@ -125,6 +95,35 @@
                 </Tooltip.Content>
             </Tooltip.Portal>
         </Tooltip.Root>
+        <Tooltip.Root delayDuration={500}>
+            <Tooltip.Trigger>
+                {#snippet child({ props })}
+                    {@const { onclick: tooltipOnclick, ...restProps } = props}
+                    <Button
+                        variant="footer"
+                        shape="square"
+                        selected={contentWarningEnabled}
+                        onClick={(e) => {
+                            toggleContentWarning();
+                            if (typeof tooltipOnclick === "function") {
+                                tooltipOnclick(e);
+                            }
+                        }}
+                        ariaLabel={$_(
+                            "keyboardButtonBar.content_warning_toggle",
+                        )}
+                        {...restProps}
+                    >
+                        <div class="content-warning-icon svg-icon"></div>
+                    </Button>
+                {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Content sideOffset={8} class="tooltip-content">
+                    {$_("keyboardButtonBar.content_warning_tooltip")}
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
     </div>
 </div>
 
@@ -143,29 +142,29 @@
         right: 0;
         z-index: 98;
         transition: bottom 0.2s ease;
+
+        .content-warning-icon {
+            mask-image: url("/icons/eye-slash-solid-full.svg");
+        }
+
+        .image-icon {
+            mask-image: url("/icons/image-solid-full.svg");
+            width: 34px;
+            height: 34px;
+        }
     }
 
     .button-container {
         display: flex;
-        justify-content: flex-start;
+        justify-content: space-evenly;
         align-items: center;
         gap: 8px;
-        width: auto;
+        width: 100%;
     }
 
     :global(.footer-button-bar .footer) {
         width: 50px;
         height: 50px;
-    }
-
-    .content-warning-icon {
-        mask-image: url("/icons/eye-slash-solid-full.svg");
-    }
-
-    .image-icon {
-        mask-image: url("/icons/image-solid-full.svg");
-        width: 32px;
-        height: 32px;
     }
 
     :global(.tooltip-content) {
