@@ -39,17 +39,27 @@ export function setupViewportListener(): (() => void) | undefined {
         return undefined;
     }
 
+    let _rafId: number | null = null;
+
     function handleResize() {
-        const viewport = window.visualViewport;
-        if (!viewport) return;
+        // throttle via requestAnimationFrame to avoid jank on iOS/Android
+        if (_rafId) cancelAnimationFrame(_rafId);
+        _rafId = requestAnimationFrame(() => {
+            const viewport = window.visualViewport;
+            if (!viewport) return;
 
-        // キーボードが開いている場合、viewportの高さが変わる
-        const keyboardHeight = window.innerHeight - viewport.height;
+            // visualViewport.offsetTop を考慮することで、キーボード表示時に
+            // ビューがパン/スクロールしても正しいキーボード高さが得られる
+            const visibleBottom = viewport.height + (viewport.offsetTop || 0);
 
-        // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
-        // 閾値を設けて、PWAモードでの小さな差分を無視する
-        bottomPosition =
-            keyboardHeight > KEYBOARD_THRESHOLD ? keyboardHeight : FOOTER_HEIGHT;
+            // キーボード高さはレイアウト（window.innerHeight）と可視領域の差分
+            const keyboardHeight = Math.max(0, window.innerHeight - visibleBottom);
+
+            // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
+            // 閾値を設けて、PWAモードでの小さな差分を無視する
+            bottomPosition =
+                keyboardHeight > KEYBOARD_THRESHOLD ? keyboardHeight : FOOTER_HEIGHT;
+        });
     }
 
     // 初期値を設定
@@ -61,5 +71,7 @@ export function setupViewportListener(): (() => void) | undefined {
     return () => {
         window.visualViewport?.removeEventListener("resize", handleResize);
         window.visualViewport?.removeEventListener("scroll", handleResize);
+        if (_rafId) cancelAnimationFrame(_rafId);
+        _rafId = null;
     };
 }
