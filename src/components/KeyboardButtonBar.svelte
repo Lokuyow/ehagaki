@@ -6,11 +6,13 @@
         contentWarningStore,
         contentWarningReasonStore,
     } from "../stores/tagsStore.svelte";
+    import {
+        bottomPositionStore,
+        setupViewportListener,
+    } from "../stores/uiStore.svelte";
 
     // Content Warning状態を取得
     let contentWarningEnabled = $derived(contentWarningStore.value);
-    let contentWarningReason = $derived(contentWarningReasonStore.value);
-    let showReasonInput = $derived(contentWarningEnabled);
 
     // Content Warningトグル
     function toggleContentWarning() {
@@ -21,50 +23,17 @@
         }
     }
 
-    // Reasonテキスト変更時
-    function handleReasonInput(event: Event) {
-        const target = event.target as HTMLInputElement;
-        contentWarningReasonStore.set(target.value);
-    }
-
-    // キーボード追従のための位置調整
-    let bottomPosition = $state(66); // 初期値: フッターの高さ(66px)
+    // キーボード追従のための位置調整（共有ストアから取得）
+    let bottomPosition = $derived(bottomPositionStore.value);
 
     // ボタン押下時にフォーカスを奪わない（キーボードを閉じさせない）
     function preventFocusLoss(event: Event) {
         event.preventDefault();
     }
 
+    // visualViewportの監視を開始
     $effect(() => {
-        if (typeof window === "undefined" || !window.visualViewport) return;
-
-        // キーボードが開いていると判定する最小の高さ（px）
-        // PWAモードでのステータスバーやナビゲーションバーの差分を無視するため
-        const KEYBOARD_THRESHOLD = 100;
-
-        function handleResize() {
-            const viewport = window.visualViewport;
-            if (!viewport) return;
-
-            // キーボードが開いている場合、viewportの高さが変わる
-            const keyboardHeight = window.innerHeight - viewport.height;
-
-            // キーボードが開いている時はキーボードの直上、閉じている時はフッターの直上
-            // 閾値を設けて、PWAモードでの小さな差分を無視する
-            bottomPosition =
-                keyboardHeight > KEYBOARD_THRESHOLD ? keyboardHeight : 66;
-        }
-
-        // 初期値を設定
-        handleResize();
-
-        window.visualViewport.addEventListener("resize", handleResize);
-        window.visualViewport.addEventListener("scroll", handleResize);
-
-        return () => {
-            window.visualViewport?.removeEventListener("resize", handleResize);
-            window.visualViewport?.removeEventListener("scroll", handleResize);
-        };
+        return setupViewportListener();
     });
 </script>
 
@@ -105,23 +74,6 @@
             </Tooltip.Portal>
         </Tooltip.Root>
     </div>
-
-    {#if showReasonInput}
-        <div class="reason-input-area">
-            <input
-                id="content-warning-reason-input"
-                type="text"
-                placeholder={$_(
-                    "postComponent.content_warning_reason_placeholder",
-                )}
-                value={contentWarningReason}
-                onchange={handleReasonInput}
-                oninput={handleReasonInput}
-                aria-label={$_("postComponent.content_warning_reason_label")}
-                class="reason-input"
-            />
-        </div>
-    {/if}
 </div>
 
 <style>
@@ -156,35 +108,6 @@
 
     .content-warning-icon {
         mask-image: url("/icons/eye-slash-solid-full.svg");
-    }
-
-    .reason-input-area {
-        flex: 1;
-        display: flex;
-        align-items: center;
-        height: 100%;
-    }
-
-    .reason-input {
-        width: 100%;
-        height: 38px;
-        padding: 0 10px;
-        border: 1px solid var(--border-color, #ccc);
-        border-radius: 4px;
-        background: var(--bg-input, #fff);
-        color: var(--text-primary);
-        font-size: 1.125rem;
-        font-family: inherit;
-    }
-
-    .reason-input::placeholder {
-        color: var(--text-secondary, #999);
-    }
-
-    .reason-input:focus {
-        outline: none;
-        border-color: var(--border-active, #2196f3);
-        box-shadow: 0 0 4px rgba(33, 150, 243, 0.3);
     }
 
     :global(.tooltip-content) {

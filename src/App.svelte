@@ -17,6 +17,7 @@
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
+  import ReasonInput from "./components/ReasonInput.svelte";
   import {
     authState,
     sharedImageStore,
@@ -563,6 +564,7 @@
           onUploadProgress={handleUploadProgress}
         />
       </div>
+      <ReasonInput />
       <KeyboardButtonBar />
       <FooterComponent
         bind:this={footerComponentRef}
