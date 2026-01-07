@@ -216,6 +216,10 @@
             height: 32px;
         }
 
+        :global(.post-button:not(:disabled) .plane-icon) {
+            --svg: var(--theme);
+        }
+
         :global(.post-button-loading) {
             width: 100%;
             height: 100%;
