@@ -147,6 +147,10 @@
             mask-image: url("/icons/eye-slash-solid-full.svg");
         }
 
+        :global(.selected .content-warning-icon) {
+            --svg: var(--danger);
+        }
+
         .image-icon {
             mask-image: url("/icons/image-solid-full.svg");
             width: 34px;

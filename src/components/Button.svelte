@@ -191,7 +191,6 @@
         --btn-bg: transparent;
         border: none;
         transition: all 0.2s ease;
-        opacity: 0.5;
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
@@ -205,10 +204,6 @@
                     --svg: hsl(0, 0%, 99%);
                 }
             }
-        }
-
-        &.selected {
-            opacity: 1;
         }
     }
 
