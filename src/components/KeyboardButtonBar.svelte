@@ -153,8 +153,8 @@
 
         .image-icon {
             mask-image: url("/icons/image-solid-full.svg");
-            width: 34px;
-            height: 34px;
+            width: 36px;
+            height: 36px;
         }
     }
 
