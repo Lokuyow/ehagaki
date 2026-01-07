@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { Tooltip } from "bits-ui";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import {
         contentWarningStore,
         contentWarningReasonStore,
@@ -11,7 +12,8 @@
         setupViewportListener,
     } from "../stores/uiStore.svelte";
     import { authState } from "../stores/appStore.svelte";
-    import { editorState } from "../stores/editorStore.svelte";
+    import { editorState, submitPost } from "../stores/editorStore.svelte";
+    import { triggerVibration } from "../lib/utils/appDomUtils";
 
     interface Props {
         onUploadImage?: () => void;
@@ -31,6 +33,22 @@
     // エディタ状態を取得
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
+    let canPost = $derived(editorState.canPost);
+
+    // ローダーの表示状態（最低0.4秒表示）
+    let isShowingLoader = $state(false);
+
+    // 送信中のローダー表示管理
+    $effect(() => {
+        if (postStatus.sending) {
+            isShowingLoader = true;
+        } else if (isShowingLoader) {
+            // 送信完了したら0.4秒後にローダーを隠す
+            setTimeout(() => {
+                isShowingLoader = false;
+            }, 400);
+        }
+    });
 
     // Content Warning状態を取得
     let contentWarningEnabled = $derived(contentWarningStore.value);
@@ -102,6 +120,49 @@
                     <Button
                         variant="footer"
                         shape="square"
+                        className="post-button {isShowingLoader
+                            ? 'loading'
+                            : ''}"
+                        disabled={!canPost ||
+                            postStatus.sending ||
+                            isUploading ||
+                            !hasStoredKey ||
+                            postStatus.completed}
+                        onClick={(e) => {
+                            triggerVibration(30);
+                            submitPost();
+                            if (typeof tooltipOnclick === "function") {
+                                tooltipOnclick(e);
+                            }
+                        }}
+                        ariaLabel={$_("postComponent.post")}
+                        {...restProps}
+                    >
+                        {#if isShowingLoader}
+                            <LoadingPlaceholder
+                                showLoader={true}
+                                text={false}
+                                customClass="post-button-loading"
+                            />
+                        {:else}
+                            <div class="plane-icon svg-icon"></div>
+                        {/if}
+                    </Button>
+                {/snippet}
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+                <Tooltip.Content sideOffset={8} class="tooltip-content">
+                    {$_("keyboardButtonBar.post_tooltip")}
+                </Tooltip.Content>
+            </Tooltip.Portal>
+        </Tooltip.Root>
+        <Tooltip.Root delayDuration={500}>
+            <Tooltip.Trigger>
+                {#snippet child({ props })}
+                    {@const { onclick: tooltipOnclick, ...restProps } = props}
+                    <Button
+                        variant="footer"
+                        shape="square"
                         selected={contentWarningEnabled}
                         onClick={(e) => {
                             toggleContentWarning();
@@ -143,18 +204,32 @@
         z-index: 98;
         transition: bottom 0.2s ease;
 
+        .image-icon {
+            mask-image: url("/icons/image-solid-full.svg");
+            width: 36px;
+            height: 36px;
+        }
+
+        .plane-icon {
+            mask-image: url("/icons/paper-plane-solid-full.svg");
+            width: 32px;
+            height: 32px;
+        }
+
+        :global(.post-button-loading) {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
         .content-warning-icon {
             mask-image: url("/icons/eye-slash-solid-full.svg");
         }
 
         :global(.selected .content-warning-icon) {
             --svg: var(--danger);
-        }
-
-        .image-icon {
-            mask-image: url("/icons/image-solid-full.svg");
-            width: 36px;
-            height: 36px;
         }
     }
 

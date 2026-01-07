@@ -109,7 +109,8 @@
   "keyboardButtonBar": {
     "content_warning_toggle": "Content Warning切り替え",
     "content_warning_tooltip": "センシティブコンテンツ設定",
-    "upload_image_tooltip": "メディアアップロード"
+    "upload_image_tooltip": "メディアアップロード",
+    "post_tooltip": "投稿"
   },
   "videoNode": {
     "uploading": "動画をアップロード中...",
