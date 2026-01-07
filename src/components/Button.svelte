@@ -190,7 +190,6 @@
     .footer {
         --btn-bg: transparent;
         border: none;
-        transition: all 0.2s ease;
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
