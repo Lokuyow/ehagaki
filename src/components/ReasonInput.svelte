@@ -7,6 +7,7 @@
     import {
         bottomPositionStore,
         KEYBOARD_BUTTON_BAR_HEIGHT,
+        reasonInputVisibleStore,
     } from "../stores/uiStore.svelte";
 
     // Content Warning状態を取得
@@ -15,6 +16,11 @@
 
     // 表示判定
     let showReasonInput = $derived(contentWarningEnabled);
+
+    // 表示状態をストアに反映（CSS変数の更新をトリガー）
+    $effect(() => {
+        reasonInputVisibleStore.set(showReasonInput);
+    });
 
     // バーの直上に配置するための位置計算
     let inputBottomPosition = $derived(

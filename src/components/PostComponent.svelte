@@ -468,9 +468,12 @@
     max-width: 800px;
     width: 100%;
     height: 100%;
-    /* キーボード表示時に高さを動的に調整（キーボード高さ + ボタンバー高さ分を引く） */
-    /* キーボードが閉じている時は --keyboard-height: 0px なので影響なし */
-    max-height: calc(100% - var(--keyboard-height, 0px) - 8px);
+    /* キーボード表示時に高さを動的に調整 */
+    /* --keyboard-height: キーボードの高さ（閉じている時は0px） */
+    /* --reason-input-height: Content Warning理由入力欄の高さ（非表示時は0px） */
+    max-height: calc(
+      100% - var(--keyboard-height, 0px) - var(--reason-input-height, 0px) - 8px
+    );
     display: flex;
     flex-direction: column;
     align-items: center;

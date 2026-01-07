@@ -10,8 +10,35 @@ export const FOOTER_HEIGHT = 66;
 /** キーボードボタンバーの高さ（px） */
 export const KEYBOARD_BUTTON_BAR_HEIGHT = 50;
 
+/** ReasonInput（Content Warning理由入力）の高さ（px） */
+export const REASON_INPUT_HEIGHT = 50;
+
 /** キーボードが開いていると判定する最小の高さ（px） */
 const KEYBOARD_THRESHOLD = 100;
+
+// --- reasonInputVisible ストア ---
+/** ReasonInputが表示されているかどうか */
+let reasonInputVisible = $state(false);
+
+/**
+ * ReasonInput表示状態ストア
+ * Content Warningが有効な時にtrueになる
+ */
+export const reasonInputVisibleStore = {
+    get value() {
+        return reasonInputVisible;
+    },
+    set: (v: boolean) => {
+        reasonInputVisible = v;
+        // CSS変数を更新
+        if (typeof document !== 'undefined') {
+            document.documentElement.style.setProperty(
+                '--reason-input-height',
+                v ? `${REASON_INPUT_HEIGHT}px` : '0px'
+            );
+        }
+    },
+};
 
 // --- bottomPosition ストア ---
 let bottomPosition = $state(FOOTER_HEIGHT);

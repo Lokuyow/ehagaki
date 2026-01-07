@@ -2,6 +2,8 @@
   /* キーボード表示対応用 CSS 変数（setupViewportListener で動的に更新） */
   --keyboard-height: 0px;
   --visible-viewport-height: 100svh;
+  /* ReasonInput（Content Warning理由入力）の高さ（reasonInputVisibleStore で更新） */
+  --reason-input-height: 0px;
 
   --theme: hsl(152, 74%, 43%);
   --text-black: hsl(0, 0%, 22%);
