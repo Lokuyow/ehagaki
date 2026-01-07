@@ -2,28 +2,19 @@
     import { _ } from "svelte-i18n";
     import {
         editorState,
-        submitPost,
         updatePostStatus,
     } from "../stores/editorStore.svelte";
-    import { authState } from "../stores/appStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte";
-    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { BalloonMessageManager } from "../lib/balloonMessageManager";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
-    import { triggerVibration } from "../lib/utils/appDomUtils";
 
     interface Props {
-        onUploadImage: () => void;
         onResetPostContent: () => void;
         balloonMessage?: BalloonMessageType | null;
     }
 
-    let {
-        onUploadImage,
-        onResetPostContent,
-        balloonMessage = null,
-    }: Props = $props();
+    let { onResetPostContent, balloonMessage = null }: Props = $props();
 
     // バルーンメッセージマネージャー
     let balloonManager: BalloonMessageManager | null = null;
@@ -33,33 +24,9 @@
         }
     });
 
-    // --- authState購読用 ---
-    let hasStoredKey = $state(false);
-    $effect(() => {
-        const unsubscribe = authState.subscribe((val) => {
-            hasStoredKey = val && val.isAuthenticated;
-        });
-        return unsubscribe;
-    });
-
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
-
-    // ローダーの表示状態（最低0.5秒表示）
-    let isShowingLoader = $state(false);
-
-    // 送信中のローダー表示管理
-    $effect(() => {
-        if (postStatus.sending) {
-            isShowingLoader = true;
-        } else if (isShowingLoader) {
-            // 送信完了したら0.4秒後にローダーを隠す
-            setTimeout(() => {
-                isShowingLoader = false;
-            }, 400);
-        }
-    });
 
     // 投稿成功時のバルーンメッセージ管理
     let postSuccessBalloonMessage = $state<BalloonMessageType | null>(null);
@@ -268,52 +235,11 @@
                 variant="header"
                 shape="square"
                 className="clear-button"
-                disabled={!canPost ||
-                    postStatus.sending ||
-                    isUploading ||
-                    isShowingLoader}
+                disabled={!canPost || postStatus.sending || isUploading}
                 onClick={onResetPostContent}
                 ariaLabel={$_("postComponent.clear_editor")}
             >
                 <div class="trash-icon svg-icon"></div>
-            </Button>
-            <Button
-                variant="header"
-                shape="square"
-                className="image-button"
-                disabled={!hasStoredKey ||
-                    postStatus.sending ||
-                    isUploading ||
-                    isShowingLoader}
-                onClick={onUploadImage}
-                ariaLabel={$_("postComponent.upload_image")}
-            >
-                <div class="image-icon svg-icon"></div>
-            </Button>
-            <Button
-                variant="header"
-                shape="square"
-                className="post-button {isShowingLoader ? 'loading' : ''}"
-                disabled={!canPost ||
-                    postStatus.sending ||
-                    isUploading ||
-                    !hasStoredKey ||
-                    postStatus.completed}
-                onClick={() => {
-                    triggerVibration(30);
-                    submitPost();
-                }}
-                ariaLabel={$_("postComponent.post")}
-            >
-                {#if isShowingLoader}
-                    <LoadingPlaceholder
-                        showLoader={true}
-                        text={false}
-                        customClass="post-button-loading"
-                    />
-                {:else}
-                    <div class="plane-icon svg-icon"></div>
-                {/if}
             </Button>
         </div>
     </div>
@@ -380,31 +306,10 @@
         height: 100%;
     }
 
-    :global(.header.post-button, .header.image-button, .header.clear-button) {
+    :global(.header.clear-button) {
         width: 58px;
     }
 
-    :global(.header.post-button.loading) {
-        border: 1px solid var(--theme);
-    }
-
-    .plane-icon {
-        mask-image: url("/icons/paper-plane-solid-full.svg");
-        width: 30px;
-        height: 30px;
-    }
-    :global(.post-button-loading) {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .image-icon {
-        mask-image: url("/icons/image-solid-full.svg");
-        width: 32px;
-        height: 32px;
-    }
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
         width: 30px;
