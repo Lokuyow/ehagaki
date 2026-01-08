@@ -151,16 +151,16 @@ export function formatDraftTimestamp(timestamp: number): string {
         }
     } else if (diff < hour) {
         const minutes = Math.floor(diff / minute);
-        // 英語の場合は短縮表記（スペースなし）: 1m, 5m
+        // 英語の場合は短縮表記（'ago' を付与）: 1m ago, 5m ago
         if (loc.startsWith('en')) {
-            return `${minutes}m`;
+            return `${minutes}m ago`;
         }
         return rtf.format(-minutes, 'minute');
     } else if (diff < day) {
         const hours = Math.floor(diff / hour);
-        // 英語の場合は短縮表記（スペースなし）: 1h, 2h
+        // 英語の場合は短縮表記（'ago' を付与）: 1h ago, 2h ago
         if (loc.startsWith('en')) {
-            return `${hours}h`;
+            return `${hours}h ago`;
         }
         return rtf.format(-hours, 'hour');
     } else {

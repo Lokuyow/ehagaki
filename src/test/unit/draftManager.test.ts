@@ -304,16 +304,16 @@ describe('draftManager', () => {
                 expect(result).toBe('Now');
             });
 
-            it('数分前の場合は短縮表記「Xm」を使用', () => {
+            it('数分前の場合は短縮表記「Xm ago」を使用', () => {
                 const timestamp = baseNow - 5 * 60 * 1000; // 5分前
                 const result = formatDraftTimestamp(timestamp);
-                expect(result).toBe('5m');
+                expect(result).toBe('5m ago');
             });
 
-            it('数時間前の場合は短縮表記「Xh」を使用', () => {
+            it('数時間前の場合は短縮表記「Xh ago」を使用', () => {
                 const timestamp = baseNow - 3 * 60 * 60 * 1000; // 3時間前
                 const result = formatDraftTimestamp(timestamp);
-                expect(result).toBe('3h');
+                expect(result).toBe('3h ago');
             });
 
             it('1日以上前の場合は月/日を表示', () => {
