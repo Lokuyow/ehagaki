@@ -196,7 +196,8 @@
 
     .draft-timestamp {
         flex-shrink: 0;
-        font-size: 1.125rem;
+        font-size: 1rem;
+        font-weight: 400;
         color: var(--text-muted);
     }
 
@@ -222,8 +223,8 @@
 
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
-        width: 26px;
-        height: 26px;
+        width: 24px;
+        height: 24px;
     }
 
     .xmark-icon {

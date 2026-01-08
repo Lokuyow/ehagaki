@@ -143,6 +143,7 @@ select {
 
     --text: hsl(0, 0%, 24%);
     --text-light: hsl(0, 0%, 46%);
+    --text-muted: hsl(0, 0%, 60%);
     --text-red: hsl(0, 99%, 45%);
     --text-r: #e6e6e6;
 
@@ -189,6 +190,7 @@ select {
 
     --text: hsl(0, 0%, 90%);
     --text-light: hsl(0, 0%, 75%);
+    --text-muted: hsl(0, 0%, 60%);
     --text-red: hsl(0, 99%, 69%);
     --text-r: #3D3D3D;
 
