@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/svelte';
+import { readable } from 'svelte/store';
 
 // svelte-i18nのモック（vi.hoistedで先に定義）
-const mockT = vi.hoisted(() => vi.fn((key: string) => {
+const mockTranslate = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
         'common.ok': 'OK',
         'common.cancel': 'キャンセル',
@@ -10,10 +11,10 @@ const mockT = vi.hoisted(() => vi.fn((key: string) => {
         'test.message': 'テストメッセージ'
     };
     return translations[key] || key;
-}));
+});
 
 vi.mock('svelte-i18n', () => ({
-    _: mockT
+    _: readable(mockTranslate)
 }));
 
 // useDialogHistoryのモック
@@ -71,7 +72,9 @@ describe('ConfirmDialog', () => {
             }
         });
 
-        expect(screen.getByText('これは確認メッセージです')).toBeTruthy();
+        // descriptionはvisually-hiddenとconfirm-dialog-messageの2箇所に表示される
+        const elements = screen.getAllByText('これは確認メッセージです');
+        expect(elements.length).toBeGreaterThanOrEqual(1);
     });
 
     it('確認ボタンをクリックするとonConfirmが呼ばれる', async () => {
@@ -136,7 +139,7 @@ describe('ConfirmDialog', () => {
     });
 
     it('contentClassが正しく適用される', () => {
-        const { container } = render(ConfirmDialog, {
+        render(ConfirmDialog, {
             props: {
                 open: true,
                 description: 'テストメッセージ',
@@ -146,7 +149,8 @@ describe('ConfirmDialog', () => {
         });
 
         // DialogWrapperに渡されたcontentClassが適用されることを確認
-        const dialog = container.querySelector('.custom-confirm-dialog');
+        // ポータルでbodyに直接レンダリングされるためdocument.bodyから検索
+        const dialog = document.body.querySelector('.custom-confirm-dialog');
         expect(dialog).toBeTruthy();
     });
 
