@@ -14,6 +14,7 @@
   import LoginDialog from "./components/LoginDialog.svelte";
   import WelcomeDialog from "./components/WelcomeDialog.svelte";
   import DraftListDialog from "./components/DraftListDialog.svelte";
+  import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService } from "./lib/authService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
@@ -466,6 +467,21 @@
     showDraftLimitConfirmStore.set(false);
   }
 
+  // Draft-limit確認ダイアログの開閉状態（ローカル変数でbind管理）
+  let showDraftLimitDialog = $state(false);
+
+  // showDraftLimitConfirmStoreの変化を監視してローカル変数に反映
+  $effect(() => {
+    showDraftLimitDialog = showDraftLimitConfirmStore.value;
+  });
+
+  // ローカル変数の変化をストアに反映
+  $effect(() => {
+    if (!showDraftLimitDialog && showDraftLimitConfirmStore.value) {
+      showDraftLimitConfirmStore.set(false);
+    }
+  });
+
   function handleShowDraftList() {
     showDraftListDialogStore.set(true);
   }
@@ -651,31 +667,17 @@
           onApplyDraft={handleApplyDraft}
         />
       {/if}
-      {#if showDraftLimitConfirmStore.value}
-        <div class="draft-limit-overlay">
-          <div class="draft-limit-dialog">
-            <p>
-              {$_("draft.limit_reached") ||
-                "下書きが上限（10件）に達しています。最も古い下書きを削除して保存しますか？"}
-            </p>
-            <div class="draft-limit-buttons">
-              <button
-                type="button"
-                class="cancel-btn"
-                onclick={handleCancelDraftReplace}
-              >
-                {$_("common.cancel") || "キャンセル"}
-              </button>
-              <button
-                type="button"
-                class="confirm-btn"
-                onclick={handleConfirmDraftReplace}
-              >
-                {$_("common.ok") || "OK"}
-              </button>
-            </div>
-          </div>
-        </div>
+      {#if showDraftLimitDialog}
+        <ConfirmDialog
+          bind:open={showDraftLimitDialog}
+          title={$_("common.confirm")}
+          description={$_("draft.limit_reached")}
+          confirmLabel={$_("common.ok")}
+          cancelLabel={$_("common.cancel")}
+          confirmVariant="danger"
+          onConfirm={handleConfirmDraftReplace}
+          onCancel={handleCancelDraftReplace}
+        />
       {/if}
       <SettingsDialog
         show={showSettingsDialogStore.value}
@@ -708,62 +710,5 @@
     width: 100%;
     height: calc(100% - 128px);
     overflow: hidden;
-  }
-
-  /* 下書き上限確認ダイアログ */
-  .draft-limit-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: var(--dialog-overlay);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 200;
-  }
-
-  .draft-limit-dialog {
-    background: var(--dialog);
-    color: var(--text);
-    padding: 24px;
-    border-radius: 8px;
-    max-width: 400px;
-    width: 90%;
-    text-align: center;
-  }
-
-  .draft-limit-dialog p {
-    margin: 0 0 20px;
-    line-height: 1.5;
-  }
-
-  .draft-limit-buttons {
-    display: flex;
-    gap: 12px;
-    justify-content: center;
-  }
-
-  .draft-limit-buttons button {
-    padding: 10px 24px;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 1rem;
-  }
-
-  .draft-limit-buttons .cancel-btn {
-    background: var(--bg-hover);
-    color: var(--text);
-  }
-
-  .draft-limit-buttons .confirm-btn {
-    background: var(--theme);
-    color: white;
-  }
-
-  .draft-limit-buttons button:hover {
-    opacity: 0.9;
   }
 </style>
