@@ -15,6 +15,10 @@
     "shared_image_failed": "共有画像の取得に失敗しました",
     "upload_destination_settings": "アップロード先設定"
   },
+  "common": {
+    "ok": "OK",
+    "cancel": "キャンセル"
+  },
   "welcomeDialog": {
     "title": "eHagaki へようこそ",
     "description": "eHagaki（えはがき）は投稿専用のNostrクライアントです。画像、動画を圧縮してから送信できます。",
@@ -138,6 +142,18 @@
   },
   "loadingPlaceholder": {
     "loading": "読み込み中..."
+  },
+  "draft": {
+    "title": "下書き",
+    "list_title": "下書き一覧",
+    "list_description": "保存した下書きを選択して復元",
+    "no_drafts": "下書きがありません",
+    "delete": "削除",
+    "save": "下書き保存",
+    "limit_reached": "下書きが上限（20件）に達しています。最も古い下書きを削除して保存しますか？",
+    "time": {
+      "now": "今"
+    }
   },
   "balloonMessage": {
     "success": {

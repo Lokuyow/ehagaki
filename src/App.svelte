@@ -13,6 +13,7 @@
   import ProfileComponent from "./components/ProfileComponent.svelte";
   import LoginDialog from "./components/LoginDialog.svelte";
   import WelcomeDialog from "./components/WelcomeDialog.svelte";
+  import DraftListDialog from "./components/DraftListDialog.svelte";
   import { authService } from "./lib/authService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
@@ -42,6 +43,9 @@
     updateUrlQueryContentStore,
     clearUrlQueryContentStore,
     setRelayManager,
+    showDraftListDialogStore,
+    showDraftLimitConfirmStore,
+    pendingDraftContentStore,
   } from "./stores/appStore.svelte";
   import type { UploadProgress, BalloonMessage } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
@@ -57,6 +61,7 @@
     hasContentQueryParam,
     cleanupAllQueryParams,
   } from "./lib/urlQueryHandler";
+  import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -432,6 +437,43 @@
     postComponentRef?.resetPostContent();
   }
 
+  // --- 下書き機能ハンドラ ---
+  function handleSaveDraft() {
+    if (!postComponentRef?.getEditorHtml) return;
+    const htmlContent = postComponentRef.getEditorHtml();
+    if (!htmlContent || htmlContent === "<p></p>") return;
+
+    const result = saveDraft(htmlContent);
+    if (result.needsConfirmation) {
+      // 上限に達している場合は確認ダイアログを表示
+      pendingDraftContentStore.set(htmlContent);
+      showDraftLimitConfirmStore.set(true);
+    }
+    // 成功時は特に何もしない（バルーンメッセージ等は必要に応じて追加可能）
+  }
+
+  function handleConfirmDraftReplace() {
+    const pendingContent = pendingDraftContentStore.value;
+    if (pendingContent) {
+      saveDraftWithReplaceOldest(pendingContent);
+    }
+    pendingDraftContentStore.set(null);
+    showDraftLimitConfirmStore.set(false);
+  }
+
+  function handleCancelDraftReplace() {
+    pendingDraftContentStore.set(null);
+    showDraftLimitConfirmStore.set(false);
+  }
+
+  function handleShowDraftList() {
+    showDraftListDialogStore.set(true);
+  }
+
+  function handleApplyDraft(content: string) {
+    postComponentRef?.loadDraftContent(content);
+  }
+
   // バルーンメッセージマネージャー
   let balloonManager: BalloonMessageManager | null = null;
 
@@ -550,6 +592,8 @@
       <div class="main-content">
         <HeaderComponent
           onResetPostContent={handleResetPostContent}
+          onSaveDraft={handleSaveDraft}
+          onShowDraftList={handleShowDraftList}
           balloonMessage={showHeaderBalloon && headerBalloonMessage
             ? headerBalloonMessage
             : null}
@@ -600,6 +644,39 @@
           onClose={() => showWelcomeDialogStore.set(false)}
         />
       {/if}
+      {#if showDraftListDialogStore.value}
+        <DraftListDialog
+          show={showDraftListDialogStore.value}
+          onClose={() => showDraftListDialogStore.set(false)}
+          onApplyDraft={handleApplyDraft}
+        />
+      {/if}
+      {#if showDraftLimitConfirmStore.value}
+        <div class="draft-limit-overlay">
+          <div class="draft-limit-dialog">
+            <p>
+              {$_("draft.limit_reached") ||
+                "下書きが上限（10件）に達しています。最も古い下書きを削除して保存しますか？"}
+            </p>
+            <div class="draft-limit-buttons">
+              <button
+                type="button"
+                class="cancel-btn"
+                onclick={handleCancelDraftReplace}
+              >
+                {$_("common.cancel") || "キャンセル"}
+              </button>
+              <button
+                type="button"
+                class="confirm-btn"
+                onclick={handleConfirmDraftReplace}
+              >
+                {$_("common.ok") || "OK"}
+              </button>
+            </div>
+          </div>
+        </div>
+      {/if}
       <SettingsDialog
         show={showSettingsDialogStore.value}
         onClose={closeSettingsDialog}
@@ -631,5 +708,62 @@
     width: 100%;
     height: calc(100% - 128px);
     overflow: hidden;
+  }
+
+  /* 下書き上限確認ダイアログ */
+  .draft-limit-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--dialog-overlay);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 200;
+  }
+
+  .draft-limit-dialog {
+    background: var(--dialog);
+    color: var(--text);
+    padding: 24px;
+    border-radius: 8px;
+    max-width: 400px;
+    width: 90%;
+    text-align: center;
+  }
+
+  .draft-limit-dialog p {
+    margin: 0 0 20px;
+    line-height: 1.5;
+  }
+
+  .draft-limit-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+  }
+
+  .draft-limit-buttons button {
+    padding: 10px 24px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+  }
+
+  .draft-limit-buttons .cancel-btn {
+    background: var(--bg-hover);
+    color: var(--text);
+  }
+
+  .draft-limit-buttons .confirm-btn {
+    background: var(--theme);
+    color: white;
+  }
+
+  .draft-limit-buttons button:hover {
+    opacity: 0.9;
   }
 </style>

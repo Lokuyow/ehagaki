@@ -15,6 +15,10 @@
     "shared_image_failed": "Failed to get shared image",
     "upload_destination_settings": "Upload Destination Settings"
   },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel"
+  },
   "welcomeDialog": {
     "title": "Welcome to eHagaki",
     "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
@@ -138,6 +142,18 @@
   },
   "loadingPlaceholder": {
     "loading": "Loading..."
+  },
+  "draft": {
+    "title": "Draft",
+    "list_title": "Drafts",
+    "list_description": "Select a saved draft to restore",
+    "no_drafts": "No drafts",
+    "delete": "Delete",
+    "save": "Save draft",
+    "limit_reached": "You have reached the draft limit (20). Delete the oldest draft and save?",
+    "time": {
+      "now": "Now"
+    }
   },
   "balloonMessage": {
     "success": {

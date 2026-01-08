@@ -626,6 +626,14 @@ export interface CleanupEditorParams {
     editorContainerEl: HTMLElement | null;
 }
 
+// --- Draft types ---
+export interface Draft {
+    id: string;
+    content: string;
+    preview: string;
+    timestamp: number;
+}
+
 // --- Image Context Menu Store 型定義 ---
 export interface ImageContextMenuStore {
     update: (updater: (state: ImageContextMenuState) => ImageContextMenuState) => void;

@@ -11,10 +11,17 @@
 
     interface Props {
         onResetPostContent: () => void;
+        onSaveDraft: () => void;
+        onShowDraftList: () => void;
         balloonMessage?: BalloonMessageType | null;
     }
 
-    let { onResetPostContent, balloonMessage = null }: Props = $props();
+    let {
+        onResetPostContent,
+        onSaveDraft,
+        onShowDraftList,
+        balloonMessage = null,
+    }: Props = $props();
 
     // バルーンメッセージマネージャー
     let balloonManager: BalloonMessageManager | null = null;
@@ -241,6 +248,25 @@
             >
                 <div class="trash-icon svg-icon"></div>
             </Button>
+            <Button
+                variant="header"
+                shape="square"
+                className="draft-list-button"
+                onClick={onShowDraftList}
+                ariaLabel={$_("draft.list") || "下書き一覧"}
+            >
+                <div class="list-icon svg-icon"></div>
+            </Button>
+            <Button
+                variant="header"
+                shape="square"
+                className="draft-save-button"
+                disabled={!canPost || postStatus.sending || isUploading}
+                onClick={onSaveDraft}
+                ariaLabel={$_("draft.save") || "下書き保存"}
+            >
+                <div class="floppy-disk-icon svg-icon"></div>
+            </Button>
         </div>
     </div>
 </div>
@@ -306,12 +332,26 @@
         height: 100%;
     }
 
-    :global(.header.clear-button) {
+    :global(.header.clear-button),
+    :global(.header.draft-save-button),
+    :global(.header.draft-list-button) {
         width: 58px;
     }
 
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
+        width: 30px;
+        height: 30px;
+    }
+
+    .list-icon {
+        mask-image: url("/icons/list-solid-full.svg");
+        width: 30px;
+        height: 30px;
+    }
+
+    .floppy-disk-icon {
+        mask-image: url("/icons/floppy-disk-solid-full.svg");
         width: 30px;
         height: 30px;
     }

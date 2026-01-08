@@ -262,6 +262,26 @@ export const showWelcomeDialogStore = {
     set: (value: boolean) => { showWelcome = value; }
 };
 
+// --- 下書きダイアログ状態管理 ---
+let showDraftList = $state(false);
+let showDraftLimitConfirm = $state(false);
+let pendingDraftContent = $state<string | null>(null);
+
+export const showDraftListDialogStore = {
+    get value() { return showDraftList; },
+    set: (value: boolean) => { showDraftList = value; }
+};
+
+export const showDraftLimitConfirmStore = {
+    get value() { return showDraftLimitConfirm; },
+    set: (value: boolean) => { showDraftLimitConfirm = value; }
+};
+
+export const pendingDraftContentStore = {
+    get value() { return pendingDraftContent; },
+    set: (value: string | null) => { pendingDraftContent = value; }
+};
+
 // --- Service Worker管理 ---
 // テスト環境やService Worker未対応環境での安全な処理
 const swRegister = (() => {
@@ -508,7 +528,7 @@ export function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig)
     try {
         localStorage.setItem(relayKey, JSON.stringify(config));
         relayConfigStore.set(config);
-        
+
         // writeRelaysを抽出して更新
         const writeRelaysList = RelayConfigUtils.extractWriteRelays(config);
         writeRelaysStore.set(writeRelaysList);

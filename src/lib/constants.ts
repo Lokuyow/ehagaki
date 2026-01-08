@@ -105,7 +105,12 @@ export const STORAGE_KEYS = {
     IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
     VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     NOSTR_RELAYS: "nostr-relays-",
+    DRAFTS: "nostr-drafts",
 } as const;
+
+// --- 下書き機能用定数 ---
+export const MAX_DRAFTS = 20; // 下書きの最大保存数
+export const DRAFT_PREVIEW_LENGTH = 50; // 下書きプレビューの最大文字数
 
 export const SW_UPDATE_TIMEOUT = 1000;
 export const RELAY_LIST_REFRESH_DELAY = 0;

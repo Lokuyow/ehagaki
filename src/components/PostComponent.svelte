@@ -202,6 +202,21 @@
     editor.commands.focus("end");
   }
 
+  export function loadDraftContent(htmlContent: string): void {
+    if (!currentEditor || !htmlContent) return;
+
+    // HTMLコンテンツをそのまま設定（下書き保存時のHTML構造を復元）
+    currentEditor.commands.setContent(htmlContent);
+
+    // カーソルを末尾に移動
+    currentEditor.commands.focus("end");
+  }
+
+  export function getEditorHtml(): string {
+    if (!currentEditor) return "";
+    return currentEditor.getHTML();
+  }
+
   export async function submitPost() {
     if (!postManager || !currentEditor) return;
     const postContent = postManager.preparePostContent(currentEditor);
