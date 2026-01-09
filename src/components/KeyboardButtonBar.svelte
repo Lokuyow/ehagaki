@@ -118,7 +118,7 @@
                 {#snippet child({ props })}
                     {@const { onclick: tooltipOnclick, ...restProps } = props}
                     <Button
-                        variant="footer"
+                        variant="primary"
                         shape="square"
                         className="post-button {isShowingLoader
                             ? 'loading'
@@ -210,22 +210,28 @@
             height: 36px;
         }
 
-        .plane-icon {
-            mask-image: url("/icons/paper-plane-solid-full.svg");
-            width: 32px;
-            height: 32px;
+        :global(.post-button:disabled) {
+            background-color: transparent;
         }
 
-        :global(.post-button:not(:disabled) .plane-icon) {
-            --svg: var(--theme);
+        :global(.post-button) {
+            width: 71px;
+            height: 50px;
+            padding: 0;
+
+            .plane-icon {
+                mask-image: url("/icons/paper-plane-solid-full.svg");
+                width: 34px;
+                height: 34px;
+            }
         }
 
         :global(.post-button-loading) {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            background-color: var(--theme);
+
+            :global(.square) {
+                background-color: var(--svg);
+            }
         }
 
         .content-warning-icon {
