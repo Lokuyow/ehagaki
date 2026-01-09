@@ -66,19 +66,18 @@
 >
     <div class="dialog-heading-container">
         <h3 class="dialog-heading">{$_("draft.title") || "下書き"}</h3>
-        <div class="delete-all-section">
-            <button
-                type="button"
-                class="delete-all-button"
-                onclick={handleDeleteAllDrafts}
-                aria-label={$_("draft.delete_all") || "全て削除"}
+        <Button
+            className="delete-all-button"
+            variant="default"
+            shape="rounded"
+            ariaLabel={$_("draft.delete_all") || "全て削除"}
+            onClick={handleDeleteAllDrafts}
+        >
+            <div class="trash-icon svg-icon"></div>
+            <span class="delete-all-label"
+                >{$_("draft.delete_all") || "全て削除"}</span
             >
-                <span class="delete-all-label"
-                    >{$_("draft.delete_all") || "全て削除"}</span
-                >
-                <div class="trash-icon svg-icon"></div>
-            </button>
-        </div>
+        </Button>
     </div>
 
     <div class="draft-list-container">
@@ -100,14 +99,15 @@
                                 >{formatDraftTimestamp(draft.timestamp)}</span
                             >
                         </button>
-                        <button
-                            type="button"
-                            class="delete-button"
-                            onclick={() => handleDeleteDraft(draft.id)}
-                            aria-label={$_("draft.delete") || "削除"}
+                        <Button
+                            className="delete-button"
+                            variant="default"
+                            shape="square"
+                            ariaLabel={$_("draft.delete") || "削除"}
+                            onClick={() => handleDeleteDraft(draft.id)}
                         >
                             <div class="trash-icon svg-icon"></div>
-                        </button>
+                        </Button>
                     </li>
                 {/each}
             </ul>
@@ -156,31 +156,6 @@
         margin: 0;
     }
 
-    .delete-all-label {
-        font-size: 0.875rem;
-        font-weight: 400;
-        color: var(--text-muted);
-    }
-
-    .delete-all-button {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--text-muted);
-        padding: 8px 12px;
-
-        &:hover {
-            background-color: var(--bg-hover);
-        }
-
-        &:active {
-            background-color: var(--bg-active);
-        }
-    }
-
     .draft-list-container {
         width: 100%;
         min-height: 100px;
@@ -213,6 +188,17 @@
         &:last-child {
             border-bottom: none;
         }
+
+        :global(.delete-button) {
+            width: 50px;
+            height: 50px;
+            background-color: transparent;
+
+            .trash-icon {
+                width: 24px;
+                height: 24px;
+            }
+        }
     }
 
     .draft-content {
@@ -228,14 +214,6 @@
         color: var(--text);
         font-size: 1.125rem;
         min-width: 0;
-
-        &:hover {
-            background-color: var(--bg-hover);
-        }
-
-        &:active {
-            background-color: var(--bg-active);
-        }
     }
 
     .draft-preview {
@@ -253,30 +231,8 @@
         color: var(--text-muted);
     }
 
-    .delete-button {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        width: 50px;
-        height: 50px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        color: var(--text-muted);
-
-        &:hover {
-            background-color: var(--bg-hover);
-        }
-
-        &:active {
-            background-color: var(--bg-active);
-        }
-    }
-
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
-        width: 24px;
-        height: 24px;
     }
 
     .xmark-icon {

@@ -71,7 +71,7 @@
 
         @media (prefers-color-scheme: light) {
             --text: hsl(0, 0%, 24%);
-            --svg: hsl(0, 0%, 20%);
+            --svg: hsl(0, 0%, 30%);
         }
 
         @media (prefers-color-scheme: dark) {
