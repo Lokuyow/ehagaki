@@ -4,6 +4,7 @@
     import type { Draft } from "../lib/types";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import {
         loadDrafts,
@@ -65,7 +66,17 @@
     footerVariant="close-button"
 >
     <div class="dialog-heading-container">
-        <h3 class="dialog-heading">{$_("draft.title") || "下書き"}</h3>
+        <div class="dialog-heading-wrapper">
+            <h3 class="dialog-heading">{$_("draft.title") || "下書き"}</h3>
+            <InfoPopoverButton
+                side="bottom"
+                sideOffset={8}
+                ariaLabel={$_("draft.info") || "下書き情報"}
+            >
+                {$_("draft.info") ||
+                    "下書きはブラウザに保存されます。ブラウザのデータを削除したり、ログアウトすると下書きは削除されます。"}
+            </InfoPopoverButton>
+        </div>
         <Button
             className="delete-all-button"
             variant="default"
@@ -150,6 +161,11 @@
         color: var(--text);
         width: 100%;
         border-bottom: 1px solid var(--border-hr);
+    }
+
+    .dialog-heading-wrapper {
+        display: flex;
+        align-items: center;
     }
 
     .dialog-heading {
