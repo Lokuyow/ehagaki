@@ -439,18 +439,19 @@
   }
 
   // --- 下書き機能ハンドラ ---
-  function handleSaveDraft() {
-    if (!postComponentRef?.getEditorHtml) return;
+  function handleSaveDraft(): boolean {
+    if (!postComponentRef?.getEditorHtml) return false;
     const htmlContent = postComponentRef.getEditorHtml();
-    if (!htmlContent || htmlContent === "<p></p>") return;
+    if (!htmlContent || htmlContent === "<p></p>") return false;
 
     const result = saveDraft(htmlContent);
     if (result.needsConfirmation) {
       // 上限に達している場合は確認ダイアログを表示
       pendingDraftContentStore.set(htmlContent);
       showDraftLimitConfirmStore.set(true);
+      return false;
     }
-    // 成功時は特に何もしない（バルーンメッセージ等は必要に応じて追加可能）
+    return result.success;
   }
 
   function handleConfirmDraftReplace() {

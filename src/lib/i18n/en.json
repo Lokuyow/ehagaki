@@ -151,6 +151,7 @@
     "delete": "Delete",
     "delete_all": "Delete All",
     "save": "Save draft",
+    "saved": "Draft saved",
     "limit_reached": "You have reached the draft limit (20). Delete the oldest draft and save?",
     "info": "Drafts are stored in your browser. They will be deleted if you clear browser data or logout.",
     "time": {

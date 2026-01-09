@@ -7,12 +7,13 @@
     } from "../stores/editorStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte";
+    import PopupModal from "./PopupModal.svelte";
     import { BalloonMessageManager } from "../lib/balloonMessageManager";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
 
     interface Props {
         onResetPostContent: () => void;
-        onSaveDraft: () => void;
+        onSaveDraft: () => boolean;
         onShowDraftList: () => void;
         balloonMessage?: BalloonMessageType | null;
     }
@@ -23,6 +24,28 @@
         onShowDraftList,
         balloonMessage = null,
     }: Props = $props();
+
+    // 下書き保存ポップアップの状態
+    let showDraftSavedPopup = $state(false);
+    let draftPopupX = $state(0);
+    let draftPopupY = $state(0);
+
+    function handleSaveDraft(e: MouseEvent) {
+        const success = onSaveDraft();
+        if (success) {
+            // ボタンの位置を基準にポップアップを表示
+            const target = e.currentTarget as HTMLElement;
+            const rect = target.getBoundingClientRect();
+            draftPopupX = rect.left + rect.width / 2;
+            draftPopupY = rect.bottom + 8;
+            showDraftSavedPopup = true;
+
+            // 2秒後に自動で閉じる
+            setTimeout(() => {
+                showDraftSavedPopup = false;
+            }, 2000);
+        }
+    }
 
     // バルーンメッセージマネージャー
     let balloonManager: BalloonMessageManager | null = null;
@@ -311,7 +334,7 @@
                                 postStatus.sending ||
                                 isUploading}
                             onClick={(e) => {
-                                onSaveDraft();
+                                handleSaveDraft(e);
                                 if (typeof tooltipOnclick === "function") {
                                     tooltipOnclick(e);
                                 }
@@ -339,6 +362,16 @@
 <label id="vibrateSwitch" style="display: none;" aria-hidden="true">
     <input type="checkbox" checked bind:this={vibrateSwitchInput} />
 </label>
+
+<!-- 下書き保存成功ポップアップ -->
+<PopupModal
+    show={showDraftSavedPopup}
+    x={draftPopupX}
+    y={draftPopupY}
+    onClose={() => (showDraftSavedPopup = false)}
+>
+    <div class="copy-success-message">{$_("draft.saved")}</div>
+</PopupModal>
 
 <style>
     .header-container {
