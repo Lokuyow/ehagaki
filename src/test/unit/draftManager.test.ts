@@ -17,6 +17,9 @@ import { MockStorage } from '../helpers';
 const mockLocale = vi.hoisted(() => ({ subscribe: vi.fn(), set: vi.fn() }));
 const mockT = vi.hoisted(() => vi.fn((key: string) => {
     if (key === 'draft.time.now') return '今';
+    if (key === 'draft.media.image') return '[画像]';
+    if (key === 'draft.media.video') return '[動画]';
+    if (key === 'draft.no_content') return '(内容なし)';
     return key;
 }));
 
@@ -104,6 +107,34 @@ describe('draftManager', () => {
         it('内容が空の場合は(内容なし)を返す', () => {
             const result = generatePreview('<p></p>');
             expect(result).toBe('(内容なし)');
+        });
+
+        it('画像のみの場合は[画像]を返す', () => {
+            const result = generatePreview('<img src="test.jpg">');
+            expect(result).toBe('[画像]');
+        });
+
+        it('動画のみの場合は[動画]を返す', () => {
+            const result = generatePreview('<video src="test.mp4"></video>');
+            expect(result).toBe('[動画]');
+        });
+
+        it('画像と動画がある場合は[画像][動画]を返す', () => {
+            const result = generatePreview('<img src="test.jpg"><video src="test.mp4"></video>');
+            expect(result).toBe('[画像][動画]');
+        });
+
+        it('テキストと画像がある場合はテキスト [画像]を返す', () => {
+            const result = generatePreview('<p>テストテキスト</p><img src="test.jpg">');
+            expect(result).toBe('テストテキスト [画像]');
+        });
+
+        it('長いテキストと画像がある場合はテキストを切り詰める', () => {
+            const longText = 'a'.repeat(100);
+            const result = generatePreview(`<p>${longText}</p><img src="test.jpg">`);
+            // テキスト部分を切り詰めて[画像]を追加（合計50文字以内）
+            const expectedText = 'a'.repeat(50 - '[画像]'.length - 2); // スペースと省略記号分
+            expect(result).toBe(expectedText + '… [画像]');
         });
     });
 

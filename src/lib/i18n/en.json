@@ -156,6 +156,10 @@
     "info": "Drafts are stored in your browser. They will be deleted if you clear browser data or logout.",
     "time": {
       "now": "Now"
+    },
+    "media": {
+      "image": "[Image]",
+      "video": "[Video]"
     }
   },
   "balloonMessage": {

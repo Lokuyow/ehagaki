@@ -28,23 +28,78 @@ function saveDraftsToStorage(drafts: Draft[]): void {
 
 /**
  * HTMLコンテンツからプレビューテキストを生成
- * 最初の行のテキストを抽出し、指定文字数で切り詰める
+ * テキスト、画像、動画の有無を検出し、適切なプレビュー文字列を生成
  */
 export function generatePreview(htmlContent: string): string {
     // HTMLタグを除去してテキストのみを抽出
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlContent;
 
+    // 画像と動画の有無をチェック
+    const hasImage = tempDiv.querySelector('img') !== null;
+    const hasVideo = tempDiv.querySelector('video') !== null;
+
     // テキストコンテンツを取得し、改行で分割して最初の非空行を取得
     const text = tempDiv.textContent || tempDiv.innerText || '';
     const lines = text.split('\n').filter(line => line.trim());
     const firstLine = lines[0] || '';
 
-    // 指定文字数で切り詰め
-    if (firstLine.length > DRAFT_PREVIEW_LENGTH) {
-        return firstLine.substring(0, DRAFT_PREVIEW_LENGTH) + '…';
+    // ロケールと翻訳関数を取得
+    const loc = (getStore(locale) as string) || 'en';
+    const t = getStore(_) as (id: string | { id: string }, values?: Record<string, any>) => string;
+
+    // メディアラベルを取得
+    let imageLabel = '[画像]';
+    let videoLabel = '[動画]';
+    try {
+        imageLabel = t('draft.media.image') || (loc.startsWith('ja') ? '[画像]' : '[Image]');
+        videoLabel = t('draft.media.video') || (loc.startsWith('ja') ? '[動画]' : '[Video]');
+    } catch {
+        // 翻訳が取得できない場合はデフォルト値を使用
+        imageLabel = loc.startsWith('ja') ? '[画像]' : '[Image]';
+        videoLabel = loc.startsWith('ja') ? '[動画]' : '[Video]';
     }
-    return firstLine || '(内容なし)';
+
+    // メディアラベルを構築
+    const mediaLabels: string[] = [];
+    if (hasImage) mediaLabels.push(imageLabel);
+    if (hasVideo) mediaLabels.push(videoLabel);
+    const mediaText = mediaLabels.join('');
+
+    // テキストがある場合
+    if (firstLine) {
+        // テキスト + メディアラベルの組み合わせ
+        if (mediaText) {
+            const combined = `${firstLine} ${mediaText}`;
+            if (combined.length > DRAFT_PREVIEW_LENGTH) {
+                // テキストを切り詰めてメディアラベルを追加
+                const maxTextLength = DRAFT_PREVIEW_LENGTH - mediaText.length - 2; // スペースと省略記号分
+                if (maxTextLength > 0) {
+                    return `${firstLine.substring(0, maxTextLength)}… ${mediaText}`;
+                }
+                // メディアラベルのみ表示
+                return mediaText;
+            }
+            return combined;
+        }
+        // テキストのみの場合
+        if (firstLine.length > DRAFT_PREVIEW_LENGTH) {
+            return firstLine.substring(0, DRAFT_PREVIEW_LENGTH) + '…';
+        }
+        return firstLine;
+    }
+
+    // テキストがない場合はメディアラベルのみ
+    if (mediaText) {
+        return mediaText;
+    }
+
+    // テキストもメディアもない場合
+    try {
+        return t('draft.no_content') || (loc.startsWith('ja') ? '(内容なし)' : '(No content)');
+    } catch {
+        return loc.startsWith('ja') ? '(内容なし)' : '(No content)';
+    }
 }
 
 /**
