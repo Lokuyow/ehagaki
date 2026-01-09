@@ -37,12 +37,20 @@
             onOpenChange?.(false);
         }
     }
+
+    // ダイアログを閉じる際のフォーカス復元を防ぐ
+    function handleCloseAutoFocus(e: Event) {
+        e.preventDefault();
+    }
 </script>
 
 <Dialog.Root bind:open onOpenChange={handleOpenChange}>
     <Dialog.Portal>
         <Dialog.Overlay class="dialog-overlay" />
-        <Dialog.Content class="dialog {contentClass}">
+        <Dialog.Content
+            class="dialog {contentClass}"
+            onCloseAutoFocus={handleCloseAutoFocus}
+        >
             <!-- スクリーンリーダー用タイトル -->
             <Dialog.Title class="visually-hidden">
                 {title}
