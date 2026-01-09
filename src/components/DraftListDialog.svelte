@@ -193,7 +193,7 @@
         align-items: center;
         height: 100px;
         color: var(--text-muted);
-        font-size: 0.9rem;
+        font-size: 1rem;
     }
 
     .draft-list {
