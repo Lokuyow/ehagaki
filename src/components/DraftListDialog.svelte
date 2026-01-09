@@ -8,6 +8,7 @@
     import {
         loadDrafts,
         deleteDraft,
+        deleteAllDrafts,
         formatDraftTimestamp,
     } from "../lib/draftManager";
 
@@ -48,6 +49,11 @@
     function handleDeleteDraft(id: string) {
         drafts = deleteDraft(id);
     }
+
+    // 全ての下書きを削除
+    function handleDeleteAllDrafts() {
+        drafts = deleteAllDrafts();
+    }
 </script>
 
 <DialogWrapper
@@ -58,7 +64,22 @@
     contentClass="draft-list-dialog"
     footerVariant="close-button"
 >
-    <h3 class="dialog-heading">{$_("draft.title") || "下書き"}</h3>
+    <div class="dialog-heading-container">
+        <h3 class="dialog-heading">{$_("draft.title") || "下書き"}</h3>
+        <div class="delete-all-section">
+            <button
+                type="button"
+                class="delete-all-button"
+                onclick={handleDeleteAllDrafts}
+                aria-label={$_("draft.delete_all") || "全て削除"}
+            >
+                <span class="delete-all-label"
+                    >{$_("draft.delete_all") || "全て削除"}</span
+                >
+                <div class="trash-icon svg-icon"></div>
+            </button>
+        </div>
+    </div>
 
     <div class="draft-list-container">
         {#if drafts.length === 0}
@@ -118,15 +139,46 @@
         padding: 0;
     }
 
-    .dialog-heading {
+    .dialog-heading-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         margin: 0;
         padding: 18px 16px;
         font-size: 1.25rem;
         font-weight: 700;
         color: var(--text);
         width: 100%;
-        text-align: left;
         border-bottom: 1px solid var(--border-hr);
+    }
+
+    .dialog-heading {
+        margin: 0;
+    }
+
+    .delete-all-label {
+        font-size: 0.875rem;
+        font-weight: 400;
+        color: var(--text-muted);
+    }
+
+    .delete-all-button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: var(--text-muted);
+        padding: 8px 12px;
+
+        &:hover {
+            background-color: var(--bg-hover);
+        }
+
+        &:active {
+            background-color: var(--bg-active);
+        }
     }
 
     .draft-list-container {

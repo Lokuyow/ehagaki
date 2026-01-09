@@ -149,6 +149,7 @@
     "list_description": "Select a saved draft to restore",
     "no_drafts": "No drafts",
     "delete": "Delete",
+    "delete_all": "Delete All",
     "save": "Save draft",
     "limit_reached": "You have reached the draft limit (20). Delete the oldest draft and save?",
     "time": {

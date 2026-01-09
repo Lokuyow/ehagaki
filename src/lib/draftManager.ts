@@ -112,6 +112,14 @@ export function deleteDraft(id: string): Draft[] {
 }
 
 /**
+ * 全ての下書きを削除する
+ */
+export function deleteAllDrafts(): Draft[] {
+    saveDraftsToStorage([]);
+    return [];
+}
+
+/**
  * 指定IDの下書きを取得する
  */
 export function getDraft(id: string): Draft | undefined {
