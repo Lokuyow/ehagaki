@@ -80,7 +80,7 @@
         }
     }
 
-    .primary {
+    .primary:not(:disabled) {
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;

@@ -212,6 +212,7 @@
 
         :global(.post-button:disabled) {
             background-color: transparent;
+            opacity: 0.3;
         }
 
         :global(.post-button) {
