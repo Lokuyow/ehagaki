@@ -186,6 +186,13 @@
     <h3>{$_("loginDialog.input_secret")}</h3>
     <form onsubmit={handleFormSubmit}>
         <input
+            type="text"
+            name="username"
+            autocomplete="username"
+            style="display: none;"
+            aria-hidden="true"
+        />
+        <input
             type="password"
             bind:value={secretKey}
             placeholder="nsec1…"
