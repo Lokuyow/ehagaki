@@ -64,8 +64,14 @@
         }
     });
 
-    let popupX = $state(x);
-    let popupY = $state(y);
+    let popupX = $state(0);
+    let popupY = $state(0);
+
+    // propsが変更されたら位置を初期化
+    $effect(() => {
+        popupX = x;
+        popupY = y;
+    });
 
     // 画面端の余白
     const SCREEN_PADDING = 10;

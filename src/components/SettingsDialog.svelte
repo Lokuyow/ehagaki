@@ -70,10 +70,18 @@
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(true);
-    let _selectedCompression: string = $state(selectedCompression);
+    let _selectedCompression: string = $state("");
     let _selectedVideoCompression: string = $state("medium");
-    let _selectedEndpoint: string = $state(selectedEndpoint);
+    let _selectedEndpoint: string = $state("");
     let isInitialized = $state(false); // 初期化完了フラグ
+
+    // propsから初期値を同期
+    $effect(() => {
+        if (!isInitialized) {
+            _selectedCompression = selectedCompression;
+            _selectedEndpoint = selectedEndpoint;
+        }
+    });
 
     // Store派生値
     let swVersion = $derived(swVersionStore.value);

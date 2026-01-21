@@ -26,18 +26,22 @@ import { generateSimpleUUID } from "../utils/appUtils";
  *
  * @param getOpen - 現在のダイアログ開閉状態を返すゲッター関数
  * @param onClose - ダイアログを閉じる際に呼び出されるコールバック
- * @param enabled - 履歴統合を有効にするかどうか（デフォルト: true）
+ * @param enabled - 履歴統合を有効にするかどうか（booleanまたはゲッター関数、デフォルト: true）
  */
 export function useDialogHistory(
     getOpen: () => boolean,
     onClose: () => void,
-    enabled: boolean = true,
+    enabled: boolean | (() => boolean) = true,
 ): void {
     // SSR環境では何もしない
     if (typeof window === "undefined") return;
 
-    // 履歴統合が無効の場合は何もしない
-    if (!enabled) return;
+    // enabledを評価するヘルパー関数
+    const isEnabled = () =>
+        typeof enabled === "function" ? enabled() : enabled;
+
+    // 履歴統合が無効の場合は何もしない（初期チェック）
+    if (!isEnabled()) return;
 
     let historyStateId: string | null = null;
     let wasOpen = false;

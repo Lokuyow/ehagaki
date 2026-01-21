@@ -77,7 +77,11 @@
     }
 
     // ブラウザ履歴統合
-    useDialogHistory(() => open, handleClose, addToHistory);
+    useDialogHistory(
+        () => open,
+        handleClose,
+        () => addToHistory,
+    );
 </script>
 
 <DialogWrapper

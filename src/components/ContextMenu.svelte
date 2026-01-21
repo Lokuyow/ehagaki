@@ -16,11 +16,17 @@
 
     let { x, y, items, onClose, onShowPopup }: Props = $props(); // 変更: lastClickPosition を受け取らない
 
-    let targetX = x;
-    let targetY = y;
-    let left: number = $state(x);
-    let top: number = $state(y);
+    let targetX = $derived(x);
+    let targetY = $derived(y);
+    let left: number = $state(0);
+    let top: number = $state(0);
     let menuElement: HTMLDivElement | undefined = $state();
+
+    // propsが変更されたら位置を初期化
+    $effect(() => {
+        left = x;
+        top = y;
+    });
     let justOpened = $state(true); // 追加: メニューが開いた直後かどうか
 
     // タッチ処理用の状態
