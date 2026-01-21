@@ -23,6 +23,7 @@ export default defineConfig({
   },
   assetsInclude: ['**/*.wasm'],
   build: {
+    emptyOutDir: true,
     rollupOptions: {
       external: []
     }
