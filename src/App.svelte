@@ -227,8 +227,6 @@
   async function loginWithNostrLogin() {
     isLoadingNostrLogin = true;
     try {
-      // nostr-loginダイアログを開く前にログインダイアログを閉じる
-      closeLoginDialog();
       await authService.showNostrLoginDialog();
     } catch (error) {
       if (!(error instanceof Error && error.message === "Cancelled")) {
