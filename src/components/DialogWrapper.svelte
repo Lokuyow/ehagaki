@@ -49,6 +49,7 @@
         <Dialog.Overlay class="dialog-overlay" />
         <Dialog.Content
             class="dialog {contentClass}"
+            preventScroll={false}
             onCloseAutoFocus={handleCloseAutoFocus}
         >
             <!-- スクリーンリーダー用タイトル -->
