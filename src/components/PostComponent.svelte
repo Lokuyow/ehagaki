@@ -21,7 +21,7 @@
     fileDropActionWithDragState,
   } from "../lib/editor/editorDomActions.svelte";
   import { containsSecretKey } from "../lib/utils/appUtils";
-  import { domUtils } from "../lib/utils/appDomUtils";
+  import { domUtils, isTouchDevice } from "../lib/utils/appDomUtils";
   import { postComponentUIStore } from "../stores/appStore.svelte";
   import {
     editorState,
@@ -324,9 +324,12 @@
 
   function closeFullscreen() {
     postComponentUIStore.hideImageFullscreen();
-    setTimeout(() => {
-      domUtils.querySelector(".tiptap-editor")?.focus();
-    }, 150);
+    // タッチデバイスではキーボードが立ち上がるのを防ぐためフォーカスしない
+    if (!isTouchDevice()) {
+      setTimeout(() => {
+        domUtils.querySelector(".tiptap-editor")?.focus();
+      }, 150);
+    }
   }
 
   $effect(() => {

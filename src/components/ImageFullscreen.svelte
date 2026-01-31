@@ -489,7 +489,10 @@
             historyPushed = false;
             history.back();
         }
-        focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
+        // タッチデバイスではキーボードが立ち上がるのを防ぐためフォーカスしない
+        if (!isTouchDevice()) {
+            focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
+        }
     }
 
     // --- Effect: show/hide ---
