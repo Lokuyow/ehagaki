@@ -586,7 +586,9 @@
                 ontouchstart={(e) => e.stopPropagation()}
                 ontouchend={(e) => {
                     e.stopPropagation();
-                    close();
+                    e.preventDefault();
+                    // タッチイベントが完全に終了してから閉じる（背後の要素への伝播防止）
+                    setTimeout(() => close(), 50);
                 }}
                 ariaLabel="Close fullscreen image"
             >
