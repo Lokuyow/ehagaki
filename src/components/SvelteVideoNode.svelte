@@ -8,9 +8,11 @@
     import { openContextMenuForVideoNode } from "../lib/utils/videoContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
     import { requestNodeSelection } from "../lib/utils/editorImageUtils";
+    import { copyToClipboard } from "../lib/utils/clipboardUtils";
     import {
         globalContextMenuStore,
         lastClickPositionStore,
+        postComponentUIStore,
     } from "../stores/appStore.svelte";
 
     interface Props {
@@ -337,6 +339,24 @@
         >
             <div class="close-icon svg-icon"></div>
         </Button>
+        <Button
+            variant="copy"
+            shape="circle"
+            className="video-copy-button"
+            ariaLabel={$_("videoContextMenu.copyUrl")}
+            onClick={(event) => {
+                event.stopPropagation();
+                copyToClipboard(node.attrs.src, "video URL");
+                const pos = { x: event.clientX, y: event.clientY };
+                postComponentUIStore.showPopupMessage(
+                    pos.x,
+                    pos.y,
+                    $_("videoContextMenu.copySuccess"),
+                );
+            }}
+        >
+            <div class="copy-icon svg-icon"></div>
+        </Button>
     </div>
 </NodeViewWrapper>
 
@@ -367,6 +387,15 @@
             .close-icon {
                 mask-image: url("/icons/xmark-solid-full.svg");
             }
+        }
+
+        :global(.video-copy-button) {
+            position: absolute;
+            top: 52px;
+            right: 6px;
+            z-index: 10;
+            width: 40px;
+            height: 40px;
         }
     }
 

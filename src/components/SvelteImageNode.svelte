@@ -22,9 +22,11 @@
         handleImageInteraction,
     } from "../lib/utils/editorImageUtils";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
+    import { copyToClipboard } from "../lib/utils/clipboardUtils";
     import {
         globalContextMenuStore,
         lastClickPositionStore,
+        postComponentUIStore,
     } from "../stores/appStore.svelte";
     import {
         imageDragState,
@@ -472,6 +474,25 @@
             {/if}
         </button>
         <Button
+            variant="copy"
+            shape="circle"
+            className="image-copy-button"
+            ariaLabel={$_("imageContextMenu.copyUrl")}
+            onClick={(event) => {
+                event.stopPropagation();
+                copyToClipboard(node.attrs.src, "image URL");
+                // コピー成功時のポップアップ表示
+                const pos = { x: event.clientX, y: event.clientY };
+                postComponentUIStore.showPopupMessage(
+                    pos.x,
+                    pos.y,
+                    $_("imageContextMenu.copySuccess"),
+                );
+            }}
+        >
+            <div class="copy-icon svg-icon"></div>
+        </Button>
+        <Button
             variant="close"
             shape="circle"
             className="image-close-button"
@@ -509,14 +530,27 @@
 
         :global(.image-close-button) {
             position: absolute;
-            top: 4px;
-            right: 4px;
+            top: 6px;
+            right: 6px;
             z-index: 10;
             width: 40px;
             height: 40px;
 
             .close-icon {
                 mask-image: url("/icons/xmark-solid-full.svg");
+            }
+        }
+
+        :global(.image-copy-button) {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            z-index: 10;
+            width: 40px;
+            height: 40px;
+
+            .copy-icon {
+                mask-image: url("/icons/copy-solid-full.svg");
             }
         }
     }

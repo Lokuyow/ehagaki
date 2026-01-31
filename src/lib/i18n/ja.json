@@ -97,14 +97,14 @@
     "delete": "削除",
     "fullscreen": "全画面表示",
     "copyUrl": "URLをコピー",
-    "copySuccess": "コピーしました",
+    "copySuccess": "URLをコピーしました",
     "copyFailed": "コピーに失敗しました"
   },
   "videoContextMenu": {
     "delete": "削除",
     "playPause": "再生/停止",
     "copyUrl": "URLをコピー",
-    "copySuccess": "コピーしました",
+    "copySuccess": "URLをコピーしました",
     "copyFailed": "コピーに失敗しました"
   },
   "imageCompression": {

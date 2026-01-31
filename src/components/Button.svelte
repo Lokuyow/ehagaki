@@ -15,7 +15,8 @@
             | "warning"
             | "header"
             | "footer"
-            | "close";
+            | "close"
+            | "copy";
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void;
@@ -220,6 +221,29 @@
         :global(.svg-icon) {
             width: 32px;
             height: 32px;
+        }
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                --btn-bg: rgba(25, 25, 25, 0.6);
+            }
+        }
+    }
+
+    .copy {
+        --btn-bg: rgba(0, 0, 0, 0.6);
+        --svg: whitesmoke;
+        backdrop-filter: blur(4px);
+        opacity: 0.8;
+        border: none;
+        width: 50px;
+        height: 50px;
+        transition: background 0.2s ease;
+
+        :global(.svg-icon) {
+            width: 26px;
+            height: 26px;
+            mask-image: url("/icons/copy-solid-full.svg");
         }
 
         @media (min-width: 601px) {

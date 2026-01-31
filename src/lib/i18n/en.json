@@ -97,14 +97,14 @@
     "delete": "Delete",
     "fullscreen": "Fullscreen",
     "copyUrl": "Copy URL",
-    "copySuccess": "Copied!",
+    "copySuccess": "URL copied",
     "copyFailed": "Copy failed"
   },
   "videoContextMenu": {
     "delete": "Delete",
     "playPause": "Play/Pause",
     "copyUrl": "Copy URL",
-    "copySuccess": "Copied!",
+    "copySuccess": "URL copied",
     "copyFailed": "Copy failed"
   },
   "imageCompression": {
