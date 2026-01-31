@@ -5,6 +5,7 @@ export { ImageDragDropExtension } from './imageDragDrop';
 export { SmartBackspaceExtension } from './smartBackspace';
 export { Video } from './videoExtension';
 export { ClipboardExtension } from './clipboardExtension';
+export { AndroidCompositionFix } from './androidCompositionFix';
 
 // エディター設定
 export { createEditorStore, updateEditorPlaceholder } from './editorConfig';

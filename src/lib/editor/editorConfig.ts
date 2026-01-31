@@ -10,7 +10,7 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
-import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension } from '.';
+import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix } from '.';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused';
@@ -231,6 +231,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             MediaPasteExtension,
             ImageDragDropExtension,
             SmartBackspaceExtension,
+            AndroidCompositionFix, // ← Android日本語入力の自動確定問題を修正
             // Placeholderエクステンションの設定
             Placeholder.configure({
                 placeholder: placeholderText,
