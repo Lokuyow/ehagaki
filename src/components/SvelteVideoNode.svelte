@@ -4,6 +4,7 @@
     import { onMount } from "svelte";
     import { _ } from "svelte-i18n";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import Button from "./Button.svelte";
     import { openContextMenuForVideoNode } from "../lib/utils/videoContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
     import { requestNodeSelection } from "../lib/utils/editorImageUtils";
@@ -16,9 +17,10 @@
         node: NodeViewProps["node"];
         selected: boolean;
         getPos: NodeViewProps["getPos"];
+        deleteNode: NodeViewProps["deleteNode"];
     }
 
-    let { node, selected, getPos }: Props = $props();
+    let { node, selected, getPos, deleteNode }: Props = $props();
 
     let videoElement: HTMLVideoElement | undefined = $state();
     let isLoaded = $state(false);
@@ -169,6 +171,12 @@
         }
     }
 
+    // 動画ノード削除処理
+    function handleDeleteNode(event: MouseEvent) {
+        event.stopPropagation(); // 親のクリックイベントを阻止
+        deleteNode();
+    }
+
     // タッチイベントハンドラー（Android対応）
     let touchStartTime = 0;
     let touchStartPos = { x: 0, y: 0 };
@@ -279,45 +287,56 @@
 </script>
 
 <NodeViewWrapper>
-    <div
-        class="video-wrapper"
-        data-video-node
-        bind:this={wrapperElement}
-        onclick={handleWrapperClick}
-        onkeydown={handleWrapperKeydown}
-        role="button"
-        tabindex="0"
-    >
-        {#if isPlaceholder}
-            <!-- アップロード中のローディング表示 -->
-            <LoadingPlaceholder
-                text={$_("videoNode.uploading")}
-                showLoader={true}
-            />
-        {:else}
-            <!-- 実際の動画 -->
-            <video
-                bind:this={videoElement}
-                src={node.attrs.src}
-                controls
-                playsinline
-                autoplay
-                muted
-                loop
-                class="editor-video"
-                class:loaded={isLoaded}
-                data-node-id={nodeId}
-                onloadeddata={handleVideoLoad}
-                onerror={handleVideoError}
-                onclick={handleVideoClick}
-                ontouchstart={handleVideoTouchStart}
-                ontouchend={handleVideoTouchEnd}
-                preload="metadata"
-            >
-                <track kind="captions" />
-                {$_("videoNode.not_supported")}
-            </video>
-        {/if}
+    <div class="video-node-container">
+        <div
+            class="video-wrapper"
+            data-video-node
+            bind:this={wrapperElement}
+            onclick={handleWrapperClick}
+            onkeydown={handleWrapperKeydown}
+            role="button"
+            tabindex="0"
+        >
+            {#if isPlaceholder}
+                <!-- アップロード中のローディング表示 -->
+                <LoadingPlaceholder
+                    text={$_("videoNode.uploading")}
+                    showLoader={true}
+                />
+            {:else}
+                <!-- 実際の動画 -->
+                <video
+                    bind:this={videoElement}
+                    src={node.attrs.src}
+                    controls
+                    playsinline
+                    autoplay
+                    muted
+                    loop
+                    class="editor-video"
+                    class:loaded={isLoaded}
+                    data-node-id={nodeId}
+                    onloadeddata={handleVideoLoad}
+                    onerror={handleVideoError}
+                    onclick={handleVideoClick}
+                    ontouchstart={handleVideoTouchStart}
+                    ontouchend={handleVideoTouchEnd}
+                    preload="metadata"
+                >
+                    <track kind="captions" />
+                    {$_("videoNode.not_supported")}
+                </video>
+            {/if}
+        </div>
+        <Button
+            variant="close"
+            shape="circle"
+            className="video-close-button"
+            ariaLabel={$_("videoContextMenu.delete")}
+            onClick={handleDeleteNode}
+        >
+            <div class="close-icon svg-icon"></div>
+        </Button>
     </div>
 </NodeViewWrapper>
 
@@ -328,6 +347,27 @@
     :global([data-node-view-wrapper]) {
         display: block;
         margin: 0;
+    }
+
+    /* 動画ノードコンテナ */
+    .video-node-container {
+        position: relative;
+        display: inline-block;
+        width: 100%;
+        max-width: 100%;
+
+        :global(.video-close-button) {
+            position: absolute;
+            top: 6px;
+            right: 6px;
+            z-index: 10;
+            width: 40px;
+            height: 40px;
+
+            .close-icon {
+                mask-image: url("/icons/xmark-solid-full.svg");
+            }
+        }
     }
 
     .video-wrapper {
@@ -353,9 +393,7 @@
         outline: 2px solid var(--theme);
     }
 
-    :global(
-        .node-video.is-node-focused span.placeholder-text.loading-text
-    ) {
+    :global(.node-video.is-node-focused span.placeholder-text.loading-text) {
         font-size: 1.125rem;
     }
 
