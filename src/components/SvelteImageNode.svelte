@@ -7,6 +7,7 @@
     import { _ } from "svelte-i18n";
     import { openContextMenuForImageNode } from "../lib/utils/imageContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
+    import Button from "./Button.svelte";
     import {
         calculateImageDisplaySize,
         parseDimString,
@@ -35,9 +36,10 @@
         node: NodeViewProps["node"];
         selected: boolean;
         getPos: NodeViewProps["getPos"];
+        deleteNode: NodeViewProps["deleteNode"];
     }
 
-    let { node, selected, getPos }: Props = $props();
+    let { node, selected, getPos, deleteNode }: Props = $props();
 
     let dragState = imageDragState;
     let selectionState = imageSelectionState;
@@ -345,6 +347,12 @@
         event.preventDefault();
     }
 
+    // 画像ノード削除処理
+    function handleDeleteNode(event: MouseEvent) {
+        event.stopPropagation(); // 親のクリックイベントを阻止
+        deleteNode();
+    }
+
     onMount(() => {
         if (node.attrs.blurhash && localCanvasRef) {
             renderBlurhashUtil(
@@ -424,44 +432,55 @@
 </script>
 
 <NodeViewWrapper>
-    <button
-        bind:this={buttonElement}
-        type="button"
-        class="editor-image-button"
-        data-dragging={dragState.isDragging}
-        onclick={handleClick}
-        tabindex="0"
-        aria-label={node?.attrs?.alt || "Image"}
-        draggable={!isTouchCapable}
-        ondragstart={(e) => handleDragRelatedEvent("start", e)}
-        ondragend={() => handleDragRelatedEvent("end")}
-        ondragover={isTouchCapable ? (e) => e.preventDefault() : undefined}
-        ondrop={isTouchCapable ? (e) => e.preventDefault() : undefined}
-    >
-        {#if showBlurhash}
-            <canvas
-                bind:this={localCanvasRef}
-                class="blurhash-canvas"
-                class:is-placeholder={isPlaceholder}
-                class:fade-out={isImageLoaded &&
-                    blurhashFadeOut &&
-                    showActualImage}
-            ></canvas>
-        {/if}
-        {#if showActualImage}
-            <img
-                src={node?.attrs?.src}
-                alt={node?.attrs?.alt || ""}
-                class="editor-image"
-                class:image-loading={!isImageLoaded}
-                draggable="false"
-                onload={handleImageLoad}
-                onerror={handleImageError}
-                oncontextmenu={preventContextMenu}
-                style="z-index:2; position:relative;"
-            />
-        {/if}
-    </button>
+    <div class="image-node-container">
+        <button
+            bind:this={buttonElement}
+            type="button"
+            class="editor-image-button"
+            data-dragging={dragState.isDragging}
+            onclick={handleClick}
+            tabindex="0"
+            aria-label={node?.attrs?.alt || "Image"}
+            draggable={!isTouchCapable}
+            ondragstart={(e) => handleDragRelatedEvent("start", e)}
+            ondragend={() => handleDragRelatedEvent("end")}
+            ondragover={isTouchCapable ? (e) => e.preventDefault() : undefined}
+            ondrop={isTouchCapable ? (e) => e.preventDefault() : undefined}
+        >
+            {#if showBlurhash}
+                <canvas
+                    bind:this={localCanvasRef}
+                    class="blurhash-canvas"
+                    class:is-placeholder={isPlaceholder}
+                    class:fade-out={isImageLoaded &&
+                        blurhashFadeOut &&
+                        showActualImage}
+                ></canvas>
+            {/if}
+            {#if showActualImage}
+                <img
+                    src={node?.attrs?.src}
+                    alt={node?.attrs?.alt || ""}
+                    class="editor-image"
+                    class:image-loading={!isImageLoaded}
+                    draggable="false"
+                    onload={handleImageLoad}
+                    onerror={handleImageError}
+                    oncontextmenu={preventContextMenu}
+                    style="z-index:2; position:relative;"
+                />
+            {/if}
+        </button>
+        <Button
+            variant="close"
+            shape="circle"
+            className="image-close-button"
+            ariaLabel={$_("imageContextMenu.delete")}
+            onClick={handleDeleteNode}
+        >
+            <div class="close-icon svg-icon"></div>
+        </Button>
+    </div>
 </NodeViewWrapper>
 
 <style>
@@ -479,6 +498,27 @@
         display: block;
         margin: 0;
         padding: 0;
+    }
+
+    /* 画像ノードコンテナ */
+    .image-node-container {
+        position: relative;
+        display: inline-block;
+        max-width: 100%;
+        max-height: 240px;
+
+        :global(.image-close-button) {
+            position: absolute;
+            top: 4px;
+            right: 4px;
+            z-index: 10;
+            width: 40px;
+            height: 40px;
+
+            .close-icon {
+                mask-image: url("/icons/xmark-solid-full.svg");
+            }
+        }
     }
 
     /* ボタンを画像サイズに完全に合わせる */
@@ -562,8 +602,8 @@
         display: block;
         max-width: 100%;
         max-height: 240px;
-        min-width: 80px;
-        min-height: 80px;
+        min-width: 100px;
+        min-height: 100px;
         width: auto;
         border: 1px solid var(--border);
         border-radius: 6px;
