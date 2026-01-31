@@ -5,7 +5,8 @@ import {
     PostManager,
     PostValidator,
     PostEventBuilder,
-    PostEventSender
+    PostEventSender,
+    trimTrailingNewlineAfterMedia
 } from '../../lib/postManager';
 import type {
     PostManagerDeps,
@@ -121,6 +122,99 @@ describe('PostValidator', () => {
             const result = PostValidator.validatePost('Valid content', true, false);
             expect(result.valid).toBe(false);
             expect(result.error).toBe('nostr_not_ready');
+        });
+    });
+});
+
+describe('trimTrailingNewlineAfterMedia', () => {
+    describe('画像URL末尾の改行削除', () => {
+        it('画像URL直後の末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/image.jpg\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.jpg');
+        });
+
+        it('.png拡張子の画像URL直後の末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/image.png\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.png');
+        });
+
+        it('.webp拡張子の画像URL直後の末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/image.webp\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.webp');
+        });
+
+        it('.gif拡張子の画像URL直後の末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/image.gif\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.gif');
+        });
+    });
+
+    describe('動画URL末尾の改行削除', () => {
+        it('.mp4動画URL直後の末尾改行を削除する', () => {
+            const content = 'てす\nhttps://share.yabu.me/abc/video.mp4\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('てす\nhttps://share.yabu.me/abc/video.mp4');
+        });
+
+        it('.webm動画URL直後の末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/video.webm\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/video.webm');
+        });
+
+        it('.mov動画URL直後の末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/video.mov\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/video.mov');
+        });
+    });
+
+    describe('改行を削除しないケース', () => {
+        it('末尾が改行でない場合はそのまま返す', () => {
+            const content = 'テスト\nhttps://example.com/image.jpg';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.jpg');
+        });
+
+        it('メディアURLの後に文字がある場合は改行を削除しない', () => {
+            const content = 'テスト\nhttps://example.com/image.jpg\nテキスト\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.jpg\nテキスト\n');
+        });
+
+        it('通常のURLの場合は改行を削除しない', () => {
+            const content = 'テスト\nhttps://example.com/page\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/page\n');
+        });
+
+        it('テキストのみの末尾改行は削除しない', () => {
+            const content = 'テスト\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\n');
+        });
+
+        it('空文字列はそのまま返す', () => {
+            const result = trimTrailingNewlineAfterMedia('');
+            expect(result).toBe('');
+        });
+    });
+
+    describe('大文字小文字の拡張子', () => {
+        it('.JPG（大文字）の画像URLの末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/image.JPG\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/image.JPG');
+        });
+
+        it('.MP4（大文字）の動画URLの末尾改行を削除する', () => {
+            const content = 'テスト\nhttps://example.com/video.MP4\n';
+            const result = trimTrailingNewlineAfterMedia(content);
+            expect(result).toBe('テスト\nhttps://example.com/video.MP4');
         });
     });
 });

@@ -11,8 +11,38 @@ import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTa
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
 import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
+import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants";
 
 // --- 純粋関数（依存性なし） ---
+
+/**
+ * コンテンツ末尾のメディアURL直後の改行を削除する
+ * メディアURLの後に改行のみがある場合に末尾の改行を削除
+ */
+export function trimTrailingNewlineAfterMedia(content: string): string {
+  // 末尾が改行で終わっていない場合はそのまま返す
+  if (!content.endsWith('\n')) return content;
+
+  // メディア拡張子のパターンを作成
+  const mediaExtensions = [...ALLOWED_IMAGE_EXTENSIONS, ...ALLOWED_VIDEO_EXTENSIONS];
+  const escapedExtensions = mediaExtensions.map(ext => ext.replace('.', '\\.'));
+  const extensionPattern = escapedExtensions.join('|');
+
+  // URLの後に改行が続くパターン: URL(メディア拡張子)\n で終わる
+  // URLパターン: https?://で始まり、空白や改行以外の文字が続く
+  const mediaUrlTrailingNewlinePattern = new RegExp(
+    `(https?://[^\\s\\n]+(?:${extensionPattern}))\\n$`,
+    'i'
+  );
+
+  // マッチした場合、末尾の改行を削除
+  if (mediaUrlTrailingNewlinePattern.test(content)) {
+    return content.slice(0, -1);
+  }
+
+  return content;
+}
+
 export class PostValidator {
   static validatePost(content: string, isAuthenticated: boolean, hasRxNostr: boolean): { valid: boolean; error?: string } {
     if (!content.trim()) return { valid: false, error: "empty_content" };
@@ -191,7 +221,10 @@ export class PostManager {
     content: string,
     imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>
   ): Promise<PostResult> {
-    const validation = this.validatePost(content);
+    // 末尾のメディアURL直後の改行を削除
+    const processedContent = trimTrailingNewlineAfterMedia(content);
+
+    const validation = this.validatePost(processedContent);
     if (!validation.valid) {
       // 投稿失敗をiframe親ウィンドウに通知
       this.deps.iframeMessageService?.notifyPostError(validation.error);
@@ -228,7 +261,7 @@ export class PostManager {
           }
 
           const event = await PostEventBuilder.buildEvent(
-            content,
+            processedContent,
             hashtags,
             tags,
             pubkey,
@@ -270,7 +303,7 @@ export class PostManager {
       }
 
       const event = await PostEventBuilder.buildEvent(
-        content,
+        processedContent,
         hashtags,
         tags,
         undefined,
