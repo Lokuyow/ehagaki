@@ -5,15 +5,9 @@
     import { _ } from "svelte-i18n";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import Button from "./Button.svelte";
-    import { openContextMenuForVideoNode } from "../lib/utils/videoContextMenuUtils";
-    import { getEventPosition } from "../lib/utils/appUtils";
     import { requestNodeSelection } from "../lib/utils/editorImageUtils";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import {
-        globalContextMenuStore,
-        lastClickPositionStore,
-        postComponentUIStore,
-    } from "../stores/appStore.svelte";
+    import { postComponentUIStore } from "../stores/appStore.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -36,7 +30,7 @@
             !node.attrs.src,
     );
 
-    // ノード固有のID（id属性を使用、なければ位置）
+    // ノード固有のID（video要素のdata-node-id用）
     let nodeId = $derived(
         node.attrs.id ||
             (typeof getPos === "function"
@@ -67,14 +61,14 @@
         );
     }
 
-    // クリックハンドラー（動画コントロールと干渉しないように）
+    // クリックハンドラー（ノード選択のみ）
     function handleWrapperClick(event: MouseEvent) {
-        // プレースホルダーの場合もコンテキストメニューを表示しない
+        // プレースホルダーの場合は何もしない
         if (isPlaceholder) {
             return;
         }
 
-        // 全画面表示中はコンテキストメニューを無効化（通常の動画コントロールを優先）
+        // 全画面表示中は何もしない
         if (isFullscreen()) {
             return;
         }
@@ -89,18 +83,6 @@
         event.preventDefault();
 
         requestNodeSelection(getPos);
-
-        const pos = getEventPosition(event);
-        lastClickPositionStore.set(pos);
-
-        // コンテキストメニューを開く
-        openContextMenuForVideoNode(
-            globalContextMenuStore,
-            nodeId,
-            pos,
-            node.attrs.src || "",
-            videoElement,
-        );
     }
 
     // 動画要素のクリックハンドラー
@@ -109,13 +91,18 @@
             return;
         }
 
-        // 全画面表示中はコンテキストメニューを無効化（通常の動画コントロールを優先）
+        // 全画面表示中は何もしない
         if (isFullscreen()) {
             return;
         }
 
+        // 右クリックの場合は何もしない（ブラウザのコンテキストメニューを優先）
+        if (event.button === 2) {
+            return;
+        }
+
         // コントロール領域のクリックかどうかを判定
-        // 動画要素の下部（コントロールバー）をクリックした場合はコンテキストメニューを表示しない
+        // 動画要素の下部（コントロールバー）をクリックした場合は何もしない
         if (videoElement) {
             const rect = videoElement.getBoundingClientRect();
             const clickY = event.clientY;
@@ -128,48 +115,18 @@
             }
         }
 
-        // 右クリックの場合は何もしない（ブラウザのコンテキストメニューを優先）
-        if (event.button === 2) {
-            return;
-        }
-
-        // イベントの伝播を停止（重要！）
+        // イベントの伝播を停止（エディタ側への伝播を防ぐ）
         event.stopPropagation();
-        event.preventDefault();
+        // preventDefaultは呼ばない（動画の再生/停止を許可）
 
         requestNodeSelection(getPos);
-
-        const pos = getEventPosition(event);
-        lastClickPositionStore.set(pos);
-
-        // コンテキストメニューを開く
-        openContextMenuForVideoNode(
-            globalContextMenuStore,
-            nodeId,
-            pos,
-            node.attrs.src || "",
-            videoElement,
-        );
     }
 
-    // キーボードイベントハンドラー
+    // キーボードイベントハンドラー（ノード選択のみ）
     function handleWrapperKeydown(event: KeyboardEvent) {
         if (event.key === "Enter" || event.key === " ") {
             event.preventDefault();
             requestNodeSelection(getPos);
-            // クリックイベントと同じ処理を実行
-            const pos = { x: 0, y: 0 }; // キーボード操作の場合は座標が取れないため、デフォルト値
-            lastClickPositionStore.set(pos);
-
-            if (!isPlaceholder) {
-                openContextMenuForVideoNode(
-                    globalContextMenuStore,
-                    nodeId,
-                    pos,
-                    node.attrs.src || "",
-                    videoElement,
-                );
-            }
         }
     }
 
@@ -200,7 +157,7 @@
             return;
         }
 
-        // 全画面表示中はコンテキストメニューを無効化（通常の動画コントロールを優先）
+        // 全画面表示中は何もしない
         if (isFullscreen()) {
             return;
         }
@@ -236,22 +193,11 @@
                     }
                 }
 
-                // イベントの伝播を停止
+                // イベントの伝播を停止（エディタ側への伝播を防ぐ）
                 event.stopPropagation();
-                event.preventDefault();
+                // preventDefaultは呼ばない（動画の再生/停止を許可）
 
                 requestNodeSelection(getPos);
-
-                const pos = { x: touch.clientX, y: touch.clientY };
-                lastClickPositionStore.set(pos);
-
-                // コンテキストメニューを開く
-                openContextMenuForVideoNode(
-                    globalContextMenuStore,
-                    nodeId,
-                    pos,
-                    node.attrs.src || "",
-                );
             }
         }
     }

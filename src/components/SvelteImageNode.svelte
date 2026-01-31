@@ -5,7 +5,6 @@
     import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
     import type { ImageDimensions } from "../lib/types";
     import { _ } from "svelte-i18n";
-    import { openContextMenuForImageNode } from "../lib/utils/imageContextMenuUtils";
     import { getEventPosition } from "../lib/utils/appUtils";
     import Button from "./Button.svelte";
     import {
@@ -23,11 +22,7 @@
     } from "../lib/utils/editorImageUtils";
     import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import {
-        globalContextMenuStore,
-        lastClickPositionStore,
-        postComponentUIStore,
-    } from "../stores/appStore.svelte";
+    import { postComponentUIStore } from "../stores/appStore.svelte";
     import {
         imageDragState,
         imageSelectionState,
@@ -111,48 +106,11 @@
         }
     });
 
-    // コンテキストメニュー関連の状態（表示は削除）
-    let showContextMenu = $state(false); // ローカルで管理せず、ストア経由でグローバルに
-
-    // ストアからクリック位置を取得
-    let lastClickPosition = $derived(lastClickPositionStore.value);
-
-    // ノード固有のID（常に最新のnode.attrs.idを参照）
-    const nodeId = $derived(
-        node.attrs.id ||
-            `fallback-${typeof getPos === "function" ? getPos() : "unknown"}`,
-    );
-
-    // グローバルストア監視
-    $effect(() => {
-        globalContextMenuStore.subscribe((state) => {
-            // 他ノードでメニューが開かれたら自分のメニューを閉じる
-            if (!state.open || state.nodeId !== nodeId) {
-                showContextMenu = false;
-            }
-        });
-    });
-
-    // コンテキストメニューを開く処理（位置設定のみ）
-    function openContextMenuAtPositionHandler() {
-        if (!lastClickPosition) return;
-
-        openContextMenuForImageNode(
-            globalContextMenuStore,
-            nodeId,
-            lastClickPosition,
-            node.attrs.src, // 追加: srcを渡す
-        );
-    }
-
     // 統合されたタップ/クリック処理
     function handleInteraction(
         event: MouseEvent | TouchEvent,
         isTouch = false,
     ) {
-        const pos = getEventPosition(event);
-        lastClickPositionStore.set(pos); // ストアに保存
-
         const handled = handleImageInteraction(
             event,
             isTouch,
@@ -225,8 +183,6 @@
     // イベントハンドラー
     function handleClick(event: MouseEvent) {
         handleInteraction(event, false);
-        // クリック位置でコンテキストメニューを開く
-        openContextMenuAtPositionHandler();
     }
 
     function handleDragRelatedEvent(type: "start" | "end", event?: Event) {
@@ -266,7 +222,6 @@
         blurEditorAndBody();
 
         const pos = getEventPosition(event);
-        lastClickPositionStore.set(pos); // ストアに保存
         startLongPress(event.currentTarget as HTMLElement, pos.x, pos.y);
     }
 
@@ -313,8 +268,6 @@
             if (!dragState.isDragging) {
                 // 通常のタップ処理（キーボードは既にblurEditorAndBodyで隠されている）
                 handleInteraction(event, true);
-                // タップ位置でコンテキストメニューを開く
-                openContextMenuAtPositionHandler();
                 return;
             }
         }
@@ -402,8 +355,6 @@
             clearTimeout(selectionState.justSelectedTimeout);
         }
         removeDragPreview(dragState.preview);
-        // コンテキストメニューを閉じる
-        globalContextMenuStore.set({ open: false, nodeId: undefined });
 
         // タッチイベントリスナーを削除
         if (isTouchCapable && buttonElement) {

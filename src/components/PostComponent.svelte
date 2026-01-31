@@ -11,7 +11,6 @@
   } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
-  import ContextMenu from "./ContextMenu.svelte";
   import PopupModal from "./PopupModal.svelte";
   import SecretKeyWarningDialog from "./SecretKeyWarningDialog.svelte";
   import {
@@ -23,13 +22,7 @@
   } from "../lib/editor/editorDomActions.svelte";
   import { containsSecretKey } from "../lib/utils/appUtils";
   import { domUtils } from "../lib/utils/appDomUtils";
-  import { prepareGlobalContextMenuItems } from "../lib/utils/imageContextMenuUtils";
-  import { prepareGlobalVideoContextMenuItems } from "../lib/utils/videoContextMenuUtils";
-  import {
-    globalContextMenuStore,
-    lastClickPositionStore,
-    postComponentUIStore,
-  } from "../stores/appStore.svelte";
+  import { postComponentUIStore } from "../stores/appStore.svelte";
   import {
     editorState,
     updateEditorContent,
@@ -73,21 +66,6 @@
   let popupX = $derived(postComponentUI.popupX);
   let popupY = $derived(postComponentUI.popupY);
   let popupMessage = $derived(postComponentUI.popupMessage);
-
-  // グローバルコンテキストメニューの状態
-  let globalContextMenuState = $state($globalContextMenuStore);
-  let showGlobalContextMenu = $derived(globalContextMenuState.open);
-  let globalContextMenuX = $state(0);
-  let globalContextMenuY = $state(0);
-  let globalContextMenuItems = $state<MenuItem[]>([]);
-
-  // グローバルコンテキストメニューストアの変更を監視
-  $effect(() => {
-    const unsubscribe = globalContextMenuStore.subscribe((state) => {
-      globalContextMenuState = state;
-    });
-    return unsubscribe;
-  });
 
   // --- PostManager初期化 ---
   $effect(() => {
@@ -155,7 +133,22 @@
       },
     );
 
+    // 画像フルスクリーン表示イベントのリスナー
+    const handleImageFullscreenRequest = (event: Event) => {
+      const customEvent = event as CustomEvent<{ src: string; alt: string }>;
+      const { src, alt } = customEvent.detail;
+      postComponentUIStore.showImageFullscreen(src, alt);
+    };
+    window.addEventListener(
+      "image-fullscreen-request",
+      handleImageFullscreenRequest,
+    );
+
     return () => {
+      window.removeEventListener(
+        "image-fullscreen-request",
+        handleImageFullscreenRequest,
+      );
       if (editorResources) {
         cleanupEditor({
           unsubscribe: editorResources.unsubscribe,
@@ -336,58 +329,6 @@
     }, 150);
   }
 
-  // グローバルコンテキストメニューの位置とアイテムを更新
-  $effect(() => {
-    if (showGlobalContextMenu && globalContextMenuState.nodeId) {
-      // ノードの種類を判定（画像か動画か）
-      const nodeId = globalContextMenuState.nodeId;
-
-      // nodeIdを使ってノードを探す
-      let isVideoNode = false;
-      if (currentEditor?.state?.doc) {
-        interface DescendantNode {
-          type: { name: string };
-          attrs: { id?: string };
-        }
-        (
-          currentEditor.state.doc as {
-            descendants: (
-              callback: (node: DescendantNode, pos: number) => boolean | void,
-            ) => void;
-          }
-        ).descendants((node: DescendantNode) => {
-          if (node.attrs.id === nodeId) {
-            isVideoNode = node.type.name === "video";
-            return false; // 見つかったので走査停止
-          }
-        });
-      }
-
-      let result;
-      if (isVideoNode) {
-        // 動画ノード用のコンテキストメニュー
-        result = prepareGlobalVideoContextMenuItems(
-          globalContextMenuState,
-          currentEditor,
-          lastClickPositionStore.value,
-        );
-      } else {
-        // 画像ノード用のコンテキストメニュー
-        result = prepareGlobalContextMenuItems(
-          globalContextMenuState,
-          currentEditor,
-          lastClickPositionStore.value,
-        );
-      }
-
-      if (result) {
-        globalContextMenuItems = result.items;
-        globalContextMenuX = result.x;
-        globalContextMenuY = result.y;
-      }
-    }
-  });
-
   $effect(() => {
     if (
       currentEditor &&
@@ -451,21 +392,6 @@
   alt={fullscreenImageAlt}
   onClose={closeFullscreen}
 />
-
-{#if showGlobalContextMenu}
-  <ContextMenu
-    x={globalContextMenuX}
-    y={globalContextMenuY}
-    items={globalContextMenuItems}
-    onClose={() =>
-      globalContextMenuStore.set({
-        open: false,
-        nodeId: undefined,
-        src: undefined,
-      })}
-    onShowPopup={postComponentUIStore.showPopupMessage}
-  />
-{/if}
 
 {#if showPopupModal}
   <PopupModal

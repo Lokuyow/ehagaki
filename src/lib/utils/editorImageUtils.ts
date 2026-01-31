@@ -293,6 +293,12 @@ export function requestNodeSelection(getPos: () => number | undefined) {
     document.dispatchEvent(event); // ← 追加: documentにも発火
 }
 
+export function requestImageFullscreen(src: string, alt: string) {
+    const event = new CustomEvent("image-fullscreen-request", { detail: { src, alt } });
+    window.dispatchEvent(event);
+    document.dispatchEvent(event);
+}
+
 export function handleImageInteraction(
     event: MouseEvent | TouchEvent,
     isTouch: boolean,
@@ -309,6 +315,17 @@ export function handleImageInteraction(
         return false;
     }
 
+    // すでに選択済みの画像をクリック/タップした場合はフルスクリーン表示
+    if (selected) {
+        event.preventDefault();
+        if (!isTouch) {
+            event.stopPropagation();
+        }
+        requestImageFullscreen(imageSrc, imageAlt);
+        return true;
+    }
+
+    // 未選択の場合はノード選択
     requestNodeSelection(getPos);
 
     event.preventDefault();

@@ -540,25 +540,6 @@ export function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig)
     }
 }
 
-// --- グローバルなコンテキストメニュー表示状態ストア ---
-export const globalContextMenuStore = writable<{ open: boolean; nodeId?: string; src?: string }>({ open: false, nodeId: undefined, src: undefined });
-
-// --- クリック/タップ位置管理 ---
-let lastClickPosition = $state<{ x: number; y: number } | null>(null);
-
-export const lastClickPositionStore = {
-    get value() { return lastClickPosition; },
-    set: (value: { x: number; y: number } | null) => { lastClickPosition = value; }
-};
-
-export function setLastClickPosition(pos: { x: number; y: number }) {
-    lastClickPositionStore.set(pos);
-}
-
-export function clearLastClickPosition() {
-    lastClickPositionStore.set(null);
-}
-
 // --- PostComponent UI状態管理 ---
 let postComponentUI = $state<{
     showSecretKeyDialog: boolean;
