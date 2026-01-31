@@ -14,7 +14,8 @@
             | "secondary"
             | "warning"
             | "header"
-            | "footer";
+            | "footer"
+            | "close";
         shape?: "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void;
@@ -202,6 +203,28 @@
                     --text: hsl(0, 0%, 92%);
                     --svg: hsl(0, 0%, 99%);
                 }
+            }
+        }
+    }
+
+    .close {
+        --btn-bg: rgba(0, 0, 0, 0.6);
+        --svg: whitesmoke;
+        backdrop-filter: blur(4px);
+        opacity: 0.8;
+        border: none;
+        width: 50px;
+        height: 50px;
+        transition: background 0.2s ease;
+
+        :global(.svg-icon) {
+            width: 32px;
+            height: 32px;
+        }
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                --btn-bg: rgba(25, 25, 25, 0.6);
             }
         }
     }

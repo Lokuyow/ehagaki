@@ -1,6 +1,7 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
+    import Button from "./Button.svelte";
     import type { TransformState } from "../lib/types";
     import {
         setBodyStyle,
@@ -578,19 +579,19 @@
         aria-label="画像全画面表示"
     >
         <div class="close-button-container">
-            <button
-                type="button"
-                class="close-button"
-                onclick={close}
+            <Button
+                variant="close"
+                shape="circle"
+                onClick={close}
                 ontouchstart={(e) => e.stopPropagation()}
                 ontouchend={(e) => {
                     e.stopPropagation();
                     close();
                 }}
-                aria-label="Close fullscreen image"
+                ariaLabel="Close fullscreen image"
             >
                 <span class="svg-icon close-icon"></span>
-            </button>
+            </Button>
         </div>
         <div class="image-container" bind:this={imageContainerElement}>
             <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -640,33 +641,8 @@
         z-index: 10002;
     }
 
-    .close-button {
-        background-color: rgba(0, 0, 0, 0.6);
-        backdrop-filter: blur(4px);
-        opacity: 0.8;
-        border: none;
-        color: white;
-        font-size: 24px;
-        width: 50px;
-        height: 50px;
-        border-radius: 50%;
-        cursor: pointer;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: background 0.2s ease;
-        z-index: 10001;
-    }
-
-    .close-button:hover {
-        background: rgba(25, 25, 25, 0.6);
-    }
-
-    .svg-icon {
+    .close-icon {
         mask-image: url("/icons/xmark-solid-full.svg");
-        background-color: whitesmoke;
-        width: 32px;
-        height: 32px;
     }
 
     .image-container {
