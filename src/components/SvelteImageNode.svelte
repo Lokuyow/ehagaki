@@ -562,6 +562,8 @@
         display: block;
         max-width: 100%;
         max-height: 240px;
+        min-width: 80px;
+        min-height: 80px;
         width: auto;
         border: 1px solid var(--border);
         border-radius: 6px;
