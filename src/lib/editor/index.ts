@@ -6,6 +6,7 @@ export { SmartBackspaceExtension } from './smartBackspace';
 export { Video } from './videoExtension';
 export { ClipboardExtension } from './clipboardExtension';
 export { AndroidCompositionFix } from './androidCompositionFix';
+export { HashtagSuggestion } from './hashtagSuggestion';
 
 // エディター設定
 export { createEditorStore, updateEditorPlaceholder } from './editorConfig';

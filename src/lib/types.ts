@@ -387,6 +387,12 @@ export interface HashtagStore {
     tags: string[][];
 }
 
+// --- Hashtag History types ---
+export interface HashtagHistoryEntry {
+    tag: string;
+    lastUsed: number;
+}
+
 export interface PostManagerDeps {
     authStateStore?: {
         value: AuthState;
@@ -412,6 +418,7 @@ export interface PostManagerDeps {
         notifyPostError: (error?: string) => boolean;
     };
     hashtagPinStore?: { value: boolean };
+    saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
 }
 
 // --- UI and Component types --

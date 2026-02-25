@@ -10,7 +10,7 @@ import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
-import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix } from '.';
+import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion } from '.';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused';
@@ -226,6 +226,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             }),
             GapCursorFocusReset,
             ContentTrackingExtension,
+            HashtagSuggestion,
             Video,
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）
             MediaPasteExtension,

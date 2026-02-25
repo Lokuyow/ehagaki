@@ -12,6 +12,7 @@ import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte"
 import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants";
+import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 
 // --- 純粋関数（依存性なし） ---
 
@@ -201,6 +202,7 @@ export class PostManager {
     this.deps.resetPostStatusFn = deps.resetPostStatusFn || resetPostStatus;
     this.deps.iframeMessageService = deps.iframeMessageService || iframeMessageService;
     this.deps.hashtagPinStore = deps.hashtagPinStore || hashtagPinStore;
+    this.deps.saveHashtagsToHistoryFn = deps.saveHashtagsToHistoryFn || saveHashtagsToHistory;
   }
 
   setRxNostr(rxNostr: RxNostr) {
@@ -280,6 +282,7 @@ export class PostManager {
             const result = await this.eventSender.sendEvent(signedEvent);
             // 投稿結果をiframe親ウィンドウに通知
             if (result.success) {
+              this.deps.saveHashtagsToHistoryFn?.(hashtags);
               this.deps.iframeMessageService?.notifyPostSuccess();
             } else {
               this.deps.iframeMessageService?.notifyPostError(result.error);
@@ -321,6 +324,7 @@ export class PostManager {
       const result = await this.eventSender.sendEvent(event, signer);
       // 投稿結果をiframe親ウィンドウに通知
       if (result.success) {
+        this.deps.saveHashtagsToHistoryFn?.(hashtags);
         this.deps.iframeMessageService?.notifyPostSuccess();
       } else {
         this.deps.iframeMessageService?.notifyPostError(result.error);

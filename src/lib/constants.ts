@@ -106,6 +106,7 @@ export const STORAGE_KEYS = {
     VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     NOSTR_RELAYS: "nostr-relays-",
     DRAFTS: "nostr-drafts",
+    HASHTAG_HISTORY: "hashtagHistory",
 } as const;
 
 // --- 下書き機能用定数 ---
