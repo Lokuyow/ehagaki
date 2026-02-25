@@ -114,7 +114,9 @@
     "content_warning_toggle": "Content Warning切り替え",
     "content_warning_tooltip": "センシティブコンテンツ設定",
     "upload_image_tooltip": "メディアアップロード",
-    "post_tooltip": "投稿"
+    "post_tooltip": "投稿",
+    "hashtag_pin_toggle": "ハッシュタグピン止め切り替え",
+    "hashtag_pin_tooltip": "ハッシュタグを保持"
   },
   "videoNode": {
     "uploading": "動画をアップロード中...",

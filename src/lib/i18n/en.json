@@ -114,7 +114,9 @@
     "content_warning_toggle": "Toggle Content Warning",
     "content_warning_tooltip": "Sensitive content settings",
     "upload_image_tooltip": "Upload media",
-    "post_tooltip": "Post"
+    "post_tooltip": "Post",
+    "hashtag_pin_toggle": "Toggle hashtag pin",
+    "hashtag_pin_tooltip": "Keep hashtags after posting"
   },
   "videoNode": {
     "uploading": "Uploading video...",

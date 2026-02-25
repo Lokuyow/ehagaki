@@ -76,6 +76,16 @@ export const imageSizeMapStore = {
     }
 };
 
+// --- ハッシュタグピン留めストア ---
+let svelteHashtagPinEnabled = $state<boolean>(false);
+
+export const hashtagPinStore = {
+    get value() { return svelteHashtagPinEnabled; },
+    set: (value: boolean) => { svelteHashtagPinEnabled = value; },
+    toggle: () => { svelteHashtagPinEnabled = !svelteHashtagPinEnabled; },
+    reset: () => { svelteHashtagPinEnabled = false; }
+};
+
 // --- Content Warning (NIP-36) ストア ---
 let svelteContentWarningEnabled = $state<boolean>(false);
 let svelteContentWarningReason = $state<string>('');

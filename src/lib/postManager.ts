@@ -3,7 +3,7 @@ import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager";
 import { authState } from "../stores/appStore.svelte";
-import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore } from "../stores/tagsStore.svelte";
+import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
 import { extractContentWithImages } from "../lib/utils/editorUtils";
@@ -200,6 +200,7 @@ export class PostManager {
     this.deps.resetEditorStateFn = deps.resetEditorStateFn || resetEditorState;
     this.deps.resetPostStatusFn = deps.resetPostStatusFn || resetPostStatus;
     this.deps.iframeMessageService = deps.iframeMessageService || iframeMessageService;
+    this.deps.hashtagPinStore = deps.hashtagPinStore || hashtagPinStore;
   }
 
   setRxNostr(rxNostr: RxNostr) {
@@ -425,8 +426,18 @@ export class PostManager {
   }
 
   clearContentAfterSuccess(editor: TipTapEditor): void {
+    // ピン留めON時: エディタクリア前にハッシュタグを保存
+    const pinEnabled = this.deps.hashtagPinStore!.value;
+    const snapshot = pinEnabled ? getHashtagDataSnapshot() : null;
+
     this.applyEmptyStateToEditor(editor);
     contentWarningStore.reset(); // Content Warningもリセット
     contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
+
+    // ピン留めON+ハッシュタグがある場合: エディタにハッシュタグを復元
+    if (pinEnabled && snapshot && snapshot.hashtags.length > 0) {
+      const hashtagText = ' ' + snapshot.hashtags.map(h => '#' + h).join(' ');
+      editor.commands.insertContent(hashtagText);
+    }
   }
 }

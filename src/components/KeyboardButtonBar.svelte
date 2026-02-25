@@ -6,6 +6,7 @@
     import {
         contentWarningStore,
         contentWarningReasonStore,
+        hashtagPinStore,
     } from "../stores/tagsStore.svelte";
     import {
         bottomPositionStore,
@@ -62,6 +63,14 @@
         }
     }
 
+    // ハッシュタグピン留め状態を取得
+    let hashtagPinEnabled = $derived(hashtagPinStore.value);
+
+    // ハッシュタグピン留めトグル
+    function toggleHashtagPin() {
+        hashtagPinStore.toggle();
+    }
+
     // キーボード追従のための位置調整（共有ストアから取得）
     let bottomPosition = $derived(bottomPositionStore.value);
 
@@ -83,108 +92,156 @@
         onmousedown={preventFocusLoss}
         ontouchstart={preventFocusLoss}
     >
-        <Tooltip.Root delayDuration={500}>
-            <Tooltip.Trigger>
-                {#snippet child({ props })}
-                    {@const { onclick: tooltipOnclick, ...restProps } = props}
-                    <Button
-                        variant="footer"
-                        shape="square"
-                        className="image-button"
-                        disabled={!hasStoredKey ||
-                            postStatus.sending ||
-                            isUploading}
-                        onClick={(e) => {
-                            onUploadImage?.();
-                            if (typeof tooltipOnclick === "function") {
-                                tooltipOnclick(e);
-                            }
-                        }}
-                        ariaLabel={$_("postComponent.upload_image")}
-                        {...restProps}
-                    >
-                        <div class="image-icon svg-icon"></div>
-                    </Button>
-                {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-                <Tooltip.Content sideOffset={8} class="tooltip-content">
-                    {$_("keyboardButtonBar.upload_image_tooltip")}
-                </Tooltip.Content>
-            </Tooltip.Portal>
-        </Tooltip.Root>
-        <Tooltip.Root delayDuration={500}>
-            <Tooltip.Trigger>
-                {#snippet child({ props })}
-                    {@const { onclick: tooltipOnclick, ...restProps } = props}
-                    <Button
-                        variant="primary"
-                        shape="square"
-                        className="post-button {isShowingLoader
-                            ? 'loading'
-                            : ''}"
-                        disabled={!canPost ||
-                            postStatus.sending ||
-                            isUploading ||
-                            !hasStoredKey ||
-                            postStatus.completed}
-                        onClick={(e) => {
-                            triggerVibration(30);
-                            submitPost();
-                            if (typeof tooltipOnclick === "function") {
-                                tooltipOnclick(e);
-                            }
-                        }}
-                        ariaLabel={$_("postComponent.post")}
-                        {...restProps}
-                    >
-                        {#if isShowingLoader}
-                            <LoadingPlaceholder
-                                showLoader={true}
-                                text={false}
-                                customClass="post-button-loading"
-                            />
-                        {:else}
-                            <div class="plane-icon svg-icon"></div>
-                        {/if}
-                    </Button>
-                {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-                <Tooltip.Content sideOffset={8} class="tooltip-content">
-                    {$_("keyboardButtonBar.post_tooltip")}
-                </Tooltip.Content>
-            </Tooltip.Portal>
-        </Tooltip.Root>
-        <Tooltip.Root delayDuration={500}>
-            <Tooltip.Trigger>
-                {#snippet child({ props })}
-                    {@const { onclick: tooltipOnclick, ...restProps } = props}
-                    <Button
-                        variant="footer"
-                        shape="square"
-                        selected={contentWarningEnabled}
-                        onClick={(e) => {
-                            toggleContentWarning();
-                            if (typeof tooltipOnclick === "function") {
-                                tooltipOnclick(e);
-                            }
-                        }}
-                        ariaLabel={$_(
-                            "keyboardButtonBar.content_warning_toggle",
-                        )}
-                        {...restProps}
-                    >
-                        <div class="content-warning-icon svg-icon"></div>
-                    </Button>
-                {/snippet}
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-                <Tooltip.Content sideOffset={8} class="tooltip-content">
-                    {$_("keyboardButtonBar.content_warning_tooltip")}
-                </Tooltip.Content>
-            </Tooltip.Portal>
-        </Tooltip.Root>
+        <div class="button-group-left">
+            <Tooltip.Root delayDuration={500}>
+                <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                        {@const { onclick: tooltipOnclick, ...restProps } =
+                            props}
+                        <Button
+                            variant="footer"
+                            shape="square"
+                            className="image-button"
+                            disabled={!hasStoredKey ||
+                                postStatus.sending ||
+                                isUploading}
+                            onClick={(e) => {
+                                onUploadImage?.();
+                                if (typeof tooltipOnclick === "function") {
+                                    tooltipOnclick(e);
+                                }
+                            }}
+                            ariaLabel={$_("postComponent.upload_image")}
+                            {...restProps}
+                        >
+                            <div class="image-icon svg-icon"></div>
+                        </Button>
+                    {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content sideOffset={8} class="tooltip-content">
+                        {$_("keyboardButtonBar.upload_image_tooltip")}
+                    </Tooltip.Content>
+                </Tooltip.Portal>
+            </Tooltip.Root>
+        </div>
+        <div class="button-group-center">
+            <Tooltip.Root delayDuration={500}>
+                <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                        {@const { onclick: tooltipOnclick, ...restProps } =
+                            props}
+                        <Button
+                            variant="primary"
+                            shape="square"
+                            className="post-button {isShowingLoader
+                                ? 'loading'
+                                : ''}"
+                            disabled={!canPost ||
+                                postStatus.sending ||
+                                isUploading ||
+                                !hasStoredKey ||
+                                postStatus.completed}
+                            onClick={(e) => {
+                                triggerVibration(30);
+                                submitPost();
+                                if (typeof tooltipOnclick === "function") {
+                                    tooltipOnclick(e);
+                                }
+                            }}
+                            ariaLabel={$_("postComponent.post")}
+                            {...restProps}
+                        >
+                            {#if isShowingLoader}
+                                <LoadingPlaceholder
+                                    showLoader={true}
+                                    text={false}
+                                    customClass="post-button-loading"
+                                />
+                            {:else}
+                                <div class="plane-icon svg-icon"></div>
+                            {/if}
+                        </Button>
+                    {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content sideOffset={8} class="tooltip-content">
+                        {$_("keyboardButtonBar.post_tooltip")}
+                    </Tooltip.Content>
+                </Tooltip.Portal>
+            </Tooltip.Root>
+        </div>
+        <div class="button-group-right">
+            <Tooltip.Root delayDuration={500}>
+                <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                        {@const { onclick: tooltipOnclick, ...restProps } =
+                            props}
+                        <Button
+                            variant="footer"
+                            shape="square"
+                            selected={contentWarningEnabled}
+                            onClick={(e) => {
+                                toggleContentWarning();
+                                if (typeof tooltipOnclick === "function") {
+                                    tooltipOnclick(e);
+                                }
+                            }}
+                            ariaLabel={$_(
+                                "keyboardButtonBar.content_warning_toggle",
+                            )}
+                            {...restProps}
+                        >
+                            <div class="content-warning-icon svg-icon"></div>
+                        </Button>
+                    {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content sideOffset={8} class="tooltip-content">
+                        {$_("keyboardButtonBar.content_warning_tooltip")}
+                    </Tooltip.Content>
+                </Tooltip.Portal>
+            </Tooltip.Root>
+            <Tooltip.Root delayDuration={500}>
+                <Tooltip.Trigger>
+                    {#snippet child({ props })}
+                        {@const { onclick: tooltipOnclick, ...restProps } =
+                            props}
+                        <Button
+                            variant="footer"
+                            shape="square"
+                            selected={hashtagPinEnabled}
+                            onClick={(e) => {
+                                toggleHashtagPin();
+                                if (typeof tooltipOnclick === "function") {
+                                    tooltipOnclick(e);
+                                }
+                            }}
+                            ariaLabel={$_(
+                                "keyboardButtonBar.hashtag_pin_toggle",
+                            )}
+                            {...restProps}
+                        >
+                            <div class="hashtag-pin-group">
+                                <div class="hashtag-icon svg-icon"></div>
+                                {#if hashtagPinEnabled}
+                                    <div class="thumbtack-icon svg-icon"></div>
+                                {:else}
+                                    <div
+                                        class="thumbtack-slash-icon svg-icon"
+                                    ></div>
+                                {/if}
+                            </div>
+                        </Button>
+                    {/snippet}
+                </Tooltip.Trigger>
+                <Tooltip.Portal>
+                    <Tooltip.Content sideOffset={8} class="tooltip-content">
+                        {$_("keyboardButtonBar.hashtag_pin_tooltip")}
+                    </Tooltip.Content>
+                </Tooltip.Portal>
+            </Tooltip.Root>
+        </div>
     </div>
 </div>
 
@@ -242,14 +299,60 @@
         :global(.selected .content-warning-icon) {
             --svg: var(--danger);
         }
+
+        .hashtag-pin-group {
+            display: flex;
+            align-items: center;
+
+            .hashtag-icon {
+                mask-image: url("/icons/hashtag-solid-full.svg");
+                width: 26px;
+                height: 26px;
+                margin-right: -4px;
+            }
+
+            .thumbtack-icon {
+                mask-image: url("/icons/thumbtack-solid-full.svg");
+                width: 26px;
+                height: 26px;
+            }
+
+            .thumbtack-slash-icon {
+                mask-image: url("/icons/thumbtack-slash-solid-full.svg");
+                width: 26px;
+                height: 26px;
+            }
+        }
+
+        :global(.selected .hashtag-pin-group .hashtag-icon),
+        :global(.selected .hashtag-pin-group .thumbtack-icon) {
+            --svg: var(--theme);
+        }
     }
 
     .button-container {
-        display: flex;
-        justify-content: space-evenly;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        gap: 8px;
         width: 100%;
+    }
+
+    .button-group-left {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .button-group-center {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .button-group-right {
+        display: flex;
+        align-items: center;
+        justify-content: space-evenly;
     }
 
     :global(.footer-button-bar .footer) {

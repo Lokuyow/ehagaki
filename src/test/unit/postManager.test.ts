@@ -83,14 +83,17 @@ function createMockEditor(options?: { paragraphCount?: number; placeholder?: str
     const run = vi.fn();
     const clearContent = vi.fn().mockReturnValue({ run });
     const chain = vi.fn().mockReturnValue({ clearContent });
+    const insertContent = vi.fn();
+    const commands = { insertContent };
     const editor = {
         chain,
+        commands,
         view: {
             dom,
         },
     } as any;
 
-    return { editor, dom, run, clearContent, chain };
+    return { editor, dom, run, clearContent, chain, insertContent };
 }
 
 describe('PostValidator', () => {
@@ -287,12 +290,39 @@ describe('PostManager editor state helpers', () => {
     });
 
     describe('clearContentAfterSuccess', () => {
-        it('投稿成功後にエディタのコンテンツをクリアする', () => {
+        it('投稿成功後にエディタのコンテンツをクリアする（ピン留めOFF）', () => {
             const mockEditor = createMockEditor();
 
             manager.clearContentAfterSuccess(mockEditor.editor);
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
+            expect(mockEditor.insertContent).not.toHaveBeenCalled();
+        });
+
+        it('ピン留めON+ハッシュタグがある場合: クリア後にハッシュタグテキストを復元する', () => {
+            mockDeps.hashtagPinStore = { value: true };
+            manager = new PostManager(undefined, mockDeps);
+            hashtagDataStore.hashtags = ['test', 'hello'];
+
+            const mockEditor = createMockEditor();
+            manager.clearContentAfterSuccess(mockEditor.editor);
+
+            expect(mockEditor.clearContent).toHaveBeenCalled();
+            expect(mockEditor.insertContent).toHaveBeenCalledWith(' #test #hello');
+
+            hashtagDataStore.hashtags = [];
+        });
+
+        it('ピン留めON+ハッシュタグなしの場合: insertContentを呼ばない', () => {
+            mockDeps.hashtagPinStore = { value: true };
+            manager = new PostManager(undefined, mockDeps);
+            hashtagDataStore.hashtags = [];
+
+            const mockEditor = createMockEditor();
+            manager.clearContentAfterSuccess(mockEditor.editor);
+
+            expect(mockEditor.clearContent).toHaveBeenCalled();
+            expect(mockEditor.insertContent).not.toHaveBeenCalled();
         });
     });
 

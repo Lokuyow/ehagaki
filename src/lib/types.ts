@@ -411,6 +411,7 @@ export interface PostManagerDeps {
         notifyPostSuccess: () => boolean;
         notifyPostError: (error?: string) => boolean;
     };
+    hashtagPinStore?: { value: boolean };
 }
 
 // --- UI and Component types --
