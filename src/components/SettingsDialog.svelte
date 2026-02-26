@@ -15,7 +15,7 @@
         showRelaysStore,
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
-        mediaBottomModeStore,
+        mediaFreePlacementStore,
     } from "../stores/appStore.svelte";
     import {
         uploadEndpoints,
@@ -71,7 +71,7 @@
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(true);
-    let mediaBottomMode = $state(true);
+    let mediaFreePlacement = $state(false);
     let _selectedCompression: string = $state("");
     let _selectedVideoCompression: string = $state("medium");
     let _selectedEndpoint: string = $state("");
@@ -164,10 +164,10 @@
     $effect(() => {
         if (isInitialized) {
             localStorage.setItem(
-                STORAGE_KEYS.MEDIA_BOTTOM_MODE,
-                mediaBottomMode ? "true" : "false",
+                STORAGE_KEYS.MEDIA_FREE_PLACEMENT,
+                mediaFreePlacement ? "true" : "false",
             );
-            mediaBottomModeStore.set(mediaBottomMode);
+            mediaFreePlacementStore.set(mediaFreePlacement);
         }
     });
 
@@ -191,18 +191,18 @@
         clientTagEnabled = settings.clientTagEnabled;
         _selectedCompression = settings.compression;
 
-        // メディア下部固定モード設定の読み込み
-        const savedMediaBottomMode = localStorage.getItem(
-            STORAGE_KEYS.MEDIA_BOTTOM_MODE,
+        // メディア自由配置モード設定の読み込み
+        const savedMediaFreePlacement = localStorage.getItem(
+            STORAGE_KEYS.MEDIA_FREE_PLACEMENT,
         );
-        if (savedMediaBottomMode !== null) {
-            mediaBottomMode = savedMediaBottomMode !== "false";
+        if (savedMediaFreePlacement !== null) {
+            mediaFreePlacement = savedMediaFreePlacement !== "false";
         } else {
-            // 初回: デフォルト値 true を保存
-            mediaBottomMode = true;
-            localStorage.setItem(STORAGE_KEYS.MEDIA_BOTTOM_MODE, "true");
+            // 初回: デフォルトOFF（ギャラリーモード）
+            mediaFreePlacement = false;
+            localStorage.setItem(STORAGE_KEYS.MEDIA_FREE_PLACEMENT, "false");
         }
-        mediaBottomModeStore.set(mediaBottomMode);
+        mediaFreePlacementStore.set(mediaFreePlacement);
 
         // 動画圧縮設定の初期化（既存の値がある場合はそれを使用、ない場合のみデフォルト値を設定）
         const savedVideoCompression = localStorage.getItem(
@@ -628,19 +628,22 @@
             </div>
         </div>
 
-        <!-- メディア下部固定モード設定セクション -->
+        <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
                 <span class="setting-label"
                     >{$_("settingsDialog.media_bottom_mode") ||
-                        "メディア下部固定モード"}</span
+                        "メディア自由配置モード"}</span
                 >
                 <div class="setting-control">
-                    <label class="toggle-switch" for="{uid}-media-bottom-mode">
+                    <label
+                        class="toggle-switch"
+                        for="{uid}-media-free-placement"
+                    >
                         <input
-                            id="{uid}-media-bottom-mode"
+                            id="{uid}-media-free-placement"
                             type="checkbox"
-                            bind:checked={mediaBottomMode}
+                            bind:checked={mediaFreePlacement}
                         />
                         <span class="slider"></span>
                     </label>

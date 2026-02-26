@@ -55,9 +55,9 @@ const mockAppStore = {
     },
     // リレー設定保存関数
     saveRelayConfigToStorage: vi.fn(),
-    // メディア下部固定モード
-    mediaBottomModeStore: {
-        value: false,
+    // メディア自由配置モード
+    mediaFreePlacementStore: {
+        value: true,
         set: vi.fn()
     }
 };

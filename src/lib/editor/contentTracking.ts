@@ -5,7 +5,7 @@ import { validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocE
 import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
 import { CONTENT_TRACKING_CONFIG } from '../constants';
 import type { ContentTrackingOptions } from '../types';
-import { mediaBottomModeStore } from '../../stores/appStore.svelte';
+import { mediaFreePlacementStore } from '../../stores/appStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
 /**
@@ -216,7 +216,7 @@ function processUrlsAndImages(
             tr = tr.addMark(change.from, change.to, change.mark);
             hasChanges = true;
         } else if (change.type === 'replaceImage' && change.imageUrl) {
-            if (mediaBottomModeStore.value) {
+            if (!mediaFreePlacementStore.value) {
                 // ギャラリーモード: 画像をギャラリーに追加し、URLテキストを削除
                 mediaGalleryStore.addItem({
                     id: change.imageUrl,

@@ -9,7 +9,7 @@
   import {
     videoCompressionProgressStore,
     imageCompressionProgressStore,
-    mediaBottomModeStore,
+    mediaFreePlacementStore,
   } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
@@ -55,7 +55,7 @@
   let postManager: PostManager | undefined = $state();
   let imageOxMap: Record<string, string> = $state({});
   let imageXMap: Record<string, string> = $state({});
-  let mediaBottomMode = $derived(mediaBottomModeStore.value);
+  let mediaFreePlacement = $derived(mediaFreePlacementStore.value);
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
@@ -356,7 +356,7 @@
   let isFirstModeRender = true;
 
   $effect(() => {
-    const isGalleryMode = mediaBottomModeStore.value;
+    const isGalleryMode = !mediaFreePlacementStore.value;
 
     if (isFirstModeRender) {
       isFirstModeRender = false;
@@ -474,7 +474,7 @@
     {/if}
   </div>
 
-  {#if mediaBottomMode}
+  {#if !mediaFreePlacement}
     <MediaGallery />
   {/if}
 

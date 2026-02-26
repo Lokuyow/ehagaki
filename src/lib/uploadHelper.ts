@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { FileUploadManager } from "./fileUploadManager";
-import { uploadAbortFlagStore, mediaBottomModeStore } from '../stores/appStore.svelte';
+import { uploadAbortFlagStore, mediaFreePlacementStore } from '../stores/appStore.svelte';
 import { removeAllPlaceholders } from './utils/editorUtils';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
@@ -205,7 +205,7 @@ export async function uploadHelper({
     }
 
     // プレースホルダー挿入（モードに応じてエディタまたはギャラリーへ）
-    const galleryMode = mediaBottomModeStore.value;
+    const galleryMode = !mediaFreePlacementStore.value;
     let placeholderMap = galleryMode
         ? insertPlaceholdersIntoGallery(
             fileArray,

@@ -2,7 +2,7 @@ import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager";
-import { authState, mediaBottomModeStore } from "../stores/appStore.svelte";
+import { authState, mediaFreePlacementStore } from "../stores/appStore.svelte";
 import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
@@ -377,7 +377,7 @@ export class PostManager {
   // --- PostComponent 統合メソッド ---
   preparePostContent(editor: TipTapEditor): string {
     const editorContent = this.deps.extractContentWithImagesFn!(editor) || "";
-    if (mediaBottomModeStore.value) {
+    if (!mediaFreePlacementStore.value) {
       // ギャラリーモード: エディタのテキスト + ギャラリーのメディアURL
       const galleryUrls = mediaGalleryStore.getContentUrls();
       if (galleryUrls.length > 0) {
@@ -390,7 +390,7 @@ export class PostManager {
   }
 
   prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): Record<string, any> {
-    if (mediaBottomModeStore.value) {
+    if (!mediaFreePlacementStore.value) {
       // ギャラリーモード: ギャラリーのメタデータを使用
       return mediaGalleryStore.getImageBlurhashMap();
     }

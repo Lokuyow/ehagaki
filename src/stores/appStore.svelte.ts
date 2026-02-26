@@ -658,10 +658,10 @@ export function isSharedImageReceived(): boolean {
     return sharedImageStore.received;
 }
 
-// --- メディア下部固定モード設定 ---
-let mediaBottomModeSetting = $state(true); // デフォルトON
+// --- メディア自由配置モード設定 ---
+let mediaFreePlacementSetting = $state(false); // デフォルトOFF(ギャラリーモード)
 
-export const mediaBottomModeStore = {
-    get value() { return mediaBottomModeSetting; },
-    set: (value: boolean) => { mediaBottomModeSetting = value; }
+export const mediaFreePlacementStore = {
+    get value() { return mediaFreePlacementSetting; },
+    set: (value: boolean) => { mediaFreePlacementSetting = value; }
 };

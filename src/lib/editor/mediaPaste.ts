@@ -1,7 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUtils';
-import { mediaBottomModeStore } from '../../stores/appStore.svelte';
+import { mediaFreePlacementStore } from '../../stores/appStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
 // メディアURL（画像または動画）をテキストから抽出
@@ -128,7 +128,7 @@ export const MediaPasteExtension = Extension.create({
                             event.preventDefault();
 
                             // ギャラリーモード: メディアをギャラリーに追加し、ペーストを消費するだけ
-                            if (mediaBottomModeStore.value) {
+                            if (!mediaFreePlacementStore.value) {
                                 mediaUrls.forEach(media => {
                                     mediaGalleryStore.addItem({
                                         id: media.url,
@@ -194,7 +194,7 @@ export const MediaPasteExtension = Extension.create({
                                 const { tr, schema } = state;
 
                                 // ギャラリーモード: メディアをギャラリーに追加し、入力テキストを削除
-                                if (mediaBottomModeStore.value) {
+                                if (!mediaFreePlacementStore.value) {
                                     mediaUrls.forEach(media => {
                                         mediaGalleryStore.addItem({
                                             id: media.url,
