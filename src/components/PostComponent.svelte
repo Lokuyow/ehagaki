@@ -371,7 +371,7 @@
 
       doc.descendants((node: any, pos: number) => {
         if (
-          (node.type.name === 'image' || node.type.name === 'video') &&
+          (node.type.name === "image" || node.type.name === "video") &&
           !node.attrs.isPlaceholder
         ) {
           mediaNodes.push({ node, pos });
@@ -386,7 +386,7 @@
             if (!src) return;
             mediaGalleryStore.addItem({
               id: src,
-              type: node.type.name as 'image' | 'video',
+              type: node.type.name as "image" | "video",
               src,
               isPlaceholder: false,
               blurhash: node.attrs.blurhash ?? undefined,
@@ -424,16 +424,16 @@
         items.forEach((item) => {
           if (item.isPlaceholder) return;
           const src = item.src;
-          if (item.type === 'image' && schema.nodes.image) {
+          if (item.type === "image" && schema.nodes.image) {
             const imageNode = schema.nodes.image.create({
               src,
-              alt: item.alt ?? 'Image',
+              alt: item.alt ?? "Image",
               blurhash: item.blurhash ?? null,
               dim: item.dim ?? null,
             });
             transaction = transaction.insert(insertPos, imageNode);
             insertPos += imageNode.nodeSize;
-          } else if (item.type === 'video' && schema.nodes.video) {
+          } else if (item.type === "video" && schema.nodes.video) {
             const videoNode = schema.nodes.video.create({ src });
             transaction = transaction.insert(insertPos, videoNode);
             insertPos += videoNode.nodeSize;

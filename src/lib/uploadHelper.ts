@@ -90,11 +90,11 @@ function handleAbortedUpload(
     cleanupPlaceholders: boolean = false
 ): UploadHelperResult {
     updateUploadState(false);
-    
+
     if (cleanupPlaceholders && currentEditor) {
         removeAllPlaceholders(currentEditor, devMode);
     }
-    
+
     if (uploadCallbacks?.onProgress) {
         uploadCallbacks.onProgress({
             completed: 0,
@@ -104,7 +104,7 @@ function handleAbortedUpload(
             inProgress: false
         });
     }
-    
+
     return {
         placeholderMap: cleanupPlaceholders ? [] : placeholderMap,
         results: null,

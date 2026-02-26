@@ -101,7 +101,7 @@ function processUrlsAndImages(
     if (enableAutoLink) {
         newState.doc.descendants((node, pos) => {
             if (!node.isText) return;
-            
+
             // このテキストノードにリンクマークがあるかチェック
             const linkMarkInNode = node.marks.find(m => m.type === linkMark);
             if (linkMarkInNode) {
@@ -125,7 +125,7 @@ function processUrlsAndImages(
         // ブロック内の全テキストを結合
         let fullText = '';
         const textMapping: Array<{ textOffset: number; docPos: number }> = [];
-        
+
         node.forEach((child, offset) => {
             if (child.isText && child.text) {
                 textMapping.push({ textOffset: fullText.length, docPos: pos + 1 + offset });
@@ -149,7 +149,7 @@ function processUrlsAndImages(
 
             const { cleanUrl, actualLength } = cleanUrlEnd(originalUrl);
             const matchEnd = matchStart + actualLength;
-            
+
             // テキストオフセットをドキュメント位置に変換
             const startDocPos = pos + 1 + matchStart;
             const endDocPos = pos + 1 + matchEnd;

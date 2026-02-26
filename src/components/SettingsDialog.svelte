@@ -192,7 +192,9 @@
         _selectedCompression = settings.compression;
 
         // メディア下部固定モード設定の読み込み
-        const savedMediaBottomMode = localStorage.getItem(STORAGE_KEYS.MEDIA_BOTTOM_MODE);
+        const savedMediaBottomMode = localStorage.getItem(
+            STORAGE_KEYS.MEDIA_BOTTOM_MODE,
+        );
         if (savedMediaBottomMode !== null) {
             mediaBottomMode = savedMediaBottomMode !== "false";
         } else {
