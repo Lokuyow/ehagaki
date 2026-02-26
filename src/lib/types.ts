@@ -38,6 +38,21 @@ export interface ImageDimensions {
     displayHeight: number;
 }
 
+// --- Media Gallery types ---
+export interface MediaGalleryItem {
+    id: string;
+    type: 'image' | 'video';
+    src: string;
+    isPlaceholder: boolean;
+    blurhash?: string;
+    ox?: string;
+    x?: string;
+    dimensions?: ImageDimensions;
+    mimeType?: string;
+    alt?: string;
+    dim?: string;
+}
+
 export interface SharedImageMetadata {
     name?: string;
     type?: string;

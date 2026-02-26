@@ -1,6 +1,8 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUtils';
+import { mediaBottomModeStore } from '../../stores/appStore.svelte';
+import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
 // メディアURL（画像または動画）をテキストから抽出
 interface MediaUrl {
@@ -125,6 +127,19 @@ export const MediaPasteExtension = Extension.create({
                         if (mediaUrls.length > 0) {
                             event.preventDefault();
 
+                            // ギャラリーモード: メディアをギャラリーに追加し、ペーストを消費するだけ
+                            if (mediaBottomModeStore.value) {
+                                mediaUrls.forEach(media => {
+                                    mediaGalleryStore.addItem({
+                                        id: media.url,
+                                        type: media.type,
+                                        src: media.url,
+                                        isPlaceholder: false
+                                    });
+                                });
+                                return true;
+                            }
+
                             const { state, dispatch } = view;
                             const { tr, selection, schema } = state;
 
@@ -177,6 +192,20 @@ export const MediaPasteExtension = Extension.create({
                             if (mediaUrls.length > 0) {
                                 const { state, dispatch } = view;
                                 const { tr, schema } = state;
+
+                                // ギャラリーモード: メディアをギャラリーに追加し、入力テキストを削除
+                                if (mediaBottomModeStore.value) {
+                                    mediaUrls.forEach(media => {
+                                        mediaGalleryStore.addItem({
+                                            id: media.url,
+                                            type: media.type,
+                                            src: media.url,
+                                            isPlaceholder: false
+                                        });
+                                    });
+                                    dispatch(tr.delete(from, to));
+                                    return true;
+                                }
 
                                 const mediaNodes = createMediaNodes(mediaUrls, schema);
                                 let transaction = tr;

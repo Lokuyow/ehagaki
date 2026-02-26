@@ -5,6 +5,8 @@ import { validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocE
 import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
 import { CONTENT_TRACKING_CONFIG } from '../constants';
 import type { ContentTrackingOptions } from '../types';
+import { mediaBottomModeStore } from '../../stores/appStore.svelte';
+import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
 /**
  * ハッシュタグのデコレーション（装飾）を生成する関数
@@ -214,7 +216,18 @@ function processUrlsAndImages(
             tr = tr.addMark(change.from, change.to, change.mark);
             hasChanges = true;
         } else if (change.type === 'replaceImage' && change.imageUrl) {
-            tr = processImageUrl(tr, newState, imageNodeType, change.imageUrl, change.from, change.to);
+            if (mediaBottomModeStore.value) {
+                // ギャラリーモード: 画像をギャラリーに追加し、URLテキストを削除
+                mediaGalleryStore.addItem({
+                    id: change.imageUrl,
+                    type: 'image',
+                    src: change.imageUrl,
+                    isPlaceholder: false
+                });
+                tr = tr.delete(change.from, change.to);
+            } else {
+                tr = processImageUrl(tr, newState, imageNodeType, change.imageUrl, change.from, change.to);
+            }
             hasChanges = true;
         }
     }

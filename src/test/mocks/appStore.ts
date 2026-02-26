@@ -54,7 +54,12 @@ const mockAppStore = {
         set: vi.fn()
     },
     // リレー設定保存関数
-    saveRelayConfigToStorage: vi.fn()
+    saveRelayConfigToStorage: vi.fn(),
+    // メディア下部固定モード
+    mediaBottomModeStore: {
+        value: false,
+        set: vi.fn()
+    }
 };
 
 export default mockAppStore;

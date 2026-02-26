@@ -15,6 +15,7 @@
         showRelaysStore,
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
+        mediaBottomModeStore,
     } from "../stores/appStore.svelte";
     import {
         uploadEndpoints,
@@ -70,6 +71,7 @@
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(true);
+    let mediaBottomMode = $state(true);
     let _selectedCompression: string = $state("");
     let _selectedVideoCompression: string = $state("medium");
     let _selectedEndpoint: string = $state("");
@@ -159,6 +161,16 @@
         }
     });
 
+    $effect(() => {
+        if (isInitialized) {
+            localStorage.setItem(
+                STORAGE_KEYS.MEDIA_BOTTOM_MODE,
+                mediaBottomMode ? "true" : "false",
+            );
+            mediaBottomModeStore.set(mediaBottomMode);
+        }
+    });
+
     function handleSwRefresh() {
         handleServiceWorkerRefresh(
             handleSwUpdate,
@@ -178,6 +190,17 @@
         _selectedEndpoint = settings.endpoint;
         clientTagEnabled = settings.clientTagEnabled;
         _selectedCompression = settings.compression;
+
+        // メディア下部固定モード設定の読み込み
+        const savedMediaBottomMode = localStorage.getItem(STORAGE_KEYS.MEDIA_BOTTOM_MODE);
+        if (savedMediaBottomMode !== null) {
+            mediaBottomMode = savedMediaBottomMode !== "false";
+        } else {
+            // 初回: デフォルト値 true を保存
+            mediaBottomMode = true;
+            localStorage.setItem(STORAGE_KEYS.MEDIA_BOTTOM_MODE, "true");
+        }
+        mediaBottomModeStore.set(mediaBottomMode);
 
         // 動画圧縮設定の初期化（既存の値がある場合はそれを使用、ない場合のみデフォルト値を設定）
         const savedVideoCompression = localStorage.getItem(
@@ -596,6 +619,26 @@
                             id="{uid}-client-tag"
                             type="checkbox"
                             bind:checked={clientTagEnabled}
+                        />
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- メディア下部固定モード設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.media_bottom_mode") ||
+                        "メディア下部固定モード"}</span
+                >
+                <div class="setting-control">
+                    <label class="toggle-switch" for="{uid}-media-bottom-mode">
+                        <input
+                            id="{uid}-media-bottom-mode"
+                            type="checkbox"
+                            bind:checked={mediaBottomMode}
                         />
                         <span class="slider"></span>
                     </label>

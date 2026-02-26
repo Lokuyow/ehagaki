@@ -1,8 +1,9 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
-import type { PlaceholderEntry, FileUploadResponse, ImageDimensions } from '../types';
+import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGalleryItem } from '../types';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorUtils';
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
 // 簡易的なUUID生成関数（プレースホルダー用）
 function generatePlaceholderId(): string {
@@ -363,4 +364,264 @@ export async function replacePlaceholdersWithResults(
     }
 
     return { failedResults, errorMessage, imageServerBlurhashMap };
+}
+// ============================================================
+// ギャラリーモード用関数（メディア下部固定モード）
+// ============================================================
+
+/**
+ * ギャラリーにプレースホルダーアイテムを追加
+ * エディタへの挿入の代わりに mediaGalleryStore へ追加する
+ */
+export function insertPlaceholdersIntoGallery(
+    fileArray: File[],
+    fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
+    showUploadError: (msg: string, duration?: number) => void,
+    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    FileUploadManager: any,
+    devMode: boolean = false
+): PlaceholderEntry[] {
+    const placeholderMap: PlaceholderEntry[] = [];
+    const fileUploadManager = new FileUploadManager();
+    const timestamp = Date.now();
+
+    fileArray.forEach((file, index) => {
+        const isVideo = file.type.startsWith('video/');
+        const validation = fileUploadManager.validateMediaFile(file);
+        if (!validation.isValid) {
+            showUploadError(validation.errorMessage || "postComponent.upload_failed");
+            return;
+        }
+
+        const placeholderId = `placeholder-${timestamp}-${index}-${Date.now().toString(36)}`;
+        const processingResult = fileProcessingResults[index];
+        const ox = processingResult?.ox;
+        const dimensions = processingResult?.dimensions;
+
+        const item: MediaGalleryItem = {
+            id: placeholderId,
+            type: isVideo ? 'video' : 'image',
+            src: placeholderId,
+            isPlaceholder: true,
+            dimensions,
+            dim: dimensions ? `${dimensions.width}x${dimensions.height}` : undefined,
+        };
+
+        mediaGalleryStore.addItem(item);
+
+        if (!isVideo && dimensions) {
+            imageSizeMapStore.update(map => ({
+                ...map,
+                [placeholderId]: dimensions
+            }));
+        }
+
+        placeholderMap.push({ file, placeholderId, ox, dimensions });
+
+        if (devMode) {
+            console.log('[gallery] inserted placeholder:', placeholderId, isVideo ? 'video' : 'image');
+        }
+    });
+
+    return placeholderMap;
+}
+
+/**
+ * ギャラリーアイテムのBlurhash生成
+ */
+export async function generateBlurhashesForGallery(
+    placeholderMap: PlaceholderEntry[],
+    FileUploadManager: any,
+    devMode: boolean = false
+): Promise<void> {
+    if (uploadAbortFlagStore.value) return;
+
+    const fileUploadManager = new FileUploadManager();
+
+    const promises = placeholderMap.map(async (item) => {
+        if (uploadAbortFlagStore.value) return;
+
+        try {
+            const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
+            if (uploadAbortFlagStore.value) return;
+
+            if (blurhash) {
+                item.blurhash = blurhash;
+                mediaGalleryStore.updateItem(item.placeholderId, { blurhash });
+            }
+        } catch (error) {
+            if (devMode) {
+                console.warn('[gallery] blurhash generation failed:', item.file.name, error);
+            }
+        }
+    });
+
+    await Promise.all(promises);
+}
+
+/**
+ * ギャラリーのプレースホルダーを実際のURLに置換
+ */
+export async function replacePlaceholdersInGallery(
+    results: FileUploadResponse[],
+    placeholderMap: PlaceholderEntry[],
+    imageOxMap: Record<string, string>,
+    imageXMap: Record<string, string>,
+    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    calculateImageHash: (url: string) => Promise<string | null>,
+    getMimeTypeFromUrl: (url: string) => string,
+    devMode: boolean = false
+): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string }> {
+    const failedResults: FileUploadResponse[] = [];
+    let errorMessage = '';
+    const remainingPlaceholders = [...placeholderMap];
+
+    for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+
+        if (result.aborted) {
+            const aborted = remainingPlaceholders.shift();
+            if (aborted) {
+                mediaGalleryStore.removeItem(aborted.placeholderId);
+                imageSizeMapStore.update(map => {
+                    const newMap = { ...map };
+                    delete newMap[aborted.placeholderId];
+                    return newMap;
+                });
+            }
+            continue;
+        }
+
+        if (result.success && result.url) {
+            let matched: PlaceholderEntry | undefined;
+            let matchedIndex = -1;
+
+            if (result.sizeInfo?.originalFilename) {
+                matchedIndex = remainingPlaceholders.findIndex(
+                    p => p.file.name === result.sizeInfo!.originalFilename
+                );
+                if (matchedIndex !== -1) matched = remainingPlaceholders[matchedIndex];
+            }
+
+            if (!matched && remainingPlaceholders.length > 0) {
+                matched = remainingPlaceholders[0];
+                matchedIndex = 0;
+            }
+
+            if (matched && matchedIndex !== -1) {
+                remainingPlaceholders.splice(matchedIndex, 1);
+                const isVideo = matched.file.type.startsWith('video/');
+                const nip94 = result.nip94 || {};
+
+                if (isVideo) {
+                    mediaGalleryStore.updateItem(matched.placeholderId, {
+                        src: result.url,
+                        isPlaceholder: false,
+                        mimeType: getMimeTypeFromUrl(result.url),
+                    });
+                } else {
+                    const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
+                    const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
+                    const xFromServer = nip94['x'] ?? undefined;
+                    const dimFromServer = nip94['dim'] ?? undefined;
+
+                    const finalBlurhash = serverBlurhash ?? matched.blurhash;
+                    const mimeType = getMimeTypeFromUrl(result.url);
+
+                    mediaGalleryStore.updateItem(matched.placeholderId, {
+                        src: result.url,
+                        isPlaceholder: false,
+                        blurhash: finalBlurhash,
+                        mimeType,
+                        ox: oxFromServer ?? matched.ox,
+                        dim: dimFromServer ?? (matched.dimensions
+                            ? `${matched.dimensions.width}x${matched.dimensions.height}`
+                            : undefined),
+                    });
+
+                    // OxMap / XMap に記録
+                    if (oxFromServer) {
+                        imageOxMap[result.url] = oxFromServer;
+                    } else if (matched.ox) {
+                        imageOxMap[result.url] = matched.ox;
+                    }
+
+                    if (xFromServer) {
+                        imageXMap[result.url] = xFromServer;
+                        mediaGalleryStore.updateItem(matched.placeholderId, { x: xFromServer });
+                    } else {
+                        try {
+                            const x = await calculateImageHash(result.url);
+                            if (x) {
+                                imageXMap[result.url] = x;
+                                mediaGalleryStore.updateItem(result.url, { x });
+                            }
+                        } catch {
+                            // ignore
+                        }
+                    }
+
+                    // サイズマップ更新
+                    if (matched.dimensions) {
+                        imageSizeMapStore.update(map => {
+                            const newMap = { ...map };
+                            delete newMap[matched!.placeholderId];
+                            newMap[result.url!] = matched!.dimensions!;
+                            return newMap;
+                        });
+                    }
+                }
+
+                if (devMode) {
+                    console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', result.url);
+                }
+            }
+        } else if (!result.success) {
+            failedResults.push(result);
+            const failed = remainingPlaceholders.shift();
+            if (failed) {
+                mediaGalleryStore.removeItem(failed.placeholderId);
+                imageSizeMapStore.update(map => {
+                    const newMap = { ...map };
+                    delete newMap[failed.placeholderId];
+                    return newMap;
+                });
+            }
+        }
+    }
+
+    // 残りのプレースホルダーを削除
+    for (const remaining of remainingPlaceholders) {
+        mediaGalleryStore.removeItem(remaining.placeholderId);
+        imageSizeMapStore.update(map => {
+            const newMap = { ...map };
+            delete newMap[remaining.placeholderId];
+            return newMap;
+        });
+    }
+
+    if (failedResults.length) {
+        errorMessage = failedResults.length === 1
+            ? failedResults[0].error || 'postComponent.upload_failed'
+            : `${failedResults.length}個のファイルのアップロードに失敗しました`;
+    }
+
+    return { failedResults, errorMessage };
+}
+
+/**
+ * ギャラリーのすべてのプレースホルダーを削除（中止時）
+ */
+export function removeAllGalleryPlaceholders(
+    placeholderMap: PlaceholderEntry[],
+    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void }
+): void {
+    for (const entry of placeholderMap) {
+        mediaGalleryStore.removeItem(entry.placeholderId);
+        imageSizeMapStore.update(map => {
+            const newMap = { ...map };
+            delete newMap[entry.placeholderId];
+            return newMap;
+        });
+    }
 }

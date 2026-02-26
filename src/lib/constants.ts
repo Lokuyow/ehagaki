@@ -107,7 +107,10 @@ export const STORAGE_KEYS = {
     NOSTR_RELAYS: "nostr-relays-",
     DRAFTS: "nostr-drafts",
     HASHTAG_HISTORY: "hashtagHistory",
+    MEDIA_BOTTOM_MODE: "mediaBottomMode",
 } as const;
+
+export const DEFAULT_MEDIA_BOTTOM_MODE = true;
 
 // --- 下書き機能用定数 ---
 export const MAX_DRAFTS = 20; // 下書きの最大保存数

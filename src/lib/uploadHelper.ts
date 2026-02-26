@@ -1,7 +1,7 @@
 import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { FileUploadManager } from "./fileUploadManager";
-import { uploadAbortFlagStore } from '../stores/appStore.svelte';
+import { uploadAbortFlagStore, mediaBottomModeStore } from '../stores/appStore.svelte';
 import { removeAllPlaceholders } from './utils/editorUtils';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
@@ -20,7 +20,15 @@ import type {
     UploadProgress,
     UploadInfoCallbacks,
 } from "./types";
-import { insertPlaceholdersIntoEditor, generateBlurhashesForPlaceholders, replacePlaceholdersWithResults } from "../stores/editorStore.svelte";
+import {
+    insertPlaceholdersIntoEditor,
+    generateBlurhashesForPlaceholders,
+    replacePlaceholdersWithResults,
+    insertPlaceholdersIntoGallery,
+    generateBlurhashesForGallery,
+    replacePlaceholdersInGallery,
+    removeAllGalleryPlaceholders,
+} from "../stores/editorStore.svelte";
 
 // UploadManagerクラス: アップロード処理を統合
 export class UploadManager {
@@ -196,16 +204,26 @@ export async function uploadHelper({
         return handleAbortedUpload(fileArray, [], currentEditor, updateUploadState, uploadCallbacks, devMode, false);
     }
 
-    // プレースホルダー挿入
-    let placeholderMap = insertPlaceholdersIntoEditor(
-        fileArray,
-        fileProcessingResults,
-        currentEditor as TipTapEditor | null,
-        showUploadError,
-        dependencies.imageSizeMapStore,
-        dependencies.FileUploadManager,
-        devMode
-    );
+    // プレースホルダー挿入（モードに応じてエディタまたはギャラリーへ）
+    const galleryMode = mediaBottomModeStore.value;
+    let placeholderMap = galleryMode
+        ? insertPlaceholdersIntoGallery(
+            fileArray,
+            fileProcessingResults,
+            showUploadError,
+            dependencies.imageSizeMapStore,
+            dependencies.FileUploadManager,
+            devMode
+        )
+        : insertPlaceholdersIntoEditor(
+            fileArray,
+            fileProcessingResults,
+            currentEditor as TipTapEditor | null,
+            showUploadError,
+            dependencies.imageSizeMapStore,
+            dependencies.FileUploadManager,
+            devMode
+        );
 
     // 有効ファイルがない場合は早期リターン
     if (placeholderMap.length === 0) {
@@ -221,6 +239,14 @@ export async function uploadHelper({
 
     // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
     if (uploadAbortFlagStore.value) {
+        if (galleryMode) {
+            removeAllGalleryPlaceholders(placeholderMap, dependencies.imageSizeMapStore);
+            updateUploadState(false);
+            if (uploadCallbacks?.onProgress) {
+                uploadCallbacks.onProgress({ completed: 0, failed: 0, aborted: fileArray.length, total: fileArray.length, inProgress: false });
+            }
+            return { placeholderMap: [], results: null, imageOxMap, imageXMap, failedResults: [], errorMessage: "Upload aborted by user" };
+        }
         return handleAbortedUpload(fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true);
     }
 
@@ -228,15 +254,28 @@ export async function uploadHelper({
     updateUploadState(true, "");
 
     // Blurhash生成
-    await generateBlurhashesForPlaceholders(
-        placeholderMap,
-        currentEditor as TipTapEditor | null,
-        dependencies.FileUploadManager,
-        devMode
-    );
+    if (galleryMode) {
+        await generateBlurhashesForGallery(
+            placeholderMap,
+            dependencies.FileUploadManager,
+            devMode
+        );
+    } else {
+        await generateBlurhashesForPlaceholders(
+            placeholderMap,
+            currentEditor as TipTapEditor | null,
+            dependencies.FileUploadManager,
+            devMode
+        );
+    }
 
     // 中止チェック（Blurhash生成後）
     if (uploadAbortFlagStore.value) {
+        if (galleryMode) {
+            removeAllGalleryPlaceholders(placeholderMap, dependencies.imageSizeMapStore);
+            updateUploadState(false);
+            return { placeholderMap: [], results: null, imageOxMap, imageXMap, failedResults: [], errorMessage: "Upload aborted by user" };
+        }
         return handleAbortedUpload(fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true);
     }
 
@@ -276,22 +315,37 @@ export async function uploadHelper({
     let imageServerBlurhashMap: Record<string, string> = {};
 
     if (results && placeholderMap.length > 0) {
-        const replacementResult = await replacePlaceholdersWithResults(
-            results,
-            placeholderMap,
-            currentEditor as TipTapEditor | null,
-            imageOxMap,
-            imageXMap,
-            dependencies.imageSizeMapStore,
-            dependencies.extractImageBlurhashMap,
-            dependencies.getMimeTypeFromUrl,
-            dependencies.calculateImageHash,
-            dependencies.createImetaTag,
-            devMode
-        );
-        failedResults.push(...replacementResult.failedResults);
-        errorMessage = replacementResult.errorMessage;
-        imageServerBlurhashMap = replacementResult.imageServerBlurhashMap;
+        if (galleryMode) {
+            const replacementResult = await replacePlaceholdersInGallery(
+                results,
+                placeholderMap,
+                imageOxMap,
+                imageXMap,
+                dependencies.imageSizeMapStore,
+                dependencies.calculateImageHash,
+                dependencies.getMimeTypeFromUrl,
+                devMode
+            );
+            failedResults.push(...replacementResult.failedResults);
+            errorMessage = replacementResult.errorMessage;
+        } else {
+            const replacementResult = await replacePlaceholdersWithResults(
+                results,
+                placeholderMap,
+                currentEditor as TipTapEditor | null,
+                imageOxMap,
+                imageXMap,
+                dependencies.imageSizeMapStore,
+                dependencies.extractImageBlurhashMap,
+                dependencies.getMimeTypeFromUrl,
+                dependencies.calculateImageHash,
+                dependencies.createImetaTag,
+                devMode
+            );
+            failedResults.push(...replacementResult.failedResults);
+            errorMessage = replacementResult.errorMessage;
+            imageServerBlurhashMap = replacementResult.imageServerBlurhashMap;
+        }
 
         // 置換処理後、placeholderMapをクリア
         placeholderMap = [];

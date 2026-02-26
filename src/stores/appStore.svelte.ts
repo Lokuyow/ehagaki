@@ -657,3 +657,11 @@ export function fetchSwVersion(): Promise<string | null> {
 export function isSharedImageReceived(): boolean {
     return sharedImageStore.received;
 }
+
+// --- メディア下部固定モード設定 ---
+let mediaBottomModeSetting = $state(true); // デフォルトON
+
+export const mediaBottomModeStore = {
+    get value() { return mediaBottomModeSetting; },
+    set: (value: boolean) => { mediaBottomModeSetting = value; }
+};

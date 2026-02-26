@@ -1,6 +1,7 @@
 <script lang="ts">
   import { _ } from "svelte-i18n";
   import { onMount } from "svelte";
+  import { untrack } from "svelte";
   import { EditorContent } from "svelte-tiptap";
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { RxNostr } from "rx-nostr";
@@ -8,11 +9,14 @@
   import {
     videoCompressionProgressStore,
     imageCompressionProgressStore,
+    mediaBottomModeStore,
   } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
   import PopupModal from "./PopupModal.svelte";
   import SecretKeyWarningDialog from "./SecretKeyWarningDialog.svelte";
+  import MediaGallery from "./MediaGallery.svelte";
+  import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
   import {
     fileDropAction as _fileDropAction,
     pasteAction,
@@ -51,6 +55,7 @@
   let postManager: PostManager | undefined = $state();
   let imageOxMap: Record<string, string> = $state({});
   let imageXMap: Record<string, string> = $state({});
+  let mediaBottomMode = $derived(mediaBottomModeStore.value);
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
   let editorContainerEl: HTMLElement | null = null;
@@ -346,6 +351,106 @@
   export function openFileDialog() {
     fileInput?.click();
   }
+
+  // --- モード切替時の自動整理 ---
+  let isFirstModeRender = true;
+
+  $effect(() => {
+    const isGalleryMode = mediaBottomModeStore.value;
+
+    if (isFirstModeRender) {
+      isFirstModeRender = false;
+      return;
+    }
+    if (!currentEditor) return;
+
+    if (isGalleryMode) {
+      // フリーモード → ギャラリーモード: エディタのメディアノードをギャラリーに移動
+      const doc = currentEditor.state.doc;
+      const mediaNodes: Array<{ node: any; pos: number }> = [];
+
+      doc.descendants((node: any, pos: number) => {
+        if (
+          (node.type.name === 'image' || node.type.name === 'video') &&
+          !node.attrs.isPlaceholder
+        ) {
+          mediaNodes.push({ node, pos });
+        }
+      });
+
+      if (mediaNodes.length > 0) {
+        // ギャラリーに追加 (untrack: 書き込みがエフェクトを再トリガーしないように)
+        untrack(() => {
+          mediaNodes.forEach(({ node }) => {
+            const src = node.attrs.src as string;
+            if (!src) return;
+            mediaGalleryStore.addItem({
+              id: src,
+              type: node.type.name as 'image' | 'video',
+              src,
+              isPlaceholder: false,
+              blurhash: node.attrs.blurhash ?? undefined,
+              ox: imageOxMap[src] ?? undefined,
+              x: imageXMap[src] ?? undefined,
+              dim: node.attrs.dim ?? undefined,
+              alt: node.attrs.alt ?? undefined,
+            });
+          });
+        });
+
+        // エディタからメディアノードを削除 (後ろから)
+        let tr = currentEditor.state.tr;
+        [...mediaNodes].reverse().forEach(({ node, pos }) => {
+          tr = tr.delete(pos, pos + node.nodeSize);
+        });
+        currentEditor.view.dispatch(tr);
+
+        untrack(() => {
+          imageOxMap = {};
+          imageXMap = {};
+        });
+      }
+    } else {
+      // ギャラリーモード → フリーモード: ギャラリーのメディアをエディタに移動
+      // untrack: getItems()の読み取りとclearAll()の書き込みがループを起こさないように
+      const items = untrack(() => mediaGalleryStore.getItems());
+      if (items.length > 0) {
+        const { schema } = currentEditor.state;
+        let transaction = currentEditor.state.tr;
+        let insertPos = currentEditor.state.doc.content.size;
+        const newOxMap: Record<string, string> = {};
+        const newXMap: Record<string, string> = {};
+
+        items.forEach((item) => {
+          if (item.isPlaceholder) return;
+          const src = item.src;
+          if (item.type === 'image' && schema.nodes.image) {
+            const imageNode = schema.nodes.image.create({
+              src,
+              alt: item.alt ?? 'Image',
+              blurhash: item.blurhash ?? null,
+              dim: item.dim ?? null,
+            });
+            transaction = transaction.insert(insertPos, imageNode);
+            insertPos += imageNode.nodeSize;
+          } else if (item.type === 'video' && schema.nodes.video) {
+            const videoNode = schema.nodes.video.create({ src });
+            transaction = transaction.insert(insertPos, videoNode);
+            insertPos += videoNode.nodeSize;
+          }
+          if (item.ox) newOxMap[src] = item.ox;
+          if (item.x) newXMap[src] = item.x;
+        });
+
+        currentEditor.view.dispatch(transaction);
+        untrack(() => {
+          imageOxMap = newOxMap;
+          imageXMap = newXMap;
+        });
+      }
+      untrack(() => mediaGalleryStore.clearAll());
+    }
+  });
 </script>
 
 <div class="post-container">
@@ -368,6 +473,10 @@
       <EditorContent editor={currentEditor as any} class="editor-content" />
     {/if}
   </div>
+
+  {#if mediaBottomMode}
+    <MediaGallery />
+  {/if}
 
   <input
     type="file"

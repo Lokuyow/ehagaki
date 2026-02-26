@@ -71,6 +71,7 @@
     "toggle_write_relays_list": "投稿先リレーの表示切替",
     "no_relay_info": "リレー情報なし",
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
+    "media_bottom_mode": "メディア下部固定モード",
     "refresh_relays_and_profile": "リレーリスト・プロフィール\n再取得",
     "refresh": "更新",
     "sw_update_available": "アプリの更新があります",

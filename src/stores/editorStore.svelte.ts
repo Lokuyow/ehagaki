@@ -10,7 +10,11 @@ import {
 export {
     insertPlaceholdersIntoEditor,
     generateBlurhashesForPlaceholders,
-    replacePlaceholdersWithResults
+    replacePlaceholdersWithResults,
+    insertPlaceholdersIntoGallery,
+    generateBlurhashesForGallery,
+    replacePlaceholdersInGallery,
+    removeAllGalleryPlaceholders,
 } from '../lib/editor/placeholderManager';
 
 // --- エディター専用状態管理 ---

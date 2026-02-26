@@ -2,7 +2,7 @@ import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { keyManager } from "./keyManager";
-import { authState } from "../stores/appStore.svelte";
+import { authState, mediaBottomModeStore } from "../stores/appStore.svelte";
 import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
@@ -13,6 +13,7 @@ import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
 import { iframeMessageService } from "./iframeMessageService";
 import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
+import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
 
 // --- 純粋関数（依存性なし） ---
 
@@ -375,10 +376,24 @@ export class PostManager {
 
   // --- PostComponent 統合メソッド ---
   preparePostContent(editor: TipTapEditor): string {
-    return this.deps.extractContentWithImagesFn!(editor) || "";
+    const editorContent = this.deps.extractContentWithImagesFn!(editor) || "";
+    if (mediaBottomModeStore.value) {
+      // ギャラリーモード: エディタのテキスト + ギャラリーのメディアURL
+      const galleryUrls = mediaGalleryStore.getContentUrls();
+      if (galleryUrls.length > 0) {
+        const textPart = editorContent.trim();
+        return textPart ? textPart + '\n' + galleryUrls.join('\n') : galleryUrls.join('\n');
+      }
+      return editorContent;
+    }
+    return editorContent;
   }
 
   prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): Record<string, any> {
+    if (mediaBottomModeStore.value) {
+      // ギャラリーモード: ギャラリーのメタデータを使用
+      return mediaGalleryStore.getImageBlurhashMap();
+    }
     const rawImageBlurhashMap = this.deps.extractImageBlurhashMapFn!(editor);
     const imageBlurhashMap: Record<string, any> = {};
     for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
@@ -427,6 +442,8 @@ export class PostManager {
     this.deps.resetPostStatusFn?.();
     contentWarningStore.reset(); // Content Warningもリセット
     contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
+    // ギャラリーモード: ギャラリーもリセット
+    mediaGalleryStore.clearAll();
   }
 
   clearContentAfterSuccess(editor: TipTapEditor): void {
@@ -437,6 +454,8 @@ export class PostManager {
     this.applyEmptyStateToEditor(editor);
     contentWarningStore.reset(); // Content Warningもリセット
     contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
+    // ギャラリーモード: ギャラリーもクリア
+    mediaGalleryStore.clearAll();
 
     // ピン留めON+ハッシュタグがある場合: エディタにハッシュタグを復元
     if (pinEnabled && snapshot && snapshot.hashtags.length > 0) {
