@@ -84,7 +84,8 @@ function createMockEditor(options?: { paragraphCount?: number; placeholder?: str
     const clearContent = vi.fn().mockReturnValue({ run });
     const chain = vi.fn().mockReturnValue({ clearContent });
     const insertContent = vi.fn();
-    const commands = { insertContent };
+    const focus = vi.fn();
+    const commands = { insertContent, focus };
     const editor = {
         chain,
         commands,
@@ -93,7 +94,7 @@ function createMockEditor(options?: { paragraphCount?: number; placeholder?: str
         },
     } as any;
 
-    return { editor, dom, run, clearContent, chain, insertContent };
+    return { editor, dom, run, clearContent, chain, insertContent, focus };
 }
 
 describe('PostValidator', () => {
@@ -309,6 +310,7 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).toHaveBeenCalledWith(' #test #hello');
+            expect(mockEditor.focus).toHaveBeenCalledWith('start');
 
             hashtagDataStore.hashtags = [];
         });

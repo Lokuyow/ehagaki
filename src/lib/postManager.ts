@@ -461,6 +461,7 @@ export class PostManager {
     if (pinEnabled && snapshot && snapshot.hashtags.length > 0) {
       const hashtagText = ' ' + snapshot.hashtags.map(h => '#' + h).join(' ');
       editor.commands.insertContent(hashtagText);
+      editor.commands.focus('start');
     }
   }
 }
