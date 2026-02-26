@@ -4,9 +4,8 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { postComponentUIStore } from "../stores/appStore.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import { renderBlurhash as renderBlurhashUtil } from "../lib/utils/editorImageUtils";
     import { _ } from "svelte-i18n";
-    import { onMount, onDestroy } from "svelte";
+    import { onDestroy } from "svelte";
     import { LONG_PRESS_DELAY } from "../lib/constants";
 
     interface Props {
@@ -34,15 +33,7 @@
     }: Props = $props();
 
     let isImageLoaded = $state(false);
-    let blurhashFadeOut = $state(false);
-    let localCanvas: HTMLCanvasElement | undefined = $state();
     let cardEl: HTMLDivElement | undefined = $state();
-
-    // ブラーハッシュの表示判定
-    let showBlurhash = $derived(
-        item.blurhash &&
-            (item.isPlaceholder || !isImageLoaded || blurhashFadeOut),
-    );
 
     let showActualImage = $derived(
         !item.isPlaceholder && item.type === "image" && !!item.src,
@@ -58,10 +49,6 @@
 
     function handleImageLoad() {
         isImageLoaded = true;
-        blurhashFadeOut = true;
-        setTimeout(() => {
-            blurhashFadeOut = false;
-        }, 400);
     }
 
     function handleImageError() {
@@ -134,28 +121,6 @@
         }
     }
 
-    onMount(() => {
-        if (item.blurhash && localCanvas && item.dimensions) {
-            renderBlurhashUtil(
-                item.blurhash,
-                localCanvas,
-                item.dimensions,
-                item.isPlaceholder,
-            );
-        }
-    });
-
-    $effect(() => {
-        if (item.blurhash && localCanvas && item.dimensions) {
-            renderBlurhashUtil(
-                item.blurhash,
-                localCanvas,
-                item.dimensions,
-                item.isPlaceholder,
-            );
-        }
-    });
-
     onDestroy(() => {
         if (longPressTimer) {
             clearTimeout(longPressTimer);
@@ -200,23 +165,14 @@
                 handleImageClick();
         }}
     >
-        {#if item.isPlaceholder && !item.blurhash}
-            <!-- プレースホルダー（blurhash なし） -->
+        {#if item.isPlaceholder}
+            <!-- プレースホルダー（アップロード中） -->
             <LoadingPlaceholder
                 text={item.type === "video"
                     ? $_("videoNode.uploading")
                     : $_("imageNode.uploading")}
                 showLoader={true}
             />
-        {:else if showBlurhash && item.dimensions}
-            <!-- Blurhash キャンバス -->
-            <canvas
-                bind:this={localCanvas}
-                class="gallery-blurhash"
-                class:fade-out={blurhashFadeOut}
-                width={item.dimensions.displayWidth}
-                height={item.dimensions.displayHeight}
-            ></canvas>
         {/if}
 
         {#if showActualImage}
@@ -244,13 +200,6 @@
             >
                 <track kind="captions" />
             </video>
-        {/if}
-
-        {#if item.isPlaceholder && item.blurhash}
-            <!-- blurhash のみ表示（ローダーなし） -->
-            <div class="placeholder-overlay">
-                <div class="gallery-loader"></div>
-            </div>
         {/if}
     </div>
 
@@ -325,22 +274,6 @@
         cursor: pointer;
     }
 
-    .gallery-blurhash {
-        position: absolute;
-        inset: 0;
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        border-radius: 6px;
-        opacity: 0.8;
-        filter: blur(1px);
-        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    }
-
-    .gallery-blurhash.fade-out {
-        opacity: 0;
-    }
-
     .gallery-image {
         min-width: 100px;
         max-width: 240px;
@@ -363,32 +296,6 @@
         object-fit: cover;
         border-radius: 8px;
         display: block;
-    }
-
-    .placeholder-overlay {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(0, 0, 0, 0.3);
-        border-radius: 8px;
-    }
-
-    /* ローダーアニメーション */
-    .gallery-loader {
-        width: 24px;
-        height: 24px;
-        border: 3px solid rgba(255, 255, 255, 0.3);
-        border-top-color: white;
-        border-radius: 50%;
-        animation: spin 0.8s linear infinite;
-    }
-
-    @keyframes spin {
-        to {
-            transform: rotate(360deg);
-        }
     }
 
     /* ボタン共通スタイル */

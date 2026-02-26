@@ -157,24 +157,6 @@ export async function generateBlurhashesForPlaceholders(
 
             if (blurhash) {
                 item.blurhash = blurhash;
-                if (currentEditor) {
-                    findAndExecuteOnNode(
-                        currentEditor,
-                        (node: any, _pos: number) => {
-                            const nodeType = node.type?.name;
-                            const isVideoNode = item.file.type.startsWith('video/') && nodeType === 'video';
-                            const isImageNode = !item.file.type.startsWith('video/') && nodeType === 'image';
-                            return (isVideoNode || isImageNode) && (node.attrs?.src === item.placeholderId || node.attrs?.id === item.placeholderId);
-                        },
-                        (node: any, pos: number) => {
-                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
-                                ...node.attrs,
-                                blurhash: blurhash,
-                            });
-                            currentEditor!.view.dispatch(tr);
-                        }
-                    );
-                }
             }
         } catch (error) {
             if (devMode) {
@@ -447,7 +429,6 @@ export async function generateBlurhashesForGallery(
 
             if (blurhash) {
                 item.blurhash = blurhash;
-                mediaGalleryStore.updateItem(item.placeholderId, { blurhash });
             }
         } catch (error) {
             if (devMode) {

@@ -7,11 +7,10 @@
     import { _ } from "svelte-i18n";
     import { getEventPosition } from "../lib/utils/appUtils";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import {
         calculateImageDisplaySize,
         parseDimString,
-        getPlaceholderDefaultSize,
-        renderBlurhash as renderBlurhashUtil,
         dispatchDragEvent,
         highlightDropZoneAtPosition,
         createDragPreview,
@@ -40,12 +39,7 @@
 
     let dragState = imageDragState;
     let selectionState = imageSelectionState;
-    // ローカルに変更
     let isImageLoaded = $state(false);
-    let blurhashFadeOut = $state(false);
-
-    // 個別のcanvas要素参照（グローバルストアではなくローカル）
-    let localCanvasRef: HTMLCanvasElement | undefined = $state();
 
     // buttonElementの参照を追加
     let buttonElement: HTMLButtonElement | undefined = $state();
@@ -54,7 +48,6 @@
 
     const JUST_SELECTED_DURATION = 400; // ms
 
-    // blurhash関連の状態
     let isPlaceholder = $derived(
         node.attrs.isPlaceholder === true ||
             (node.attrs.src && node.attrs.src.startsWith("placeholder-")),
@@ -63,10 +56,6 @@
         !isPlaceholder &&
             node.attrs.src &&
             !node.attrs.src.startsWith("placeholder-"),
-    );
-    let showBlurhash = $derived(
-        node.attrs.blurhash &&
-            (isPlaceholder || !isImageLoaded || blurhashFadeOut),
     );
 
     // 画像サイズ関連の状態
@@ -100,9 +89,6 @@
                 ...map,
                 [imageUrl]: calculated,
             }));
-        } else if (isPlaceholder) {
-            // プレースホルダーの場合はデフォルトサイズ
-            imageDimensions = getPlaceholderDefaultSize();
         }
     });
 
@@ -169,10 +155,6 @@
     // 画像読み込み完了時の処理
     function handleImageLoad() {
         isImageLoaded = true;
-        blurhashFadeOut = true;
-        setTimeout(() => {
-            blurhashFadeOut = false;
-        }, 400); // CSSアニメーションと合わせる
     }
 
     // 画像読み込みエラー時の処理
@@ -309,16 +291,6 @@
     }
 
     onMount(() => {
-        if (node.attrs.blurhash && localCanvasRef) {
-            renderBlurhashUtil(
-                node.attrs.blurhash,
-                localCanvasRef,
-                imageDimensions || getPlaceholderDefaultSize(),
-                isPlaceholder,
-                devMode,
-            );
-        }
-
         // タッチデバイスの場合は能動的なイベントリスナーを追加
         if (isTouchCapable && buttonElement) {
             buttonElement.addEventListener(
@@ -332,20 +304,6 @@
             buttonElement.addEventListener("touchend", handleTouchEndActive, {
                 passive: false,
             });
-        }
-    });
-
-    $effect(() => {
-        // previewモードでもログ出力するように修正
-
-        if (node.attrs.blurhash && localCanvasRef) {
-            renderBlurhashUtil(
-                node.attrs.blurhash,
-                localCanvasRef,
-                imageDimensions || getPlaceholderDefaultSize(),
-                isPlaceholder,
-                devMode,
-            );
         }
     });
 
@@ -380,7 +338,6 @@
             justSelected: false,
             justSelectedTimeout: null,
         });
-        localCanvasRef = undefined;
     });
 </script>
 
@@ -390,6 +347,7 @@
             bind:this={buttonElement}
             type="button"
             class="editor-image-button"
+            class:is-placeholder={isPlaceholder}
             data-dragging={dragState.isDragging}
             onclick={handleClick}
             tabindex="0"
@@ -400,17 +358,12 @@
             ondragover={isTouchCapable ? (e) => e.preventDefault() : undefined}
             ondrop={isTouchCapable ? (e) => e.preventDefault() : undefined}
         >
-            {#if showBlurhash}
-                <canvas
-                    bind:this={localCanvasRef}
-                    class="blurhash-canvas"
-                    class:is-placeholder={isPlaceholder}
-                    class:fade-out={isImageLoaded &&
-                        blurhashFadeOut &&
-                        showActualImage}
-                ></canvas>
-            {/if}
-            {#if showActualImage}
+            {#if isPlaceholder}
+                <LoadingPlaceholder
+                    text={$_("imageNode.uploading")}
+                    showLoader={true}
+                />
+            {:else if showActualImage}
                 <img
                     src={node?.attrs?.src}
                     alt={node?.attrs?.alt || ""}
@@ -420,7 +373,6 @@
                     onload={handleImageLoad}
                     onerror={handleImageError}
                     oncontextmenu={preventContextMenu}
-                    style="z-index:2; position:relative;"
                 />
             {/if}
         </button>
@@ -552,50 +504,16 @@
     }
 
     /* Focus extensionが付与するクラスで選択状態を表現 */
-    :global(.node-image.is-node-focused .editor-image),
-    :global(.node-image.is-node-focused .blurhash-canvas.is-placeholder) {
+    :global(.node-image.is-node-focused .editor-image) {
         outline: 2px solid var(--theme, #2196f3);
         outline-offset: -1px;
     }
 
     /* ドラッグ状態での追加スタイル */
-    .editor-image-button[data-dragging="true"] .editor-image,
-    .editor-image-button[data-dragging="true"] .blurhash-canvas.is-placeholder {
+    .editor-image-button[data-dragging="true"] .editor-image {
         opacity: 0.3;
         transform: scale(0.95);
         transition: all 0.2s ease;
-    }
-
-    /* blurhash関連スタイル（統合済み） */
-    .blurhash-canvas {
-        border-radius: 6px;
-        object-fit: cover;
-        z-index: 1;
-        opacity: 0.8;
-        filter: blur(1px);
-        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        max-width: 100%;
-        max-height: 240px;
-
-        &:not(.is-placeholder) {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-        }
-
-        &.is-placeholder {
-            position: relative;
-            border: 1px solid var(--border);
-            opacity: 1;
-            filter: blur(0.5px);
-        }
-
-        &.fade-out {
-            opacity: 0;
-            pointer-events: none;
-        }
     }
 
     /* 画像要素 */
@@ -614,8 +532,6 @@
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
-        position: relative;
-        z-index: 2;
 
         &.image-loading {
             opacity: 0;
@@ -625,6 +541,19 @@
         &:not(.image-loading) {
             opacity: 1;
         }
+    }
+
+    /* プレースホルダー状態のボタン */
+    .editor-image-button.is-placeholder {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 240px;
+        height: 160px;
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        background: var(--bg-input);
+        cursor: default;
     }
 
     /* タッチデバイス用 */

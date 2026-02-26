@@ -2,7 +2,7 @@
 // NIP-92 imetaタグ生成ユーティリティ
 import { generateEventTemplate } from "nostr-tools/nip94";
 import type { FileMetadataObject } from "nostr-tools/nip94";
-import { encode, decode } from "blurhash";
+import { encode } from "blurhash";
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 
 export interface ImetaField extends Partial<FileMetadataObject> {
@@ -189,39 +189,6 @@ export function extractImageBlurhashMap(editor: any): Record<string, string> {
     }
 
     return imageBlurhashMap;
-}
-
-/**
- * blurhashをcanvasに描画する共通関数
- * @param blurhash blurhash文字列
- * @param canvas HTMLCanvasElement
- * @param width 描画幅
- * @param height 描画高さ
- * @returns 描画成功かどうか
- */
-export function renderBlurhashToCanvas(
-    blurhash: string,
-    canvas: HTMLCanvasElement,
-    width: number,
-    height: number
-): boolean {
-    try {
-        const pixels = decode(blurhash, width, height);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return false;
-
-        // pixelsを必ずUint8ClampedArrayに変換（型エラー回避のためArray.fromを利用）
-        const imgData = new ImageData(
-            new Uint8ClampedArray(Array.from(pixels)),
-            width,
-            height
-        );
-        ctx.putImageData(imgData, 0, 0);
-        return true;
-    } catch (error) {
-        console.warn("Failed to decode blurhash:", error);
-        return false;
-    }
 }
 
 /**

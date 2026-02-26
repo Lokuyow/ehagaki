@@ -4,8 +4,6 @@ import {
     getPlaceholderDefaultSize,
     checkMoveThreshold,
     shouldPreventInteraction,
-    validateBlurhashParams,
-    setupCanvas,
 } from '../../lib/utils/editorImageUtils';
 
 describe('calculateImageDisplaySize', () => {
@@ -77,29 +75,3 @@ describe('shouldPreventInteraction', () => {
     });
 });
 
-describe('validateBlurhashParams', () => {
-    it('blurhash, canvas, dimensionsが揃っていればtrue', () => {
-        const canvas = document.createElement('canvas');
-        expect(validateBlurhashParams('abc', canvas, { displayWidth: 10, displayHeight: 10 })).toBe(true);
-    });
-    it('blurhashが空ならfalse', () => {
-        const canvas = document.createElement('canvas');
-        expect(validateBlurhashParams('', canvas, { displayWidth: 10, displayHeight: 10 })).toBe(false);
-    });
-    it('canvasがnullならfalse', () => {
-        expect(validateBlurhashParams('abc', null as any, { displayWidth: 10, displayHeight: 10 })).toBe(false);
-    });
-    it('dimensionsが0ならfalse', () => {
-        const canvas = document.createElement('canvas');
-        expect(validateBlurhashParams('abc', canvas, { displayWidth: 0, displayHeight: 0 })).toBe(false);
-    });
-});
-
-describe('setupCanvas', () => {
-    it('canvasのサイズをセットする', () => {
-        const canvas = document.createElement('canvas');
-        setupCanvas(canvas, { displayWidth: 123, displayHeight: 456 });
-        expect(canvas.width).toBe(123);
-        expect(canvas.height).toBe(456);
-    });
-});

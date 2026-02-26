@@ -1,6 +1,5 @@
 import type { ImageDimensions, DragEvent } from '../types';
 import { domUtils, isTouchDevice, blurEditorAndBody } from "./appDomUtils";
-import { renderBlurhashToCanvas } from "../tags/imetaTag";
 
 /**
  * エディター内画像の最大サイズ制限（CSS値と一致させる）
@@ -336,39 +335,3 @@ export function handleImageInteraction(
     return true;
 }
 
-// === blurhash描画 ===
-export interface BlurhashRenderer {
-    renderBlurhashToCanvas(blurhash: string, canvas: HTMLCanvasElement, width: number, height: number): void;
-}
-
-export function validateBlurhashParams(
-    blurhash: string,
-    canvasRef: HTMLCanvasElement,
-    dimensions: { displayWidth: number; displayHeight: number }
-): boolean {
-    return !!(blurhash && canvasRef && dimensions.displayWidth > 0 && dimensions.displayHeight > 0);
-}
-
-export function setupCanvas(
-    canvasRef: HTMLCanvasElement,
-    dimensions: { displayWidth: number; displayHeight: number }
-): void {
-    canvasRef.width = dimensions.displayWidth;
-    canvasRef.height = dimensions.displayHeight;
-}
-
-export function renderBlurhash(
-    blurhash: string,
-    canvasRef: HTMLCanvasElement,
-    dimensions: { displayWidth: number; displayHeight: number },
-    _isPlaceholder: boolean,
-    _devMode: boolean = false
-) {
-    if (!validateBlurhashParams(blurhash, canvasRef, dimensions)) {
-        return;
-    }
-
-    setupCanvas(canvasRef, dimensions);
-
-    renderBlurhashToCanvas(blurhash, canvasRef, dimensions.displayWidth, dimensions.displayHeight);
-}

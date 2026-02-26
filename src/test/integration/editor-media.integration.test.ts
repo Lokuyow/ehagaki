@@ -5,8 +5,6 @@ import {
     getPlaceholderDefaultSize,
     checkMoveThreshold,
     shouldPreventInteraction,
-    validateBlurhashParams,
-    setupCanvas
 } from '../../lib/utils/editorImageUtils';
 import {
     hasImageInDoc,
@@ -35,7 +33,7 @@ describe('エディター・メディア統合テスト', () => {
 
             // 2. 表示サイズを計算（アスペクト比を維持）
             const result = calculateImageDisplaySize(originalWidth, originalHeight);
-            
+
             // 3. エディター制約内に収まっている
             expect(result.displayWidth).toBeLessThanOrEqual(780);
             expect(result.displayHeight).toBeLessThanOrEqual(240);
@@ -131,7 +129,7 @@ describe('エディター・メディア統合テスト', () => {
         it('プレースホルダー生成→サイズ取得→表示のフローが動作すること', () => {
             // 1. プレースホルダーのデフォルトサイズを取得
             const placeholderSize = getPlaceholderDefaultSize();
-            
+
             expect(placeholderSize).toEqual({
                 width: 200,
                 height: 150,
@@ -155,7 +153,7 @@ describe('エディター・メディア統合テスト', () => {
 
             // 3. 実画像のサイズを計算
             const actualSize = calculateImageDisplaySize(actualDim!.width, actualDim!.height);
-            
+
             // 4. サイズが更新された（プレースホルダーとは異なる）
             expect(actualSize.width).not.toBe(placeholderSize.width);
             expect(actualSize.height).not.toBe(placeholderSize.height);
@@ -235,69 +233,12 @@ describe('エディター・メディア統合テスト', () => {
         it('複数の状態が同時に発生した場合の優先順位が正しいこと', () => {
             // ドラッグ中かつプレースホルダー
             expect(shouldPreventInteraction(true, true, false, false)).toBe(true);
-            
+
             // ドラッグ中かつ選択直後
             expect(shouldPreventInteraction(true, false, true, false)).toBe(true);
-            
+
             // プレースホルダーかつ選択直後
             expect(shouldPreventInteraction(false, true, true, false)).toBe(true);
-        });
-    });
-
-    describe('Blurhash統合', () => {
-        it('blurhash検証→Canvas準備→レンダリング準備のフローが動作すること', () => {
-            // 1. Canvas要素を作成
-            const canvas = document.createElement('canvas');
-            
-            // 2. 画像サイズを設定
-            const dimensions = {
-                displayWidth: 400,
-                displayHeight: 300
-            };
-
-            // 3. blurhashパラメータを検証
-            const blurhash = 'LEHV6nWB2yk8pyo0adR*.7kCMdnj';
-            const isValid = validateBlurhashParams(blurhash, canvas, dimensions);
-            expect(isValid).toBe(true);
-
-            // 4. Canvasのセットアップ
-            setupCanvas(canvas, dimensions);
-            expect(canvas.width).toBe(dimensions.displayWidth);
-            expect(canvas.height).toBe(dimensions.displayHeight);
-        });
-
-        it('無効なblurhashパラメータは拒否されること', () => {
-            const canvas = document.createElement('canvas');
-            const validDimensions = { displayWidth: 100, displayHeight: 100 };
-
-            // 空のblurhash
-            expect(validateBlurhashParams('', canvas, validDimensions)).toBe(false);
-
-            // canvasがnull
-            expect(validateBlurhashParams('valid', null as any, validDimensions)).toBe(false);
-
-            // サイズが0
-            expect(validateBlurhashParams('valid', canvas, { displayWidth: 0, displayHeight: 0 })).toBe(false);
-            expect(validateBlurhashParams('valid', canvas, { displayWidth: 100, displayHeight: 0 })).toBe(false);
-        });
-
-        it('プレースホルダー→blurhash→実画像のフローが動作すること', () => {
-            // 1. プレースホルダーサイズ
-            const placeholderSize = getPlaceholderDefaultSize();
-
-            // 2. blurhashの検証（プレースホルダーサイズで）
-            const canvas = document.createElement('canvas');
-            const blurhash = 'LEHV6nWB2yk8pyo0adR*.7kCMdnj';
-            expect(validateBlurhashParams(blurhash, canvas, placeholderSize)).toBe(true);
-
-            // 3. 実画像サイズの取得
-            const actualDim = parseDimString('1920x1080');
-            const actualSize = calculateImageDisplaySize(actualDim!.width, actualDim!.height);
-
-            // 4. 実画像サイズでCanvas再設定
-            setupCanvas(canvas, actualSize);
-            expect(canvas.width).toBe(actualSize.displayWidth);
-            expect(canvas.height).toBe(actualSize.displayHeight);
         });
     });
 
@@ -336,90 +277,31 @@ describe('エディター・メディア統合テスト', () => {
             expect(sizes[1].displayWidth).not.toBe(sizes[2].displayWidth);
         });
 
-        it('プレースホルダー→blurhash→実画像の完全フローが複数画像で動作すること', () => {
-            const images = [
-                { blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj', dim: '1920x1080' },
-                { blurhash: 'L6PZfSjE.AyE_3t7t7R*00WB2yk8', dim: '640x480' }
-            ];
-
-            images.forEach(img => {
-                // 1. プレースホルダー
-                const placeholderSize = getPlaceholderDefaultSize();
-
-                // 2. blurhash準備
-                const canvas = document.createElement('canvas');
-                expect(validateBlurhashParams(img.blurhash, canvas, placeholderSize)).toBe(true);
-
-                // 3. 実画像サイズ
-                const parsed = parseDimString(img.dim);
-                const actualSize = calculateImageDisplaySize(parsed!.width, parsed!.height);
-
-                // 4. Canvas更新
-                setupCanvas(canvas, actualSize);
-                expect(canvas.width).toBe(actualSize.displayWidth);
-                expect(canvas.height).toBe(actualSize.displayHeight);
-            });
-        });
-    });
-
-    describe('エラーケース統合', () => {
-        it('極端なアスペクト比の画像が安全に処理されること', () => {
-            // 非常に横長の画像
-            const wide = calculateImageDisplaySize(10000, 100);
-            expect(wide.displayWidth).toBeLessThanOrEqual(780);
-            expect(wide.displayHeight).toBeGreaterThan(0);
-
-            // 非常に縦長の画像
-            const tall = calculateImageDisplaySize(100, 10000);
-            expect(tall.displayHeight).toBeLessThanOrEqual(240);
-            expect(tall.displayWidth).toBeGreaterThan(0);
-        });
-
-        it('ゼロまたは負のサイズが適切に処理されること', () => {
-            // ゼロサイズ
-            expect(parseDimString('0x0')).toEqual({ width: 0, height: 0 });
-            
-            // Canvasバリデーションで拒否される
-            const canvas = document.createElement('canvas');
-            expect(validateBlurhashParams('hash', canvas, { displayWidth: 0, displayHeight: 0 })).toBe(false);
-        });
-
-        it('不正なCanvas状態が検出されること', () => {
-            // Canvasがnull
-            expect(validateBlurhashParams('hash', null as any, { displayWidth: 100, displayHeight: 100 })).toBe(false);
-
-            // Canvasは存在するが他のパラメータが不正
-            const canvas = document.createElement('canvas');
-            expect(validateBlurhashParams('', canvas, { displayWidth: 100, displayHeight: 100 })).toBe(false);
-        });
-    });
-
-    describe('リアルワールドシナリオ統合', () => {
         it('Twitter画像のペースト→サイズ計算→表示のフローが動作すること', () => {
             // Twitterの一般的な画像サイズ
             const twitterImageDim = '1200x675';
-            
+
             const parsed = parseDimString(twitterImageDim);
             expect(parsed).not.toBeNull();
 
             const displaySize = calculateImageDisplaySize(parsed!.width, parsed!.height);
-            
+
             // エディター制約内に収まる
             expect(displaySize.displayWidth).toBeLessThanOrEqual(780);
             expect(displaySize.displayHeight).toBeLessThanOrEqual(240);
 
             // アスペクト比16:9を維持
             const ratio = displaySize.displayWidth / displaySize.displayHeight;
-            expect(Math.abs(ratio - (16/9))).toBeLessThan(0.1);
+            expect(Math.abs(ratio - (16 / 9))).toBeLessThan(0.1);
         });
 
         it('Instagram画像のペースト→サイズ計算→表示のフローが動作すること', () => {
             // Instagramの正方形画像
             const instagramImageDim = '1080x1080';
-            
+
             const parsed = parseDimString(instagramImageDim);
             const displaySize = calculateImageDisplaySize(parsed!.width, parsed!.height);
-            
+
             // 正方形が維持される
             expect(displaySize.displayWidth).toBe(displaySize.displayHeight);
             expect(displaySize.displayWidth).toBeLessThanOrEqual(780);
@@ -428,14 +310,14 @@ describe('エディター・メディア統合テスト', () => {
         it('スクリーンショットのペースト→検出→表示のフローが動作すること', () => {
             // 4K解像度のスクリーンショット
             const screenshotDim = '3840x2160';
-            
+
             const parsed = parseDimString(screenshotDim);
             const displaySize = calculateImageDisplaySize(parsed!.width, parsed!.height);
-            
+
             // 大きく縮小されるが、アスペクト比は維持
             expect(displaySize.displayWidth).toBeLessThanOrEqual(780);
             expect(displaySize.displayHeight).toBeLessThanOrEqual(240);
-            
+
             const originalRatio = 3840 / 2160;
             const displayRatio = displaySize.displayWidth / displaySize.displayHeight;
             expect(Math.abs(originalRatio - displayRatio)).toBeLessThan(0.01);
