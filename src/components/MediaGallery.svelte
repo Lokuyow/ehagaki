@@ -131,6 +131,23 @@
             touchPreviewEl = null;
         }
     }
+
+    // --- ホイールスクロール処理 ---
+    function handleWheel(event: WheelEvent) {
+        if (!galleryEl) return;
+        // deltaYを横スクロール量に変換
+        galleryEl.scrollLeft += event.deltaY;
+        event.preventDefault();
+    }
+
+    // ホイールイベントをpassive: falseで登録
+    $effect(() => {
+        if (!galleryEl) return;
+        galleryEl.addEventListener("wheel", handleWheel, { passive: false });
+        return () => {
+            galleryEl?.removeEventListener("wheel", handleWheel);
+        };
+    });
 </script>
 
 {#if items.length > 0}
