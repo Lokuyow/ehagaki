@@ -85,7 +85,7 @@
     });
 
     // 長押し投稿の設定
-    const LONG_PRESS_DURATION = 400; // 長押し必要時間 (ms)
+    const LONG_PRESS_DURATION = 350; // 長押し必要時間 (ms)
     const CANCEL_REVERSE_DELAY = 150; // 巻き戻り開始までの遅延 (ms)
     const PROGRESS_RING_CIRCUMFERENCE = 125.66; // 2π × 20px
 
