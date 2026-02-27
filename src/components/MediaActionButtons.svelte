@@ -70,8 +70,8 @@
         right: 2px;
         z-index: 10;
     }
-    :global(.media-delete-btn--editor-image),
-    :global(.media-delete-btn--editor-video) {
+    :global(button.circle.media-delete-btn--editor-image),
+    :global(button.circle.media-delete-btn--editor-video) {
         width: 40px;
         height: 40px;
     }
@@ -87,13 +87,13 @@
         z-index: 10;
     }
     /* editor-image: 下右 */
-    :global(.media-copy-btn--editor-image) {
+    :global(button.circle.media-copy-btn--editor-image) {
         bottom: 2px;
         width: 40px;
         height: 40px;
     }
     /* editor-video: 削除ボタンの下 */
-    :global(.media-copy-btn--editor-video) {
+    :global(button.circle.media-copy-btn--editor-video) {
         top: 52px;
         width: 40px;
         height: 40px;

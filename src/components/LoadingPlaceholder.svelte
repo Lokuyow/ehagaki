@@ -48,12 +48,12 @@
     }
     .loading-placeholder {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         justify-content: center;
         gap: 8px;
         position: relative;
         width: 100%;
-        height: 100%;
     }
     .placeholder-image {
         background: var(--darker);
@@ -70,6 +70,7 @@
     }
     .loading-text {
         animation: pulse-text 1.5s ease-in-out infinite;
+        line-height: 1.5;
     }
 
     @keyframes pulse {

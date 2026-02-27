@@ -354,6 +354,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        min-width: 100px;
+        min-height: 100px;
         max-width: 100%;
         border: 1px solid var(--border);
         border-radius: 6px;
