@@ -620,7 +620,7 @@
     .floating-dev-console-log {
         position: fixed;
         right: 0;
-        bottom: 66px;
+        bottom: 116px;
         z-index: 1000;
         min-width: 240px;
         width: 100%;
