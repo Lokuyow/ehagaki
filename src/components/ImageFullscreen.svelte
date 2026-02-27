@@ -3,11 +3,7 @@
     import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
     import Button from "./Button.svelte";
     import type { TransformState } from "../lib/types";
-    import {
-        setBodyStyle,
-        focusEditor,
-        isTouchDevice,
-    } from "../lib/utils/appDomUtils";
+    import { setBodyStyle, isTouchDevice } from "../lib/utils/appDomUtils";
     import {
         transformStore,
         createDragState,
@@ -488,10 +484,6 @@
         if (historyPushed) {
             historyPushed = false;
             history.back();
-        }
-        // タッチデバイスではキーボードが立ち上がるのを防ぐためフォーカスしない
-        if (!isTouchDevice()) {
-            focusEditor(SELECTORS.EDITOR, TIMING.EDITOR_FOCUS_DELAY);
         }
     }
 

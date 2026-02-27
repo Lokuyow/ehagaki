@@ -24,8 +24,11 @@
     keydownAction,
     fileDropActionWithDragState,
   } from "../lib/editor/editorDomActions.svelte";
-  import { containsSecretKey, generateMediaItemId } from "../lib/utils/appUtils";
-  import { domUtils, isTouchDevice } from "../lib/utils/appDomUtils";
+  import {
+    containsSecretKey,
+    generateMediaItemId,
+  } from "../lib/utils/appUtils";
+
   import { postComponentUIStore } from "../stores/appStore.svelte";
   import {
     editorState,
@@ -266,10 +269,6 @@
       postManager.clearContentAfterSuccess(currentEditor);
   }
 
-  export function focusEditor() {
-    domUtils.querySelector(".tiptap-editor")?.focus();
-  }
-
   // UI状態管理をストアから取得して使用
   async function confirmSendWithSecretKey() {
     const pendingPost = postComponentUIStore.getPendingPost();
@@ -329,12 +328,6 @@
 
   function closeFullscreen() {
     postComponentUIStore.hideImageFullscreen();
-    // タッチデバイスではキーボードが立ち上がるのを防ぐためフォーカスしない
-    if (!isTouchDevice()) {
-      setTimeout(() => {
-        domUtils.querySelector(".tiptap-editor")?.focus();
-      }, 150);
-    }
   }
 
   $effect(() => {

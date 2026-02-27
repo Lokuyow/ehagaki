@@ -351,11 +351,6 @@
       if (isFirstVisit) {
         showWelcomeDialogStore.set(true);
         localStorage.setItem("firstVisit", "1");
-      } else {
-        // 2回目以降のアクセス時はエディターにフォーカス
-        setTimeout(() => {
-          postComponentRef?.focusEditor();
-        }, 300);
       }
 
       // URLクエリパラメータからコンテンツを取得
