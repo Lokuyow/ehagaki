@@ -376,34 +376,36 @@
                 />
             {/if}
         </button>
-        <Button
-            variant="copy"
-            shape="circle"
-            className="image-copy-button"
-            ariaLabel={$_("imageContextMenu.copyUrl")}
-            onClick={(event) => {
-                event.stopPropagation();
-                copyToClipboard(node.attrs.src, "image URL");
-                // コピー成功時のポップアップ表示
-                const pos = { x: event.clientX, y: event.clientY };
-                postComponentUIStore.showPopupMessage(
-                    pos.x,
-                    pos.y,
-                    $_("imageContextMenu.copySuccess"),
-                );
-            }}
-        >
-            <div class="copy-icon svg-icon"></div>
-        </Button>
-        <Button
-            variant="close"
-            shape="circle"
-            className="image-close-button"
-            ariaLabel={$_("imageContextMenu.delete")}
-            onClick={handleDeleteNode}
-        >
-            <div class="close-icon svg-icon"></div>
-        </Button>
+        {#if !isPlaceholder}
+            <Button
+                variant="copy"
+                shape="circle"
+                className="image-copy-button"
+                ariaLabel={$_("imageContextMenu.copyUrl")}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    copyToClipboard(node.attrs.src, "image URL");
+                    // コピー成功時のポップアップ表示
+                    const pos = { x: event.clientX, y: event.clientY };
+                    postComponentUIStore.showPopupMessage(
+                        pos.x,
+                        pos.y,
+                        $_("imageContextMenu.copySuccess"),
+                    );
+                }}
+            >
+                <div class="copy-icon svg-icon"></div>
+            </Button>
+            <Button
+                variant="close"
+                shape="circle"
+                className="image-close-button"
+                ariaLabel={$_("imageContextMenu.delete")}
+                onClick={handleDeleteNode}
+            >
+                <div class="close-icon svg-icon"></div>
+            </Button>
+        {/if}
     </div>
 </NodeViewWrapper>
 

@@ -276,33 +276,35 @@
                 </video>
             {/if}
         </div>
-        <Button
-            variant="close"
-            shape="circle"
-            className="video-close-button"
-            ariaLabel={$_("videoContextMenu.delete")}
-            onClick={handleDeleteNode}
-        >
-            <div class="close-icon svg-icon"></div>
-        </Button>
-        <Button
-            variant="copy"
-            shape="circle"
-            className="video-copy-button"
-            ariaLabel={$_("videoContextMenu.copyUrl")}
-            onClick={(event) => {
-                event.stopPropagation();
-                copyToClipboard(node.attrs.src, "video URL");
-                const pos = { x: event.clientX, y: event.clientY };
-                postComponentUIStore.showPopupMessage(
-                    pos.x,
-                    pos.y,
-                    $_("videoContextMenu.copySuccess"),
-                );
-            }}
-        >
-            <div class="copy-icon svg-icon"></div>
-        </Button>
+        {#if !isPlaceholder}
+            <Button
+                variant="close"
+                shape="circle"
+                className="video-close-button"
+                ariaLabel={$_("videoContextMenu.delete")}
+                onClick={handleDeleteNode}
+            >
+                <div class="close-icon svg-icon"></div>
+            </Button>
+            <Button
+                variant="copy"
+                shape="circle"
+                className="video-copy-button"
+                ariaLabel={$_("videoContextMenu.copyUrl")}
+                onClick={(event) => {
+                    event.stopPropagation();
+                    copyToClipboard(node.attrs.src, "video URL");
+                    const pos = { x: event.clientX, y: event.clientY };
+                    postComponentUIStore.showPopupMessage(
+                        pos.x,
+                        pos.y,
+                        $_("videoContextMenu.copySuccess"),
+                    );
+                }}
+            >
+                <div class="copy-icon svg-icon"></div>
+            </Button>
+        {/if}
     </div>
 </NodeViewWrapper>
 
