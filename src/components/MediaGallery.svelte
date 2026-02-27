@@ -17,6 +17,8 @@
     let touchDragIndex = $state(-1);
     let touchInsertIndex = $state(-1);
     let touchPreviewEl: HTMLElement | null = null;
+    let touchPreviewOffsetX = 60;
+    let touchPreviewOffsetY = 60;
     let galleryEl: HTMLDivElement | undefined = $state();
 
     // オートスクロール（タッチ・PC DnD共通）
@@ -163,18 +165,28 @@
             index
         ] as HTMLElement | null;
         if (itemEl) {
+            const itemRect = itemEl.getBoundingClientRect();
+            const targetSize = 120;
+            const scale = Math.min(
+                targetSize / itemRect.width,
+                targetSize / itemRect.height,
+            );
+            touchPreviewOffsetX = (itemRect.width * scale) / 2;
+            touchPreviewOffsetY = (itemRect.height * scale) / 2;
+
             touchPreviewEl = itemEl.cloneNode(true) as HTMLElement;
             touchPreviewEl.style.cssText = `
                 position: fixed;
-                left: ${x - 60}px;
-                top: ${y - 60}px;
-                width: 120px;
-                height: 120px;
+                left: ${x - touchPreviewOffsetX}px;
+                top: ${y - touchPreviewOffsetY}px;
+                width: ${itemRect.width}px;
+                height: ${itemRect.height}px;
+                transform-origin: top left;
+                transform: scale(${scale});
                 opacity: 0.75;
                 pointer-events: none;
                 z-index: 9999;
                 border-radius: 6px;
-                transform: scale(1.1);
             `;
             document.body.appendChild(touchPreviewEl);
         }
@@ -196,8 +208,8 @@
 
         // プレビュー位置更新
         if (touchPreviewEl) {
-            touchPreviewEl.style.left = `${touch.clientX - 60}px`;
-            touchPreviewEl.style.top = `${touch.clientY - 60}px`;
+            touchPreviewEl.style.left = `${touch.clientX - touchPreviewOffsetX}px`;
+            touchPreviewEl.style.top = `${touch.clientY - touchPreviewOffsetY}px`;
         }
 
         // ドロップ先の検出

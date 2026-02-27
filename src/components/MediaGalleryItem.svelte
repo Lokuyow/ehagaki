@@ -244,6 +244,4 @@
         -webkit-user-select: none;
         user-select: none;
     }
-
-    /* ボタン共通スタイル */
 </style>
