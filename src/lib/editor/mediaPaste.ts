@@ -3,6 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUtils';
 import { mediaFreePlacementStore } from '../../stores/appStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
+import { generateMediaItemId } from '../utils/appUtils';
 
 // メディアURL（画像または動画）をテキストから抽出
 interface MediaUrl {
@@ -131,7 +132,7 @@ export const MediaPasteExtension = Extension.create({
                             if (!mediaFreePlacementStore.value) {
                                 mediaUrls.forEach(media => {
                                     mediaGalleryStore.addItem({
-                                        id: media.url,
+                                        id: generateMediaItemId(),
                                         type: media.type,
                                         src: media.url,
                                         isPlaceholder: false
@@ -197,7 +198,7 @@ export const MediaPasteExtension = Extension.create({
                                 if (!mediaFreePlacementStore.value) {
                                     mediaUrls.forEach(media => {
                                         mediaGalleryStore.addItem({
-                                            id: media.url,
+                                            id: generateMediaItemId(),
                                             type: media.type,
                                             src: media.url,
                                             isPlaceholder: false

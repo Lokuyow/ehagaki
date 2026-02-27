@@ -24,7 +24,7 @@
     keydownAction,
     fileDropActionWithDragState,
   } from "../lib/editor/editorDomActions.svelte";
-  import { containsSecretKey } from "../lib/utils/appUtils";
+  import { containsSecretKey, generateMediaItemId } from "../lib/utils/appUtils";
   import { domUtils, isTouchDevice } from "../lib/utils/appDomUtils";
   import { postComponentUIStore } from "../stores/appStore.svelte";
   import {
@@ -395,7 +395,7 @@
             const src = node.attrs.src as string;
             if (!src) return;
             mediaGalleryStore.addItem({
-              id: src,
+              id: generateMediaItemId(),
               type: node.type.name as "image" | "video",
               src,
               isPlaceholder: false,

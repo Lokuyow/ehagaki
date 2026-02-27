@@ -7,6 +7,7 @@ import { CONTENT_TRACKING_CONFIG } from '../constants';
 import type { ContentTrackingOptions } from '../types';
 import { mediaFreePlacementStore } from '../../stores/appStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
+import { generateMediaItemId } from '../utils/appUtils';
 
 /**
  * ハッシュタグのデコレーション（装飾）を生成する関数
@@ -219,7 +220,7 @@ function processUrlsAndImages(
             if (!mediaFreePlacementStore.value) {
                 // ギャラリーモード: 画像をギャラリーに追加し、URLテキストを削除
                 mediaGalleryStore.addItem({
-                    id: change.imageUrl,
+                    id: generateMediaItemId(),
                     type: 'image',
                     src: change.imageUrl,
                     isPlaceholder: false
