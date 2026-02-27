@@ -203,18 +203,19 @@
         {/if}
     </div>
 
-    <!-- 削除ボタン -->
-    <Button
-        variant="close"
-        shape="circle"
-        className="gallery-delete-button"
-        ariaLabel={$_("imageContextMenu.delete")}
-        onClick={handleDelete}
-    >
-        <div class="close-icon svg-icon"></div>
-    </Button>
+    <!-- 削除・コピーボタン（プレースホルダー以外） -->
+    {#if !item.isPlaceholder}
+        <Button
+            variant="close"
+            shape="circle"
+            className="gallery-delete-button"
+            ariaLabel={$_("imageContextMenu.delete")}
+            onClick={handleDelete}
+        >
+            <div class="close-icon svg-icon"></div>
+        </Button>
+    {/if}
 
-    <!-- URLコピーボタン（プレースホルダー以外） -->
     {#if !item.isPlaceholder}
         <Button
             variant="copy"
