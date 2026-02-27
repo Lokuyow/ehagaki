@@ -50,6 +50,29 @@
         !item.isPlaceholder && item.type === "video" && !!item.src,
     );
 
+    // プレースホルダーの表示サイズをアップロード後のメディア表示サイズに合わせる
+    // ギャラリーの実メディアはheight:220px, min-width:100px, max-width:220px, object-fit:cover
+    const GALLERY_HEIGHT = 220;
+    const GALLERY_MIN_WIDTH = 100;
+    const GALLERY_MAX_WIDTH = 220;
+
+    let placeholderStyle = $derived.by(() => {
+        if (!item.isPlaceholder) return undefined;
+        const dims = item.dimensions;
+        if (dims && dims.width > 0 && dims.height > 0) {
+            // アスペクト比から幅を計算し、ギャラリー制約に収める
+            const aspectRatio = dims.width / dims.height;
+            const w = Math.round(GALLERY_HEIGHT * aspectRatio);
+            const clampedWidth = Math.max(
+                GALLERY_MIN_WIDTH,
+                Math.min(GALLERY_MAX_WIDTH, w),
+            );
+            return `width: ${clampedWidth}px; height: ${GALLERY_HEIGHT}px;`;
+        }
+        // 寸法情報がない場合はデフォルト
+        return `width: ${GALLERY_MAX_WIDTH}px; height: ${GALLERY_HEIGHT}px;`;
+    });
+
     function handleImageClick() {
         if (item.isPlaceholder || item.type !== "image") return;
         postComponentUIStore.showImageFullscreen(item.src, item.alt || "");
@@ -87,6 +110,7 @@
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
         class="gallery-item-media"
+        style={placeholderStyle}
         onclick={item.type === "image" && !item.isPlaceholder
             ? handleImageClick
             : undefined}

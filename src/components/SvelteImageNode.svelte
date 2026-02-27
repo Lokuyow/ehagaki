@@ -46,8 +46,17 @@
     let isPlaceholder = $derived(isMediaPlaceholder(node.attrs));
     let showActualImage = $derived(!isPlaceholder && !!node.attrs.src);
 
+    // プレースホルダー表示を維持する状態（実プレースホルダー or 画像読み込み中）
+    let showAsPlaceholder = $derived(
+        isPlaceholder || (showActualImage && !mediaLoad.isLoaded),
+    );
+
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
+
+    // プレースホルダーの表示サイズ（寸法情報がない場合はデフォルト値にフォールバック）
+    let placeholderWidth = $derived(imageDimensions?.displayWidth ?? 240);
+    let placeholderHeight = $derived(imageDimensions?.displayHeight ?? 160);
 
     const devMode = import.meta.env.MODE === "development";
 
@@ -184,7 +193,10 @@
             bind:this={buttonElement}
             type="button"
             class="editor-image-button"
-            class:is-placeholder={isPlaceholder}
+            class:is-placeholder={showAsPlaceholder}
+            style={showAsPlaceholder
+                ? `width: ${placeholderWidth}px; height: ${placeholderHeight}px;`
+                : undefined}
             data-dragging={dragState.isDragging}
             onclick={handleClick}
             tabindex="0"
@@ -195,12 +207,13 @@
             ondragover={isTouchCapable ? (e) => e.preventDefault() : undefined}
             ondrop={isTouchCapable ? (e) => e.preventDefault() : undefined}
         >
-            {#if isPlaceholder}
+            {#if showAsPlaceholder}
                 <LoadingPlaceholder
                     text={$_("imageNode.uploading")}
                     showLoader={true}
                 />
-            {:else if showActualImage}
+            {/if}
+            {#if showActualImage}
                 <img
                     src={node?.attrs?.src}
                     alt={node?.attrs?.alt || ""}
@@ -213,7 +226,7 @@
                 />
             {/if}
         </button>
-        {#if !isPlaceholder}
+        {#if !showAsPlaceholder}
             <MediaActionButtons
                 src={node.attrs.src}
                 onDelete={deleteNode}
@@ -341,12 +354,17 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 240px;
-        height: 160px;
+        max-width: 100%;
         border: 1px solid var(--border);
         border-radius: 6px;
         background: var(--bg-input);
         cursor: default;
+    }
+
+    /* 画像読み込み中（プレースホルダー表示中）はレイアウトに影響させない */
+    .editor-image-button.is-placeholder img.editor-image.image-loading {
+        position: absolute;
+        opacity: 0;
     }
 
     /* タッチデバイス用 */
