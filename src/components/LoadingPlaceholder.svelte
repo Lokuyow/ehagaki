@@ -51,7 +51,8 @@
         flex-wrap: wrap;
         align-items: center;
         justify-content: center;
-        gap: 8px;
+        padding: 8px;
+        column-gap: 8px;
         position: relative;
         width: 100%;
     }
