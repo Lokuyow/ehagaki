@@ -515,8 +515,7 @@
         fill: none;
         stroke: var(--theme);
         stroke-width: 8;
-        stroke-linecap: round;
-        stroke-dasharray: 150.796px;
+        stroke-dasharray: 125.66px;
     }
 
     .button-group-right {
