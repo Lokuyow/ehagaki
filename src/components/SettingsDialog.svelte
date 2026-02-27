@@ -608,26 +608,6 @@
             </div>
         </div>
 
-        <!-- client tag オプトアウト設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.client_tag_label") ||
-                        "投稿詳細にクライアント名をつける（Client tag）"}</span
-                >
-                <div class="setting-control">
-                    <label class="toggle-switch" for="{uid}-client-tag">
-                        <input
-                            id="{uid}-client-tag"
-                            type="checkbox"
-                            bind:checked={clientTagEnabled}
-                        />
-                        <span class="slider"></span>
-                    </label>
-                </div>
-            </div>
-        </div>
-
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
@@ -644,6 +624,26 @@
                             id="{uid}-media-free-placement"
                             type="checkbox"
                             bind:checked={mediaFreePlacement}
+                        />
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- client tag オプトアウト設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.client_tag_label") ||
+                        "投稿詳細にクライアント名をつける（Client tag）"}</span
+                >
+                <div class="setting-control">
+                    <label class="toggle-switch" for="{uid}-client-tag">
+                        <input
+                            id="{uid}-client-tag"
+                            type="checkbox"
+                            bind:checked={clientTagEnabled}
                         />
                         <span class="slider"></span>
                     </label>
