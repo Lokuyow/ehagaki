@@ -233,7 +233,6 @@
         position: relative;
         display: inline-flex;
         flex-shrink: 0;
-        border-radius: 8px;
         overflow: visible;
         cursor: grab;
         transition:
@@ -276,10 +275,9 @@
 
     .gallery-image {
         min-width: 100px;
-        max-width: 240px;
+        max-width: 220px;
         height: 220px;
         object-fit: cover;
-        border-radius: 6px;
         display: block;
         -webkit-user-select: none;
         user-select: none;
@@ -291,10 +289,10 @@
     }
 
     .gallery-video {
-        width: 100%;
-        height: 100%;
+        min-width: 100px;
+        max-width: 220px;
+        height: 220px;
         object-fit: cover;
-        border-radius: 8px;
         display: block;
     }
 

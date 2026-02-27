@@ -66,7 +66,7 @@
                 opacity: 0.75;
                 pointer-events: none;
                 z-index: 9999;
-                border-radius: 8px;
+                border-radius: 6px;
                 transform: scale(1.1);
             `;
             document.body.appendChild(touchPreviewEl);
