@@ -467,6 +467,7 @@
   <div
     class="editor-container"
     class:drag-over={dragOver}
+    class:gallery-mode={!mediaFreePlacement}
     use:fileDropActionWithDragState={{
       dragOver: (v: boolean) => (dragOver = v),
     }}
@@ -565,6 +566,11 @@
 
   .editor-container.drag-over {
     border: 3px dashed var(--theme);
+  }
+
+  /* ギャラリーモード時はドロップカーソル（差し込み位置バー）を常に非表示 */
+  .editor-container.gallery-mode :global(.tiptap-dropcursor) {
+    display: none !important;
   }
 
   :global(.editor-content) {

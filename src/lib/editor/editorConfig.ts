@@ -131,6 +131,7 @@ export function createEditorStore(options: EditorConfigOptions) {
                 dropcursor: {
                     color: 'dodgerblue',
                     width: 5,
+                    class: 'tiptap-dropcursor',
                 },
                 // Link extensionは個別に設定するため無効化
                 link: false,
