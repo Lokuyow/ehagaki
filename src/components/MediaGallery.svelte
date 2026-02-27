@@ -2,6 +2,11 @@
     import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
     import MediaGalleryItem from "./MediaGalleryItem.svelte";
     import { _ } from "svelte-i18n";
+    import {
+        SCROLL_THRESHOLD,
+        SCROLL_BASE_SPEED,
+        SCROLL_MAX_SPEED,
+    } from "../lib/constants";
 
     // PC ドラッグ＆ドロップ状態
     let dragFromIndex = $state(-1);
@@ -13,6 +18,9 @@
     let touchInsertIndex = $state(-1);
     let touchPreviewEl: HTMLElement | null = null;
     let galleryEl: HTMLDivElement | undefined = $state();
+
+    // オートスクロール（タッチ・PC DnD共通）
+    let autoScrollFrame: number | null = null;
 
     let items = $derived(mediaGalleryStore.items);
 
@@ -47,14 +55,28 @@
         } else {
             pcInsertIndex = index;
         }
+
+        // PC DnD 時もエッジオートスクロール
+        if (galleryEl) {
+            const galleryRect = galleryEl.getBoundingClientRect();
+            if (event.clientX - galleryRect.left < SCROLL_THRESHOLD) {
+                startGalleryAutoScroll("left", event.clientX);
+            } else if (galleryRect.right - event.clientX < SCROLL_THRESHOLD) {
+                startGalleryAutoScroll("right", event.clientX);
+            } else {
+                stopGalleryAutoScroll();
+            }
+        }
     }
 
     function handleDragEnd() {
+        stopGalleryAutoScroll();
         dragFromIndex = -1;
         pcInsertIndex = -1;
     }
 
     function handleDrop(_itemIndex: number) {
+        stopGalleryAutoScroll();
         const insertIdx = pcInsertIndex;
         if (
             dragFromIndex !== -1 &&
@@ -73,6 +95,62 @@
 
     function handleDelete(id: string) {
         mediaGalleryStore.removeItem(id);
+    }
+
+    // --- オートスクロール ---
+    function startGalleryAutoScroll(
+        direction: "left" | "right",
+        clientX: number,
+    ) {
+        if (!galleryEl) return;
+        // 既存のスクロールループを停止してから新規開始
+        if (autoScrollFrame !== null) {
+            cancelAnimationFrame(autoScrollFrame);
+            autoScrollFrame = null;
+        }
+
+        const rect = galleryEl.getBoundingClientRect();
+        const distance =
+            direction === "left" ? clientX - rect.left : rect.right - clientX;
+        const normalizedDistance = Math.max(
+            0,
+            Math.min(1, distance / SCROLL_THRESHOLD),
+        );
+        const scrollSpeed =
+            SCROLL_BASE_SPEED +
+            (SCROLL_MAX_SPEED - SCROLL_BASE_SPEED) * (1 - normalizedDistance);
+
+        const animate = () => {
+            if (!galleryEl) return;
+            const maxScroll = galleryEl.scrollWidth - galleryEl.clientWidth;
+            if (direction === "left" && galleryEl.scrollLeft > 0) {
+                galleryEl.scrollLeft = Math.max(
+                    0,
+                    galleryEl.scrollLeft - scrollSpeed,
+                );
+                autoScrollFrame = requestAnimationFrame(animate);
+            } else if (
+                direction === "right" &&
+                galleryEl.scrollLeft < maxScroll
+            ) {
+                galleryEl.scrollLeft = Math.min(
+                    maxScroll,
+                    galleryEl.scrollLeft + scrollSpeed,
+                );
+                autoScrollFrame = requestAnimationFrame(animate);
+            } else {
+                autoScrollFrame = null;
+            }
+        };
+
+        autoScrollFrame = requestAnimationFrame(animate);
+    }
+
+    function stopGalleryAutoScroll() {
+        if (autoScrollFrame !== null) {
+            cancelAnimationFrame(autoScrollFrame);
+            autoScrollFrame = null;
+        }
     }
 
     // --- タッチ DnD ハンドラ ---
@@ -140,11 +218,24 @@
                     touch.clientX < rect.left + rect.width / 2 ? idx : idx + 1;
             }
         }
+
+        // 画面端でギャラリーをオートスクロール
+        if (galleryEl) {
+            const galleryRect = galleryEl.getBoundingClientRect();
+            if (touch.clientX - galleryRect.left < SCROLL_THRESHOLD) {
+                startGalleryAutoScroll("left", touch.clientX);
+            } else if (galleryRect.right - touch.clientX < SCROLL_THRESHOLD) {
+                startGalleryAutoScroll("right", touch.clientX);
+            } else {
+                stopGalleryAutoScroll();
+            }
+        }
     }
 
     function handleGlobalTouchEnd() {
         document.removeEventListener("touchmove", handleGlobalTouchMove);
         document.removeEventListener("touchend", handleGlobalTouchEnd);
+        stopGalleryAutoScroll();
 
         const insertIdx = touchInsertIndex;
         if (
