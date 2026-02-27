@@ -83,6 +83,115 @@
     $effect(() => {
         return setupViewportListener();
     });
+
+    // 長押し投稿の設定
+    const LONG_PRESS_DURATION = 400; // 長押し必要時間 (ms)
+    const CANCEL_REVERSE_DELAY = 150; // 巻き戻り開始までの遅延 (ms)
+    const PROGRESS_RING_CIRCUMFERENCE = 125.66; // 2π × 20px
+
+    let longPressProgress = $state(0); // 0〜1
+    let showProgressRing = $state(false);
+    let postTooltipOpen = $state(false);
+    let postTooltipBlocked = false; // 長押し中はツールチップ開放をブロック
+    let longPressAnimFrameId: number | null = null;
+    let longPressCancelTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    let longPressStartTime = 0;
+    let longPressCompleted = false;
+
+    function isPostDisabled(): boolean {
+        return (
+            !canPost ||
+            postStatus.sending ||
+            isUploading ||
+            !hasStoredKey ||
+            !!postStatus.completed
+        );
+    }
+
+    function startLongPress(event: PointerEvent) {
+        if (isPostDisabled()) return;
+
+        // キャンセルタイムアウトが残っていればクリア
+        if (longPressCancelTimeoutId !== null) {
+            clearTimeout(longPressCancelTimeoutId);
+            longPressCancelTimeoutId = null;
+        }
+
+        longPressCompleted = false;
+        longPressStartTime = performance.now();
+        longPressProgress = 0;
+        showProgressRing = true;
+        postTooltipOpen = false;
+        postTooltipBlocked = true;
+
+        function animate(now: number) {
+            const elapsed = now - longPressStartTime;
+            const progress = Math.min(elapsed / LONG_PRESS_DURATION, 1);
+            longPressProgress = progress;
+
+            if (progress >= 1) {
+                longPressCompleted = true;
+                triggerVibration(30);
+                submitPost();
+                setTimeout(() => {
+                    showProgressRing = false;
+                    longPressProgress = 0;
+                    postTooltipBlocked = false;
+                }, 200);
+                return;
+            }
+
+            longPressAnimFrameId = requestAnimationFrame(animate);
+        }
+
+        longPressAnimFrameId = requestAnimationFrame(animate);
+    }
+
+    function cancelLongPress() {
+        if (longPressCompleted) return;
+        if (!showProgressRing) return;
+
+        if (longPressAnimFrameId !== null) {
+            cancelAnimationFrame(longPressAnimFrameId);
+            longPressAnimFrameId = null;
+        }
+
+        const progressAtCancel = longPressProgress;
+
+        // 0.15秒後に巻き戻り開始
+        longPressCancelTimeoutId = setTimeout(() => {
+            longPressCancelTimeoutId = null;
+            const reverseStartTime = performance.now();
+            const reverseDuration = progressAtCancel * LONG_PRESS_DURATION;
+
+            function reverseAnimate(now: number) {
+                const elapsed = now - reverseStartTime;
+                const ratio =
+                    reverseDuration > 0
+                        ? Math.min(elapsed / reverseDuration, 1)
+                        : 1;
+                longPressProgress = progressAtCancel * (1 - ratio);
+
+                if (ratio < 1) {
+                    longPressAnimFrameId =
+                        requestAnimationFrame(reverseAnimate);
+                } else {
+                    longPressProgress = 0;
+                    longPressAnimFrameId = null;
+                    showProgressRing = false;
+                    postTooltipBlocked = false;
+                }
+            }
+
+            if (reverseDuration > 0) {
+                longPressAnimFrameId = requestAnimationFrame(reverseAnimate);
+            } else {
+                longPressProgress = 0;
+                showProgressRing = false;
+                postTooltipBlocked = false;
+            }
+        }, CANCEL_REVERSE_DELAY);
+    }
 </script>
 
 <div class="footer-button-bar" style="bottom: {bottomPosition}px;">
@@ -126,10 +235,44 @@
             </Tooltip.Root>
         </div>
         <div class="button-group-center">
-            <Tooltip.Root delayDuration={500}>
+            {#if showProgressRing}
+                <div class="progress-ring-container">
+                    <svg
+                        class="progress-ring"
+                        width="48"
+                        height="48"
+                        viewBox="0 0 48 48"
+                        aria-hidden="true"
+                    >
+                        <circle
+                            class="progress-ring-bg"
+                            cx="24"
+                            cy="24"
+                            r="20"
+                        />
+                        <circle
+                            class="progress-ring-bar"
+                            cx="24"
+                            cy="24"
+                            r="20"
+                            style="stroke-dashoffset: {PROGRESS_RING_CIRCUMFERENCE *
+                                (1 - longPressProgress)}px"
+                        />
+                    </svg>
+                </div>
+            {/if}
+            <Tooltip.Root
+                delayDuration={500}
+                bind:open={
+                    () => postTooltipOpen,
+                    (v) => {
+                        if (!postTooltipBlocked || !v) postTooltipOpen = v;
+                    }
+                }
+            >
                 <Tooltip.Trigger>
                     {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
+                        {@const { onclick: _tooltipOnclick, ...restProps } =
                             props}
                         <Button
                             variant="primary"
@@ -142,15 +285,13 @@
                                 isUploading ||
                                 !hasStoredKey ||
                                 postStatus.completed}
-                            onClick={(e) => {
-                                triggerVibration(30);
-                                submitPost();
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
                             ariaLabel={$_("postComponent.post")}
                             {...restProps}
+                            onpointerdown={startLongPress}
+                            onpointerup={cancelLongPress}
+                            onpointerleave={cancelLongPress}
+                            onpointercancel={cancelLongPress}
+                            oncontextmenu={(e) => e.preventDefault()}
                         >
                             {#if isShowingLoader}
                                 <LoadingPlaceholder
@@ -347,6 +488,35 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        position: relative;
+    }
+
+    .progress-ring-container {
+        position: absolute;
+        bottom: calc(100% + 14px);
+        left: 50%;
+        transform: translateX(-50%);
+        pointer-events: none;
+        z-index: 99;
+    }
+
+    .progress-ring {
+        display: block;
+        transform: rotate(-90deg);
+    }
+
+    .progress-ring-bg {
+        fill: none;
+        stroke: rgba(128, 128, 128, 0.3);
+        stroke-width: 8;
+    }
+
+    .progress-ring-bar {
+        fill: none;
+        stroke: var(--theme);
+        stroke-width: 8;
+        stroke-linecap: round;
+        stroke-dasharray: 150.796px;
     }
 
     .button-group-right {
