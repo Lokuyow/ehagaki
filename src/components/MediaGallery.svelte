@@ -5,15 +5,26 @@
 
     // PC ドラッグ＆ドロップ状態
     let dragFromIndex = $state(-1);
-    let dragOverIndex = $state(-1);
+    // 挿入位置（0〜 items.length）、-1 は非アクティブ
+    let pcInsertIndex = $state(-1);
 
-    // タッチドラッグ状態
+    // タッチドラグ状態
     let touchDragIndex = $state(-1);
-    let touchDragOverIndex = $state(-1);
+    let touchInsertIndex = $state(-1);
     let touchPreviewEl: HTMLElement | null = null;
     let galleryEl: HTMLDivElement | undefined = $state();
 
     let items = $derived(mediaGalleryStore.items);
+
+    // 現在有効な挿入位置（移動なしの場合は -1）
+    let effectiveInsertIndex = $derived.by(() => {
+        const from = dragFromIndex !== -1 ? dragFromIndex : touchDragIndex;
+        const insert = dragFromIndex !== -1 ? pcInsertIndex : touchInsertIndex;
+        if (from === -1 || insert === -1) return -1;
+        // 挿入位置がドラッグ元の前後と同じなら移動なし → 表示しない
+        if (insert === from || insert === from + 1) return -1;
+        return insert;
+    });
 
     // --- PC DnD ハンドラ ---
     function handleDragStart(index: number, event: DragEvent) {
@@ -26,20 +37,38 @@
 
     function handleDragOver(index: number, event: DragEvent) {
         event.preventDefault();
-        dragOverIndex = index;
+        // アイテムの左半分ならそのインデックス、右半分なら次の位置
+        const wrappers = galleryEl?.querySelectorAll(".gallery-item-wrapper");
+        const wrapperEl = wrappers?.[index] as HTMLElement | undefined;
+        if (wrapperEl) {
+            const rect = wrapperEl.getBoundingClientRect();
+            pcInsertIndex =
+                event.clientX < rect.left + rect.width / 2 ? index : index + 1;
+        } else {
+            pcInsertIndex = index;
+        }
     }
 
     function handleDragEnd() {
         dragFromIndex = -1;
-        dragOverIndex = -1;
+        pcInsertIndex = -1;
     }
 
-    function handleDrop(toIndex: number) {
-        if (dragFromIndex !== -1 && dragFromIndex !== toIndex) {
-            mediaGalleryStore.reorderItems(dragFromIndex, toIndex);
+    function handleDrop(_itemIndex: number) {
+        const insertIdx = pcInsertIndex;
+        if (
+            dragFromIndex !== -1 &&
+            insertIdx !== -1 &&
+            insertIdx !== dragFromIndex &&
+            insertIdx !== dragFromIndex + 1
+        ) {
+            // splice が fromIndex を削除した後のインデックス計算
+            const realToIndex =
+                dragFromIndex < insertIdx ? insertIdx - 1 : insertIdx;
+            mediaGalleryStore.reorderItems(dragFromIndex, realToIndex);
         }
         dragFromIndex = -1;
-        dragOverIndex = -1;
+        pcInsertIndex = -1;
     }
 
     function handleDelete(id: string) {
@@ -104,7 +133,12 @@
                 ".gallery-item-wrapper",
             );
             const idx = Array.from(wrappers).indexOf(wrapper as Element);
-            if (idx !== -1) touchDragOverIndex = idx;
+            if (idx !== -1) {
+                // アイテムの左半分ならそのインデックス、右半分なら次の位置
+                const rect = (wrapper as HTMLElement).getBoundingClientRect();
+                touchInsertIndex =
+                    touch.clientX < rect.left + rect.width / 2 ? idx : idx + 1;
+            }
         }
     }
 
@@ -112,17 +146,21 @@
         document.removeEventListener("touchmove", handleGlobalTouchMove);
         document.removeEventListener("touchend", handleGlobalTouchEnd);
 
+        const insertIdx = touchInsertIndex;
         if (
             touchDragIndex !== -1 &&
-            touchDragOverIndex !== -1 &&
-            touchDragIndex !== touchDragOverIndex
+            insertIdx !== -1 &&
+            insertIdx !== touchDragIndex &&
+            insertIdx !== touchDragIndex + 1
         ) {
-            mediaGalleryStore.reorderItems(touchDragIndex, touchDragOverIndex);
+            const realToIndex =
+                touchDragIndex < insertIdx ? insertIdx - 1 : insertIdx;
+            mediaGalleryStore.reorderItems(touchDragIndex, realToIndex);
         }
 
         removeTouchPreview();
         touchDragIndex = -1;
-        touchDragOverIndex = -1;
+        touchInsertIndex = -1;
     }
 
     function removeTouchPreview() {
@@ -158,14 +196,15 @@
         aria-label={$_("mediaGallery.aria_label") || "メディアギャラリー"}
     >
         {#each items as item, index (item.id)}
-            <div class="gallery-item-wrapper">
+            <div
+                class="gallery-item-wrapper"
+                class:insert-bar-left={effectiveInsertIndex === index}
+                class:insert-bar-right={effectiveInsertIndex === items.length &&
+                    index === items.length - 1}
+            >
                 <MediaGalleryItem
                     {item}
                     {index}
-                    isDragOver={(dragOverIndex === index &&
-                        dragFromIndex !== index) ||
-                        (touchDragOverIndex === index &&
-                            touchDragIndex !== index)}
                     onDelete={handleDelete}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
@@ -198,6 +237,28 @@
         align-items: center;
         width: fit-content;
         height: fit-content;
+    }
+
+    /* 挿入位置インジケーターバー */
+    .gallery-item-wrapper.insert-bar-left::before,
+    .gallery-item-wrapper.insert-bar-right::after {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 8px;
+        background: var(--theme, #2196f3);
+        border-radius: 4px;
+        z-index: 10;
+        pointer-events: none;
+    }
+
+    .gallery-item-wrapper.insert-bar-left::before {
+        left: -5px;
+    }
+
+    .gallery-item-wrapper.insert-bar-right::after {
+        right: -5px;
     }
 
     @media (hover: none) and (pointer: coarse) {

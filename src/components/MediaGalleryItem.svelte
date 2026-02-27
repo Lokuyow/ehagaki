@@ -10,7 +10,6 @@
     interface Props {
         item: MediaGalleryItem;
         index: number;
-        isDragOver?: boolean;
         onDelete: (id: string) => void;
         onDragStart: (index: number, event: DragEvent) => void;
         onDragOver: (index: number, event: DragEvent) => void;
@@ -22,7 +21,6 @@
     let {
         item,
         index,
-        isDragOver = false,
         onDelete,
         onDragStart,
         onDragOver,
@@ -97,7 +95,6 @@
 <div
     bind:this={cardEl}
     class="gallery-item"
-    class:drag-over={isDragOver}
     class:is-placeholder={item.isPlaceholder}
     draggable="true"
     ondragstart={handleDragStartEvent}
@@ -201,12 +198,6 @@
 
     .gallery-item:active {
         cursor: grabbing;
-    }
-
-    .gallery-item.drag-over {
-        outline: 2px solid var(--theme, #2196f3);
-        outline-offset: 2px;
-        transform: scale(0.97);
     }
 
     .gallery-item-media {
