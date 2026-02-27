@@ -144,6 +144,7 @@
                 onload={mediaLoad.handleLoad}
                 onerror={mediaLoad.handleError}
                 draggable="false"
+                oncontextmenu={(e) => e.preventDefault()}
             />
         {/if}
 
@@ -157,6 +158,7 @@
                 loop
                 preload="metadata"
                 class="gallery-video"
+                oncontextmenu={(e) => e.preventDefault()}
             >
                 <track kind="captions" />
             </video>
@@ -209,6 +211,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
+        -webkit-touch-callout: none;
     }
 
     .gallery-item-media[role="button"] {
@@ -221,6 +224,7 @@
         height: 220px;
         object-fit: cover;
         display: block;
+        -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
         -webkit-drag: none;
@@ -236,6 +240,9 @@
         height: 220px;
         object-fit: cover;
         display: block;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
     }
 
     /* ボタン共通スタイル */
