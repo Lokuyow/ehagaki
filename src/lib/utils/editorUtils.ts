@@ -2,6 +2,7 @@ import type { NodeData, CleanUrlResult } from "../types";
 import { blurEditorAndBody } from "./appDomUtils";
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "../constants";
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import { isMediaPlaceholder } from "./mediaNodeUtils";
 
 // === URL検証・正規関数） ===
 export function normalizeUrl(url: string): string {
@@ -384,15 +385,8 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number): boolea
 }
 
 // === カスタムイベント発火 ===
-export function requestFullscreenImage(src: string, alt: string = "Image") {
-    blurEditorAndBody();
-    const fullscreenEvent = new CustomEvent("image-fullscreen-request", {
-        detail: { src, alt },
-        bubbles: true,
-        cancelable: true,
-    });
-    window.dispatchEvent(fullscreenEvent);
-}
+/** @deprecated `requestImageFullscreen` from `mediaNodeUtils` を使用してください */
+export { requestImageFullscreen as requestFullscreenImage } from './mediaNodeUtils';
 
 // === エディター状態管理 ===
 export function setDraggingFalse(viewOrEditorView: any) {
@@ -480,9 +474,7 @@ export function removeAllPlaceholders(
 
     doc.descendants((node, pos) => {
         const nodeType = node.type?.name;
-        const isPlaceholder = node.attrs?.isPlaceholder === true ||
-            node.attrs?.src?.startsWith('placeholder-') ||
-            node.attrs?.src?.startsWith('blob:');
+        const isPlaceholder = isMediaPlaceholder(node.attrs);
 
         if ((nodeType === 'image' || nodeType === 'video') && isPlaceholder) {
             nodesToDelete.push({ pos, size: node.nodeSize });

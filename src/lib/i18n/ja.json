@@ -119,6 +119,9 @@
     "hashtag_pin_toggle": "ハッシュタグピン止め切り替え",
     "hashtag_pin_tooltip": "ハッシュタグを保持"
   },
+  "imageNode": {
+    "uploading": "画像をアップロード中..."
+  },
   "videoNode": {
     "uploading": "動画をアップロード中...",
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"

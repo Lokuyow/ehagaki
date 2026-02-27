@@ -15,6 +15,6 @@ export type { EditorConfigOptions } from './editorConfig';
 // プレースホルダー管理
 export {
     insertPlaceholdersIntoEditor,
-    generateBlurhashesForPlaceholders,
+    generateBlurhashes,
     replacePlaceholdersWithResults
 } from './placeholderManager';

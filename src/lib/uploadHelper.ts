@@ -22,10 +22,9 @@ import type {
 } from "./types";
 import {
     insertPlaceholdersIntoEditor,
-    generateBlurhashesForPlaceholders,
+    generateBlurhashes,
     replacePlaceholdersWithResults,
     insertPlaceholdersIntoGallery,
-    generateBlurhashesForGallery,
     replacePlaceholdersInGallery,
     removeAllGalleryPlaceholders,
 } from "../stores/editorStore.svelte";
@@ -87,12 +86,17 @@ function handleAbortedUpload(
     updateUploadState: (isUploading: boolean, errorMessage?: string) => void,
     uploadCallbacks?: UploadInfoCallbacks,
     devMode: boolean = false,
-    cleanupPlaceholders: boolean = false
+    cleanupPlaceholders: boolean = false,
+    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void } }
 ): UploadHelperResult {
     updateUploadState(false);
 
-    if (cleanupPlaceholders && currentEditor) {
-        removeAllPlaceholders(currentEditor, devMode);
+    if (cleanupPlaceholders) {
+        if (galleryCleanup) {
+            removeAllGalleryPlaceholders(placeholderMap, galleryCleanup.imageSizeMapStore);
+        } else if (currentEditor) {
+            removeAllPlaceholders(currentEditor, devMode);
+        }
     }
 
     if (uploadCallbacks?.onProgress) {
@@ -239,44 +243,28 @@ export async function uploadHelper({
 
     // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
     if (uploadAbortFlagStore.value) {
-        if (galleryMode) {
-            removeAllGalleryPlaceholders(placeholderMap, dependencies.imageSizeMapStore);
-            updateUploadState(false);
-            if (uploadCallbacks?.onProgress) {
-                uploadCallbacks.onProgress({ completed: 0, failed: 0, aborted: fileArray.length, total: fileArray.length, inProgress: false });
-            }
-            return { placeholderMap: [], results: null, imageOxMap, imageXMap, failedResults: [], errorMessage: "Upload aborted by user" };
-        }
-        return handleAbortedUpload(fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true);
+        return handleAbortedUpload(
+            fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true,
+            galleryMode ? { imageSizeMapStore: dependencies.imageSizeMapStore } : undefined
+        );
     }
 
     // アップロード状態を更新（圧縮開始前に設定）
     updateUploadState(true, "");
 
     // Blurhash生成
-    if (galleryMode) {
-        await generateBlurhashesForGallery(
-            placeholderMap,
-            dependencies.FileUploadManager,
-            devMode
-        );
-    } else {
-        await generateBlurhashesForPlaceholders(
-            placeholderMap,
-            currentEditor as TipTapEditor | null,
-            dependencies.FileUploadManager,
-            devMode
-        );
-    }
+    await generateBlurhashes(
+        placeholderMap,
+        dependencies.FileUploadManager,
+        devMode
+    );
 
     // 中止チェック（Blurhash生成後）
     if (uploadAbortFlagStore.value) {
-        if (galleryMode) {
-            removeAllGalleryPlaceholders(placeholderMap, dependencies.imageSizeMapStore);
-            updateUploadState(false);
-            return { placeholderMap: [], results: null, imageOxMap, imageXMap, failedResults: [], errorMessage: "Upload aborted by user" };
-        }
-        return handleAbortedUpload(fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true);
+        return handleAbortedUpload(
+            fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true,
+            galleryMode ? { imageSizeMapStore: dependencies.imageSizeMapStore } : undefined
+        );
     }
 
     // アップロード処理

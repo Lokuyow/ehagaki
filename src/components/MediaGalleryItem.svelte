@@ -1,12 +1,11 @@
 <script lang="ts">
     import type { MediaGalleryItem } from "../lib/types";
-    import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import MediaActionButtons from "./MediaActionButtons.svelte";
     import { postComponentUIStore } from "../stores/appStore.svelte";
-    import { copyToClipboard } from "../lib/utils/clipboardUtils";
     import { _ } from "svelte-i18n";
-    import { onDestroy } from "svelte";
-    import { LONG_PRESS_DELAY } from "../lib/constants";
+    import { useLongPress } from "../lib/hooks/useLongPress.svelte";
+    import { useMediaLoadState } from "../lib/hooks/useMediaLoadState.svelte";
 
     interface Props {
         item: MediaGalleryItem;
@@ -32,8 +31,16 @@
         onTouchDragStart,
     }: Props = $props();
 
-    let isImageLoaded = $state(false);
     let cardEl: HTMLDivElement | undefined = $state();
+
+    const mediaLoad = useMediaLoadState();
+
+    // タッチ長押しドラッグ（親コンポーネントに委譲）
+    useLongPress(() => cardEl, {
+        onLongPress: (x, y) => {
+            onTouchDragStart?.(index, x, y);
+        },
+    });
 
     let showActualImage = $derived(
         !item.isPlaceholder && item.type === "image" && !!item.src,
@@ -43,37 +50,9 @@
         !item.isPlaceholder && item.type === "video" && !!item.src,
     );
 
-    // タッチ長押しドラッグ用
-    let longPressTimer: ReturnType<typeof setTimeout> | null = null;
-    let touchStartPos = { x: 0, y: 0 };
-
-    function handleImageLoad() {
-        isImageLoaded = true;
-    }
-
-    function handleImageError() {
-        isImageLoaded = false;
-    }
-
     function handleImageClick() {
         if (item.isPlaceholder || item.type !== "image") return;
         postComponentUIStore.showImageFullscreen(item.src, item.alt || "");
-    }
-
-    function handleDelete(event: MouseEvent) {
-        event.stopPropagation();
-        onDelete(item.id);
-    }
-
-    function handleCopyUrl(event: MouseEvent) {
-        event.stopPropagation();
-        copyToClipboard(item.src, "URL");
-        const pos = { x: event.clientX, y: event.clientY };
-        postComponentUIStore.showPopupMessage(
-            pos.x,
-            pos.y,
-            $_("imageContextMenu.copySuccess"),
-        );
     }
 
     // PC ドラッグ＆ドロップ
@@ -90,43 +69,6 @@
         event.preventDefault();
         onDrop(index);
     }
-
-    // タッチ長押しドラッグ
-    function handleTouchStart(event: TouchEvent) {
-        if (event.touches.length !== 1) return;
-        const touch = event.touches[0];
-        touchStartPos = { x: touch.clientX, y: touch.clientY };
-
-        longPressTimer = setTimeout(() => {
-            onTouchDragStart?.(index, touchStartPos.x, touchStartPos.y);
-        }, LONG_PRESS_DELAY);
-    }
-
-    function handleTouchMove(event: TouchEvent) {
-        if (!longPressTimer) return;
-        const touch = event.touches[0];
-        const dx = Math.abs(touch.clientX - touchStartPos.x);
-        const dy = Math.abs(touch.clientY - touchStartPos.y);
-        // 少し動いたらキャンセル
-        if (dx > 10 || dy > 10) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-    }
-
-    function handleTouchEnd() {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-    }
-
-    onDestroy(() => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
-    });
 </script>
 
 <div
@@ -139,9 +81,6 @@
     ondragover={handleDragOverEvent}
     ondrop={handleDropEvent}
     ondragend={() => onDragEnd()}
-    ontouchstart={handleTouchStart}
-    ontouchmove={handleTouchMove}
-    ontouchend={handleTouchEnd}
     role="listitem"
 >
     <!-- メディア表示エリア -->
@@ -180,9 +119,9 @@
                 src={item.src}
                 alt={item.alt || ""}
                 class="gallery-image"
-                class:image-loading={!isImageLoaded}
-                onload={handleImageLoad}
-                onerror={handleImageError}
+                class:image-loading={!mediaLoad.isLoaded}
+                onload={mediaLoad.handleLoad}
+                onerror={mediaLoad.handleError}
                 draggable="false"
             />
         {/if}
@@ -205,27 +144,14 @@
 
     <!-- 削除・コピーボタン（プレースホルダー以外） -->
     {#if !item.isPlaceholder}
-        <Button
-            variant="close"
-            shape="circle"
-            className="gallery-delete-button"
-            ariaLabel={$_("imageContextMenu.delete")}
-            onClick={handleDelete}
-        >
-            <div class="close-icon svg-icon"></div>
-        </Button>
-    {/if}
-
-    {#if !item.isPlaceholder}
-        <Button
-            variant="copy"
-            shape="circle"
-            className="gallery-copy-button"
-            ariaLabel={$_("imageContextMenu.copyUrl")}
-            onClick={handleCopyUrl}
-        >
-            <div class="copy-icon svg-icon"></div>
-        </Button>
+        <MediaActionButtons
+            src={item.src}
+            onDelete={() => onDelete(item.id)}
+            deleteAriaLabel={$_("imageContextMenu.delete")}
+            copyAriaLabel={$_("imageContextMenu.copyUrl")}
+            copySuccessMessage={$_("imageContextMenu.copySuccess")}
+            layout="gallery"
+        />
     {/if}
 </div>
 
@@ -298,32 +224,4 @@
     }
 
     /* ボタン共通スタイル */
-    :global(.gallery-delete-button) {
-        position: absolute;
-        top: 2px;
-        right: 2px;
-        z-index: 10;
-        width: 28px;
-        height: 28px;
-
-        .close-icon {
-            mask-image: url("/icons/xmark-solid-full.svg");
-            width: 28px;
-            height: 28px;
-        }
-    }
-
-    :global(.gallery-copy-button) {
-        position: absolute;
-        bottom: 2px;
-        right: 2px;
-        z-index: 10;
-        width: 28px;
-        height: 28px;
-
-        .copy-icon {
-            width: 28px;
-            height: 28px;
-        }
-    }
 </style>

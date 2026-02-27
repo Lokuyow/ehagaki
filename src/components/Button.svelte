@@ -221,6 +221,7 @@
         :global(.svg-icon) {
             width: 32px;
             height: 32px;
+            mask-image: url("/icons/xmark-solid-full.svg");
         }
 
         @media (min-width: 601px) {

@@ -5,10 +5,192 @@ import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorUtil
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
+// ============================================================
+// 共通プライベートヘルパー
+// ============================================================
+
+/** アップロード結果に対応するプレースホルダーを検索する */
+function findMatchedPlaceholder(
+    remainingPlaceholders: PlaceholderEntry[],
+    result: FileUploadResponse
+): { matched: PlaceholderEntry | undefined; matchedIndex: number } {
+    let matched: PlaceholderEntry | undefined;
+    let matchedIndex = -1;
+
+    if (result.sizeInfo?.originalFilename) {
+        matchedIndex = remainingPlaceholders.findIndex(
+            (p) => p.file.name === result.sizeInfo!.originalFilename
+        );
+        if (matchedIndex !== -1) matched = remainingPlaceholders[matchedIndex];
+    }
+
+    if (!matched && remainingPlaceholders.length > 0) {
+        matched = remainingPlaceholders[0];
+        matchedIndex = 0;
+    }
+
+    return { matched, matchedIndex };
+}
+
+/** 失敗アップロード結果のエラーメッセージを構築する */
+function buildUploadErrorMessage(failedResults: FileUploadResponse[]): string {
+    if (failedResults.length === 0) return '';
+    return failedResults.length === 1
+        ? failedResults[0].error || 'postComponent.upload_failed'
+        : `${failedResults.length}個のファイルのアップロードに失敗しました`;
+}
+
+/** ギャラリーからプレースホルダーアイテムを削除しサイズマップも更新する */
+function removeGalleryPlaceholder(
+    id: string,
+    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void }
+): void {
+    mediaGalleryStore.removeItem(id);
+    imageSizeMapStore.update(map => {
+        const newMap = { ...map };
+        delete newMap[id];
+        return newMap;
+    });
+}
+
+/** NIP-94メタデータから各フィールドを抽出する */
+function extractNip94Metadata(nip94: Record<string, any>) {
+    return {
+        serverBlurhash: nip94['blurhash'] ?? nip94['b'] ?? undefined as string | undefined,
+        oxFromServer: nip94['ox'] ?? nip94['o'] ?? undefined as string | undefined,
+        xFromServer: nip94['x'] ?? undefined as string | undefined,
+        dimFromServer: nip94['dim'] ?? undefined as string | undefined,
+    };
+}
+
+/**
+ * ox/xマップへの記録（エディタ・ギャラリー共通）
+ * xハッシュが計算された場合はその値を返す
+ */
+async function recordOxAndXMaps(
+    url: string,
+    matched: PlaceholderEntry,
+    oxFromServer: string | undefined,
+    xFromServer: string | undefined,
+    imageOxMap: Record<string, string>,
+    imageXMap: Record<string, string>,
+    calculateImageHash: (url: string) => Promise<string | null>,
+    devMode: boolean
+): Promise<string | undefined> {
+    if (oxFromServer) {
+        imageOxMap[url] = oxFromServer;
+    } else if (matched.ox) {
+        imageOxMap[url] = matched.ox;
+    }
+
+    if (xFromServer) {
+        imageXMap[url] = xFromServer;
+        return xFromServer;
+    }
+
+    try {
+        const x = await calculateImageHash(url);
+        if (x) imageXMap[url] = x;
+        return x ?? undefined;
+    } catch (error) {
+        if (devMode) {
+            console.warn('[placeholderManager] failed to calculate x hash', { url, error });
+        }
+        return undefined;
+    }
+}
+
+/** バリデーション済みのプレースホルダーエントリを生成する（挿入先に依存しない共通処理） */
+function validateAndBuildPlaceholderEntries(
+    fileArray: File[],
+    fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
+    showUploadError: (msg: string, duration?: number) => void,
+    FileUploadManager: any,
+    timestamp: number
+): Array<{ file: File; placeholderId: string; ox?: string; dimensions?: ImageDimensions; isVideo: boolean }> {
+    const fileUploadManager = new FileUploadManager();
+    const entries: Array<{ file: File; placeholderId: string; ox?: string; dimensions?: ImageDimensions; isVideo: boolean }> = [];
+
+    fileArray.forEach((file, index) => {
+        const isVideo = file.type.startsWith('video/');
+        const validation = fileUploadManager.validateMediaFile(file);
+        if (!validation.isValid) {
+            showUploadError(validation.errorMessage || 'postComponent.upload_failed');
+            return;
+        }
+
+        const placeholderId = `placeholder-${timestamp}-${index}-${generatePlaceholderId()}`;
+        const processingResult = fileProcessingResults[index];
+
+        entries.push({
+            file,
+            placeholderId,
+            ox: processingResult?.ox,
+            dimensions: processingResult?.dimensions,
+            isVideo,
+        });
+    });
+
+    return entries;
+}
+
 // 簡易的なUUID生成関数（プレースホルダー用）
 function generatePlaceholderId(): string {
     return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
 }
+
+// ============================================================
+// Blurhash生成（共通）
+// ============================================================
+
+/**
+ * Blurhashを並列生成する（エディタ・ギャラリー両モード共通）
+ */
+export async function generateBlurhashes(
+    placeholderMap: PlaceholderEntry[],
+    FileUploadManager: any,
+    devMode: boolean = false
+): Promise<void> {
+    if (uploadAbortFlagStore.value) {
+        if (devMode) console.log('[generateBlurhashes] Aborted before blurhash generation');
+        return;
+    }
+
+    const fileUploadManager = new FileUploadManager();
+
+    const promises = placeholderMap.map(async (item) => {
+        if (uploadAbortFlagStore.value) {
+            if (devMode) console.log('[generateBlurhashes] Aborted during blurhash generation');
+            return;
+        }
+
+        try {
+            const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
+
+            if (uploadAbortFlagStore.value) {
+                if (devMode) console.log('[generateBlurhashes] Aborted after blurhash generation');
+                return;
+            }
+
+            if (blurhash) {
+                item.blurhash = blurhash;
+            }
+        } catch (error) {
+            if (devMode) {
+                console.warn('[generateBlurhashes] blurhash generation failed', {
+                    file: item.file.name,
+                    error
+                });
+            }
+        }
+    });
+
+    await Promise.all(promises);
+}
+
+// ============================================================
+// エディタモード関数
+// ============================================================
 
 /**
  * プレースホルダーノードをエディターに挿入
@@ -22,16 +204,12 @@ export function insertPlaceholdersIntoEditor(
     FileUploadManager: any,
     devMode: boolean = false
 ): PlaceholderEntry[] {
-    const placeholderMap: PlaceholderEntry[] = [];
-    const fileUploadManager = new FileUploadManager();
-    const timestamp = Date.now();
-
-    if (!currentEditor) return placeholderMap;
+    if (!currentEditor) return [];
 
     const state = currentEditor.state;
     const selection = state.selection;
-
     const isImageNodeSelected = selection instanceof NodeSelection && selection.node?.type?.name === 'image';
+    const timestamp = Date.now();
 
     if (devMode) {
         console.log('[dev] insertPlaceholdersIntoEditor:', {
@@ -51,42 +229,23 @@ export function insertPlaceholdersIntoEditor(
     let tr = state.tr;
     let currentInsertPos = isImageNodeSelected ? (selection as NodeSelection).to : selection.from;
 
-    fileArray.forEach((file, index) => {
-        const isVideo = file.type.startsWith('video/');
-        const validation = fileUploadManager.validateMediaFile(file);
-        if (!validation.isValid) {
-            showUploadError(validation.errorMessage || "postComponent.upload_failed");
-            return;
-        }
+    const validEntries = validateAndBuildPlaceholderEntries(
+        fileArray, fileProcessingResults, showUploadError, FileUploadManager, timestamp
+    );
+    const placeholderMap: PlaceholderEntry[] = [];
 
-        const placeholderId = `placeholder-${timestamp}-${index}-${generatePlaceholderId()}`;
-        const processingResult = fileProcessingResults[index];
-        const ox = processingResult?.ox;
-        const dimensions = processingResult?.dimensions;
+    validEntries.forEach((entry, index) => {
+        const { file, placeholderId, ox, dimensions, isVideo } = entry;
 
         try {
             let node;
-
             if (isVideo) {
-                const videoAttrs: any = {
-                    src: placeholderId,
-                    isPlaceholder: true
-                    // id属性は設定しない - UniqueID extensionが自動生成する
-                };
-                node = state.schema.nodes.video.create(videoAttrs);
+                node = state.schema.nodes.video.create({ src: placeholderId, isPlaceholder: true });
             } else {
-                const imageAttrs: any = {
-                    src: placeholderId,
-                    isPlaceholder: true
-                    // id属性は設定しない - UniqueID extensionが自動生成する
-                };
-
+                const imageAttrs: any = { src: placeholderId, isPlaceholder: true };
                 if (dimensions) {
                     imageAttrs.dim = `${dimensions.width}x${dimensions.height}`;
-                    imageSizeMapStore.update(map => ({
-                        ...map,
-                        [placeholderId]: dimensions
-                    }));
+                    imageSizeMapStore.update(map => ({ ...map, [placeholderId]: dimensions }));
                 }
                 node = state.schema.nodes.image.create(imageAttrs);
             }
@@ -102,16 +261,12 @@ export function insertPlaceholdersIntoEditor(
             placeholderMap.push({ file, placeholderId, ox, dimensions });
         } catch (error) {
             if (devMode) {
-                console.error("[uploadHelper] failed to insert media node", {
-                    placeholderId,
-                    file: file.name,
-                    isVideo,
-                    error,
-                    insertPos: currentInsertPos,
-                    docSize: state.doc.content.size
+                console.error('[uploadHelper] failed to insert media node', {
+                    placeholderId, file: file.name, isVideo, error,
+                    insertPos: currentInsertPos, docSize: state.doc.content.size
                 });
             }
-            showUploadError(isVideo ? "動画の挿入に失敗しました" : "画像の挿入に失敗しました");
+            showUploadError(isVideo ? '動画の挿入に失敗しました' : '画像の挿入に失敗しました');
         }
     });
 
@@ -120,55 +275,6 @@ export function insertPlaceholdersIntoEditor(
     }
 
     return placeholderMap;
-}
-
-/**
- * プレースホルダーのBlurhash生成
- */
-export async function generateBlurhashesForPlaceholders(
-    placeholderMap: PlaceholderEntry[],
-    currentEditor: TipTapEditor | null,
-    FileUploadManager: any,
-    devMode: boolean = false
-): Promise<void> {
-    // 中止フラグをチェック
-    if (uploadAbortFlagStore.value) {
-        if (devMode) console.log('[generateBlurhashesForPlaceholders] Aborted before blurhash generation');
-        return;
-    }
-
-    const fileUploadManager = new FileUploadManager();
-
-    const blurhashPromises = placeholderMap.map(async (item) => {
-        // 各ファイルごとに中止チェック
-        if (uploadAbortFlagStore.value) {
-            if (devMode) console.log('[generateBlurhashesForPlaceholders] Aborted during blurhash generation');
-            return;
-        }
-
-        try {
-            const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
-
-            // Blurhash生成後に中止チェック
-            if (uploadAbortFlagStore.value) {
-                if (devMode) console.log('[generateBlurhashesForPlaceholders] Aborted after blurhash generation');
-                return;
-            }
-
-            if (blurhash) {
-                item.blurhash = blurhash;
-            }
-        } catch (error) {
-            if (devMode) {
-                console.warn("[uploadHelper] blurhash generation failed", {
-                    file: item.file.name,
-                    error
-                });
-            }
-        }
-    });
-
-    await Promise.all(blurhashPromises);
 }
 
 /**
@@ -189,8 +295,7 @@ export async function replacePlaceholdersWithResults(
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string; imageServerBlurhashMap: Record<string, string> }> {
     const failedResults: FileUploadResponse[] = [];
     const imageServerBlurhashMap: Record<string, string> = {};
-    let errorMessage = "";
-
+    let errorMessage = '';
     const remainingPlaceholders = [...placeholderMap];
 
     for (let i = 0; i < results.length; i++) {
@@ -198,40 +303,21 @@ export async function replacePlaceholdersWithResults(
 
         if (devMode) {
             console.log('[uploadHelper] Processing result', i, ':', {
-                success: result.success,
-                url: result.url,
-                filename: result.filename,
-                sizeInfo: result.sizeInfo,
-                aborted: result.aborted
+                success: result.success, url: result.url,
+                filename: result.filename, sizeInfo: result.sizeInfo, aborted: result.aborted
             });
         }
 
         if (result.aborted) {
             const aborted = remainingPlaceholders.shift();
             if (aborted) {
-                const isVideo = aborted.file.type.startsWith('video/');
-                removePlaceholderNode(aborted.placeholderId, isVideo, currentEditor, imageSizeMapStore, devMode);
+                removePlaceholderNode(aborted.placeholderId, aborted.file.type.startsWith('video/'), currentEditor, imageSizeMapStore, devMode);
             }
             continue;
         }
 
         if (result.success && result.url) {
-            let matched: PlaceholderEntry | undefined = undefined;
-            let matchedIndex = -1;
-
-            if (result.sizeInfo && result.sizeInfo.originalFilename) {
-                matchedIndex = remainingPlaceholders.findIndex(
-                    (p) => p.file.name === result.sizeInfo!.originalFilename,
-                );
-                if (matchedIndex !== -1) {
-                    matched = remainingPlaceholders[matchedIndex];
-                }
-            }
-
-            if (!matched && remainingPlaceholders.length > 0) {
-                matched = remainingPlaceholders[0];
-                matchedIndex = 0;
-            }
+            const { matched, matchedIndex } = findMatchedPlaceholder(remainingPlaceholders, result);
 
             if (matched && matchedIndex !== -1 && currentEditor) {
                 remainingPlaceholders.splice(matchedIndex, 1);
@@ -239,51 +325,38 @@ export async function replacePlaceholdersWithResults(
 
                 if (devMode) {
                     console.log('[uploadHelper] Replacing placeholder', {
-                        placeholderId: matched.placeholderId,
-                        url: result.url,
-                        isVideo
+                        placeholderId: matched.placeholderId, url: result.url, isVideo
                     });
                 }
 
                 findAndExecuteOnNode(
                     currentEditor,
-                    (node: any, _pos: number) => {
+                    (node: any) => {
                         const nodeType = node.type?.name;
-                        const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
-                        // プレースホルダーはsrc属性で検索（UniqueID extensionがid属性を管理）
+                        const isSameNode = (isVideo && nodeType === 'video') || (!isVideo && nodeType === 'image');
                         return isSameNode && node.attrs?.src === matched!.placeholderId;
                     },
                     (node: any, pos: number) => {
                         if (isVideo) {
-                            const newAttrs: any = {
-                                ...node.attrs,
-                                src: result.url,
-                                isPlaceholder: false,
-                                // id属性は保持（UniqueID extensionが管理）
-                            };
-                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
+                                ...node.attrs, src: result.url, isPlaceholder: false,
+                            });
                             currentEditor!.view.dispatch(tr);
                         } else {
                             const newAttrs: any = {
-                                ...node.attrs,
-                                src: result.url,
-                                isPlaceholder: false,
+                                ...node.attrs, src: result.url, isPlaceholder: false,
                                 blurhash: matched!.blurhash ?? undefined,
                             };
-
                             if (matched!.dimensions) {
                                 newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
                             }
-
                             const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
                             currentEditor!.view.dispatch(tr);
 
                             imageSizeMapStore.update(map => {
                                 const newMap = { ...map };
                                 delete newMap[matched!.placeholderId];
-                                if (matched!.dimensions) {
-                                    newMap[result.url!] = matched!.dimensions;
-                                }
+                                if (matched!.dimensions) newMap[result.url!] = matched!.dimensions;
                                 return newMap;
                             });
                         }
@@ -292,68 +365,34 @@ export async function replacePlaceholdersWithResults(
 
                 if (!isVideo) {
                     const nip94 = result.nip94 || {};
-                    const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
-                    if (serverBlurhash && result.url) {
-                        imageServerBlurhashMap[result.url] = serverBlurhash;
-                    }
-                    const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
-                    const xFromServer = nip94['x'] ?? undefined;
-
-                    if (oxFromServer && result.url) {
-                        imageOxMap[result.url] = oxFromServer;
-                    } else if (matched.ox && result.url) {
-                        imageOxMap[result.url] = matched.ox;
-                    }
-
-                    if (result.url) {
-                        if (xFromServer) {
-                            imageXMap[result.url] = xFromServer;
-                        } else {
-                            try {
-                                const x = await calculateImageHash(result.url);
-                                if (x) imageXMap[result.url] = x;
-                            } catch (error) {
-                                if (devMode) {
-                                    console.warn("[uploadHelper] failed to calculate x hash (fallback)", {
-                                        url: result.url,
-                                        error
-                                    });
-                                }
-                            }
-                        }
-                    }
+                    const { serverBlurhash, oxFromServer, xFromServer } = extractNip94Metadata(nip94);
+                    if (serverBlurhash) imageServerBlurhashMap[result.url] = serverBlurhash;
+                    await recordOxAndXMaps(result.url, matched, oxFromServer, xFromServer, imageOxMap, imageXMap, calculateImageHash, devMode);
                 }
             }
         } else if (!result.success) {
             failedResults.push(result);
             const failed = remainingPlaceholders.shift();
             if (failed) {
-                const isVideo = failed.file.type.startsWith('video/');
-                removePlaceholderNode(failed.placeholderId, isVideo, currentEditor, imageSizeMapStore, devMode);
+                removePlaceholderNode(failed.placeholderId, failed.file.type.startsWith('video/'), currentEditor, imageSizeMapStore, devMode);
             }
         }
     }
 
     for (const remaining of remainingPlaceholders) {
-        const isVideo = remaining.file.type.startsWith('video/');
-        removePlaceholderNode(remaining.placeholderId, isVideo, currentEditor, imageSizeMapStore, devMode);
+        removePlaceholderNode(remaining.placeholderId, remaining.file.type.startsWith('video/'), currentEditor, imageSizeMapStore, devMode);
     }
 
-    if (failedResults.length) {
-        errorMessage = failedResults.length === 1
-            ? failedResults[0].error || "postComponent.upload_failed"
-            : `${failedResults.length}個のファイルのアップロードに失敗しました`;
-    }
-
+    if (failedResults.length) errorMessage = buildUploadErrorMessage(failedResults);
     return { failedResults, errorMessage, imageServerBlurhashMap };
 }
+
 // ============================================================
-// ギャラリーモード用関数（メディア下部固定モード）
+// ギャラリーモード関数
 // ============================================================
 
 /**
  * ギャラリーにプレースホルダーアイテムを追加
- * エディタへの挿入の代わりに mediaGalleryStore へ追加する
  */
 export function insertPlaceholdersIntoGallery(
     fileArray: File[],
@@ -363,22 +402,14 @@ export function insertPlaceholdersIntoGallery(
     FileUploadManager: any,
     devMode: boolean = false
 ): PlaceholderEntry[] {
-    const placeholderMap: PlaceholderEntry[] = [];
-    const fileUploadManager = new FileUploadManager();
     const timestamp = Date.now();
+    const validEntries = validateAndBuildPlaceholderEntries(
+        fileArray, fileProcessingResults, showUploadError, FileUploadManager, timestamp
+    );
+    const placeholderMap: PlaceholderEntry[] = [];
 
-    fileArray.forEach((file, index) => {
-        const isVideo = file.type.startsWith('video/');
-        const validation = fileUploadManager.validateMediaFile(file);
-        if (!validation.isValid) {
-            showUploadError(validation.errorMessage || "postComponent.upload_failed");
-            return;
-        }
-
-        const placeholderId = `placeholder-${timestamp}-${index}-${Date.now().toString(36)}`;
-        const processingResult = fileProcessingResults[index];
-        const ox = processingResult?.ox;
-        const dimensions = processingResult?.dimensions;
+    for (const entry of validEntries) {
+        const { file, placeholderId, ox, dimensions, isVideo } = entry;
 
         const item: MediaGalleryItem = {
             id: placeholderId,
@@ -392,10 +423,7 @@ export function insertPlaceholdersIntoGallery(
         mediaGalleryStore.addItem(item);
 
         if (!isVideo && dimensions) {
-            imageSizeMapStore.update(map => ({
-                ...map,
-                [placeholderId]: dimensions
-            }));
+            imageSizeMapStore.update(map => ({ ...map, [placeholderId]: dimensions }));
         }
 
         placeholderMap.push({ file, placeholderId, ox, dimensions });
@@ -403,41 +431,9 @@ export function insertPlaceholdersIntoGallery(
         if (devMode) {
             console.log('[gallery] inserted placeholder:', placeholderId, isVideo ? 'video' : 'image');
         }
-    });
+    }
 
     return placeholderMap;
-}
-
-/**
- * ギャラリーアイテムのBlurhash生成
- */
-export async function generateBlurhashesForGallery(
-    placeholderMap: PlaceholderEntry[],
-    FileUploadManager: any,
-    devMode: boolean = false
-): Promise<void> {
-    if (uploadAbortFlagStore.value) return;
-
-    const fileUploadManager = new FileUploadManager();
-
-    const promises = placeholderMap.map(async (item) => {
-        if (uploadAbortFlagStore.value) return;
-
-        try {
-            const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
-            if (uploadAbortFlagStore.value) return;
-
-            if (blurhash) {
-                item.blurhash = blurhash;
-            }
-        } catch (error) {
-            if (devMode) {
-                console.warn('[gallery] blurhash generation failed:', item.file.name, error);
-            }
-        }
-    });
-
-    await Promise.all(promises);
 }
 
 /**
@@ -462,32 +458,12 @@ export async function replacePlaceholdersInGallery(
 
         if (result.aborted) {
             const aborted = remainingPlaceholders.shift();
-            if (aborted) {
-                mediaGalleryStore.removeItem(aborted.placeholderId);
-                imageSizeMapStore.update(map => {
-                    const newMap = { ...map };
-                    delete newMap[aborted.placeholderId];
-                    return newMap;
-                });
-            }
+            if (aborted) removeGalleryPlaceholder(aborted.placeholderId, imageSizeMapStore);
             continue;
         }
 
         if (result.success && result.url) {
-            let matched: PlaceholderEntry | undefined;
-            let matchedIndex = -1;
-
-            if (result.sizeInfo?.originalFilename) {
-                matchedIndex = remainingPlaceholders.findIndex(
-                    p => p.file.name === result.sizeInfo!.originalFilename
-                );
-                if (matchedIndex !== -1) matched = remainingPlaceholders[matchedIndex];
-            }
-
-            if (!matched && remainingPlaceholders.length > 0) {
-                matched = remainingPlaceholders[0];
-                matchedIndex = 0;
-            }
+            const { matched, matchedIndex } = findMatchedPlaceholder(remainingPlaceholders, result);
 
             if (matched && matchedIndex !== -1) {
                 remainingPlaceholders.splice(matchedIndex, 1);
@@ -501,18 +477,13 @@ export async function replacePlaceholdersInGallery(
                         mimeType: getMimeTypeFromUrl(result.url),
                     });
                 } else {
-                    const serverBlurhash = nip94['blurhash'] ?? nip94['b'] ?? undefined;
-                    const oxFromServer = nip94['ox'] ?? nip94['o'] ?? undefined;
-                    const xFromServer = nip94['x'] ?? undefined;
-                    const dimFromServer = nip94['dim'] ?? undefined;
-
-                    const finalBlurhash = serverBlurhash ?? matched.blurhash;
+                    const { serverBlurhash, oxFromServer, xFromServer, dimFromServer } = extractNip94Metadata(nip94);
                     const mimeType = getMimeTypeFromUrl(result.url);
 
                     mediaGalleryStore.updateItem(matched.placeholderId, {
                         src: result.url,
                         isPlaceholder: false,
-                        blurhash: finalBlurhash,
+                        blurhash: serverBlurhash ?? matched.blurhash,
                         mimeType,
                         ox: oxFromServer ?? matched.ox,
                         dim: dimFromServer ?? (matched.dimensions
@@ -520,29 +491,12 @@ export async function replacePlaceholdersInGallery(
                             : undefined),
                     });
 
-                    // OxMap / XMap に記録
-                    if (oxFromServer) {
-                        imageOxMap[result.url] = oxFromServer;
-                    } else if (matched.ox) {
-                        imageOxMap[result.url] = matched.ox;
-                    }
+                    const x = await recordOxAndXMaps(
+                        result.url, matched, oxFromServer, xFromServer,
+                        imageOxMap, imageXMap, calculateImageHash, devMode
+                    );
+                    if (x) mediaGalleryStore.updateItem(result.url, { x });
 
-                    if (xFromServer) {
-                        imageXMap[result.url] = xFromServer;
-                        mediaGalleryStore.updateItem(matched.placeholderId, { x: xFromServer });
-                    } else {
-                        try {
-                            const x = await calculateImageHash(result.url);
-                            if (x) {
-                                imageXMap[result.url] = x;
-                                mediaGalleryStore.updateItem(result.url, { x });
-                            }
-                        } catch {
-                            // ignore
-                        }
-                    }
-
-                    // サイズマップ更新
                     if (matched.dimensions) {
                         imageSizeMapStore.update(map => {
                             const newMap = { ...map };
@@ -560,33 +514,15 @@ export async function replacePlaceholdersInGallery(
         } else if (!result.success) {
             failedResults.push(result);
             const failed = remainingPlaceholders.shift();
-            if (failed) {
-                mediaGalleryStore.removeItem(failed.placeholderId);
-                imageSizeMapStore.update(map => {
-                    const newMap = { ...map };
-                    delete newMap[failed.placeholderId];
-                    return newMap;
-                });
-            }
+            if (failed) removeGalleryPlaceholder(failed.placeholderId, imageSizeMapStore);
         }
     }
 
-    // 残りのプレースホルダーを削除
     for (const remaining of remainingPlaceholders) {
-        mediaGalleryStore.removeItem(remaining.placeholderId);
-        imageSizeMapStore.update(map => {
-            const newMap = { ...map };
-            delete newMap[remaining.placeholderId];
-            return newMap;
-        });
+        removeGalleryPlaceholder(remaining.placeholderId, imageSizeMapStore);
     }
 
-    if (failedResults.length) {
-        errorMessage = failedResults.length === 1
-            ? failedResults[0].error || 'postComponent.upload_failed'
-            : `${failedResults.length}個のファイルのアップロードに失敗しました`;
-    }
-
+    if (failedResults.length) errorMessage = buildUploadErrorMessage(failedResults);
     return { failedResults, errorMessage };
 }
 
@@ -598,11 +534,6 @@ export function removeAllGalleryPlaceholders(
     imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void }
 ): void {
     for (const entry of placeholderMap) {
-        mediaGalleryStore.removeItem(entry.placeholderId);
-        imageSizeMapStore.update(map => {
-            const newMap = { ...map };
-            delete newMap[entry.placeholderId];
-            return newMap;
-        });
+        removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
     }
 }

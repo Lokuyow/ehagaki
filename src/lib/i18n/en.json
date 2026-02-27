@@ -119,6 +119,9 @@
     "hashtag_pin_toggle": "Toggle hashtag pin",
     "hashtag_pin_tooltip": "Keep hashtags after posting"
   },
+  "imageNode": {
+    "uploading": "Uploading image..."
+  },
   "videoNode": {
     "uploading": "Uploading video...",
     "not_supported": "Your browser does not support the video tag."

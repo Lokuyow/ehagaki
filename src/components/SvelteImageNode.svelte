@@ -1,27 +1,22 @@
 <script lang="ts">
     import type { NodeViewProps } from "@tiptap/core";
     import { NodeViewWrapper } from "svelte-tiptap";
-    import { onDestroy, onMount } from "svelte";
-    import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../lib/constants";
+    import { onDestroy } from "svelte";
     import type { ImageDimensions } from "../lib/types";
     import { _ } from "svelte-i18n";
-    import { getEventPosition } from "../lib/utils/appUtils";
-    import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import MediaActionButtons from "./MediaActionButtons.svelte";
     import {
         calculateImageDisplaySize,
         parseDimString,
         dispatchDragEvent,
-        highlightDropZoneAtPosition,
-        createDragPreview,
-        updateDragPreview,
         removeDragPreview,
-        checkMoveThreshold,
         handleImageInteraction,
-    } from "../lib/utils/editorImageUtils";
-    import { isTouchDevice, blurEditorAndBody } from "../lib/utils/appDomUtils";
-    import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import { postComponentUIStore } from "../stores/appStore.svelte";
+        isMediaPlaceholder,
+    } from "../lib/utils/mediaNodeUtils";
+    import { isTouchDevice } from "../lib/utils/appDomUtils";
+    import { useMediaLoadState } from "../lib/hooks/useMediaLoadState.svelte";
+    import { useImageDrag } from "../lib/hooks/useImageDrag.svelte";
     import {
         imageDragState,
         imageSelectionState,
@@ -39,24 +34,17 @@
 
     let dragState = imageDragState;
     let selectionState = imageSelectionState;
-    let isImageLoaded = $state(false);
-
-    // buttonElementの参照を追加
+    // buttonElementの参照
     let buttonElement: HTMLButtonElement | undefined = $state();
+
+    const mediaLoad = useMediaLoadState();
 
     const isTouchCapable = isTouchDevice();
 
     const JUST_SELECTED_DURATION = 400; // ms
 
-    let isPlaceholder = $derived(
-        node.attrs.isPlaceholder === true ||
-            (node.attrs.src && node.attrs.src.startsWith("placeholder-")),
-    );
-    let showActualImage = $derived(
-        !isPlaceholder &&
-            node.attrs.src &&
-            !node.attrs.src.startsWith("placeholder-"),
-    );
+    let isPlaceholder = $derived(isMediaPlaceholder(node.attrs));
+    let showActualImage = $derived(!isPlaceholder && !!node.attrs.src);
 
     // 画像サイズ関連の状態
     let imageDimensions = $state<ImageDimensions | null>(null);
@@ -122,45 +110,15 @@
         }
     }
 
-    // ドラッグ関連の統合処理（簡略化）
-    function startDrag() {
-        dragState.isDragging = true;
-        dispatchDragEvent("start", {}, getPos);
-        dragState.preview = createDragPreview(
-            dragState.startTarget!,
-            dragState.startPos.x,
-            dragState.startPos.y,
-            isPlaceholder,
-        );
-    }
-
-    function clearLongPress() {
-        if (dragState.longPressTimeout) {
-            clearTimeout(dragState.longPressTimeout);
-            dragState.longPressTimeout = null;
-        }
-        dragState.startTarget = null;
-    }
-
-    function startLongPress(element: HTMLElement, x: number, y: number) {
-        clearLongPress();
-        dragState.startPos = { x, y };
-        dragState.startTarget = element;
-
-        dragState.longPressTimeout = setTimeout(() => {
-            startDrag();
-        }, LONG_PRESS_DELAY);
-    }
-
-    // 画像読み込み完了時の処理
-    function handleImageLoad() {
-        isImageLoaded = true;
-    }
-
-    // 画像読み込みエラー時の処理
-    function handleImageError() {
-        isImageLoaded = false;
-    }
+    // useImageDragフックによるタッチドラッグ管理
+    const { cleanup: cleanupDrag } = useImageDrag({
+        getButtonElement: () => buttonElement,
+        getPos: () => getPos(),
+        dragState,
+        getIsPlaceholder: () => isPlaceholder,
+        getNodeAttrs: () => node.attrs,
+        handleInteraction,
+    });
 
     // イベントハンドラー
     function handleClick(event: MouseEvent) {
@@ -196,135 +154,14 @@
         }
     }
 
-    // タッチイベントハンドラー（能動的なイベントリスナーで処理）
-    function handleTouchStartActive(event: TouchEvent) {
-        if (event.touches.length !== 1) return;
-
-        // タッチ開始時にキーボードを隠す
-        blurEditorAndBody();
-
-        const pos = getEventPosition(event);
-        startLongPress(event.currentTarget as HTMLElement, pos.x, pos.y);
-    }
-
-    function handleTouchMoveActive(event: TouchEvent) {
-        if (event.touches.length !== 1) {
-            clearLongPress();
-            return;
-        }
-
-        const pos = getEventPosition(event);
-
-        // 長押し前で移動距離が閾値を超えたらキャンセル
-        if (!dragState.isDragging && dragState.longPressTimeout) {
-            if (
-                checkMoveThreshold(
-                    pos.x,
-                    pos.y,
-                    dragState.startPos.x,
-                    dragState.startPos.y,
-                    MOVE_CANCEL_THRESHOLD,
-                )
-            ) {
-                clearLongPress();
-                return;
-            }
-        }
-
-        if (!dragState.isDragging) return;
-
-        event.preventDefault();
-        updateDragPreview(dragState.preview, pos.x, pos.y);
-        highlightDropZoneAtPosition(pos.x, pos.y);
-
-        dispatchDragEvent("move", {
-            touchX: pos.x,
-            touchY: pos.y,
-            nodePos: getPos(),
-        });
-    }
-
-    function handleTouchEndActive(event: TouchEvent) {
-        if (dragState.longPressTimeout) {
-            clearLongPress();
-            if (!dragState.isDragging) {
-                // 通常のタップ処理（キーボードは既にblurEditorAndBodyで隠されている）
-                handleInteraction(event, true);
-                return;
-            }
-        }
-
-        if (!dragState.isDragging) return;
-
-        event.preventDefault();
-        const pos = getEventPosition(event);
-        const elementBelow = document.elementFromPoint(pos.x, pos.y);
-
-        if (elementBelow) {
-            const dropZone = elementBelow.closest(".drop-zone-indicator");
-            const targetDropPos = dropZone?.getAttribute("data-drop-pos");
-
-            dispatchDragEvent("end", {
-                nodeData: { type: "image", attrs: node.attrs, pos: getPos() },
-                dropX: pos.x,
-                dropY: pos.y,
-                target: elementBelow,
-                dropPosition: targetDropPos
-                    ? parseInt(targetDropPos, 10)
-                    : null,
-            });
-        }
-
-        dragState.isDragging = false;
-        removeDragPreview(dragState.preview);
-        dragState.preview = null;
-    }
-
     function preventContextMenu(event: Event) {
         event.preventDefault();
     }
 
-    // 画像ノード削除処理
-    function handleDeleteNode(event: MouseEvent) {
-        event.stopPropagation(); // 親のクリックイベントを阻止
-        deleteNode();
-    }
-
-    onMount(() => {
-        // タッチデバイスの場合は能動的なイベントリスナーを追加
-        if (isTouchCapable && buttonElement) {
-            buttonElement.addEventListener(
-                "touchstart",
-                handleTouchStartActive,
-                { passive: false },
-            );
-            buttonElement.addEventListener("touchmove", handleTouchMoveActive, {
-                passive: false,
-            });
-            buttonElement.addEventListener("touchend", handleTouchEndActive, {
-                passive: false,
-            });
-        }
-    });
-
     onDestroy(() => {
-        clearLongPress();
+        cleanupDrag();
         if (selectionState.justSelectedTimeout) {
             clearTimeout(selectionState.justSelectedTimeout);
-        }
-        removeDragPreview(dragState.preview);
-
-        // タッチイベントリスナーを削除
-        if (isTouchCapable && buttonElement) {
-            buttonElement.removeEventListener(
-                "touchstart",
-                handleTouchStartActive,
-            );
-            buttonElement.removeEventListener(
-                "touchmove",
-                handleTouchMoveActive,
-            );
-            buttonElement.removeEventListener("touchend", handleTouchEndActive);
         }
 
         // 状態ストア初期化
@@ -368,43 +205,23 @@
                     src={node?.attrs?.src}
                     alt={node?.attrs?.alt || ""}
                     class="editor-image"
-                    class:image-loading={!isImageLoaded}
+                    class:image-loading={!mediaLoad.isLoaded}
                     draggable="false"
-                    onload={handleImageLoad}
-                    onerror={handleImageError}
+                    onload={mediaLoad.handleLoad}
+                    onerror={mediaLoad.handleError}
                     oncontextmenu={preventContextMenu}
                 />
             {/if}
         </button>
         {#if !isPlaceholder}
-            <Button
-                variant="copy"
-                shape="circle"
-                className="image-copy-button"
-                ariaLabel={$_("imageContextMenu.copyUrl")}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    copyToClipboard(node.attrs.src, "image URL");
-                    // コピー成功時のポップアップ表示
-                    const pos = { x: event.clientX, y: event.clientY };
-                    postComponentUIStore.showPopupMessage(
-                        pos.x,
-                        pos.y,
-                        $_("imageContextMenu.copySuccess"),
-                    );
-                }}
-            >
-                <div class="copy-icon svg-icon"></div>
-            </Button>
-            <Button
-                variant="close"
-                shape="circle"
-                className="image-close-button"
-                ariaLabel={$_("imageContextMenu.delete")}
-                onClick={handleDeleteNode}
-            >
-                <div class="close-icon svg-icon"></div>
-            </Button>
+            <MediaActionButtons
+                src={node.attrs.src}
+                onDelete={deleteNode}
+                deleteAriaLabel={$_("imageContextMenu.delete")}
+                copyAriaLabel={$_("imageContextMenu.copyUrl")}
+                copySuccessMessage={$_("imageContextMenu.copySuccess")}
+                layout="editor-image"
+            />
         {/if}
     </div>
 </NodeViewWrapper>
@@ -432,32 +249,6 @@
         display: inline-block;
         max-width: 100%;
         max-height: 240px;
-
-        :global(.image-close-button) {
-            position: absolute;
-            top: 6px;
-            right: 6px;
-            z-index: 10;
-            width: 40px;
-            height: 40px;
-
-            .close-icon {
-                mask-image: url("/icons/xmark-solid-full.svg");
-            }
-        }
-
-        :global(.image-copy-button) {
-            position: absolute;
-            bottom: 6px;
-            right: 6px;
-            z-index: 10;
-            width: 40px;
-            height: 40px;
-
-            .copy-icon {
-                mask-image: url("/icons/copy-solid-full.svg");
-            }
-        }
     }
 
     /* ボタンを画像サイズに完全に合わせる */

@@ -1,5 +1,17 @@
+/**
+ * mediaNodeUtils.ts
+ *
+ * Tiptapエディター内の画像・動画ノード共通ユーティリティ。
+ * エディタ内画像ノード（SvelteImageNode）と動画ノード（SvelteVideoNode）の
+ * 両方で利用するサイズ計算・ドラッグ・インタラクション処理を提供します。
+ */
+
 import type { ImageDimensions, DragEvent } from '../types';
 import { domUtils, isTouchDevice, blurEditorAndBody } from "./appDomUtils";
+
+// =============================================================================
+// サイズ計算
+// =============================================================================
 
 /**
  * エディター内画像の最大サイズ制限（CSS値と一致させる）
@@ -19,7 +31,6 @@ export function calculateImageDisplaySize(
     maxWidth: number = EDITOR_IMAGE_CONSTRAINTS.maxWidth,
     maxHeight: number = EDITOR_IMAGE_CONSTRAINTS.maxHeight
 ) {
-    // 元サイズが制約内の場合はそのまま使用
     if (originalWidth <= maxWidth && originalHeight <= maxHeight) {
         return {
             width: originalWidth,
@@ -29,29 +40,19 @@ export function calculateImageDisplaySize(
         };
     }
 
-    // アスペクト比を計算
     const aspectRatio = originalWidth / originalHeight;
-
     let displayWidth: number;
     let displayHeight: number;
 
-    // 幅と高さのどちらが制約に引っかかるかを判定
     if (originalWidth / maxWidth > originalHeight / maxHeight) {
-        // 幅が制約のボトルネック
         displayWidth = maxWidth;
         displayHeight = Math.round(maxWidth / aspectRatio);
     } else {
-        // 高さが制約のボトルネック
         displayHeight = maxHeight;
         displayWidth = Math.round(maxHeight * aspectRatio);
     }
 
-    return {
-        width: originalWidth,
-        height: originalHeight,
-        displayWidth,
-        displayHeight
-    };
+    return { width: originalWidth, height: originalHeight, displayWidth, displayHeight };
 }
 
 /**
@@ -59,29 +60,22 @@ export function calculateImageDisplaySize(
  */
 export function parseDimString(dimString: string | undefined): { width: number; height: number } | null {
     if (!dimString) return null;
-
     const match = dimString.match(/^(\d+)x(\d+)$/);
     if (!match) return null;
-
-    return {
-        width: parseInt(match[1], 10),
-        height: parseInt(match[2], 10)
-    };
+    return { width: parseInt(match[1], 10), height: parseInt(match[2], 10) };
 }
 
 /**
  * プレースホルダー用のデフォルトサイズを取得
  */
 export function getPlaceholderDefaultSize(): ImageDimensions {
-    return {
-        width: 200,
-        height: 150,
-        displayWidth: 200,
-        displayHeight: 150
-    };
+    return { width: 200, height: 150, displayWidth: 200, displayHeight: 150 };
 }
 
-// === ドラッグイベント処理 ===
+// =============================================================================
+// ドラッグイベント処理
+// =============================================================================
+
 export function createDragEventDetail(
     type: DragEvent['type'],
     details?: any,
@@ -99,7 +93,6 @@ export function createDragEventDetail(
             ...details,
         },
     };
-
     return eventDetails[type];
 }
 
@@ -126,10 +119,12 @@ export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos
     document.dispatchEvent(new CustomEvent(eventName, { detail: customEvent.detail }));
 }
 
-// === ドロップゾーン処理 ===
+// =============================================================================
+// ドロップゾーン処理
+// =============================================================================
+
 export function findDropZoneAtPosition(x: number, y: number): Element | null {
-    const elementBelow = document.elementFromPoint(x, y);
-    return elementBelow?.closest(".drop-zone-indicator") || null;
+    return document.elementFromPoint(x, y)?.closest(".drop-zone-indicator") || null;
 }
 
 export function clearAllDropZoneHighlights(): void {
@@ -144,49 +139,39 @@ export function highlightDropZone(dropZone: Element | null): void {
 
 export function highlightDropZoneAtPosition(x: number, y: number) {
     clearAllDropZoneHighlights();
-    const dropZone = findDropZoneAtPosition(x, y);
-    highlightDropZone(dropZone);
+    highlightDropZone(findDropZoneAtPosition(x, y));
 }
 
-// === ドラッグプレビュー処理 ===
-export function calculatePreviewDimensions(
-    rect: DOMRect,
-    maxSize: number = 140
-): { width: number; height: number } {
+// =============================================================================
+// ドラッグプレビュー処理（内部ヘルパーは非公開）
+// =============================================================================
+
+function calculatePreviewDimensions(rect: DOMRect, maxSize: number = 140): { width: number; height: number } {
     const previewWidth = Math.min(maxSize, rect.width || maxSize);
     const previewHeight = rect.width > 0
         ? Math.round((rect.height / rect.width) * previewWidth)
         : previewWidth;
-
     return { width: previewWidth, height: previewHeight };
 }
 
-export function createCanvasPreview(originalCanvas: HTMLCanvasElement): HTMLCanvasElement | null {
+function createCanvasPreview(originalCanvas: HTMLCanvasElement): HTMLCanvasElement | null {
     if (!originalCanvas) return null;
-
     const newCanvas = document.createElement("canvas");
     newCanvas.width = originalCanvas.width;
     newCanvas.height = originalCanvas.height;
-
-    const ctx = newCanvas.getContext("2d");
-    if (ctx) {
-        ctx.drawImage(originalCanvas, 0, 0);
-    }
-
+    newCanvas.getContext("2d")?.drawImage(originalCanvas, 0, 0);
     return newCanvas;
 }
 
-export function createImagePreview(originalImg: HTMLImageElement): HTMLImageElement | null {
+function createImagePreview(originalImg: HTMLImageElement): HTMLImageElement | null {
     if (!originalImg) return null;
-
     const newImg = document.createElement("img");
     newImg.src = originalImg.src;
     newImg.alt = originalImg.alt || "";
-
     return newImg;
 }
 
-export function applyPreviewStyles(
+function applyPreviewStyles(
     element: HTMLElement,
     dimensions: { width: number; height: number },
     position: { x: number; y: number }
@@ -214,14 +199,10 @@ export function createDragPreview(
 
     if (isPlaceholder) {
         const origCanvas = element.querySelector("canvas") as HTMLCanvasElement | null;
-        if (origCanvas) {
-            previewEl = createCanvasPreview(origCanvas);
-        }
+        if (origCanvas) previewEl = createCanvasPreview(origCanvas);
     } else {
         const origImg = element.querySelector("img") as HTMLImageElement | null;
-        if (origImg) {
-            previewEl = createImagePreview(origImg);
-        }
+        if (origImg) previewEl = createImagePreview(origImg);
     }
 
     if (!previewEl) return null;
@@ -238,24 +219,23 @@ export function createDragPreview(
     return previewEl;
 }
 
-// ドラッグプレビューの位置を更新
 export function updateDragPreview(previewElement: HTMLElement | null, x: number, y: number) {
     if (!previewElement) return;
-
     const rect = previewElement.getBoundingClientRect();
     const w = rect.width || 100;
     const h = rect.height || 100;
-
     previewElement.style.left = `${x - w / 2}px`;
     previewElement.style.top = `${y - h / 2}px`;
 }
 
-// ドラッグプレビューを削除
 export function removeDragPreview(previewElement: HTMLElement | null): void {
     previewElement?.parentNode?.removeChild(previewElement);
 }
 
-// === ドラッグ移動閾値チェック ===
+// =============================================================================
+// インタラクション処理
+// =============================================================================
+
 export function checkMoveThreshold(
     currentX: number,
     currentY: number,
@@ -268,7 +248,6 @@ export function checkMoveThreshold(
     return dx * dx + dy * dy > threshold * threshold;
 }
 
-// === 画像クリック・タッチ処理 ===
 export function shouldPreventInteraction(
     isDragging: boolean,
     isPlaceholder: boolean,
@@ -280,19 +259,33 @@ export function shouldPreventInteraction(
     return false;
 }
 
+/**
+ * メディアノードがプレースホルダー状態かどうかを判定する
+ * エディターノード属性およびデータベース属性の両方に対応
+ */
+export function isMediaPlaceholder(attrs: {
+    isPlaceholder?: boolean;
+    src?: string | null;
+}): boolean {
+    return (
+        attrs.isPlaceholder === true ||
+        attrs.src?.startsWith("placeholder-") === true ||
+        attrs.src?.startsWith("blob:") === true ||
+        !attrs.src
+    );
+}
+
 export function requestNodeSelection(getPos: () => number | undefined) {
     const pos = getPos();
     if (pos === undefined) return;
-    // スマートフォン(タッチデバイス)ではキーボードを閉じる
-    if (isTouchDevice()) {
-        blurEditorAndBody();
-    }
+    if (isTouchDevice()) blurEditorAndBody();
     const event = new CustomEvent("select-image-node", { detail: { pos } });
     window.dispatchEvent(event);
-    document.dispatchEvent(event); // ← 追加: documentにも発火
+    document.dispatchEvent(event);
 }
 
 export function requestImageFullscreen(src: string, alt: string) {
+    blurEditorAndBody();
     const event = new CustomEvent("image-fullscreen-request", { detail: { src, alt } });
     window.dispatchEvent(event);
     document.dispatchEvent(event);
@@ -314,24 +307,15 @@ export function handleImageInteraction(
         return false;
     }
 
-    // すでに選択済みの画像をクリック/タップした場合はフルスクリーン表示
     if (selected) {
         event.preventDefault();
-        if (!isTouch) {
-            event.stopPropagation();
-        }
+        if (!isTouch) event.stopPropagation();
         requestImageFullscreen(imageSrc, imageAlt);
         return true;
     }
 
-    // 未選択の場合はノード選択
     requestNodeSelection(getPos);
-
     event.preventDefault();
-    if (!isTouch) {
-        event.stopPropagation();
-    }
-
+    if (!isTouch) event.stopPropagation();
     return true;
 }
-

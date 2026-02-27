@@ -4,7 +4,7 @@ import {
     getPlaceholderDefaultSize,
     checkMoveThreshold,
     shouldPreventInteraction,
-} from '../../lib/utils/editorImageUtils';
+} from '../../lib/utils/mediaNodeUtils';
 
 describe('calculateImageDisplaySize', () => {
     it('制約内なら元サイズを返す', () => {

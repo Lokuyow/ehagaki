@@ -5,7 +5,7 @@ import {
     getPlaceholderDefaultSize,
     checkMoveThreshold,
     shouldPreventInteraction,
-} from '../../lib/utils/editorImageUtils';
+} from '../../lib/utils/mediaNodeUtils';
 import {
     hasImageInDoc,
     hasVideoInDoc,

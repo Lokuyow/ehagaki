@@ -9,10 +9,9 @@ import {
 // プレースホルダー管理関数を再エクスポート（下位互換性のため）
 export {
     insertPlaceholdersIntoEditor,
-    generateBlurhashesForPlaceholders,
+    generateBlurhashes,
     replacePlaceholdersWithResults,
     insertPlaceholdersIntoGallery,
-    generateBlurhashesForGallery,
     replacePlaceholdersInGallery,
     removeAllGalleryPlaceholders,
 } from '../lib/editor/placeholderManager';

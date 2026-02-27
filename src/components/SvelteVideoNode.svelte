@@ -1,13 +1,15 @@
 <script lang="ts">
     import type { NodeViewProps } from "@tiptap/core";
     import { NodeViewWrapper } from "svelte-tiptap";
-    import { onMount } from "svelte";
     import { _ } from "svelte-i18n";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import Button from "./Button.svelte";
-    import { requestNodeSelection } from "../lib/utils/editorImageUtils";
-    import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import { postComponentUIStore } from "../stores/appStore.svelte";
+    import MediaActionButtons from "./MediaActionButtons.svelte";
+    import {
+        requestNodeSelection,
+        isMediaPlaceholder,
+    } from "../lib/utils/mediaNodeUtils";
+    import { useMediaLoadState } from "../lib/hooks/useMediaLoadState.svelte";
+    import { useLongPress } from "../lib/hooks/useLongPress.svelte";
 
     interface Props {
         node: NodeViewProps["node"];
@@ -19,16 +21,12 @@
     let { node, selected, getPos, deleteNode }: Props = $props();
 
     let videoElement: HTMLVideoElement | undefined = $state();
-    let isLoaded = $state(false);
     let wrapperElement: HTMLDivElement | undefined = $state();
 
+    const mediaLoad = useMediaLoadState();
+
     // プレースホルダーかどうかを判定（node.attrsの変更を監視）
-    let isPlaceholder = $derived(
-        node.attrs.isPlaceholder === true ||
-            node.attrs.src?.startsWith("placeholder-") ||
-            node.attrs.src?.startsWith("blob:") ||
-            !node.attrs.src,
-    );
+    let isPlaceholder = $derived(isMediaPlaceholder(node.attrs));
 
     // ノード固有のID（video要素のdata-node-id用）
     let nodeId = $derived(
@@ -37,19 +35,6 @@
                 ? (getPos() ?? "unknown").toString()
                 : "unknown"),
     );
-
-    // 動画の読み込み完了時
-    function handleVideoLoad() {
-        isLoaded = true;
-    }
-
-    // 動画の読み込みエラー時
-    function handleVideoError() {
-        // プレースホルダーの場合はエラーログを出さない
-        if (!isPlaceholder) {
-            console.error("Failed to load video:", node.attrs.src);
-        }
-    }
 
     // 全画面状態を判定
     function isFullscreen(): boolean {
@@ -60,6 +45,24 @@
             (document as any).msFullscreenElement
         );
     }
+
+    // タップ検出（Android 対応）— 動画の再生/停止を容許しつつノード選択
+    const VIDEO_CONTROL_BAR_HEIGHT = 48;
+    useLongPress(() => videoElement, {
+        onTap: (event) => {
+            if (isPlaceholder || isFullscreen()) return;
+            const touch = event.changedTouches[0];
+            if (videoElement) {
+                const rect = videoElement.getBoundingClientRect();
+                if (touch.clientY > rect.bottom - VIDEO_CONTROL_BAR_HEIGHT)
+                    return;
+            }
+            event.stopPropagation();
+            requestNodeSelection(getPos);
+        },
+        delay: 200,
+        moveThreshold: 10,
+    });
 
     // クリックハンドラー（ノード選択のみ）
     function handleWrapperClick(event: MouseEvent) {
@@ -107,7 +110,7 @@
             const rect = videoElement.getBoundingClientRect();
             const clickY = event.clientY;
             const videoBottom = rect.bottom;
-            const controlBarHeight = 48; // コントロールバーの高さ（概算）
+            const controlBarHeight = VIDEO_CONTROL_BAR_HEIGHT;
 
             // コントロールバー領域のクリックの場合は何もしない
             if (clickY > videoBottom - controlBarHeight) {
@@ -129,109 +132,6 @@
             requestNodeSelection(getPos);
         }
     }
-
-    // 動画ノード削除処理
-    function handleDeleteNode(event: MouseEvent) {
-        event.stopPropagation(); // 親のクリックイベントを阻止
-        deleteNode();
-    }
-
-    // タッチイベントハンドラー（Android対応）
-    let touchStartTime = 0;
-    let touchStartPos = { x: 0, y: 0 };
-    const TAP_THRESHOLD = 200; // タップと判定する時間（ミリ秒）
-    const MOVE_THRESHOLD = 10; // 移動と判定する距離（ピクセル）
-
-    function handleVideoTouchStart(event: TouchEvent) {
-        if (isPlaceholder || event.touches.length !== 1) {
-            return;
-        }
-
-        touchStartTime = Date.now();
-        const touch = event.touches[0];
-        touchStartPos = { x: touch.clientX, y: touch.clientY };
-    }
-
-    function handleVideoTouchEnd(event: TouchEvent) {
-        if (isPlaceholder) {
-            return;
-        }
-
-        // 全画面表示中は何もしない
-        if (isFullscreen()) {
-            return;
-        }
-
-        const touchEndTime = Date.now();
-        const touchDuration = touchEndTime - touchStartTime;
-
-        // タップ判定（短時間で指を離した）
-        if (
-            touchDuration < TAP_THRESHOLD &&
-            event.changedTouches.length === 1
-        ) {
-            const touch = event.changedTouches[0];
-            const touchEndPos = { x: touch.clientX, y: touch.clientY };
-
-            // 移動距離を計算
-            const moveDistance = Math.sqrt(
-                Math.pow(touchEndPos.x - touchStartPos.x, 2) +
-                    Math.pow(touchEndPos.y - touchStartPos.y, 2),
-            );
-
-            // ほとんど移動していない場合のみタップと判定
-            if (moveDistance < MOVE_THRESHOLD) {
-                // コントロール領域のチェック
-                if (videoElement) {
-                    const rect = videoElement.getBoundingClientRect();
-                    const touchY = touch.clientY;
-                    const videoBottom = rect.bottom;
-                    const controlBarHeight = 48;
-
-                    if (touchY > videoBottom - controlBarHeight) {
-                        return;
-                    }
-                }
-
-                // イベントの伝播を停止（エディタ側への伝播を防ぐ）
-                event.stopPropagation();
-                // preventDefaultは呼ばない（動画の再生/停止を許可）
-
-                requestNodeSelection(getPos);
-            }
-        }
-    }
-
-    onMount(() => {
-        // タッチデバイス用の能動的なイベントリスナーを追加（Android対応）
-        if (videoElement) {
-            // passive: false を指定して preventDefault() を有効にする
-            videoElement.addEventListener(
-                "touchstart",
-                handleVideoTouchStart as EventListener,
-                { passive: false },
-            );
-            videoElement.addEventListener(
-                "touchend",
-                handleVideoTouchEnd as EventListener,
-                { passive: false },
-            );
-        }
-
-        return () => {
-            // クリーンアップ
-            if (videoElement) {
-                videoElement.removeEventListener(
-                    "touchstart",
-                    handleVideoTouchStart as EventListener,
-                );
-                videoElement.removeEventListener(
-                    "touchend",
-                    handleVideoTouchEnd as EventListener,
-                );
-            }
-        };
-    });
 </script>
 
 <NodeViewWrapper>
@@ -262,13 +162,11 @@
                     muted
                     loop
                     class="editor-video"
-                    class:loaded={isLoaded}
+                    class:loaded={mediaLoad.isLoaded}
                     data-node-id={nodeId}
-                    onloadeddata={handleVideoLoad}
-                    onerror={handleVideoError}
+                    onloadeddata={mediaLoad.handleLoad}
+                    onerror={mediaLoad.handleError}
                     onclick={handleVideoClick}
-                    ontouchstart={handleVideoTouchStart}
-                    ontouchend={handleVideoTouchEnd}
                     preload="metadata"
                 >
                     <track kind="captions" />
@@ -277,33 +175,14 @@
             {/if}
         </div>
         {#if !isPlaceholder}
-            <Button
-                variant="close"
-                shape="circle"
-                className="video-close-button"
-                ariaLabel={$_("videoContextMenu.delete")}
-                onClick={handleDeleteNode}
-            >
-                <div class="close-icon svg-icon"></div>
-            </Button>
-            <Button
-                variant="copy"
-                shape="circle"
-                className="video-copy-button"
-                ariaLabel={$_("videoContextMenu.copyUrl")}
-                onClick={(event) => {
-                    event.stopPropagation();
-                    copyToClipboard(node.attrs.src, "video URL");
-                    const pos = { x: event.clientX, y: event.clientY };
-                    postComponentUIStore.showPopupMessage(
-                        pos.x,
-                        pos.y,
-                        $_("videoContextMenu.copySuccess"),
-                    );
-                }}
-            >
-                <div class="copy-icon svg-icon"></div>
-            </Button>
+            <MediaActionButtons
+                src={node.attrs.src}
+                onDelete={deleteNode}
+                deleteAriaLabel={$_("videoContextMenu.delete")}
+                copyAriaLabel={$_("videoContextMenu.copyUrl")}
+                copySuccessMessage={$_("videoContextMenu.copySuccess")}
+                layout="editor-video"
+            />
         {/if}
     </div>
 </NodeViewWrapper>
@@ -323,28 +202,6 @@
         display: inline-block;
         width: 100%;
         max-width: 100%;
-
-        :global(.video-close-button) {
-            position: absolute;
-            top: 6px;
-            right: 6px;
-            z-index: 10;
-            width: 40px;
-            height: 40px;
-
-            .close-icon {
-                mask-image: url("/icons/xmark-solid-full.svg");
-            }
-        }
-
-        :global(.video-copy-button) {
-            position: absolute;
-            top: 52px;
-            right: 6px;
-            z-index: 10;
-            width: 40px;
-            height: 40px;
-        }
     }
 
     .video-wrapper {
