@@ -352,6 +352,16 @@
     fileInput?.click();
   }
 
+  // --- ギャラリーのメディア変更に応じてcanPostを再評価 ---
+  $effect(() => {
+    const hasGalleryMedia = mediaGalleryStore.items.some(
+      (item) => !item.isPlaceholder,
+    );
+    const hasContent = !!editorState.content.trim();
+    const hasEditorMedia = editorState.hasImage;
+    editorState.canPost = hasContent || hasEditorMedia || hasGalleryMedia;
+  });
+
   // --- モード切替時の自動整理 ---
   let isFirstModeRender = true;
 

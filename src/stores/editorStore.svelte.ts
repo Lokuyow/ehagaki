@@ -5,6 +5,7 @@ import {
     createEditorStore as createTiptapEditorStore,
     updateEditorPlaceholder
 } from '../lib/editor';
+import { mediaGalleryStore } from './mediaGalleryStore.svelte';
 
 // プレースホルダー管理関数を再エクスポート（下位互換性のため）
 export {
@@ -57,7 +58,8 @@ export const imageSelectionState = $state({
 
 // --- エディター状態更新関数 ---
 function canPostByContent(content: string, hasMedia: boolean): boolean {
-    return !!content.trim() || hasMedia;
+    const galleryHasMedia = mediaGalleryStore.getItems().some(item => !item.isPlaceholder);
+    return !!content.trim() || hasMedia || galleryHasMedia;
 }
 
 export function updateEditorContent(content: string, hasMedia: boolean = false): void {
