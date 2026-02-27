@@ -76,7 +76,7 @@ export function getPlaceholderDefaultSize(): ImageDimensions {
 // ドラッグイベント処理
 // =============================================================================
 
-export function createDragEventDetail(
+function createDragEventDetail(
     type: DragEvent['type'],
     details?: any,
     getPos?: () => number | undefined
@@ -96,7 +96,7 @@ export function createDragEventDetail(
     return eventDetails[type];
 }
 
-export function getEventName(type: DragEvent['type']): string {
+function getEventName(type: DragEvent['type']): string {
     const eventMap = {
         start: "touch-image-drag-start",
         move: "touch-image-drag-move",
@@ -123,7 +123,7 @@ export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos
 // ドロップゾーン処理
 // =============================================================================
 
-export function findDropZoneAtPosition(x: number, y: number): Element | null {
+function findDropZoneAtPosition(x: number, y: number): Element | null {
     return document.elementFromPoint(x, y)?.closest(".drop-zone-indicator") || null;
 }
 
@@ -133,7 +133,7 @@ export function clearAllDropZoneHighlights(): void {
     });
 }
 
-export function highlightDropZone(dropZone: Element | null): void {
+function highlightDropZone(dropZone: Element | null): void {
     dropZone?.classList.add("drop-zone-hover");
 }
 

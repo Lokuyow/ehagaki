@@ -2,6 +2,7 @@ import type { Editor as TipTapEditor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
 import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGalleryItem } from '../types';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorUtils';
+import { generateSimpleUUID } from '../utils/appUtils';
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
@@ -119,7 +120,7 @@ function validateAndBuildPlaceholderEntries(
             return;
         }
 
-        const placeholderId = `placeholder-${timestamp}-${index}-${generatePlaceholderId()}`;
+        const placeholderId = `placeholder-${timestamp}-${index}-${generateSimpleUUID()}`;
         const processingResult = fileProcessingResults[index];
 
         entries.push({
@@ -132,11 +133,6 @@ function validateAndBuildPlaceholderEntries(
     });
 
     return entries;
-}
-
-// 簡易的なUUID生成関数（プレースホルダー用）
-function generatePlaceholderId(): string {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2, 11);
 }
 
 // ============================================================
@@ -287,10 +283,7 @@ export async function replacePlaceholdersWithResults(
     imageOxMap: Record<string, string>,
     imageXMap: Record<string, string>,
     imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
-    _extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>,
-    _getMimeTypeFromUrl: (url: string) => string,
     calculateImageHash: (url: string) => Promise<string | null>,
-    _createImetaTag: (params: any) => Promise<string[]>,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string; imageServerBlurhashMap: Record<string, string> }> {
     const failedResults: FileUploadResponse[] = [];

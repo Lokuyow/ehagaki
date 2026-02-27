@@ -19,6 +19,7 @@
  */
 
 import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from "../constants";
+import { checkMoveThreshold } from "../utils/mediaNodeUtils";
 
 interface UseLongPressOptions {
     /** 長押し成立時に呼ばれるコールバック */
@@ -80,10 +81,8 @@ export function useLongPress(
         if (longPressTimeout === null) return;
 
         const touch = event.touches[0];
-        const dx = touch.clientX - startPos.x;
-        const dy = touch.clientY - startPos.y;
 
-        if (dx * dx + dy * dy > moveThreshold * moveThreshold) {
+        if (checkMoveThreshold(touch.clientX, touch.clientY, startPos.x, startPos.y, moveThreshold)) {
             cancel();
         }
     }

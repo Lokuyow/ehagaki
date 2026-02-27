@@ -324,10 +324,7 @@ export async function uploadHelper({
                 imageOxMap,
                 imageXMap,
                 dependencies.imageSizeMapStore,
-                dependencies.extractImageBlurhashMap,
-                dependencies.getMimeTypeFromUrl,
                 dependencies.calculateImageHash,
-                dependencies.createImetaTag,
                 devMode
             );
             failedResults.push(...replacementResult.failedResults);

@@ -384,10 +384,6 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number): boolea
     }
 }
 
-// === カスタムイベント発火 ===
-/** @deprecated `requestImageFullscreen` from `mediaNodeUtils` を使用してください */
-export { requestImageFullscreen as requestFullscreenImage } from './mediaNodeUtils';
-
 // === エディター状態管理 ===
 export function setDraggingFalse(viewOrEditorView: any) {
     viewOrEditorView.dispatch(
