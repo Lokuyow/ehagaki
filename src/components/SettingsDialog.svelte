@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
-    import { Dialog } from "bits-ui";
+    import { Dialog, Switch } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import {
@@ -441,17 +441,12 @@
                         "メディア自由配置モード"}</span
                 >
                 <div class="setting-control">
-                    <label
-                        class="toggle-switch"
-                        for="{uid}-media-free-placement"
+                    <Switch.Root
+                        class="bui-switch"
+                        bind:checked={mediaFreePlacement}
                     >
-                        <input
-                            id="{uid}-media-free-placement"
-                            type="checkbox"
-                            bind:checked={mediaFreePlacement}
-                        />
-                        <span class="slider"></span>
-                    </label>
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
                 </div>
             </div>
         </div>
@@ -464,14 +459,12 @@
                         "投稿詳細にクライアント名をつける（Client tag）"}</span
                 >
                 <div class="setting-control">
-                    <label class="toggle-switch" for="{uid}-client-tag">
-                        <input
-                            id="{uid}-client-tag"
-                            type="checkbox"
-                            bind:checked={clientTagEnabled}
-                        />
-                        <span class="slider"></span>
-                    </label>
+                    <Switch.Root
+                        class="bui-switch"
+                        bind:checked={clientTagEnabled}
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
                 </div>
             </div>
         </div>
@@ -632,37 +625,26 @@
         mask-image: url("/icons/rotate-right-solid-full.svg");
     }
 
-    .toggle-switch {
+    :global(.bui-switch) {
         position: relative;
         display: inline-block;
         width: 90px;
         height: 44px;
-        transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
-    }
-    .toggle-switch input {
-        opacity: 0;
-        width: 0;
-        height: 0;
-    }
-    .slider {
-        position: absolute;
-        cursor: pointer;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
         background-color: var(--toggle-bg);
         opacity: 0.2;
-        transition: 0.2s;
         border-radius: 50px;
+        border: none;
+        padding: 0;
+        cursor: pointer;
+        transition: opacity 0.2s;
+        flex-shrink: 0;
     }
-    .toggle-switch input:checked + .slider {
-        background-color: var(--toggle-bg);
+    :global(.bui-switch[data-state="checked"]) {
         opacity: 1;
     }
-    .slider:before {
+    :global(.bui-switch-thumb) {
         position: absolute;
-        content: "";
+        display: block;
         height: 38px;
         width: 38px;
         left: 3px;
@@ -671,7 +653,7 @@
         transition: transform 0.2s cubic-bezier(0, 1, 0.5, 1);
         border-radius: 50%;
     }
-    .toggle-switch input:checked + .slider:before {
+    :global(.bui-switch[data-state="checked"] .bui-switch-thumb) {
         transform: translateX(46px);
     }
 
