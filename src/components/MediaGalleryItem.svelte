@@ -30,6 +30,7 @@
     }: Props = $props();
 
     let cardEl: HTMLDivElement | undefined = $state();
+    let videoEl: HTMLVideoElement | undefined = $state();
 
     const mediaLoad = useMediaLoadState();
 
@@ -78,7 +79,24 @@
 
     // PC ドラッグ＆ドロップ
     function handleDragStartEvent(event: DragEvent) {
+        // オーバーレイからのドラッグ時はカード全体をゴースト画像に使用
+        if (cardEl && event.dataTransfer) {
+            const rect = cardEl.getBoundingClientRect();
+            const offsetX = event.clientX - rect.left;
+            const offsetY = event.clientY - rect.top;
+            event.dataTransfer.setDragImage(cardEl, offsetX, offsetY);
+        }
         onDragStart(index, event);
+    }
+
+    // オーバーレイクリック時にビデオの再生/停止をトグル
+    function handleOverlayClick() {
+        if (!videoEl) return;
+        if (videoEl.paused) {
+            videoEl.play();
+        } else {
+            videoEl.pause();
+        }
     }
 
     function handleDragOverEvent(event: DragEvent) {
@@ -92,11 +110,12 @@
     }
 </script>
 
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 <div
     bind:this={cardEl}
     class="gallery-item"
     class:is-placeholder={item.isPlaceholder}
-    draggable="true"
+    draggable={item.type !== "video" || item.isPlaceholder}
     ondragstart={handleDragStartEvent}
     ondragover={handleDragOverEvent}
     ondrop={handleDropEvent}
@@ -149,19 +168,32 @@
         {/if}
 
         {#if showActualVideo}
-            <video
-                src={item.src}
-                controls
-                playsinline
-                autoplay
-                muted
-                loop
-                preload="metadata"
-                class="gallery-video"
-                oncontextmenu={(e) => e.preventDefault()}
-            >
-                <track kind="captions" />
-            </video>
+            <div class="video-wrapper">
+                <video
+                    bind:this={videoEl}
+                    src={item.src}
+                    controls
+                    playsinline
+                    autoplay
+                    muted
+                    loop
+                    preload="metadata"
+                    class="gallery-video"
+                    draggable="false"
+                    oncontextmenu={(e) => e.preventDefault()}
+                >
+                    <track kind="captions" />
+                </video>
+                <!-- ビデオ上部のドラッグハンドル（コントロール領域を除く） -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <div
+                    class="video-drag-overlay"
+                    draggable="true"
+                    ondragstart={handleDragStartEvent}
+                    onclick={handleOverlayClick}
+                    aria-hidden="true"
+                ></div>
+            </div>
         {/if}
     </div>
 
@@ -234,6 +266,12 @@
         }
     }
 
+    .video-wrapper {
+        position: relative;
+        width: 220px;
+        height: 220px;
+    }
+
     .gallery-video {
         width: 220px;
         height: 220px;
@@ -242,5 +280,19 @@
         -webkit-touch-callout: none;
         -webkit-user-select: none;
         user-select: none;
+    }
+
+    .video-drag-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 50px;
+        cursor: grab;
+        z-index: 1;
+    }
+
+    .video-drag-overlay:active {
+        cursor: grabbing;
     }
 </style>
