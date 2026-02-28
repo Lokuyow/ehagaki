@@ -365,21 +365,32 @@ async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | 
       'sharedImageData'
     );
 
-    if (result.data.image?.arrayBuffer && result.data.image._isFile) {
-      const file = new File(
-        [result.data.image.arrayBuffer],
-        result.data.image.name || 'shared-image',
-        {
-          type: result.data.image.type || 'image/jpeg'
+    // 複数画像対応: images配列から File を再構築
+    const rawImages: Array<{ name?: string; type?: string; size?: number; arrayBuffer?: ArrayBuffer; _isFile?: boolean }> =
+      result.data.images ?? (result.data.image ? [result.data.image] : []);
+
+    if (rawImages.length > 0) {
+      const files = rawImages.map((img) => {
+        if (img.arrayBuffer && img._isFile) {
+          return new File(
+            [img.arrayBuffer],
+            img.name || 'shared-image',
+            { type: img.type || 'image/jpeg' }
+          );
         }
-      );
+        return img as unknown as File;
+      });
+
+      const metadataArr = result.data.metadata ?? result.data.images?.map((img: { name?: string; type?: string; size?: number }) => ({
+        name: img.name,
+        type: img.type,
+        size: img.size
+      })) ?? [];
 
       return {
-        image: file,
-        metadata: result.data.metadata
-      };
-    } else {
-      return result.data as SharedImageData;
+        images: files,
+        metadata: metadataArr
+      } as SharedImageData;
     }
   }
   return null;
@@ -391,7 +402,7 @@ async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | 
 async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
   try {
     const data = await sendMessageToServiceWorker({ action: 'getSharedImage' });
-    return data && data.image ? data : null;
+    return data && Array.isArray(data.images) && data.images.length > 0 ? data : null;
   } catch (error) {
     console.error('Failed to send message to ServiceWorker:', error);
     return null;
@@ -434,7 +445,7 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
 
     try {
       const data = await sendMessageToServiceWorker({ action: 'getSharedImageForce' }, 1000);
-      const result = data && data.image ? data : null;
+      const result = data && Array.isArray(data.images) && data.images.length > 0 ? data : null;
       if (result) {
         console.log('Shared image retrieved via forced Service Worker request');
         return result;

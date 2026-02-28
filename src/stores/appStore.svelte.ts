@@ -85,7 +85,7 @@ export {
     sharedImageStore,
     updateSharedImageStore,
     clearSharedImageStore,
-    getSharedImageFile,
+    getSharedImageFiles,
     getSharedImageMetadata,
     isSharedImageReceived,
     urlQueryContentStore,

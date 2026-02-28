@@ -518,8 +518,8 @@ describe('FileUploadManager', () => {
             // 非同期でメッセージを送信
             setTimeout(() => {
                 const mockSharedData: SharedImageData = {
-                    image: createMockFile('shared.jpg', 'image/jpeg', 1000000),
-                    metadata: { name: 'shared.jpg' }
+                    images: [createMockFile('shared.jpg', 'image/jpeg', 1000000)],
+                    metadata: [{ name: 'shared.jpg' }]
                 };
 
                 if (mockMessageChannel.port1.onmessage) {
@@ -539,7 +539,7 @@ describe('FileUploadManager', () => {
                 [mockMessageChannel.port2]
             );
             expect(result).toBeTruthy();
-            expect(result?.image.name).toBe('shared.jpg');
+            expect(result?.images[0].name).toBe('shared.jpg');
         });
 
         it('共有画像の包括的な処理', async () => {

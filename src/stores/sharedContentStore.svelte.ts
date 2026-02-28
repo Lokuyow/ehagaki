@@ -2,28 +2,28 @@ import type { SharedImageMetadata, SharedImageStoreState } from '../lib/types';
 
 // --- 共有画像管理 ---
 export const sharedImageStore = $state<SharedImageStoreState>({
-    file: null,
+    files: [],
     metadata: undefined,
     received: false
 });
 
-export function updateSharedImageStore(file: File | null, metadata?: SharedImageMetadata): void {
-    sharedImageStore.file = file;
+export function updateSharedImageStore(files: File[], metadata?: SharedImageMetadata[]): void {
+    sharedImageStore.files = files;
     sharedImageStore.metadata = metadata;
-    sharedImageStore.received = !!file;
+    sharedImageStore.received = files.length > 0;
 }
 
 export function clearSharedImageStore(): void {
-    sharedImageStore.file = null;
+    sharedImageStore.files = [];
     sharedImageStore.metadata = undefined;
     sharedImageStore.received = false;
 }
 
-export function getSharedImageFile(): File | null {
-    return sharedImageStore.file;
+export function getSharedImageFiles(): File[] {
+    return sharedImageStore.files;
 }
 
-export function getSharedImageMetadata(): SharedImageMetadata | undefined {
+export function getSharedImageMetadata(): SharedImageMetadata[] | undefined {
     return sharedImageStore.metadata;
 }
 

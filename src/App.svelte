@@ -320,9 +320,9 @@
         try {
           // まず実際に共有画像が取得できるかチェック
           const shared = await getSharedImageWithFallback();
-          if (shared?.image) {
+          if (shared?.images?.length) {
             // 画像が取得できた場合は、エラーパラメータを無視して処理を続行
-            sharedImageStore.file = shared.image;
+            sharedImageStore.files = shared.images;
             sharedImageStore.metadata = shared.metadata;
             sharedImageStore.received = true;
             localStorage.setItem("sharedImageProcessed", "1");
@@ -381,11 +381,11 @@
   $effect(() => {
     if (
       sharedImageStore.received &&
-      sharedImageStore.file &&
+      sharedImageStore.files.length > 0 &&
       postComponentRef
     ) {
-      postComponentRef.uploadFiles([sharedImageStore.file]);
-      sharedImageStore.file = null;
+      postComponentRef.uploadFiles(sharedImageStore.files);
+      sharedImageStore.files = [];
       sharedImageStore.metadata = undefined;
       sharedImageStore.received = false;
       // 取得済みフラグをセット

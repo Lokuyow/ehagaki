@@ -1,7 +1,7 @@
 import {
   updateSharedImageStore,
   clearSharedImageStore,
-  getSharedImageFile,
+  getSharedImageFiles,
   getSharedImageMetadata
 } from '../stores/appStore.svelte';
 import { FileUploadManager } from './fileUploadManager';
@@ -31,8 +31,8 @@ export class ShareHandler {
     const { data, type } = event.data || {};
     if (type !== 'SHARED_IMAGE') return;
 
-    if (data?.image) {
-      updateSharedImageStore(data.image, data.metadata);
+    if (data?.images?.length) {
+      updateSharedImageStore(data.images, data.metadata);
     }
   }
 
@@ -53,7 +53,7 @@ export class ShareHandler {
       const result = await this.fileUploadManager.processSharedImageOnLaunch();
 
       if (result.success && result.data) {
-        updateSharedImageStore(result.data.image, result.data.metadata);
+        updateSharedImageStore(result.data.images, result.data.metadata);
       }
 
       return result;
@@ -77,11 +77,11 @@ export class ShareHandler {
     return this.isProcessingSharedImage;
   }
 
-  getSharedImageFile(): File | null {
-    return getSharedImageFile();
+  getSharedImageFiles(): File[] {
+    return getSharedImageFiles();
   }
 
-  getSharedImageMetadata(): SharedImageMetadata | undefined {
+  getSharedImageMetadata(): SharedImageMetadata[] | undefined {
     return getSharedImageMetadata();
   }
 

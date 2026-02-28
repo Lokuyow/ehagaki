@@ -19,8 +19,8 @@ export interface AuthState {
 }
 
 export interface SharedImageStoreState {
-    file: File | null;
-    metadata?: SharedImageMetadata;
+    files: File[];
+    metadata?: SharedImageMetadata[];
     received: boolean;
 }
 
@@ -61,8 +61,8 @@ export interface SharedImageMetadata {
 }
 
 export interface SharedImageData {
-    image: File;
-    metadata?: SharedImageMetadata;
+    images: File[];
+    metadata?: SharedImageMetadata[];
 }
 
 export interface SharedImageProcessingResult {

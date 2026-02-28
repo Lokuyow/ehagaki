@@ -150,19 +150,23 @@ const Utilities = {
         return url.searchParams.get('profile') === 'true';
     },
 
-    // 共有画像データから FormData を抽出
+    // 共有画像データから FormData を抜出（複数画像対応）
     async extractImageFromFormData(formData) {
-        const image = formData.get('image');
-        if (!image) return null;
+        const images = formData.getAll('image');
+        if (!images || images.length === 0) return null;
+
+        // File以外の値（文字列等）を除外
+        const fileImages = images.filter(img => img instanceof File && img.size > 0);
+        if (fileImages.length === 0) return null;
 
         return {
-            image,
-            metadata: {
-                name: image.name,
-                type: image.type,
-                size: image.size,
+            images: fileImages,
+            metadata: fileImages.map(img => ({
+                name: img.name,
+                type: img.type,
+                size: img.size,
                 timestamp: new Date().toISOString()
-            }
+            }))
         };
     }
 };
@@ -557,52 +561,56 @@ class ClientManager {
         }
     }
 
-    // IndexedDBに共有画像データを永続化
+    // IndexedDBに共有画像データを永続化（複数画像対応）
     async persistSharedImageToIndexedDB(sharedData, indexedDBManager) {
-        return indexedDBManager.executeOperation((db, resolve, reject) => {
-            const tx = db.transaction(['flags'], 'readwrite');
-            const store = tx.objectStore('flags');
+        return indexedDBManager.executeOperation(async (db, resolve, reject) => {
+            try {
+                const images = sharedData.images || (sharedData.image ? [sharedData.image] : []);
 
-            // 共有画像データを保存（フォールバック用）
-            const sharedImageData = {
-                id: 'sharedImageData',
-                timestamp: Date.now(),
-                data: {
-                    image: {
-                        name: sharedData.image?.name,
-                        type: sharedData.image?.type,
-                        size: sharedData.image?.size,
-                        // Fileオブジェクトは直接保存できないため、後でBlobから再構築する
-                        _isFile: true
-                    },
-                    metadata: sharedData.metadata
-                }
-            };
+                // 各画像の ArrayBuffer を並列変換
+                const imageDataList = await Promise.all(
+                    images.map(async (img) => {
+                        const base = {
+                            name: img.name,
+                            type: img.type,
+                            size: img.size,
+                            _isFile: true
+                        };
+                        if (img instanceof File) {
+                            try {
+                                const buffer = await img.arrayBuffer();
+                                return { ...base, arrayBuffer: buffer };
+                            } catch (e) {
+                                return base;
+                            }
+                        }
+                        return base;
+                    })
+                );
 
-            // FileオブジェクトをArrayBufferに変換して保存
-            if (sharedData.image instanceof File) {
-                sharedData.image.arrayBuffer().then(buffer => {
-                    sharedImageData.data.image.arrayBuffer = buffer;
+                const sharedImageData = {
+                    id: 'sharedImageData',
+                    timestamp: Date.now(),
+                    data: {
+                        images: imageDataList,
+                        metadata: sharedData.metadata
+                    }
+                };
 
-                    store.put(sharedImageData).onsuccess = () => {
-                        db.close();
-                        resolve();
-                    };
-                }).catch(error => {
-                    db.close();
-                    reject(error);
-                });
-            } else {
+                const tx = db.transaction(['flags'], 'readwrite');
+                const store = tx.objectStore('flags');
                 store.put(sharedImageData).onsuccess = () => {
                     db.close();
                     resolve();
                 };
-            }
-
-            tx.onerror = () => {
+                tx.onerror = () => {
+                    db.close();
+                    reject(new Error('Failed to persist shared image data'));
+                };
+            } catch (error) {
                 db.close();
-                reject(new Error('Failed to persist shared image data'));
-            };
+                reject(error);
+            }
         });
     }
 }
@@ -705,10 +713,10 @@ class RequestHandler {
             }
 
             this.console.log('SW: Image data extracted successfully', {
-                hasImage: !!extractedData.image,
-                imageType: extractedData.image?.type,
-                imageSize: extractedData.image?.size,
-                imageName: extractedData.image?.name
+                hasImages: !!extractedData.images,
+                imageCount: extractedData.images?.length,
+                firstImageType: extractedData.images?.[0]?.type,
+                firstImageSize: extractedData.images?.[0]?.size
             });
 
             ServiceWorkerState.setSharedImageCache(extractedData);

@@ -554,7 +554,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     try {
       // Service Workerから取得を試行
       const sharedData = await this.getSharedImageFromServiceWorker();
-      if (sharedData?.image) {
+      if (sharedData?.images?.length) {
         return {
           success: true,
           data: sharedData,

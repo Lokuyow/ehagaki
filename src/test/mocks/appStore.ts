@@ -18,7 +18,7 @@ const mockAppStore = {
     },
     updateSharedImageStore: vi.fn(),
     clearSharedImageStore: vi.fn(),
-    getSharedImageFile: vi.fn(() => null),
+    getSharedImageFiles: vi.fn(() => []),
     getSharedImageMetadata: vi.fn(() => undefined),
     showImageSizeInfo: vi.fn(),
     setVideoCompressionService: vi.fn(),
