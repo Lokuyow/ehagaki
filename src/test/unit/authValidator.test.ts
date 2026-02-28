@@ -13,35 +13,35 @@ describe('AuthValidator ユニットテスト', () => {
     describe('Nsecバリデーション統合', () => {
         it('有効なNsecが正しくバリデーションされること', async () => {
             const validNsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
-            
+
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
-            
+
             const isValid = AuthValidator.isValidSecretKey(validNsec, keyManager);
-            
+
             expect(isValid).toBe(true);
             expect(keyManager.isValidNsec).toHaveBeenCalledWith(validNsec);
         });
 
         it('無効なNsecが拒否されること', async () => {
             const invalidNsec = 'invalid-nsec';
-            
+
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
-            
+
             const isValid = AuthValidator.isValidSecretKey(invalidNsec, keyManager);
-            
+
             expect(isValid).toBe(false);
         });
 
         it('短すぎるNsecが拒否されること', async () => {
             const shortNsec = 'nsec123';
-            
+
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
-            
+
             const isValid = AuthValidator.isValidSecretKey(shortNsec, keyManager);
-            
+
             expect(isValid).toBe(false);
         });
 
@@ -73,7 +73,7 @@ describe('AuthValidator ユニットテスト', () => {
             };
 
             const hasPubkey = AuthValidator.hasRequiredPubkey(auth);
-            
+
             expect(hasPubkey).toBe(true);
         });
 
@@ -85,7 +85,7 @@ describe('AuthValidator ユニットテスト', () => {
             };
 
             const hasPubkey = AuthValidator.hasRequiredPubkey(auth);
-            
+
             expect(hasPubkey).toBe(false);
         });
 
@@ -97,7 +97,7 @@ describe('AuthValidator ユニットテスト', () => {
             };
 
             const isLogout = AuthValidator.isLogoutAuth(logoutAuth);
-            
+
             expect(isLogout).toBe(true);
         });
 
@@ -109,7 +109,7 @@ describe('AuthValidator ユニットテスト', () => {
             };
 
             const isLogout = AuthValidator.isLogoutAuth(loginAuth);
-            
+
             expect(isLogout).toBe(false);
         });
     });
@@ -234,7 +234,7 @@ describe('AuthValidator ユニットテスト', () => {
 
             vi.mocked(keyManager.saveToStorage).mockReturnValue({ success: false });
             const result = keyManager.saveToStorage(nsec);
-            
+
             expect(result.success).toBe(false);
         });
     });
