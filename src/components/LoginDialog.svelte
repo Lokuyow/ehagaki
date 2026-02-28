@@ -1,7 +1,7 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
-    import { PublicKeyState } from "../lib/keyManager";
+    import { PublicKeyState } from "../lib/keyManager.svelte";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -53,22 +53,10 @@
         }
     });
 
-    // --- 公開鍵状態のサブスクライブ ---
-    let isValid = $state(false);
-
-    let npubValue = $state("");
-
-    let nprofileValue = $state("");
-
-    $effect(() => {
-        publicKeyState.isValid.subscribe((val) => (isValid = val));
-    });
-    $effect(() => {
-        publicKeyState.npub.subscribe((val) => (npubValue = val));
-    });
-    $effect(() => {
-        publicKeyState.nprofile.subscribe((val) => (nprofileValue = val));
-    });
+    // --- 公開鍵状態を $derived で直接参照（svelte/store subscribe パターンを廃止）---
+    let isValid = $derived(publicKeyState.isValid);
+    let npubValue = $derived(publicKeyState.npub);
+    let nprofileValue = $derived(publicKeyState.nprofile);
 
     // --- UIイベントハンドラ ---
     function handleSave() {

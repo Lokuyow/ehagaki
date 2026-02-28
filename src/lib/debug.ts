@@ -1,15 +1,15 @@
-import { writable, type Writable } from "svelte/store";
 import { swNeedRefresh } from "../stores/appStore.svelte";
 import { editorState } from "../stores/editorStore.svelte";
 import { copyToClipboard } from "./utils/clipboardUtils";
+import { writable, type Writable } from "svelte/store";
 
-// --- dev環境判定ストア ---
-export const isDev = writable(import.meta.env.MODE === "development");
+// --- dev環境判定（定数。初期化後に変更されない）---
+export const isDev: boolean = import.meta.env.MODE === "development";
 
-// --- preview環境判定ストア（追加） ---
-export const isPreview = writable(isPreviewOrDevEnv());
+// --- preview環境判定（定数）---
+export const isPreview: boolean = isPreviewOrDevEnv();
 
-// --- dev用: console.log履歴ストア ---
+// --- dev用: console.log履歴ストア（Writableを維持—コンポーネント外からsubscribeが必要）---
 export const devLog: Writable<string[]> = writable([]);
 
 // --- 設定 ---
@@ -30,7 +30,7 @@ export function shouldShowDevLog(): boolean {
 }
 
 // --- 既存のストアを更新 ---
-export const isPreviewOrDev = writable(shouldShowDevLog());
+export const isPreviewOrDev: boolean = shouldShowDevLog();
 
 // --- devLog追加関数 ---
 function logToDevFooter(...args: any[]) {

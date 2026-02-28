@@ -181,6 +181,7 @@ export interface FileUploadDependencies {
 export interface CompressionService {
     compress(file: File): Promise<VideoCompressionResult>;
     hasCompressionSettings?(): boolean;
+    abort?(): void;
 }
 
 // --- Video Compression types ---

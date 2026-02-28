@@ -1,7 +1,7 @@
 import type { RxNostr } from "rx-nostr";
 import { seckeySigner } from "@rx-nostr/crypto";
 import type { Editor as TipTapEditor } from "@tiptap/core";
-import { keyManager } from "./keyManager";
+import { keyManager } from "./keyManager.svelte";
 import { authState, mediaFreePlacementStore } from "../stores/appStore.svelte";
 import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";

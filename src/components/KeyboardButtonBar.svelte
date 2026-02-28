@@ -22,14 +22,8 @@
 
     let { onUploadImage }: Props = $props();
 
-    // 認証状態を購読
-    let hasStoredKey = $state(false);
-    $effect(() => {
-        const unsubscribe = authState.subscribe((val) => {
-            hasStoredKey = val && val.isAuthenticated;
-        });
-        return unsubscribe;
-    });
+    // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
+    let hasStoredKey = $derived(authState.value?.isAuthenticated ?? false);
 
     // エディタ状態を取得
     let postStatus = $derived(editorState.postStatus);

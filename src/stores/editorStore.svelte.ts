@@ -141,14 +141,14 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
     const editor = createTiptapEditorStore({
         placeholderText,
         onSubmitPost: submitPost,
-        onCreate: (editorInstance: any) => {
+        onCreate: (editorInstance: TipTapEditor | null) => {
             currentEditorStore.set(editorInstance);
         }
     });
 
     // エディターインスタンスの購読
-    let latestEditor: any = null;
-    const unsubscribe = editor.subscribe((editorInstance: any) => {
+    let latestEditor: TipTapEditor | null = null;
+    const unsubscribe = editor.subscribe((editorInstance: TipTapEditor | null) => {
         latestEditor = editorInstance;
     });
 

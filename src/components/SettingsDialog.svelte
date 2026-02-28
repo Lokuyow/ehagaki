@@ -4,7 +4,6 @@
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
-    import RadioButton from "./RadioButton.svelte";
     import {
         authState,
         swVersionStore,
@@ -24,8 +23,6 @@
         getDefaultEndpoint,
         STORAGE_KEYS,
         SW_UPDATE_TIMEOUT,
-        COMPRESSION_OPTIONS_MAP,
-        VIDEO_COMPRESSION_OPTIONS_MAP,
     } from "../lib/constants";
     import {
         initializeSettingsValues,
@@ -36,8 +33,9 @@
     import { nostrZapView } from "nostr-zap-view";
     import "nostr-zap";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import SettingsRelaySection from "./settings/SettingsRelaySection.svelte";
+    import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
 
     let {
         show = $bindable(false),
@@ -408,188 +406,16 @@
             </div>
         </div>
 
-        <!-- 画像圧縮設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <div class="setting-label-wrapper">
-                    <span class="setting-label"
-                        >{$_("settingsDialog.image_quality_setting")}</span
-                    >
-                    <InfoPopoverButton
-                        side="top"
-                        ariaLabel="画像圧縮設定の説明"
-                    >
-                        <table class="popover-table">
-                            <thead>
-                                <tr>
-                                    <th
-                                        >{$_(
-                                            "settingsDialog.info_header_setting",
-                                        )}</th
-                                    >
-                                    <th
-                                        >{$_(
-                                            "settingsDialog.info_header_pixels",
-                                        )}</th
-                                    >
-                                    <th
-                                        >{$_(
-                                            "settingsDialog.info_header_quality",
-                                        )}</th
-                                    >
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>{$_("settingsDialog.quality_high")}</td>
-                                    <td
-                                        >{COMPRESSION_OPTIONS_MAP.low
-                                            .maxWidthOrHeight}px</td
-                                    >
-                                    <td
-                                        >{Math.round(
-                                            COMPRESSION_OPTIONS_MAP.low
-                                                .initialQuality * 100,
-                                        )}%</td
-                                    >
-                                </tr>
-                                <tr>
-                                    <td
-                                        >{$_(
-                                            "settingsDialog.quality_medium",
-                                        )}</td
-                                    >
-                                    <td
-                                        >{COMPRESSION_OPTIONS_MAP.medium
-                                            .maxWidthOrHeight}px</td
-                                    >
-                                    <td
-                                        >{Math.round(
-                                            COMPRESSION_OPTIONS_MAP.medium
-                                                .initialQuality * 100,
-                                        )}%</td
-                                    >
-                                </tr>
-                                <tr>
-                                    <td>{$_("settingsDialog.quality_low")}</td>
-                                    <td
-                                        >{COMPRESSION_OPTIONS_MAP.high
-                                            .maxWidthOrHeight}px</td
-                                    >
-                                    <td
-                                        >{Math.round(
-                                            COMPRESSION_OPTIONS_MAP.high
-                                                .initialQuality * 100,
-                                        )}%</td
-                                    >
-                                </tr>
-                            </tbody>
-                        </table>
-                    </InfoPopoverButton>
-                </div>
-                <div class="setting-control radio-group">
-                    {#each compressionPairs as pair}
-                        <div class="radio-pair">
-                            {#each pair as level}
-                                <RadioButton
-                                    value={level.value}
-                                    name="compression"
-                                    checked={_selectedCompression ===
-                                        level.value}
-                                    variant="default"
-                                    shape="rounded"
-                                    onChange={(value) =>
-                                        (_selectedCompression = value)}
-                                    ariaLabel={level.label}
-                                >
-                                    {level.label}
-                                </RadioButton>
-                            {/each}
-                        </div>
-                    {/each}
-                </div>
-            </div>
-        </div>
-
-        <!-- 動画圧縮設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <div class="setting-label-wrapper">
-                    <span class="setting-label"
-                        >{$_("settingsDialog.video_quality_setting")}</span
-                    >
-                    <InfoPopoverButton
-                        side="top"
-                        ariaLabel="動画圧縮設定の説明"
-                    >
-                        <table class="popover-table">
-                            <thead>
-                                <tr>
-                                    <th
-                                        >{$_(
-                                            "settingsDialog.info_header_setting",
-                                        )}</th
-                                    >
-                                    <th
-                                        >{$_(
-                                            "settingsDialog.info_header_pixels",
-                                        )}</th
-                                    >
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>{$_("settingsDialog.quality_high")}</td>
-                                    <td
-                                        >{VIDEO_COMPRESSION_OPTIONS_MAP.low
-                                            .maxSize}px</td
-                                    >
-                                </tr>
-                                <tr>
-                                    <td
-                                        >{$_(
-                                            "settingsDialog.quality_medium",
-                                        )}</td
-                                    >
-                                    <td
-                                        >{VIDEO_COMPRESSION_OPTIONS_MAP.medium
-                                            .maxSize}px</td
-                                    >
-                                </tr>
-                                <tr>
-                                    <td>{$_("settingsDialog.quality_low")}</td>
-                                    <td
-                                        >{VIDEO_COMPRESSION_OPTIONS_MAP.high
-                                            .maxSize}px</td
-                                    >
-                                </tr>
-                            </tbody>
-                        </table>
-                    </InfoPopoverButton>
-                </div>
-                <div class="setting-control radio-group">
-                    {#each videoCompressionPairs as pair}
-                        <div class="radio-pair">
-                            {#each pair as level}
-                                <RadioButton
-                                    value={level.value}
-                                    name="videoCompression"
-                                    checked={_selectedVideoCompression ===
-                                        level.value}
-                                    variant="default"
-                                    shape="rounded"
-                                    onChange={(value) =>
-                                        (_selectedVideoCompression = value)}
-                                    ariaLabel={level.label}
-                                >
-                                    {level.label}
-                                </RadioButton>
-                            {/each}
-                        </div>
-                    {/each}
-                </div>
-            </div>
-        </div>
+        <!-- 画像・動画圧縮設定セクション -->
+        <SettingsCompressionSection
+            {compressionPairs}
+            selectedCompression={_selectedCompression}
+            onCompressionChange={(value) => (_selectedCompression = value)}
+            {videoCompressionPairs}
+            selectedVideoCompression={_selectedVideoCompression}
+            onVideoCompressionChange={(value) =>
+                (_selectedVideoCompression = value)}
+        />
 
         <!-- アップロード先設定セクション -->
         <div class="setting-section">
@@ -652,74 +478,12 @@
         </div>
 
         <!-- リレー・プロフィール再取得セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.refresh_relays_and_profile") ||
-                        "リレーリスト・プロフィール再取得"}</span
-                >
-                <div class="setting-control">
-                    <Button
-                        variant="default"
-                        shape="rounded"
-                        className="refresh-relays-profile-btn"
-                        onClick={() =>
-                            onRefreshRelaysAndProfile &&
-                            onRefreshRelaysAndProfile()}
-                        ariaLabel={$_(
-                            "settingsDialog.refresh_relays_and_profile",
-                        ) || "再取得"}
-                    >
-                        <div
-                            class="rotate-right-icon svg-icon"
-                            aria-label={$_("settingsDialog.refresh") || "更新"}
-                        ></div>
-                        <span class="btn-text"
-                            >{$_("settingsDialog.refresh") || "更新"}</span
-                        >
-                    </Button>
-                </div>
-            </div>
-
-            <!-- 投稿先リレー表示セクション（折りたたみ対応） -->
-            <div class="setting-info">
-                <button
-                    type="button"
-                    class="relay-toggle-label"
-                    onclick={() => showRelaysStore.set(!showRelays)}
-                    aria-pressed={showRelays}
-                    aria-label={$_("settingsDialog.toggle_write_relays_list") ||
-                        "投稿先リレーの表示切替"}
-                    style="cursor:pointer; background:none; border:none; padding:0; font: inherit;"
-                >
-                    <span class="relay-toggle-icon" aria-label="toggle">
-                        {#if showRelays}
-                            ▼
-                        {:else}
-                            ▶
-                        {/if}
-                    </span>
-                    {$_("settingsDialog.write_relays_list") ||
-                        "書き込み先リレーリスト"}
-                </button>
-                {#if showRelays}
-                    <div class="relay-list">
-                        {#if writeRelays.length > 0}
-                            <ul>
-                                {#each writeRelays as relay}
-                                    <li>{relay}</li>
-                                {/each}
-                            </ul>
-                        {:else}
-                            <span style="color: #888;"
-                                >{$_("settingsDialog.no_relay_info") ||
-                                    "リレー情報なし"}</span
-                            >
-                        {/if}
-                    </div>
-                {/if}
-            </div>
-        </div>
+        <SettingsRelaySection
+            {writeRelays}
+            {showRelays}
+            onToggleShowRelays={() => showRelaysStore.set(!showRelays)}
+            {onRefreshRelaysAndProfile}
+        />
     </div>
 
     {#snippet footer()}
@@ -877,65 +641,11 @@
         white-space: pre-line;
     }
 
-    .setting-label-wrapper {
-        display: inline-flex;
-        align-items: center;
-        flex-shrink: 0;
-    }
-
     .setting-control {
         display: flex;
         align-items: center;
         justify-content: flex-end;
         height: fit-content;
-    }
-
-    .setting-info {
-        margin-left: 10px;
-    }
-
-    :global(.info-trigger) {
-        height: 40px;
-        width: 40px;
-    }
-
-    :global(.popover-table) {
-        border-collapse: collapse;
-        font-size: 1rem;
-
-        th,
-        td {
-            padding: 4px 8px;
-            text-align: left;
-        }
-
-        th {
-            font-weight: 600;
-            border-bottom: 1px solid var(--border);
-        }
-
-        td {
-            font-weight: normal;
-        }
-    }
-
-    .radio-group {
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-
-        :global(button) {
-            font-size: 0.875rem;
-            padding: 10px;
-            min-height: 50px;
-            min-width: 50px;
-            font-weight: normal;
-        }
-    }
-
-    .radio-pair {
-        display: flex;
-        gap: 6px;
     }
 
     .lang-icon-btn {
@@ -992,35 +702,6 @@
     }
     .toggle-switch input:checked + .slider:before {
         transform: translateX(46px);
-    }
-
-    .relay-list {
-        margin-left: 10px;
-
-        ul {
-            margin: 0;
-            padding-left: 20px;
-            font-size: 0.9375rem;
-        }
-
-        li {
-            word-break: break-all;
-            color: var(--text-light);
-            margin: 6px 0;
-        }
-    }
-    .relay-toggle-label {
-        user-select: none;
-        display: flex;
-        align-items: center;
-        height: fit-content;
-        gap: 6px;
-        margin-right: auto;
-        margin-left: 0;
-    }
-    .relay-toggle-icon {
-        font-size: 1.2rem;
-        color: gray;
     }
 
     .sw-update-section {

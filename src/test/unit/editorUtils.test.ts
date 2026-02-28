@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
 import * as editorUtils from '../../lib/utils/editorUtils';
 import { requestImageFullscreen } from '../../lib/utils/mediaNodeUtils';
+import type { Editor as TipTapEditor } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Transaction } from '@tiptap/pm/state';
 
 // モック設定
 vi.mock('../../constants', () => ({
@@ -104,7 +107,7 @@ describe('editorUtils', () => {
                         content: { size: 0 }
                     }
                 };
-                expect(editorUtils.isDocumentEmpty(emptyDoc)).toBe(true);
+                expect(editorUtils.isDocumentEmpty(emptyDoc as unknown as PMNode)).toBe(true);
 
                 const nonEmptyDoc = {
                     childCount: 1,
@@ -113,7 +116,7 @@ describe('editorUtils', () => {
                         content: { size: 5 }
                     }
                 };
-                expect(editorUtils.isDocumentEmpty(nonEmptyDoc)).toBe(false);
+                expect(editorUtils.isDocumentEmpty(nonEmptyDoc as unknown as PMNode)).toBe(false);
             });
         });
 
@@ -124,7 +127,7 @@ describe('editorUtils', () => {
                     content: { size: 19 },
                     textContent: 'https://example.com'
                 };
-                expect(editorUtils.isParagraphWithOnlyImageUrl(node, 19)).toBe(true);
+                expect(editorUtils.isParagraphWithOnlyImageUrl(node as unknown as PMNode, 19)).toBe(true);
             });
         });
     });
@@ -208,7 +211,7 @@ describe('editorUtils', () => {
                     deleteEnd: 6
                 };
 
-                const result = editorUtils.createMoveTransaction(mockTransaction, mockNode, positions);
+                const result = editorUtils.createMoveTransaction(mockTransaction as unknown as Transaction, mockNode as unknown as PMNode, positions);
                 expect(mockTransaction.insert).toHaveBeenCalledWith(2, mockNode);
                 expect(mockTransaction.delete).toHaveBeenCalledWith(5, 6);
             });
@@ -253,7 +256,7 @@ describe('editorUtils', () => {
                         chain: vi.fn().mockReturnValue({ focus: vi.fn() })
                     };
 
-                    const adapter = editorUtils.createEditorAdapter(mockEditor);
+                    const adapter = editorUtils.createEditorAdapter(mockEditor as unknown as TipTapEditor);
 
                     expect(adapter.getState()).toBe('test-state');
                     expect(typeof adapter.dispatch).toBe('function');
@@ -269,7 +272,7 @@ describe('editorUtils', () => {
                         { nodeSize: 2 }
                     ];
 
-                    const result = editorUtils.calculateInsertPositions(nodes, 10);
+                    const result = editorUtils.calculateInsertPositions(nodes as unknown as PMNode[], 10);
 
                     expect(result).toEqual([
                         { node: nodes[0], position: 10 },
@@ -298,7 +301,7 @@ describe('editorUtils', () => {
                         })
                     };
 
-                    const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                    const result = editorUtils.extractFragmentsFromDoc(mockDoc as unknown as PMNode);
                     expect(result).toEqual(['Hello world', 'https://example.com/image.jpg']);
                 });
 
@@ -318,7 +321,7 @@ describe('editorUtils', () => {
                         })
                     };
 
-                    const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                    const result = editorUtils.extractFragmentsFromDoc(mockDoc as unknown as PMNode);
                     expect(result).toEqual(['Video content', 'https://example.com/video.mp4']);
                 });
 
@@ -338,7 +341,7 @@ describe('editorUtils', () => {
                         })
                     };
 
-                    const result = editorUtils.extractFragmentsFromDoc(mockDoc);
+                    const result = editorUtils.extractFragmentsFromDoc(mockDoc as unknown as PMNode);
                     expect(result).toEqual(['https://example.com/image.jpg', 'https://example.com/video.mp4']);
                 });
             }); describe('getDocumentFromEditor', () => {
@@ -348,7 +351,7 @@ describe('editorUtils', () => {
                         state: { doc: mockDoc }
                     };
 
-                    const result = editorUtils.getDocumentFromEditor(mockEditor);
+                    const result = editorUtils.getDocumentFromEditor(mockEditor as unknown as TipTapEditor);
                     expect(result).toBe(mockDoc);
                 });
 
@@ -356,13 +359,14 @@ describe('editorUtils', () => {
                     const mockDoc = { type: 'doc' };
                     const mockEditor = () => ({ state: { doc: mockDoc } });
 
-                    const result = editorUtils.getDocumentFromEditor(mockEditor);
-                    expect(result).toBe(mockDoc);
+                    // 関数エディターは TipTapEditor として扱われないため null を返す
+                    const result = editorUtils.getDocumentFromEditor(mockEditor as unknown as TipTapEditor);
+                    expect(result).toBe(null);
                 });
 
                 it('should return null for invalid editor', () => {
                     expect(editorUtils.getDocumentFromEditor(null)).toBe(null);
-                    expect(editorUtils.getDocumentFromEditor({})).toBe(null);
+                    expect(editorUtils.getDocumentFromEditor({} as unknown as TipTapEditor)).toBe(null);
                 });
             });
         });

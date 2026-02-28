@@ -6,7 +6,7 @@ import mockKeyManager from './mocks/keyManager';
 
 // グローバルモックを設定
 vi.mock('../stores/appStore.svelte.ts', () => mockAppStore);
-vi.mock('../lib/keyManager.ts', () => mockKeyManager);
+vi.mock('../lib/keyManager.svelte.ts', () => mockKeyManager);
 vi.mock('../lib/debug', () => ({
     debugLog: vi.fn()
 }));

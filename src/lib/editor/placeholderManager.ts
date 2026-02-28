@@ -1,6 +1,6 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import { NodeSelection } from '@tiptap/pm/state';
-import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGalleryItem } from '../types';
+import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGalleryItem, FileUploadManagerInterface } from '../types';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorUtils';
 import { generateSimpleUUID } from '../utils/appUtils';
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
@@ -44,7 +44,7 @@ function buildUploadErrorMessage(failedResults: FileUploadResponse[]): string {
 /** ギャラリーからプレースホルダーアイテムを削除しサイズマップも更新する */
 function removeGalleryPlaceholder(
     id: string,
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void }
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void }
 ): void {
     mediaGalleryStore.removeItem(id);
     imageSizeMapStore.update(map => {
@@ -106,7 +106,7 @@ function validateAndBuildPlaceholderEntries(
     fileArray: File[],
     fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
     showUploadError: (msg: string, duration?: number) => void,
-    FileUploadManager: any,
+    FileUploadManager: new () => FileUploadManagerInterface,
     timestamp: number
 ): Array<{ file: File; placeholderId: string; ox?: string; dimensions?: ImageDimensions; isVideo: boolean }> {
     const fileUploadManager = new FileUploadManager();
@@ -144,7 +144,7 @@ function validateAndBuildPlaceholderEntries(
  */
 export async function generateBlurhashes(
     placeholderMap: PlaceholderEntry[],
-    FileUploadManager: any,
+    FileUploadManager: new () => FileUploadManagerInterface,
     devMode: boolean = false
 ): Promise<void> {
     if (uploadAbortFlagStore.value) {
@@ -196,8 +196,8 @@ export function insertPlaceholdersIntoEditor(
     fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
     currentEditor: TipTapEditor | null,
     showUploadError: (msg: string, duration?: number) => void,
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
-    FileUploadManager: any,
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
+    FileUploadManager: new () => FileUploadManagerInterface,
     devMode: boolean = false
 ): PlaceholderEntry[] {
     if (!currentEditor) return [];
@@ -282,7 +282,7 @@ export async function replacePlaceholdersWithResults(
     currentEditor: TipTapEditor | null,
     imageOxMap: Record<string, string>,
     imageXMap: Record<string, string>,
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
     calculateImageHash: (url: string) => Promise<string | null>,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string; imageServerBlurhashMap: Record<string, string> }> {
@@ -391,8 +391,8 @@ export function insertPlaceholdersIntoGallery(
     fileArray: File[],
     fileProcessingResults: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>,
     showUploadError: (msg: string, duration?: number) => void,
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
-    FileUploadManager: any,
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
+    FileUploadManager: new () => FileUploadManagerInterface,
     devMode: boolean = false
 ): PlaceholderEntry[] {
     const timestamp = Date.now();
@@ -437,7 +437,7 @@ export async function replacePlaceholdersInGallery(
     placeholderMap: PlaceholderEntry[],
     imageOxMap: Record<string, string>,
     imageXMap: Record<string, string>,
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
     calculateImageHash: (url: string) => Promise<string | null>,
     getMimeTypeFromUrl: (url: string) => string,
     devMode: boolean = false
@@ -524,7 +524,7 @@ export async function replacePlaceholdersInGallery(
  */
 export function removeAllGalleryPlaceholders(
     placeholderMap: PlaceholderEntry[],
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void }
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void }
 ): void {
     for (const entry of placeholderMap) {
         removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);

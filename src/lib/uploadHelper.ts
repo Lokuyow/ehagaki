@@ -19,6 +19,7 @@ import type {
     MimeTypeSupportInterface,
     UploadProgress,
     UploadInfoCallbacks,
+    ImageDimensions,
 } from "./types";
 import {
     insertPlaceholdersIntoEditor,
@@ -87,7 +88,7 @@ function handleAbortedUpload(
     uploadCallbacks?: UploadInfoCallbacks,
     devMode: boolean = false,
     cleanupPlaceholders: boolean = false,
-    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void } }
+    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } }
 ): UploadHelperResult {
     updateUploadState(false);
 

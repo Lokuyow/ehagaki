@@ -78,9 +78,9 @@ export function getPlaceholderDefaultSize(): ImageDimensions {
 
 function createDragEventDetail(
     type: DragEvent['type'],
-    details?: any,
+    details?: Record<string, unknown>,
     getPos?: () => number | undefined
-): any {
+): Record<string, unknown> | undefined {
     const eventDetails = {
         start: { nodePos: getPos?.() },
         move: details,
@@ -105,7 +105,7 @@ function getEventName(type: DragEvent['type']): string {
     return eventMap[type];
 }
 
-export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos?: () => number | undefined) {
+export function dispatchDragEvent(type: DragEvent['type'], details?: Record<string, unknown>, getPos?: () => number | undefined) {
     const eventName = getEventName(type);
     const eventDetail = createDragEventDetail(type, details, getPos);
 
@@ -116,7 +116,6 @@ export function dispatchDragEvent(type: DragEvent['type'], details?: any, getPos
     });
 
     window.dispatchEvent(customEvent);
-    document.dispatchEvent(new CustomEvent(eventName, { detail: customEvent.detail }));
 }
 
 // =============================================================================
@@ -281,14 +280,12 @@ export function requestNodeSelection(getPos: () => number | undefined) {
     if (isTouchDevice()) blurEditorAndBody();
     const event = new CustomEvent("select-image-node", { detail: { pos } });
     window.dispatchEvent(event);
-    document.dispatchEvent(event);
 }
 
 export function requestImageFullscreen(src: string, alt: string) {
     blurEditorAndBody();
     const event = new CustomEvent("image-fullscreen-request", { detail: { src, alt } });
     window.dispatchEvent(event);
-    document.dispatchEvent(event);
 }
 
 export function handleImageInteraction(

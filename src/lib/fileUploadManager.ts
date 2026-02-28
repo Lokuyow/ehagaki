@@ -1,8 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
-import { keyManager } from "./keyManager";
-import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex, renameByMimeType } from "./utils/appUtils";
+import { keyManager } from "./keyManager.svelte";
+import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex } from "./utils/appUtils";
 import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
-import imageCompression from "browser-image-compression";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
   FileUploadResponse,
@@ -20,189 +19,15 @@ import type {
 import {
   DEFAULT_API_URL,
   MAX_FILE_SIZE,
-  COMPRESSION_OPTIONS_MAP,
   UPLOAD_POLLING_CONFIG
 } from "./constants";
 import { getToken } from "nostr-tools/nip98";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
-import { showCompressedImagePreview } from "./debug";
-
 import { uploadAbortFlagStore } from '../stores/appStore.svelte';
-
-// --- MIMEタイプサポート検出クラス ---
-export class MimeTypeSupport implements MimeTypeSupportInterface {
-  private mimeSupportCache: Record<string, boolean> = {};
-  private webpQualitySupport?: boolean;
-
-  constructor(private document?: Document) { }
-
-  async canEncodeWebpWithQuality(): Promise<boolean> {
-    if (this.webpQualitySupport !== undefined) return this.webpQualitySupport;
-    try {
-      if (!this.document) return (this.webpQualitySupport = false);
-      const canvas = this.document.createElement("canvas");
-      canvas.width = 2; canvas.height = 2;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return (this.webpQualitySupport = false);
-      ctx.fillStyle = "#f00"; ctx.fillRect(0, 0, 2, 2);
-      const qLow = canvas.toDataURL("image/webp", 0.2);
-      const qHigh = canvas.toDataURL("image/webp", 0.9);
-      const ok = qLow.startsWith("data:image/webp") && qHigh.startsWith("data:image/webp") && qLow.length !== qHigh.length;
-      this.webpQualitySupport = ok;
-      return ok;
-    } catch {
-      this.webpQualitySupport = false;
-      return false;
-    }
-  }
-
-  canEncodeMimeType(mime: string): boolean {
-    if (!mime) return false;
-    if (mime in this.mimeSupportCache) return this.mimeSupportCache[mime];
-    try {
-      if (!this.document) return (this.mimeSupportCache[mime] = false);
-      const canvas = this.document.createElement("canvas");
-      canvas.width = 2; canvas.height = 2;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return (this.mimeSupportCache[mime] = false);
-      ctx.fillStyle = "#000"; ctx.fillRect(0, 0, 2, 2);
-      const url = canvas.toDataURL(mime);
-      const ok = typeof url === "string" && url.startsWith(`data:${mime}`);
-      this.mimeSupportCache[mime] = ok;
-      return ok;
-    } catch {
-      this.mimeSupportCache[mime] = false;
-      return false;
-    }
-  }
-}
-
-// --- 画像圧縮サービス ---
-export class ImageCompressionService implements CompressionService {
-  private onProgress?: (progress: number) => void;
-
-  constructor(
-    private mimeSupport: MimeTypeSupportInterface,
-    private localStorage: Storage
-  ) { }
-
-  /**
-   * 圧縮処理を中止（グローバルフラグで管理）
-   */
-  public abort(): void {
-    const isDev = import.meta.env.DEV;
-    if (isDev) console.log('[ImageCompressionService] Abort requested');
-
-    // 進捗を0にリセット
-    if (this.onProgress) {
-      this.onProgress(0);
-    }
-  }
-
-  /**
-   * 進捗コールバックを設定
-   */
-  public setProgressCallback(callback?: (progress: number) => void): void {
-    this.onProgress = callback;
-  }
-
-  private getCompressionOptions(): any {
-    const level = (this.localStorage.getItem("imageCompressionLevel") || "medium") as keyof typeof COMPRESSION_OPTIONS_MAP;
-    const opt = COMPRESSION_OPTIONS_MAP[level];
-    // skipプロパティがtrueの場合はnullを返す
-    if (typeof opt === "object" && opt && "skip" in opt && opt.skip) {
-      return null;
-    }
-    return opt ? { ...opt, preserveExif: false } : null;
-  }
-
-  // 公開メソッドとして追加（FileUploadManagerからアクセス可能にする）
-  public hasCompressionSettings(): boolean {
-    return this.getCompressionOptions() !== null;
-  }
-
-  async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
-    // グローバル中止フラグをチェック
-    if (uploadAbortFlagStore.value) {
-      return { file, wasCompressed: false, aborted: true };
-    }
-
-    if (!file.type.startsWith("image/")) return { file, wasCompressed: false };
-    if (file.size <= 20 * 1024) return { file, wasCompressed: false, wasSkipped: true };
-
-    const options = this.getCompressionOptions();
-    if (!options) return { file, wasCompressed: false, wasSkipped: true };
-
-    let usedOptions: any = {
-      ...options,
-      onProgress: (progress: number) => {
-        // 進捗を通知（0-100のパーセンテージ）
-        if (this.onProgress) {
-          this.onProgress(Math.round(progress * 100));
-        }
-      }
-    };
-
-    // WebPサポートチェックとfallback処理を改善
-    if (usedOptions.fileType === "image/webp") {
-      const webpSupported = await this.mimeSupport.canEncodeWebpWithQuality();
-      if (!webpSupported) {
-        // WebPがサポートされていない場合、JPEG/PNGにフォールバック
-        usedOptions.fileType = file.type === "image/png" ? "image/png" : "image/jpeg";
-      }
-    }
-
-    // 中止チェック
-    if (uploadAbortFlagStore.value) {
-      return { file, wasCompressed: false, aborted: true };
-    }
-
-    let targetMime: string = usedOptions.fileType || file.type;
-    if (!this.mimeSupport.canEncodeMimeType(targetMime)) {
-      // ターゲットMIMEタイプがサポートされていない場合、元のタイプを使用
-      targetMime = file.type;
-      delete usedOptions.fileType;
-    }
-
-
-    try {
-      const compressed = await imageCompression(file, usedOptions);
-
-      // 中止チェック
-      if (uploadAbortFlagStore.value) {
-        if (this.onProgress) {
-          this.onProgress(0);
-        }
-        return { file, wasCompressed: false, aborted: true };
-      }
-
-      if ((compressed as File).size >= file.size) {
-        return { file, wasCompressed: false };
-      }
-
-      // 出力ファイルのタイプと名前を正しく設定
-      const outType = usedOptions.fileType || (compressed as File).type || targetMime || file.type;
-      const outName = renameByMimeType(file.name, outType);
-      const outFile = new File([compressed], outName, { type: outType });
-
-      showCompressedImagePreview(outFile);
-      return { file: outFile, wasCompressed: true };
-    } catch (error) {
-
-      // 中止による終了の場合
-      if (uploadAbortFlagStore.value) {
-        if (this.onProgress) {
-          this.onProgress(0);
-        }
-        return { file, wasCompressed: false, aborted: true };
-      }
-
-      // 圧縮に失敗した場合もログを出力
-      console.warn("[ImageCompressionService] Compression failed:", error);
-      return { file, wasCompressed: false, wasSkipped: true };
-    }
-  }
-}
+import { MimeTypeSupport } from './mimeTypeSupport';
+import { ImageCompressionService } from './imageCompressionService';
+export { MimeTypeSupport } from './mimeTypeSupport';
+export { ImageCompressionService } from './imageCompressionService';
 
 // --- 認証サービス ---
 export class NostrAuthService implements AuthService {

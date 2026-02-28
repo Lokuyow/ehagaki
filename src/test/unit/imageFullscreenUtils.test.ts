@@ -13,6 +13,7 @@ import {
     handlePointerMove,
     handlePointerEnd
 } from '../../lib/utils/imageFullscreenUtils';
+import type { DragState } from '../../lib/types';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
 describe('imageFullscreenUtils', () => {
@@ -106,21 +107,21 @@ describe('imageFullscreenUtils', () => {
 
     it('handlePointerStart が正しいドラッグ状態を返す', () => {
         const cb = vi.fn();
-        const result = handlePointerStart(2, { x: 0, y: 0 }, {}, 0, null, null, 10, 10, false, cb);
+        const result = handlePointerStart(2, { x: 0, y: 0 }, {} as unknown as DragState, 0, null, null, 10, 10, false, cb);
         expect(result.newDragState.start).toEqual({ x: 10, y: 10 });
     });
 
     it('handlePointerMove がドラッグをトリガーする', () => {
         const onStartDrag = vi.fn();
         const onUpdateDrag = vi.fn();
-        const dragState = { start: { x: 0, y: 0 }, isDragging: false };
+        const dragState = { start: { x: 0, y: 0 }, isDragging: false, startTranslate: { x: 0, y: 0 } } as DragState;
         const result = handlePointerMove(dragState, 100, 100, true, 10, 2, onStartDrag, onUpdateDrag);
         expect(result.touchMoved).toBe(true);
     });
 
     it('handlePointerEnd が onStopDrag を呼び出す', () => {
         const cb = vi.fn();
-        handlePointerEnd({}, false, Date.now(), false, cb);
+        handlePointerEnd({} as unknown as DragState, false, Date.now(), false, cb);
         expect(cb).toHaveBeenCalled();
     });
 

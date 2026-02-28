@@ -75,10 +75,8 @@ export function blurEditorAndBody() {
     }
 }
 
-// デフォルトアダプター実装
-export const defaultTimeoutAdapter = {
-    setTimeout: (callback: () => void, delay: number) => setTimeout(callback, delay)
-};
+import { defaultTimeoutAdapter } from "./appUtils";
+export { defaultTimeoutAdapter };
 
 export function focusEditor(
     selector: string,
@@ -108,7 +106,7 @@ export function triggerVibration(duration: number = 200): void {
         } catch (e) {
             // ignore
         }
-    } 
+    }
     // 使えない場合 (iOSなど) - label要素をクリックしてcheckbox switchをトリガー
     else {
         try {

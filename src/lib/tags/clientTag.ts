@@ -1,4 +1,5 @@
 // 新規ファイル: clientTag 用ユーティリティ
+import { STORAGE_KEYS } from "../constants";
 
 /**
  * client タグのデフォルト内容（既存実装を移植）
@@ -16,7 +17,7 @@ const DEFAULT_CLIENT_TAG = [
  */
 export function getClientTag(): string[] | null {
     try {
-        const stored = localStorage.getItem("clientTagEnabled");
+        const stored = localStorage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
         const enabled = stored === null ? true : stored === "true";
         return enabled ? [...DEFAULT_CLIENT_TAG] : null;
     } catch {
@@ -30,7 +31,7 @@ export function getClientTag(): string[] | null {
  */
 export function setClientTagEnabled(enabled: boolean): void {
     try {
-        localStorage.setItem("clientTagEnabled", enabled ? "true" : "false");
+        localStorage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, enabled ? "true" : "false");
     } catch {
         // silent
     }

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ImageCompressionService, MimeTypeSupport, NostrAuthService } from '../../lib/fileUploadManager';
 import type { FileValidationResult } from '../../lib/types';
 
@@ -18,7 +18,7 @@ vi.mock("../../stores/appStore.svelte.ts", () => ({
     }
 }));
 
-vi.mock("../../lib/keyManager", () => ({
+vi.mock("../../lib/keyManager.svelte", () => ({
     keyManager: {
         getFromStore: vi.fn(() => "nsec1test"),
         loadFromStorage: vi.fn(() => null)
@@ -194,7 +194,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
 
     describe('認証ヘッダー生成フロー統合', () => {
         it('Nsec認証でNIP-98トークンが生成されること', async () => {
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             (keyManager.getFromStore as any).mockReturnValue('nsec1test');
 
             const authService = new NostrAuthService();
@@ -207,7 +207,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
         });
 
         it('Nsecが無い場合はエラーがスローされること', async () => {
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             (keyManager.getFromStore as any).mockReturnValue(null);
             (keyManager.loadFromStorage as any).mockReturnValue(null);
 
@@ -354,7 +354,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
             expect(compressionResult.wasSkipped).toBe(true);
 
             // 4. 認証ヘッダー生成
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             (keyManager.getFromStore as any).mockReturnValue('nsec1test');
 
             const authService = new NostrAuthService();

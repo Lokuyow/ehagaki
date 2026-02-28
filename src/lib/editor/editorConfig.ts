@@ -4,7 +4,7 @@ import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { Placeholder, Focus } from '@tiptap/extensions';
 import UniqueID from '@tiptap/extension-unique-id';
-import { Extension } from '@tiptap/core';
+import { Extension, Editor, AnyExtension } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
@@ -105,7 +105,7 @@ export interface EditorConfigOptions {
     placeholderText: string;
     onSubmitPost: () => Promise<void>;
     onUpdate?: () => void;
-    onCreate?: (editor: any) => void;
+    onCreate?: (editor: Editor) => void;
     onDestroy?: () => void;
 }
 
@@ -308,11 +308,11 @@ export function createEditorStore(options: EditorConfigOptions) {
 /**
  * プレースホルダーテキストを更新
  */
-export function updateEditorPlaceholder(editor: any, text: string): void {
+export function updateEditorPlaceholder(editor: Editor | null, text: string): void {
     if (!editor) return;
 
     const placeholderExt = editor.extensionManager.extensions.find(
-        (ext: any) => ext.name === 'placeholder'
+        (ext: AnyExtension) => ext.name === 'placeholder'
     );
     if (placeholderExt && placeholderExt.options) {
         placeholderExt.options.placeholder = text;

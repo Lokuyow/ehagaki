@@ -1,8 +1,8 @@
 import { vi } from 'vitest';
 
 // keyManagerモジュールを部分的にモックして本物の実装を使う
-vi.mock('../../lib/keyManager', async () => {
-    const actual = await import('../../lib/keyManager');
+vi.mock('../../lib/keyManager.svelte', async () => {
+    const actual = await import('../../lib/keyManager.svelte');
     return {
         KeyManager: actual.KeyManager,
         KeyStorage: actual.KeyStorage,
@@ -19,7 +19,7 @@ import {
     ExternalAuthChecker,
     PublicKeyState,
     KeyValidator
-} from '../../lib/keyManager';
+} from '../../lib/keyManager.svelte';
 import type { KeyManagerDeps, NostrLoginAuth } from '../../lib/types';
 import { MockStorage } from '../helpers';
 

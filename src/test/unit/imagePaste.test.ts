@@ -202,11 +202,11 @@ describe('MediaPaste Extension - Media URL Support', () => {
                 attrs: { src: 'https://example.com/video.mp4' }
             };
 
-            const node = editorUtils.createNodeFromData(mockSchema, videoNodeData);
+            const node = editorUtils.createNodeFromData(mockSchema as unknown as import('@tiptap/pm/model').Schema, videoNodeData);
 
             expect(node).toBeDefined();
-            expect(node.type).toBe('video');
-            expect(node.attrs.src).toBe('https://example.com/video.mp4');
+            expect(node!.type).toBe('video');
+            expect(node!.attrs.src).toBe('https://example.com/video.mp4');
         });
 
         it('should create image nodes (existing)', async () => {
@@ -225,10 +225,10 @@ describe('MediaPaste Extension - Media URL Support', () => {
                 attrs: { src: 'https://example.com/image.jpg', alt: 'Test' }
             };
 
-            const node = editorUtils.createNodeFromData(mockSchema, imageNodeData);
+            const node = editorUtils.createNodeFromData(mockSchema as unknown as import('@tiptap/pm/model').Schema, imageNodeData);
 
             expect(node).toBeDefined();
-            expect(node.type).toBe('image');
+            expect(node!.type).toBe('image');
         });
     });
 

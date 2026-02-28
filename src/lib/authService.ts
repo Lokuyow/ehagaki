@@ -1,4 +1,4 @@
-import { KeyManager, PublicKeyState } from './keyManager';
+import { KeyManager, PublicKeyState } from './keyManager.svelte';
 import type { NostrLoginAuth, NostrLoginOptions } from './types';
 import { nostrLoginManager } from './nostrLogin';
 import { setAuthInitialized, setNsecAuth, setNostrLoginAuth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';

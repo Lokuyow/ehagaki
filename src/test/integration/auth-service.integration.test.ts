@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, type Mock } from 'vitest';
+﻿import { describe, it, expect, vi, type Mock } from 'vitest';
 import { AuthValidator } from '../../lib/authService';
 
 /**
@@ -15,7 +15,7 @@ describe('認証サービス統合テスト', () => {
         it('有効なNsecが正しくバリデーションされること', async () => {
             const validNsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
             
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
             
             const isValid = AuthValidator.isValidSecretKey(validNsec, keyManager);
@@ -27,7 +27,7 @@ describe('認証サービス統合テスト', () => {
         it('無効なNsecが拒否されること', async () => {
             const invalidNsec = 'invalid-nsec';
             
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
             
             const isValid = AuthValidator.isValidSecretKey(invalidNsec, keyManager);
@@ -38,7 +38,7 @@ describe('認証サービス統合テスト', () => {
         it('短すぎるNsecが拒否されること', async () => {
             const shortNsec = 'nsec123';
             
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
             
             const isValid = AuthValidator.isValidSecretKey(shortNsec, keyManager);
@@ -55,7 +55,7 @@ describe('認証サービス統合テスト', () => {
                 { nsec: 'npub1' + 'a'.repeat(58), shouldBeValid: false },
             ];
 
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
 
             for (const testCase of testCases) {
                 vi.mocked(keyManager.isValidNsec).mockReturnValue(testCase.shouldBeValid);
@@ -124,7 +124,7 @@ describe('認証サービス統合テスト', () => {
                 npub: 'npub1test'
             };
 
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
 
             // Nsecバリデーション
@@ -147,7 +147,7 @@ describe('認証サービス統合テスト', () => {
                 npub: ''
             };
 
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
 
             // Nsecバリデーション
@@ -165,7 +165,7 @@ describe('認証サービス統合テスト', () => {
 
     describe('認証フロー遷移統合', () => {
         it('未認証→Nsec認証→認証済みの状態遷移が表現できること', async () => {
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
 
             // 1. 未認証状態
             vi.mocked(keyManager.loadFromStorage).mockReturnValue(null);
@@ -194,7 +194,7 @@ describe('認証サービス統合テスト', () => {
         });
 
         it('認証済み→ログアウト→未認証の状態遷移が表現できること', async () => {
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
 
             // 1. 認証済み状態
             const storedNsec = 'nsec1stored';
@@ -217,7 +217,7 @@ describe('認証サービス統合テスト', () => {
     describe('エラーハンドリング統合', () => {
         it('公開鍵導出エラーが検出できること', async () => {
             const nsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
 
             vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
             vi.mocked(keyManager.derivePublicKey).mockImplementation(() => {
@@ -231,7 +231,7 @@ describe('認証サービス統合テスト', () => {
 
         it('ストレージ保存失敗が検出できること', async () => {
             const nsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
-            const { keyManager } = await import('../../lib/keyManager');
+            const { keyManager } = await import('../../lib/keyManager.svelte');
 
             vi.mocked(keyManager.saveToStorage).mockReturnValue({ success: false });
             const result = keyManager.saveToStorage(nsec);

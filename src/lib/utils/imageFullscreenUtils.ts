@@ -1,4 +1,4 @@
-import { ZoomCalculation, ZoomParams, MousePosition } from "../types";
+import { ZoomCalculation, ZoomParams, MousePosition, DragState, PinchState } from "../types";
 import { TIMING, ZOOM_CONFIG, MOMENTUM_CONFIG } from "../constants"; // MOMENTUM_CONFIG を追加
 import { transformStore } from "../../stores/imageFullscreenStore.svelte";
 import { setBodyStyle, clearBodyStyles } from "./appDomUtils";
@@ -131,8 +131,8 @@ export function updateBoundaryConstraints(imageElement: HTMLImageElement | undef
 export function resetAllStates(
     animationFrameId: number | null,
     pinchAnimationFrameId: number | null,
-    dragState: any,
-    pinchState: any,
+    dragState: DragState,
+    pinchState: PinchState,
     tapTimeoutId: number | null
 ) {
     if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
@@ -191,7 +191,7 @@ export function handleTap(
 export function handlePointerStart(
     transformStateScale: number,
     transformStateTranslate: { x: number; y: number },
-    dragState: any,
+    dragState: DragState,
     lastTapTime: number,
     lastTapPosition: { x: number; y: number } | null,
     tapTimeoutId: number | null,
@@ -199,7 +199,7 @@ export function handlePointerStart(
     clientY: number,
     isTouch: boolean,
     onDoubleTap: (x: number, y: number) => void
-): { newDragState: any; newLastTapTime: number; newLastTapPosition: { x: number; y: number } | null; newTapTimeoutId: number | null } {
+): { newDragState: DragState; newLastTapTime: number; newLastTapPosition: { x: number; y: number } | null; newTapTimeoutId: number | null } {
     let newDragState = { ...dragState };
     let newLastTapTime = lastTapTime;
     let newLastTapPosition = lastTapPosition;
@@ -224,7 +224,7 @@ export function handlePointerStart(
 
 // ポインタムーブの処理
 export function handlePointerMove(
-    dragState: any,
+    dragState: DragState,
     clientX: number,
     clientY: number,
     isTouch: boolean,
@@ -232,7 +232,7 @@ export function handlePointerMove(
     transformStateScale: number,
     onStartDrag: (x: number, y: number) => void,
     onUpdateDrag: (x: number, y: number) => void
-): { newDragState: any; touchMoved: boolean } {
+): { newDragState: DragState; touchMoved: boolean } {
     let newDragState = { ...dragState };
     let touchMoved = false;
 
@@ -262,7 +262,7 @@ export function handlePointerMove(
 
 // ポインタアップの処理
 export function handlePointerEnd(
-    _dragState: any,
+    _dragState: DragState,
     isTouch: boolean,
     touchStartTime: number,
     touchMoved: boolean,

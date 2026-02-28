@@ -63,6 +63,19 @@ export function generateMediaItemId(): string {
 // =============================================================================
 
 /**
+ * 内部ヘルパー: MB/KB切り替えでバイト数をフォーマット
+ */
+function formatSizeWithUnit(bytes: number, useMB: boolean): string {
+  if (useMB) {
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(2)}MB`;
+  } else {
+    const kb = Math.round(bytes / 1024);
+    return `${kb}KB`;
+  }
+}
+
+/**
  * ファイルサイズを人間に読みやすい形式に変換
  */
 export function formatFileSize(bytes: number): string {
@@ -93,17 +106,7 @@ export function calculateCompressionRatio(originalSize: number, compressedSize: 
 export function createSizeReductionText(originalSize: number, compressedSize: number): string {
   const useMB = (originalSize / 1024) >= 1000; // 圧縮前が1000KB以上の場合MB表記を使用
 
-  const formatSize = (bytes: number): string => {
-    if (useMB) {
-      const mb = bytes / (1024 * 1024);
-      return `${mb.toFixed(2)}MB`;
-    } else {
-      const kb = Math.round(bytes / 1024);
-      return `${kb}KB`;
-    }
-  };
-
-  return `${formatSize(originalSize)} → ${formatSize(compressedSize)}`;
+  return `${formatSizeWithUnit(originalSize, useMB)} → ${formatSizeWithUnit(compressedSize, useMB)}`;
 }
 
 /**
@@ -149,20 +152,10 @@ export function generateSizeDisplayInfo(sizeInfo: FileSizeInfo | null): SizeDisp
 
   const useMB = (sizeInfo.originalSize / 1024) >= 1000; // 圧縮前が1000KB以上の場合MB表記を使用
 
-  const formatSize = (bytes: number): string => {
-    if (useMB) {
-      const mb = bytes / (1024 * 1024);
-      return `${mb.toFixed(2)}MB`;
-    } else {
-      const kb = Math.round(bytes / 1024);
-      return `${kb}KB`;
-    }
-  };
-
   return {
     wasCompressed: sizeInfo.wasCompressed,
-    originalSize: formatSize(sizeInfo.originalSize),
-    compressedSize: formatSize(sizeInfo.compressedSize),
+    originalSize: formatSizeWithUnit(sizeInfo.originalSize, useMB),
+    compressedSize: formatSizeWithUnit(sizeInfo.compressedSize, useMB),
     compressionRatio: sizeInfo.compressionRatio,
     originalFilename: sizeInfo.originalFilename,
     compressedFilename: sizeInfo.compressedFilename,

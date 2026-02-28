@@ -1,7 +1,10 @@
 import type { NodeData, CleanUrlResult } from "../types";
 import { blurEditorAndBody } from "./appDomUtils";
 import { ALLOWED_PROTOCOLS, ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "../constants";
-import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { Editor as TipTapEditor, JSONContent, ChainedCommands } from "@tiptap/core";
+import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import type { EditorState, Transaction } from "@tiptap/pm/state";
+import type { EditorView } from "@tiptap/pm/view";
 import { isMediaPlaceholder } from "./mediaNodeUtils";
 
 // === URL検証・正規関数） ===
@@ -88,7 +91,7 @@ export function cleanUrlEnd(url: string): CleanUrlResult {
 }
 
 // === ドキュメント状態判定（純粋関数） ===
-export function isDocumentEmpty(doc: any): boolean {
+export function isDocumentEmpty(doc: PMNode): boolean {
     if (doc.childCount === 1) {
         const firstChild = doc.firstChild;
         return firstChild?.type.name === 'paragraph' && firstChild.content.size === 0;
@@ -96,11 +99,11 @@ export function isDocumentEmpty(doc: any): boolean {
     return doc.childCount === 0;
 }
 
-export function isEditorDocEmpty(state: any): boolean {
+export function isEditorDocEmpty(state: EditorState): boolean {
     return isDocumentEmpty(state.doc);
 }
 
-export function isParagraphWithOnlyImageUrl(node: any, urlLength: number): boolean {
+export function isParagraphWithOnlyImageUrl(node: PMNode, urlLength: number): boolean {
     return node.type.name === 'paragraph' &&
         node.content.size === urlLength &&
         node.textContent.trim().length === urlLength;
@@ -155,7 +158,7 @@ export function parseTextToNodes(text: string): NodeData[] {
     return nodes;
 }
 
-export function textToTiptapNodes(text: string): any {
+export function textToTiptapNodes(text: string): NodeData {
     const nodes = parseTextToNodes(text);
     return {
         type: 'doc',
@@ -163,7 +166,7 @@ export function textToTiptapNodes(text: string): any {
     };
 }
 
-export function createNodeFromData(schema: any, nodeData: NodeData): any {
+export function createNodeFromData(schema: Schema, nodeData: NodeData): PMNode | null {
     switch (nodeData.type) {
         case 'image':
             return schema.nodes.image.create(nodeData.attrs);
@@ -171,7 +174,7 @@ export function createNodeFromData(schema: any, nodeData: NodeData): any {
             return schema.nodes.video.create(nodeData.attrs);
         case 'paragraph':
             if (nodeData.content?.length) {
-                const textNodes = nodeData.content.map((textData: any) =>
+                const textNodes = nodeData.content.map((textData: { text: string }) =>
                     schema.text(textData.text)
                 );
                 return schema.nodes.paragraph.create({}, textNodes);
@@ -184,25 +187,25 @@ export function createNodeFromData(schema: any, nodeData: NodeData): any {
 
 // === エディター操作の抽象化 ===
 export interface EditorAdapter {
-    getState(): any;
-    dispatch(transaction: any): void;
-    chain(): any;
-    focus(): any;
+    getState(): EditorState;
+    dispatch(transaction: Transaction): void;
+    chain(): ChainedCommands;
+    focus(): ChainedCommands;
 }
 
-export function createEditorAdapter(editor: any): EditorAdapter {
+export function createEditorAdapter(editor: TipTapEditor): EditorAdapter {
     return {
         getState: () => editor.view.state,
-        dispatch: (transaction: any) => editor.view.dispatch(transaction),
+        dispatch: (transaction: Transaction) => editor.view.dispatch(transaction),
         chain: () => editor.chain(),
         focus: () => editor.chain().focus()
     };
 }
 
 export function calculateInsertPositions(
-    nodes: any[],
+    nodes: PMNode[],
     startPos: number
-): { node: any; position: number }[] {
+): { node: PMNode; position: number }[] {
     let currentPos = startPos;
     return nodes.map(node => {
         const result = { node, position: currentPos };
@@ -211,7 +214,7 @@ export function calculateInsertPositions(
     });
 }
 
-function insertNodesToEditor(editor: any, nodeDataList: NodeData[]) {
+function insertNodesToEditor(editor: TipTapEditor, nodeDataList: NodeData[]) {
     if (!editor) return;
 
     const { state, dispatch } = editor.view;
@@ -221,7 +224,9 @@ function insertNodesToEditor(editor: any, nodeDataList: NodeData[]) {
     const docIsEmpty = isEditorDocEmpty(state);
 
     if (docIsEmpty) {
-        const nodes = nodeDataList.map(nodeData => createNodeFromData(schema, nodeData));
+        const nodes = nodeDataList
+            .map(nodeData => createNodeFromData(schema, nodeData))
+            .filter((n): n is PMNode => n !== null);
         if (nodes.length > 0) {
             const fragment = schema.nodes.doc.createAndFill({}, nodes);
             if (fragment) {
@@ -240,10 +245,10 @@ function insertNodesToEditor(editor: any, nodeDataList: NodeData[]) {
     dispatch(transaction);
 }
 
-export function insertTextAsNodes(editor: any, text: string) {
+export function insertTextAsNodes(editor: TipTapEditor | null, text: string) {
     if (!editor) return;
     const nodeStructure = textToTiptapNodes(text);
-    insertNodesToEditor(editor, nodeStructure.content);
+    insertNodesToEditor(editor, nodeStructure.content ?? []);
 }
 
 export function prepareImageNodes(urls: string | string[]): NodeData[] {
@@ -254,7 +259,7 @@ export function prepareImageNodes(urls: string | string[]): NodeData[] {
         .filter((node): node is NodeData => node !== null);
 }
 
-export function insertImagesToEditor(editor: any, urls: string | string[]) {
+export function insertImagesToEditor(editor: TipTapEditor | null, urls: string | string[]) {
     if (!editor) return;
 
     const urlList = Array.isArray(urls) ? urls : urls.split('\n').map(s => s.trim()).filter(Boolean);
@@ -266,7 +271,7 @@ export function insertImagesToEditor(editor: any, urls: string | string[]) {
 }
 
 // === コンテンツ抽出 ===
-export function extractFragmentsFromDoc(doc: any): string[] {
+export function extractFragmentsFromDoc(doc: PMNode): string[] {
     const fragments: string[] = [];
     doc.descendants((node: any) => {
         if (node.type.name === 'paragraph') {
@@ -288,18 +293,16 @@ export function extractFragmentsFromDoc(doc: any): string[] {
     return fragments;
 }
 
-export function getDocumentFromEditor(editor: any): any | null {
+export function getDocumentFromEditor(editor: TipTapEditor | null): PMNode | null {
     if (!editor) return null;
-
     try {
-        const resolved = typeof editor === 'function' ? editor() : editor;
-        return resolved?.state?.doc ?? resolved?.view?.state?.doc ?? null;
+        return editor.state?.doc ?? editor.view?.state?.doc ?? null;
     } catch {
         return null;
     }
 }
 
-export function extractContentWithImages(editor: any): string {
+export function extractContentWithImages(editor: TipTapEditor | null): string {
     const doc = getDocumentFromEditor(editor);
     if (!doc) return '';
 
@@ -311,7 +314,7 @@ export function extractContentWithImages(editor: any): string {
 export function calculateDragPositions(
     dropPos: number,
     originalPos: number,
-    doc?: any
+    doc?: PMNode
 ): { insertPos: number; deleteStart: number; deleteEnd: number } | null {
     if (dropPos === originalPos) return null;
 
@@ -350,10 +353,10 @@ export function calculateDragPositions(
 }
 
 export function createMoveTransaction(
-    transaction: any,
-    imageNode: any,
+    transaction: Transaction,
+    imageNode: PMNode,
     positions: { insertPos: number; deleteStart: number; deleteEnd: number }
-): any {
+): Transaction {
     if (positions.insertPos < positions.deleteStart) {
         return transaction
             .insert(positions.insertPos, imageNode)
@@ -365,7 +368,7 @@ export function createMoveTransaction(
     }
 }
 
-export function moveImageNode(view: any, nodeData: any, dropPos: number): boolean {
+export function moveImageNode(view: EditorView, nodeData: { pos: number; attrs: Record<string, unknown> }, dropPos: number): boolean {
     const { tr, doc, schema } = view.state;
     const originalPos = nodeData.pos;
 
@@ -385,7 +388,7 @@ export function moveImageNode(view: any, nodeData: any, dropPos: number): boolea
 }
 
 // === エディター状態管理 ===
-export function setDraggingFalse(viewOrEditorView: any) {
+export function setDraggingFalse(viewOrEditorView: EditorView) {
     viewOrEditorView.dispatch(
         viewOrEditorView.state.tr.setMeta('imageDrag', { isDragging: false, draggedNodePos: null })
     );
@@ -394,8 +397,8 @@ export function setDraggingFalse(viewOrEditorView: any) {
 // === エディターノードの検索と実行 ===
 export function findAndExecuteOnNode(
     editor: TipTapEditor | null,
-    predicate: (node: any, pos: number) => boolean,
-    action: (node: any, pos: number) => void
+    predicate: (node: PMNode, pos: number) => boolean,
+    action: (node: PMNode, pos: number) => void
 ): void {
     if (!editor) return;
 
@@ -409,26 +412,26 @@ export function findAndExecuteOnNode(
 }
 
 // === 画像サイズマップの更新 ===
-export function updateImageSizeMap(
-    store: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+export function updateImageSizeMap<TMap extends Record<string, unknown>>(
+    store: { update: (fn: (map: TMap) => TMap) => void },
     deleteKey?: string,
     addKey?: string,
-    addValue?: any
+    addValue?: unknown
 ): void {
-    store.update(map => {
-        const newMap = { ...map };
+    store.update((map: TMap) => {
+        const newMap: Record<string, unknown> = { ...map };
         if (deleteKey) delete newMap[deleteKey];
         if (addKey && addValue) newMap[addKey] = addValue;
-        return newMap;
+        return newMap as TMap;
     });
 }
 
 // === プレースホルダーノードの削除 ===
-export function removePlaceholderNode(
+export function removePlaceholderNode<TMap extends Record<string, unknown>>(
     placeholderId: string,
     isVideo: boolean,
     currentEditor: TipTapEditor | null,
-    imageSizeMapStore: { update: (fn: (map: Record<string, any>) => Record<string, any>) => void },
+    imageSizeMapStore: { update: (fn: (map: TMap) => TMap) => void },
     devMode: boolean = false
 ): void {
     if (!currentEditor) return;
@@ -437,12 +440,12 @@ export function removePlaceholderNode(
 
     findAndExecuteOnNode(
         currentEditor,
-        (node: any, pos: number) => {
+        (node: PMNode, pos: number) => {
             const nodeType = node.type?.name;
             const isSameNode = (isVideo && nodeType === "video") || (!isVideo && nodeType === "image");
             return isSameNode && (node.attrs?.src === placeholderId || node.attrs?.id === placeholderId);
         },
-        (node: any, pos: number) => {
+        (node: PMNode, pos: number) => {
             const tr = currentEditor!.state.tr.delete(pos, pos + node.nodeSize);
             currentEditor!.view.dispatch(tr);
 
