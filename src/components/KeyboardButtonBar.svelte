@@ -266,8 +266,13 @@
             >
                 <Tooltip.Trigger>
                     {#snippet child({ props })}
-                        {@const { onclick: _tooltipOnclick, ...restProps } =
-                            props}
+                        {@const {
+                            onclick: _tooltipOnclick,
+                            onpointerdown: tooltipPointerDown,
+                            onpointerup: tooltipPointerUp,
+                            onpointerleave: tooltipPointerLeave,
+                            ...restProps
+                        } = props}
                         <Button
                             variant="primary"
                             shape="square"
@@ -281,9 +286,21 @@
                                 postStatus.completed}
                             ariaLabel={$_("postComponent.post")}
                             {...restProps}
-                            onpointerdown={startLongPress}
-                            onpointerup={cancelLongPress}
-                            onpointerleave={cancelLongPress}
+                            onpointerdown={(e) => {
+                                if (typeof tooltipPointerDown === "function")
+                                    tooltipPointerDown(e);
+                                startLongPress(e);
+                            }}
+                            onpointerup={(e) => {
+                                if (typeof tooltipPointerUp === "function")
+                                    tooltipPointerUp(e);
+                                cancelLongPress();
+                            }}
+                            onpointerleave={(e) => {
+                                if (typeof tooltipPointerLeave === "function")
+                                    tooltipPointerLeave(e);
+                                cancelLongPress();
+                            }}
                             onpointercancel={cancelLongPress}
                             oncontextmenu={(e) => e.preventDefault()}
                         >
