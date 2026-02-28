@@ -81,7 +81,7 @@
     // 長押し投稿の設定
     const LONG_PRESS_DURATION = 350; // 長押し必要時間 (ms)
     const CANCEL_REVERSE_DELAY = 150; // 巻き戻り開始までの遅延 (ms)
-    const PROGRESS_RING_CIRCUMFERENCE = 125.66; // 2π × 20px
+    const PROGRESS_RING_CIRCUMFERENCE = 100.53; // 2π × 16px
 
     let longPressProgress = $state(0); // 0〜1
     let showProgressRing = $state(false);
@@ -233,22 +233,22 @@
                 <div class="progress-ring-container">
                     <svg
                         class="progress-ring"
-                        width="48"
-                        height="48"
-                        viewBox="0 0 48 48"
+                        width="52"
+                        height="52"
+                        viewBox="-6 -6 52 52"
                         aria-hidden="true"
                     >
                         <circle
                             class="progress-ring-bg"
-                            cx="24"
-                            cy="24"
-                            r="20"
+                            cx="20"
+                            cy="20"
+                            r="16"
                         />
                         <circle
                             class="progress-ring-bar"
-                            cx="24"
-                            cy="24"
-                            r="20"
+                            cx="20"
+                            cy="20"
+                            r="16"
                             style="stroke-dashoffset: {PROGRESS_RING_CIRCUMFERENCE *
                                 (1 - longPressProgress)}px"
                         />
@@ -492,7 +492,7 @@
 
     .progress-ring-container {
         position: absolute;
-        bottom: calc(100% + 14px);
+        bottom: calc(100% + 12px);
         left: 50%;
         transform: translateX(-50%);
         pointer-events: none;
@@ -506,15 +506,15 @@
 
     .progress-ring-bg {
         fill: none;
-        stroke: rgba(128, 128, 128, 0.3);
-        stroke-width: 8;
+        stroke: rgb(128, 128, 128);
+        stroke-width: 12;
     }
 
     .progress-ring-bar {
         fill: none;
         stroke: var(--theme);
-        stroke-width: 8;
-        stroke-dasharray: 125.66px;
+        stroke-width: 12;
+        stroke-dasharray: 100.53px;
     }
 
     .button-group-right {
