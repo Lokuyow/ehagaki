@@ -96,6 +96,13 @@ button>* {
   pointer-events: none;
 }
 
+button:focus-visible,
+a:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--theme);
+  outline-offset: 2px;
+}
+
 button:active:not(:disabled),
 *[role="button"]:active {
   transform: scale(0.98);

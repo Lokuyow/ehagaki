@@ -467,7 +467,7 @@
     use:keydownAction
     aria-label="テキスト入力エリア"
     role="textbox"
-    tabindex="0"
+    tabindex="-1"
     bind:this={editorContainerEl}
   >
     {#if editor && currentEditor}
