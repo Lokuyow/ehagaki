@@ -458,17 +458,12 @@ describe('RelayManager統合テスト', () => {
         it('エラー時に適切にログ出力する', () => {
             (mockRxNostr.use as any) = vi.fn(() => { throw new Error('Bootstrap error'); });
 
-            // errorはconsole.errorでなくグローバルconsole.errorに出力されるためspyを仕込む
-            const globalConsoleError = vi.spyOn(global.console, 'error');
-
             manager.setBootstrapRelays();
 
-            expect(globalConsoleError).toHaveBeenCalledWith(
+            expect(mockDeps.console?.error).toHaveBeenCalledWith(
                 expect.stringContaining('Bootstrap relays設定エラー:'),
                 expect.any(Error)
             );
-
-            globalConsoleError.mockRestore();
         });
     });
 
@@ -496,19 +491,14 @@ describe('RelayManager統合テスト', () => {
 
             (mockRxNostr.setDefaultRelays as any) = vi.fn(() => { throw new Error('Invalid relay config'); });
 
-            // errorはconsole.errorでなくグローバルconsole.errorに出力されるためspyを仕込む
-            const globalConsoleError = vi.spyOn(global.console, 'error');
-
             const result = manager.useRelaysFromLocalStorageIfExists('testpubkey');
 
             expect(result).toBe(false);
             expect(mockStorage.getItem('nostr-relays-testpubkey')).toBeNull(); // 破損データ削除
-            expect(globalConsoleError).toHaveBeenCalledWith(
+            expect(mockDeps.console?.error).toHaveBeenCalledWith(
                 expect.stringContaining('ローカルストレージのリレー設定エラー:'),
                 expect.any(Error)
             );
-
-            globalConsoleError.mockRestore();
         });
     });
 
@@ -565,9 +555,6 @@ describe('RelayManager統合テスト', () => {
 
             manager = new RelayManager(mockRxNostr, mockDeps);
 
-            // グローバルconsole.logをspyして検証
-            const globalConsoleLog = vi.spyOn(global.console, 'log');
-
             const result = await manager.fetchUserRelays('testpubkey', { timeoutMs: 1 });
 
             expect(result.success).toBe(false); // 取得失敗
@@ -582,11 +569,9 @@ describe('RelayManager統合テスト', () => {
                 "wss://nrelay-jp.c-stellar.net/",
             ]);
             // フォールバックリレーが設定されたことを確認
-            expect(globalConsoleLog.mock.calls.some(
-                (call) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
+            expect((mockDeps.console?.log as any).mock.calls.some(
+                (call: any[]) => call[0] && typeof call[0] === 'string' && call[0].includes('リモート取得失敗、フォールバックリレーを使用')
             )).toBe(true);
-
-            globalConsoleLog.mockRestore();
         });
     });
 

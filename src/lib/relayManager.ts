@@ -371,6 +371,7 @@ export class RelayNetworkFetcher {
 export class RelayManager {
     private storage: RelayStorage;
     private networkFetcher: RelayNetworkFetcher;
+    private readonly console: Console;
 
     constructor(
         private rxNostr: RxNostr,
@@ -378,15 +379,16 @@ export class RelayManager {
     ) {
         // デフォルト依存性の設定
         const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
-        const console = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
+        const consoleImpl = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const setTimeoutFn = deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms));
         const clearTimeoutFn = deps.clearTimeoutFn || ((id) => clearTimeout(id));
         const relayListUpdatedStore = deps.relayListUpdatedStore ||
             (typeof window !== 'undefined' ? { value: 0, set: (v: number) => { } } : undefined);
 
         // 依存関係の構築
-        this.storage = new RelayStorage(localStorage, console, relayListUpdatedStore);
-        this.networkFetcher = new RelayNetworkFetcher(rxNostr, console, setTimeoutFn, clearTimeoutFn);
+        this.console = consoleImpl;
+        this.storage = new RelayStorage(localStorage, consoleImpl, relayListUpdatedStore);
+        this.networkFetcher = new RelayNetworkFetcher(rxNostr, consoleImpl, setTimeoutFn, clearTimeoutFn);
     }
 
     // 外部APIは変更なし（後方互換性のため）
@@ -406,7 +408,7 @@ export class RelayManager {
                 },
             }).subscribe();
         } catch (error) {
-            console.error("Bootstrap relays設定エラー:", error);
+            this.console.error("Bootstrap relays設定エラー:", error);
         }
     }
 
@@ -415,10 +417,10 @@ export class RelayManager {
         if (savedRelays) {
             try {
                 this.rxNostr.setDefaultRelays(savedRelays);
-                console.log("ローカルストレージのリレーリストを使用:", savedRelays);
+                this.console.log("ローカルストレージのリレーリストを使用:", savedRelays);
                 return true;
             } catch (error) {
-                console.error("ローカルストレージのリレー設定エラー:", error);
+                this.console.error("ローカルストレージのリレー設定エラー:", error);
                 this.storage.clear(pubkeyHex); // 破損したデータを削除
                 return false;
             }
@@ -432,14 +434,14 @@ export class RelayManager {
     ): Promise<UserRelaysFetchResult> {
         const timeoutMs = opts.timeoutMs || 3000;
 
-        console.log(`リレー取得開始: ${pubkeyHex}`);
+        this.console.log(`リレー取得開始: ${pubkeyHex}`);
 
         // forceRemoteがfalseまたは未指定ならローカルストレージ利用
         if (!opts.forceRemote) {
             const cachedRelays = this.storage.get(pubkeyHex);
             if (cachedRelays) {
                 this.rxNostr.setDefaultRelays(cachedRelays);
-                console.log("ローカルストレージからリレーを復元しました");
+                this.console.log("ローカルストレージからリレーを復元しました");
                 return {
                     success: true,
                     relayConfig: cachedRelays,
@@ -448,7 +450,7 @@ export class RelayManager {
             }
         }
 
-        console.log("リモートからリレー情報を取得中...");
+        this.console.log("リモートからリレー情報を取得中...");
 
         // Kind 10002を試行
         const kind10002Result = await this.networkFetcher.fetchKind10002(
@@ -460,7 +462,7 @@ export class RelayManager {
         if (kind10002Result.success && kind10002Result.relayConfig) {
             this.rxNostr.setDefaultRelays(kind10002Result.relayConfig);
             this.storage.save(pubkeyHex, kind10002Result.relayConfig);
-            console.log("Kind 10002からリレー取得成功");
+            this.console.log("Kind 10002からリレー取得成功");
             return {
                 success: true,
                 relayConfig: kind10002Result.relayConfig,
@@ -478,7 +480,7 @@ export class RelayManager {
         if (kind3Result.success && kind3Result.relayConfig) {
             this.rxNostr.setDefaultRelays(kind3Result.relayConfig);
             this.storage.save(pubkeyHex, kind3Result.relayConfig);
-            console.log("Kind 3からリレー取得成功");
+            this.console.log("Kind 3からリレー取得成功");
             return {
                 success: true,
                 relayConfig: kind3Result.relayConfig,
@@ -487,9 +489,9 @@ export class RelayManager {
         }
 
         // フォールバックリレー使用
-        console.log("リモート取得失敗、フォールバックリレーを使用");
+        this.console.log("リモート取得失敗、フォールバックリレーを使用");
         this.rxNostr.setDefaultRelays(FALLBACK_RELAYS);
-        console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
+        this.console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
         this.storage.save(pubkeyHex, FALLBACK_RELAYS);
         return {
             success: false,
