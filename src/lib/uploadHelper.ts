@@ -5,7 +5,7 @@ import { uploadAbortFlagStore, mediaFreePlacementStore } from '../stores/appStor
 import { removeAllPlaceholders } from './utils/editorUtils';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
-import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/appUtils";
+import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/fileUtils";
 import type {
     UploadHelperParams,
     UploadHelperResult,
@@ -69,8 +69,7 @@ export class UploadManager {
             }
         } catch (error) {
             if (this.devMode) {
-                const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
-                const modeLabel = isPreview ? "[preview]" : "[dev]";
+                const modeLabel = import.meta.env.MODE === "development" ? "[dev]" : "[preview]";
                 console.error(`${modeLabel} [uploadHelper] Upload error:`, error);
             }
             throw error;
@@ -154,8 +153,7 @@ export async function uploadHelper({
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
-    const isPreview = window.location.port === "4173" || window.location.hostname === "localhost";
-    const modeLabel = isPreview ? "[preview]" : "[dev]";
+    const modeLabel = import.meta.env.MODE === "development" ? "[dev]" : "[preview]";
 
     // 処理開始を即座に通知（プレースホルダー挿入前）
     if (uploadCallbacks?.onProgress) {

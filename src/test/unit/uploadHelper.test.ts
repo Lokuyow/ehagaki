@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { uploadHelper } from "../../lib/uploadHelper";
 import { insertPlaceholdersIntoEditor } from "../../stores/editorStore.svelte";
-import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/appUtils";
+import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/fileUtils";
 import type {
     UploadHelperDependencies,
     FileUploadManagerInterface,

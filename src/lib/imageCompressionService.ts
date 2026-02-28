@@ -2,7 +2,7 @@ import imageCompression from "browser-image-compression";
 import type { CompressionService, MimeTypeSupportInterface } from './types';
 import { COMPRESSION_OPTIONS_MAP } from './constants';
 import { uploadAbortFlagStore } from '../stores/appStore.svelte';
-import { renameByMimeType } from './utils/appUtils';
+import { renameByMimeType } from './utils/fileUtils';
 import { showCompressedImagePreview } from './debug';
 
 // --- 画像圧縮サービス ---

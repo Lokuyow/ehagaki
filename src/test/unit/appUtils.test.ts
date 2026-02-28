@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+    // Settings Utilities
+    initializeSettingsValues,
+    handleServiceWorkerRefresh
+} from '../../lib/utils/appUtils';
+import {
     // File Size Utilities
     formatFileSize,
     calculateCompressionRatio,
@@ -7,19 +12,19 @@ import {
     createFileSizeInfo,
     hasFileSizeChanges,
     generateSizeDisplayInfo,
+} from '../../lib/utils/fileSizeUtils';
+import {
+    // File Utilities
     processFilesForUpload,
-
+} from '../../lib/utils/fileUtils';
+import {
     // Nostr Key Utilities
     containsSecretKey,
     isValidNsec,
     derivePublicKeyFromNsec,
     toNpub,
     toNprofile,
-
-    // Settings Utilities
-    initializeSettingsValues,
-    handleServiceWorkerRefresh
-} from '../../lib/utils/appUtils';
+} from '../../lib/utils/nostrUtils';
 import type {
     StorageAdapter,
     NavigatorAdapter,
@@ -159,7 +164,7 @@ describe('File Size Utilities', () => {
 describe('File Processing Utilities', () => {
     it('should continue when crypto digest rejects', async () => {
         const digestMock = vi.fn().mockRejectedValue(new Error('unsupported'));
-    const getImageDimensionsMock = vi.fn().mockResolvedValue(null);
+        const getImageDimensionsMock = vi.fn().mockResolvedValue(null);
         const dependencies = createDependencies({
             crypto: { digest: digestMock } as unknown as SubtleCrypto,
             getImageDimensions: getImageDimensionsMock
@@ -265,9 +270,9 @@ describe('Nostr Key Utilities', () => {
             const pubkeyHex = '0'.repeat(64);
             const profileRelays = ['wss://relay1.example.com'];
             const writeRelays = ['wss://relay2.example.com', 'wss://relay3.example.com', 'wss://relay4.example.com'];
-            
+
             const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
-            
+
             expect(nprofile.startsWith('nprofile1')).toBe(true);
             expect(nprofile.length).toBeGreaterThan(10);
         });
@@ -276,9 +281,9 @@ describe('Nostr Key Utilities', () => {
             const pubkeyHex = '0'.repeat(64);
             const profileRelays: string[] = [];
             const writeRelays = ['wss://relay1.example.com', 'wss://relay2.example.com'];
-            
+
             const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
-            
+
             expect(nprofile.startsWith('nprofile1')).toBe(true);
         });
 
@@ -286,9 +291,9 @@ describe('Nostr Key Utilities', () => {
             const pubkeyHex = '0'.repeat(64);
             const profileRelays = ['wss://relay1.example.com'];
             const writeRelays = ['wss://relay1.example.com', 'wss://relay2.example.com'];
-            
+
             const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
-            
+
             expect(nprofile.startsWith('nprofile1')).toBe(true);
         });
 
@@ -296,9 +301,9 @@ describe('Nostr Key Utilities', () => {
             const pubkeyHex = '0'.repeat(64);
             const profileRelays = ['wss://relay1.example.com'];
             const writeRelays = ['wss://relay2.example.com', 'wss://relay3.example.com', 'wss://relay4.example.com', 'wss://relay5.example.com'];
-            
+
             const nprofile = toNprofile(pubkeyHex, profileRelays, writeRelays);
-            
+
             expect(nprofile.startsWith('nprofile1')).toBe(true);
         });
 

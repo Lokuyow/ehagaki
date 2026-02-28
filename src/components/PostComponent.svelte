@@ -24,10 +24,8 @@
     keydownAction,
     fileDropActionWithDragState,
   } from "../lib/editor/editorDomActions.svelte";
-  import {
-    containsSecretKey,
-    generateMediaItemId,
-  } from "../lib/utils/appUtils";
+  import { generateMediaItemId } from "../lib/utils/appUtils";
+  import { containsSecretKey } from "../lib/utils/nostrUtils";
 
   import { postComponentUIStore } from "../stores/appStore.svelte";
   import {

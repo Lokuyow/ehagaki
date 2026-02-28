@@ -9,6 +9,7 @@
     import BalloonMessage from "./BalloonMessage.svelte";
     import PopupModal from "./PopupModal.svelte";
     import { BalloonMessageManager } from "../lib/balloonMessageManager";
+    import { shouldShowDevLog } from "../lib/debug";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
 
     interface Props {
@@ -120,11 +121,7 @@
 
     // dev用: デバッグ機能
     // previewモードでも有効にする
-    const isPreviewOrDev =
-        import.meta.env.MODE === "development" ||
-        (typeof window !== "undefined" &&
-            (window.location.port === "4173" ||
-                window.location.hostname === "localhost"));
+    const isPreviewOrDev = shouldShowDevLog();
 
     // Service Workerエラーチェック（本番環境でも有効）
     let serviceWorkerError = $state<BalloonMessageType | null>(null);

@@ -1,6 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager.svelte";
-import { createFileSizeInfo, generateSizeDisplayInfo, calculateSHA256Hex } from "./utils/appUtils";
+import { createFileSizeInfo, generateSizeDisplayInfo } from "./utils/fileSizeUtils";
+import { calculateSHA256Hex } from "./utils/fileUtils";
 import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {

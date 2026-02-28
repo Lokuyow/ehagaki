@@ -1,6 +1,6 @@
 import type { createRxNostr } from 'rx-nostr';
 import { createRxBackwardReq } from 'rx-nostr';
-import { toNpub, toNprofile } from "./utils/appUtils";
+import { toNpub, toNprofile } from "./utils/nostrUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
 
 // --- URL処理の純粋関数（依存性なし） ---

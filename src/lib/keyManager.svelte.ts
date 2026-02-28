@@ -1,6 +1,6 @@
 import type { PublicKeyData, NostrLoginAuth, KeyManagerDeps, KeyManagerError } from "./types";
 import { nip19 } from "nostr-tools";
-import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/appUtils';
+import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/nostrUtils';
 
 // --- 純粋関数（テストしやすい） ---
 export class KeyValidator {
