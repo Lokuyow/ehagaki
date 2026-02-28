@@ -34,13 +34,11 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
             dim = undefined;
         }
     }
-    // NIP-94イベントテンプレートを生成
-    const nip94Event = generateEventTemplate({
+    // NIP-94イベントテンプレートを生成（xとoxは値がある場合のみ追加）
+    const nip94Params: Record<string, any> = {
         content: fields.content || "",
         url: fields.url,
         m: fields.m,
-        x: fields.x || "",
-        ox: fields.ox || "",
         size: fields.size,
         dim: dim,
         blurhash: fields.blurhash,
@@ -49,7 +47,10 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
         summary: fields.summary,
         alt: fields.alt,
         fallback: fields.fallback,
-    });
+    };
+    if (fields.x) nip94Params.x = fields.x;
+    if (fields.ox) nip94Params.ox = fields.ox;
+    const nip94Event = generateEventTemplate(nip94Params as any);
     // imetaタグはNIP-94のタグをスペース区切りのkey value形式に変換
     const imeta: string[] = [
         `url ${fields.url}`
@@ -57,12 +58,10 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
     for (const tag of nip94Event.tags) {
         const [key, ...rest] = tag;
         if (key === "url") continue;
-        if (rest.length === 1) {
-            imeta.push(`${key} ${rest[0]}`);
-        } else if (rest.length > 1) {
-            // fallbackやthumb, imageなど
-            imeta.push(`${key} ${rest.join(" ")}`);
-        }
+        // 値が空のタグはスキップ
+        const value = rest.join(" ").trim();
+        if (!value) continue;
+        imeta.push(`${key} ${value}`);
     }
     return ["imeta", ...imeta];
 }

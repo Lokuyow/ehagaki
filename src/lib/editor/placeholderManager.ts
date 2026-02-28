@@ -488,7 +488,7 @@ export async function replacePlaceholdersInGallery(
                         result.url, matched, oxFromServer, xFromServer,
                         imageOxMap, imageXMap, calculateImageHash, devMode
                     );
-                    if (x) mediaGalleryStore.updateItem(result.url, { x });
+                    if (x) mediaGalleryStore.updateItem(matched.placeholderId, { x });
 
                     if (matched.dimensions) {
                         imageSizeMapStore.update(map => {
