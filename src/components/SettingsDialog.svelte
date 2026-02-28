@@ -441,20 +441,6 @@
             </div>
         </div>
 
-        <!-- ダークモード設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.dark_mode") || "ダークモード"}</span
-                >
-                <div class="setting-control">
-                    <Switch.Root class="bui-switch" bind:checked={darkMode}>
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
-                </div>
-            </div>
-        </div>
-
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
@@ -467,6 +453,20 @@
                         class="bui-switch"
                         bind:checked={mediaFreePlacement}
                     >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+
+        <!-- ダークモード設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.dark_mode") || "ダークモード"}</span
+                >
+                <div class="setting-control">
+                    <Switch.Root class="bui-switch" bind:checked={darkMode}>
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>
                 </div>
