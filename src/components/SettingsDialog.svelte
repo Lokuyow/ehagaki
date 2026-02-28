@@ -15,6 +15,7 @@
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
         mediaFreePlacementStore,
+        darkModeStore,
     } from "../stores/appStore.svelte";
     import {
         uploadEndpoints,
@@ -69,6 +70,7 @@
 
     let clientTagEnabled = $state(true);
     let mediaFreePlacement = $state(false);
+    let darkMode = $state(darkModeStore.value);
     let _selectedCompression: string = $state("");
     let _selectedVideoCompression: string = $state("medium");
     let _selectedEndpoint: string = $state("");
@@ -165,6 +167,12 @@
                 mediaFreePlacement ? "true" : "false",
             );
             mediaFreePlacementStore.set(mediaFreePlacement);
+        }
+    });
+
+    $effect(() => {
+        if (isInitialized) {
+            darkModeStore.set(darkMode);
         }
     });
 
@@ -429,6 +437,20 @@
                             <option value={ep.url}>{ep.label}</option>
                         {/each}
                     </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- ダークモード設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.dark_mode") || "ダークモード"}</span
+                >
+                <div class="setting-control">
+                    <Switch.Root class="bui-switch" bind:checked={darkMode}>
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
                 </div>
             </div>
         </div>

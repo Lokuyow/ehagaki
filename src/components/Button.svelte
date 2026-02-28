@@ -70,16 +70,18 @@
             font-size: 1rem;
             font-weight: 500;
         }
+    }
 
-        @media (prefers-color-scheme: light) {
-            --text: hsl(0, 0%, 24%);
-            --svg: hsl(0, 0%, 30%);
-        }
+    /* .default: ライトモード */
+    :global(:root.light) .default {
+        --text: hsl(0, 0%, 24%);
+        --svg: hsl(0, 0%, 30%);
+    }
 
-        @media (prefers-color-scheme: dark) {
-            --text: hsl(0, 0%, 92%);
-            --svg: hsl(0, 0%, 99%);
-        }
+    /* .default: ダークモード */
+    :global(:root.dark) .default {
+        --text: hsl(0, 0%, 92%);
+        --svg: hsl(0, 0%, 99%);
     }
 
     .primary:not(:disabled) {
@@ -105,11 +107,10 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                @media (prefers-color-scheme: light) {
+                :global(:root.light) & {
                     filter: brightness(96%);
                 }
-
-                @media (prefers-color-scheme: dark) {
+                :global(:root.dark) & {
                     filter: brightness(90%);
                 }
             }
@@ -124,11 +125,10 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                @media (prefers-color-scheme: light) {
+                :global(:root.light) & {
                     filter: brightness(97%);
                 }
-
-                @media (prefers-color-scheme: dark) {
+                :global(:root.dark) & {
                     filter: brightness(90%);
                 }
             }
@@ -138,19 +138,16 @@
     .header {
         border: 1px solid var(--hagaki);
         @media (min-width: 601px) {
-            @media (prefers-color-scheme: light) {
+            :global(:root.light) & {
                 &:hover:not(:disabled) {
                     border-color: color-mix(in srgb, var(--hagaki), black 3%);
                 }
             }
         }
 
-        @media (prefers-color-scheme: light) {
+        :global(:root.light) & {
             --btn-bg: white;
         }
-        /* @media (prefers-color-scheme: dark) {
-            --btn-bg: black;
-        } */
     }
 
     .danger {
@@ -160,11 +157,10 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                @media (prefers-color-scheme: light) {
+                :global(:root.light) & {
                     filter: brightness(94%);
                 }
-
-                @media (prefers-color-scheme: dark) {
+                :global(:root.dark) & {
                     filter: brightness(90%);
                 }
             }
@@ -178,11 +174,10 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                @media (prefers-color-scheme: light) {
+                :global(:root.light) & {
                     filter: brightness(96%);
                 }
-
-                @media (prefers-color-scheme: dark) {
+                :global(:root.dark) & {
                     filter: brightness(90%);
                 }
             }
@@ -195,12 +190,11 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                @media (prefers-color-scheme: light) {
+                :global(:root.light) & {
                     --text: hsl(0, 0%, 24%);
                     --svg: hsl(0, 0%, 20%);
                 }
-
-                @media (prefers-color-scheme: dark) {
+                :global(:root.dark) & {
                     --text: hsl(0, 0%, 92%);
                     --svg: hsl(0, 0%, 99%);
                 }
@@ -288,16 +282,12 @@
         }
     }
 
-    /* --- Selected Styles --- */
-    @media (prefers-color-scheme: light) {
-        button.selected {
-            filter: brightness(85%);
-        }
+    /* Selected Styles */
+    :global(:root.light) button.selected {
+        filter: brightness(85%);
     }
 
-    @media (prefers-color-scheme: dark) {
-        button.selected {
-            filter: brightness(150%);
-        }
+    :global(:root.dark) button.selected {
+        filter: brightness(150%);
     }
 </style>

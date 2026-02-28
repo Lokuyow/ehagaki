@@ -661,15 +661,13 @@
   }
 
   /* ProseMirror のギャップカーソルの色を上書き（Light / Dark 対応） */
-  :global(.tiptap-editor .ProseMirror-gapcursor):after,
-  :global(.tiptap-editor .ProseMirror-gapcursor):before {
+  :global(:root.light .tiptap-editor .ProseMirror-gapcursor):after,
+  :global(:root.light .tiptap-editor .ProseMirror-gapcursor):before {
     border-top-color: black;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :global(.tiptap-editor .ProseMirror-gapcursor):after,
-    :global(.tiptap-editor .ProseMirror-gapcursor):before {
-      border-top-color: white;
-    }
+  :global(:root.dark .tiptap-editor .ProseMirror-gapcursor):after,
+  :global(:root.dark .tiptap-editor .ProseMirror-gapcursor):before {
+    border-top-color: white;
   }
 </style>

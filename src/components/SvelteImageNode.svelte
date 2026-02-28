@@ -292,19 +292,12 @@
             transform: scale(1);
         }
 
-        @media (prefers-color-scheme: light) {
-            @media (min-width: 601px) {
-                &:hover:not(:disabled) {
-                    filter: brightness(100%);
-                }
+        @media (min-width: 601px) {
+            :global(:root.light) &:hover:not(:disabled) {
+                filter: brightness(100%);
             }
-        }
-
-        @media (prefers-color-scheme: dark) {
-            @media (min-width: 601px) {
-                &:hover:not(:disabled) {
-                    filter: brightness(100%);
-                }
+            :global(:root.dark) &:hover:not(:disabled) {
+                filter: brightness(100%);
             }
         }
     }

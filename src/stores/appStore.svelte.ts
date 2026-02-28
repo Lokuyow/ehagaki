@@ -97,3 +97,7 @@ export {
     hashtagDataStore,
     postComponentUIStore,
 } from './postUIStore.svelte';
+
+export {
+    darkModeStore,
+} from './themeStore.svelte';

@@ -108,6 +108,7 @@ export const STORAGE_KEYS = {
     DRAFTS: "nostr-drafts",
     HASHTAG_HISTORY: "hashtagHistory",
     MEDIA_FREE_PLACEMENT: "mediaFreePlacement",
+    DARK_MODE: "darkMode",
 } as const;
 
 export const DEFAULT_MEDIA_FREE_PLACEMENT = false;

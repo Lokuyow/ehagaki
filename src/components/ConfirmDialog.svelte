@@ -159,10 +159,8 @@
             font-size: 1.2rem;
         }
 
-        :global(.btn-cancel.secondary.square) {
-            @media (prefers-color-scheme: dark) {
-                border: none;
-            }
+        :global(:root.dark .btn-cancel.secondary.square) {
+            border: none;
         }
     }
 </style>

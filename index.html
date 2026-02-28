@@ -31,6 +31,22 @@
 </head>
 
 <body ontouchstart="">
+  <script>
+    (function () {
+      var saved = localStorage.getItem('darkMode');
+      var isDark = saved !== null
+        ? saved === 'true'
+        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var root = document.documentElement;
+      if (isDark) {
+        root.classList.add('dark');
+        root.style.colorScheme = 'dark';
+      } else {
+        root.classList.add('light');
+        root.style.colorScheme = 'light';
+      }
+    })();
+  </script>
   <div id="app"></div>
   <script type="module" src="/src/main.ts"></script>
 </body>

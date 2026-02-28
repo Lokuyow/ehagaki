@@ -71,6 +71,7 @@
     "toggle_write_relays_list": "Toggle write relays list",
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
+    "dark_mode": "Dark Mode",
     "media_bottom_mode": "Free media placement",
     "refresh_relays_and_profile": "Refresh\nrelay list & profile",
     "refresh": "Refresh",
