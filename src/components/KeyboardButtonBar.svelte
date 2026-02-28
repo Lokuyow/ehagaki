@@ -417,16 +417,21 @@
             width: 71px;
             height: 50px;
             padding: 0;
+            border-radius: 3px;
 
             .plane-icon {
                 mask-image: url("/icons/paper-plane-solid-full.svg");
                 width: 34px;
                 height: 34px;
+                margin-right: 2px;
+                margin-top: 2px;
             }
         }
 
         :global(.post-button-loading) {
             background-color: var(--theme);
+            padding: 0;
+            height: 100%;
 
             :global(.square) {
                 background-color: var(--svg);
