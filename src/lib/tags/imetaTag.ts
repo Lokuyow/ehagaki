@@ -1,11 +1,8 @@
 // imeta.ts
 // NIP-92 imetaタグ生成ユーティリティ
-import { generateEventTemplate } from "nostr-tools/nip94";
-import type { FileMetadataObject } from "nostr-tools/nip94";
-import { encode } from "blurhash";
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 
-export interface ImetaField extends Partial<FileMetadataObject> {
+export interface ImetaField extends Partial<Record<string, any>> {
     url: string;
     x?: string; // アップロード後画像のSHA-256ハッシュ
     [key: string]: any;
@@ -50,7 +47,7 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
     };
     if (fields.x) nip94Params.x = fields.x;
     if (fields.ox) nip94Params.ox = fields.ox;
-    const nip94Event = generateEventTemplate(nip94Params as any);
+    const nip94Event = (await import("nostr-tools/nip94")).generateEventTemplate(nip94Params as any);
     // imetaタグはNIP-94のタグをスペース区切りのkey value形式に変換
     const imeta: string[] = [
         `url ${fields.url}`
@@ -109,6 +106,7 @@ export async function generateBlurhash(file: File): Promise<string | null> {
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
         // component数は4x4固定
+        const { encode } = await import("blurhash");
         const hash = encode(imageData.data, imageData.width, imageData.height, 4, 4);
         return hash;
     } catch (e) {

@@ -7,14 +7,30 @@ import {
     Mp4OutputFormat,
     ALL_FORMATS,
     getEncodableAudioCodecs,
+    QUALITY_HIGH,
+    QUALITY_MEDIUM,
+    QUALITY_VERY_LOW,
     type ConversionOptions,
     type ConversionAudioOptions,
     type ConversionVideoOptions,
-    type Quality
+    type Quality,
 } from 'mediabunny';
 import type { VideoCompressionResult } from '../types';
 import { BaseCompression } from './baseCompression';
 import { createCompressedFile, devLog, devWarn } from './compressionUtils';
+
+/**
+ * factor 値から対応する Mediabunny Quality オブジェクトを選択
+ */
+function getQualityFromFactor(factor: number | null | undefined): Quality | undefined {
+    if (factor === null || factor === undefined) return undefined;
+    // Constants.ts の定義: 0.3 = QUALITY_VERY_LOW, 1 = QUALITY_MEDIUM, 2 = QUALITY_HIGH
+    if (factor === 0.3) return QUALITY_VERY_LOW;
+    if (factor === 1) return QUALITY_MEDIUM;
+    if (factor === 2) return QUALITY_HIGH;
+    // その他の値はそのまま undefined
+    return undefined;
+}
 
 /**
  * WebCodecs APIとMediaBunnyのサポートをチェック
@@ -417,9 +433,9 @@ export class MediaBunnyCompression extends BaseCompression {
         let input: Input | null = null;
         let output: Output | null = null;
         let outputTarget: BufferTarget | null = null;
-        const useQualityPreset = typeof options?.mediabunnyAudioQuality !== 'undefined';
-        const audioQualityPreset = options?.mediabunnyAudioQuality as Quality | undefined;
-        const videoQualityPreset = (options?.mediabunnyVideoQuality ?? options?.mediabunnyAudioQuality) as Quality | undefined;
+        const useQualityPreset = typeof options?.mediabunnyAudioQualityFactor === 'number';
+        const audioQualityPreset = getQualityFromFactor(options?.mediabunnyAudioQualityFactor);
+        const videoQualityPreset = getQualityFromFactor(options?.mediabunnyVideoQualityFactor) || audioQualityPreset;
 
         try {
             this.log('Starting Mediabunny compression');

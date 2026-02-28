@@ -1,8 +1,8 @@
 import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../constants';
 import type { VideoCompressionResult, VideoCompressionLevel } from '../types';
-import { MediaBunnyCompression, isMediaBunnySupported } from './mediabunnyCompression';
-import { FFmpegCompression } from './ffmpegCompression';
+import type { MediaBunnyCompression } from './mediabunnyCompression';
+import type { FFmpegCompression } from './ffmpegCompression';
 import {
     devLog,
     shouldSkipCompression,
@@ -15,19 +15,44 @@ import {
  */
 export class VideoCompressionService {
     private readonly context = 'VideoCompressionService';
-    private mediabunnyCompression: MediaBunnyCompression;
-    private ffmpegCompression: FFmpegCompression;
+    private mediabunnyCompression: MediaBunnyCompression | null = null;
+    private ffmpegCompression: FFmpegCompression | null = null;
     private useMediabunny: boolean | null = null; // 遅延初期化
     private mediabunnyCheckPromise: Promise<boolean> | null = null;
+    private initPromise: Promise<void> | null = null;
     private onProgress?: (progress: number) => void;
 
-    constructor(private localStorage: Storage) {
-        this.ffmpegCompression = new FFmpegCompression();
-        this.mediabunnyCompression = new MediaBunnyCompression(
-            this.parseAudioBitrate.bind(this),
-            this.ffmpegCompression.mergeVideoAndAudioWithFFmpeg.bind(this.ffmpegCompression),
-            this.ffmpegCompression.compressWithFFmpeg.bind(this.ffmpegCompression)
-        );
+    constructor(private localStorage: Storage) { }
+
+    /**
+     * 圧縮エンジンの遅延初期化
+     */
+    private async ensureInitialized(): Promise<void> {
+        if (this.ffmpegCompression && this.mediabunnyCompression) return;
+        if (this.initPromise) return this.initPromise;
+
+        this.initPromise = (async () => {
+            const [
+                { FFmpegCompression: FFmpegCls },
+                { MediaBunnyCompression: MBCls }
+            ] = await Promise.all([
+                import('./ffmpegCompression'),
+                import('./mediabunnyCompression'),
+            ]);
+            this.ffmpegCompression = new FFmpegCls();
+            this.mediabunnyCompression = new MBCls(
+                this.parseAudioBitrate.bind(this),
+                this.ffmpegCompression.mergeVideoAndAudioWithFFmpeg.bind(this.ffmpegCompression),
+                this.ffmpegCompression.compressWithFFmpeg.bind(this.ffmpegCompression)
+            );
+            // 進捗コールバックを再設定
+            if (this.onProgress) {
+                this.mediabunnyCompression.setProgressCallback(this.onProgress);
+                this.ffmpegCompression.setProgressCallback(this.onProgress);
+            }
+        })();
+
+        return this.initPromise;
     }
 
     /**
@@ -43,6 +68,7 @@ export class VideoCompressionService {
         }
 
         this.mediabunnyCheckPromise = (async () => {
+            const { isMediaBunnySupported } = await import('./mediabunnyCompression');
             const supported = await isMediaBunnySupported();
             this.useMediabunny = supported;
             devLog(this.context, `Using ${supported ? 'Mediabunny' : 'FFmpeg'} for compression`);
@@ -64,8 +90,8 @@ export class VideoCompressionService {
         }
 
         // 各圧縮クラスに中止を伝える
-        this.mediabunnyCompression.abort();
-        this.ffmpegCompression.abort();
+        this.mediabunnyCompression?.abort();
+        this.ffmpegCompression?.abort();
     }
 
     /**
@@ -73,8 +99,8 @@ export class VideoCompressionService {
      */
     public setProgressCallback(callback?: (progress: number) => void): void {
         this.onProgress = callback;
-        this.mediabunnyCompression.setProgressCallback(callback);
-        this.ffmpegCompression.setProgressCallback(callback);
+        this.mediabunnyCompression?.setProgressCallback(callback);
+        this.ffmpegCompression?.setProgressCallback(callback);
     }
 
     /**
@@ -146,23 +172,26 @@ export class VideoCompressionService {
         }
 
         try {
+            // 圧縮エンジンの遅延初期化
+            await this.ensureInitialized();
+
             // MediaBunnyが使用可能かチェック
             const useMediabunny = await this.checkMediaBunnySupport();
 
             if (useMediabunny) {
                 devLog(this.context, 'Attempting compression with MediaBunny');
-                const result = await this.mediabunnyCompression.compressWithMediabunny(file, options);
+                const result = await this.mediabunnyCompression!.compressWithMediabunny(file, options);
 
                 // MediaBunnyが失敗した場合、FFmpegにフォールバック
                 if (!result.wasCompressed && !result.wasSkipped) {
                     devLog(this.context, 'MediaBunny failed, falling back to FFmpeg');
-                    return await this.ffmpegCompression.compressWithFFmpeg(file, options);
+                    return await this.ffmpegCompression!.compressWithFFmpeg(file, options);
                 }
 
                 return result;
             } else {
                 devLog(this.context, 'Using FFmpeg for compression');
-                return await this.ffmpegCompression.compressWithFFmpeg(file, options);
+                return await this.ffmpegCompression!.compressWithFFmpeg(file, options);
             }
         } catch (error) {
             console.error('[VideoCompressionService] Compression failed:', error);
@@ -174,7 +203,7 @@ export class VideoCompressionService {
      * リソースのクリーンアップ
      */
     async cleanup(): Promise<void> {
-        await this.ffmpegCompression.cleanup();
-        await this.mediabunnyCompression.cleanup();
+        await this.ffmpegCompression?.cleanup();
+        await this.mediabunnyCompression?.cleanup();
     }
 }

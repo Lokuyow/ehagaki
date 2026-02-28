@@ -39,12 +39,12 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.audioBitrate).toBe('128k');
         });
 
-        it('MediaBunny動画品質プリセットが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.mediabunnyVideoQuality).toBeDefined();
+        it('MediaBunny動画品質ファクターが設定されている', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.mediabunnyVideoQualityFactor).toBe(2);
         });
 
-        it('MediaBunny音声品質プリセットが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.mediabunnyAudioQuality).toBeDefined();
+        it('MediaBunny音声品質ファクターが設定されている', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.mediabunnyAudioQualityFactor).toBe(2);
         });
     });
 
@@ -69,12 +69,12 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioSampleRate).toBe(44100);
         });
 
-        it('MediaBunny動画品質プリセットが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.mediabunnyVideoQuality).toBeDefined();
+        it('MediaBunny動画品質ファクターが設定されている', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.mediabunnyVideoQualityFactor).toBe(1);
         });
 
-        it('MediaBunny音声品質プリセットが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.mediabunnyAudioQuality).toBeDefined();
+        it('MediaBunny音声品質ファクターが設定されている', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.mediabunnyAudioQualityFactor).toBe(1);
         });
     });
 
@@ -103,12 +103,12 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.audioChannels).toBe(1);
         });
 
-        it('MediaBunny動画品質プリセットが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.mediabunnyVideoQuality).toBeDefined();
+        it('MediaBunny動画品質ファクターが設定されている', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.mediabunnyVideoQualityFactor).toBe(0.3);
         });
 
-        it('MediaBunny音声品質プリセットが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.mediabunnyAudioQuality).toBeDefined();
+        it('MediaBunny音声品質ファクターが設定されている', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.mediabunnyAudioQualityFactor).toBe(0.3);
         });
     });
 

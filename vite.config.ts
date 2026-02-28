@@ -25,7 +25,42 @@ export default defineConfig({
   build: {
     emptyOutDir: true,
     rollupOptions: {
-      external: []
+      external: [],
+      output: {
+        manualChunks: (id) => {
+          // Tiptap + ProseMirror (エディタコア)
+          if (id.includes('node_modules/@tiptap/') ||
+              id.includes('node_modules/prosemirror-') ||
+              id.includes('node_modules/svelte-tiptap')) {
+            return 'vendor-editor';
+          }
+          // Nostr関連ライブラリ
+          if (id.includes('node_modules/nostr-tools') ||
+              id.includes('node_modules/rx-nostr') ||
+              id.includes('node_modules/@rx-nostr/') ||
+              id.includes('node_modules/@noble/')) {
+            return 'vendor-nostr';
+          }
+          // 動画圧縮 (mediabunny + ffmpeg)
+          if (id.includes('node_modules/mediabunny') ||
+              id.includes('node_modules/@ffmpeg/')) {
+            return 'vendor-video';
+          }
+          // 画像圧縮 + blurhash
+          if (id.includes('node_modules/browser-image-compression') ||
+              id.includes('node_modules/blurhash')) {
+            return 'vendor-image';
+          }
+          // Zap関連 (設定ダイアログでのみ使用)
+          if (id.includes('node_modules/nostr-zap')) {
+            return 'vendor-zap';
+          }
+          // bits-ui
+          if (id.includes('node_modules/bits-ui')) {
+            return 'vendor-ui';
+          }
+        }
+      }
     }
   },
   plugins: [

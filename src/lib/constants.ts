@@ -1,5 +1,3 @@
-import { QUALITY_MEDIUM, QUALITY_VERY_LOW, QUALITY_HIGH } from 'mediabunny';
-
 export const BOOTSTRAP_RELAYS = [
     "wss://purplepag.es/",
     "wss://directory.yabu.me/",
@@ -51,9 +49,9 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         preset: 'superfast',
         maxSize: 1280,
         audioBitrate: '128k',
-        // Mediabunny用の設定
-        mediabunnyVideoQuality: QUALITY_HIGH,
-        mediabunnyAudioQuality: QUALITY_HIGH,
+        // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
+        mediabunnyVideoQualityFactor: 2,   // QUALITY_HIGH
+        mediabunnyAudioQualityFactor: 2,   // QUALITY_HIGH
     },
     medium: {
         crf: 26,
@@ -61,9 +59,9 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         maxSize: 640,
         audioBitrate: '64k',
         audioSampleRate: 44100,
-        // Mediabunny用の設定
-        mediabunnyVideoQuality: QUALITY_MEDIUM,
-        mediabunnyAudioQuality: QUALITY_MEDIUM,
+        // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
+        mediabunnyVideoQualityFactor: 1,   // QUALITY_MEDIUM
+        mediabunnyAudioQualityFactor: 1,   // QUALITY_MEDIUM
     },
     high: {
         crf: 28,
@@ -72,9 +70,9 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         audioBitrate: '32k',
         audioSampleRate: 16000,
         audioChannels: 1,
-        // Mediabunny用の設定
-        mediabunnyVideoQuality: QUALITY_VERY_LOW,
-        mediabunnyAudioQuality: QUALITY_VERY_LOW,
+        // Mediabunny用の品質ファクター（Quality(factor)に変換して使用）
+        mediabunnyVideoQualityFactor: 0.3, // QUALITY_VERY_LOW
+        mediabunnyAudioQualityFactor: 0.3, // QUALITY_VERY_LOW
     },
 } as const;
 

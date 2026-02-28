@@ -22,7 +22,6 @@ import {
   MAX_FILE_SIZE,
   UPLOAD_POLLING_CONFIG
 } from "./constants";
-import { getToken } from "nostr-tools/nip98";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { uploadAbortFlagStore } from '../stores/appStore.svelte';
 import { MimeTypeSupport } from './mimeTypeSupport';
@@ -72,6 +71,7 @@ export class NostrAuthService implements AuthService {
         throw new Error('Authentication required');
       }
     }
+    const { getToken } = await import("nostr-tools/nip98");
     return await getToken(url, method, signFunc, true);
   }
 }
