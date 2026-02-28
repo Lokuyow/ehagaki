@@ -17,11 +17,6 @@ let authStateValue = $state<AuthState>({ ...initialAuthState });
 export const authState = {
     get value() {
         return authStateValue || initialAuthState;
-    },
-    subscribe: (callback: (value: AuthState) => void) => {
-        $effect(() => {
-            callback(authStateValue || initialAuthState);
-        });
     }
 };
 
@@ -93,10 +88,5 @@ let secretKey = $state<string | null>(null);
 
 export const secretKeyStore = {
     get value() { return secretKey; },
-    set: (value: string | null) => { secretKey = value; },
-    subscribe: (callback: (value: string | null) => void) => {
-        $effect(() => {
-            callback(secretKey);
-        });
-    }
+    set: (value: string | null) => { secretKey = value; }
 };

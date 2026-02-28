@@ -565,17 +565,9 @@ async function deleteFromIndexedDB(
 }
 
 /**
- * URLのクエリパラメータから共有モードかどうかをチェック
- */
-export function checkIfOpenedFromShare(searchParams?: URLSearchParams): boolean {
-  const params = searchParams || new URLSearchParams(window.location.search);
-  return params.get('shared') === 'true';
-}
-
-/**
  * リクエストIDを生成
  */
-export function generateRequestId(): string {
+function generateRequestId(): string {
   return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
@@ -634,32 +626,11 @@ async function sendMessageToServiceWorker(
 }
 
 /**
- * IndexedDBから共有フラグをチェックして削除
+ * IndexedDBから共有フラグをチェックして削除 - 削除（外部未使用）
+ *
+ * ServiceWorkerの準備を待つ
  */
-export async function checkAndClearSharedFlagInIndexedDB(): Promise<boolean> {
-  const flag = await getFromIndexedDB(
-    SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
-    SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
-    SHARE_HANDLER_CONFIG.STORE_NAME,
-    SHARE_HANDLER_CONFIG.FLAG_KEY
-  );
-
-  if (flag?.value === true) {
-    await deleteFromIndexedDB(
-      SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
-      SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
-      SHARE_HANDLER_CONFIG.STORE_NAME,
-      SHARE_HANDLER_CONFIG.FLAG_KEY
-    );
-    return true;
-  }
-  return false;
-}
-
-/**
- * ServiceWorkerコントローラーの準備を待つ
- */
-export async function waitForServiceWorkerController(): Promise<void> {
+async function waitForServiceWorkerController(): Promise<void> {
   if (navigator.serviceWorker.controller) return;
 
   return new Promise<void>((resolve, reject) => {
@@ -681,7 +652,7 @@ export async function waitForServiceWorkerController(): Promise<void> {
 /**
  * IndexedDBから共有画像データを取得・削除
  */
-export async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | null> {
+async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | null> {
   const result = await getFromIndexedDB(
     SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
     SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
@@ -720,7 +691,7 @@ export async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImage
 /**
  * MessageChannelを使ってServiceWorkerから共有画像を取得
  */
-export async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
+async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
   try {
     const data = await sendMessageToServiceWorker({ action: 'getSharedImage' });
     return data && data.image ? data : null;
@@ -781,13 +752,6 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
     console.error('Error in getSharedImageWithFallback:', error);
     return null;
   }
-}
-
-/**
- * 遅延ユーティリティ
- */
-export function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**

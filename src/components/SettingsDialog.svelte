@@ -19,7 +19,6 @@
     import {
         uploadEndpoints,
         getCompressionLevels,
-        getVideoCompressionLevels,
         getDefaultEndpoint,
         STORAGE_KEYS,
         SW_UPDATE_TIMEOUT,
@@ -62,7 +61,7 @@
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
-    let videoCompressionLevels = $derived(getVideoCompressionLevels($_));
+    let videoCompressionLevels = $derived(getCompressionLevels($_));
 
     // 圧縮レベルを2つずつペアにグループ化
     let compressionPairs = $derived(chunkArray(compressionLevels, 2));
@@ -620,34 +619,6 @@
         width: 100%;
         overflow-y: auto;
     }
-    .setting-section {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .setting-row {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .setting-label {
-        font-size: 1.125rem;
-        font-weight: 500;
-        line-height: 1.3;
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        white-space: pre-line;
-    }
-
-    .setting-control {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        height: fit-content;
-    }
-
     .lang-icon-btn {
         mask-image: url("/icons/language-solid-full.svg");
     }

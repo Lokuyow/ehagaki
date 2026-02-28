@@ -7,30 +7,15 @@ let isLoadingProfile = $state(false);
 
 export const profileDataStore = {
     get value() { return profileData; },
-    set: (value: ProfileData) => { profileData = value; },
-    subscribe: (callback: (value: ProfileData) => void) => {
-        $effect(() => {
-            callback(profileData);
-        });
-    }
+    set: (value: ProfileData) => { profileData = value; }
 };
 
 export const profileLoadedStore = {
     get value() { return profileLoaded; },
-    set: (value: boolean) => { profileLoaded = value; },
-    subscribe: (callback: (value: boolean) => void) => {
-        $effect(() => {
-            callback(profileLoaded);
-        });
-    }
+    set: (value: boolean) => { profileLoaded = value; }
 };
 
 export const isLoadingProfileStore = {
     get value() { return isLoadingProfile; },
-    set: (value: boolean) => { isLoadingProfile = value; },
-    subscribe: (callback: (value: boolean) => void) => {
-        $effect(() => {
-            callback(isLoadingProfile);
-        });
-    }
+    set: (value: boolean) => { isLoadingProfile = value; }
 };

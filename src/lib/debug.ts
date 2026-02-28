@@ -3,12 +3,6 @@ import { editorState } from "../stores/editorStore.svelte";
 import { copyToClipboard } from "./utils/clipboardUtils";
 import { writable, type Writable } from "svelte/store";
 
-// --- dev環境判定（定数。初期化後に変更されない）---
-export const isDev: boolean = import.meta.env.MODE === "development";
-
-// --- preview環境判定（定数）---
-export const isPreview: boolean = isPreviewOrDevEnv();
-
 // --- dev用: console.log履歴ストア（Writableを維持—コンポーネント外からsubscribeが必要）---
 export const devLog: Writable<string[]> = writable([]);
 
@@ -30,7 +24,7 @@ export function shouldShowDevLog(): boolean {
 }
 
 // --- 既存のストアを更新 ---
-export const isPreviewOrDev: boolean = shouldShowDevLog();
+const isPreviewOrDev: boolean = shouldShowDevLog();
 
 // --- devLog追加関数 ---
 function logToDevFooter(...args: any[]) {
@@ -39,9 +33,6 @@ function logToDevFooter(...args: any[]) {
         .join(" ");
     devLog.update((logs) => [entry, ...logs].slice(0, 250));
 }
-
-// --- devLog追加関数をエクスポート ---
-export { logToDevFooter };
 
 // --- console.logフック ---
 const originalConsoleLog = console.log;
@@ -72,22 +63,6 @@ if (
     }
 }
 
-// --- dev-console-logコピー ---
-export function copyDevLog(): Promise<void> {
-    return new Promise((resolve, reject) => {
-        let logs: string[] = [];
-        devLog.subscribe(v => logs = v)();
-        const joined = logs?.join("\n") ?? "";
-        if (!joined) {
-            resolve();
-            return;
-        }
-        // clipboardUtils.tsのcopyToClipboard関数を使用
-        copyToClipboard(joined, "dev log", navigator, window);
-        resolve();
-    });
-}
-
 export async function copyDevLogWithFallback(logsArg?: string[]): Promise<void> {
     let logs: string[] = [];
     if (logsArg) {
@@ -111,27 +86,6 @@ export function debugLog(...args: any[]) {
 
 // DEBUG_ENABLED: devログ表示判定に基づくフラグ
 const DEBUG_ENABLED = shouldShowDevLog();
-
-export function debugAuthState(message: string, authState: any) {
-    if (!DEBUG_ENABLED) return;
-
-    // authStateが未定義の場合の安全な処理
-    const safeAuthState = authState || {
-        type: 'undefined',
-        isAuthenticated: 'undefined',
-        isInitialized: 'undefined',
-        pubkey: 'undefined'
-    };
-
-    console.log(`[AUTH DEBUG] ${message}:`, {
-        type: safeAuthState.type ?? 'undefined',
-        isAuthenticated: safeAuthState.isAuthenticated ?? 'undefined',
-        isInitialized: safeAuthState.isInitialized ?? 'undefined',
-        isValid: safeAuthState.isValid ?? 'undefined',
-        pubkey: safeAuthState.pubkey ?
-            (safeAuthState.pubkey.substring(0, 8) + '...') : 'empty'
-    });
-}
 
 // --- showSwUpdateModalDebug: SW更新ボタン強制表示デバッグ機能 ---
 declare global {

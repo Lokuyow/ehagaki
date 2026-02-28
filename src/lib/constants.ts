@@ -144,16 +144,6 @@ export function getCompressionLevels($_: (key: string) => string | undefined) {
     ];
 }
 
-// 動画圧縮設定候補を返す関数（i18n対応）
-export function getVideoCompressionLevels($_: (key: string) => string | undefined) {
-    return [
-        { label: $_("settingsDialog.quality_lossless"), value: "none" },
-        { label: $_("settingsDialog.quality_high"), value: "low" },
-        { label: $_("settingsDialog.quality_medium"), value: "medium" },
-        { label: $_("settingsDialog.quality_low"), value: "high" },
-    ];
-}
-
 export const ZOOM_CONFIG = {
     MIN_SCALE: 1,
     MAX_SCALE: 100,

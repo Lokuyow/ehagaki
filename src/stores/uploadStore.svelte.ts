@@ -12,7 +12,7 @@ export const imageSizeInfoStore = {
     set: (value: { info: SizeDisplayInfo | null; visible: boolean }) => { imageSizeInfo = value; }
 };
 
-export function showImageSizeInfo(info: SizeDisplayInfo | null, duration: number = 3000): void {
+export function showImageSizeInfo(info: SizeDisplayInfo | null): void {
     if (info === null) {
         hideImageSizeInfo();
         return;
@@ -83,18 +83,8 @@ export function abortImageCompression(): void {
 export function abortAllUploads(): void {
     const isDev = import.meta.env.DEV;
     if (isDev) console.log('[uploadStore] abortAllUploads called');
-
-    uploadAbortFlagStore.set(true);
-
-    if (videoCompressionServiceInstance) {
-        videoCompressionServiceInstance.abort?.();
-    }
-    if (imageCompressionServiceInstance) {
-        imageCompressionServiceInstance.abort?.();
-    }
-
-    videoCompressionProgressStore.set(0);
-    imageCompressionProgressStore.set(0);
+    abortVideoCompression();
+    abortImageCompression();
 }
 
 // --- アップロード状態管理 ---
@@ -102,12 +92,7 @@ let isUploading = $state(false);
 
 export const isUploadingStore = {
     get value() { return isUploading; },
-    set: (value: boolean) => { isUploading = value; },
-    subscribe: (callback: (value: boolean) => void) => {
-        $effect(() => {
-            callback(isUploading);
-        });
-    }
+    set: (value: boolean) => { isUploading = value; }
 };
 
 // --- 動画圧縮進捗管理 ---
@@ -115,12 +100,7 @@ let videoCompressionProgress = $state(0);
 
 export const videoCompressionProgressStore = {
     get value() { return videoCompressionProgress; },
-    set: (value: number) => { videoCompressionProgress = value; },
-    subscribe: (callback: (value: number) => void) => {
-        $effect(() => {
-            callback(videoCompressionProgress);
-        });
-    }
+    set: (value: number) => { videoCompressionProgress = value; }
 };
 
 // --- 画像圧縮進捗管理 ---
@@ -128,12 +108,7 @@ let imageCompressionProgress = $state(0);
 
 export const imageCompressionProgressStore = {
     get value() { return imageCompressionProgress; },
-    set: (value: number) => { imageCompressionProgress = value; },
-    subscribe: (callback: (value: number) => void) => {
-        $effect(() => {
-            callback(imageCompressionProgress);
-        });
-    }
+    set: (value: number) => { imageCompressionProgress = value; }
 };
 
 // --- メディア自由配置モード設定 ---

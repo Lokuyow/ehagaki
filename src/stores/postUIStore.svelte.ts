@@ -10,12 +10,7 @@ let hashtagData = $state<HashtagData>({
 export const hashtagDataStore = {
     get value() { return hashtagData; },
     set: (value: HashtagData) => { hashtagData = value; },
-    update: (updater: (value: HashtagData) => HashtagData) => { hashtagData = updater(hashtagData); },
-    subscribe: (callback: (value: HashtagData) => void) => {
-        $effect(() => {
-            callback(hashtagData);
-        });
-    }
+    update: (updater: (value: HashtagData) => HashtagData) => { hashtagData = updater(hashtagData); }
 };
 
 // --- PostComponent UI状態管理 ---
@@ -43,11 +38,6 @@ let postComponentUI = $state<{
 
 export const postComponentUIStore = {
     get value() { return postComponentUI; },
-    subscribe: (callback: (value: typeof postComponentUI) => void) => {
-        $effect(() => {
-            callback(postComponentUI);
-        });
-    },
     // 秘密鍵ダイアログ
     showSecretKeyDialog: (post: string) => {
         postComponentUI.pendingPost = post;

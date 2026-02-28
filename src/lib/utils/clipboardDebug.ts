@@ -13,10 +13,10 @@ export function debugClipboardData(clipboardData: DataTransfer, source: string =
     // 環境情報を含めてログ出力（PC/Androidの違いを確認するため）
     const envInfo = `📋 Clipboard Debug: ${source} [${import.meta.env.MODE}]`;
     console.log(envInfo);
-    
+
     // 利用可能な型をリスト
     console.log('Available types:', Array.from(clipboardData.types));
-    
+
     // プレーンテキスト
     const plainText = clipboardData.getData('text/plain');
     if (plainText) {
@@ -26,26 +26,26 @@ export function debugClipboardData(clipboardData: DataTransfer, source: string =
         console.log('Analysis:', analyzeLineBreaks(plainText));
         console.log('Length:', plainText.length);
     }
-    
+
     // HTML
     const html = clipboardData.getData('text/html');
     if (html) {
         console.log('🌐 HTML');
         console.log('Preview:', html.substring(0, 500) + (html.length > 500 ? '...' : ''));
         console.log('Length:', html.length);
-        
+
         // 自アプリからのコピー検出
         const isFromOwnApp = html.includes('data-block="true"') && html.includes('data-editor=');
         console.log('From own app:', isFromOwnApp);
-        
+
         // リッチテキスト検出
         const hasRichFormatting = html.includes('<strong>') ||
-                                 html.includes('<b>') ||
-                                 html.includes('<em>') ||
-                                 html.includes('<i>');
+            html.includes('<b>') ||
+            html.includes('<em>') ||
+            html.includes('<i>');
         console.log('Rich formatting:', hasRichFormatting);
     }
-    
+
     // ファイル
     if (clipboardData.files && clipboardData.files.length > 0) {
         console.log('📁 Files');
@@ -58,23 +58,4 @@ export function debugClipboardData(clipboardData: DataTransfer, source: string =
             });
         });
     }
-}
-
-/**
- * ペースト処理の結果をログ出力
- */
-export function debugPasteResult(
-    source: string,
-    originalText: string,
-    normalizedLines: string[],
-    paragraphCount: number
-): void {
-    // 環境情報を含めてログ出力
-    console.log(`✨ Paste Result: ${source} [${import.meta.env.MODE}]`);
-    console.log('Original length:', originalText.length);
-    console.log('Lines:', normalizedLines.length);
-    console.log('Paragraphs created:', paragraphCount);
-    console.log('Lines detail:', normalizedLines.map((line, i) => 
-        `${i}: "${line}" (${line.length} chars)`
-    ));
 }

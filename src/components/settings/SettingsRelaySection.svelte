@@ -83,32 +83,6 @@
 </div>
 
 <style>
-    .setting-section {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .setting-row {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .setting-label {
-        font-size: 1.125rem;
-        font-weight: 500;
-        line-height: 1.3;
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        white-space: pre-line;
-    }
-    .setting-control {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        height: fit-content;
-    }
     .setting-info {
         margin-left: 10px;
     }

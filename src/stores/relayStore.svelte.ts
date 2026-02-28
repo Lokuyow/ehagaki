@@ -12,22 +12,12 @@ let relayListUpdated = $state<number>(0);
 
 export const writeRelaysStore = {
     get value() { return writeRelays; },
-    set: (value: string[]) => { writeRelays = value; },
-    subscribe: (callback: (value: string[]) => void) => {
-        $effect(() => {
-            callback(writeRelays);
-        });
-    }
+    set: (value: string[]) => { writeRelays = value; }
 };
 
 export const relayConfigStore = {
     get value() { return relayConfig; },
-    set: (value: RelayConfig | null) => { relayConfig = value; },
-    subscribe: (callback: (value: RelayConfig | null) => void) => {
-        $effect(() => {
-            callback(relayConfig);
-        });
-    }
+    set: (value: RelayConfig | null) => { relayConfig = value; }
 };
 
 export const showRelaysStore = {
@@ -42,12 +32,7 @@ export const isSwUpdatingStore = {
 
 export const relayListUpdatedStore = {
     get value() { return relayListUpdated; },
-    set: (value: number) => { relayListUpdated = value; },
-    subscribe: (callback: (value: number) => void) => {
-        $effect(() => {
-            callback(relayListUpdated);
-        });
-    }
+    set: (value: number) => { relayListUpdated = value; }
 };
 
 /**

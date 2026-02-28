@@ -25,7 +25,7 @@ import { Plugin, PluginKey } from 'prosemirror-state';
 import { Slice, Fragment } from 'prosemirror-model';
 import type { Node as PMNode, Schema } from 'prosemirror-model';
 import { normalizeClipboardText, serializeParagraphs } from '../utils/clipboardUtils';
-import { debugClipboardData, debugPasteResult } from '../utils/clipboardDebug';
+import { debugClipboardData } from '../utils/clipboardDebug';
 
 // ================================================================================
 // 内部ヘルパー関数
@@ -195,7 +195,7 @@ export const ClipboardExtension = Extension.create({
                         const textNode = state.schema.text(textWithLineBreaks);
                         const fragment = Fragment.from(textNode);
                         const customSlice = new Slice(fragment, 0, 0);
-                        
+
                         if (import.meta.env.MODE === 'development') {
                             console.log('📋 handlePaste: inline paste with line breaks', {
                                 originalText: text,
@@ -203,7 +203,7 @@ export const ClipboardExtension = Extension.create({
                                 textWithLineBreaks
                             });
                         }
-                        
+
                         // トランザクションを作成
                         // 
                         // Tiptap v3 UndoRedo拡張の仕様:
@@ -219,7 +219,7 @@ export const ClipboardExtension = Extension.create({
                             .setMeta('paste', true)
                             .setMeta('uiEvent', 'paste')
                             .setMeta('addToHistory', true);
-                        
+
                         if (import.meta.env.MODE === 'development') {
                             console.log('📋 handlePaste: dispatching transaction', {
                                 docChanged: tr.docChanged,
@@ -227,7 +227,7 @@ export const ClipboardExtension = Extension.create({
                                 linesCount: lines.length
                             });
                         }
-                        
+
                         dispatch(tr);
 
                         return true;

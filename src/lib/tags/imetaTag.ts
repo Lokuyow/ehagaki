@@ -67,31 +67,6 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
     return ["imeta", ...imeta];
 }
 
-/**
- * 画像URLからnaturalWidth/naturalHeightを取得し、imetaタグを生成（非同期）
- * @param fields imetaタグに含めるフィールド
- * @returns Promise<string[]> imetaタグ配列
- */
-export async function createImetaTagAsync(fields: ImetaField): Promise<string[]> {
-    let dim = fields.dim;
-    // dimが未指定の場合のみ画像から取得
-    if (!dim && fields.url) {
-        try {
-            dim = await new Promise<string | undefined>((resolve) => {
-                const img = new window.Image();
-                img.onload = () => {
-                    resolve(`${img.naturalWidth}x${img.naturalHeight}`);
-                };
-                img.onerror = () => resolve(undefined);
-                img.src = fields.url;
-            });
-        } catch {
-            dim = undefined;
-        }
-    }
-    return createImetaTag({ ...fields, dim });
-}
-
 // 既にblurhash生成・プレースホルダーURL生成の関数はこのファイルに実装済み
 /**
  * 画像ファイルからblurhashを生成

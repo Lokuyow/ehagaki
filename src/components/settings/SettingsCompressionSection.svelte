@@ -177,36 +177,10 @@
 </div>
 
 <style>
-    .setting-section {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-    .setting-row {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .setting-label {
-        font-size: 1.125rem;
-        font-weight: 500;
-        line-height: 1.3;
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        white-space: pre-line;
-    }
     .setting-label-wrapper {
         display: inline-flex;
         align-items: center;
         flex-shrink: 0;
-    }
-    .setting-control {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        height: fit-content;
     }
     :global(.info-trigger) {
         height: 40px;

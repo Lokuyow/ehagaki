@@ -52,12 +52,6 @@ export const imageImetaMapStore = {
     update: (updater: (value: ImageImetaMap) => ImageImetaMap) => {
         const newValue = updater(svelteImageImetaMap);
         Object.assign(svelteImageImetaMap, newValue);
-    },
-    subscribe: (callback: (value: ImageImetaMap) => void) => {
-        $effect(() => {
-            callback(svelteImageImetaMap);
-        });
-        return () => { }; // cleanup function
     }
 };
 
@@ -67,12 +61,6 @@ export const imageSizeMapStore = {
     update: (updater: (value: ImageSizeMap) => ImageSizeMap) => {
         const newValue = updater(svelteImageSizeMap);
         Object.assign(svelteImageSizeMap, newValue);
-    },
-    subscribe: (callback: (value: ImageSizeMap) => void) => {
-        $effect(() => {
-            callback(svelteImageSizeMap);
-        });
-        return () => { }; // cleanup function
     }
 };
 

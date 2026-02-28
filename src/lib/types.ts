@@ -105,8 +105,6 @@ export interface UploadProgress {
     inProgress: boolean;
 }
 
-export type MultipleUploadProgress = UploadProgress;
-
 export interface FileSizeInfo {
     originalSize: number;
     compressedSize: number;
@@ -117,8 +115,6 @@ export interface FileSizeInfo {
     compressedFilename?: string;
     wasSkipped?: boolean;
 }
-
-export type PartialFileSizeInfo = Partial<FileSizeInfo>;
 
 export interface SizeDisplayInfo {
     wasCompressed: boolean;

@@ -40,12 +40,7 @@ let swVersion = $state<string | null>(null);
 
 export const swVersionStore = {
     get value() { return swVersion; },
-    set: (value: string | null) => { swVersion = value; },
-    subscribe: (callback: (value: string | null) => void) => {
-        $effect(() => {
-            callback(swVersion);
-        });
-    }
+    set: (value: string | null) => { swVersion = value; }
 };
 
 export function handleSwUpdate() {
