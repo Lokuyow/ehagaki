@@ -13,8 +13,8 @@ import type {
   CompressionService,
   AuthService,
   MimeTypeSupportInterface,
-  SharedImageData,
-  SharedImageProcessingResult,
+  SharedMediaData,
+  SharedMediaProcessingResult,
   FileUploadManagerInterface
 } from "./types";
 import {
@@ -515,15 +515,15 @@ export class FileUploadManager implements FileUploadManagerInterface {
   }
 
 
-  // --- 共有画像処理の統一メソッド ---
-  async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
+  // --- 共有メディア処理の統一メソッド ---
+  async getSharedMediaFromServiceWorker(): Promise<SharedMediaData | null> {
     if (!this.dependencies.navigator?.serviceWorker?.controller) return null;
 
     try {
       const channel = new MessageChannel();
-      const promise = new Promise<SharedImageData | null>((resolve) => {
+      const promise = new Promise<SharedMediaData | null>((resolve) => {
         channel.port1.onmessage = (event) => {
-          if (event.data?.type === 'SHARED_IMAGE') {
+          if (event.data?.type === 'SHARED_MEDIA') {
             resolve(event.data.data);
           } else {
             resolve(null);
@@ -533,13 +533,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
       });
 
       this.dependencies.navigator.serviceWorker.controller.postMessage(
-        { action: 'getSharedImage' },
+        { action: 'getSharedMedia' },
         [channel.port2]
       );
 
       return await promise;
     } catch (error) {
-      console.error('Service Workerからの共有画像取得に失敗:', error);
+      console.error('Service Workerからの共有メディア取得に失敗:', error);
       return null;
     }
   }
@@ -549,11 +549,11 @@ export class FileUploadManager implements FileUploadManagerInterface {
     return new URLSearchParams(this.dependencies.window.location.search).get('shared') === 'true';
   }
 
-  // 共有画像の包括的な処理メソッド
-  async processSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
+  // 共有メディアの包括的な処理メソッド
+  async processSharedMediaOnLaunch(): Promise<SharedMediaProcessingResult> {
     try {
       // Service Workerから取得を試行
-      const sharedData = await this.getSharedImageFromServiceWorker();
+      const sharedData = await this.getSharedMediaFromServiceWorker();
       if (sharedData?.images?.length) {
         return {
           success: true,
@@ -567,7 +567,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       return {
         success: false,
-        error: '共有画像が見つかりません'
+        error: '共有メディアが見つかりません'
       };
     } catch (error) {
       return {

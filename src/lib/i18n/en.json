@@ -12,7 +12,7 @@
     "preview": "Preview",
     "profile": "Profile",
     "service_worker_error": "Service Worker error occurred",
-    "shared_image_failed": "Failed to get shared image",
+    "shared_media_failed": "Failed to get shared media",
     "upload_destination_settings": "Upload Destination Settings"
   },
   "common": {
@@ -140,10 +140,10 @@
       "medium": "Medium",
       "low": "Low"
     },
-    "shared_image_error": "Shared image error",
-    "processing_error": "Error occurred while processing shared image",
-    "no_image": "Shared image not found",
-    "upload_failed": "Image upload failed",
+    "shared_media_error": "Shared media error",
+    "processing_error": "Error occurred while processing shared media",
+    "no_image": "Shared media not found",
+    "upload_failed": "Media upload failed",
     "network_error": "Network error occurred",
     "client_error": "Error occurred during image sharing process"
   },

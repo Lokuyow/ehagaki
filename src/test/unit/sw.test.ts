@@ -62,11 +62,11 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     const INDEXEDDB_VERSION = 1;
 
     const ServiceWorkerState = {
-        sharedImageCache: null,
+        sharedMediaCache: null,
         precacheManifest: [],
-        getSharedImageCache() { return this.sharedImageCache; },
-        setSharedImageCache(data: any) { this.sharedImageCache = data; },
-        clearSharedImageCache() { this.sharedImageCache = null; }
+        getSharedMediaCache() { return this.sharedMediaCache; },
+        setSharedMediaCache(data: any) { this.sharedMediaCache = data; },
+        clearSharedMediaCache() { this.sharedMediaCache = null; }
     };
 
     const ServiceWorkerDependencies = {
@@ -135,18 +135,21 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             return url.searchParams.get('profile') === 'true';
         },
 
-        async extractImageFromFormData(formData: FormData) {
-            const image = formData.get('image') as File;
-            if (!image) return null;
+        async extractMediaFromFormData(formData: FormData) {
+            const mediaFiles = formData.getAll('media');
+            if (!mediaFiles || mediaFiles.length === 0) return null;
+
+            const validFiles = mediaFiles.filter((f): f is File => f instanceof File && f.size > 0);
+            if (validFiles.length === 0) return null;
 
             return {
-                image,
-                metadata: {
-                    name: image.name,
-                    type: image.type,
-                    size: image.size,
+                images: validFiles,
+                metadata: validFiles.map(f => ({
+                    name: f.name,
+                    type: f.type,
+                    size: f.size,
                     timestamp: new Date().toISOString()
-                }
+                }))
             };
         }
     };
@@ -192,7 +195,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             return this.executeOperation((db: any, resolve: any) => {
                 const tx = db.transaction(['flags'], 'readwrite');
                 const store = tx.objectStore('flags');
-                const putReq = store.put({ id: 'sharedImage', timestamp: Date.now(), value: true });
+                const putReq = store.put({ id: 'sharedMedia', timestamp: Date.now(), value: true });
                 // 即座にコールバックを実行
                 queueMicrotask(() => {
                     if (putReq.onsuccess) {
@@ -209,7 +212,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 await this.executeOperation((db: any, resolve: any) => {
                     const tx = db.transaction(['flags'], 'readwrite');
                     const store = tx.objectStore('flags');
-                    const deleteReq = store.delete('sharedImage');
+                    const deleteReq = store.delete('sharedMedia');
                     // 即座にコールバックを実行
                     queueMicrotask(() => {
                         if (deleteReq.onsuccess) {
@@ -333,13 +336,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
         async focusAndNotifyClient(client: any) {
             await client.focus();
-            const sharedCache = ServiceWorkerState.getSharedImageCache();
+            const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
             // メッセージ送信のシミュレート
             for (let retry = 0; retry < 3; retry++) {
                 this.dependencies.setTimeout(() => {
                     client.postMessage({
-                        type: 'SHARED_IMAGE',
+                        type: 'SHARED_MEDIA',
                         data: sharedCache,
                         timestamp: Date.now(),
                         retry
@@ -366,13 +369,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     class MessageHandler {
         constructor(public indexedDBManager = new IndexedDBManager()) { }
 
-        respondSharedImage(event: any) {
+        respondSharedMedia(event: any) {
             const client = event.source;
             const requestId = event.data.requestId || null;
-            const sharedCache = ServiceWorkerState.getSharedImageCache();
+            const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
             const msg = {
-                type: 'SHARED_IMAGE',
+                type: 'SHARED_MEDIA',
                 data: sharedCache,
                 requestId,
                 timestamp: Date.now()
@@ -385,7 +388,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             }
 
             if (sharedCache) {
-                ServiceWorkerState.clearSharedImageCache();
+                ServiceWorkerState.clearSharedMediaCache();
                 this.indexedDBManager.clearSharedFlag();
             }
         }
@@ -401,13 +404,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         async handleUploadRequest(request: Request) {
             try {
                 const formData = await request.formData();
-                const extractedData = await Utilities.extractImageFromFormData(formData);
+                const extractedData = await Utilities.extractMediaFromFormData(formData);
 
                 if (!extractedData) {
                     return Utilities.createRedirectResponse('/', 'no-image');
                 }
 
-                ServiceWorkerState.setSharedImageCache(extractedData);
+                ServiceWorkerState.setSharedMediaCache(extractedData);
                 await this.indexedDBManager.saveSharedFlag();
 
                 return await this.clientManager.redirectClient();
@@ -465,8 +468,8 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 mockSelf.skipWaiting();
             } else if (type === 'GET_VERSION') {
                 event.ports?.[0]?.postMessage({ version: PRECACHE_VERSION });
-            } else if (action === 'getSharedImage') {
-                this.messageHandler.respondSharedImage(event);
+            } else if (action === 'getSharedMedia') {
+                this.messageHandler.respondSharedMedia(event);
             } else if (action === 'clearProfileCache') {
                 const result = await this.cacheManager.clearProfileCache();
                 event.ports?.[0]?.postMessage(result);
@@ -534,33 +537,33 @@ describe('Service Worker Tests', () => {
             expect(swModule.Utilities.isProfileImageRequest(request)).toBe(true);
         });
 
-        it('should extract image from FormData', async () => {
+        it('should extract media from FormData', async () => {
             const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
             const formData = new FormData();
-            formData.append('image', file);
+            formData.append('media', file);
 
-            const result = await swModule.Utilities.extractImageFromFormData(formData);
+            const result = await swModule.Utilities.extractMediaFromFormData(formData);
             expect(result).toEqual({
-                image: file,
-                metadata: expect.objectContaining({
+                images: [file],
+                metadata: [expect.objectContaining({
                     name: 'test.jpg',
                     type: 'image/jpeg'
-                })
+                })]
             });
         });
     });
 
     describe('ServiceWorkerState', () => {
-        it('should manage shared image cache', () => {
+        it('should manage shared media cache', () => {
             const testData = { image: 'test' };
 
-            expect(swModule.ServiceWorkerState.getSharedImageCache()).toBeNull();
+            expect(swModule.ServiceWorkerState.getSharedMediaCache()).toBeNull();
 
-            swModule.ServiceWorkerState.setSharedImageCache(testData);
-            expect(swModule.ServiceWorkerState.getSharedImageCache()).toBe(testData);
+            swModule.ServiceWorkerState.setSharedMediaCache(testData);
+            expect(swModule.ServiceWorkerState.getSharedMediaCache()).toBe(testData);
 
-            swModule.ServiceWorkerState.clearSharedImageCache();
-            expect(swModule.ServiceWorkerState.getSharedImageCache()).toBeNull();
+            swModule.ServiceWorkerState.clearSharedMediaCache();
+            expect(swModule.ServiceWorkerState.getSharedMediaCache()).toBeNull();
         });
     });
 
@@ -679,9 +682,9 @@ describe('Service Worker Tests', () => {
     });
 
     describe('MessageHandler', () => {
-        it('should respond shared image', () => {
+        it('should respond shared media', () => {
             const testData = { image: 'test' };
-            swModule.ServiceWorkerState.setSharedImageCache(testData);
+            swModule.ServiceWorkerState.setSharedMediaCache(testData);
 
             const handler = new swModule.MessageHandler();
             const mockEvent = {
@@ -690,16 +693,16 @@ describe('Service Worker Tests', () => {
                 ports: null
             };
 
-            handler.respondSharedImage(mockEvent);
+            handler.respondSharedMedia(mockEvent);
 
             expect(mockEvent.source.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({
-                    type: 'SHARED_IMAGE',
+                    type: 'SHARED_MEDIA',
                     data: testData,
                     requestId: 'test-123'
                 })
             );
-            expect(swModule.ServiceWorkerState.getSharedImageCache()).toBeNull();
+            expect(swModule.ServiceWorkerState.getSharedMediaCache()).toBeNull();
         });
     });
 
@@ -707,7 +710,7 @@ describe('Service Worker Tests', () => {
         it('should handle upload request successfully', async () => {
             const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
             const formData = new FormData();
-            formData.append('image', file);
+            formData.append('media', file);
 
             const request = new Request('https://example.com/upload', {
                 method: 'POST',
@@ -721,7 +724,7 @@ describe('Service Worker Tests', () => {
             const response = await handler.handleUploadRequest(request);
 
             expect(response).toBeDefined();
-            expect(swModule.ServiceWorkerState.getSharedImageCache()).toBeTruthy();
+            expect(swModule.ServiceWorkerState.getSharedMediaCache()).toBeTruthy();
         });
 
         it('should handle upload request with no image', async () => {

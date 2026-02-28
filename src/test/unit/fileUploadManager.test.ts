@@ -7,7 +7,7 @@ import type {
     FileUploadDependencies,
     CompressionService,
     AuthService,
-    SharedImageData
+    SharedMediaData
 } from '../../lib/types';
 
 vi.mock("../../lib/utils/appUtils", () => ({
@@ -513,11 +513,11 @@ describe('FileUploadManager', () => {
                 writable: true
             });
 
-            const getSharedPromise = uploadManager.getSharedImageFromServiceWorker();
+            const getSharedPromise = uploadManager.getSharedMediaFromServiceWorker();
 
             // 非同期でメッセージを送信
             setTimeout(() => {
-                const mockSharedData: SharedImageData = {
+                const mockSharedData: SharedMediaData = {
                     images: [createMockFile('shared.jpg', 'image/jpeg', 1000000)],
                     metadata: [{ name: 'shared.jpg' }]
                 };
@@ -525,7 +525,7 @@ describe('FileUploadManager', () => {
                 if (mockMessageChannel.port1.onmessage) {
                     mockMessageChannel.port1.onmessage({
                         data: {
-                            type: 'SHARED_IMAGE',
+                            type: 'SHARED_MEDIA',
                             data: mockSharedData
                         }
                     } as any);
@@ -535,14 +535,14 @@ describe('FileUploadManager', () => {
             const result = await getSharedPromise;
 
             expect(mockController.postMessage).toHaveBeenCalledWith(
-                { action: 'getSharedImage' },
+                { action: 'getSharedMedia' },
                 [mockMessageChannel.port2]
             );
             expect(result).toBeTruthy();
             expect(result?.images[0].name).toBe('shared.jpg');
         });
 
-        it('共有画像の包括的な処理', async () => {
+        it('共有メディアの包括的な処理', async () => {
             // Service Workerコントローラーがある場合
             mockDependencies.navigator = {
                 serviceWorker: {
@@ -552,7 +552,7 @@ describe('FileUploadManager', () => {
 
             uploadManager = new FileUploadManager(mockDependencies);
 
-            const result = await uploadManager.processSharedImageOnLaunch();
+            const result = await uploadManager.processSharedMediaOnLaunch();
 
             // Service Workerから取得を試行することを確認
             expect(result.success).toBeDefined();

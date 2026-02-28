@@ -1,20 +1,20 @@
 import {
-  updateSharedImageStore,
-  clearSharedImageStore,
-  getSharedImageFiles,
-  getSharedImageMetadata
+  updateSharedMediaStore,
+  clearSharedMediaStore,
+  getSharedMediaFiles,
+  getSharedMediaMetadata
 } from '../stores/appStore.svelte';
 import { FileUploadManager } from './fileUploadManager';
 import type {
-  SharedImageData,
-  SharedImageMetadata,
-  SharedImageProcessingResult,
+  SharedMediaData,
+  SharedMediaMetadata,
+  SharedMediaProcessingResult,
   FileUploadDependencies
 } from './types';
 
 export class ShareHandler {
   private fileUploadManager: FileUploadManager;
-  private isProcessingSharedImage = false;
+  private isProcessingSharedMedia = false;
 
   constructor(dependencies?: FileUploadDependencies) {
     this.fileUploadManager = new FileUploadManager(dependencies);
@@ -29,16 +29,16 @@ export class ShareHandler {
 
   private handleServiceWorkerMessage(event: MessageEvent): void {
     const { data, type } = event.data || {};
-    if (type !== 'SHARED_IMAGE') return;
+    if (type !== 'SHARED_MEDIA') return;
 
     if (data?.images?.length) {
-      updateSharedImageStore(data.images, data.metadata);
+      updateSharedMediaStore(data.images, data.metadata);
     }
   }
 
-  // 共有画像の統一処理メソッド
-  async checkForSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
-    if (this.isProcessingSharedImage) {
+  // 共有メディアの統一処理メソッド
+  async checkForSharedMediaOnLaunch(): Promise<SharedMediaProcessingResult> {
+    if (this.isProcessingSharedMedia) {
       return { success: false, error: '既に処理中です' };
     }
 
@@ -46,25 +46,25 @@ export class ShareHandler {
       return { success: false, error: '共有経由での起動ではありません' };
     }
 
-    this.isProcessingSharedImage = true;
+    this.isProcessingSharedMedia = true;
 
     try {
       // FileUploadManagerの統合メソッドを使用
-      const result = await this.fileUploadManager.processSharedImageOnLaunch();
+      const result = await this.fileUploadManager.processSharedMediaOnLaunch();
 
       if (result.success && result.data) {
-        updateSharedImageStore(result.data.images, result.data.metadata);
+        updateSharedMediaStore(result.data.images, result.data.metadata);
       }
 
       return result;
     } finally {
-      this.isProcessingSharedImage = false;
+      this.isProcessingSharedMedia = false;
     }
   }
 
   // Service Workerからの取得（FileUploadManagerに委譲）
-  async getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-    return await this.fileUploadManager.getSharedImageFromServiceWorker();
+  async getSharedMediaFromServiceWorker(): Promise<SharedMediaData | null> {
+    return await this.fileUploadManager.getSharedMediaFromServiceWorker();
   }
 
   // 共有判定（FileUploadManagerに委譲）
@@ -74,19 +74,19 @@ export class ShareHandler {
 
   // その他のメソッド（既存機能維持）
   isProcessing(): boolean {
-    return this.isProcessingSharedImage;
+    return this.isProcessingSharedMedia;
   }
 
-  getSharedImageFiles(): File[] {
-    return getSharedImageFiles();
+  getSharedMediaFiles(): File[] {
+    return getSharedMediaFiles();
   }
 
-  getSharedImageMetadata(): SharedImageMetadata[] | undefined {
-    return getSharedImageMetadata();
+  getSharedMediaMetadata(): SharedMediaMetadata[] | undefined {
+    return getSharedMediaMetadata();
   }
 
-  clearSharedImage(): void {
-    clearSharedImageStore();
+  clearSharedMedia(): void {
+    clearSharedMediaStore();
   }
 }
 
@@ -101,8 +101,8 @@ export function getShareHandler(): ShareHandler {
 }
 
 // 後方互換性のための関数（統一）
-export async function getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-  return await getShareHandler().getSharedImageFromServiceWorker();
+export async function getSharedMediaFromServiceWorker(): Promise<SharedMediaData | null> {
+  return await getShareHandler().getSharedMediaFromServiceWorker();
 }
 
 export function checkIfOpenedFromShare(): boolean {

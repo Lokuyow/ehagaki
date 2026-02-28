@@ -22,7 +22,7 @@
   import ReasonInput from "./components/ReasonInput.svelte";
   import {
     authState,
-    sharedImageStore,
+    sharedMediaStore,
     hideImageSizeInfo,
     showLoginDialogStore,
     showLogoutDialogStore,
@@ -54,7 +54,7 @@
   import {
     checkServiceWorkerStatus,
     testServiceWorkerCommunication,
-    getSharedImageWithFallback,
+    getSharedMediaWithFallback,
   } from "./lib/utils/appUtils";
   import { checkIfOpenedFromShare } from "./lib/shareHandler";
   import {
@@ -107,7 +107,7 @@
 
   let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
   let relayProfileService: RelayProfileService;
-  let sharedImageReceived = false;
+  let sharedMediaReceived = false;
   let isLoadingNostrLogin = $state(false);
   let footerInfoDisplay: any;
   let postComponentRef: any = $state();
@@ -257,8 +257,8 @@
   let localeInitialized = $state(false);
 
   // 共有画像取得済みフラグ
-  const sharedImageAlreadyProcessed =
-    localStorage.getItem("sharedImageProcessed") === "1";
+  const sharedMediaAlreadyProcessed =
+    localStorage.getItem("sharedMediaProcessed") === "1";
 
   onMount(() => {
     // Define an inner async function for initialization
@@ -316,18 +316,18 @@
       // --- ここまで ---
 
       // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
-      if (checkIfOpenedFromShare() && !sharedImageAlreadyProcessed) {
+      if (checkIfOpenedFromShare() && !sharedMediaAlreadyProcessed) {
         try {
-          // まず実際に共有画像が取得できるかチェック
-          const shared = await getSharedImageWithFallback();
+          // まず実際に共有メディアが取得できるかチェック
+          const shared = await getSharedMediaWithFallback();
           if (shared?.images?.length) {
-            // 画像が取得できた場合は、エラーパラメータを無視して処理を続行
-            sharedImageStore.files = shared.images;
-            sharedImageStore.metadata = shared.metadata;
-            sharedImageStore.received = true;
-            localStorage.setItem("sharedImageProcessed", "1");
+            // メディアが取得できた場合は、エラーパラメータを無視して処理を続行
+            sharedMediaStore.files = shared.images;
+            sharedMediaStore.metadata = shared.metadata;
+            sharedMediaStore.received = true;
+            localStorage.setItem("sharedMediaProcessed", "1");
           } else {
-            console.warn("No shared image data received");
+            console.warn("No shared media data received");
             // 画像が取得できない場合のみエラーパラメータをログ出力
             const urlParams = new URLSearchParams(window.location.search);
             const sharedError = urlParams.get("error");
@@ -342,7 +342,7 @@
             }
           }
         } catch (error) {
-          console.error("共有画像の処理中にエラー:", error);
+          console.error("共有メディアの処理中にエラー:", error);
         }
       }
 
@@ -380,18 +380,18 @@
 
   $effect(() => {
     if (
-      sharedImageStore.received &&
-      sharedImageStore.files.length > 0 &&
+      sharedMediaStore.received &&
+      sharedMediaStore.files.length > 0 &&
       postComponentRef
     ) {
-      postComponentRef.uploadFiles(sharedImageStore.files);
-      sharedImageStore.files = [];
-      sharedImageStore.metadata = undefined;
-      sharedImageStore.received = false;
+      postComponentRef.uploadFiles(sharedMediaStore.files);
+      sharedMediaStore.files = [];
+      sharedMediaStore.metadata = undefined;
+      sharedMediaStore.received = false;
       // 取得済みフラグをセット
-      localStorage.setItem("sharedImageProcessed", "1");
+      localStorage.setItem("sharedMediaProcessed", "1");
       // 受信直後に一度クリア（次回共有のため）
-      setTimeout(() => localStorage.removeItem("sharedImageProcessed"), 500);
+      setTimeout(() => localStorage.removeItem("sharedMediaProcessed"), 500);
     }
   });
 
@@ -409,7 +409,7 @@
 
   function handleUploadStatusChange(uploading: boolean) {
     isUploadingStore.set(uploading);
-    if (!uploading) sharedImageReceived = false;
+    if (!uploading) sharedMediaReceived = false;
   }
 
   function handleUploadProgress(progress: UploadProgress): void {
@@ -424,8 +424,8 @@
     if (footerComponentRef?.reset) {
       footerComponentRef.reset();
     }
-    // 共有画像フラグをクリア
-    localStorage.removeItem("sharedImageProcessed");
+    // 共有メディアフラグをクリア
+    localStorage.removeItem("sharedMediaProcessed");
   }
 
   // 追加: エディター内容クリア

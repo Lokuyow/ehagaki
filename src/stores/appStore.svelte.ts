@@ -82,12 +82,12 @@ export {
 } from './relayStore.svelte';
 
 export {
-    sharedImageStore,
-    updateSharedImageStore,
-    clearSharedImageStore,
-    getSharedImageFiles,
-    getSharedImageMetadata,
-    isSharedImageReceived,
+    sharedMediaStore,
+    updateSharedMediaStore,
+    clearSharedMediaStore,
+    getSharedMediaFiles,
+    getSharedMediaMetadata,
+    isSharedMediaReceived,
     urlQueryContentStore,
     updateUrlQueryContentStore,
     clearUrlQueryContentStore,

@@ -5,6 +5,9 @@ const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
 
+// IndexedDB永続化時のファイルサイズ上限（100MB）
+const MAX_INDEXEDDB_FILE_SIZE = 100 * 1024 * 1024;
+
 // ベースパスの動的計算（GitHub Pagesなどのサブディレクトリ対応）
 const BASE_PATH = (() => {
     const pathname = self.location.pathname;
@@ -30,19 +33,19 @@ try {
 
 // グローバル状態管理
 const ServiceWorkerState = {
-    sharedImageCache: null,
+    sharedMediaCache: null,
     precacheManifest: PRECACHE_MANIFEST,
 
-    getSharedImageCache() {
-        return this.sharedImageCache;
+    getSharedMediaCache() {
+        return this.sharedMediaCache;
     },
 
-    setSharedImageCache(data) {
-        this.sharedImageCache = data;
+    setSharedMediaCache(data) {
+        this.sharedMediaCache = data;
     },
 
-    clearSharedImageCache() {
-        this.sharedImageCache = null;
+    clearSharedMediaCache() {
+        this.sharedMediaCache = null;
     }
 };
 
@@ -150,21 +153,21 @@ const Utilities = {
         return url.searchParams.get('profile') === 'true';
     },
 
-    // 共有画像データから FormData を抜出（複数画像対応）
-    async extractImageFromFormData(formData) {
-        const images = formData.getAll('image');
-        if (!images || images.length === 0) return null;
+    // 共有メディアデータから FormData を抽出（複数メディア対応）
+    async extractMediaFromFormData(formData) {
+        const mediaFiles = formData.getAll('media');
+        if (!mediaFiles || mediaFiles.length === 0) return null;
 
         // File以外の値（文字列等）を除外
-        const fileImages = images.filter(img => img instanceof File && img.size > 0);
-        if (fileImages.length === 0) return null;
+        const validFiles = mediaFiles.filter(f => f instanceof File && f.size > 0);
+        if (validFiles.length === 0) return null;
 
         return {
-            images: fileImages,
-            metadata: fileImages.map(img => ({
-                name: img.name,
-                type: img.type,
-                size: img.size,
+            images: validFiles,
+            metadata: validFiles.map(f => ({
+                name: f.name,
+                type: f.type,
+                size: f.size,
                 timestamp: new Date().toISOString()
             }))
         };
@@ -216,7 +219,7 @@ class IndexedDBManager {
         return this.executeOperation((db, resolve, reject) => {
             const tx = db.transaction(['flags'], 'readwrite');
             const store = tx.objectStore('flags');
-            store.put({ id: 'sharedImage', timestamp: Date.now(), value: true }).onsuccess = () => {
+            store.put({ id: 'sharedMedia', timestamp: Date.now(), value: true }).onsuccess = () => {
                 db.close();
                 resolve();
             };
@@ -238,7 +241,7 @@ class IndexedDBManager {
                 }
                 const tx = db.transaction(['flags'], 'readwrite');
                 const store = tx.objectStore('flags');
-                store.delete('sharedImage').onsuccess = () => {
+                store.delete('sharedMedia').onsuccess = () => {
                     db.close();
                     resolve();
                 };
@@ -515,7 +518,7 @@ class ClientManager {
     async focusAndNotifyClient(client) {
         try {
             await client.focus();
-            const sharedCache = ServiceWorkerState.getSharedImageCache();
+            const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
             this.console.log('SW: Attempting to notify client', {
                 hasClient: !!client,
@@ -528,10 +531,10 @@ class ClientManager {
             if (sharedCache) {
                 try {
                     const indexedDBManager = new IndexedDBManager();
-                    await this.persistSharedImageToIndexedDB(sharedCache, indexedDBManager);
-                    this.console.log('SW: Shared image persisted to IndexedDB for fallback');
+                    await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                    this.console.log('SW: Shared media persisted to IndexedDB for fallback');
                 } catch (dbError) {
-                    this.console.warn('SW: Failed to persist shared image to IndexedDB:', dbError);
+                    this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
                 }
             }
 
@@ -539,7 +542,7 @@ class ClientManager {
             if (client && typeof client.postMessage === 'function') {
                 try {
                     client.postMessage({
-                        type: 'SHARED_IMAGE',
+                        type: 'SHARED_MEDIA',
                         data: sharedCache,
                         timestamp: Date.now(),
                         requestId: `sw-${Date.now()}`
@@ -561,24 +564,29 @@ class ClientManager {
         }
     }
 
-    // IndexedDBに共有画像データを永続化（複数画像対応）
-    async persistSharedImageToIndexedDB(sharedData, indexedDBManager) {
+    // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
+    async persistSharedMediaToIndexedDB(sharedData, indexedDBManager) {
         return indexedDBManager.executeOperation(async (db, resolve, reject) => {
             try {
-                const images = sharedData.images || (sharedData.image ? [sharedData.image] : []);
+                const mediaFiles = sharedData.images || (sharedData.image ? [sharedData.image] : []);
 
-                // 各画像の ArrayBuffer を並列変換
-                const imageDataList = await Promise.all(
-                    images.map(async (img) => {
+                // 各メディアの ArrayBuffer を並列変換（サイズ上限超過はメタデータのみ保持）
+                const mediaDataList = await Promise.all(
+                    mediaFiles.map(async (file) => {
                         const base = {
-                            name: img.name,
-                            type: img.type,
-                            size: img.size,
+                            name: file.name,
+                            type: file.type,
+                            size: file.size,
                             _isFile: true
                         };
-                        if (img instanceof File) {
+                        if (file instanceof File) {
+                            // サイズ上限チェック: MAX_INDEXEDDB_FILE_SIZE超のarrayBufferは保存しない
+                            if (file.size > MAX_INDEXEDDB_FILE_SIZE) {
+                                this.console.warn(`SW: File too large for IndexedDB persistence (${file.size} bytes), storing metadata only: ${file.name}`);
+                                return base;
+                            }
                             try {
-                                const buffer = await img.arrayBuffer();
+                                const buffer = await file.arrayBuffer();
                                 return { ...base, arrayBuffer: buffer };
                             } catch (e) {
                                 return base;
@@ -588,24 +596,24 @@ class ClientManager {
                     })
                 );
 
-                const sharedImageData = {
-                    id: 'sharedImageData',
+                const sharedMediaData = {
+                    id: 'sharedMediaData',
                     timestamp: Date.now(),
                     data: {
-                        images: imageDataList,
+                        images: mediaDataList,
                         metadata: sharedData.metadata
                     }
                 };
 
                 const tx = db.transaction(['flags'], 'readwrite');
                 const store = tx.objectStore('flags');
-                store.put(sharedImageData).onsuccess = () => {
+                store.put(sharedMediaData).onsuccess = () => {
                     db.close();
                     resolve();
                 };
                 tx.onerror = () => {
                     db.close();
-                    reject(new Error('Failed to persist shared image data'));
+                    reject(new Error('Failed to persist shared media data'));
                 };
             } catch (error) {
                 db.close();
@@ -625,14 +633,14 @@ class MessageHandler {
         this.console = dependencies.console;
     }
 
-    // 共有画像リクエスト応答
-    respondSharedImage(event) {
+    // 共有メディアリクエスト応答
+    respondSharedMedia(event) {
         const client = event.source;
         const requestId = event.data.requestId || null;
-        const sharedCache = ServiceWorkerState.getSharedImageCache();
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
         const msg = {
-            type: 'SHARED_IMAGE',
+            type: 'SHARED_MEDIA',
             data: sharedCache,
             requestId,
             timestamp: Date.now()
@@ -644,18 +652,18 @@ class MessageHandler {
             client.postMessage(msg);
         }
 
-        // 画像送信後すぐキャッシュとフラグをクリア
+        // メディア送信後すぐキャッシュとフラグをクリア
         if (sharedCache) {
-            ServiceWorkerState.clearSharedImageCache();
+            ServiceWorkerState.clearSharedMediaCache();
             this.indexedDBManager.clearSharedFlag();
         }
     }
 
-    // 強制的な共有画像取得リクエスト（フォールバック用）
-    respondSharedImageForce(event) {
+    // 強制的な共有メディア取得リクエスト（フォールバック用）
+    respondSharedMediaForce(event) {
         const client = event.source;
         const requestId = event.data.requestId || null;
-        const sharedCache = ServiceWorkerState.getSharedImageCache();
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
         // キャッシュがない場合でもIndexedDBから取得を試みる
         if (!sharedCache) {
@@ -663,7 +671,7 @@ class MessageHandler {
         }
 
         const msg = {
-            type: 'SHARED_IMAGE',
+            type: 'SHARED_MEDIA',
             data: sharedCache,
             requestId,
             timestamp: Date.now(),
@@ -676,7 +684,7 @@ class MessageHandler {
             client.postMessage(msg);
         }
 
-        // 強制取得では画像送信後もキャッシュをクリアしない
+        // 強制取得ではメディア送信後もキャッシュをクリアしない
         // （複数回の取得試行に対応）
     }
 }
@@ -705,21 +713,21 @@ class RequestHandler {
             this.console.log('SW: Processing upload request', request.url);
 
             const formData = await request.formData();
-            const extractedData = await Utilities.extractImageFromFormData(formData);
+            const extractedData = await Utilities.extractMediaFromFormData(formData);
 
             if (!extractedData) {
-                this.console.warn('SW: No image data found in FormData');
+                this.console.warn('SW: No media data found in FormData');
                 return Utilities.createRedirectResponse(undefined, 'no-image', this.location);
             }
 
-            this.console.log('SW: Image data extracted successfully', {
+            this.console.log('SW: Media data extracted successfully', {
                 hasImages: !!extractedData.images,
                 imageCount: extractedData.images?.length,
                 firstImageType: extractedData.images?.[0]?.type,
                 firstImageSize: extractedData.images?.[0]?.size
             });
 
-            ServiceWorkerState.setSharedImageCache(extractedData);
+            ServiceWorkerState.setSharedMediaCache(extractedData);
 
             // IndexedDB保存を同期的に待つ
             try {
@@ -847,8 +855,8 @@ class ServiceWorkerCore {
         };
 
         const actionHandlers = {
-            'getSharedImage': () => this.messageHandler.respondSharedImage(event),
-            'getSharedImageForce': () => this.messageHandler.respondSharedImageForce(event),
+            'getSharedMedia': () => this.messageHandler.respondSharedMedia(event),
+            'getSharedMediaForce': () => this.messageHandler.respondSharedMediaForce(event),
             'clearProfileCache': async () => {
                 const result = await this.cacheManager.clearProfileCache();
                 event.ports?.[0]?.postMessage(result);

@@ -87,8 +87,8 @@ export default defineConfig({
           params: {
             files: [
               {
-                name: 'image',
-                accept: ['image/*']
+                name: 'media',
+                accept: ['image/*', 'video/*']
               }
             ]
           }

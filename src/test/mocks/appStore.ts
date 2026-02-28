@@ -16,10 +16,10 @@ const mockAppStore = {
             pubkey: "testpubkey123"
         }
     },
-    updateSharedImageStore: vi.fn(),
-    clearSharedImageStore: vi.fn(),
-    getSharedImageFiles: vi.fn(() => []),
-    getSharedImageMetadata: vi.fn(() => undefined),
+    updateSharedMediaStore: vi.fn(),
+    clearSharedMediaStore: vi.fn(),
+    getSharedMediaFiles: vi.fn(() => []),
+    getSharedMediaMetadata: vi.fn(() => undefined),
     showImageSizeInfo: vi.fn(),
     setVideoCompressionService: vi.fn(),
     setImageCompressionService: vi.fn(),

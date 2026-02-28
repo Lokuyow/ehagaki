@@ -18,8 +18,8 @@
 
     let copied = $state(false);
 
-    // 共有画像エラー状態を追加
-    let sharedImageError = $state<string | null>(null);
+    // 共有メディアエラー状態を追加
+    let sharedMediaError = $state<string | null>(null);
 
     // URLパラメータから共有画像エラーをチェック
     $effect(() => {
@@ -32,7 +32,7 @@
                 const checkImageProcessed = () => {
                     // 1. ローカルストレージのフラグをチェック
                     const isProcessed =
-                        localStorage.getItem("sharedImageProcessed") === "1";
+                        localStorage.getItem("sharedMediaProcessed") === "1";
 
                     // 2. URLが既にクリアされているかチェック（App.svelteで成功時にクリアされる）
                     const currentParams = new URLSearchParams(
@@ -66,25 +66,27 @@
                     switch (sharedError) {
                         case "processing-error":
                             errorMessage =
-                                "共有画像の処理中にエラーが発生しました";
+                                "共有メディアの処理中にエラーが発生しました";
                             break;
                         case "no-image":
-                            errorMessage = "共有画像が見つかりませんでした";
+                            errorMessage = "共有メディアが見つかりませんでした";
                             break;
                         case "upload-failed":
-                            errorMessage = "画像のアップロードに失敗しました";
+                            errorMessage =
+                                "メディアのアップロードに失敗しました";
                             break;
                         case "network-error":
                             errorMessage = "ネットワークエラーが発生しました";
                             break;
                         case "client-error":
-                            errorMessage = "画像共有処理でエラーが発生しました";
+                            errorMessage =
+                                "メディア共有処理でエラーが発生しました";
                             break;
                         default:
                             return; // その他のエラーは表示しない
                     }
 
-                    sharedImageError = errorMessage;
+                    sharedMediaError = errorMessage;
 
                     // エラーメッセージ表示後、URLパラメータをクリア
                     setTimeout(() => {
@@ -95,7 +97,7 @@
 
                         // 5秒後にエラーメッセージをクリア
                         setTimeout(() => {
-                            sharedImageError = null;
+                            sharedMediaError = null;
                         }, 5000);
                     }, 1000);
                 }, 100); // 100ms遅延させてApp.svelteの処理完了を待つ
@@ -351,12 +353,12 @@
         compressionStartTime = null;
         compressionElapsedSeconds = 0;
         imageSizeInfoStore.set({ info: null, visible: false });
-        sharedImageError = null; // 共有画像エラーもクリア
+        sharedMediaError = null; // 共有メディアエラーもクリア
     }
 
     // アップロード中やその他の情報表示中かどうか
     let showingInfo = $derived(
-        sharedImageError !== null ||
+        sharedMediaError !== null ||
             (imageCompressionProgress > 0 && imageCompressionProgress < 100) ||
             (videoCompressionProgress > 0 && videoCompressionProgress < 100) ||
             uploadProgress.inProgress ||
@@ -385,9 +387,9 @@
 <div class="footer-center">
     {#if showingInfo}
         <!-- 情報表示エリア（アップロード中、圧縮中など） -->
-        {#if sharedImageError}
-            <div class="shared-image-error">
-                <div class="error-text">{sharedImageError}</div>
+        {#if sharedMediaError}
+            <div class="shared-media-error">
+                <div class="error-text">{sharedMediaError}</div>
             </div>
         {:else if imageCompressionProgress > 0 && imageCompressionProgress < 100}
             <div class="compression-container">
@@ -668,7 +670,7 @@
         transform: scale(0.97);
     }
 
-    .shared-image-error {
+    .shared-media-error {
         display: flex;
         align-items: center;
         justify-content: center;

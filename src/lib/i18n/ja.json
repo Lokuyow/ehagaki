@@ -12,7 +12,7 @@
     "preview": "プレビュー",
     "profile": "プロフィール",
     "service_worker_error": "Service Workerでエラーが発生しました",
-    "shared_image_failed": "共有画像の取得に失敗しました",
+    "shared_media_failed": "共有メディアの取得に失敗しました",
     "upload_destination_settings": "アップロード先設定"
   },
   "common": {
@@ -140,10 +140,10 @@
       "medium": "中",
       "low": "低"
     },
-    "shared_image_error": "共有画像エラー",
-    "processing_error": "共有画像の処理中にエラーが発生しました",
-    "no_image": "共有画像が見つかりませんでした",
-    "upload_failed": "画像のアップロードに失敗しました",
+    "shared_media_error": "共有メディアエラー",
+    "processing_error": "共有メディアの処理中にエラーが発生しました",
+    "no_image": "共有メディアが見つかりませんでした",
+    "upload_failed": "メディアのアップロードに失敗しました",
     "network_error": "ネットワークエラーが発生しました",
     "client_error": "画像共有処理でエラーが発生しました"
   },

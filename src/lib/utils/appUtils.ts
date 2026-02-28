@@ -1,5 +1,5 @@
 import type {
-  SharedImageData,
+  SharedMediaData,
   StorageAdapter,
   NavigatorAdapter,
   WindowAdapter,
@@ -347,14 +347,14 @@ async function waitForServiceWorkerController(): Promise<void> {
 }
 
 /**
- * IndexedDBから共有画像データを取得・削除
+ * IndexedDBから共有メディアデータを取得・削除
  */
-async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | null> {
+async function getAndClearSharedMediaFromIndexedDB(): Promise<SharedMediaData | null> {
   const result = await getFromIndexedDB(
     SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
     SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
     SHARE_HANDLER_CONFIG.STORE_NAME,
-    'sharedImageData'
+    'sharedMediaData'
   );
 
   if (result?.data) {
@@ -362,10 +362,10 @@ async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | 
       SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
       SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
       SHARE_HANDLER_CONFIG.STORE_NAME,
-      'sharedImageData'
+      'sharedMediaData'
     );
 
-    // 複数画像対応: images配列から File を再構築
+    // 複数メディア対応: images配列から File を再構築
     const rawImages: Array<{ name?: string; type?: string; size?: number; arrayBuffer?: ArrayBuffer; _isFile?: boolean }> =
       result.data.images ?? (result.data.image ? [result.data.image] : []);
 
@@ -374,8 +374,8 @@ async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | 
         if (img.arrayBuffer && img._isFile) {
           return new File(
             [img.arrayBuffer],
-            img.name || 'shared-image',
-            { type: img.type || 'image/jpeg' }
+            img.name || 'shared-media',
+            { type: img.type || 'application/octet-stream' }
           );
         }
         return img as unknown as File;
@@ -390,18 +390,18 @@ async function getAndClearSharedImageFromIndexedDB(): Promise<SharedImageData | 
       return {
         images: files,
         metadata: metadataArr
-      } as SharedImageData;
+      } as SharedMediaData;
     }
   }
   return null;
 }
 
 /**
- * MessageChannelを使ってServiceWorkerから共有画像を取得
+ * MessageChannelを使ってServiceWorkerから共有メディアを取得
  */
-async function requestSharedImageWithMessageChannel(): Promise<SharedImageData | null> {
+async function requestSharedMediaWithMessageChannel(): Promise<SharedMediaData | null> {
   try {
-    const data = await sendMessageToServiceWorker({ action: 'getSharedImage' });
+    const data = await sendMessageToServiceWorker({ action: 'getSharedMedia' });
     return data && Array.isArray(data.images) && data.images.length > 0 ? data : null;
   } catch (error) {
     console.error('Failed to send message to ServiceWorker:', error);
@@ -410,9 +410,9 @@ async function requestSharedImageWithMessageChannel(): Promise<SharedImageData |
 }
 
 /**
- * 複数の方法で共有画像を取得（フォールバック付き）
+ * 複数の方法で共有メディアを取得（フォールバック付き）
  */
-export async function getSharedImageWithFallback(): Promise<SharedImageData | null> {
+export async function getSharedMediaWithFallback(): Promise<SharedMediaData | null> {
   try {
     try {
       await Promise.race([
@@ -424,9 +424,9 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
     }
 
     try {
-      const swResult = await requestSharedImageWithMessageChannel();
+      const swResult = await requestSharedMediaWithMessageChannel();
       if (swResult) {
-        console.log('Shared image retrieved via ServiceWorker MessageChannel');
+        console.log('Shared media retrieved via ServiceWorker MessageChannel');
         return swResult;
       }
     } catch (swError) {
@@ -434,9 +434,9 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
     }
 
     try {
-      const dbResult = await getAndClearSharedImageFromIndexedDB();
+      const dbResult = await getAndClearSharedMediaFromIndexedDB();
       if (dbResult) {
-        console.log('Shared image retrieved via IndexedDB fallback');
+        console.log('Shared media retrieved via IndexedDB fallback');
         return dbResult;
       }
     } catch (dbError) {
@@ -444,20 +444,20 @@ export async function getSharedImageWithFallback(): Promise<SharedImageData | nu
     }
 
     try {
-      const data = await sendMessageToServiceWorker({ action: 'getSharedImageForce' }, 1000);
+      const data = await sendMessageToServiceWorker({ action: 'getSharedMediaForce' }, 1000);
       const result = data && Array.isArray(data.images) && data.images.length > 0 ? data : null;
       if (result) {
-        console.log('Shared image retrieved via forced Service Worker request');
+        console.log('Shared media retrieved via forced Service Worker request');
         return result;
       }
     } catch (forceError) {
       console.warn('Forced Service Worker request failed:', forceError);
     }
 
-    console.log('No shared image found through any method');
+    console.log('No shared media found through any method');
     return null;
   } catch (error) {
-    console.error('Error in getSharedImageWithFallback:', error);
+    console.error('Error in getSharedMediaWithFallback:', error);
     return null;
   }
 }

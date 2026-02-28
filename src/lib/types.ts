@@ -18,9 +18,9 @@ export interface AuthState {
     serviceWorkerReady?: boolean;
 }
 
-export interface SharedImageStoreState {
+export interface SharedMediaStoreState {
     files: File[];
-    metadata?: SharedImageMetadata[];
+    metadata?: SharedMediaMetadata[];
     received: boolean;
 }
 
@@ -53,21 +53,21 @@ export interface MediaGalleryItem {
     dim?: string;
 }
 
-export interface SharedImageMetadata {
+export interface SharedMediaMetadata {
     name?: string;
     type?: string;
     size?: number;
     timestamp?: string;
 }
 
-export interface SharedImageData {
+export interface SharedMediaData {
     images: File[];
-    metadata?: SharedImageMetadata[];
+    metadata?: SharedMediaMetadata[];
 }
 
-export interface SharedImageProcessingResult {
+export interface SharedMediaProcessingResult {
     success: boolean;
-    data?: SharedImageData;
+    data?: SharedMediaData;
     error?: string;
     fromServiceWorker?: boolean;
     fromIndexedDB?: boolean;

@@ -1,12 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ShareHandler, getSharedImageFromServiceWorker, checkIfOpenedFromShare } from "../../lib/shareHandler";
-import type { SharedImageMetadata } from "../../lib/types";
+import { ShareHandler, getSharedMediaFromServiceWorker, checkIfOpenedFromShare } from "../../lib/shareHandler";
+import type { SharedMediaMetadata } from "../../lib/types";
 
 vi.mock("../../stores/appStore.svelte", () => ({
-    clearSharedImageStore: vi.fn(),
-    updateSharedImageStore: vi.fn(),
-    getSharedImageFiles: vi.fn(() => []),
-    getSharedImageMetadata: vi.fn(() => undefined),
+    clearSharedMediaStore: vi.fn(),
+    updateSharedMediaStore: vi.fn(),
+    getSharedMediaFiles: vi.fn(() => []),
+    getSharedMediaMetadata: vi.fn(() => undefined),
     getVideoCompressionService: vi.fn(() => null),
     getImageCompressionService: vi.fn(() => null),
     setVideoCompressionService: vi.fn(),
@@ -54,64 +54,64 @@ describe("ShareHandler", () => {
         expect(checkIfOpenedFromShare()).toBe(true);
     });
 
-    it("getSharedImageFile/getSharedImageMetadataはデフォルトでnull/undefinedを返す", () => {
-        expect(handler.getSharedImageFiles()).toEqual([]);
-        expect(handler.getSharedImageMetadata()).toBeUndefined();
+    it("getSharedMediaFiles/getSharedMediaMetadataはデフォルトでnull/undefinedを返す", () => {
+        expect(handler.getSharedMediaFiles()).toEqual([]);
+        expect(handler.getSharedMediaMetadata()).toBeUndefined();
     });
 
-    it("clearSharedImageはclearSharedImageStoreを呼び出す", () => {
-        handler.clearSharedImage();
-        expect(mockAppStore.clearSharedImageStore).toHaveBeenCalled();
+    it("clearSharedMediaはclearSharedMediaStoreを呼び出す", () => {
+        handler.clearSharedMedia();
+        expect(mockAppStore.clearSharedMediaStore).toHaveBeenCalled();
     });
 
-    it("SHARED_IMAGEメッセージでupdateSharedImageStoreが呼ばれる", () => {
+    it("SHARED_MEDIAメッセージでupdateSharedMediaStoreが呼ばれる", () => {
         const file = createMockFile();
-        const metadata: SharedImageMetadata = { name: "test.jpg" };
-        const event = { data: { type: "SHARED_IMAGE", data: { images: [file], metadata: [metadata] } } };
+        const metadata: SharedMediaMetadata = { name: "test.jpg" };
+        const event = { data: { type: "SHARED_MEDIA", data: { images: [file], metadata: [metadata] } } };
         // @ts-ignore
         handler["handleServiceWorkerMessage"](event);
-        expect(mockAppStore.updateSharedImageStore).toHaveBeenCalledWith([file], [metadata]);
+        expect(mockAppStore.updateSharedMediaStore).toHaveBeenCalledWith([file], [metadata]);
     });
 
-    it("ServiceWorkerコントローラーが無い場合getSharedImageFromServiceWorkerはnullを返す", async () => {
+    it("ServiceWorkerコントローラーが無い場合getSharedMediaFromServiceWorkerはnullを返す", async () => {
         // navigator.serviceWorker.controllerが未定義
         Object.defineProperty(navigator, "serviceWorker", {
             value: {},
             configurable: true
         });
-        expect(await handler.getSharedImageFromServiceWorker()).toBeNull();
-        expect(await getSharedImageFromServiceWorker()).toBeNull();
+        expect(await handler.getSharedMediaFromServiceWorker()).toBeNull();
+        expect(await getSharedMediaFromServiceWorker()).toBeNull();
     });
 
-    it("共有起動でない場合processSharedImageOnLaunchはエラーを返す", async () => {
+    it("共有起動でない場合processSharedMediaOnLaunchはエラーを返す", async () => {
         Object.defineProperty(window, "location", { value: { search: "" } });
         const h = new ShareHandler();
-        const result = await h.checkForSharedImageOnLaunch();
+        const result = await h.checkForSharedMediaOnLaunch();
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/共有経由/);
     });
 
-    it("既に処理中の場合processSharedImageOnLaunchはエラーを返す", async () => {
-        // isProcessingSharedImageを強制true
+    it("既に処理中の場合processSharedMediaOnLaunchはエラーを返す", async () => {
+        // isProcessingSharedMediaを強制true
         // @ts-ignore
-        handler["isProcessingSharedImage"] = true;
-        const result = await handler.checkForSharedImageOnLaunch();
+        handler["isProcessingSharedMedia"] = true;
+        const result = await handler.checkForSharedMediaOnLaunch();
         expect(result.success).toBe(false);
         expect(result.error).toMatch(/既に処理中/);
     });
 
-    it("processSharedImageOnLaunchが成功時にストアが更新される", async () => {
-        // FileUploadManagerのprocessSharedImageOnLaunchをモック
+    it("processSharedMediaOnLaunchが成功時にストアが更新される", async () => {
+        // FileUploadManagerのprocessSharedMediaOnLaunchをモック
         const file = createMockFile();
         const metadata = { name: "test.jpg" };
         // @ts-ignore
-        handler.fileUploadManager.processSharedImageOnLaunch = vi.fn().mockResolvedValue({
+        handler.fileUploadManager.processSharedMediaOnLaunch = vi.fn().mockResolvedValue({
             success: true,
             data: { images: [file], metadata: [{ name: "test.jpg" }] }
         });
-        const result = await handler.checkForSharedImageOnLaunch();
+        const result = await handler.checkForSharedMediaOnLaunch();
         expect(result.success).toBe(true);
-        expect(mockAppStore.updateSharedImageStore).toHaveBeenCalledWith([file], [{ name: "test.jpg" }]);
+        expect(mockAppStore.updateSharedMediaStore).toHaveBeenCalledWith([file], [{ name: "test.jpg" }]);
     });
 
     it("isProcessingは初期状態でfalseを返す", () => {
