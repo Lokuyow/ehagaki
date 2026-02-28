@@ -395,7 +395,7 @@
         width: 100%;
     }
 
-    .site-icon-link {
+    a.site-icon-link {
         display: flex;
         height: 100%;
 
