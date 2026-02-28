@@ -1,4 +1,4 @@
-import { KeyManager, PublicKeyState } from './keyManager.svelte';
+import { KeyManager, PublicKeyState, ExternalAuthChecker } from './keyManager.svelte';
 import type { NostrLoginAuth, NostrLoginOptions } from './types';
 import { nostrLoginManager } from './nostrLogin';
 import { setAuthInitialized, setNsecAuth, setNostrLoginAuth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';
@@ -81,9 +81,11 @@ export class NostrLoginAuthenticator {
 
 // --- 外部認証チェッカー ---
 export class ExternalAuthWaiter {
-    constructor(
-        private window: Window
-    ) { }
+    private checker: ExternalAuthChecker;
+
+    constructor(private window: Window) {
+        this.checker = new ExternalAuthChecker(window);
+    }
 
     async waitForExternalAuth(timeoutMs: number = 5000): Promise<boolean> {
         const startTime = Date.now();
@@ -91,7 +93,7 @@ export class ExternalAuthWaiter {
 
         return new Promise((resolve) => {
             const checkAuth = () => {
-                if (this.isWindowNostrAvailable()) {
+                if (this.checker.isWindowNostrAvailable()) {
                     resolve(true);
                     return;
                 }
@@ -106,13 +108,6 @@ export class ExternalAuthWaiter {
 
             checkAuth();
         });
-    }
-
-    private isWindowNostrAvailable(): boolean {
-        return typeof this.window !== 'undefined' &&
-            typeof (this.window as any).nostr === 'object' &&
-            (this.window as any).nostr !== null &&
-            typeof (this.window as any).nostr.getPublicKey === 'function';
     }
 }
 

@@ -36,19 +36,13 @@ export class ShareHandler {
     }
   }
 
-  // 共有判定（重複インポートを避けるため、独自実装）
-  private checkIfOpenedFromShareInternal(): boolean {
-    if (typeof window === 'undefined' || !window.location) return false;
-    return new URLSearchParams(window.location.search).get('shared') === 'true';
-  }
-
   // 共有画像の統一処理メソッド
   async checkForSharedImageOnLaunch(): Promise<SharedImageProcessingResult> {
     if (this.isProcessingSharedImage) {
       return { success: false, error: '既に処理中です' };
     }
 
-    if (!this.checkIfOpenedFromShareInternal()) {
+    if (!this.fileUploadManager.checkIfOpenedFromShare()) {
       return { success: false, error: '共有経由での起動ではありません' };
     }
 

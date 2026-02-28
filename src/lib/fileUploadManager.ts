@@ -577,9 +577,4 @@ export class FileUploadManager implements FileUploadManagerInterface {
   }
 }
 
-// getSharedImageFromServiceWorker: 別名エクスポート用（後方互換性）
-export async function getSharedImageFromServiceWorker(): Promise<SharedImageData | null> {
-  const manager = new FileUploadManager();
-  return await manager.getSharedImageFromServiceWorker();
-}
 

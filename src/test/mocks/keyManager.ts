@@ -21,6 +21,16 @@ const mockKeyManager = {
         isWindowNostrAvailable: vi.fn().mockReturnValue(false),
         getPublicKeyFromWindowNostr: vi.fn()
     })),
+    ExternalAuthChecker: vi.fn().mockImplementation((win?: Window) => ({
+        isWindowNostrAvailable: vi.fn().mockImplementation(() => {
+            if (!win) return false;
+            return 'nostr' in (win as any) &&
+                typeof (win as any).nostr === 'object' &&
+                (win as any).nostr !== null &&
+                typeof (win as any).nostr.getPublicKey === 'function';
+        }),
+        getPublicKeyFromWindowNostr: vi.fn()
+    })),
     PublicKeyState: vi.fn().mockImplementation(() => {
         let _currentIsValid = false;
         let _currentIsNostrLogin = false;
