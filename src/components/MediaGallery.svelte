@@ -57,8 +57,42 @@
         } else {
             pcInsertIndex = index;
         }
+        // オートスクロールはギャラリーレベルの handleGalleryDragOver で処理
+    }
 
-        // PC DnD 時もエッジオートスクロール
+    function handleDragEnd() {
+        stopGalleryAutoScroll();
+        dragFromIndex = -1;
+        pcInsertIndex = -1;
+    }
+
+    function handleDrop(_itemIndex: number) {
+        // 並べ替えはギャラリーレベルの ondrop (handleGalleryDrop) で処理
+    }
+
+    // --- ギャラリーコンテナレベルの DnD ハンドラ ---
+    // アイテム外の空白エリアでもドロップ可能にし、端の挿入位置を検出する
+    function handleGalleryDragOver(event: DragEvent) {
+        if (dragFromIndex === -1) return;
+        event.preventDefault();
+
+        // アイテム外の空白エリアにカーソルがある場合、端の挿入位置を検出
+        const wrappers = galleryEl?.querySelectorAll(".gallery-item-wrapper");
+        if (wrappers && wrappers.length > 0) {
+            const firstRect = (
+                wrappers[0] as HTMLElement
+            ).getBoundingClientRect();
+            const lastRect = (
+                wrappers[wrappers.length - 1] as HTMLElement
+            ).getBoundingClientRect();
+            if (event.clientX < firstRect.left) {
+                pcInsertIndex = 0;
+            } else if (event.clientX > lastRect.right) {
+                pcInsertIndex = items.length;
+            }
+        }
+
+        // エッジオートスクロール
         if (galleryEl) {
             const galleryRect = galleryEl.getBoundingClientRect();
             if (event.clientX - galleryRect.left < SCROLL_THRESHOLD) {
@@ -71,13 +105,8 @@
         }
     }
 
-    function handleDragEnd() {
-        stopGalleryAutoScroll();
-        dragFromIndex = -1;
-        pcInsertIndex = -1;
-    }
-
-    function handleDrop(_itemIndex: number) {
+    function handleGalleryDrop(event: DragEvent) {
+        event.preventDefault();
         stopGalleryAutoScroll();
         const insertIdx = pcInsertIndex;
         if (
@@ -229,6 +258,24 @@
                 touchInsertIndex =
                     touch.clientX < rect.left + rect.width / 2 ? idx : idx + 1;
             }
+        } else if (galleryEl) {
+            // 指がアイテム外の空白エリアにある場合、端の挿入位置を検出
+            const wrappers = galleryEl.querySelectorAll(
+                ".gallery-item-wrapper",
+            );
+            if (wrappers.length > 0) {
+                const firstRect = (
+                    wrappers[0] as HTMLElement
+                ).getBoundingClientRect();
+                const lastRect = (
+                    wrappers[wrappers.length - 1] as HTMLElement
+                ).getBoundingClientRect();
+                if (touch.clientX <= firstRect.left) {
+                    touchInsertIndex = 0;
+                } else if (touch.clientX >= lastRect.right) {
+                    touchInsertIndex = items.length;
+                }
+            }
         }
 
         // 画面端でギャラリーをオートスクロール
@@ -295,6 +342,8 @@
     <div
         class="media-gallery"
         bind:this={galleryEl}
+        ondragover={handleGalleryDragOver}
+        ondrop={handleGalleryDrop}
         role="list"
         aria-label={$_("mediaGallery.aria_label") || "メディアギャラリー"}
     >
