@@ -235,8 +235,7 @@
     }
 
     .gallery-video {
-        min-width: 100px;
-        max-width: 220px;
+        width: 220px;
         height: 220px;
         object-fit: cover;
         display: block;
