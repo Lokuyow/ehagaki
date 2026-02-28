@@ -66,42 +66,25 @@
     /* --- 削除ボタン共通 --- */
     :global(.media-delete-btn) {
         position: absolute;
-        top: 2px;
-        right: 2px;
+        top: 4px;
+        right: 4px;
         z-index: 10;
+        width: 40px;
+        height: 40px;
     }
     :global(button.circle.media-delete-btn--editor-image),
     :global(button.circle.media-delete-btn--editor-video) {
         width: 40px;
         height: 40px;
     }
-    :global(.media-delete-btn--gallery) {
-        width: 28px;
-        height: 28px;
-    }
 
     /* --- コピーボタン共通 --- */
-    :global(.media-copy-btn) {
+    :global(button.media-copy-btn.circle) {
         position: absolute;
-        right: 2px;
+        top: 48px;
+        right: 4px;
         z-index: 10;
-    }
-    /* editor-image: 下右 */
-    :global(button.circle.media-copy-btn--editor-image) {
-        bottom: 2px;
         width: 40px;
         height: 40px;
-    }
-    /* editor-video: 削除ボタンの下 */
-    :global(button.circle.media-copy-btn--editor-video) {
-        top: 52px;
-        width: 40px;
-        height: 40px;
-    }
-    /* gallery: 下右（小さめ） */
-    :global(.media-copy-btn--gallery) {
-        bottom: 2px;
-        width: 28px;
-        height: 28px;
     }
 </style>
