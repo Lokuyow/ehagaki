@@ -14,7 +14,11 @@
     } from "../stores/uiStore.svelte";
     import { authState } from "../stores/appStore.svelte";
     import { editorState, submitPost } from "../stores/editorStore.svelte";
-    import { triggerVibration } from "../lib/utils/appDomUtils";
+    import {
+        triggerVibration,
+        triggerProgressiveVibration,
+        stopVibration,
+    } from "../lib/utils/appDomUtils";
 
     interface Props {
         onUploadImage?: () => void;
@@ -91,6 +95,7 @@
     let longPressCancelTimeoutId: ReturnType<typeof setTimeout> | null = null;
     let longPressStartTime = 0;
     let longPressCompleted = false;
+    let lastVibrationTime = 0; // プログレッシブバイブのスロットリング用
 
     function isPostDisabled(): boolean {
         return (
@@ -114,6 +119,7 @@
         longPressCompleted = false;
         longPressStartTime = performance.now();
         longPressProgress = 0;
+        lastVibrationTime = 0;
         showProgressRing = true;
         postTooltipOpen = false;
         postTooltipBlocked = true;
@@ -123,9 +129,16 @@
             const progress = Math.min(elapsed / LONG_PRESS_DURATION, 1);
             longPressProgress = progress;
 
+            // プログレッシブバイブレーション: 間隔が80ms→30msに縮まり体感強度が増す
+            const vibrationInterval = 80 - progress * 50;
+            if (now - lastVibrationTime >= vibrationInterval) {
+                triggerProgressiveVibration(progress);
+                lastVibrationTime = now;
+            }
+
             if (progress >= 1) {
                 longPressCompleted = true;
-                triggerVibration(30);
+                triggerVibration(150);
                 submitPost();
                 setTimeout(() => {
                     showProgressRing = false;
@@ -144,6 +157,9 @@
     function cancelLongPress() {
         if (longPressCompleted) return;
         if (!showProgressRing) return;
+
+        // 進行中のバイブレーションを即停止
+        stopVibration();
 
         if (longPressAnimFrameId !== null) {
             cancelAnimationFrame(longPressAnimFrameId);

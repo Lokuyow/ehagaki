@@ -92,6 +92,38 @@ export function focusEditor(
 }
 
 /**
+ * 長押しプログレスに応じた段階的バイブレーション（Android向け）
+ * progressに応じて振動の持続時間が増加し、体感的に強くなる
+ * @param progress 0〜1の進捗値
+ */
+export function triggerProgressiveVibration(progress: number): void {
+    if (typeof navigator === "undefined" || !("vibrate" in navigator)) {
+        return;
+    }
+    // 振動持続時間: 3ms（開始）〜 30ms（完了直前）
+    const duration = Math.round(3 + progress * 27);
+    try {
+        navigator.vibrate(duration);
+    } catch (e) {
+        // ignore
+    }
+}
+
+/**
+ * 進行中のバイブレーションを即停止する（Android向け）
+ */
+export function stopVibration(): void {
+    if (typeof navigator === "undefined" || !("vibrate" in navigator)) {
+        return;
+    }
+    try {
+        navigator.vibrate(0);
+    } catch (e) {
+        // ignore
+    }
+}
+
+/**
  * スマートフォンを振動させる（Android / iPhone 対応）
  */
 export function triggerVibration(duration: number = 200): void {
