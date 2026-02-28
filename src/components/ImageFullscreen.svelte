@@ -643,14 +643,22 @@
 
     .close-button-container {
         position: absolute;
-        bottom: 15px;
+        bottom: 20px;
         right: 50%;
         transform: translateX(50%);
         z-index: 10002;
-    }
 
-    .close-icon {
-        mask-image: url("/icons/xmark-solid-full.svg");
+        :global(.close.circle) {
+            background-color: #333;
+            width: 60px;
+            height: 60px;
+
+            .close-icon {
+                mask-image: url("/icons/xmark-solid-full.svg");
+                width: 38px;
+                height: 38px;
+            }
+        }
     }
 
     .image-container {
