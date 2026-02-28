@@ -37,10 +37,11 @@ function applyTheme(isDark: boolean): void {
 }
 
 // --- ストア状態 ---
-let darkMode = $state(getEffectiveDarkMode());
+const initialDarkMode = getEffectiveDarkMode();
+let darkMode = $state(initialDarkMode);
 
 // 初期テーマを適用
-applyTheme(darkMode);
+applyTheme(initialDarkMode);
 
 // OS設定変化に追従（localStorage に保存値がない場合のみ）
 if (typeof window !== 'undefined') {
@@ -49,7 +50,7 @@ if (typeof window !== 'undefined') {
         const saved = localStorage.getItem(STORAGE_KEYS.DARK_MODE);
         if (saved === null) {
             darkMode = e.matches;
-            applyTheme(darkMode);
+            applyTheme(e.matches);
         }
     });
 }
@@ -69,7 +70,8 @@ export const darkModeStore = {
     /** localStorage の保存値を削除し OS 設定に戻す */
     reset: () => {
         localStorage.removeItem(STORAGE_KEYS.DARK_MODE);
-        darkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        applyTheme(darkMode);
+        const nextDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        darkMode = nextDarkMode;
+        applyTheme(nextDarkMode);
     },
 };
