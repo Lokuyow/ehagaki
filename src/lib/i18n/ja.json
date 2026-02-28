@@ -176,8 +176,8 @@
     },
     "error": {
       "post_error": "投稿エラー",
-      "post_rejected": "リレーに拒否",
-      "post_timeout": "時間切れにより投稿完了未確認",
+      "post_rejected": "リレーによる拒否",
+      "post_timeout": "時間切れにより送信未確定",
       "post_network_error": "ネットワークエラー"
     },
     "info": {
