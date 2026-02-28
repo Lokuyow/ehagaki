@@ -56,6 +56,11 @@ export const transformStore = {
         transform.useTransition = true;
     },
     setDirectState(newState: TransformState) {
+        // scale≈DEFAULT_SCALEならリセット（translate非ゼロとの不整合を防止）
+        if (isNearScale(newState.scale, ZOOM_CONFIG.DEFAULT_SCALE, ZOOM_CONFIG.THRESHOLD)) {
+            this.reset();
+            return;
+        }
         transform.scale = newState.scale;
         transform.translate = { ...newState.translate };
         transform.useTransition = newState.useTransition ?? transform.useTransition;

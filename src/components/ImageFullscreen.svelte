@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { ZOOM_CONFIG, TIMING, SELECTORS } from "../lib/constants";
+    import { ZOOM_CONFIG } from "../lib/constants";
     import Button from "./Button.svelte";
     import type { TransformState } from "../lib/types";
     import { setBodyStyle, isTouchDevice } from "../lib/utils/appDomUtils";
@@ -289,15 +289,26 @@
             );
             if (scaleMatch && translateMatch) {
                 const finalScale = parseFloat(scaleMatch[1]);
-                const finalTranslateX =
-                    parseFloat(translateMatch[1]) * finalScale;
-                const finalTranslateY =
-                    parseFloat(translateMatch[2]) * finalScale;
-                transformStore.setDirectState({
-                    scale: finalScale,
-                    translate: { x: finalTranslateX, y: finalTranslateY },
-                    useTransition: true,
-                });
+                // scale≈1（DEFAULT_SCALE）ならリセット（translate非ゼロのままscale=1になる不整合を防止）
+                if (
+                    Math.abs(finalScale - ZOOM_CONFIG.DEFAULT_SCALE) <
+                    ZOOM_CONFIG.THRESHOLD
+                ) {
+                    transformStore.reset();
+                } else {
+                    const finalTranslateX =
+                        parseFloat(translateMatch[1]) * finalScale;
+                    const finalTranslateY =
+                        parseFloat(translateMatch[2]) * finalScale;
+                    transformStore.setDirectState({
+                        scale: finalScale,
+                        translate: {
+                            x: finalTranslateX,
+                            y: finalTranslateY,
+                        },
+                        useTransition: true,
+                    });
+                }
             }
         }
         setTransition(true);
