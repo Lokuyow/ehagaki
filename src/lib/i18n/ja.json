@@ -175,7 +175,10 @@
       "to_everyone": "みんなに届け"
     },
     "error": {
-      "post_error": "投稿エラー"
+      "post_error": "投稿エラー",
+      "post_rejected": "リレーに拒否",
+      "post_timeout": "時間切れにより投稿完了未確認",
+      "post_network_error": "ネットワークエラー"
     },
     "info": {
       "hello": "ハロー",

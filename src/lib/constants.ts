@@ -250,6 +250,9 @@ export const BALLOON_MESSAGE_SUCCESS_KEYS: readonly string[] = [
 
 // 投稿エラー時(errorカテゴリ)
 export const BALLOON_MESSAGE_ERROR_KEY = "balloonMessage.error.post_error";
+export const BALLOON_MESSAGE_REJECTED_KEY = "balloonMessage.error.post_rejected";
+export const BALLOON_MESSAGE_TIMEOUT_KEY = "balloonMessage.error.post_timeout";
+export const BALLOON_MESSAGE_NETWORK_ERROR_KEY = "balloonMessage.error.post_network_error";
 
 // --- fileUploadManager.ts から移動した定数 ---
 export const BLURHASH_CONFIG = {

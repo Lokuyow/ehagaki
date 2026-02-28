@@ -1,4 +1,4 @@
-import { BALLOON_MESSAGE_INFO_KEYS, BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_ERROR_KEY } from "./constants";
+import { BALLOON_MESSAGE_INFO_KEYS, BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY } from "./constants";
 import type { BalloonMessageType, BalloonMessage, I18nFunction } from "./types";
 
 export class BalloonMessageManager {
@@ -83,6 +83,23 @@ export class BalloonMessageManager {
         if (this.showTimeout) {
             clearTimeout(this.showTimeout);
             this.showTimeout = null;
+        }
+    }
+
+    /**
+     * 投稿エラー種別に応じたメッセージを作成（デバウンスをスキップ）
+     * @param errorType エラー種別 ("post_rejected" | "post_timeout" | "post_network_error" | "post_error")
+     */
+    createErrorMessage(errorType: string): BalloonMessage {
+        switch (errorType) {
+            case "post_timeout":
+                return { type: "warning", message: this.$_(BALLOON_MESSAGE_TIMEOUT_KEY) ?? "" };
+            case "post_rejected":
+                return { type: "error", message: this.$_(BALLOON_MESSAGE_REJECTED_KEY) ?? "" };
+            case "post_network_error":
+                return { type: "error", message: this.$_(BALLOON_MESSAGE_NETWORK_ERROR_KEY) ?? "" };
+            default:
+                return { type: "error", message: this.getErrorMessage() };
         }
     }
 

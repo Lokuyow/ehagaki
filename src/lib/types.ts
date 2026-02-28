@@ -460,12 +460,15 @@ export interface UploadEndpoint {
 }
 
 // --- BalloonMessage関連型定義 ---
-export type BalloonMessageType = "success" | "error" | "info";
+export type BalloonMessageType = "success" | "error" | "warning" | "info";
 
 export interface BalloonMessage {
-    type: "success" | "error" | "info";
+    type: "success" | "error" | "warning" | "info";
     message: string;
 }
+
+// 投稿エラー種別
+export type PostErrorType = "post_rejected" | "post_timeout" | "post_network_error" | "post_error";
 
 export interface I18nFunction {
     (key: string): string | undefined;

@@ -427,7 +427,7 @@ describe('PostManager editor state helpers', () => {
 
             expect(onStart).toHaveBeenCalled();
             expect(onSuccess).not.toHaveBeenCalled();
-            expect(onError).toHaveBeenCalledWith('post_error');
+            expect(onError).toHaveBeenCalledWith('post_network_error');
         });
     });
 });
@@ -562,7 +562,7 @@ describe('PostEventSender', () => {
         const result = await sender.sendEvent(event);
 
         expect(result.success).toBe(true);
-        expect(mockRxNostr.send).toHaveBeenCalledWith(event, undefined);
+        expect(mockRxNostr.send).toHaveBeenCalledWith(event, expect.objectContaining({ completeOn: 'all-ok' }));
     });
 
     it('署名者付きでイベントを送信する', async () => {
@@ -590,7 +590,7 @@ describe('PostEventSender', () => {
 
         await sender.sendEvent(event, signer);
 
-        expect(mockRxNostr.send).toHaveBeenCalledWith(event, { signer });
+        expect(mockRxNostr.send).toHaveBeenCalledWith(event, expect.objectContaining({ completeOn: 'all-ok', signer }));
     });
 
     it('エラーを適切に処理する', async () => {
@@ -611,33 +611,68 @@ describe('PostEventSender', () => {
         const result = await sender.sendEvent(event);
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe('post_error');
+        expect(result.error).toBe('post_network_error');
         expect(mockConsole.error).toHaveBeenCalledWith('送信エラー:', expect.any(Error));
     });
 
-    it('タイムアウトを適切に処理する', async () => {
+    it('応答なしタイムアウトを適切に処理する', async () => {
         const event = { kind: 1, content: 'test' };
 
-        // 何も発火しないObservableをモック（タイムアウトシナリオ）
+        // 応答なしで complete するObservableをモック（rx-nostr の okTimeout 相当）
         const mockObservable = {
-            subscribe: vi.fn().mockReturnValue(mockSubscription)
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.complete();
+                });
+                return { unsubscribe: vi.fn() };
+            })
         };
         vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
 
-        // タイマーを高速化してテスト
-        vi.useFakeTimers();
-
-        const resultPromise = sender.sendEvent(event);
-
-        // 3秒経過させる
-        vi.advanceTimersByTime(10000);
-
-        const result = await resultPromise;
+        const result = await sender.sendEvent(event);
 
         expect(result.success).toBe(false);
-        expect(result.error).toBe('post_error');
+        expect(result.error).toBe('post_timeout');
+    });
 
-        vi.useRealTimers();
+    it('全リレーに拒否された場合を適切に処理する', async () => {
+        const event = { kind: 1, content: 'test' };
+
+        // ok:false を返してから complete するObservableをモック
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(async () => {
+                    observer.next({ from: 'relay1', ok: false, done: true, eventId: 'id1', type: 'OK', notice: 'blocked' });
+                    observer.next({ from: 'relay2', ok: false, done: true, eventId: 'id1', type: 'OK', notice: 'blocked' });
+                    observer.complete();
+                });
+                return { unsubscribe: vi.fn() };
+            })
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await sender.sendEvent(event);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('post_rejected');
+    });
+
+    it('send() に completeOn: all-ok オプションが渡される', async () => {
+        const event = { kind: 1, content: 'test' };
+
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({ from: 'relay1', ok: true, done: true, eventId: 'id1', type: 'OK' });
+                });
+                return { unsubscribe: vi.fn() };
+            })
+        };
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        await sender.sendEvent(event);
+
+        expect(mockRxNostr.send).toHaveBeenCalledWith(event, expect.objectContaining({ completeOn: 'all-ok' }));
     });
 });
 
@@ -784,7 +819,7 @@ describe('PostManager統合テスト', () => {
             expect.objectContaining({
                 sig: 'mock-signature'
             }),
-            undefined
+            expect.objectContaining({ completeOn: 'all-ok' })
         );
     });
 
@@ -991,7 +1026,7 @@ describe('PostManager統合テスト', () => {
             const result = await manager.submitPost('Test post content');
 
             expect(result.success).toBe(false);
-            expect(mockIframeService.notifyPostError).toHaveBeenCalledWith('post_error');
+            expect(mockIframeService.notifyPostError).toHaveBeenCalledWith('post_network_error');
             expect(mockIframeService.notifyPostSuccess).not.toHaveBeenCalled();
         });
 

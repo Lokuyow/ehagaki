@@ -1,6 +1,6 @@
 <script lang="ts">
     interface Props {
-        type?: "success" | "error" | "info"; // infoを追加
+        type?: "success" | "error" | "warning" | "info";
         message?: string;
     }
 
@@ -22,6 +22,10 @@
         --balloon-error-bg: hsl(351, 99%, 96%);
         --balloon-error-color: hsl(351, 99%, 32%);
         --balloon-error-border: hsl(351, 99%, 70%);
+        /* warning */
+        --balloon-warning-bg: hsl(38, 100%, 95%);
+        --balloon-warning-color: hsl(30, 90%, 35%);
+        --balloon-warning-border: hsl(38, 90%, 65%);
         /* info */
         --balloon-info-bg: hsl(125, 39%, 94%);
         --balloon-info-color: hsl(123, 46%, 32%);
@@ -115,5 +119,18 @@
         background: var(--balloon-info-bg);
         color: var(--balloon-info-color);
         border-color: var(--balloon-info-border);
+    }
+    .balloon-message-wrapper.warning .balloon-message::after {
+        border-color: transparent var(--balloon-warning-bg) transparent
+            transparent;
+    }
+    .balloon-message-wrapper.warning .balloon-message::before {
+        border-color: transparent var(--balloon-warning-border) transparent
+            transparent;
+    }
+    .balloon-message-wrapper.warning .balloon-message {
+        background: var(--balloon-warning-bg);
+        color: var(--balloon-warning-color);
+        border-color: var(--balloon-warning-border);
     }
 </style>

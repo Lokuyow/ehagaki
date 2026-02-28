@@ -106,10 +106,12 @@
         }
     });
 
-    // エラーメッセージ生成（リアクティブだが条件によってキャッシュ）
+    // エラーメッセージ生成（エラー種別に応じて type/メッセージを切り替え）
     let errorBalloonMessage = $derived(
         postStatus.error && balloonManager !== null
-            ? (balloonManager as BalloonMessageManager).createMessage("error")
+            ? (balloonManager as BalloonMessageManager).createErrorMessage(
+                  postStatus.message,
+              )
             : null,
     );
 

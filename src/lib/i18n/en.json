@@ -175,7 +175,10 @@
       "to_everyone": "Delivered to everyone."
     },
     "error": {
-      "post_error": "Post error"
+      "post_error": "Post error",
+      "post_rejected": "Rejected by relays",
+      "post_timeout": "Timed out, so your post wasn't confirmed",
+      "post_network_error": "Network error"
     },
     "info": {
       "hello": "Yo.",

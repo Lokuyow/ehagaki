@@ -39,6 +39,10 @@ export const createMockRxNostr = (): RxNostr => ({
         subscribe: vi.fn()
     }),
     setDefaultRelays: vi.fn(),
+    getDefaultRelays: vi.fn().mockReturnValue({
+        'wss://relay1.example.com': { url: 'wss://relay1.example.com', read: true, write: true },
+        'wss://relay2.example.com': { url: 'wss://relay2.example.com', read: true, write: true },
+    }),
     // Add other necessary methods as needed
 } as any);
 
