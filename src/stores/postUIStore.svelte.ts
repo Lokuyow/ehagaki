@@ -1,18 +1,3 @@
-import type { HashtagData } from '../lib/types';
-
-// --- ハッシュタグ管理 ---
-let hashtagData = $state<HashtagData>({
-    content: '',
-    hashtags: [],
-    tags: []
-});
-
-export const hashtagDataStore = {
-    get value() { return hashtagData; },
-    set: (value: HashtagData) => { hashtagData = value; },
-    update: (updater: (value: HashtagData) => HashtagData) => { hashtagData = updater(hashtagData); }
-};
-
 // --- PostComponent UI状態管理 ---
 let postComponentUI = $state<{
     showSecretKeyDialog: boolean;

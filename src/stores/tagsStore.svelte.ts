@@ -1,11 +1,8 @@
 // tags専用のSvelteランストア
 
+import type { HashtagData } from '../lib/types';
+
 // --- ハッシュタグデータストア ---
-interface HashtagData {
-    content: string;
-    hashtags: string[];
-    tags: string[][];
-}
 
 // ストアの宣言（$stateを直接使用）
 let svelteHashtagDataStore = $state<HashtagData>({

@@ -32,10 +32,12 @@
     editorState,
     updateEditorContent,
     updatePostStatus,
-    initializeEditor,
-    cleanupEditor,
     currentEditorStore,
   } from "../stores/editorStore.svelte";
+  import {
+    initializeEditor,
+    cleanupEditor,
+  } from "../lib/editor/editorLifecycle";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
 

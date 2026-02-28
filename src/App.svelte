@@ -48,14 +48,14 @@
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
   } from "./stores/appStore.svelte";
-  import type { UploadProgress, BalloonMessage } from "./lib/types";
+  import type { UploadProgress } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
-  import { BalloonMessageManager } from "./lib/balloonMessageManager";
+  import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import {
     checkServiceWorkerStatus,
     testServiceWorkerCommunication,
     getSharedMediaWithFallback,
-  } from "./lib/utils/appUtils";
+  } from "./lib/utils/swCommunication";
   import { checkIfOpenedFromShare } from "./lib/shareHandler";
   import {
     getContentFromUrlQuery,
@@ -368,14 +368,6 @@
 
     // Call the async initializer
     init();
-
-    // visibilitychangeイベントリスナー追加
-    wasHidden = document.visibilityState === "hidden";
-    document.addEventListener("visibilitychange", showBalloonOnActive);
-    return () => {
-      // visibilitychangeイベントリスナー削除
-      document.removeEventListener("visibilitychange", showBalloonOnActive);
-    };
   });
 
   $effect(() => {
@@ -486,8 +478,11 @@
     postComponentRef?.loadDraftContent(content);
   }
 
-  // バルーンメッセージマネージャー
-  let balloonManager: BalloonMessageManager | null = null;
+  // バルーンメッセージフック
+  const balloon = useBalloonMessage(
+    () => $_,
+    () => localeInitialized,
+  );
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
   async function handleRefreshRelaysAndProfile() {
@@ -504,69 +499,6 @@
       profileDataStore.set(profile);
       profileLoadedStore.set(true);
     }
-  }
-
-  let showHeaderBalloon = $state(false);
-  let headerBalloonMessage = $state<BalloonMessage | null>(null);
-  let hasShownInitialBalloon = $state(false); // 初回バルーン表示済みフラグ
-
-  // バルーンメッセージマネージャーの初期化
-  $effect(() => {
-    if ($_ && !balloonManager) {
-      balloonManager = new BalloonMessageManager($_);
-    }
-  });
-
-  // localeInitializedがtrueになったタイミングでメッセージをセット（一度だけ）
-  $effect(() => {
-    if (
-      localeInitialized &&
-      balloonManager &&
-      !showHeaderBalloon &&
-      !hasShownInitialBalloon
-    ) {
-      showHeaderBalloonMessage();
-      hasShownInitialBalloon = true;
-    }
-  });
-
-  function showHeaderBalloonMessage() {
-    if (!balloonManager || showHeaderBalloon) return;
-
-    headerBalloonMessage = balloonManager.createMessage("info");
-    showHeaderBalloon = true;
-
-    balloonManager.scheduleHide(() => {
-      showHeaderBalloon = false;
-      headerBalloonMessage = null;
-    }, 3000);
-  }
-
-  // --- visibilitychangeでアクティブ時のみバルーン表示 ---
-  let wasHidden = false;
-  let lastVisibilityChange = 0; // デバウンス用タイムスタンプ
-
-  function showBalloonOnActive() {
-    const now = Date.now();
-
-    // デバウンス: 前回の実行から1秒以内は無視
-    if (now - lastVisibilityChange < 1000) {
-      wasHidden = document.visibilityState === "hidden";
-      return;
-    }
-
-    // 「非アクティブ→アクティブ」になった瞬間のみ
-    if (
-      document.visibilityState === "visible" &&
-      wasHidden &&
-      localeInitialized &&
-      balloonManager &&
-      !showHeaderBalloon
-    ) {
-      showHeaderBalloonMessage();
-      lastVisibilityChange = now;
-    }
-    wasHidden = document.visibilityState === "hidden";
   }
 
   // --- 追加: 設定ダイアログの画像圧縮設定を管理 ---
@@ -587,15 +519,6 @@
   function handleSelectedEndpointChange(value: string) {
     selectedEndpoint = value;
   }
-
-  // クリーンアップ
-  $effect(() => {
-    return () => {
-      if (balloonManager) {
-        balloonManager.dispose();
-      }
-    };
-  });
 </script>
 
 {#if $locale && localeInitialized}
@@ -606,8 +529,8 @@
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
           onShowDraftList={handleShowDraftList}
-          balloonMessage={showHeaderBalloon && headerBalloonMessage
-            ? headerBalloonMessage
+          balloonMessage={balloon.show && balloon.message
+            ? balloon.message
             : null}
         />
         <PostComponent

@@ -1,21 +1,9 @@
-import type { PostStatus, EditorState, InitializeEditorParams, InitializeEditorResult, CleanupEditorParams } from '../lib/types';
-import { setupEventListeners, cleanupEventListeners } from '../lib/editor/editorDomActions.svelte';
+import type { PostStatus, EditorState } from '../lib/types';
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import {
-    createEditorStore as createTiptapEditorStore,
     updateEditorPlaceholder
 } from '../lib/editor';
 import { mediaGalleryStore } from './mediaGalleryStore.svelte';
-
-// プレースホルダー管理関数を再エクスポート（下位互換性のため）
-export {
-    insertPlaceholdersIntoEditor,
-    generateBlurhashes,
-    replacePlaceholdersWithResults,
-    insertPlaceholdersIntoGallery,
-    replacePlaceholdersInGallery,
-    removeAllGalleryPlaceholders,
-} from '../lib/editor/placeholderManager';
 
 // --- エディター専用状態管理 ---
 export let placeholderTextStore = $state({ value: '' });
@@ -123,77 +111,4 @@ export async function submitPost() {
     }
 }
 
-// --- エディター初期化・クリーンアップ関数 ---
-export function initializeEditor(params: InitializeEditorParams): InitializeEditorResult {
-    const {
-        placeholderText,
-        editorContainerEl,
-        hasStoredKey,
-        submitPost,
-        uploadFiles,
-        eventCallbacks
-    } = params;
 
-    // プレースホルダーの設定
-    placeholderTextStore.value = placeholderText;
-
-    // エディターストアの作成
-    const editor = createTiptapEditorStore({
-        placeholderText,
-        onSubmitPost: submitPost,
-        onCreate: (editorInstance: TipTapEditor | null) => {
-            currentEditorStore.set(editorInstance);
-        }
-    });
-
-    // エディターインスタンスの購読
-    let latestEditor: TipTapEditor | null = null;
-    const unsubscribe = editor.subscribe((editorInstance: TipTapEditor | null) => {
-        latestEditor = editorInstance;
-    });
-
-    // イベントリスナーのセットアップ
-    const handlers = setupEventListeners({
-        currentEditor: latestEditor,
-        editorContainerEl,
-        callbacks: eventCallbacks,
-    });
-
-    // ポスト送信関数の登録
-    setPostSubmitter(submitPost);
-
-    // エディターコンテナに必要なプロパティを設定
-    if (editorContainerEl) {
-        Object.assign(editorContainerEl, {
-            __uploadFiles: uploadFiles,
-            __currentEditor: () => latestEditor,
-            __hasStoredKey: () => hasStoredKey,
-            __postStatus: () => editorState.postStatus,
-            __submitPost: submitPost,
-        });
-    }
-
-    return { editor, unsubscribe, handlers };
-}
-
-export function cleanupEditor(params: CleanupEditorParams): void {
-    const { unsubscribe, handlers, currentEditor, editorContainerEl } = params;
-
-    // イベントリスナーのクリーンアップ
-    cleanupEventListeners(handlers, editorContainerEl);
-
-    // エディターの購読解除
-    unsubscribe();
-
-    // エディターの破棄
-    currentEditor?.destroy?.();
-
-    // エディターコンテナのプロパティをクリア
-    if (editorContainerEl) {
-        delete (editorContainerEl as any).__uploadFiles;
-        delete (editorContainerEl as any).__currentEditor;
-        delete (editorContainerEl as any).__hasStoredKey;
-        delete (editorContainerEl as any).__postStatus;
-        delete (editorContainerEl as any).__submitPost;
-    }
-}

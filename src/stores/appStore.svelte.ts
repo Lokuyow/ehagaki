@@ -94,7 +94,6 @@ export {
 } from './sharedContentStore.svelte';
 
 export {
-    hashtagDataStore,
     postComponentUIStore,
 } from './postUIStore.svelte';
 

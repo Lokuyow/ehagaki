@@ -16,5 +16,8 @@ export type { EditorConfigOptions } from './editorConfig';
 export {
     insertPlaceholdersIntoEditor,
     generateBlurhashes,
-    replacePlaceholdersWithResults
+    replacePlaceholdersWithResults,
+    insertPlaceholdersIntoGallery,
+    replacePlaceholdersInGallery,
+    removeAllGalleryPlaceholders,
 } from './placeholderManager';

@@ -155,40 +155,17 @@
     let compressionElapsedSeconds = $state(0);
     let compressionTimerInterval: number | null = null;
 
-    // 動画圧縮の進捗に応じてタイマーを管理
+    // 動画・画像圧縮の進捗に応じてタイマーを管理（統合版）
     $effect(() => {
-        if (videoCompressionProgress > 0 && videoCompressionProgress < 100) {
-            // 圧縮開始
-            if (!compressionStartTime) {
-                compressionStartTime = Date.now();
-                // 新しい動画圧縮が開始されたら過去のimage-size-infoをクリア
-                reset({ imageSizeInfoOnly: true });
-                compressionTimerInterval = window.setInterval(() => {
-                    if (compressionStartTime) {
-                        compressionElapsedSeconds = Math.floor(
-                            (Date.now() - compressionStartTime) / 1000,
-                        );
-                    }
-                }, 1000);
-            }
-        } else {
-            // 圧縮完了または未開始
-            if (compressionTimerInterval !== null) {
-                clearInterval(compressionTimerInterval);
-                compressionTimerInterval = null;
-            }
-            compressionStartTime = null;
-            compressionElapsedSeconds = 0;
-        }
-    });
+        const isCompressing =
+            (videoCompressionProgress > 0 && videoCompressionProgress < 100) ||
+            (imageCompressionProgress > 0 && imageCompressionProgress < 100);
 
-    // 画像圧縮の進捗に応じてタイマーを管理
-    $effect(() => {
-        if (imageCompressionProgress > 0 && imageCompressionProgress < 100) {
+        if (isCompressing) {
             // 圧縮開始
             if (!compressionStartTime) {
                 compressionStartTime = Date.now();
-                // 新しい画像圧縮が開始されたら過去のimage-size-infoをクリア
+                // 新しい圧縮が開始されたら過去のimage-size-infoをクリア
                 reset({ imageSizeInfoOnly: true });
                 compressionTimerInterval = window.setInterval(() => {
                     if (compressionStartTime) {

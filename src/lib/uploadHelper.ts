@@ -28,7 +28,7 @@ import {
     insertPlaceholdersIntoGallery,
     replacePlaceholdersInGallery,
     removeAllGalleryPlaceholders,
-} from "../stores/editorStore.svelte";
+} from "./editor/placeholderManager";
 
 // UploadManagerクラス: アップロード処理を統合
 export class UploadManager {

@@ -250,6 +250,7 @@ export function keydownAction(node: HTMLElement) {
 export function hasImageInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
     doc?.descendants((node: PMNode) => {
+        if (found) return false; // 早期終了
         if ((node as any).type?.name === "image") found = true;
     });
     return found;
@@ -259,14 +260,21 @@ export function hasImageInDoc(doc: PMNode | undefined | null): boolean {
 export function hasVideoInDoc(doc: PMNode | undefined | null): boolean {
     let found = false;
     doc?.descendants((node: PMNode) => {
+        if (found) return false; // 早期終了
         if ((node as any).type?.name === "video") found = true;
     });
     return found;
 }
 
-// ドキュメント内に画像または動画ノードが存在するか判定
+// ドキュメント内に画像または動画ノードが存在するか判定（1回の走査で完了）
 export function hasMediaInDoc(doc: PMNode | undefined | null): boolean {
-    return hasImageInDoc(doc) || hasVideoInDoc(doc);
+    let found = false;
+    doc?.descendants((node: PMNode) => {
+        if (found) return false; // 早期終了
+        const name = (node as any).type?.name;
+        if (name === "image" || name === "video") found = true;
+    });
+    return found;
 }
 
 // --- イベントリスナーのセットアップとクリーンアップ ---
