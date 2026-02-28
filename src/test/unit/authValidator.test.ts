@@ -2,15 +2,14 @@
 import { AuthValidator } from '../../lib/authService';
 
 /**
- * 認証サービス統合テスト
- * バリデーション、認証、初期化の統合フロー
+ * AuthValidator ユニットテスト
+ * バリデーション、認証状態の検証
  */
 
 /**
- * 認証サービス統合テスト
- * バリデーション、認証、初期化の統合フロー
+ * AuthValidator ユニットテスト
  */
-describe('認証サービス統合テスト', () => {
+describe('AuthValidator ユニットテスト', () => {
     describe('Nsecバリデーション統合', () => {
         it('有効なNsecが正しくバリデーションされること', async () => {
             const validNsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';

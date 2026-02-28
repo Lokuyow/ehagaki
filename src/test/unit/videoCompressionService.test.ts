@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
 
 /**
- * 動画圧縮サービスのユニットテスト
+ * 動画圧縮設定のユニットテスト
  * 
- * このテストは設定値の検証とロジックのテストのみを行います。
+ * 設定値の相対関係・妥当性を検証します。
+ * 個別値の完全一致テストは定数変更時に壊れるだけで保護にならないため省略。
  * 実際の圧縮フローは integration/video-compression.integration.test.ts で検証します。
  */
 
@@ -20,95 +21,17 @@ describe('VIDEO_COMPRESSION_OPTIONS_MAP', () => {
         it('noneレベルにskipフラグが設定されている', () => {
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.none).toEqual({ skip: true });
         });
-    });
 
-    describe('lowレベルの設定値', () => {
-        it('CRF値が正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.crf).toBe(20);
-        });
-
-        it('プリセットが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.preset).toBe('superfast');
-        });
-
-        it('最大画素サイズが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize).toBe(1280);
-        });
-
-        it('音声ビットレートが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.audioBitrate).toBe('128k');
-        });
-
-        it('MediaBunny動画品質ファクターが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.mediabunnyVideoQualityFactor).toBe(2);
-        });
-
-        it('MediaBunny音声品質ファクターが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.mediabunnyAudioQualityFactor).toBe(2);
-        });
-    });
-
-    describe('mediumレベルの設定値', () => {
-        it('CRF値が正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.crf).toBe(26);
-        });
-
-        it('プリセットが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.preset).toBe('superfast');
-        });
-
-        it('最大画素サイズが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.maxSize).toBe(640);
-        });
-
-        it('音声ビットレートが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioBitrate).toBe('64k');
-        });
-
-        it('音声サンプルレートが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.audioSampleRate).toBe(44100);
-        });
-
-        it('MediaBunny動画品質ファクターが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.mediabunnyVideoQualityFactor).toBe(1);
-        });
-
-        it('MediaBunny音声品質ファクターが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.mediabunnyAudioQualityFactor).toBe(1);
-        });
-    });
-
-    describe('highレベルの設定値', () => {
-        it('CRF値が正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.crf).toBe(28);
-        });
-
-        it('プリセットが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.preset).toBe('medium');
-        });
-
-        it('最大画素サイズが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.maxSize).toBe(320);
-        });
-
-        it('音声ビットレートが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.audioBitrate).toBe('32k');
-        });
-
-        it('音声サンプルレートが正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.audioSampleRate).toBe(16000);
-        });
-
-        it('音声チャンネル数が正しく設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.audioChannels).toBe(1);
-        });
-
-        it('MediaBunny動画品質ファクターが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.mediabunnyVideoQualityFactor).toBe(0.3);
-        });
-
-        it('MediaBunny音声品質ファクターが設定されている', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.mediabunnyAudioQualityFactor).toBe(0.3);
+        it('各レベルに必要なプロパティが含まれている', () => {
+            const levels = ['low', 'medium', 'high'] as const;
+            levels.forEach(level => {
+                const config = VIDEO_COMPRESSION_OPTIONS_MAP[level];
+                expect(config).toHaveProperty('crf');
+                expect(config).toHaveProperty('maxSize');
+                expect(config).toHaveProperty('audioBitrate');
+                expect(config).toHaveProperty('mediabunnyVideoQualityFactor');
+                expect(config).toHaveProperty('mediabunnyAudioQualityFactor');
+            });
         });
     });
 

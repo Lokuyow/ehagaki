@@ -4,8 +4,8 @@ import { CONTENT_TRACKING_CONFIG } from '../../lib/constants';
 /**
  * ContentTracking Extension 単体テスト
  * 
- * 注意: 通常のURL検証機能はTiptap v3のLink拡張に移譲されました。
- * このテストは画像URL検出とその他のContentTracking固有の機能のみをテストします。
+ * URL正規表現の動作検証とプラグインキーの一意性を検証します。
+ * 定数値の完全一致テストは定数変更時に壊れるだけなので省略。
  */
 describe('ContentTracking 定数', () => {
     describe('URL正規表現（画像URL検出用）', () => {
@@ -51,20 +51,6 @@ Third line: https://third.com/c.webp`;
         });
     });
 
-    describe('DEBOUNCE_DELAY', () => {
-        it('デフォルト値が300msであること', () => {
-            expect(CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY).toBe(300);
-        });
-    });
-
-    describe('機能フラグ', () => {
-        it('すべての機能がデフォルトで有効であること', () => {
-            expect(CONTENT_TRACKING_CONFIG.ENABLE_HASHTAGS).toBe(true);
-            expect(CONTENT_TRACKING_CONFIG.ENABLE_AUTO_LINK).toBe(true); // 互換性のため保持
-            expect(CONTENT_TRACKING_CONFIG.ENABLE_IMAGE_CONVERSION).toBe(true);
-        });
-    });
-
     describe('プラグインキー', () => {
         it('一意なプラグインキーが定義されていること', () => {
             const keys = Object.values(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS);
@@ -77,12 +63,6 @@ Third line: https://third.com/c.webp`;
             expect(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS.HASHTAG_DECORATION).toBeDefined();
             expect(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS.LINK_AND_IMAGE_CONVERSION).toBeDefined();
             expect(CONTENT_TRACKING_CONFIG.PLUGIN_KEYS.CONTENT_UPDATE_TRACKER).toBeDefined();
-        });
-    });
-
-    describe('CSSクラス名', () => {
-        it('ハッシュタグクラスが定義されていること', () => {
-            expect(CONTENT_TRACKING_CONFIG.HASHTAG_CLASS).toBe('hashtag');
         });
     });
 });
