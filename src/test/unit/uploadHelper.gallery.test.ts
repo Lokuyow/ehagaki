@@ -76,7 +76,7 @@ import type {
 
 /** アップロード完了時に中止フラグを立てる FileUploadManager モックを含む依存関係を生成 */
 function createDeps(
-    onUpload: () => void = () => {}
+    onUpload: () => void = () => { }
 ): UploadHelperDependencies {
     const mockFUM: FileUploadManagerInterface = {
         validateImageFile: vi.fn(() => ({ isValid: true })),
