@@ -73,8 +73,11 @@
     let bottomPosition = $derived(bottomPositionStore.value);
 
     // ボタン押下時にフォーカスを奪わない（キーボードを閉じさせない）
+    // また、エディターがフォーカスを持っている状態でキーボードが非表示の場合に
+    // ボタン押下でキーボードが再表示されないよう、アクティブ要素をblurする
     function preventFocusLoss(event: Event) {
         event.preventDefault();
+        (document.activeElement as HTMLElement)?.blur();
     }
 
     // visualViewportの監視を開始
