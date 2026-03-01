@@ -61,4 +61,13 @@ export const mediaGalleryStore = {
     hasItems: () => mediaGalleryItems.length > 0,
 
     hasNonPlaceholderItems: () => mediaGalleryItems.some(item => !item.isPlaceholder),
+
+    /** isPlaceholder: true のアイテムを全て削除し、削除したIDの配列を返す */
+    removePlaceholders: (): string[] => {
+        const removed = mediaGalleryItems.filter(item => item.isPlaceholder).map(item => item.id);
+        if (removed.length > 0) {
+            mediaGalleryItems = mediaGalleryItems.filter(item => !item.isPlaceholder);
+        }
+        return removed;
+    },
 };

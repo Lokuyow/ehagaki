@@ -284,6 +284,14 @@ export async function uploadHelper({
     // 中止された場合は後続処理をスキップ
     if (uploadAbortFlagStore.value) {
         if (fileInput) fileInput.value = "";
+        // アップロード完了後に中止された場合もプレースホルダーを削除
+        if (placeholderMap.length > 0) {
+            if (galleryMode) {
+                removeAllGalleryPlaceholders(placeholderMap, dependencies.imageSizeMapStore);
+            } else if (currentEditor) {
+                removeAllPlaceholders(currentEditor, devMode);
+            }
+        }
         return {
             placeholderMap: [],
             results: null,

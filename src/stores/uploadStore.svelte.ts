@@ -1,5 +1,7 @@
 import type { SizeDisplayInfo, CompressionService } from '../lib/types';
 import type { VideoCompressionService } from '../lib/videoCompression/videoCompressionService';
+import { mediaGalleryStore } from './mediaGalleryStore.svelte';
+import { imageSizeMapStore } from './tagsStore.svelte';
 
 // --- 画像サイズ情報表示管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
@@ -85,6 +87,19 @@ export function abortAllUploads(): void {
     if (isDev) console.log('[uploadStore] abortAllUploads called');
     abortVideoCompression();
     abortImageCompression();
+
+    // ギャラリーモードのプレースホルダーを即座に削除
+    const removedIds = mediaGalleryStore.removePlaceholders();
+    if (removedIds.length > 0) {
+        if (isDev) console.log('[uploadStore] Removing gallery placeholders:', removedIds);
+        imageSizeMapStore.update(map => {
+            const newMap = { ...map };
+            for (const id of removedIds) {
+                delete newMap[id];
+            }
+            return newMap;
+        });
+    }
 }
 
 // --- アップロード状態管理 ---
