@@ -28,11 +28,33 @@
   <link rel="icon" href="/ehagaki/favicon.ico" sizes="48x48">
   <link rel="icon" href="/ehagaki/ehagaki_icon.svg" sizes="any" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/ehagaki/apple-touch-icon.png">
-  <script type="module" crossorigin src="/ehagaki/assets/index-DCmSSzfC.js"></script>
-  <link rel="stylesheet" crossorigin href="/ehagaki/assets/index-DJnKxEKJ.css">
+  <script type="module" crossorigin src="/ehagaki/assets/index-tWXHFDH-.js"></script>
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-ui-Dfbvke9w.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-nostr-CSSTtp-a.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-zap-DuBBJg9r.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-editor-DymEIdpa.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-image-DhZoa7y2.js">
+  <link rel="stylesheet" crossorigin href="/ehagaki/assets/vendor-ui-BpcL6yKj.css">
+  <link rel="stylesheet" crossorigin href="/ehagaki/assets/index-ByrdEVdw.css">
 <link rel="manifest" href="/ehagaki/manifest.webmanifest"></head>
 
 <body ontouchstart="">
+  <script>
+    (function () {
+      var saved = localStorage.getItem('darkMode');
+      var isDark = saved !== null
+        ? saved === 'true'
+        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var root = document.documentElement;
+      if (isDark) {
+        root.classList.add('dark');
+        root.style.colorScheme = 'dark';
+      } else {
+        root.classList.add('light');
+        root.style.colorScheme = 'light';
+      }
+    })();
+  </script>
   <div id="app"></div>
 </body>
 
