@@ -1,1 +1,0 @@
-import{b as o,a as r}from"./index-D1eatIvN.js";class n{onProgress;context;constructor(s){this.context=s}setProgressCallback(s){this.onProgress=s}checkAbort(s){return o(s,this.context,this.onProgress)}resetProgress(){this.onProgress&&this.onProgress(0)}updateProgress(s){this.onProgress&&this.onProgress(Math.round(s))}log(...s){r(this.context,...s)}}export{n as B};
