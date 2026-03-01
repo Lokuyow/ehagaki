@@ -40,10 +40,16 @@ export const defaultTimeoutAdapter: TimeoutAdapter = {
 
 /**
  * メディアギャラリーアイテム用のユニークIDを生成
+ * Secure Contextでのみcrypto.randomUUID()を使用、それ以外はフォールバック
  * @returns ユニークなID文字列
  */
 export function generateMediaItemId(): string {
-  return crypto.randomUUID();
+  try {
+    return crypto.randomUUID();
+  } catch {
+    // Secure Contextでない環境（HTTP接続など）ではフォールバック
+    return generateSimpleUUID();
+  }
 }
 
 /**
