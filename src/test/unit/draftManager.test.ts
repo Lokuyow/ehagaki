@@ -9,7 +9,7 @@ import {
     generatePreview,
     formatDraftTimestamp
 } from '../../lib/draftManager';
-import type { Draft } from '../../lib/types';
+import type { Draft, MediaGalleryItem } from '../../lib/types';
 import { STORAGE_KEYS, MAX_DRAFTS } from '../../lib/constants';
 import { MockStorage } from '../helpers';
 
@@ -136,6 +136,61 @@ describe('draftManager', () => {
             const expectedText = 'a'.repeat(50 - '[画像]'.length - 2); // スペースと省略記号分
             expect(result).toBe(expectedText + '… [画像]');
         });
+
+        // --- galleryItems 引数関連テスト ---
+        it('galleryItemsに画像がある場合は[画像]プレビューを返す（HTML内に画像なし）', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }
+            ];
+            const result = generatePreview('<p></p>', galleryItems);
+            expect(result).toBe('[画像]');
+        });
+
+        it('galleryItemsに動画がある場合は[動画]プレビューを返す（HTML内に動画なし）', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'video', src: 'https://example.com/a.mp4', isPlaceholder: false }
+            ];
+            const result = generatePreview('<p></p>', galleryItems);
+            expect(result).toBe('[動画]');
+        });
+
+        it('galleryItemsに画像と動画がある場合は[画像][動画]を返す', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false },
+                { id: 'g2', type: 'video', src: 'https://example.com/b.mp4', isPlaceholder: false }
+            ];
+            const result = generatePreview('<p></p>', galleryItems);
+            expect(result).toBe('[画像][動画]');
+        });
+
+        it('galleryItemsのプレースホルダーは無視される', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'placeholder-url', isPlaceholder: true }
+            ];
+            const result = generatePreview('<p></p>', galleryItems);
+            expect(result).toBe('(内容なし)');
+        });
+
+        it('HTML内の画像とgalleryItemsの画像を合わせて[画像]を返す（重複しない）', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/b.jpg', isPlaceholder: false }
+            ];
+            const result = generatePreview('<img src="https://example.com/a.jpg">', galleryItems);
+            expect(result).toBe('[画像]');
+        });
+
+        it('テキスト + galleryItemsの画像でテキスト [画像]を返す', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }
+            ];
+            const result = generatePreview('<p>本文テキスト</p>', galleryItems);
+            expect(result).toBe('本文テキスト [画像]');
+        });
+
+        it('galleryItemsがundefinedの場合はHTMLのみで判定する', () => {
+            const result = generatePreview('<img src="test.jpg">', undefined);
+            expect(result).toBe('[画像]');
+        });
     });
 
     describe('saveDraft', () => {
@@ -178,6 +233,46 @@ describe('draftManager', () => {
             expect(drafts[1].preview).toBe('Second');
             expect(drafts[2].preview).toBe('First');
         });
+
+        it('galleryItemsを指定すると下書きに保存される', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false, blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj', alt: 'test', dim: '800x600' },
+                { id: 'g2', type: 'video', src: 'https://example.com/b.mp4', isPlaceholder: false }
+            ];
+            const result = saveDraft('<p>テキスト</p>', galleryItems);
+
+            expect(result.success).toBe(true);
+            expect(result.drafts[0].galleryItems).toHaveLength(2);
+            expect(result.drafts[0].galleryItems![0].src).toBe('https://example.com/a.jpg');
+            expect(result.drafts[0].galleryItems![0].blurhash).toBe('LEHV6nWB2yk8pyo0adR*.7kCMdnj');
+            expect(result.drafts[0].galleryItems![0].alt).toBe('test');
+            expect(result.drafts[0].galleryItems![0].dim).toBe('800x600');
+            expect(result.drafts[0].galleryItems![1].type).toBe('video');
+        });
+
+        it('galleryItemsが空配列の場合はgalleryItemsはundefined', () => {
+            const result = saveDraft('<p>テキスト</p>', []);
+            expect(result.drafts[0].galleryItems).toBeUndefined();
+        });
+
+        it('galleryItemsを指定した場合、プレビューにギャラリー画像が反映される', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }
+            ];
+            const result = saveDraft('<p></p>', galleryItems);
+            expect(result.drafts[0].preview).toBe('[画像]');
+        });
+
+        it('galleryItemsのプレースホルダーはプレビューに反映されない', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'placeholder-url', isPlaceholder: true }
+            ];
+            const result = saveDraft('<p></p>', galleryItems);
+            // プレースホルダーはプレビューのメディア判定から除外される
+            expect(result.drafts[0].preview).toBe('(内容なし)');
+            // galleryItems自体は配列に値があるので保存される（フィルタは呼び出し元の責務）
+            expect(result.drafts[0].galleryItems).toBeDefined();
+        });
     });
 
     describe('saveDraftWithReplaceOldest', () => {
@@ -194,6 +289,25 @@ describe('draftManager', () => {
             expect(result).toHaveLength(MAX_DRAFTS);
             expect(result[0].preview).toBe('Newest');
             expect(result[result.length - 1].id).not.toBe(drafts[drafts.length - 1].id);
+        });
+
+        it('galleryItemsを指定すると下書きに保存される', () => {
+            const existingDrafts: Draft[] = Array.from({ length: MAX_DRAFTS }, (_, i) => ({
+                id: `draft_${i}`,
+                content: `<p>Content ${i}</p>`,
+                preview: `Content ${i}`,
+                timestamp: Date.now() - (MAX_DRAFTS - i) * 1000
+            }));
+            storage.setItem(STORAGE_KEYS.DRAFTS, JSON.stringify(existingDrafts));
+
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }
+            ];
+            const result = saveDraftWithReplaceOldest('<p></p>', galleryItems);
+
+            expect(result[0].galleryItems).toHaveLength(1);
+            expect(result[0].galleryItems![0].src).toBe('https://example.com/a.jpg');
+            expect(result[0].preview).toBe('[画像]');
         });
     });
 
@@ -243,6 +357,105 @@ describe('draftManager', () => {
         it('存在しないIDの場合はundefinedを返す', () => {
             const result = getDraft('nonexistent');
             expect(result).toBeUndefined();
+        });
+    });
+
+    describe('galleryItems 保存・復元', () => {
+        it('galleryItemsを含む下書きをsaveDraftで保存し、loadDraftsで完全に復元できる', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                {
+                    id: 'g1',
+                    type: 'image',
+                    src: 'https://example.com/photo.jpg',
+                    isPlaceholder: false,
+                    blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                    alt: 'photo',
+                    dim: '1920x1080',
+                    ox: 'abc123',
+                    x: 'def456',
+                },
+                {
+                    id: 'g2',
+                    type: 'video',
+                    src: 'https://example.com/video.mp4',
+                    isPlaceholder: false,
+                },
+            ];
+
+            saveDraft('<p>本文</p>', galleryItems);
+
+            const drafts = loadDrafts();
+            expect(drafts).toHaveLength(1);
+
+            const restored = drafts[0].galleryItems!;
+            expect(restored).toHaveLength(2);
+
+            // 画像アイテムの全プロパティが復元されている
+            expect(restored[0].id).toBe('g1');
+            expect(restored[0].type).toBe('image');
+            expect(restored[0].src).toBe('https://example.com/photo.jpg');
+            expect(restored[0].isPlaceholder).toBe(false);
+            expect(restored[0].blurhash).toBe('LEHV6nWB2yk8pyo0adR*.7kCMdnj');
+            expect(restored[0].alt).toBe('photo');
+            expect(restored[0].dim).toBe('1920x1080');
+            expect(restored[0].ox).toBe('abc123');
+            expect(restored[0].x).toBe('def456');
+
+            // 動画アイテムが復元されている
+            expect(restored[1].id).toBe('g2');
+            expect(restored[1].type).toBe('video');
+            expect(restored[1].src).toBe('https://example.com/video.mp4');
+        });
+
+        it('galleryItemsなしで保存した下書きのgalleryItemsはundefined', () => {
+            saveDraft('<p>テキストのみ</p>');
+
+            const drafts = loadDrafts();
+            expect(drafts[0].galleryItems).toBeUndefined();
+        });
+
+        it('getDraftでもgalleryItemsが復元できる', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }
+            ];
+            saveDraft('<p>本文</p>', galleryItems);
+
+            const drafts = loadDrafts();
+            const fetched = getDraft(drafts[0].id);
+            expect(fetched?.galleryItems).toHaveLength(1);
+            expect(fetched?.galleryItems![0].src).toBe('https://example.com/a.jpg');
+        });
+
+        it('複数の下書きがそれぞれ独立したgalleryItemsを持つ', () => {
+            const items1: MediaGalleryItem[] = [
+                { id: 'a1', type: 'image', src: 'https://example.com/1.jpg', isPlaceholder: false }
+            ];
+            const items2: MediaGalleryItem[] = [
+                { id: 'b1', type: 'image', src: 'https://example.com/2.jpg', isPlaceholder: false },
+                { id: 'b2', type: 'video', src: 'https://example.com/2.mp4', isPlaceholder: false }
+            ];
+
+            saveDraft('<p>First</p>', items1);
+            saveDraft('<p>Second</p>', items2);
+
+            const drafts = loadDrafts(); // 降順: Second, First
+            expect(drafts[0].galleryItems).toHaveLength(2); // Second
+            expect(drafts[1].galleryItems).toHaveLength(1); // First
+        });
+
+        it('テキストなしでgalleryItemsのみの下書きが保存・復元できる', () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: 'g1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false },
+                { id: 'g2', type: 'image', src: 'https://example.com/b.jpg', isPlaceholder: false },
+            ];
+
+            const result = saveDraft('<p></p>', galleryItems);
+            expect(result.success).toBe(true);
+            expect(result.drafts[0].preview).toBe('[画像]');
+
+            const drafts = loadDrafts();
+            expect(drafts[0].galleryItems).toHaveLength(2);
+            expect(drafts[0].content).toBe('<p></p>');
         });
     });
 
