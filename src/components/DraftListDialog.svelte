@@ -16,7 +16,7 @@
     interface Props {
         show: boolean;
         onClose: () => void;
-        onApplyDraft: (content: string) => void;
+        onApplyDraft: (draft: Draft) => void;
     }
 
     let { show = $bindable(false), onClose, onApplyDraft }: Props = $props();
@@ -42,7 +42,7 @@
 
     // 下書きを適用
     function handleApplyDraft(draft: Draft) {
-        onApplyDraft(draft.content);
+        onApplyDraft(draft);
         handleClose();
     }
 

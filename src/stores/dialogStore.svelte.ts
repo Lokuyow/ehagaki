@@ -1,4 +1,6 @@
 // --- UIダイアログ状態管理 ---
+import type { MediaGalleryItem } from '../lib/types';
+
 let showLogin = $state(false);
 let showLogout = $state(false);
 let showSettings = $state(false);
@@ -27,7 +29,7 @@ export const showWelcomeDialogStore = {
 // --- 下書きダイアログ状態管理 ---
 let showDraftList = $state(false);
 let showDraftLimitConfirm = $state(false);
-let pendingDraftContent = $state<string | null>(null);
+let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[] } | null>(null);
 
 export const showDraftListDialogStore = {
     get value() { return showDraftList; },
@@ -41,7 +43,7 @@ export const showDraftLimitConfirmStore = {
 
 export const pendingDraftContentStore = {
     get value() { return pendingDraftContent; },
-    set: (value: string | null) => { pendingDraftContent = value; }
+    set: (value: { content: string; galleryItems: MediaGalleryItem[] } | null) => { pendingDraftContent = value; }
 };
 
 // --- ダイアログ操作ヘルパー ---

@@ -1,6 +1,7 @@
 // --- Editor, Post, Draft, ContentTracking, EditorEvents関連型定義 ---
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { MediaGalleryItem } from "./media";
 
 // Post and Editor types
 export interface PostStatus {
@@ -108,6 +109,7 @@ export interface Draft {
     content: string;
     preview: string;
     timestamp: number;
+    galleryItems?: MediaGalleryItem[];
 }
 
 // TransformStore関連型定義

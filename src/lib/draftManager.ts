@@ -1,4 +1,5 @@
 import type { Draft } from './types';
+import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
@@ -30,14 +31,18 @@ function saveDraftsToStorage(drafts: Draft[]): void {
  * HTMLコンテンツからプレビューテキストを生成
  * テキスト、画像、動画の有無を検出し、適切なプレビュー文字列を生成
  */
-export function generatePreview(htmlContent: string): string {
+export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[]): string {
     // HTMLタグを除去してテキストのみを抽出
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlContent;
 
-    // 画像と動画の有無をチェック
-    const hasImage = tempDiv.querySelector('img') !== null;
-    const hasVideo = tempDiv.querySelector('video') !== null;
+    // 画像と動画の有無をチェック（エディタ内 + ギャラリーアイテム）
+    const hasEditorImage = tempDiv.querySelector('img') !== null;
+    const hasEditorVideo = tempDiv.querySelector('video') !== null;
+    const hasGalleryImage = galleryItems?.some(item => !item.isPlaceholder && item.type === 'image') ?? false;
+    const hasGalleryVideo = galleryItems?.some(item => !item.isPlaceholder && item.type === 'video') ?? false;
+    const hasImage = hasEditorImage || hasGalleryImage;
+    const hasVideo = hasEditorVideo || hasGalleryVideo;
 
     // テキストコンテンツを取得し、改行で分割して最初の非空行を取得
     const text = tempDiv.textContent || tempDiv.innerText || '';
@@ -113,7 +118,7 @@ function generateId(): string {
  * 新しい下書きを保存する
  * @returns 保存が成功した場合はtrue、上限に達してユーザーの確認が必要な場合はfalse
  */
-export function saveDraft(htmlContent: string): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
+export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[]): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
     const drafts = loadDrafts();
 
     // 上限チェック
@@ -124,8 +129,9 @@ export function saveDraft(htmlContent: string): { success: boolean; needsConfirm
     const newDraft: Draft = {
         id: generateId(),
         content: htmlContent,
-        preview: generatePreview(htmlContent),
+        preview: generatePreview(htmlContent, galleryItems),
         timestamp: Date.now(),
+        galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
     };
 
     const updatedDrafts = [newDraft, ...drafts];
@@ -137,7 +143,7 @@ export function saveDraft(htmlContent: string): { success: boolean; needsConfirm
 /**
  * 最も古い下書きを削除して新しい下書きを保存する
  */
-export function saveDraftWithReplaceOldest(htmlContent: string): Draft[] {
+export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: MediaGalleryItem[]): Draft[] {
     const drafts = loadDrafts();
 
     // 最も古い下書きを削除（配列の末尾）
@@ -146,8 +152,9 @@ export function saveDraftWithReplaceOldest(htmlContent: string): Draft[] {
     const newDraft: Draft = {
         id: generateId(),
         content: htmlContent,
-        preview: generatePreview(htmlContent),
+        preview: generatePreview(htmlContent, galleryItems),
         timestamp: Date.now(),
+        galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
     };
 
     const updatedDrafts = [newDraft, ...remainingDrafts];

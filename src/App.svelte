@@ -47,8 +47,9 @@
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
+    mediaFreePlacementStore,
   } from "./stores/appStore.svelte";
-  import type { UploadProgress } from "./lib/types";
+  import type { UploadProgress, Draft } from "./lib/types";
   import { getDefaultEndpoint } from "./lib/constants";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import {
@@ -63,6 +64,8 @@
     cleanupAllQueryParams,
   } from "./lib/urlQueryHandler";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
+  import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
+  import { generateMediaItemId } from "./lib/utils/appUtils";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -425,16 +428,24 @@
     postComponentRef?.resetPostContent();
   }
 
-  // --- 下書き機能ハンドラ ---
+  // --- 下書き機能ハンドラ---
   function handleSaveDraft(): boolean {
     if (!postComponentRef?.getEditorHtml) return false;
     const htmlContent = postComponentRef.getEditorHtml();
-    if (!htmlContent || htmlContent === "<p></p>") return false;
+    const galleryItems = mediaGalleryStore
+      .getItems()
+      .filter((item) => !item.isPlaceholder);
+    // エディタ内容もギャラリー画像もない場合はスキップ
+    if (
+      (!htmlContent || htmlContent === "<p></p>") &&
+      galleryItems.length === 0
+    )
+      return false;
 
-    const result = saveDraft(htmlContent);
+    const result = saveDraft(htmlContent, galleryItems);
     if (result.needsConfirmation) {
       // 上限に達している場合は確認ダイアログを表示
-      pendingDraftContentStore.set(htmlContent);
+      pendingDraftContentStore.set({ content: htmlContent, galleryItems });
       showDraftLimitConfirmStore.set(true);
       return false;
     }
@@ -442,9 +453,9 @@
   }
 
   function handleConfirmDraftReplace() {
-    const pendingContent = pendingDraftContentStore.value;
-    if (pendingContent) {
-      saveDraftWithReplaceOldest(pendingContent);
+    const pending = pendingDraftContentStore.value;
+    if (pending) {
+      saveDraftWithReplaceOldest(pending.content, pending.galleryItems);
     }
     pendingDraftContentStore.set(null);
     showDraftLimitConfirmStore.set(false);
@@ -474,8 +485,76 @@
     showDraftListDialogStore.set(true);
   }
 
-  function handleApplyDraft(content: string) {
-    postComponentRef?.loadDraftContent(content);
+  /**
+   * HTML内の画像/動画ノードをギャラリーストアに移し、画像/動画を除去したHTMLを返す
+   */
+  function extractMediaToGallery(htmlContent: string): string {
+    if (!htmlContent) return htmlContent;
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = htmlContent;
+
+    tempDiv.querySelectorAll("img").forEach((img) => {
+      const src = img.getAttribute("src");
+      // プレースホルダー・未確定srcはスキップ
+      if (!src || img.getAttribute("isPlaceholder") === "true") return;
+      mediaGalleryStore.addItem({
+        id: generateMediaItemId(),
+        type: "image",
+        src,
+        isPlaceholder: false,
+        blurhash: img.getAttribute("blurhash") ?? undefined,
+        alt: img.getAttribute("alt") ?? undefined,
+        dim: img.getAttribute("dim") ?? undefined,
+      });
+      // 親要素が画像のみのブロックなら親ごと削除、そうでなければ画像のみ削除
+      const parent = img.parentElement;
+      if (parent && parent !== tempDiv && parent.children.length === 1) {
+        parent.remove();
+      } else {
+        img.remove();
+      }
+    });
+
+    tempDiv.querySelectorAll("video").forEach((video) => {
+      const src = video.getAttribute("src");
+      if (!src || video.getAttribute("isPlaceholder") === "true") return;
+      mediaGalleryStore.addItem({
+        id: generateMediaItemId(),
+        type: "video",
+        src,
+        isPlaceholder: false,
+      });
+      const parent = video.parentElement;
+      if (parent && parent !== tempDiv && parent.children.length === 1) {
+        parent.remove();
+      } else {
+        video.remove();
+      }
+    });
+
+    return tempDiv.innerHTML;
+  }
+
+  function handleApplyDraft(draft: Draft) {
+    const isGalleryMode = !mediaFreePlacementStore.value;
+
+    if (isGalleryMode) {
+      // ギャラリーモード: ギャラリーをリセットして画像を復元
+      mediaGalleryStore.clearAll();
+      // galleryItems（ギャラリーモード保存の下書き）を復元
+      if (draft.galleryItems && draft.galleryItems.length > 0) {
+        draft.galleryItems.forEach((item) => mediaGalleryStore.addItem(item));
+      }
+      // HTML内の画像/動画（フリーモード保存の下書き）をギャラリーに抽出
+      const strippedHtml = extractMediaToGallery(draft.content);
+      postComponentRef?.loadDraftContent(strippedHtml);
+    } else {
+      // フリーモード: HTMLをそのままロードし、galleryItemsがあれば末尾に追加
+      postComponentRef?.loadDraftContent(draft.content);
+      if (draft.galleryItems && draft.galleryItems.length > 0) {
+        postComponentRef?.appendMediaToEditor(draft.galleryItems);
+      }
+    }
   }
 
   // バルーンメッセージフック

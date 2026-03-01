@@ -6,6 +6,7 @@
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { RxNostr } from "rx-nostr";
   import type { UploadProgress } from "../lib/types";
+  import type { MediaGalleryItem } from "../lib/types";
   import {
     videoCompressionProgressStore,
     imageCompressionProgressStore,
@@ -216,6 +217,37 @@
   export function getEditorHtml(): string {
     if (!currentEditor) return "";
     return currentEditor.getHTML();
+  }
+
+  export function appendMediaToEditor(items: MediaGalleryItem[]): void {
+    if (!currentEditor || items.length === 0) return;
+    const { schema } = currentEditor.state;
+    let transaction = currentEditor.state.tr;
+    let insertPos = currentEditor.state.doc.content.size;
+
+    items.forEach((item) => {
+      if (item.isPlaceholder) return;
+      const src = item.src;
+      if (item.type === "image" && schema.nodes.image) {
+        const imageNode = schema.nodes.image.create({
+          src,
+          alt: item.alt ?? "Image",
+          blurhash: item.blurhash ?? null,
+          dim: item.dim ?? null,
+        });
+        transaction = transaction.insert(insertPos, imageNode);
+        insertPos += imageNode.nodeSize;
+        if (item.ox) imageOxMap = { ...imageOxMap, [src]: item.ox };
+        if (item.x) imageXMap = { ...imageXMap, [src]: item.x };
+      } else if (item.type === "video" && schema.nodes.video) {
+        const videoNode = schema.nodes.video.create({ src });
+        transaction = transaction.insert(insertPos, videoNode);
+        insertPos += videoNode.nodeSize;
+      }
+    });
+
+    currentEditor.view.dispatch(transaction);
+    currentEditor.commands.focus("end");
   }
 
   export async function submitPost() {
