@@ -10,6 +10,7 @@
     } from "../stores/tagsStore.svelte";
     import {
         bottomPositionStore,
+        keyboardHeightStore,
         setupViewportListener,
     } from "../stores/uiStore.svelte";
     import { authState } from "../stores/appStore.svelte";
@@ -72,12 +73,14 @@
     // キーボード追従のための位置調整（共有ストアから取得）
     let bottomPosition = $derived(bottomPositionStore.value);
 
-    // ボタン押下時にフォーカスを奪わない（キーボードを閉じさせない）
-    // また、エディターがフォーカスを持っている状態でキーボードが非表示の場合に
-    // ボタン押下でキーボードが再表示されないよう、アクティブ要素をblurする
+    // ボタン押下時にキーボードの状態を維持する
+    // キーボードが開いている場合: preventDefaultでフォーカスを維持しキーボードを閉じさせない
+    // キーボードが閉じている場合: blurでフォーカスを外しキーボードが開かないようにする
     function preventFocusLoss(event: Event) {
         event.preventDefault();
-        (document.activeElement as HTMLElement)?.blur();
+        if (keyboardHeightStore.value === 0) {
+            (document.activeElement as HTMLElement)?.blur();
+        }
     }
 
     // visualViewportの監視を開始
