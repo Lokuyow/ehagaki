@@ -698,7 +698,9 @@
 
     :global(.sw-update-btn.loading) {
         :global(.square) {
-            background-color: whitesmoke;
+            :global(:root.dark) & {
+                background-color: whitesmoke;
+            }
         }
     }
 
