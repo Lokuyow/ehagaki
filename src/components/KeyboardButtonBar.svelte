@@ -23,9 +23,10 @@
 
     interface Props {
         onUploadImage?: () => void;
+        onPostButtonTap?: () => void;
     }
 
-    let { onUploadImage }: Props = $props();
+    let { onUploadImage, onPostButtonTap }: Props = $props();
 
     // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
     let hasStoredKey = $derived(authState.value?.isAuthenticated ?? false);
@@ -163,6 +164,9 @@
     function cancelLongPress() {
         if (longPressCompleted) return;
         if (!showProgressRing) return;
+
+        // 長押し未完了で指を離した場合にTipsを表示
+        onPostButtonTap?.();
 
         // 進行中のバイブレーションを即停止
         stopVibration();

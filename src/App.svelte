@@ -624,6 +624,7 @@
       <ReasonInput />
       <KeyboardButtonBar
         onUploadImage={() => postComponentRef?.openFileDialog()}
+        onPostButtonTap={() => balloon.showTips()}
       />
       <FooterComponent
         bind:this={footerComponentRef}

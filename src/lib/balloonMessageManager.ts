@@ -1,4 +1,4 @@
-import { BALLOON_MESSAGE_INFO_KEYS, BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY } from "./constants";
+import { BALLOON_MESSAGE_INFO_KEYS, BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_TIPS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY } from "./constants";
 import type { BalloonMessageType, BalloonMessage, I18nFunction } from "./types";
 
 export class BalloonMessageManager {
@@ -22,6 +22,15 @@ export class BalloonMessageManager {
      */
     getRandomSuccessMessage(): string {
         const keys = BALLOON_MESSAGE_SUCCESS_KEYS;
+        const randomIndex = Math.floor(Math.random() * keys.length);
+        return this.$_(keys[randomIndex]) ?? "";
+    }
+
+    /**
+     * ランダムなtipsメッセージを取得
+     */
+    getRandomTipsMessage(): string {
+        const keys = BALLOON_MESSAGE_TIPS_KEYS;
         const randomIndex = Math.floor(Math.random() * keys.length);
         return this.$_(keys[randomIndex]) ?? "";
     }
@@ -54,6 +63,9 @@ export class BalloonMessageManager {
                     break;
                 case "success":
                     finalMessage = this.getRandomSuccessMessage();
+                    break;
+                case "tips":
+                    finalMessage = this.getRandomTipsMessage();
                     break;
                 case "error":
                     finalMessage = this.getErrorMessage();

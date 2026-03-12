@@ -211,6 +211,9 @@
       "did_you_brush_teeth": "歯磨いた？",
       "kit-ten_ketten": "きってんのけってんしってん？",
       "such_is_life": "そういうこともあるわな"
+    },
+    "tips": {
+      "long_press_to_post": "長押しで投稿"
     }
   }
 }

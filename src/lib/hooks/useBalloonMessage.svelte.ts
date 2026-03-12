@@ -32,6 +32,8 @@ interface UseBalloonMessageReturn {
     readonly show: boolean;
     /** 現在のバルーンメッセージ */
     readonly message: BalloonMessage | null;
+    /** Tipsメッセージを表示 */
+    showTips: () => void;
 }
 
 /**
@@ -59,6 +61,21 @@ export function useBalloonMessage(
         if (!balloonManager || showBalloon) return;
 
         balloonMessage = balloonManager.createMessage("info");
+        showBalloon = true;
+
+        balloonManager.scheduleHide(() => {
+            showBalloon = false;
+            balloonMessage = null;
+        }, hideDelay);
+    }
+
+    function showTips() {
+        if (!balloonManager || showBalloon) return;
+
+        const msg = balloonManager.createMessage("tips");
+        if (!msg.message) return;
+
+        balloonMessage = msg;
         showBalloon = true;
 
         balloonManager.scheduleHide(() => {
@@ -128,5 +145,6 @@ export function useBalloonMessage(
     return {
         get show() { return showBalloon; },
         get message() { return balloonMessage; },
+        showTips,
     };
 }

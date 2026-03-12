@@ -1,6 +1,6 @@
 <script lang="ts">
     interface Props {
-        type?: "success" | "error" | "warning" | "info";
+        type?: "success" | "error" | "warning" | "info" | "tips";
         message?: string;
     }
 
@@ -30,6 +30,10 @@
         --balloon-info-bg: hsl(125, 39%, 94%);
         --balloon-info-color: hsl(123, 46%, 32%);
         --balloon-info-border: hsl(125, 39%, 70%);
+        /* tips */
+        --balloon-tips-bg: hsl(270, 50%, 96%);
+        --balloon-tips-color: hsl(270, 55%, 38%);
+        --balloon-tips-border: hsl(270, 45%, 70%);
     }
     .balloon-message-wrapper {
         display: flex;
@@ -56,6 +60,9 @@
     }
     .balloon-message-wrapper.info .balloon-message {
         font-size: 0.875rem;
+    }
+    .balloon-message-wrapper.tips .balloon-message {
+        font-size: 1rem;
     }
     /* --- ここから二重線しっぽ --- */
     .balloon-message::after {
@@ -132,5 +139,17 @@
         background: var(--balloon-warning-bg);
         color: var(--balloon-warning-color);
         border-color: var(--balloon-warning-border);
+    }
+    .balloon-message-wrapper.tips .balloon-message::after {
+        border-color: transparent var(--balloon-tips-bg) transparent transparent;
+    }
+    .balloon-message-wrapper.tips .balloon-message::before {
+        border-color: transparent var(--balloon-tips-border) transparent
+            transparent;
+    }
+    .balloon-message-wrapper.tips .balloon-message {
+        background: var(--balloon-tips-bg);
+        color: var(--balloon-tips-color);
+        border-color: var(--balloon-tips-border);
     }
 </style>

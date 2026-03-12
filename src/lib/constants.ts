@@ -243,6 +243,11 @@ export const BALLOON_MESSAGE_REJECTED_KEY = "balloonMessage.error.post_rejected"
 export const BALLOON_MESSAGE_TIMEOUT_KEY = "balloonMessage.error.post_timeout";
 export const BALLOON_MESSAGE_NETWORK_ERROR_KEY = "balloonMessage.error.post_network_error";
 
+// アプリの使い方Tips(tipsカテゴリ)
+export const BALLOON_MESSAGE_TIPS_KEYS: readonly string[] = [
+    "balloonMessage.tips.long_press_to_post",
+];
+
 // --- fileUploadManager.ts から移動した定数 ---
 export const BLURHASH_CONFIG = {
     COMPONENT_X: 4,

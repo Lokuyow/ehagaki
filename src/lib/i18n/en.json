@@ -211,6 +211,9 @@
       "did_you_brush_teeth": "Brush your teeth?",
       "kit-ten_ketten": "So, what's Kit-ten's weak spot?",
       "such_is_life": "That's life."
+    },
+    "tips": {
+      "long_press_to_post": "Hold to post."
     }
   }
 }
