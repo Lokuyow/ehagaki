@@ -441,16 +441,11 @@
             height: 36px;
         }
 
-        :global(.post-button:disabled) {
-            background-color: transparent;
-            opacity: 0.3;
-        }
-
         :global(.post-button) {
             width: 71px;
             height: 50px;
             padding: 0;
-            border-radius: 3px;
+            border-radius: 4px;
 
             .plane-icon {
                 mask-image: url("/icons/paper-plane-solid-full.svg");

@@ -84,7 +84,7 @@
         --svg: hsl(0, 0%, 99%);
     }
 
-    .primary:not(:disabled) {
+    .primary {
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;
@@ -106,7 +106,7 @@
         }
 
         @media (min-width: 601px) {
-            &:hover:not(:disabled) {
+            &:hover {
                 :global(:root.light) & {
                     filter: brightness(96%);
                 }
