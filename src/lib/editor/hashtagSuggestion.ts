@@ -128,11 +128,17 @@ export const HashtagSuggestion = Extension.create({
                                 case 'ArrowDown':
                                     exports.moveDown?.();
                                     return true;
+                                case 'Tab':
+                                    if (props.event.shiftKey) {
+                                        exports.moveUp?.();
+                                    } else {
+                                        exports.moveDown?.();
+                                    }
+                                    return true;
                                 case 'ArrowUp':
                                     exports.moveUp?.();
                                     return true;
                                 case 'Enter':
-                                case 'Tab':
                                     return exports.confirmSelection?.() ?? false;
                                 default:
                                     return false;
