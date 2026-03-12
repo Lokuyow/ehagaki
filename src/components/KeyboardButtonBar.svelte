@@ -447,6 +447,11 @@
             padding: 0;
             border-radius: 4px;
 
+            &:active {
+                transform: scale(0.9);
+                transition: transform 0.1s ease-in-out;
+            }
+
             .plane-icon {
                 mask-image: url("/icons/paper-plane-solid-full.svg");
                 width: 34px;
@@ -460,6 +465,7 @@
             background-color: var(--theme);
             padding: 0;
             height: 100%;
+            border-radius: 4px;
 
             :global(.square) {
                 background-color: var(--svg);
