@@ -89,7 +89,7 @@
     });
 
     // 長押し投稿の設定
-    const LONG_PRESS_DURATION = 350; // 長押し必要時間 (ms)
+    const LONG_PRESS_DURATION = 250; // 長押し必要時間 (ms)
     const CANCEL_REVERSE_DELAY = 150; // 巻き戻り開始までの遅延 (ms)
     const PROGRESS_RING_CIRCUMFERENCE = 100.53; // 2π × 16px
 
@@ -135,8 +135,8 @@
             const progress = Math.min(elapsed / LONG_PRESS_DURATION, 1);
             longPressProgress = progress;
 
-            // プログレッシブバイブレーション: 間隔が80ms→30msに縮まり体感強度が増す
-            const vibrationInterval = 80 - progress * 50;
+            // プログレッシブバイブレーション: 間隔が60ms→20msに縮まり体感強度が増す
+            const vibrationInterval = 60 - progress * 40;
             if (now - lastVibrationTime >= vibrationInterval) {
                 triggerProgressiveVibration(progress);
                 lastVibrationTime = now;
@@ -144,7 +144,7 @@
 
             if (progress >= 1) {
                 longPressCompleted = true;
-                triggerVibration(150);
+                triggerVibration(120);
                 submitPost();
                 setTimeout(() => {
                     showProgressRing = false;

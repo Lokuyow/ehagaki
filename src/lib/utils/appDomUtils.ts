@@ -94,14 +94,15 @@ export function focusEditor(
 /**
  * 長押しプログレスに応じた段階的バイブレーション（Android向け）
  * progressに応じて振動の持続時間が増加し、体感的に強くなる
+ * 250ms長押しに合わせ、短いパルスでテンポよく段階振動させる
  * @param progress 0〜1の進捗値
  */
 export function triggerProgressiveVibration(progress: number): void {
     if (typeof navigator === "undefined" || !("vibrate" in navigator)) {
         return;
     }
-    // 振動持続時間: 3ms（開始）〜 30ms（完了直前）
-    const duration = Math.round(3 + progress * 27);
+    // 振動持続時間: 2ms（開始）〜 18ms（完了直前）
+    const duration = Math.round(2 + progress * 16);
     try {
         navigator.vibrate(duration);
     } catch (e) {
