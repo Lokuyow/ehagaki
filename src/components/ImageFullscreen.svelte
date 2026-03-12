@@ -2,7 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import { ZOOM_CONFIG } from "../lib/constants";
     import Button from "./Button.svelte";
-    import type { TransformState } from "../lib/types";
+    import type { TransformState, FullscreenMediaItem } from "../lib/types";
     import { setBodyStyle, isTouchDevice } from "../lib/utils/appDomUtils";
     import {
         transformStore,
@@ -34,6 +34,9 @@
         alt?: string;
         show?: boolean;
         onClose?: () => void;
+        mediaList?: FullscreenMediaItem[];
+        currentIndex?: number;
+        onNavigate?: (index: number) => void;
     }
 
     let {
@@ -41,7 +44,16 @@
         alt = "",
         show = $bindable(false),
         onClose = () => {},
+        mediaList = [],
+        currentIndex = -1,
+        onNavigate = undefined,
     }: Props = $props();
+
+    // --- ナビゲーション派生状態 ---
+    let hasMultipleMedia = $derived((mediaList?.length ?? 0) > 1);
+    let hasPrev = $derived(currentIndex > 0);
+    let hasNext = $derived(currentIndex < (mediaList?.length ?? 1) - 1);
+    let currentMediaType = $derived(mediaList?.[currentIndex]?.type ?? "image");
 
     let imageElement: HTMLImageElement | undefined = $state();
     let containerElement: HTMLDivElement | undefined = $state();
@@ -317,8 +329,11 @@
 
     // --- Tap/Pointer Handlers ---
     function handleTouchStart(event: TouchEvent) {
-        // close-buttonのタッチを妨げないように
-        if ((event.target as Element)?.closest(".close-button-container")) {
+        // close-buttonまたはnav-buttonのタッチを妨げないように
+        if (
+            (event.target as Element)?.closest(".close-button-container") ||
+            (event.target as Element)?.closest(".nav-button")
+        ) {
             return;
         }
 
@@ -398,8 +413,11 @@
     }
 
     function handleMouseDown(event: MouseEvent) {
-        // close-buttonのクリックを妨げないように
-        if ((event.target as Element)?.closest(".close-button-container")) {
+        // close-buttonまたはnav-buttonのクリックを妨げないように
+        if (
+            (event.target as Element)?.closest(".close-button-container") ||
+            (event.target as Element)?.closest(".nav-button")
+        ) {
             return;
         }
 
@@ -457,8 +475,26 @@
             stopDrag,
         );
     }
+    function navigateMedia(direction: "prev" | "next"): void {
+        if (!onNavigate) return;
+        const newIndex =
+            direction === "prev" ? currentIndex - 1 : currentIndex + 1;
+        if (newIndex < 0 || newIndex >= (mediaList?.length ?? 0)) return;
+        // ズーム・アニメーションをリセット
+        if (momentumAnimationId !== null) {
+            cancelAnimationFrame(momentumAnimationId);
+            momentumAnimationId = null;
+        }
+        transformStore.reset();
+        transformStore.setBoundaryConstraints(null);
+        setTransition(false);
+        onNavigate(newIndex);
+    }
+
     function handleKeydown(event: KeyboardEvent) {
         if (event.key === "Escape") close();
+        else if (event.key === "ArrowLeft") navigateMedia("prev");
+        else if (event.key === "ArrowRight") navigateMedia("next");
     }
     function handlePopState(event: PopStateEvent) {
         if (show && historyPushed) {
@@ -575,15 +611,51 @@
         class="fullscreen-overlay"
         bind:this={containerElement}
         onkeydown={handleKeydown}
-        onwheel={handleWheel}
+        onwheel={currentMediaType === "image" ? handleWheel : undefined}
         onmousedown={handleMouseDown}
         ontouchstart={handleTouchStart}
         ontouchmove={handleTouchMove}
         ontouchend={handleTouchEnd}
         tabindex="0"
         role="dialog"
-        aria-label="画像全画面表示"
+        aria-label="メディア全画面表示"
     >
+        {#if hasMultipleMedia && hasPrev}
+            <div class="nav-button nav-button-left">
+                <Button
+                    variant="close"
+                    shape="circle"
+                    onClick={() => navigateMedia("prev")}
+                    ontouchstart={(e) => e.stopPropagation()}
+                    ontouchend={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setTimeout(() => navigateMedia("prev"), 50);
+                    }}
+                    ariaLabel="前のメディア"
+                >
+                    <span class="svg-icon nav-left-icon"></span>
+                </Button>
+            </div>
+        {/if}
+        {#if hasMultipleMedia && hasNext}
+            <div class="nav-button nav-button-right">
+                <Button
+                    variant="close"
+                    shape="circle"
+                    onClick={() => navigateMedia("next")}
+                    ontouchstart={(e) => e.stopPropagation()}
+                    ontouchend={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        setTimeout(() => navigateMedia("next"), 50);
+                    }}
+                    ariaLabel="次のメディア"
+                >
+                    <span class="svg-icon nav-right-icon"></span>
+                </Button>
+            </div>
+        {/if}
         <div class="close-button-container">
             <Button
                 variant="close"
@@ -602,18 +674,32 @@
             </Button>
         </div>
         <div class="image-container" bind:this={imageContainerElement}>
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <img
-                bind:this={imageElement}
-                {src}
-                {alt}
-                class="fullscreen-image"
-                ondblclick={handleDoubleClick}
-                onload={(e) =>
-                    updateBoundaryConstraints(imageElement, containerElement)}
-                draggable="false"
-            />
+            {#if currentMediaType === "video"}
+                <!-- svelte-ignore a11y_media_has_caption -->
+                <video
+                    {src}
+                    class="fullscreen-video"
+                    controls
+                    playsinline
+                    autoplay={false}
+                ></video>
+            {:else}
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                <img
+                    bind:this={imageElement}
+                    {src}
+                    {alt}
+                    class="fullscreen-image"
+                    ondblclick={handleDoubleClick}
+                    onload={() =>
+                        updateBoundaryConstraints(
+                            imageElement,
+                            containerElement,
+                        )}
+                    draggable="false"
+                />
+            {/if}
         </div>
     </div>
 {/if}
@@ -649,12 +735,49 @@
         z-index: 10002;
 
         :global(.close.circle) {
-            background-color: #333;
+            background-color: rgba(100, 100, 100, 0.5);
             width: 60px;
             height: 60px;
 
             .close-icon {
                 mask-image: url("/icons/xmark-solid-full.svg");
+                width: 38px;
+                height: 38px;
+            }
+        }
+    }
+
+    .nav-button {
+        position: absolute;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 10002;
+
+        :global(.close.circle) {
+            width: 50px;
+            height: 50px;
+            --btn-bg: rgba(0, 0, 0, 0.3);
+        }
+    }
+
+    .nav-button-left {
+        left: 0;
+
+        :global(.close.circle) {
+            .nav-left-icon {
+                mask-image: url("/icons/angle-left-solid-full.svg");
+                width: 38px;
+                height: 38px;
+            }
+        }
+    }
+
+    .nav-button-right {
+        right: 0;
+
+        :global(.close.circle) {
+            .nav-right-icon {
+                mask-image: url("/icons/angle-right-solid-full.svg");
                 width: 38px;
                 height: 38px;
             }
@@ -689,6 +812,15 @@
         /* ブラウザ標準のピンチズームを無効化して独自実装を使用 */
         touch-action: none;
         pointer-events: auto;
+        /* GPU加速を有効化 */
+        will-change: transform;
+        transform: translateZ(0);
+    }
+
+    .fullscreen-video {
+        max-width: 100vw;
+        max-height: 100svh;
+        object-fit: contain;
         /* GPU加速を有効化 */
         will-change: transform;
         transform: translateZ(0);

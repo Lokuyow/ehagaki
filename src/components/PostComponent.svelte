@@ -5,7 +5,7 @@
   import { EditorContent } from "svelte-tiptap";
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { RxNostr } from "rx-nostr";
-  import type { UploadProgress } from "../lib/types";
+  import type { UploadProgress, FullscreenMediaItem } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
   import {
     videoCompressionProgressStore,
@@ -362,6 +362,43 @@
     postComponentUIStore.hideImageFullscreen();
   }
 
+  // --- フルスクリーンメディアリスト ---
+  let fullscreenMediaList = $derived.by<FullscreenMediaItem[]>(() => {
+    if (!mediaFreePlacementStore.value) {
+      // ギャラリーモード: mediaGalleryStore から収集
+      return mediaGalleryStore.items
+        .filter((item) => !item.isPlaceholder)
+        .map((item) => ({ src: item.src, alt: item.alt, type: item.type }));
+    } else {
+      // フリー配置モード: エディターのdocからimage/videoノードを収集
+      if (!currentEditor) return [];
+      const items: FullscreenMediaItem[] = [];
+      currentEditor.state.doc.descendants((node: any) => {
+        if (
+          (node.type.name === "image" || node.type.name === "video") &&
+          !node.attrs.isPlaceholder
+        ) {
+          items.push({
+            src: node.attrs.src as string,
+            alt: node.attrs.alt as string | undefined,
+            type: node.type.name as "image" | "video",
+          });
+        }
+      });
+      return items;
+    }
+  });
+
+  let fullscreenMediaIndex = $derived(
+    fullscreenMediaList.findIndex((item) => item.src === fullscreenImageSrc),
+  );
+
+  function handleFullscreenNavigate(index: number): void {
+    const item = fullscreenMediaList[index];
+    if (!item) return;
+    postComponentUIStore.showImageFullscreen(item.src, item.alt ?? "");
+  }
+
   $effect(() => {
     if (
       currentEditor &&
@@ -539,6 +576,9 @@
   src={fullscreenImageSrc}
   alt={fullscreenImageAlt}
   onClose={closeFullscreen}
+  mediaList={fullscreenMediaList}
+  currentIndex={fullscreenMediaIndex}
+  onNavigate={handleFullscreenNavigate}
 />
 
 {#if showPopupModal}

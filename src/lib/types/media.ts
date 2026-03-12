@@ -7,6 +7,13 @@ export interface ImageDimensions {
     displayHeight: number;
 }
 
+// Fullscreen media navigation
+export interface FullscreenMediaItem {
+    src: string;
+    alt?: string;
+    type: 'image' | 'video';
+}
+
 // Media Gallery types
 export interface MediaGalleryItem {
     id: string;

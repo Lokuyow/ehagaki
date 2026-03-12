@@ -203,7 +203,7 @@
     }
 
     .close {
-        --btn-bg: rgba(0, 0, 0, 0.6);
+        --btn-bg: rgba(0, 0, 0, 0.5);
         --svg: whitesmoke;
         backdrop-filter: blur(4px);
         opacity: 0.8;
@@ -220,13 +220,13 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                --btn-bg: rgba(25, 25, 25, 0.6);
+                --btn-bg: rgba(25, 25, 25, 0.5);
             }
         }
     }
 
     .copy {
-        --btn-bg: rgba(0, 0, 0, 0.6);
+        --btn-bg: rgba(0, 0, 0, 0.5);
         --svg: whitesmoke;
         backdrop-filter: blur(4px);
         opacity: 0.8;
@@ -243,7 +243,7 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                --btn-bg: rgba(25, 25, 25, 0.6);
+                --btn-bg: rgba(25, 25, 25, 0.5);
             }
         }
     }
