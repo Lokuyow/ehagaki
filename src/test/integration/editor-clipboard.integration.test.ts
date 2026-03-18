@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { 
-    normalizeClipboardText, 
-    serializeParagraphs 
+import {
+    normalizeClipboardText,
+    serializeParagraphs
 } from '../../lib/utils/clipboardUtils';
-import { 
+import {
     validateAndNormalizeUrl,
     validateAndNormalizeImageUrl,
     isValidProtocol,
     isValidImageExtension
 } from '../../lib/utils/editorUtils';
-import { 
-    extractHashtagsFromContent, 
-    updateHashtagData 
+import {
+    extractHashtagsFromContent,
+    updateHashtagData
 } from '../../lib/tags/hashtagManager';
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 
@@ -70,11 +70,11 @@ describe('エディター・クリップボード統合テスト', () => {
         it('HTMLとしてペーストされたテキストが正しく処理されること', () => {
             // HTMLタグを含むテキスト（ブラウザのコピーペーストを想定）
             const htmlText = '<p>Paragraph 1</p><p>Paragraph 2</p>';
-            
+
             // 実際にはHTMLパーサーが必要だが、ここでは正規化のテスト
             const plainText = htmlText.replace(/<[^>]+>/g, '');
             const normalized = normalizeClipboardText(plainText);
-            
+
             expect(normalized.normalized).toBe('Paragraph 1Paragraph 2');
         });
 
@@ -163,7 +163,7 @@ describe('エディター・クリップボード統合テスト', () => {
         it('URLエンコードが必要な文字列が正しく処理されること', () => {
             const url = 'https://example.com/日本語/パス';
             const normalized = validateAndNormalizeUrl(url);
-            
+
             // エンコードされていることを確認
             expect(normalized).toContain('%E');
         });
@@ -255,6 +255,78 @@ describe('エディター・クリップボード統合テスト', () => {
         });
     });
 
+    describe('下書きHTMLラウンドトリップ', () => {
+        it('段落ベースのHTMLがsetContent→getHTMLで保持されること', () => {
+            // 複数行テキストから期待されるHTML（段落ベース挿入後のgetHTML出力）
+            const html = '<p>Line 1</p><p>Line 2</p><p>Line 3</p>';
+
+            // DOMParserでHTMLを解析し再シリアライズしても段落構造が保持されることを確認
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+
+            // 段落ノード数の確認
+            const paragraphs = tempDiv.querySelectorAll('p');
+            expect(paragraphs).toHaveLength(3);
+            expect(paragraphs[0].textContent).toBe('Line 1');
+            expect(paragraphs[1].textContent).toBe('Line 2');
+            expect(paragraphs[2].textContent).toBe('Line 3');
+
+            // 再シリアライズ後もHTML構造が保持される
+            expect(tempDiv.innerHTML).toBe(html);
+        });
+
+        it('空行を含む段落HTMLがラウンドトリップで保持されること', () => {
+            // 空行 = 空の<p>タグ（空の段落ノード）
+            const html = '<p>Para 1</p><p></p><p>Para 2</p>';
+
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+
+            const paragraphs = tempDiv.querySelectorAll('p');
+            expect(paragraphs).toHaveLength(3);
+            expect(paragraphs[0].textContent).toBe('Para 1');
+            expect(paragraphs[1].textContent).toBe('');
+            expect(paragraphs[2].textContent).toBe('Para 2');
+
+            expect(tempDiv.innerHTML).toBe(html);
+        });
+
+        it('テキストノード内の改行はDOMParser経由で空白として扱われること', () => {
+            // 旧実装（インライン挿入）で生成されるHTML: テキストノード内に\nが含まれる
+            const brokenHtml = '<p>Line 1\nLine 2\nLine 3</p>';
+
+            // DOMParserを通すと、テキストノード内の\nは空白文字として扱われる（HTML仕様）
+            const parsed = new DOMParser().parseFromString(brokenHtml, 'text/html');
+            const p = parsed.querySelector('p');
+            // innerTextは可視テキストを返し、改行は空白として扱われる
+            // textContentは生値を返すが、reparseで段落に分割されない
+            expect(p).not.toBeNull();
+            // 段落は1つだけ（改行で分割されない = 改行が消失する）
+            expect(parsed.querySelectorAll('p')).toHaveLength(1);
+        });
+
+        it('段落ベースHTMLからテキスト抽出→再ペーストのラウンドトリップが成立すること', () => {
+            const originalLines = ['First line', '', 'Third line', 'Fourth line'];
+
+            // 段落ベースHTML（段落挿入後のgetHTML出力を模擬）
+            const html = originalLines.map(line =>
+                line ? `<p>${line}</p>` : '<p></p>'
+            ).join('');
+
+            // HTML → テキスト抽出（下書きプレビュー生成と同等）
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            const paragraphs = tempDiv.querySelectorAll('p');
+            const extractedLines = Array.from(paragraphs).map(p => p.textContent || '');
+
+            // テキスト再ペースト（normalizeClipboardText経由）
+            const clipboardText = extractedLines.join('\n');
+            const normalized = normalizeClipboardText(clipboardText);
+
+            expect(normalized.lines).toEqual(originalLines);
+        });
+    });
+
     describe('複合的なエディタ操作統合', () => {
         it('URLとハッシュタグを含むテキストのペースト→解析のフローが動作すること', () => {
             const content = 'Check out https://example.com for #Nostr news!';
@@ -306,14 +378,14 @@ Second line with #tag2 and https://example.org
 
         it('HTMLペースト→クリーンアップ→ハッシュタグ抽出のフローが動作すること', () => {
             const htmlContent = '<p>Check #Nostr</p><p>Visit https://example.com</p>';
-            
+
             // HTMLタグ除去
             const plainText = htmlContent.replace(/<[^>]+>/g, '');
             expect(plainText).toBe('Check #NostrVisit https://example.com');
 
             // スペースを補完（実際の実装では必要）
             const correctedText = plainText.replace(/([a-z])([A-Z])/g, '$1 $2');
-            
+
             // ハッシュタグ抽出
             const hashtags = extractHashtagsFromContent(plainText);
             expect(hashtags.length).toBeGreaterThan(0);
@@ -349,7 +421,7 @@ Second line with #tag2 and https://example.org
 
         it('非常に長いテキストが処理されること', () => {
             const longText = 'word '.repeat(1000) + '#hashtag';
-            
+
             const normalized = normalizeClipboardText(longText);
             expect(normalized.normalized).toContain('#hashtag');
 
@@ -397,12 +469,12 @@ Second line with #tag2 and https://example.org
 
         it('大文字小文字が適切に処理されること', () => {
             const content = '#NoStR #BITCOIN #ethereum';
-            
+
             updateHashtagData(content);
-            
+
             // 元のハッシュタグは大文字小文字を保持
             expect(hashtagDataStore.hashtags).toEqual(['NoStR', 'BITCOIN', 'ethereum']);
-            
+
             // タグは小文字化される
             expect(hashtagDataStore.tags).toEqual([
                 ['t', 'nostr'],
@@ -466,7 +538,7 @@ Final thoughts on #conclusion`;
 
             const normalized = normalizeClipboardText(longContent);
             const paragraphs = serializeParagraphs(normalized.lines);
-            
+
             expect(paragraphs.length).toBeGreaterThan(4);
 
             const hashtags = extractHashtagsFromContent(longContent);

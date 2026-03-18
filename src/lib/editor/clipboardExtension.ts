@@ -189,18 +189,18 @@ export const ClipboardExtension = Extension.create({
                             return false;
                         }
 
-                        // 常にインライン挿入（改行を保持したテキストとして挿入）
-                        // ペースト内容の改行は保持されるが、新しい段落は作成しない
-                        const textWithLineBreaks = lines.join('\n');
-                        const textNode = state.schema.text(textWithLineBreaks);
-                        const fragment = Fragment.from(textNode);
-                        const customSlice = new Slice(fragment, 0, 0);
+                        // 段落ノードベースで挿入（改行を段落境界として扱う）
+                        // openStart=1, openEnd=1: 先頭段落はカーソル前テキストとマージ、
+                        // 末尾段落はカーソル後テキストとマージ（標準エディタ動作）
+                        const paragraphNodes = createParagraphNodes(lines, state.schema);
+                        const fragment = Fragment.from(paragraphNodes);
+                        const customSlice = new Slice(fragment, 1, 1);
 
                         if (import.meta.env.MODE === 'development') {
-                            console.log('📋 handlePaste: inline paste with line breaks', {
+                            console.log('📋 handlePaste: paragraph-based paste', {
                                 originalText: text,
                                 lines: lines.length,
-                                textWithLineBreaks
+                                paragraphCount: paragraphNodes.length
                             });
                         }
 
