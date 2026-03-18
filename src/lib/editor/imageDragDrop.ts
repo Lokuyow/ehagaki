@@ -58,6 +58,13 @@ export const ImageDragDropExtension = Extension.create({
                                 console.warn('Failed to parse drag data:', e);
                             }
                         }
+                        // 外部ファイルドロップ（ブラウザやOSから画像をドラッグ）の場合、
+                        // ProseMirrorのデフォルトHTML解析による挿入を抑制し、
+                        // DOM層のfileDropActionに処理を委譲する
+                        const dt = event.dataTransfer;
+                        if (!moved && dt && dt.files && dt.files.length > 0 && !dragData) {
+                            return true;
+                        }
                         return false;
                     },
                     handleDOMEvents: {
