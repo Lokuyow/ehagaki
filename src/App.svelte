@@ -608,9 +608,7 @@
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
           onShowDraftList={handleShowDraftList}
-          balloonMessage={balloon.show && balloon.message
-            ? balloon.message
-            : null}
+          balloonMessage={balloon.finalMessage}
         />
         <PostComponent
           bind:this={postComponentRef}
