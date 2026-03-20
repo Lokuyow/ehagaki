@@ -133,6 +133,19 @@ export function createEditorStore(options: EditorConfigOptions) {
                     width: 5,
                     class: 'tiptap-dropcursor',
                 },
+                // 投稿エディタ（Nostr kind 1 = プレーンテキスト）ではMarkdown記法は不要のため全て無効化
+                heading: false,       // # → 見出し
+                blockquote: false,    // > → 引用
+                bold: false,          // **text** → 太字
+                italic: false,        // *text* → 斜体
+                strike: false,        // ~~text~~ → 取り消し線
+                code: false,          // `code` → インラインコード
+                codeBlock: false,     // ``` → コードブロック
+                bulletList: false,    // - / * → 箇条書き
+                orderedList: false,   // 1. → 番号付きリスト
+                listItem: false,      // bulletList/orderedList の子要素
+                horizontalRule: false, // --- → 水平線
+                hardBreak: false,     // Shift+Enter → 改行(<br>)
                 // Link extensionは個別に設定するため無効化
                 link: false,
             }),
