@@ -277,4 +277,133 @@ describe('BalloonMessageManager', () => {
             expect(() => manager.createMessage('success')).not.toThrow();
         });
     });
+
+    describe('getTimePeriod', () => {
+        it('5〜10時はmorningを返す', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('morning');
+            vi.useRealTimers();
+        });
+
+        it('11〜15時はafternoonを返す', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 14, 0, 0));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('afternoon');
+            vi.useRealTimers();
+        });
+
+        it('16〜19時はeveningを返す', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 17, 0, 0));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('evening');
+            vi.useRealTimers();
+        });
+
+        it('20〜23時はnightを返す', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 21, 0, 0));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('night');
+            vi.useRealTimers();
+        });
+
+        it('0〜4時はmidnightを返す', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 2, 0, 0));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('midnight');
+            vi.useRealTimers();
+        });
+
+        it('境界値: 5時はmorning', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 5, 0, 0));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('morning');
+            vi.useRealTimers();
+        });
+
+        it('境界値: 4時はmidnight', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 4, 59, 59));
+            const manager = new BalloonMessageManager((key: string) => key);
+            expect(manager.getTimePeriod()).toBe('midnight');
+            vi.useRealTimers();
+        });
+    });
+
+    describe('getRandomInfoMessage (時間帯メッセージ対応)', () => {
+        beforeEach(() => vi.useFakeTimers());
+        afterEach(() => vi.useRealTimers());
+
+        it('Math.random < 0.3 かつ時間帯メッセージがある場合は時間帯メッセージプールから選択', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
+            mockGet.mockReturnValue((key: string) => {
+                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
+                if (key === 'balloonMessage.infoByTime.morning') return ['Morning1', 'Morning2'];
+                return null;
+            });
+            vi.spyOn(Math, 'random').mockReturnValue(0.1); // < 0.3 → 時間帯を使う
+
+            const manager = new BalloonMessageManager((key: string) => key);
+            const result = manager.getRandomInfoMessage();
+            expect(['Morning1', 'Morning2']).toContain(result);
+        });
+
+        it('Math.random >= 0.3 の場合は通常infoプールから選択', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
+            mockGet.mockReturnValue((key: string) => {
+                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
+                if (key === 'balloonMessage.infoByTime.morning') return ['Morning1'];
+                return null;
+            });
+            vi.spyOn(Math, 'random').mockReturnValue(0.8); // >= 0.3 → 通常infoを使う
+
+            const manager = new BalloonMessageManager((key: string) => key);
+            const result = manager.getRandomInfoMessage();
+            expect(['InfoA', 'InfoB']).toContain(result);
+        });
+
+        it('時間帯メッセージが空の場合は通常infoにフォールバック', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
+            mockGet.mockReturnValue((key: string) => {
+                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
+                if (key === 'balloonMessage.infoByTime.morning') return [];
+                return null;
+            });
+            vi.spyOn(Math, 'random').mockReturnValue(0.1); // < 0.3 だが時間帯が空 → フォールバック
+
+            const manager = new BalloonMessageManager((key: string) => key);
+            const result = manager.getRandomInfoMessage();
+            expect(['InfoA', 'InfoB']).toContain(result);
+        });
+
+        it('時間帯メッセージがnull/undefinedの場合は通常infoにフォールバック', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
+            mockGet.mockReturnValue((key: string) => {
+                if (key === 'balloonMessage.info') return ['InfoA'];
+                return null; // infoByTime.morning → null
+            });
+            vi.spyOn(Math, 'random').mockReturnValue(0.1);
+
+            const manager = new BalloonMessageManager((key: string) => key);
+            const result = manager.getRandomInfoMessage();
+            expect(result).toBe('InfoA');
+        });
+
+        it('時間帯メッセージプール内でも直前と同じメッセージは連続しない', () => {
+            vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
+            mockGet.mockReturnValue((key: string) => {
+                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
+                if (key === 'balloonMessage.infoByTime.morning') return ['M1', 'M2', 'M3'];
+                return null;
+            });
+            // 常に時間帯プールを使う
+            vi.spyOn(Math, 'random').mockReturnValue(0.1);
+
+            const manager = new BalloonMessageManager((key: string) => key);
+            const first = manager.getRandomInfoMessage();
+            // Math.random=0.1: pool=['M1','M2','M3'], index=0 → 'M1'
+            // 2回目: lastInfoMessage='M1', filtered=['M2','M3'], index=0 → 'M2'
+            const second = manager.getRandomInfoMessage();
+            expect(first).not.toBe(second);
+        });
+    });
 });

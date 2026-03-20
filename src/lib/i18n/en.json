@@ -207,16 +207,49 @@
       "I'd be gone in Tetris.",
       "Top-left is comfy.",
       "Eat anything good?",
-      "Don't stay up.",
-      "Brush your teeth?",
       "So, what's Kit-ten's weak spot?",
       "That's life.",
       "Told I got a small face.",
-      "Another day down.",
       "Forget anything?"
     ],
     "tips": {
       "long_press_to_post": "Hold to post."
+    },
+    "infoByTime": {
+      "morning": [
+        "Mornin'.",
+        "Here already?",
+        "Early riser.",
+        "Nice mornin'.",
+        "Have a good one."
+      ],
+      "afternoon": [
+        "Afternoon.",
+        "Daytime.",
+        "On lunch break?",
+        "Had lunch yet?",
+        "Perfect timing."
+      ],
+      "evening": [
+        "Evening.",
+        "Getting late.",
+        "Good sunset?",
+        "Another day down.",
+        "Get home safe.",
+        "What's for dinner?"
+      ],
+      "night": [
+        "Dim the screen.",
+        "Brush your teeth?",
+        "Nightstr."
+      ],
+      "midnight": [
+        "Still up?",
+        "Night owl, huh?",
+        "Can't sleep?",
+        "Don't stay up.",
+        "Can you wake up tomorrow?"
+      ]
     }
   }
 }
