@@ -197,39 +197,6 @@ export const CONTENT_TRACKING_CONFIG = {
 } as const;
 
 // --- バルーンメッセージ用キー配列 ---
-// ページ表示時などのinfoカテゴリ
-export const BALLOON_MESSAGE_INFO_KEYS: readonly string[] = [
-    "balloonMessage.info.hello",
-    "balloonMessage.info.hello2",
-    "balloonMessage.info.welcome",
-    "balloonMessage.info.waited",
-    "balloonMessage.info.relax",
-    "balloonMessage.info.good_weather",
-    "balloonMessage.info.thwomp",
-    "balloonMessage.info.sleep_on_floor",
-    "balloonMessage.info.home_here",
-    "balloonMessage.info.donai",
-    "balloonMessage.info.kita_na",
-    "balloonMessage.info.no_licking",
-    "balloonMessage.info.not_thwomp",
-    "balloonMessage.info.kitte_origin",
-    "balloonMessage.info.normal_stamp",
-    "balloonMessage.info.backside_curious",
-    "balloonMessage.info.corner_weapon",
-    "balloonMessage.info.square_peace",
-    "balloonMessage.info.how_much_stamp",
-    "balloonMessage.info.cancellation_done",
-    "balloonMessage.info.want_to_roll",
-    "balloonMessage.info.want_candy",
-    "balloonMessage.info.tetris_gone",
-    "balloonMessage.info.comfy_here",
-    "balloonMessage.info.what_did_you_eat",
-    "balloonMessage.info.go_to_bed_early",
-    "balloonMessage.info.did_you_brush_teeth",
-    "balloonMessage.info.kit-ten_ketten",
-    "balloonMessage.info.such_is_life",
-];
-
 // 投稿成功時(successカテゴリ)
 export const BALLOON_MESSAGE_SUCCESS_KEYS: readonly string[] = [
     "balloonMessage.success.post_success",

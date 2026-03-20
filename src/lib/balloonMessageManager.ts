@@ -1,10 +1,13 @@
-import { BALLOON_MESSAGE_INFO_KEYS, BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_TIPS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY } from "./constants";
+import { BALLOON_MESSAGE_SUCCESS_KEYS, BALLOON_MESSAGE_TIPS_KEYS, BALLOON_MESSAGE_ERROR_KEY, BALLOON_MESSAGE_REJECTED_KEY, BALLOON_MESSAGE_TIMEOUT_KEY, BALLOON_MESSAGE_NETWORK_ERROR_KEY } from "./constants";
 import type { BalloonMessageType, BalloonMessage, I18nFunction } from "./types";
+import { json } from "svelte-i18n";
+import { get } from "svelte/store";
 
 export class BalloonMessageManager {
     private showTimeout: ReturnType<typeof setTimeout> | null = null;
     private lastMessageTime = 0; // デバウンス用タイムスタンプ
     private readonly debounceDelay = 500; // デバウンス間隔（ミリ秒）
+    private lastInfoMessage: string | null = null;
 
     constructor(private $_: I18nFunction) { }
 
@@ -12,9 +15,18 @@ export class BalloonMessageManager {
      * ランダムなinfoメッセージを取得
      */
     getRandomInfoMessage(): string {
-        const keys = BALLOON_MESSAGE_INFO_KEYS;
-        const randomIndex = Math.floor(Math.random() * keys.length);
-        return this.$_(keys[randomIndex]) ?? "";
+        const infoMessages = get(json)("balloonMessage.info") as string[];
+        if (infoMessages.length === 0) return "";
+        if (infoMessages.length === 1) {
+            this.lastInfoMessage = infoMessages[0] ?? null;
+            return infoMessages[0] ?? "";
+        }
+
+        const filteredMessages = infoMessages.filter((message) => message !== this.lastInfoMessage);
+        const candidates = filteredMessages.length > 0 ? filteredMessages : infoMessages;
+        const selectedMessage = candidates[Math.floor(Math.random() * candidates.length)] ?? "";
+        this.lastInfoMessage = selectedMessage;
+        return selectedMessage;
     }
 
     /**
@@ -128,5 +140,6 @@ export class BalloonMessageManager {
     dispose(): void {
         this.cancelScheduledHide();
         this.lastMessageTime = 0;
+        this.lastInfoMessage = null;
     }
 }
