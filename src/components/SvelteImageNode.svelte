@@ -195,7 +195,7 @@
             class="editor-image-button"
             class:is-placeholder={showAsPlaceholder}
             style={showAsPlaceholder
-                ? `width: ${placeholderWidth}px; height: ${placeholderHeight}px;`
+                ? `width: ${placeholderWidth}px; aspect-ratio: ${placeholderWidth} / ${placeholderHeight};`
                 : undefined}
             data-dragging={dragState.isDragging}
             onclick={handleClick}
@@ -244,6 +244,7 @@
     :global(.node-image) {
         display: block;
         width: fit-content;
+        max-width: 100%;
         max-height: 240px;
         line-height: 0;
         margin: 10px 0;
