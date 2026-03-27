@@ -323,6 +323,7 @@
         max-height: 240px;
         min-width: 100px;
         min-height: 100px;
+        object-fit: cover;
         width: auto;
         border: 1px solid var(--border);
         border-radius: 6px;
