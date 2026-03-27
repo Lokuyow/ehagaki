@@ -5,10 +5,26 @@
     }
 
     let { type = "success", message = "" }: Props = $props();
+
+    // <wbr>のみを許可するサニタイズ：テキストをHTMLエスケープしてから<wbr>だけ復元する
+    function sanitizeForWbr(text: string): string {
+        return text
+            .split("<wbr>")
+            .map((part) =>
+                part
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;"),
+            )
+            .join("<wbr>");
+    }
+
+    let safeMessage = $derived(sanitizeForWbr(message));
 </script>
 
 <div class="balloon-message-wrapper {type}">
-    <div class="balloon-message">{message}</div>
+    <div class="balloon-message">{@html safeMessage}</div>
 </div>
 
 <style>
@@ -57,6 +73,7 @@
         line-height: 1.2;
         color: #333;
         margin: auto 0 auto 8px;
+        word-break: auto-phrase;
     }
     .balloon-message-wrapper.info .balloon-message {
         font-size: 0.875rem;
