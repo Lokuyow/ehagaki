@@ -24,12 +24,7 @@ export function updateAuthState(newState: Partial<AuthState>): void {
     const current = authStateValue;
     const updated = { ...current, ...newState };
     updated.isAuthenticated = updated.type !== 'none' && updated.isValid;
-    updated.isExtensionLogin =
-        updated.isAuthenticated &&
-        updated.type === 'nostr-login' &&
-        typeof window !== 'undefined' &&
-        typeof (window as any).nostr === 'object' &&
-        typeof (window as any).nostr.signEvent === 'function';
+    updated.isExtensionLogin = updated.type === 'nip07';
 
     authStateValue = updated;
 
@@ -56,27 +51,20 @@ export function setNsecAuth(pubkey: string, npub: string, nprofile: string): voi
     updateAuthState({ type: 'nsec', pubkey, npub, nprofile, isValid: true });
 }
 
-export function setNostrLoginAuth(pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: 'connect' | 'extension' | 'local'): void {
+export function setNip07Auth(pubkey: string, npub: string, nprofile: string): void {
     if (!pubkey || !npub || !nprofile) {
-        console.warn('setNostrLoginAuth: All parameters are required');
+        console.warn('setNip07Auth: All parameters are required');
         return;
     }
+    updateAuthState({ type: 'nip07', pubkey, npub, nprofile, isValid: true });
+}
 
-    console.log('[setNostrLoginAuth] NostrLogin認証状態を更新:', {
-        pubkey: pubkey.substring(0, 8) + '...',
-        npub: npub.substring(0, 12) + '...',
-        type: 'nostr-login',
-        nostrLoginAuthMethod
-    });
-
-    updateAuthState({
-        type: 'nostr-login',
-        pubkey,
-        npub,
-        nprofile,
-        isValid: true,
-        nostrLoginAuthMethod
-    });
+export function setNip46Auth(pubkey: string, npub: string, nprofile: string): void {
+    if (!pubkey || !npub || !nprofile) {
+        console.warn('setNip46Auth: All parameters are required');
+        return;
+    }
+    updateAuthState({ type: 'nip46', pubkey, npub, nprofile, isValid: true });
 }
 
 export function setAuthInitialized(): void {

@@ -4,10 +4,8 @@ import type { createRxNostr } from "rx-nostr";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 
 // App Store types
-export type NostrLoginAuthMethod = 'connect' | 'extension' | 'local' | undefined;
-
 export interface AuthState {
-    type: 'none' | 'nsec' | 'nostr-login';
+    type: 'none' | 'nsec' | 'nip07' | 'nip46';
     isAuthenticated: boolean;
     pubkey: string;
     npub: string;
@@ -15,7 +13,6 @@ export interface AuthState {
     isValid: boolean;
     isInitialized: boolean;
     isExtensionLogin?: boolean;
-    nostrLoginAuthMethod?: NostrLoginAuthMethod;
     serviceWorkerReady?: boolean;
 }
 
@@ -23,6 +20,14 @@ export interface HashtagData {
     content: string;
     hashtags: string[];
     tags: string[][];
+}
+
+// NIP-46 session data
+export interface Nip46SessionData {
+    clientSecretKeyHex: string;
+    remoteSignerPubkey: string;
+    relays: string[];
+    userPubkey: string;
 }
 
 // Auth-related types
@@ -38,64 +43,18 @@ export interface PublicKeyData {
     nprofile: string;
 }
 
-export interface NostrLoginAuth {
-    type: 'login' | 'signup' | 'logout';
-    pubkey?: string;
-    npub?: string;
-    otpData?: unknown;
-}
-
-export interface NostrLoginOptions {
-    theme?: 'default' | 'ocean' | 'lemonade' | 'purple';
-    bunkers?: string[];
-    perms?: string;
-    noBanner?: boolean;
-    startScreen?: string;
-    methods?: string;
-}
-
-export type NostrLoginEventHandler = (auth: NostrLoginAuth) => void;
-
-export interface NostrLoginError {
-    type: 'initialization' | 'auth' | 'launch' | 'decode';
-    message: string;
-    originalError?: unknown;
-}
-
-export interface NostrLoginDependencies {
-    window?: Window & { nostrLogin?: any };
-    document?: Document;
-    console?: Console;
-    setTimeout?: (callback: () => void, delay: number) => void;
-    importNostrLogin?: () => Promise<{ init: Function; launch: Function }>;
-}
-
-export interface NostrLoginManagerInterface {
-    isInitialized: boolean;
-    init(options: NostrLoginOptions): Promise<void>;
-    showLogin(): Promise<void>;
-    logout(): void;
-    getCurrentUser(): { pubkey?: string; npub?: string } | null;
-    setAuthHandler(handler: (auth: NostrLoginAuth) => void): void;
-}
-
-export interface LocalStorageData {
-    pubkey?: string;
-    npub?: string;
-}
-
 export interface AuthServiceDependencies {
     keyManager?: KeyManagerInterface;
-    nostrLoginManager?: NostrLoginManagerInterface;
     localStorage?: Storage;
     window?: Window;
     navigator?: Navigator;
     console?: Console;
     setTimeout?: (callback: () => void, delay: number) => void;
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
+    setNip07Auth?: (pubkey: string, npub: string, nprofile: string) => void;
+    setNip46Auth?: (pubkey: string, npub: string, nprofile: string) => void;
     setAuthInitialized?: () => void;
     clearAuthState?: () => void;
-    setNostrLoginAuth?: (pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: NostrLoginAuthMethod) => void;
     secretKeyStore?: {
         value: string | null;
         set: (value: string | null) => void;
@@ -118,7 +77,6 @@ export interface KeyManagerDeps {
         set: (value: string | null) => void;
     };
     window?: Window;
-    setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: NostrLoginAuthMethod) => void;
     clearAuthStateFn?: () => void;
 }
 
@@ -188,6 +146,7 @@ export interface PostManagerDeps {
     createImetaTagFn?: (meta: any) => Promise<string[]>;
     getClientTagFn?: () => string[] | null;
     seckeySignerFn?: (key: string) => any;
+    getNip46SignerFn?: () => any;
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractImageBlurhashMapFn?: (editor: TipTapEditor) => Record<string, string>;
     resetEditorStateFn?: () => void;

@@ -7,7 +7,6 @@
     "error_saving": "鍵の保存中にエラーが発生しました",
     "key_not_found": "鍵が見つかりません",
     "login_required": "ログインしてください",
-    "nostr_login": "Nostr Login",
     "nostr_not_ready": "Nostrに接続できていません",
     "preview": "プレビュー",
     "profile": "プロフィール",
@@ -31,11 +30,17 @@
     "save": "保存",
     "clear": "クリア",
     "or": "または",
+    "login_with_extension": "ブラウザ拡張機能でログイン",
+    "extension_not_found": "NIP-07対応の拡張機能が見つかりません",
     "secret_required": "秘密鍵を入力してください",
     "secret_must_start_nsec1": "秘密鍵は「nsec1」で始まる必要があります",
     "secret_too_short": "秘密鍵が短すぎます（63文字必要です）",
     "secret_too_long": "秘密鍵が長すぎます（63文字以内で入力してください）",
-    "invalid_secret": "無効な秘密鍵です"
+    "invalid_secret": "無効な秘密鍵です",
+    "bunker_connect": "接続",
+    "bunker_connecting": "接続中...",
+    "bunker_invalid": "無効なbunker URLです",
+    "bunker_connection_failed": "接続に失敗しました"
   },
   "logoutDialog": {
     "logout_confirmation": "ログアウト確認",
@@ -51,9 +56,8 @@
     "copy_nprofile": "nprofileをコピー",
     "login_method": "ログイン方法",
     "login_method_nsec": "秘密鍵",
-    "login_method_nostr_login_connect": "Nostr Login Connect",
-    "login_method_nostr_login_extension": "Nostr Login Extension",
-    "login_method_nostr_login_local": "Nostr Login Local"
+    "login_method_nip07": "ブラウザ拡張機能 (NIP-07)",
+    "login_method_nip46": "リモートサイナー (NIP-46)"
   },
   "settingsDialog": {
     "info_header_setting": "設定",

@@ -1,83 +1,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
+import type { AuthServiceDependencies } from '../../lib/types';
+import { MockStorage, MockKeyManager } from '../helpers';
+
+// nip46Service をモック（authService.ts のモジュールレベルインポート対策）
+vi.mock('../../lib/nip46Service', () => ({
+    nip46Service: {
+        connect: vi.fn(),
+        reconnect: vi.fn(),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        isConnected: vi.fn().mockReturnValue(false),
+        getSigner: vi.fn().mockReturnValue(null),
+        getUserPubkey: vi.fn().mockReturnValue(null),
+        saveSession: vi.fn(),
+    },
+    Nip46Service: {
+        loadSession: vi.fn().mockReturnValue(null),
+        clearSession: vi.fn(),
+    },
+    BUNKER_REGEX: /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/,
+}));
+
 import {
     AuthService,
     AuthValidator,
     NsecAuthenticator,
-    NostrLoginAuthenticator,
-    ExternalAuthWaiter,
+    Nip07Authenticator,
     ProfileCacheCleaner,
-    NostrLoginStorageManager,
     AuthInitializer
 } from '../../lib/authService';
-import type { AuthServiceDependencies, NostrLoginManagerInterface } from '../../lib/types';
-import { type NostrLoginAuth } from '../../lib/types';
-import { MockStorage, MockKeyManager } from '../helpers';
-
-vi.mock("../../lib/nostrLogin", () => ({
-    nostrLoginManager: {
-        isInitialized: false,
-        init: vi.fn(),
-        showLogin: vi.fn(),
-        logout: vi.fn(),
-        getCurrentUser: vi.fn(),
-        setAuthHandler: vi.fn()
-    }
-}));
 
 // --- モッククラス定義 ---
 
 class MockPublicKeyState {
     setNsec = vi.fn();
-    setNostrLoginAuth = vi.fn();
-}
-
-// NostrLoginManagerの完全なモック
-class MockNostrLoginManager implements NostrLoginManagerInterface {
-    // テスト用のメソッドだけオーバーライド
-    init = vi.fn();
-    showLogin = vi.fn();
-    logout = vi.fn();
-    getCurrentUser = vi.fn();
-    setAuthHandler = vi.fn();
-
-    // 型エラー回避のため追加
-    eventEmitter: any = undefined;
-    authCallbackHandler: any = undefined;
-    windowObj: any = {};
-    documentObj: any = {};
-    consoleObj: any = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
-    setTimeoutFn: any = vi.fn();
-
-    // NostrLoginManagerのプロパティをモックで追加
-    initPromise: any = undefined;
-    launcher: any = undefined;
-    initializer: any = undefined;
-
-    _resetInitializationState = vi.fn();
-    setDarkMode = vi.fn();
-    _ensureInitialized = vi.fn().mockReturnValue(true);
-
-    // isInitialized を実装
-    private _isInitialized = false;
-    get isInitialized() {
-        return this._isInitialized;
-    }
-    setIsInitialized(val: boolean) {
-        this._isInitialized = val;
-    }
-
-    // 不足しているプロパティを追加
-    authHandler = vi.fn();
-    isLoggingOutFlag = false;
-    resolvedPromise = Promise.resolve();
-
-    // initialized プロパティを追加
-    public initialized = false;
-
-    getEventEmitter() { return this.eventEmitter; }
-    getAuthCallbackHandler() { return this.authCallbackHandler; }
-    getInitializer() { return this.initializer; }
-    getLauncher() { return this.launcher; }
 }
 
 function createMockDependencies(): AuthServiceDependencies {
@@ -100,8 +55,9 @@ function createMockDependencies(): AuthServiceDependencies {
             warn: vi.fn()
         } as unknown as Console,
         setNsecAuth: vi.fn(),
+        setNip07Auth: vi.fn(),
+        setNip46Auth: vi.fn(),
         setAuthInitialized: vi.fn(),
-        nostrLoginManager: new MockNostrLoginManager(),
         setTimeout: vi.fn()
     };
 }
@@ -129,24 +85,6 @@ describe('AuthValidator', () => {
         const result = AuthValidator.isValidSecretKey('invalid-nsec', mockKeyManager);
 
         expect(result).toBe(false);
-    });
-
-    it('pubkeyが必要な認証を正しく検証する', () => {
-        const auth: NostrLoginAuth = { type: 'login', pubkey: 'test-pubkey' };
-
-        expect(AuthValidator.hasRequiredPubkey(auth)).toBe(true);
-    });
-
-    it('pubkeyが不足している認証を正しく拒否する', () => {
-        const auth: NostrLoginAuth = { type: 'login' };
-
-        expect(AuthValidator.hasRequiredPubkey(auth)).toBe(false);
-    });
-
-    it('ログアウト認証を正しく識別する', () => {
-        const auth: NostrLoginAuth = { type: 'logout' };
-
-        expect(AuthValidator.isLogoutAuth(auth)).toBe(true);
     });
 });
 
@@ -230,106 +168,7 @@ describe('NsecAuthenticator', () => {
     });
 });
 
-// --- NostrLoginAuthenticator テスト ---
-describe('NostrLoginAuthenticator', () => {
-    let authenticator: NostrLoginAuthenticator;
-    let mockPublicKeyState: MockPublicKeyState;
-    let mockConsole: Console;
-
-    beforeEach(() => {
-        mockPublicKeyState = new MockPublicKeyState();
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn(),
-            warn: vi.fn()
-        } as unknown as Console;
-
-        authenticator = new NostrLoginAuthenticator(mockPublicKeyState as any, mockConsole);
-    });
-
-    it('ログアウト認証を正しく処理する', async () => {
-        const auth: NostrLoginAuth = { type: 'logout' };
-
-        const result = await authenticator.authenticate(auth);
-
-        expect(result.success).toBe(true);
-    });
-
-    it('有効なログイン認証を処理する', async () => {
-        const auth: NostrLoginAuth = {
-            type: 'login',
-            pubkey: 'test-pubkey',
-            npub: 'npub123'
-        };
-
-        const result = await authenticator.authenticate(auth);
-
-        expect(result.success).toBe(true);
-        expect(result.pubkeyHex).toBe('test-pubkey');
-        expect(mockPublicKeyState.setNostrLoginAuth).toHaveBeenCalledWith(auth);
-    });
-
-    it('pubkeyが不足している場合にエラーを返す', async () => {
-        const auth: NostrLoginAuth = { type: 'login' };
-
-        const result = await authenticator.authenticate(auth);
-
-        expect(result.success).toBe(false);
-        expect(result.error).toBe('missing_pubkey');
-        expect(mockConsole.warn).toHaveBeenCalledWith('NostrLoginAuth: pubkey is required for login/signup');
-    });
-
-    it('例外が発生した場合にエラーを処理する', async () => {
-        const auth: NostrLoginAuth = { type: 'login', pubkey: 'test-pubkey' };
-        mockPublicKeyState.setNostrLoginAuth.mockImplementation(() => {
-            throw new Error('SetAuth error');
-        });
-
-        const result = await authenticator.authenticate(auth);
-
-        expect(result.success).toBe(false);
-        expect(result.error).toBe('nostr_login_error');
-        expect(mockConsole.error).toHaveBeenCalledWith('nostr-login認証処理中にエラー:', expect.any(Error));
-    });
-});
-
-// --- ExternalAuthWaiter テスト ---
-describe('ExternalAuthWaiter', () => {
-    let waiter: ExternalAuthWaiter;
-    let mockWindow: any;
-
-    beforeEach(() => {
-        mockWindow = {};
-        waiter = new ExternalAuthWaiter(mockWindow);
-    });
-
-    afterEach(() => {
-        vi.useRealTimers();
-    });
-
-    it('window.nostrが利用可能な場合はtrueを返す', async () => {
-        mockWindow.nostr = {
-            getPublicKey: vi.fn()
-        };
-
-        const result = await waiter.waitForExternalAuth(100);
-
-        expect(result).toBe(true);
-    });
-
-    it('タイムアウトした場合はfalseを返す', async () => {
-        vi.useFakeTimers();
-
-        const promise = waiter.waitForExternalAuth(1000);
-
-        // 時間を進める
-        vi.advanceTimersByTime(1100);
-
-        const result = await promise;
-
-        expect(result).toBe(false);
-    });
-});
+// --- ExternalAuthWaiter is no longer used ---
 
 // --- ProfileCacheCleaner テスト ---
 describe('ProfileCacheCleaner', () => {
@@ -392,61 +231,16 @@ describe('ProfileCacheCleaner', () => {
     });
 });
 
-// --- NostrLoginStorageManager テスト ---
-describe('NostrLoginStorageManager', () => {
-    let manager: NostrLoginStorageManager;
-    let mockStorage: MockStorage;
-
-    beforeEach(() => {
-        mockStorage = new MockStorage();
-        manager = new NostrLoginStorageManager(mockStorage);
-    });
-
-    it('保存されたnostr-loginデータを取得する', () => {
-        const testData = { pubkey: 'test-pubkey', npub: 'npub123' };
-        mockStorage.setItem('__nostrlogin_nip46', JSON.stringify(testData));
-
-        const result = manager.getStoredNostrLoginData();
-
-        expect(result).toEqual(testData);
-    });
-
-    it('データが存在しない場合はnullを返す', () => {
-        const result = manager.getStoredNostrLoginData();
-
-        expect(result).toBeNull();
-    });
-
-    it('無効なJSONの場合はnullを返す', () => {
-        mockStorage.setItem('__nostrlogin_nip46', 'invalid-json');
-
-        const result = manager.getStoredNostrLoginData();
-
-        expect(result).toBeNull();
-    });
-
-    it('pubkeyが不足している場合はnullを返す', () => {
-        const testData = { npub: 'npub123' }; // pubkey なし
-        mockStorage.setItem('__nostrlogin_nip46', JSON.stringify(testData));
-
-        const result = manager.getStoredNostrLoginData();
-
-        expect(result).toBeNull();
-    });
-});
-
 // --- AuthService 統合テスト ---
 describe('AuthService統合テスト', () => {
     let authService: AuthService;
     let mockDependencies: AuthServiceDependencies;
     let mockKeyManager: MockKeyManager;
-    let mockNostrLoginManager: MockNostrLoginManager;
     let consoleSpy: MockInstance;
 
     beforeEach(() => {
         mockDependencies = createMockDependencies();
         mockKeyManager = mockDependencies.keyManager as any;
-        mockNostrLoginManager = mockDependencies.nostrLoginManager as any;
 
         consoleSpy = vi.spyOn(mockDependencies.console!, 'error');
 
@@ -497,19 +291,6 @@ describe('AuthService統合テスト', () => {
         expect(result.pubkeyHex).toBe('test-pubkey');
     });
 
-    it('nostr-login認証が正常に動作する', async () => {
-        const auth: NostrLoginAuth = {
-            type: 'login',
-            pubkey: 'test-pubkey',
-            npub: 'npub123'
-        };
-
-        const result = await authService.authenticateWithNostrLogin(auth);
-
-        expect(result.success).toBe(true);
-        expect(result.pubkeyHex).toBe('test-pubkey');
-    });
-
     it('初期化でnsec認証を正しく検出する', async () => {
         mockKeyManager.loadFromStorage.mockReturnValue('valid-nsec');
         mockKeyManager.derivePublicKey.mockReturnValue({
@@ -522,32 +303,10 @@ describe('AuthService統合テスト', () => {
 
         expect(result.hasAuth).toBe(true);
         expect(result.pubkeyHex).toBe('test-pubkey');
-        expect(result.isNostrLogin).toBe(false);
-    });
-
-    it('初期化でnostr-login認証を正しく検出する', async () => {
-        // nsecは存在しない
-        mockKeyManager.loadFromStorage.mockReturnValue(null);
-
-        // nostr-loginからユーザー取得
-        mockNostrLoginManager.getCurrentUser.mockReturnValue({
-            pubkey: 'nostr-login-pubkey',
-            npub: 'npub456'
-        });
-
-        const result = await authService.initializeAuth();
-
-        expect(result.hasAuth).toBe(true);
-        expect(result.pubkeyHex).toBe('nostr-login-pubkey');
-        expect(result.isNostrLogin).toBe(true);
     });
 
     it('初期化で認証情報が見つからない場合', async () => {
         mockKeyManager.loadFromStorage.mockReturnValue(null);
-        mockNostrLoginManager.getCurrentUser.mockReturnValue(null);
-
-        const storage = mockDependencies.localStorage as MockStorage;
-        storage.clear(); // localStorageも空にする
 
         const result = await authService.initializeAuth();
 
@@ -556,75 +315,15 @@ describe('AuthService統合テスト', () => {
 
     it('内部コンポーネントへのアクセスが可能', () => {
         expect(authService.getNsecAuthenticator()).toBeInstanceOf(NsecAuthenticator);
-        expect(authService.getNostrLoginAuthenticator()).toBeInstanceOf(NostrLoginAuthenticator);
         expect(authService.getProfileCacheCleaner()).toBeInstanceOf(ProfileCacheCleaner);
         expect(authService.getAuthInitializer()).toBeInstanceOf(AuthInitializer);
     });
 
     it('ログアウト処理が正常に動作する', () => {
-        vi.useFakeTimers();
-
-        mockNostrLoginManager.setIsInitialized(true);
-
-        // AuthServiceが実際のnostrLoginManagerインスタンスを使うように設定
-        // テスト用の依存関係でmockを直接渡す
-        mockDependencies.nostrLoginManager = mockNostrLoginManager;
-        authService = new AuthService(mockDependencies);
-
-        // Set up nostr-login authentication state with valid pubkey and npub
-        const mockPublicKeyState = authService.getPublicKeyState();
-        mockPublicKeyState.setNostrLoginAuth({
-            type: 'login',
-            pubkey: '0'.repeat(64), // Valid 64-character hex pubkey
-            npub: 'npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5r5x8h' // Corresponding valid npub
-        });
-
-        // Advance timers to trigger setTimeout in setNostrLoginAuth
-        vi.advanceTimersByTime(20);
-
         expect(() => {
             authService.logout();
         }).not.toThrow();
 
-        expect(mockNostrLoginManager.logout).toHaveBeenCalled();
         expect(localStorage.clear).toHaveBeenCalled();
-
-        vi.useRealTimers();
-    });
-
-    it('ログアウト処理でエラーが発生しても継続する', () => {
-        vi.useFakeTimers();
-
-        mockNostrLoginManager.setIsInitialized(true);
-        mockNostrLoginManager.logout.mockImplementation(() => {
-            throw new Error('Logout failed');
-        });
-
-        // AuthServiceが実際のnostrLoginManagerインスタンスを使うように設定
-        mockDependencies.nostrLoginManager = mockNostrLoginManager;
-        authService = new AuthService(mockDependencies);
-
-        // Set up nostr-login authentication state with valid pubkey and npub
-        const mockPublicKeyState = authService.getPublicKeyState();
-        mockPublicKeyState.setNostrLoginAuth({
-            type: 'login',
-            pubkey: '0'.repeat(64), // Valid 64-character hex pubkey
-            npub: 'npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5r5x8h' // Corresponding valid npub
-        });
-
-        // Advance timers to trigger setTimeout in setNostrLoginAuth
-        vi.advanceTimersByTime(20);
-
-        // グローバル console.error をスパイ（logoutメソッドがグローバルconsoleを使用）
-        const globalConsoleSpy = vi.spyOn(console, 'error');
-
-        expect(() => {
-            authService.logout();
-        }).not.toThrow();
-
-        expect(globalConsoleSpy).toHaveBeenCalledWith('nostr-loginログアウト中にエラー:', expect.any(Error));
-
-        globalConsoleSpy.mockRestore();
-        vi.useRealTimers();
     });
 });

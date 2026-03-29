@@ -12,8 +12,11 @@
         secretKey: string;
         onClose: () => void;
         onSave: () => void;
-        onNostrLogin: () => void;
-        isLoadingNostrLogin?: boolean;
+        onNip07Login: () => void;
+        onNip46Login: (bunkerUrl: string) => void;
+        isNip07ExtensionAvailable?: boolean;
+        isLoadingNip07?: boolean;
+        isLoadingNip46?: boolean;
     }
 
     let {
@@ -21,8 +24,11 @@
         secretKey = $bindable(),
         onClose,
         onSave,
-        onNostrLogin,
-        isLoadingNostrLogin = false,
+        onNip07Login,
+        onNip46Login,
+        isNip07ExtensionAvailable = false,
+        isLoadingNip07 = false,
+        isLoadingNip46 = false,
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -33,6 +39,9 @@
 
     // ブラウザ履歴統合
     useDialogHistory(() => show, handleClose, true);
+
+    // --- NIP-07拡張機能の利用可能状態（App.svelteからpropとして受取）
+    let isNip07Available = $derived(isNip07ExtensionAvailable);
 
     // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
@@ -110,9 +119,25 @@
         secretKey = "";
         if (inputEl) inputEl.setCustomValidity("");
     }
-    function handleNostrLogin() {
-        onNostrLogin?.();
+    function handleNip07Login() {
+        onNip07Login?.();
     }
+
+    // --- NIP-46 bunker URL ---
+    let bunkerUrl = $state("");
+    let bunkerError = $state("");
+    const BUNKER_REGEX = /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/;
+
+    function handleNip46Login() {
+        const trimmed = bunkerUrl.trim();
+        if (!trimmed || !BUNKER_REGEX.test(trimmed)) {
+            bunkerError = $_("loginDialog.bunker_invalid");
+            return;
+        }
+        bunkerError = "";
+        onNip46Login?.(trimmed);
+    }
+
     // 新しいフォームsubmit用ハンドラ
     function handleFormSubmit(event: Event) {
         event.preventDefault();
@@ -144,34 +169,77 @@
     contentClass="login-dialog"
     footerVariant="close-button"
 >
-    <Button
-        variant="default"
-        shape="rounded"
-        className="nostr-login-button {isLoadingNostrLogin ? 'loading' : ''}"
-        onClick={handleNostrLogin}
-        disabled={isLoadingNostrLogin}
-    >
-        {#if isLoadingNostrLogin}
-            <LoadingPlaceholder
-                text={true}
-                showLoader={true}
-                customClass="nostr-login-placeholder"
+    {#if isNip07Available}
+        <Button
+            variant="default"
+            shape="rounded"
+            className="nip07-login-button {isLoadingNip07 ? 'loading' : ''}"
+            onClick={handleNip07Login}
+            disabled={isLoadingNip07}
+        >
+            {#if isLoadingNip07}
+                <LoadingPlaceholder
+                    text={true}
+                    showLoader={true}
+                    customClass="nip07-login-placeholder"
+                />
+            {:else}
+                <div class="extension-icon svg-icon"></div>
+                <span class="btn-text"
+                    >{$_("loginDialog.login_with_extension")}</span
+                >
+            {/if}
+        </Button>
+
+        <div class="divider">
+            <span>{$_("loginDialog.or")}</span>
+        </div>
+    {/if}
+
+    <div class="bunker-section">
+        <div class="bunker-input-row">
+            <input
+                type="text"
+                bind:value={bunkerUrl}
+                placeholder="bunker://..."
+                class="bunker-input"
+                disabled={isLoadingNip46}
+                oninput={() => {
+                    bunkerError = "";
+                }}
             />
-        {:else}
-            <img
-                src="./icons/nostr-login.svg"
-                alt="nostr-login"
-                class="nostr-login-icon"
-            />
-            <span class="btn-text">Nostr Login</span>
+            <Button
+                variant="primary"
+                shape="square"
+                onClick={handleNip46Login}
+                disabled={isLoadingNip46 || !bunkerUrl.trim()}
+                className="bunker-connect-btn {isLoadingNip46 ? 'loading' : ''}"
+            >
+                {#if isLoadingNip46}
+                    <LoadingPlaceholder
+                        text={true}
+                        showLoader={true}
+                        customClass="bunker-connect-placeholder"
+                    />
+                {:else}
+                    <div class="vault-icon svg-icon"></div>
+                    {$_("loginDialog.bunker_connect")}
+                {/if}
+            </Button>
+        </div>
+        {#if bunkerError}
+            <p class="bunker-error">{bunkerError}</p>
         {/if}
-    </Button>
+    </div>
 
     <div class="divider">
         <span>{$_("loginDialog.or")}</span>
     </div>
 
-    <h3>{$_("loginDialog.input_secret")}</h3>
+    <div class="secret-heading-row">
+        <div class="secret-icon svg-icon"></div>
+        <h3>{$_("loginDialog.input_secret")}</h3>
+    </div>
     <form onsubmit={handleFormSubmit}>
         <input
             type="text"
@@ -180,27 +248,29 @@
             style="display: none;"
             aria-hidden="true"
         />
-        <input
-            type="password"
-            bind:value={secretKey}
-            placeholder="nsec1…"
-            class="secret-input"
-            id="secretKey"
-            name="secretKey"
-            autocomplete="current-password"
-            required
-            minlength="63"
-            maxlength="63"
-            bind:this={inputEl}
-            title={$_("loginDialog.hint_input_secret")}
-            onkeydown={(e) => {
-                if (e.key === "Enter") handleSave();
-            }}
-            oninput={() => {
-                // 入力時はエラーをクリアするだけ
-                if (inputEl) inputEl.setCustomValidity("");
-            }}
-        />
+        <div class="secret-input-row">
+            <input
+                type="password"
+                bind:value={secretKey}
+                placeholder="nsec1..."
+                class="secret-input"
+                id="secretKey"
+                name="secretKey"
+                autocomplete="current-password"
+                required
+                minlength="63"
+                maxlength="63"
+                bind:this={inputEl}
+                title={$_("loginDialog.hint_input_secret")}
+                onkeydown={(e) => {
+                    if (e.key === "Enter") handleSave();
+                }}
+                oninput={() => {
+                    // 入力時はエラーをクリアするだけ
+                    if (inputEl) inputEl.setCustomValidity("");
+                }}
+            />
+        </div>
 
         <div class="dialog-buttons">
             <Button
@@ -302,53 +372,67 @@
         padding: 0.6rem;
         background-color: var(--btn-bg);
         border: none;
-        width: 100%;
         height: 60px;
+        flex: 1;
+        min-width: 0;
     }
 
-    :global(.nostr-login-button.default) {
+    /* NIP-07拡張機能ログインボタン */
+    .svg-icon.extension-icon {
+        mask-image: url("/icons/puzzle-piece-solid-full.svg");
+        width: 32px;
+        height: 32px;
+    }
+
+    /* 秘密鍵入力のアイコンとレイアウト */
+    .secret-input-row {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+        align-items: center;
+    }
+
+    .secret-heading-row {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        margin: 0 0 8px 0;
+    }
+
+    .secret-heading-row h3 {
+        margin: 0;
+    }
+
+    .secret-icon {
+        mask-image: url("/icons/key-solid-full.svg");
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+
+    :global(.nip07-login-button.default) {
         height: 74px;
         flex-shrink: 0;
         margin-top: 26px;
         margin-bottom: 8px;
-        padding: 12px 24px 12px 22px;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 8px;
         position: relative;
         overflow: hidden;
         border-radius: 8px;
-        .nostr-login-icon {
-            width: 34px;
-            height: 34px;
-            margin-right: 4px;
-        }
 
         .btn-text {
             font-size: 1.125rem;
         }
     }
 
-    :global(.nostr-login-button.loading) {
+    :global(.nip07-login-button.loading) {
         cursor: not-allowed;
-    }
-
-    /* shimmer animation for button loading (if needed) */
-    :global(.nostr-login-button.loading::before) {
-        content: "";
-        position: absolute;
-        top: 0;
-        left: -100%;
-        width: 100%;
-        height: 100%;
-        background: linear-gradient(
-            90deg,
-            transparent,
-            rgba(255, 255, 255, 0.2),
-            transparent
-        );
-        animation: shimmer 1.5s infinite;
     }
 
     .divider {
@@ -371,5 +455,47 @@
         color: var(--text-light);
         padding: 0 16px;
         font-size: 1rem;
+    }
+
+    /* NIP-46 bunker URL入力 */
+    .bunker-section {
+        width: 100%;
+        height: 54px;
+    }
+
+    .bunker-input-row {
+        display: flex;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .bunker-input {
+        font-family: monospace;
+        font-size: 0.875rem;
+        padding: 0.6rem;
+        background-color: var(--btn-bg);
+        border: none;
+        flex: 1;
+        min-width: 0;
+    }
+
+    :global(button.primary.square.bunker-connect-btn) {
+        flex-shrink: 0;
+        padding: 12px 18px 12px 16px;
+    }
+
+    .vault-icon {
+        mask-image: url("/icons/vault-solid-full.svg");
+        width: 20px;
+        height: 20px;
+        padding: 12px 18px 12px 16px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+
+    .bunker-error {
+        color: var(--danger);
+        font-size: 0.8125rem;
+        margin: 4px 0 0 0;
     }
 </style>

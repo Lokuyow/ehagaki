@@ -2,7 +2,7 @@
  * types/index.ts - 型定義のバレルエクスポート
  *
  * 各型は以下の専用ファイルに分割されています:
- * - nostr.ts   : Auth, Relay, Profile, PostManager, KeyManager, NostrLogin
+ * - nostr.ts   : Auth, Relay, Profile, PostManager, KeyManager
  * - upload.ts  : Upload, Compression, File handling, Service interfaces
  * - media.ts   : Image, Media Gallery, SharedMedia
  * - editor.ts  : Editor, Post, Draft, ContentTracking, EditorEvents, Transform

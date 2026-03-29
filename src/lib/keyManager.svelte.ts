@@ -1,5 +1,4 @@
-import type { PublicKeyData, NostrLoginAuth, KeyManagerDeps, KeyManagerError } from "./types";
-import { nip19 } from "nostr-tools";
+import type { PublicKeyData, KeyManagerDeps, KeyManagerError } from "./types";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/nostrUtils';
 
 // --- 純粋関数（テストしやすい） ---
@@ -125,13 +124,11 @@ export class PublicKeyState {
     private _nsec = $state("");
     private _data = $state<PublicKeyData>({ hex: "", npub: "", nprofile: "" });
     private _isValid = $state(false);
-    private _isNostrLogin = $state(false);
 
     // --- 公開ゲッター（コンポーネントから $derived で参照可能） ---
     get nsec() { return this._nsec; }
     get data() { return this._data; }
     get isValid() { return this._isValid; }
-    get isNostrLogin() { return this._isNostrLogin; }
     get hex() { return this._data.hex; }
     get npub() { return this._data.npub; }
     get nprofile() { return this._data.nprofile; }
@@ -139,13 +136,10 @@ export class PublicKeyState {
     // --- 後方互換 / パフォーマンス用のゲッター（getを使わない同期アクセス） ---
     get currentIsValid(): boolean { return this._isValid; }
     get currentHex(): string { return this._data.hex; }
-    get currentIsNostrLogin(): boolean { return this._isNostrLogin; }
 
     constructor(
         private deps: {
-            setNostrLoginAuthFn?: (pubkey: string, npub: string, nprofile: string, nostrLoginAuthMethod?: 'connect' | 'extension' | 'local') => void;
             clearAuthStateFn?: () => void;
-            localStorage?: Storage;
         } = {}
     ) { }
 
@@ -153,74 +147,8 @@ export class PublicKeyState {
     setNsec(nsec: string): void {
         const sanitizedNsec = nsec?.trim() || "";
         this._nsec = sanitizedNsec;
-        this._isNostrLogin = false;
         // subscribe コールバックの代わりに直接更新
         this.updateFromNsec(sanitizedNsec);
-    }
-
-    // --- nostr-login認証セット ---
-    setNostrLoginAuth(auth: NostrLoginAuth): void {
-        if (auth.type === 'logout') {
-            this.clear();
-            return;
-        }
-        if (!auth.pubkey) {
-            console.warn("NostrLoginAuth: pubkey is required for login/signup");
-            return;
-        }
-        try {
-            const npub = auth.npub || nip19.npubEncode(auth.pubkey);
-            const nprofile = nip19.nprofileEncode({ pubkey: auth.pubkey, relays: [] });
-
-            // LocalStorageからauthMethodを取得
-            let authMethod: 'connect' | 'extension' | 'local' | undefined = undefined;
-            if (this.deps.localStorage && typeof this.deps.localStorage.getItem === 'function') {
-                try {
-                    const accountsRaw = this.deps.localStorage.getItem('__nostrlogin_accounts');
-                    if (accountsRaw) {
-                        const accounts = JSON.parse(accountsRaw);
-                        if (Array.isArray(accounts)) {
-                            const account = accounts.find((acc: any) => acc?.pubkey === auth.pubkey);
-                            if (account?.authMethod) {
-                                const method = account.authMethod;
-                                if (method === 'connect' || method === 'extension' || method === 'local') {
-                                    authMethod = method;
-                                }
-                            }
-                        }
-                    }
-                } catch (error) {
-                    console.warn('Failed to get authMethod from localStorage:', error);
-                }
-            }
-
-            this._data = { hex: auth.pubkey, npub, nprofile };
-            this._isValid = true;
-            this._isNostrLogin = true;
-            this._nsec = "";
-
-            // グローバル認証状態を更新（依存性注入を優先）
-            if (this.deps.setNostrLoginAuthFn) {
-                this.deps.setNostrLoginAuthFn(auth.pubkey, npub, nprofile, authMethod);
-            } else {
-                // 依存関係がまだ読み込まれていない場合は遅延実行
-                setTimeout(() => {
-                    if (this.deps.setNostrLoginAuthFn) {
-                        this.deps.setNostrLoginAuthFn!(auth.pubkey!, npub, nprofile, authMethod);
-                    }
-                }, 10);
-            }
-
-            console.log('[PublicKeyState] NostrLogin認証状態を設定:', {
-                pubkey: auth.pubkey,
-                npub,
-                type: auth.type,
-                authMethod
-            });
-        } catch (error) {
-            console.error("Failed to set NostrLogin auth:", error);
-            this.clear();
-        }
     }
 
     // --- nsecから公開鍵情報を導出 ---
@@ -253,7 +181,6 @@ export class PublicKeyState {
     // --- 全クリア ---
     clear(): void {
         this._nsec = "";
-        this._isNostrLogin = false;
 
         // 依存性注入されたコールバックを優先使用
         if (this.deps.clearAuthStateFn) {

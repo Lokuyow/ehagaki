@@ -7,7 +7,6 @@
     "error_saving": "Error saving the key",
     "key_not_found": "Key not found",
     "login_required": "Login required",
-    "nostr_login": "Nostr Login",
     "nostr_not_ready": "Nostr is not connected",
     "preview": "Preview",
     "profile": "Profile",
@@ -31,11 +30,17 @@
     "save": "Save",
     "clear": "Clear",
     "or": "or",
+    "login_with_extension": "Login with Extension",
+    "extension_not_found": "No NIP-07 compatible extension found",
     "secret_required": "Please enter your secret key",
     "secret_must_start_nsec1": "Secret key must start with 'nsec1'",
     "secret_too_short": "Secret key is too short (must be 63 characters)",
     "secret_too_long": "Secret key is too long (must be 63 characters or less)",
-    "invalid_secret": "Invalid secret key"
+    "invalid_secret": "Invalid secret key",
+    "bunker_connect": "Connect",
+    "bunker_connecting": "Connecting...",
+    "bunker_invalid": "Invalid bunker URL",
+    "bunker_connection_failed": "Connection failed"
   },
   "logoutDialog": {
     "logout_confirmation": "Logout Confirmation",
@@ -51,9 +56,8 @@
     "copy_nprofile": "Copy nprofile",
     "login_method": "Login Method",
     "login_method_nsec": "Secret Key",
-    "login_method_nostr_login_connect": "Nostr Login Connect",
-    "login_method_nostr_login_extension": "Nostr Login Extension",
-    "login_method_nostr_login_local": "Nostr Login Local"
+    "login_method_nip07": "Browser Extension (NIP-07)",
+    "login_method_nip46": "Remote Signer (NIP-46)"
   },
   "settingsDialog": {
     "info_header_setting": "Setting",

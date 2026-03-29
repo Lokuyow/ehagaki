@@ -27,6 +27,14 @@ vi.mock('../../lib/keyManager.svelte', async () => {
     };
 });
 
+// nip46Service をモック
+vi.mock('../../lib/nip46Service', () => ({
+    nip46Service: {
+        isConnected: vi.fn().mockReturnValue(false),
+        getSigner: vi.fn().mockReturnValue(null),
+    },
+}));
+
 // =============================================================================
 // nostr-tools/nip98 インポートパス検証
 // nostr-tools アップデート時にパスやエクスポートが変わると即座に検出できる

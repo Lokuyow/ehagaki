@@ -17,7 +17,8 @@ export {
     updateAuthState,
     clearAuthState,
     setNsecAuth,
-    setNostrLoginAuth,
+    setNip07Auth,
+    setNip46Auth,
     setAuthInitialized,
     secretKeyStore,
 } from './authStore.svelte';

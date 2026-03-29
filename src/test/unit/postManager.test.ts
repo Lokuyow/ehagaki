@@ -765,9 +765,9 @@ describe('PostManager統合テスト', () => {
         );
     });
 
-    it('nostr-login認証で投稿を送信する', async () => {
-        // nostr-login認証に設定
-        mockAuthState.type = 'nostr-login';
+    it('NIP-07認証で投稿を送信する', async () => {
+        // NIP-07認証に設定
+        mockAuthState.type = 'nip07';
         mockKeyManager = new MockKeyManager(null, null, true);
 
         const mockWindow = {
@@ -823,7 +823,7 @@ describe('PostManager統合テスト', () => {
         );
     });
 
-    it('nostr-loginでハッシュタグストアのProxyをstructuredClone可能な配列にする', async () => {
+    it('NIP-07でハッシュタグストアのProxyをstructuredClone可能な配列にする', async () => {
         hashtagDataStore.content = '';
         hashtagDataStore.hashtags = [];
         hashtagDataStore.tags = [];
@@ -831,7 +831,7 @@ describe('PostManager統合テスト', () => {
 
         const nostrAuthState: AuthState = {
             ...mockAuthState,
-            type: 'nostr-login'
+            type: 'nip07'
         };
 
         const signEvent = vi.fn().mockImplementation(async (event: any) => {
@@ -1065,14 +1065,14 @@ describe('PostManager統合テスト', () => {
             expect(mockIframeService.notifyPostSuccess).not.toHaveBeenCalled();
         });
 
-        it('nostr-login認証の投稿成功時にnotifyPostSuccessが呼ばれる', async () => {
+        it('NIP-07認証の投稿成功時にnotifyPostSuccessが呼ばれる', async () => {
             const mockIframeService = {
                 notifyPostSuccess: vi.fn().mockReturnValue(true),
                 notifyPostError: vi.fn().mockReturnValue(true)
             };
 
-            // nostr-login認証に設定
-            mockAuthState.type = 'nostr-login';
+            // NIP-07認証に設定
+            mockAuthState.type = 'nip07';
             mockKeyManager = new MockKeyManager(null, null, true);
 
             const mockWindow = {

@@ -88,22 +88,11 @@
 
   // --- 追加: 初回レンダリング時にローカルストレージで即時認証判定 ---
   let initialAuthChecked = false;
-  let initialPubkey = "";
 
   // ローカルストレージから即時判定
   if (!initialAuthChecked) {
     const nsec = localStorage.getItem("nsec");
-    const nip46Raw = localStorage.getItem("__nostrlogin_nip46");
     if (nsec) {
-    } else if (nip46Raw) {
-      try {
-        const nip46 = JSON.parse(nip46Raw);
-        if (nip46?.pubkey) {
-          initialPubkey = nip46.pubkey;
-        }
-      } catch (e) {
-        // ignore
-      }
     }
     initialAuthChecked = true;
   }
@@ -111,7 +100,12 @@
   let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
   let relayProfileService: RelayProfileService;
   let sharedMediaReceived = false;
-  let isLoadingNostrLogin = $state(false);
+  let isLoadingNip07 = $state(false);
+  let isLoadingNip46 = $state(false);
+  // シングルトンの認証サービスが構築された時点で検出された値を使用
+  const nip07ExtensionAvailable = authService
+    .getNip07Authenticator()
+    .isAvailable();
   let footerInfoDisplay: any;
   let postComponentRef: any = $state();
   let footerComponentRef: any = $state();
@@ -136,41 +130,6 @@
     setRelayManager(relayManager);
 
     await relayProfileService.initializeRelays(pubkeyHex);
-  }
-
-  async function handleNostrLoginAuth(auth: any) {
-    const result = await authService.authenticateWithNostrLogin(auth);
-    if (!result.success) {
-      console.error("nostr-login認証失敗:", result.error);
-      return;
-    }
-
-    if (result.pubkeyHex) {
-      isLoadingNostrLogin = true;
-      isLoadingProfileStore.set(true);
-
-      // ダイアログを閉じる
-      closeLoginDialog();
-
-      try {
-        await initializeNostr();
-        // RelayProfileServiceを使用してリレーとプロフィールを取得
-        const profile = await relayProfileService.initializeForLogin(
-          result.pubkeyHex,
-        );
-        if (profile) {
-          profileDataStore.set(profile);
-          profileLoadedStore.set(true);
-        }
-        // プロフィール取得完了後にローディングを解除
-        isLoadingProfileStore.set(false);
-      } catch (error) {
-        console.error("nostr-login認証処理中にエラー:", error);
-        isLoadingProfileStore.set(false);
-      } finally {
-        isLoadingNostrLogin = false;
-      }
-    }
   }
 
   // --- 秘密鍵認証・保存処理 ---
@@ -227,16 +186,73 @@
     errorMessage = "";
   }
 
-  async function loginWithNostrLogin() {
-    isLoadingNostrLogin = true;
+  async function handleNip07Login() {
+    isLoadingNip07 = true;
     try {
-      await authService.showNostrLoginDialog();
-    } catch (error) {
-      if (!(error instanceof Error && error.message === "Cancelled")) {
-        console.error("nostr-loginでエラー:", error);
+      const result = await authService.authenticateWithNip07();
+      if (!result.success) {
+        console.error("NIP-07認証失敗:", result.error);
+        return;
       }
+
+      if (result.pubkeyHex) {
+        isLoadingProfileStore.set(true);
+        closeLoginDialog();
+
+        try {
+          await initializeNostr(result.pubkeyHex);
+          const profile = await relayProfileService.initializeForLogin(
+            result.pubkeyHex,
+          );
+          if (profile) {
+            profileDataStore.set(profile);
+            profileLoadedStore.set(true);
+          }
+          isLoadingProfileStore.set(false);
+        } catch (error) {
+          console.error("NIP-07認証処理中にエラー:", error);
+          isLoadingProfileStore.set(false);
+        }
+      }
+    } catch (error) {
+      console.error("NIP-07ログインでエラー:", error);
     } finally {
-      isLoadingNostrLogin = false;
+      isLoadingNip07 = false;
+    }
+  }
+
+  async function handleNip46Login(bunkerUrl: string) {
+    isLoadingNip46 = true;
+    try {
+      const result = await authService.authenticateWithNip46(bunkerUrl);
+      if (!result.success) {
+        console.error("NIP-46認証失敗:", result.error);
+        return;
+      }
+
+      if (result.pubkeyHex) {
+        isLoadingProfileStore.set(true);
+        closeLoginDialog();
+
+        try {
+          await initializeNostr(result.pubkeyHex);
+          const profile = await relayProfileService.initializeForLogin(
+            result.pubkeyHex,
+          );
+          if (profile) {
+            profileDataStore.set(profile);
+            profileLoadedStore.set(true);
+          }
+          isLoadingProfileStore.set(false);
+        } catch (error) {
+          console.error("NIP-46認証処理中にエラー:", error);
+          isLoadingProfileStore.set(false);
+        }
+      }
+    } catch (error) {
+      console.error("NIP-46ログインでエラー:", error);
+    } finally {
+      isLoadingNip46 = false;
     }
   }
 
@@ -270,9 +286,6 @@
       if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
       await waitLocale();
       localeInitialized = true;
-
-      // 認証サービスの認証ハンドラーを先にセット
-      authService.setNostrLoginHandler(handleNostrLoginAuth);
 
       // Service Worker状態チェック（本番環境でも実行）
       if (checkIfOpenedFromShare()) {
@@ -639,8 +652,11 @@
           bind:secretKey
           onClose={closeLoginDialog}
           onSave={saveSecretKey}
-          onNostrLogin={loginWithNostrLogin}
-          {isLoadingNostrLogin}
+          onNip07Login={handleNip07Login}
+          onNip46Login={handleNip46Login}
+          isNip07ExtensionAvailable={nip07ExtensionAvailable}
+          {isLoadingNip07}
+          {isLoadingNip46}
         />
       {/if}
       {#if showLogoutDialogStore.value}

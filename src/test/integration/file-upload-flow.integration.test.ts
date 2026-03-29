@@ -11,6 +11,13 @@ vi.mock("virtual:pwa-register/svelte", () => ({
 }));
 
 vi.mock("../../stores/appStore.svelte.ts", () => ({
+    authState: {
+        value: {
+            isAuthenticated: true,
+            type: "nsec",
+            pubkey: "testpubkey123"
+        }
+    },
     uploadAbortFlagStore: {
         value: false,
         set: vi.fn(),
@@ -30,14 +37,14 @@ vi.mock("browser-image-compression", () => ({
         // 圧縮シミュレーション
         const compressedSize = Math.floor(file.size * 0.7);
         const compressedBlob = new Blob([new ArrayBuffer(compressedSize)], { type: file.type });
-        
+
         // 進捗コールバックをシミュレート
         if (options?.onProgress) {
             setTimeout(() => options.onProgress(0.3), 0);
             setTimeout(() => options.onProgress(0.6), 10);
             setTimeout(() => options.onProgress(1.0), 20);
         }
-        
+
         return new File([compressedBlob], file.name, { type: file.type });
     })
 }));
@@ -216,7 +223,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
             (window as any).nostr = undefined;
 
             const authService = new NostrAuthService();
-            
+
             await expect(async () => {
                 await authService.buildAuthHeader(
                     'https://example.com/upload',
@@ -315,8 +322,8 @@ describe('ファイルアップロードフロー統合テスト', () => {
             );
 
             // 2. バリデーション
-            const isValid = file.type.startsWith('image/') && 
-                           file.size <= 100 * 1024 * 1024;
+            const isValid = file.type.startsWith('image/') &&
+                file.size <= 100 * 1024 * 1024;
             expect(isValid).toBe(true);
 
             // 3. 圧縮

@@ -1,21 +1,16 @@
-import { KeyManager, PublicKeyState, ExternalAuthChecker } from './keyManager.svelte';
-import type { NostrLoginAuth, NostrLoginOptions } from './types';
-import { nostrLoginManager } from './nostrLogin';
-import { setAuthInitialized, setNsecAuth, setNostrLoginAuth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';
-import type { AuthResult, AuthServiceDependencies, NostrLoginManagerInterface, LocalStorageData } from './types';
+import { nip19 } from 'nostr-tools';
+import { KeyManager, PublicKeyState } from './keyManager.svelte';
+import { setAuthInitialized, setNsecAuth, setNip07Auth, setNip46Auth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';
+import type { AuthResult, AuthServiceDependencies } from './types';
+import { Nip07AuthService } from './nip07AuthService';
+import { nip46Service, Nip46Service } from './nip46Service';
+
+const NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
 
 // --- 純粋関数: バリデーション ---
 export class AuthValidator {
     static isValidSecretKey(secretKey: string, keyManager: any): boolean {
         return keyManager.isValidNsec(secretKey);
-    }
-
-    static hasRequiredPubkey(auth: NostrLoginAuth): boolean {
-        return auth.type !== 'logout' && !!auth.pubkey;
-    }
-
-    static isLogoutAuth(auth: NostrLoginAuth): boolean {
-        return auth.type === 'logout';
     }
 }
 
@@ -52,62 +47,45 @@ export class NsecAuthenticator {
     }
 }
 
-// --- nostr-login認証処理の分離 ---
-export class NostrLoginAuthenticator {
+// --- NIP-07認証処理の分離 ---
+export class Nip07Authenticator {
+    private nip07Service: Nip07AuthService;
+
     constructor(
-        private publicKeyState: PublicKeyState,
-        private console: Console
-    ) { }
-
-    async authenticate(auth: NostrLoginAuth): Promise<AuthResult> {
-        if (AuthValidator.isLogoutAuth(auth)) {
-            return { success: true };
-        }
-
-        if (!AuthValidator.hasRequiredPubkey(auth)) {
-            this.console.warn('NostrLoginAuth: pubkey is required for login/signup');
-            return { success: false, error: 'missing_pubkey' };
-        }
-
-        try {
-            this.publicKeyState.setNostrLoginAuth(auth);
-            return { success: true, pubkeyHex: auth.pubkey };
-        } catch (error) {
-            this.console.error('nostr-login認証処理中にエラー:', error);
-            return { success: false, error: 'nostr_login_error' };
-        }
-    }
-}
-
-// --- 外部認証チェッカー ---
-export class ExternalAuthWaiter {
-    private checker: ExternalAuthChecker;
-
-    constructor(private window: Window) {
-        this.checker = new ExternalAuthChecker(window);
+        private setNip07Auth: (pubkey: string, npub: string, nprofile: string) => void,
+        private console: Console,
+        windowObj?: Window,
+    ) {
+        this.nip07Service = new Nip07AuthService(windowObj, console);
     }
 
-    async waitForExternalAuth(timeoutMs: number = 5000): Promise<boolean> {
-        const startTime = Date.now();
-        const pollInterval = 100;
+    /**
+     * NIP-07拡張機能が利用可能かチェック
+     */
+    isAvailable(): boolean {
+        return this.nip07Service.isAvailable();
+    }
 
-        return new Promise((resolve) => {
-            const checkAuth = () => {
-                if (this.checker.isWindowNostrAvailable()) {
-                    resolve(true);
-                    return;
-                }
+    /**
+     * NIP-07拡張機能が利用可能になるまで待機してから認証
+     */
+    async authenticate(waitMs: number = 3000): Promise<AuthResult> {
+        const available = await this.nip07Service.waitForExtension(waitMs);
+        if (!available) {
+            return { success: false, error: 'nip07_not_available' };
+        }
 
-                if (Date.now() - startTime >= timeoutMs) {
-                    resolve(false);
-                    return;
-                }
+        const result = await this.nip07Service.authenticate();
+        if (!result.success || !result.pubkeyHex || !result.pubkeyData) {
+            return { success: false, error: result.error || 'nip07_auth_error' };
+        }
 
-                setTimeout(checkAuth, pollInterval);
-            };
+        this.setNip07Auth(result.pubkeyData.hex, result.pubkeyData.npub, result.pubkeyData.nprofile);
+        return { success: true, pubkeyHex: result.pubkeyHex };
+    }
 
-            checkAuth();
-        });
+    getNip07Service(): Nip07AuthService {
+        return this.nip07Service;
     }
 }
 
@@ -153,62 +131,51 @@ export class ProfileCacheCleaner {
     }
 }
 
-// --- LocalStorage処理の分離 ---
-export class NostrLoginStorageManager {
-    constructor(
-        private localStorage: Storage
-    ) { }
-
-    getStoredNostrLoginData(): LocalStorageData | null {
-        try {
-            const nip46Raw = this.localStorage.getItem('__nostrlogin_nip46');
-            if (!nip46Raw) return null;
-
-            const nip46 = JSON.parse(nip46Raw);
-
-            return nip46?.pubkey ? {
-                pubkey: nip46.pubkey,
-                npub: nip46.npub
-            } : null;
-        } catch (error) {
-            return null;
-        }
-    }
-}
-
 // --- 初期化処理の分離 ---
 export class AuthInitializer {
     constructor(
         private keyManager: any,
         private publicKeyState: PublicKeyState,
-        private nostrLoginManager: NostrLoginManagerInterface,
-        private externalAuthWaiter: ExternalAuthWaiter,
-        private storageManager: NostrLoginStorageManager,
         private setNsecAuth: (pubkey: string, npub: string, nprofile: string) => void,
-        private console: Console
+        private console: Console,
+        private nip07Opts?: {
+            localStorage: Storage;
+            setNip07Auth: (pubkey: string, npub: string, nprofile: string) => void;
+            nip07Service: Nip07AuthService;
+        },
+        private nip46Opts?: {
+            localStorage: Storage;
+            setNip46Auth: (pubkey: string, npub: string, nprofile: string) => void;
+            nip46Service: Nip46Service;
+        }
     ) { }
 
-    async initialize(nostrLoginOptions: NostrLoginOptions): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
+    async initialize(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
         try {
-            // まずnsecストレージキーを優先的にチェック
+            // nsecストレージキーを優先的にチェック
             const nsecResult = await this.checkNsecAuth();
             if (nsecResult.hasAuth) return nsecResult;
 
-            // 外部認証の確認
-            await this.externalAuthWaiter.waitForExternalAuth(100);
+            // NIP-07セッションの復元（前回NIP-07でログインしていた場合）
+            if (this.nip07Opts) {
+                const nip07Result = await this.checkNip07Auth();
+                if (nip07Result.hasAuth) return nip07Result;
+            }
 
-            // nostr-loginの初期化とチェック
-            const nostrLoginResult = await this.checkNostrLoginAuth(nostrLoginOptions);
-            if (nostrLoginResult.hasAuth) return nostrLoginResult;
+            // NIP-46セッションの復元（前回NIP-46でログインしていた場合）
+            if (this.nip46Opts) {
+                const nip46Result = await this.checkNip46Auth();
+                if (nip46Result.hasAuth) return nip46Result;
+            }
 
         } catch (error) {
-            this.console.error('nostr-login初期化失敗:', error);
+            this.console.error('認証初期化失敗:', error);
         }
 
         return { hasAuth: false };
     }
 
-    private async checkNsecAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
+    private async checkNsecAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
         const storedKey = this.keyManager.loadFromStorage();
         if (!storedKey) return { hasAuth: false };
 
@@ -220,8 +187,7 @@ export class AuthInitializer {
                 this.setNsecAuth(derived.hex, derived.npub, derived.nprofile);
                 return {
                     hasAuth: true,
-                    pubkeyHex: derived.hex,
-                    isNostrLogin: false
+                    pubkeyHex: derived.hex
                 };
             } else {
                 this.keyManager.saveToStorage(''); // 無効なキーを削除
@@ -233,44 +199,50 @@ export class AuthInitializer {
         }
     }
 
-    private async checkNostrLoginAuth(nostrLoginOptions: NostrLoginOptions): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
-        // nostr-loginの初期化（UIは起動しない）
-        await this.nostrLoginManager.init(nostrLoginOptions);
+    private async checkNip07Auth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        const { localStorage, setNip07Auth, nip07Service } = this.nip07Opts!;
 
-        // 初期化完了後に少し待ってからユーザー取得を試行
-        await new Promise(resolve => setTimeout(resolve, 100));
+        const storedPubkey = localStorage.getItem(NIP07_STORAGE_KEY);
+        if (!storedPubkey) return { hasAuth: false };
 
-        // 1. まずwindow.nostrLoginから即時取得
-        const currentUser = this.nostrLoginManager.getCurrentUser();
-        if (currentUser?.pubkey) {
-            this.publicKeyState.setNostrLoginAuth({
-                type: 'login',
-                pubkey: currentUser.pubkey,
-                npub: currentUser.npub
-            });
-            return {
-                hasAuth: true,
-                pubkeyHex: currentUser.pubkey,
-                isNostrLogin: true
-            };
+        // 拡張機能が引き続き利用可能か確認（最大1秒待機）
+        const available = await nip07Service.waitForExtension(1000);
+        if (!available) {
+            // 拡張機能が無効化されたのでセッションマーカーをクリア
+            localStorage.removeItem(NIP07_STORAGE_KEY);
+            return { hasAuth: false };
         }
 
-        // 2. localStorage復元
-        const storedData = this.storageManager.getStoredNostrLoginData();
-        if (storedData?.pubkey) {
-            this.publicKeyState.setNostrLoginAuth({
-                type: 'login',
-                pubkey: storedData.pubkey,
-                npub: storedData.npub
-            });
-            return {
-                hasAuth: true,
-                pubkeyHex: storedData.pubkey,
-                isNostrLogin: true
-            };
+        try {
+            const npub = nip19.npubEncode(storedPubkey);
+            const nprofile = nip19.nprofileEncode({ pubkey: storedPubkey, relays: [] });
+            setNip07Auth(storedPubkey, npub, nprofile);
+            return { hasAuth: true, pubkeyHex: storedPubkey };
+        } catch (error) {
+            this.console.error('NIP-07セッション復元エラー:', error);
+            localStorage.removeItem(NIP07_STORAGE_KEY);
+            return { hasAuth: false };
         }
+    }
 
-        return { hasAuth: false };
+    private async checkNip46Auth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        const { localStorage, setNip46Auth, nip46Service: svc } = this.nip46Opts!;
+
+        const session = Nip46Service.loadSession(localStorage);
+        if (!session) return { hasAuth: false };
+
+        try {
+            await svc.reconnect(session);
+            const pubkey = session.userPubkey;
+            const npub = nip19.npubEncode(pubkey);
+            const nprofile = nip19.nprofileEncode({ pubkey, relays: [] });
+            setNip46Auth(pubkey, npub, nprofile);
+            return { hasAuth: true, pubkeyHex: pubkey };
+        } catch (error) {
+            this.console.error('NIP-46セッション復元エラー:', error);
+            Nip46Service.clearSession(localStorage);
+            return { hasAuth: false };
+        }
     }
 }
 
@@ -278,25 +250,20 @@ export class AuthInitializer {
 export class AuthService {
     private publicKeyState: PublicKeyState;
     private nsecAuthenticator: NsecAuthenticator;
-    private nostrLoginAuthenticator: NostrLoginAuthenticator;
+    private nip07Authenticator: Nip07Authenticator;
     private profileCacheCleaner: ProfileCacheCleaner;
     private authInitializer: AuthInitializer;
-    private nostrLoginMgr: NostrLoginManagerInterface;
     private keyManager: any;
-
-    // 設定プロパティ
-    nostrLoginOptions: NostrLoginOptions = {
-        theme: 'default',
-        noBanner: true,
-        methods: 'connect, extension, local',
-    };
+    private localStorage: Storage;
+    private console: Console;
+    private nip46Svc: Nip46Service;
+    private setNip46AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
 
     constructor(dependencies: AuthServiceDependencies = {}) {
         // デフォルト依存関係の設定
         const localStorage = dependencies.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
         const keyMgr = dependencies.keyManager || new KeyManager({
             secretKeyStore: dependencies.secretKeyStore || secretKeyStore,
-            setNostrLoginAuthFn: dependencies.setNostrLoginAuth || setNostrLoginAuth,
             clearAuthStateFn: dependencies.clearAuthState || clearAuthState,
             localStorage
         });
@@ -304,31 +271,36 @@ export class AuthService {
         const navigator = dependencies.navigator || (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
         const console = dependencies.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const setNsecAuthFn = dependencies.setNsecAuth || setNsecAuth;
-
-        // nostrLoginManagerは依存性から取得、なければデフォルト
-        this.nostrLoginMgr = dependencies.nostrLoginManager || nostrLoginManager;
+        const setNip07AuthFn = dependencies.setNip07Auth || setNip07Auth;
+        const setNip46AuthFn = dependencies.setNip46Auth || setNip46Auth;
 
         // 内部コンポーネントの初期化
+        this.localStorage = localStorage;
+        this.console = console;
+        this.nip46Svc = nip46Service;
+        this.setNip46AuthFn = setNip46AuthFn;
         this.publicKeyState = new PublicKeyState({
-            setNostrLoginAuthFn: dependencies.setNostrLoginAuth || setNostrLoginAuth,
             clearAuthStateFn: dependencies.clearAuthState || clearAuthState,
-            localStorage
         });
         this.nsecAuthenticator = new NsecAuthenticator(keyMgr, setNsecAuthFn, console);
-        this.nostrLoginAuthenticator = new NostrLoginAuthenticator(this.publicKeyState, console);
+        this.nip07Authenticator = new Nip07Authenticator(setNip07AuthFn, console, windowObj);
         this.profileCacheCleaner = new ProfileCacheCleaner(navigator, console);
-
-        const externalAuthWaiter = new ExternalAuthWaiter(windowObj);
-        const storageManager = new NostrLoginStorageManager(localStorage);
 
         this.authInitializer = new AuthInitializer(
             keyMgr,
             this.publicKeyState,
-            this.nostrLoginMgr,
-            externalAuthWaiter,
-            storageManager,
             setNsecAuthFn,
-            console
+            console,
+            {
+                localStorage,
+                setNip07Auth: setNip07AuthFn,
+                nip07Service: this.nip07Authenticator.getNip07Service(),
+            },
+            {
+                localStorage,
+                setNip46Auth: setNip46AuthFn,
+                nip46Service: this.nip46Svc,
+            }
         );
 
         this.keyManager = keyMgr;
@@ -342,32 +314,34 @@ export class AuthService {
     }
 
     /**
-     * nostr-loginを使った認証処理
+     * NIP-07拡張機能を使った認証処理
      */
-    async authenticateWithNostrLogin(auth: NostrLoginAuth): Promise<AuthResult> {
-        if (AuthValidator.isLogoutAuth(auth)) {
-            this.logout();
-            return { success: true };
+    async authenticateWithNip07(): Promise<AuthResult> {
+        const result = await this.nip07Authenticator.authenticate();
+        if (result.success && result.pubkeyHex) {
+            try {
+                this.localStorage.setItem(NIP07_STORAGE_KEY, result.pubkeyHex);
+            } catch (e) {
+                this.console.error('NIP-07セッション保存エラー:', e);
+            }
         }
-        return await this.nostrLoginAuthenticator.authenticate(auth);
+        return result;
     }
 
     /**
-     * nostr-loginダイアログを表示
+     * NIP-46リモートサイナーを使った認証処理
      */
-    async showNostrLoginDialog(): Promise<void> {
-        const nostrLoginMgr = nostrLoginManager; // 実際のインスタンスを使用
-        if (!nostrLoginMgr.isInitialized) {
-            throw new Error('nostr-login is not initialized');
-        }
-
+    async authenticateWithNip46(bunkerUrl: string): Promise<AuthResult> {
         try {
-            await nostrLoginMgr.showLogin();
+            const pubkeyHex = await this.nip46Svc.connect(bunkerUrl);
+            const npub = nip19.npubEncode(pubkeyHex);
+            const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] });
+            this.setNip46AuthFn(pubkeyHex, npub, nprofile);
+            this.nip46Svc.saveSession(this.localStorage);
+            return { success: true, pubkeyHex };
         } catch (error) {
-            if (!(error instanceof Error && error.message === 'Cancelled')) {
-                console.error('nostr-loginでエラー:', error);
-                throw error;
-            }
+            this.console.error('NIP-46認証エラー:', error);
+            return { success: false, error: 'nip46_connection_failed' };
         }
     }
 
@@ -376,14 +350,10 @@ export class AuthService {
      */
     logout(): void {
         try {
-            // nostr-login認証の場合のみ、nostr-loginのログアウトを実行
-            if (this.publicKeyState.currentIsNostrLogin && this.nostrLoginMgr.isInitialized) {
-                try {
-                    this.nostrLoginMgr.logout();
-                } catch (error) {
-                    console.error('nostr-loginログアウト中にエラー:', error);
-                }
-            }
+            // NIP-46切断
+            this.nip46Svc.disconnect().catch(e => {
+                this.console.error('NIP-46切断エラー:', e);
+            });
 
             // ストレージをクリア（firstVisitフラグは残す）
             try {
@@ -436,8 +406,8 @@ export class AuthService {
     /**
      * 初期化時の認証状態チェック
      */
-    async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string; isNostrLogin?: boolean }> {
-        return await this.authInitializer.initialize(this.nostrLoginOptions);
+    async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        return await this.authInitializer.initialize();
     }
 
     /**
@@ -445,13 +415,6 @@ export class AuthService {
      */
     getPublicKeyState(): PublicKeyState {
         return this.publicKeyState;
-    }
-
-    /**
-     * nostr-loginの認証ハンドラーを設定
-     */
-    setNostrLoginHandler(handler: (auth: NostrLoginAuth) => void): void {
-        this.nostrLoginMgr.setAuthHandler(handler);
     }
 
     /**
@@ -466,8 +429,8 @@ export class AuthService {
         return this.nsecAuthenticator;
     }
 
-    getNostrLoginAuthenticator(): NostrLoginAuthenticator {
-        return this.nostrLoginAuthenticator;
+    getNip07Authenticator(): Nip07Authenticator {
+        return this.nip07Authenticator;
     }
 
     getProfileCacheCleaner(): ProfileCacheCleaner {

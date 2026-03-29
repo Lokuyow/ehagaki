@@ -33,7 +33,6 @@ const mockKeyManager = {
     })),
     PublicKeyState: vi.fn().mockImplementation(() => {
         let _currentIsValid = false;
-        let _currentIsNostrLogin = false;
         let _currentHex = '';
 
         return {
@@ -42,33 +41,17 @@ const mockKeyManager = {
                 if (nsec && nsec.startsWith('nsec')) {
                     _currentIsValid = true;
                     _currentHex = 'test-hex';
-                    _currentIsNostrLogin = false;
                 } else {
                     _currentIsValid = false;
                     _currentHex = '';
                 }
             }),
-            setNostrLoginAuth: vi.fn((auth) => {
-                if (auth.type === 'login' && auth.pubkey) {
-                    _currentIsValid = true;
-                    _currentHex = auth.pubkey;
-                    _currentIsNostrLogin = true;
-                } else if (auth.type === 'logout') {
-                    _currentIsValid = false;
-                    _currentHex = '';
-                    _currentIsNostrLogin = false;
-                }
-            }),
             clear: vi.fn(() => {
                 _currentIsValid = false;
-                _currentIsNostrLogin = false;
                 _currentHex = '';
             }),
             get currentIsValid() {
                 return _currentIsValid;
-            },
-            get currentIsNostrLogin() {
-                return _currentIsNostrLogin;
             },
             get currentHex() {
                 return _currentHex;

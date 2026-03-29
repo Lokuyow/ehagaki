@@ -92,10 +92,10 @@ export class PostManager {
       const contentWarningReason = contentWarningReasonStore.value;
 
       const auth = authStateStore.value;
-      const isNostrLoginAuth = auth.type === 'nostr-login';
+      const isExtensionAuth = auth.type === 'nip07';
 
-      // nostr-login認証の場合のみwindow.nostrを使用
-      if (isNostrLoginAuth && keyMgr.isWindowNostrAvailable() && windowObj?.nostr) {
+      // 拡張機能認証（NIP-07）の場合はwindow.nostrを使用
+      if (isExtensionAuth && keyMgr.isWindowNostrAvailable() && windowObj?.nostr) {
         try {
           const pubkey = auth.pubkey;
           if (!pubkey) {
@@ -134,6 +134,48 @@ export class PostManager {
           }
         } catch (err) {
           this.deps.console?.error("window.nostrでの投稿エラー:", err);
+          this.deps.iframeMessageService?.notifyPostError("post_error");
+          return { success: false, error: "post_error" };
+        }
+      }
+
+      // NIP-46リモートサイナーの場合
+      if (auth.type === 'nip46') {
+        const nip46Signer = this.deps.getNip46SignerFn?.();
+        if (!nip46Signer) {
+          this.deps.iframeMessageService?.notifyPostError("nip46_signer_not_available");
+          return { success: false, error: "nip46_signer_not_available" };
+        }
+
+        const pubkey = auth.pubkey;
+        if (!pubkey) {
+          this.deps.iframeMessageService?.notifyPostError("pubkey_not_found");
+          return { success: false, error: "pubkey_not_found" };
+        }
+
+        try {
+          const event = await PostEventBuilder.buildEvent(
+            processedContent,
+            hashtags,
+            tags,
+            pubkey,
+            imageImetaMap,
+            this.deps.createImetaTagFn,
+            this.deps.getClientTagFn,
+            contentWarningEnabled,
+            contentWarningReason
+          );
+
+          const result = await this.eventSender.sendEvent(event, nip46Signer);
+          if (result.success) {
+            this.deps.saveHashtagsToHistoryFn?.(hashtags);
+            this.deps.iframeMessageService?.notifyPostSuccess();
+          } else {
+            this.deps.iframeMessageService?.notifyPostError(result.error);
+          }
+          return result;
+        } catch (err) {
+          this.deps.console?.error("NIP-46での投稿エラー:", err);
           this.deps.iframeMessageService?.notifyPostError("post_error");
           return { success: false, error: "post_error" };
         }

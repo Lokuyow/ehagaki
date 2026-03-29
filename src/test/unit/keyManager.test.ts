@@ -20,7 +20,7 @@ import {
     PublicKeyState,
     KeyValidator
 } from '../../lib/keyManager.svelte';
-import type { KeyManagerDeps, NostrLoginAuth } from '../../lib/types';
+import type { KeyManagerDeps } from '../../lib/types';
 import { MockStorage } from '../helpers';
 
 // appUtilsのモック（実際の関数を実装）
@@ -278,15 +278,12 @@ describe('ExternalAuthChecker', () => {
 
 describe('PublicKeyState', () => {
     let publicKeyState: PublicKeyState;
-    let mockSetNostrLoginAuth: ReturnType<typeof vi.fn>;
     let mockClearAuthState: ReturnType<typeof vi.fn>;
 
     beforeEach(() => {
         vi.useFakeTimers();
-        mockSetNostrLoginAuth = vi.fn();
         mockClearAuthState = vi.fn();
         publicKeyState = new PublicKeyState({
-            setNostrLoginAuthFn: mockSetNostrLoginAuth,
             clearAuthStateFn: mockClearAuthState
         });
     });
@@ -311,7 +308,6 @@ describe('PublicKeyState', () => {
                 // テストで使用したnsecが無効だった場合はスキップ
                 expect(publicKeyState.currentIsValid).toBe(false);
             }
-            expect(publicKeyState.currentIsNostrLogin).toBe(false);
         });
 
         it('無効なnsecで状態をリセットする', () => {
@@ -329,52 +325,6 @@ describe('PublicKeyState', () => {
         });
     });
 
-    describe('setNostrLoginAuth', () => {
-        it('ログイン認証を設定する', async () => {
-            const auth: NostrLoginAuth = {
-                type: 'login',
-                pubkey: '0'.repeat(64),
-                npub: 'npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq5r5x8h'
-            };
-
-            publicKeyState.setNostrLoginAuth(auth);
-
-            expect(publicKeyState.currentIsValid).toBe(true);
-            expect(publicKeyState.currentIsNostrLogin).toBe(true);
-            expect(publicKeyState.currentHex).toBe(auth.pubkey);
-
-            // Advance timers to trigger setTimeout
-            vi.advanceTimersByTime(20);
-
-            expect(mockSetNostrLoginAuth).toHaveBeenCalledWith(
-                auth.pubkey,
-                auth.npub,
-                'nprofile1qqsqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq8uzqt',
-                undefined
-            );
-        });
-
-        it('ログアウト認証で状態をクリアする', () => {
-            const auth: NostrLoginAuth = { type: 'logout' };
-
-            publicKeyState.setNostrLoginAuth(auth);
-
-            expect(publicKeyState.currentIsValid).toBe(false);
-            expect(publicKeyState.currentIsNostrLogin).toBe(false);
-            expect(mockClearAuthState).toHaveBeenCalled();
-        });
-
-        it('pubkeyが不足している場合は警告を出す', () => {
-            const consoleSpy = vi.spyOn(console, 'warn');
-            const auth: NostrLoginAuth = { type: 'login' };
-
-            publicKeyState.setNostrLoginAuth(auth);
-
-            expect(consoleSpy).toHaveBeenCalledWith('NostrLoginAuth: pubkey is required for login/signup');
-            consoleSpy.mockRestore();
-        });
-    });
-
     describe('clear', () => {
         it('全ての状態をクリアする', () => {
             // まず何かの状態を設定
@@ -383,7 +333,6 @@ describe('PublicKeyState', () => {
             publicKeyState.clear();
 
             expect(publicKeyState.currentIsValid).toBe(false);
-            expect(publicKeyState.currentIsNostrLogin).toBe(false);
             expect(mockClearAuthState).toHaveBeenCalled();
         });
     });

@@ -3,7 +3,8 @@ import { vi } from 'vitest';
 const mockAppStore = {
     setAuthInitialized: vi.fn(),
     setNsecAuth: vi.fn(),
-    setNostrLoginAuth: vi.fn(),
+    setNip07Auth: vi.fn(),
+    setNip46Auth: vi.fn(),
     clearAuthState: vi.fn(),
     secretKeyStore: {
         value: null,
