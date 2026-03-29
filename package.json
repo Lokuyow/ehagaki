@@ -46,7 +46,7 @@
     "browser-image-compression": "^2.0.2",
     "mediabunny": "^1.24.2",
     "nostr-login": "^1.7.11",
-    "nostr-tools": "^2.15.1",
+    "nostr-tools": "^2.23.3",
     "nostr-zap": "^1.3.0",
     "nostr-zap-view": "^1.4.6",
     "rx-nostr": "^3.6.2",
