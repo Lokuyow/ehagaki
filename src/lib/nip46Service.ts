@@ -57,7 +57,7 @@ export class Nip46Service {
         return this.userPubkey;
     }
 
-    async reconnect(session: Nip46SessionData): Promise<string> {
+    async reconnect(session: Nip46SessionData, timeoutMs: number = 10000): Promise<string> {
         const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
         const bp = {
             pubkey: session.remoteSignerPubkey,
@@ -67,7 +67,14 @@ export class Nip46Service {
 
         this.clientSecretKeyHex = session.clientSecretKeyHex;
         this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp);
-        await this.bunkerSigner.connect();
+
+        // connect() がハングしないようタイムアウトを設ける
+        await Promise.race([
+            this.bunkerSigner.connect(),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('NIP-46 reconnect timeout')), timeoutMs)
+            ),
+        ]);
 
         this.userPubkey = session.userPubkey;
         this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
