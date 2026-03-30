@@ -173,7 +173,9 @@
         <Button
             variant="default"
             shape="rounded"
-            className="nip07-login-button {isLoadingNip07 ? 'loading' : ''}"
+            className="nip07-login-button u-control {isLoadingNip07
+                ? 'loading'
+                : ''}"
             onClick={handleNip07Login}
             disabled={isLoadingNip07}
         >
@@ -192,17 +194,21 @@
         </Button>
 
         <div class="divider">
-            <span>{$_("loginDialog.or")}</span>
+            <span>or</span>
         </div>
     {/if}
 
     <div class="bunker-section">
+        <div class="bunker-heading-row">
+            <div class="vault-icon svg-icon" aria-hidden="true"></div>
+            <h3>{$_("loginDialog.bunker_input_title")}</h3>
+        </div>
         <div class="bunker-input-row">
             <input
                 type="text"
                 bind:value={bunkerUrl}
                 placeholder="bunker://..."
-                class="bunker-input"
+                class="bunker-input u-control"
                 disabled={isLoadingNip46}
                 oninput={() => {
                     bunkerError = "";
@@ -213,7 +219,9 @@
                 shape="square"
                 onClick={handleNip46Login}
                 disabled={isLoadingNip46 || !bunkerUrl.trim()}
-                className="bunker-connect-btn {isLoadingNip46 ? 'loading' : ''}"
+                className="bunker-connect-btn u-control {isLoadingNip46
+                    ? 'loading'
+                    : ''}"
             >
                 {#if isLoadingNip46}
                     <LoadingPlaceholder
@@ -222,7 +230,6 @@
                         customClass="bunker-connect-placeholder"
                     />
                 {:else}
-                    <div class="vault-icon svg-icon"></div>
                     {$_("loginDialog.bunker_connect")}
                 {/if}
             </Button>
@@ -233,68 +240,64 @@
     </div>
 
     <div class="divider">
-        <span>{$_("loginDialog.or")}</span>
+        <span>or</span>
     </div>
 
-    <div class="secret-heading-row">
-        <div class="secret-icon svg-icon"></div>
-        <h3>{$_("loginDialog.input_secret")}</h3>
-    </div>
-    <form onsubmit={handleFormSubmit}>
-        <input
-            type="text"
-            name="username"
-            autocomplete="username"
-            style="display: none;"
-            aria-hidden="true"
-        />
-        <div class="secret-input-row">
+    <div class="secret-key-section">
+        <div class="secret-heading-row">
+            <div class="secret-icon svg-icon"></div>
+            <h3>{$_("loginDialog.input_secret")}</h3>
+        </div>
+
+        <form onsubmit={handleFormSubmit}>
             <input
-                type="password"
-                bind:value={secretKey}
-                placeholder="nsec1..."
-                class="secret-input"
-                id="secretKey"
-                name="secretKey"
-                autocomplete="current-password"
-                required
-                minlength="63"
-                maxlength="63"
-                bind:this={inputEl}
-                title={$_("loginDialog.hint_input_secret")}
-                onkeydown={(e) => {
-                    if (e.key === "Enter") handleSave();
-                }}
-                oninput={() => {
-                    // 入力時はエラーをクリアするだけ
-                    if (inputEl) inputEl.setCustomValidity("");
-                }}
+                type="text"
+                name="username"
+                autocomplete="username"
+                style="display: none;"
+                aria-hidden="true"
             />
-        </div>
+            <div class="secret-input-row">
+                <input
+                    type="password"
+                    bind:value={secretKey}
+                    placeholder="nsec1..."
+                    class="secret-input u-control"
+                    id="secretKey"
+                    name="secretKey"
+                    autocomplete="current-password"
+                    required
+                    minlength="63"
+                    maxlength="63"
+                    bind:this={inputEl}
+                    title={$_("loginDialog.hint_input_secret")}
+                    onkeydown={(e) => {
+                        if (e.key === "Enter") handleSave();
+                    }}
+                    oninput={() => {
+                        // 入力時はエラーをクリアするだけ
+                        if (inputEl) inputEl.setCustomValidity("");
+                    }}
+                />
 
-        <div class="dialog-buttons">
-            <Button
-                variant="warning"
-                shape="square"
-                type="button"
-                onClick={handleClear}
-                className="clear-btn">{$_("loginDialog.clear")}</Button
-            >
-            <Button
-                variant="primary"
-                shape="square"
-                type="submit"
-                className="save-btn">{$_("loginDialog.save")}</Button
-            >
-        </div>
-    </form>
+                <Button
+                    variant="primary"
+                    shape="square"
+                    type="submit"
+                    className="save-btn u-control"
+                >
+                    {$_("loginDialog.save")}
+                </Button>
+            </div>
+        </form>
+    </div>
 
     {#snippet footer()}
         <Dialog.Close>
             {#snippet child({ props })}
                 <Button
                     {...props}
-                    className="modal-close"
+                    className="modal-close u-control"
                     variant="default"
                     shape="square"
                     ariaLabel="閉じる"
@@ -327,10 +330,6 @@
         gap: 8px;
         width: 100%;
         height: 54px;
-
-        :global(button) {
-            flex: 1;
-        }
     }
     /* トースト用スタイル */
     .toast {
@@ -372,9 +371,7 @@
         padding: 0.6rem;
         background-color: var(--btn-bg);
         border: none;
-        height: 60px;
         flex: 1;
-        min-width: 0;
     }
 
     /* NIP-07拡張機能ログインボタン */
@@ -405,6 +402,19 @@
         margin: 0;
     }
 
+    .bunker-heading-row {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        margin: 0 0 8px 0;
+    }
+
+    .bunker-heading-row h3 {
+        margin: 0;
+    }
+
     .secret-icon {
         mask-image: url("/icons/key-solid-full.svg");
         width: 28px;
@@ -415,7 +425,7 @@
     }
 
     :global(.nip07-login-button.default) {
-        height: 74px;
+        height: 70px;
         flex-shrink: 0;
         margin-top: 26px;
         margin-bottom: 8px;
@@ -458,9 +468,10 @@
     }
 
     /* NIP-46 bunker URL入力 */
-    .bunker-section {
+    .bunker-section,
+    .secret-key-section {
         width: 100%;
-        height: 54px;
+        min-height: 54px;
     }
 
     .bunker-input-row {
@@ -486,8 +497,8 @@
 
     .vault-icon {
         mask-image: url("/icons/vault-solid-full.svg");
-        width: 20px;
-        height: 20px;
+        width: 30px;
+        height: 30px;
         padding: 12px 18px 12px 16px;
         display: inline-block;
         vertical-align: middle;
@@ -497,5 +508,16 @@
         color: var(--danger);
         font-size: 0.8125rem;
         margin: 4px 0 0 0;
+    }
+
+    /* 共通コントロール高さ 54px */
+    :global(input.u-control, button.u-control) {
+        height: 54px;
+        min-height: 54px;
+        min-width: 120px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
     }
 </style>

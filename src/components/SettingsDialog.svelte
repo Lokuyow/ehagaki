@@ -696,14 +696,6 @@
         flex-shrink: 0;
     }
 
-    :global(.sw-update-btn.loading) {
-        :global(.square) {
-            :global(:root.dark) & {
-                background-color: whitesmoke;
-            }
-        }
-    }
-
     :global(.sw-update-btn:disabled) {
         opacity: 0.6;
     }

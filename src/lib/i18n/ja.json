@@ -29,7 +29,6 @@
     "hint_input_secret": "nsec1から始まる秘密鍵を入力",
     "save": "保存",
     "clear": "クリア",
-    "or": "または",
     "login_with_extension": "ブラウザ拡張機能でログイン",
     "extension_not_found": "NIP-07対応の拡張機能が見つかりません",
     "secret_required": "秘密鍵を入力してください",
@@ -39,6 +38,7 @@
     "invalid_secret": "無効な秘密鍵です",
     "bunker_connect": "接続",
     "bunker_connecting": "接続中...",
+    "bunker_input_title": "バンカーURLを入力",
     "bunker_invalid": "無効なbunker URLです",
     "bunker_connection_failed": "接続に失敗しました"
   },

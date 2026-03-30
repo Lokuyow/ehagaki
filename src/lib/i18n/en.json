@@ -29,7 +29,6 @@
     "hint_input_secret": "Enter a secret key starting with nsec1",
     "save": "Save",
     "clear": "Clear",
-    "or": "or",
     "login_with_extension": "Login with Extension",
     "extension_not_found": "No NIP-07 compatible extension found",
     "secret_required": "Please enter your secret key",
@@ -39,6 +38,7 @@
     "invalid_secret": "Invalid secret key",
     "bunker_connect": "Connect",
     "bunker_connecting": "Connecting...",
+    "bunker_input_title": "Enter bunker URL",
     "bunker_invalid": "Invalid bunker URL",
     "bunker_connection_failed": "Connection failed"
   },

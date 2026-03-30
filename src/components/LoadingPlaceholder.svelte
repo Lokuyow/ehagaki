@@ -51,7 +51,6 @@
         flex-wrap: wrap;
         align-items: center;
         justify-content: center;
-        padding: 8px;
         column-gap: 8px;
         position: relative;
         width: 100%;
@@ -133,6 +132,11 @@
         background-color: var(--theme);
         animation: compactFloatAndRotate 4s infinite ease-in-out;
     }
+
+    :global(.primary .square) {
+        background-color: whitesmoke;
+    }
+
     /* アニメーションの定義 */
     @keyframes compactFloatAndRotate {
         0% {
