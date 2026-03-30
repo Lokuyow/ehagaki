@@ -254,4 +254,105 @@ describe('Nip46Service', () => {
             expect(mockSigner.connect).toHaveBeenCalled();
         });
     });
+
+    describe('ensureConnection', () => {
+        it('ping成功時はtrueを返し再接続しない', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['wss://relay.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockSigner = {
+                connect: vi.fn().mockResolvedValue(undefined),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn(),
+                ping: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            await service.connect(`bunker://${'a'.repeat(64)}`);
+            const result = await service.ensureConnection(mockStorage);
+
+            expect(result).toBe(true);
+            expect(mockSigner.ping).toHaveBeenCalled();
+            // close は呼ばれない（再接続なし）
+            expect(mockSigner.close).not.toHaveBeenCalled();
+        });
+
+        it('ping失敗時にセッションから再接続しtrueを返す', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['wss://relay.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockSigner = {
+                connect: vi.fn().mockResolvedValue(undefined),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+                ping: vi.fn().mockRejectedValue(new Error('connection lost')),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            await service.connect(`bunker://${'a'.repeat(64)}`);
+
+            // セッション保存
+            service.saveSession(mockStorage);
+
+            // 新しいsigner（再接続後用）
+            const mockReconnectedSigner = {
+                connect: vi.fn().mockResolvedValue(undefined),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn(),
+                ping: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockReconnectedSigner);
+
+            const result = await service.ensureConnection(mockStorage);
+
+            expect(result).toBe(true);
+            expect(mockSigner.close).toHaveBeenCalled();
+            expect(mockReconnectedSigner.connect).toHaveBeenCalled();
+        });
+
+        it('未接続時はfalseを返す', async () => {
+            const result = await service.ensureConnection(mockStorage);
+            expect(result).toBe(false);
+        });
+
+        it('ping失敗かつセッションなしでfalseを返す', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['wss://relay.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockSigner = {
+                connect: vi.fn().mockResolvedValue(undefined),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+                ping: vi.fn().mockRejectedValue(new Error('connection lost')),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            await service.connect(`bunker://${'a'.repeat(64)}`);
+
+            // セッション保存しない → storage は空
+            const emptyStorage = new MockStorage();
+            const result = await service.ensureConnection(emptyStorage);
+
+            expect(result).toBe(false);
+        });
+    });
 });

@@ -89,6 +89,51 @@ export class Nip46Service {
         return this.bunkerSigner !== null && this.userPubkey !== null;
     }
 
+    /**
+     * 接続が生きているか確認し、切れている場合はセッションから再接続する。
+     * visibilitychange でバックグラウンド復帰時に呼び出す。
+     */
+    async ensureConnection(storage?: Storage): Promise<boolean> {
+        if (!this.bunkerSigner || !this.userPubkey) return false;
+
+        try {
+            // ping で接続確認（タイムアウト付き）
+            await Promise.race([
+                this.bunkerSigner.ping(),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('ping timeout')), 5000)
+                ),
+            ]);
+            return true;
+        } catch {
+            // 接続切れ → セッションから再接続
+            const resolvedStorage = storage ?? (typeof localStorage !== 'undefined' ? localStorage : null);
+            if (!resolvedStorage) return false;
+
+            const session = Nip46Service.loadSession(resolvedStorage);
+            if (!session) return false;
+
+            try {
+                // 古い signer を静かに閉じる
+                try { await this.bunkerSigner.close(); } catch { /* ignore */ }
+
+                // 新しい BunkerSigner を作成し接続
+                const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
+                const bp = {
+                    pubkey: session.remoteSignerPubkey,
+                    relays: session.relays,
+                    secret: null,
+                };
+                this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp);
+                await this.bunkerSigner.connect();
+                this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+                return true;
+            } catch {
+                return false;
+            }
+        }
+    }
+
     getSigner(): Nip46SignerAdapter | null {
         return this.signerAdapter;
     }

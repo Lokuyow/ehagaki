@@ -16,6 +16,7 @@
   import DraftListDialog from "./components/DraftListDialog.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService } from "./lib/authService";
+  import { nip46Service } from "./lib/nip46Service";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
@@ -384,6 +385,24 @@
 
     // Call the async initializer
     init();
+
+    // NIP-46: バックグラウンド復帰時にWebSocket再接続
+    function handleVisibilityChange() {
+      if (
+        document.visibilityState === "visible" &&
+        authState.value.type === "nip46" &&
+        nip46Service.isConnected()
+      ) {
+        nip46Service.ensureConnection().catch((err) => {
+          console.error("NIP-46 reconnection failed:", err);
+        });
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   });
 
   $effect(() => {
