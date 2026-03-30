@@ -297,7 +297,7 @@
             {#snippet child({ props })}
                 <Button
                     {...props}
-                    className="modal-close u-control"
+                    className="modal-close"
                     variant="default"
                     shape="square"
                     ariaLabel="閉じる"
@@ -324,13 +324,7 @@
         align-items: center;
         gap: 8px;
     }
-    .dialog-buttons {
-        display: flex;
-        justify-content: flex-end;
-        gap: 8px;
-        width: 100%;
-        height: 54px;
-    }
+
     /* トースト用スタイル */
     .toast {
         position: fixed;
@@ -429,9 +423,6 @@
         flex-shrink: 0;
         margin-top: 26px;
         margin-bottom: 8px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
         position: relative;
         overflow: hidden;
         border-radius: 8px;
@@ -517,7 +508,6 @@
         min-width: 120px;
         display: inline-flex;
         align-items: center;
-        justify-content: center;
         box-sizing: border-box;
     }
 </style>

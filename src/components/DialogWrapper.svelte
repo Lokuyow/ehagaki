@@ -121,7 +121,6 @@
 
     .dialog-footer {
         width: 100%;
-        height: 58px;
         box-sizing: content-box;
         display: flex;
         justify-content: center;
@@ -130,7 +129,6 @@
 
     /* 閉じるボタン付きフッター用スタイル */
     .dialog-footer.close-button-footer {
-        height: 50px;
         border-top: 1px solid var(--border-hr);
 
         :global(.modal-close) {
