@@ -13,6 +13,7 @@
     mediaFreePlacementStore,
   } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
+  import { nip46Service } from "../lib/nip46Service";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
   import PopupModal from "./PopupModal.svelte";
   import SecretKeyWarningDialog from "./SecretKeyWarningDialog.svelte";
@@ -79,7 +80,10 @@
   // --- PostManager初期化 ---
   $effect(() => {
     if (rxNostr) {
-      if (!postManager) postManager = new PostManager(rxNostr as RxNostr);
+      if (!postManager)
+        postManager = new PostManager(rxNostr as RxNostr, {
+          getNip46SignerFn: () => nip46Service.getSigner(),
+        });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }
   });
