@@ -172,34 +172,32 @@
     contentClass="login-dialog"
     footerVariant="close-button"
 >
-    {#if isNip07Available}
-        <Button
-            variant="default"
-            shape="rounded"
-            className="nip07-login-button u-control {isLoadingNip07
-                ? 'loading'
-                : ''}"
-            onClick={handleNip07Login}
-            disabled={isLoadingNip07}
-        >
-            {#if isLoadingNip07}
-                <LoadingPlaceholder
-                    text={true}
-                    showLoader={true}
-                    customClass="nip07-login-placeholder"
-                />
-            {:else}
-                <div class="extension-icon svg-icon"></div>
-                <span class="btn-text"
-                    >{$_("loginDialog.login_with_extension")}</span
-                >
-            {/if}
-        </Button>
+    <Button
+        variant="default"
+        shape="rounded"
+        className="nip07-login-button u-control {isLoadingNip07
+            ? 'loading'
+            : ''}"
+        onClick={handleNip07Login}
+        disabled={isLoadingNip07 || !isNip07Available}
+    >
+        {#if isLoadingNip07}
+            <LoadingPlaceholder
+                text={true}
+                showLoader={true}
+                customClass="nip07-login-placeholder"
+            />
+        {:else}
+            <div class="extension-icon svg-icon"></div>
+            <span class="btn-text"
+                >{$_("loginDialog.login_with_extension")}</span
+            >
+        {/if}
+    </Button>
 
-        <div class="divider">
-            <span>or</span>
-        </div>
-    {/if}
+    <div class="divider">
+        <span>or</span>
+    </div>
 
     <div class="bunker-section">
         <div class="bunker-heading-row">
