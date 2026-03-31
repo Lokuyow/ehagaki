@@ -418,14 +418,18 @@
         .account-item {
             display: flex;
             align-items: center;
-            gap: 4px;
+            gap: 8px;
             padding: 6px 8px;
             border-radius: 8px;
             background-color: var(--btn-bg);
             transition: background-color 0.15s;
 
             &.active {
-                background-color: var(--btn-bg-hover, rgba(0, 0, 0, 0.08));
+                background-color: rgba(0, 0, 0, 0.08);
+
+                :global(:disabled) {
+                    opacity: 1;
+                }
             }
         }
 
@@ -448,8 +452,8 @@
         }
 
         .account-avatar {
-            width: 32px;
-            height: 32px;
+            width: 38px;
+            height: 38px;
             border-radius: 50%;
             overflow: hidden;
             flex-shrink: 0;
@@ -473,6 +477,7 @@
             align-items: flex-start;
             min-width: 0;
             width: 100%;
+            gap: 4px;
         }
 
         .account-name-row {
@@ -484,7 +489,7 @@
         }
 
         .account-name {
-            font-size: 0.875rem;
+            font-size: 1rem;
             font-weight: 500;
             color: var(--text);
             overflow: hidden;
@@ -503,12 +508,12 @@
         }
 
         .account-type-badge {
-            font-size: 0.7rem;
+            font-size: 0.75rem;
             color: var(--text-light);
         }
 
         .active-badge {
-            font-size: 0.7rem;
+            font-size: 0.875rem;
             font-weight: 600;
             color: var(--primary, #6366f1);
             margin-left: auto;
@@ -519,8 +524,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 28px;
-            height: 28px;
+            width: 38px;
+            height: 38px;
             border: none;
             background: none;
             border-radius: 50%;
@@ -544,8 +549,8 @@
 
         .xmark-small-icon {
             mask-image: url("/icons/xmark-solid-full.svg");
-            width: 14px;
-            height: 14px;
+            width: 20px;
+            height: 20px;
         }
 
         :global(button.add-account-btn) {
