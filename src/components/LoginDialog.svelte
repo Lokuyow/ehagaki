@@ -76,7 +76,9 @@
 
             // バリデーションはsave時のみ
             if (validity.valueMissing) {
-                inputEl.setCustomValidity($_("loginDialog.secret_required"));
+                inputEl.setCustomValidity(
+                    $_("loginDialog.secret_key_required"),
+                );
                 inputEl.reportValidity();
                 return;
             }
@@ -116,28 +118,48 @@
         }
         onSave?.();
     }
-    function handleClear() {
-        secretKey = "";
-        if (inputEl) inputEl.setCustomValidity("");
-    }
     function handleNip07Login() {
         onNip07Login?.();
     }
 
     // --- NIP-46 bunker URL ---
     let bunkerUrl = $state("");
-    let bunkerError = $state("");
+    let bunkerInputEl: HTMLInputElement | null = $state(null);
 
     async function handleNip46Login() {
-        const trimmed = bunkerUrl.trim();
-        if (!trimmed || !BUNKER_REGEX.test(trimmed)) {
-            bunkerError = $_("loginDialog.bunker_invalid");
-            return;
+        if (bunkerInputEl) {
+            const trimmed = bunkerInputEl.value.trim();
+            bunkerUrl = trimmed;
+
+            if (bunkerInputEl.validity.valueMissing) {
+                bunkerInputEl.setCustomValidity(
+                    $_("loginDialog.bunker_url_required"),
+                );
+                bunkerInputEl.reportValidity();
+                return;
+            }
+
+            if (bunkerInputEl.validity.patternMismatch) {
+                bunkerInputEl.setCustomValidity(
+                    $_("loginDialog.bunker_invalid"),
+                );
+                bunkerInputEl.reportValidity();
+                return;
+            }
+
+            bunkerInputEl.setCustomValidity("");
         }
-        bunkerError = "";
+
+        const trimmed = bunkerUrl.trim();
         const errorMsg = await onNip46Login?.(trimmed);
-        if (errorMsg) {
-            bunkerError = errorMsg;
+        if (errorMsg && bunkerInputEl) {
+            const localizedMessage =
+                errorMsg === "Invalid bunker URL"
+                    ? $_("loginDialog.bunker_invalid")
+                    : errorMsg;
+            bunkerInputEl.setCustomValidity(localizedMessage);
+            bunkerInputEl.reportValidity();
+            return;
         }
     }
 
@@ -173,7 +195,7 @@
     footerVariant="close-button"
 >
     <Button
-        variant="default"
+        variant="primary"
         shape="rounded"
         className="nip07-login-button u-control {isLoadingNip07
             ? 'loading'
@@ -206,20 +228,23 @@
         </div>
         <div class="bunker-input-row">
             <input
-                type="text"
+                type="password"
                 bind:value={bunkerUrl}
                 placeholder="bunker://..."
                 class="bunker-input u-control"
+                required
+                pattern={BUNKER_REGEX.source}
+                bind:this={bunkerInputEl}
                 disabled={isLoadingNip46}
                 oninput={() => {
-                    bunkerError = "";
+                    if (bunkerInputEl) bunkerInputEl.setCustomValidity("");
                 }}
             />
             <Button
                 variant="primary"
                 shape="square"
                 onClick={handleNip46Login}
-                disabled={isLoadingNip46 || !bunkerUrl.trim()}
+                disabled={isLoadingNip46}
                 className="bunker-connect-btn u-control {isLoadingNip46
                     ? 'loading'
                     : ''}"
@@ -235,9 +260,6 @@
                 {/if}
             </Button>
         </div>
-        {#if bunkerError}
-            <p class="bunker-error">{bunkerError}</p>
-        {/if}
     </div>
 
     <div class="divider">
@@ -250,7 +272,7 @@
             <h3>{$_("loginDialog.input_secret")}</h3>
         </div>
 
-        <form onsubmit={handleFormSubmit}>
+        <form novalidate onsubmit={handleFormSubmit}>
             <input
                 type="text"
                 name="username"
@@ -419,7 +441,7 @@
         vertical-align: middle;
     }
 
-    :global(.nip07-login-button.default) {
+    :global(.nip07-login-button.primary) {
         height: 70px;
         flex-shrink: 0;
         margin-top: 26px;
@@ -494,12 +516,6 @@
         padding: 12px 18px 12px 16px;
         display: inline-block;
         vertical-align: middle;
-    }
-
-    .bunker-error {
-        color: var(--danger);
-        font-size: 0.8125rem;
-        margin: 4px 0 0 0;
     }
 
     /* 共通コントロール高さ 54px */

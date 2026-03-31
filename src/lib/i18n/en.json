@@ -32,6 +32,7 @@
     "login_with_extension": "Login with Extension",
     "extension_not_found": "No NIP-07 compatible extension found",
     "secret_required": "Please enter your secret key",
+    "secret_key_required": "Please enter your secret key",
     "secret_must_start_nsec1": "Secret key must start with 'nsec1'",
     "secret_too_short": "Secret key is too short (must be 63 characters)",
     "secret_too_long": "Secret key is too long (must be 63 characters or less)",
@@ -39,6 +40,7 @@
     "bunker_connect": "Connect",
     "bunker_connecting": "Connecting...",
     "bunker_input_title": "Enter bunker URL",
+    "bunker_url_required": "Please enter a bunker URL",
     "bunker_invalid": "Invalid bunker URL",
     "bunker_connection_failed": "Connection failed"
   },

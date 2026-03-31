@@ -32,6 +32,7 @@
     "login_with_extension": "ブラウザ拡張機能でログイン",
     "extension_not_found": "NIP-07対応の拡張機能が見つかりません",
     "secret_required": "秘密鍵を入力してください",
+    "secret_key_required": "秘密鍵を入力してください",
     "secret_must_start_nsec1": "秘密鍵は「nsec1」で始まる必要があります",
     "secret_too_short": "秘密鍵が短すぎます（63文字必要です）",
     "secret_too_long": "秘密鍵が長すぎます（63文字以内で入力してください）",
@@ -39,6 +40,7 @@
     "bunker_connect": "接続",
     "bunker_connecting": "接続中...",
     "bunker_input_title": "バンカーURLを入力",
+    "bunker_url_required": "バンカーURLを入力してください",
     "bunker_invalid": "無効なbunker URLです",
     "bunker_connection_failed": "接続に失敗しました"
   },
