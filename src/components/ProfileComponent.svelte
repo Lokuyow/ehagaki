@@ -246,9 +246,13 @@
                                                 "profileDialog.login_method_nsec",
                                             )}
                                         {:else if account.type === "nip07"}
-                                            NIP-07
+                                            {$_(
+                                                "profileDialog.login_method_nip07",
+                                            )}
                                         {:else if account.type === "nip46"}
-                                            NIP-46
+                                            {$_(
+                                                "profileDialog.login_method_nip46",
+                                            )}
                                         {/if}
                                     </span>
                                 </div>

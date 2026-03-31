@@ -61,7 +61,7 @@
     "login_method": "Login Method",
     "login_method_nsec": "Secret Key",
     "login_method_nip07": "Browser Extension (NIP-07)",
-    "login_method_nip46": "Remote Signer (NIP-46)",
+    "login_method_nip46": "Remote Signing (NIP-46)",
     "accounts": "Accounts",
     "add_account": "Add Account",
     "switch_account": "Switch",
