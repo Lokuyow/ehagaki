@@ -10,6 +10,16 @@
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import type { StoredAccount } from "../lib/types";
+    import { toNpub } from "../lib/utils/nostrUtils";
+
+    function formatNpubShort(pubkeyHex: string): string {
+        try {
+            const npub = toNpub(pubkeyHex);
+            return npub.slice(0, 9) + "..." + npub.slice(-4);
+        } catch {
+            return "";
+        }
+    }
 
     interface Props {
         show: boolean;
@@ -236,10 +246,15 @@
                                     {/if}
                                 </div>
                                 <div class="account-details">
-                                    <span class="account-name">
-                                        {cachedProfile?.name ||
-                                            $_("profileDialog.anonymous")}
-                                    </span>
+                                    <div class="account-name-row">
+                                        <span class="account-name">
+                                            {cachedProfile?.name ||
+                                                $_("profileDialog.anonymous")}
+                                        </span>
+                                        <span class="account-npub-short">
+                                            {formatNpubShort(account.pubkeyHex)}
+                                        </span>
+                                    </div>
                                     <span class="account-type-badge">
                                         {#if account.type === "nsec"}
                                             {$_(
@@ -494,6 +509,15 @@
             flex-direction: column;
             align-items: flex-start;
             min-width: 0;
+            width: 100%;
+        }
+
+        .account-name-row {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            min-width: 0;
+            width: 100%;
         }
 
         .account-name {
@@ -503,7 +527,16 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
-            max-width: 160px;
+            min-width: 0;
+            flex-shrink: 1;
+        }
+
+        .account-npub-short {
+            font-size: 0.7rem;
+            color: var(--text-light);
+            font-family: monospace;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
 
         .account-type-badge {
