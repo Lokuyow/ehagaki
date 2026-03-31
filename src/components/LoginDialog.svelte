@@ -226,40 +226,49 @@
             <div class="vault-icon svg-icon" aria-hidden="true"></div>
             <h3>{$_("loginDialog.bunker_input_title")}</h3>
         </div>
-        <div class="bunker-input-row">
-            <input
-                type="password"
-                bind:value={bunkerUrl}
-                placeholder="bunker://..."
-                class="bunker-input u-control"
-                required
-                pattern={BUNKER_REGEX.source}
-                bind:this={bunkerInputEl}
-                disabled={isLoadingNip46}
-                oninput={() => {
-                    if (bunkerInputEl) bunkerInputEl.setCustomValidity("");
-                }}
-            />
-            <Button
-                variant="primary"
-                shape="square"
-                onClick={handleNip46Login}
-                disabled={isLoadingNip46}
-                className="bunker-connect-btn u-control {isLoadingNip46
-                    ? 'loading'
-                    : ''}"
-            >
-                {#if isLoadingNip46}
-                    <LoadingPlaceholder
-                        text={true}
-                        showLoader={true}
-                        customClass="bunker-connect-placeholder"
-                    />
-                {:else}
-                    {$_("loginDialog.bunker_connect")}
-                {/if}
-            </Button>
-        </div>
+        <form
+            novalidate
+            onsubmit={(e) => {
+                e.preventDefault();
+                handleNip46Login();
+            }}
+        >
+            <div class="bunker-input-row">
+                <input
+                    type="password"
+                    bind:value={bunkerUrl}
+                    placeholder="bunker://..."
+                    class="bunker-input u-control"
+                    required
+                    autocomplete="off"
+                    pattern={BUNKER_REGEX.source}
+                    bind:this={bunkerInputEl}
+                    disabled={isLoadingNip46}
+                    oninput={() => {
+                        if (bunkerInputEl) bunkerInputEl.setCustomValidity("");
+                    }}
+                />
+                <Button
+                    variant="primary"
+                    shape="square"
+                    type="submit"
+                    disabled={isLoadingNip46}
+                    className="bunker-connect-btn u-control {isLoadingNip46
+                        ? 'loading'
+                        : ''}"
+                >
+                    {#if isLoadingNip46}
+                        <LoadingPlaceholder
+                            text={true}
+                            showLoader={true}
+                            customClass="bunker-connect-placeholder"
+                        />
+                    {:else}
+                        {$_("loginDialog.bunker_connect")}
+                    {/if}
+                </Button>
+            </div>
+        </form>
     </div>
 
     <div class="divider">
