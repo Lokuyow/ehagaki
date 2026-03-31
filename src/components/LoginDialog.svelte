@@ -139,7 +139,7 @@
                 return;
             }
 
-            if (bunkerInputEl.validity.patternMismatch) {
+            if (!BUNKER_REGEX.test(trimmed)) {
                 bunkerInputEl.setCustomValidity(
                     $_("loginDialog.bunker_invalid"),
                 );
@@ -241,7 +241,6 @@
                     class="bunker-input u-control"
                     required
                     autocomplete="off"
-                    pattern={BUNKER_REGEX.source}
                     bind:this={bunkerInputEl}
                     disabled={isLoadingNip46}
                     oninput={() => {
