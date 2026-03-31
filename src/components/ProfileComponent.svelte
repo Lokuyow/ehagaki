@@ -190,26 +190,6 @@
             </div>
         </div>
 
-        <div class="auth-controls">
-            <!-- ログイン方法 -->
-            <div class="auth-container">
-                {#if auth?.type === "nsec" || auth?.type === "nip07" || auth?.type === "nip46"}
-                    <div class="profile-info-label">
-                        {$_("profileDialog.login_method")}
-                    </div>
-                    <span class="profile-info-text">
-                        {#if auth?.type === "nsec"}
-                            {$_("profileDialog.login_method_nsec")}
-                        {:else if auth?.type === "nip07"}
-                            {$_("profileDialog.login_method_nip07")}
-                        {:else if auth?.type === "nip46"}
-                            {$_("profileDialog.login_method_nip46")}
-                        {/if}
-                    </span>
-                {/if}
-            </div>
-        </div>
-
         <!-- アカウント一覧 -->
         {#if accounts.length > 0}
             <div class="accounts-section">
@@ -421,23 +401,6 @@
         font-size: 0.875rem;
         font-weight: 500;
         color: var(--text-light);
-    }
-
-    .auth-controls {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
-        width: 100%;
-
-        .auth-container {
-            display: flex;
-            flex-direction: row;
-            align-items: baseline;
-            justify-content: flex-start;
-            width: 100%;
-            gap: 10px;
-        }
     }
 
     .accounts-section {
