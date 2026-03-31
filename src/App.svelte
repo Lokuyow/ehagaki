@@ -104,9 +104,7 @@
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
   // シングルトンの認証サービスが構築された時点で検出された値を使用
-  const nip07ExtensionAvailable = authService
-    .getNip07Authenticator()
-    .isAvailable();
+  const nip07ExtensionAvailable = authService.isNip07Available();
   let footerInfoDisplay: any;
   let postComponentRef: any = $state();
   let footerComponentRef: any = $state();
@@ -133,6 +131,24 @@
     await relayProfileService.initializeRelays(pubkeyHex);
   }
 
+  /**
+   * 認証成功後の共通処理: Nostr初期化 → リレー・プロフィール取得 → ストア更新
+   */
+  async function handlePostAuth(pubkeyHex: string): Promise<void> {
+    isLoadingProfileStore.set(true);
+    closeLoginDialog();
+    try {
+      await initializeNostr(pubkeyHex);
+      const profile = await relayProfileService.initializeForLogin(pubkeyHex);
+      if (profile) {
+        profileDataStore.set(profile);
+        profileLoadedStore.set(true);
+      }
+    } finally {
+      isLoadingProfileStore.set(false);
+    }
+  }
+
   // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey() {
     const result = await authService.authenticateWithNsec(secretKey);
@@ -140,25 +156,11 @@
       errorMessage = result.error || "authentication_error";
       return;
     }
-    isLoadingProfileStore.set(true);
-    // ダイアログを閉じる
-    closeLoginDialog();
     errorMessage = "";
 
     try {
       if (result.pubkeyHex) {
-        // RelayProfileServiceを使用してリレーとプロフィールを取得
-        const profile = await relayProfileService.initializeForLogin(
-          result.pubkeyHex,
-        );
-        if (profile) {
-          profileDataStore.set(profile);
-          profileLoadedStore.set(true);
-        }
-        // プロフィール取得完了後にローディングを解除
-        isLoadingProfileStore.set(false);
-      } else {
-        isLoadingProfileStore.set(false);
+        await handlePostAuth(result.pubkeyHex);
       }
     } catch (e) {
       isLoadingProfileStore.set(false);
@@ -197,23 +199,7 @@
       }
 
       if (result.pubkeyHex) {
-        isLoadingProfileStore.set(true);
-        closeLoginDialog();
-
-        try {
-          await initializeNostr(result.pubkeyHex);
-          const profile = await relayProfileService.initializeForLogin(
-            result.pubkeyHex,
-          );
-          if (profile) {
-            profileDataStore.set(profile);
-            profileLoadedStore.set(true);
-          }
-          isLoadingProfileStore.set(false);
-        } catch (error) {
-          console.error("NIP-07認証処理中にエラー:", error);
-          isLoadingProfileStore.set(false);
-        }
+        await handlePostAuth(result.pubkeyHex);
       }
     } catch (error) {
       console.error("NIP-07ログインでエラー:", error);
@@ -234,23 +220,7 @@
       }
 
       if (result.pubkeyHex) {
-        isLoadingProfileStore.set(true);
-        closeLoginDialog();
-
-        try {
-          await initializeNostr(result.pubkeyHex);
-          const profile = await relayProfileService.initializeForLogin(
-            result.pubkeyHex,
-          );
-          if (profile) {
-            profileDataStore.set(profile);
-            profileLoadedStore.set(true);
-          }
-          isLoadingProfileStore.set(false);
-        } catch (error) {
-          console.error("NIP-46認証処理中にエラー:", error);
-          isLoadingProfileStore.set(false);
-        }
+        await handlePostAuth(result.pubkeyHex);
       }
       return undefined;
     } catch (error) {
@@ -311,17 +281,7 @@
           const authResult = await authService.initializeAuth();
 
           if (authResult.hasAuth && authResult.pubkeyHex) {
-            await initializeNostr(authResult.pubkeyHex);
-            // RelayProfileServiceを使用してリレーとプロフィールを取得
-            const profile = await relayProfileService.initializeForLogin(
-              authResult.pubkeyHex,
-            );
-            if (profile) {
-              profileDataStore.set(profile);
-              profileLoadedStore.set(true);
-            }
-            // プロフィール取得完了後にローディングを解除
-            isLoadingProfileStore.set(false);
+            await handlePostAuth(authResult.pubkeyHex);
           } else {
             await initializeNostr();
             isLoadingProfileStore.set(false);

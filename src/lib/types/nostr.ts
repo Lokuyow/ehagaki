@@ -49,18 +49,14 @@ export interface AuthServiceDependencies {
     window?: Window;
     navigator?: Navigator;
     console?: Console;
-    setTimeout?: (callback: () => void, delay: number) => void;
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip07Auth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip46Auth?: (pubkey: string, npub: string, nprofile: string) => void;
-    setAuthInitialized?: () => void;
     clearAuthState?: () => void;
     secretKeyStore?: {
         value: string | null;
         set: (value: string | null) => void;
-        subscribe: (callback: (value: string | null) => void) => void;
     };
-    debugLog?: (...args: any[]) => void;
 }
 
 export interface KeyManagerInterface {

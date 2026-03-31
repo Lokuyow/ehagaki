@@ -1,48 +1,82 @@
-﻿import { describe, it, expect, vi, type Mock } from 'vitest';
-import { AuthValidator } from '../../lib/authService';
+﻿import { describe, it, expect, vi } from 'vitest';
+import type { AuthServiceDependencies } from '../../lib/types';
+import { MockStorage, MockKeyManager } from '../helpers';
+
+vi.mock('../../lib/nip46Service', () => ({
+    nip46Service: {
+        connect: vi.fn(),
+        reconnect: vi.fn(),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        isConnected: vi.fn().mockReturnValue(false),
+        getSigner: vi.fn().mockReturnValue(null),
+        getUserPubkey: vi.fn().mockReturnValue(null),
+        saveSession: vi.fn(),
+    },
+    Nip46Service: {
+        loadSession: vi.fn().mockReturnValue(null),
+        clearSession: vi.fn(),
+    },
+    BUNKER_REGEX: /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/,
+}));
+
+import { AuthService } from '../../lib/authService';
 
 /**
- * AuthValidator ユニットテスト
- * バリデーション、認証状態の検証
+ * 認証バリデーション ユニットテスト
+ * AuthService.authenticateWithNsec経由でバリデーションを検証
  */
+describe('認証バリデーション ユニットテスト', () => {
+    function createAuthService(keyManager: MockKeyManager): AuthService {
+        return new AuthService({
+            keyManager: keyManager as any,
+            localStorage: new MockStorage(),
+            window: { location: { pathname: '/' } } as Window,
+            navigator: {} as Navigator,
+            console: { log: vi.fn(), error: vi.fn(), warn: vi.fn() } as unknown as Console,
+            setNsecAuth: vi.fn(),
+            setNip07Auth: vi.fn(),
+            setNip46Auth: vi.fn(),
+        });
+    }
 
-/**
- * AuthValidator ユニットテスト
- */
-describe('AuthValidator ユニットテスト', () => {
-    describe('Nsecバリデーション統合', () => {
-        it('有効なNsecが正しくバリデーションされること', async () => {
-            const validNsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
+    describe('Nsecバリデーション', () => {
+        it('有効なNsecで認証が成功すること', async () => {
+            const mockKeyManager = new MockKeyManager();
+            mockKeyManager.isValidNsec.mockReturnValue(true);
+            mockKeyManager.saveToStorage.mockReturnValue({ success: true });
+            mockKeyManager.derivePublicKey.mockReturnValue({
+                hex: '1234567890abcdef',
+                npub: 'npub1test',
+                nprofile: 'nprofile1test'
+            });
 
-            const { keyManager } = await import('../../lib/keyManager.svelte');
-            vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
+            const authService = createAuthService(mockKeyManager);
+            const result = await authService.authenticateWithNsec('nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab');
 
-            const isValid = AuthValidator.isValidSecretKey(validNsec, keyManager);
-
-            expect(isValid).toBe(true);
-            expect(keyManager.isValidNsec).toHaveBeenCalledWith(validNsec);
+            expect(result.success).toBe(true);
+            expect(mockKeyManager.isValidNsec).toHaveBeenCalled();
         });
 
         it('無効なNsecが拒否されること', async () => {
-            const invalidNsec = 'invalid-nsec';
+            const mockKeyManager = new MockKeyManager();
+            mockKeyManager.isValidNsec.mockReturnValue(false);
 
-            const { keyManager } = await import('../../lib/keyManager.svelte');
-            vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
+            const authService = createAuthService(mockKeyManager);
+            const result = await authService.authenticateWithNsec('invalid-nsec');
 
-            const isValid = AuthValidator.isValidSecretKey(invalidNsec, keyManager);
-
-            expect(isValid).toBe(false);
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('invalid_secret');
         });
 
         it('短すぎるNsecが拒否されること', async () => {
-            const shortNsec = 'nsec123';
+            const mockKeyManager = new MockKeyManager();
+            mockKeyManager.isValidNsec.mockReturnValue(false);
 
-            const { keyManager } = await import('../../lib/keyManager.svelte');
-            vi.mocked(keyManager.isValidNsec).mockReturnValue(false);
+            const authService = createAuthService(mockKeyManager);
+            const result = await authService.authenticateWithNsec('nsec123');
 
-            const isValid = AuthValidator.isValidSecretKey(shortNsec, keyManager);
-
-            expect(isValid).toBe(false);
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('invalid_secret');
         });
 
         it('様々なNsecフォーマットが正しく検証されること', async () => {
@@ -54,90 +88,77 @@ describe('AuthValidator ユニットテスト', () => {
                 { nsec: 'npub1' + 'a'.repeat(58), shouldBeValid: false },
             ];
 
-            const { keyManager } = await import('../../lib/keyManager.svelte');
-
             for (const testCase of testCases) {
-                vi.mocked(keyManager.isValidNsec).mockReturnValue(testCase.shouldBeValid);
-                const result = AuthValidator.isValidSecretKey(testCase.nsec, keyManager);
-                expect(result).toBe(testCase.shouldBeValid);
+                const mockKeyManager = new MockKeyManager();
+                mockKeyManager.isValidNsec.mockReturnValue(testCase.shouldBeValid);
+                if (testCase.shouldBeValid) {
+                    mockKeyManager.saveToStorage.mockReturnValue({ success: true });
+                    mockKeyManager.derivePublicKey.mockReturnValue({
+                        hex: 'abcdef',
+                        npub: 'npub1test',
+                        nprofile: 'nprofile1test'
+                    });
+                }
+
+                const authService = createAuthService(mockKeyManager);
+                const result = await authService.authenticateWithNsec(testCase.nsec);
+                expect(result.success).toBe(testCase.shouldBeValid);
             }
         });
     });
 
-    describe('認証フロー遷移統合', () => {
-        it('未認証→Nsec認証→認証済みの状態遷移が表現できること', async () => {
-            const { keyManager } = await import('../../lib/keyManager.svelte');
+    describe('認証フロー遷移', () => {
+        it('未認証→Nsec認証→認証済みの状態遷移', async () => {
+            const mockKeyManager = new MockKeyManager();
 
             // 1. 未認証状態
-            vi.mocked(keyManager.loadFromStorage).mockReturnValue(null);
-            const stored = keyManager.loadFromStorage();
-            expect(stored).toBeNull();
+            vi.mocked(mockKeyManager.loadFromStorage).mockReturnValue(null);
+            expect(mockKeyManager.loadFromStorage()).toBeNull();
 
             // 2. Nsecを入力して認証
             const nsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
-            vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
-            const isValid = AuthValidator.isValidSecretKey(nsec, keyManager);
-            expect(isValid).toBe(true);
-
-            // 3. 保存
-            vi.mocked(keyManager.saveToStorage).mockReturnValue({ success: true });
-            const saveResult = keyManager.saveToStorage(nsec);
-            expect(saveResult.success).toBe(true);
-
-            // 4. 公開鍵導出
-            vi.mocked(keyManager.derivePublicKey).mockReturnValue({
+            mockKeyManager.isValidNsec.mockReturnValue(true);
+            mockKeyManager.saveToStorage.mockReturnValue({ success: true });
+            mockKeyManager.derivePublicKey.mockReturnValue({
                 hex: '1234567890abcdef',
                 npub: 'npub1test',
                 nprofile: 'nprofile1test'
             });
-            const derived = keyManager.derivePublicKey(nsec);
-            expect(derived.hex).toBe('1234567890abcdef');
-        });
 
-        it('認証済み→ログアウト→未認証の状態遷移が表現できること', async () => {
-            const { keyManager } = await import('../../lib/keyManager.svelte');
+            const authService = createAuthService(mockKeyManager);
+            const result = await authService.authenticateWithNsec(nsec);
 
-            // 1. 認証済み状態
-            const storedNsec = 'nsec1stored';
-            vi.mocked(keyManager.loadFromStorage).mockReturnValue(storedNsec);
-            const stored = keyManager.loadFromStorage();
-            expect(stored).toBe(storedNsec);
-
-            // 2. ログアウト（空文字列で保存）
-            vi.mocked(keyManager.saveToStorage).mockReturnValue({ success: true });
-            const logoutResult = keyManager.saveToStorage('');
-            expect(logoutResult.success).toBe(true);
-
-            // 3. 未認証状態に戻る
-            vi.mocked(keyManager.loadFromStorage).mockReturnValue(null);
-            const afterLogout = keyManager.loadFromStorage();
-            expect(afterLogout).toBeNull();
+            expect(result.success).toBe(true);
+            expect(result.pubkeyHex).toBe('1234567890abcdef');
         });
     });
 
-    describe('エラーハンドリング統合', () => {
-        it('公開鍵導出エラーが検出できること', async () => {
-            const nsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
-            const { keyManager } = await import('../../lib/keyManager.svelte');
-
-            vi.mocked(keyManager.isValidNsec).mockReturnValue(true);
-            vi.mocked(keyManager.derivePublicKey).mockImplementation(() => {
+    describe('エラーハンドリング', () => {
+        it('公開鍵導出エラーが正しくハンドリングされること', async () => {
+            const mockKeyManager = new MockKeyManager();
+            mockKeyManager.isValidNsec.mockReturnValue(true);
+            mockKeyManager.saveToStorage.mockReturnValue({ success: true });
+            mockKeyManager.derivePublicKey.mockImplementation(() => {
                 throw new Error('Derivation failed');
             });
 
-            expect(() => {
-                keyManager.derivePublicKey(nsec);
-            }).toThrow('Derivation failed');
+            const authService = createAuthService(mockKeyManager);
+            const result = await authService.authenticateWithNsec('nsec1test');
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('authentication_error');
         });
 
         it('ストレージ保存失敗が検出できること', async () => {
-            const nsec = 'nsec1test1234567890abcdefghijklmnopqrstuvwxyz1234567890ab';
-            const { keyManager } = await import('../../lib/keyManager.svelte');
+            const mockKeyManager = new MockKeyManager();
+            mockKeyManager.isValidNsec.mockReturnValue(true);
+            mockKeyManager.saveToStorage.mockReturnValue({ success: false });
 
-            vi.mocked(keyManager.saveToStorage).mockReturnValue({ success: false });
-            const result = keyManager.saveToStorage(nsec);
+            const authService = createAuthService(mockKeyManager);
+            const result = await authService.authenticateWithNsec('nsec1test');
 
             expect(result.success).toBe(false);
+            expect(result.error).toBe('error_saving');
         });
     });
 });

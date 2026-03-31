@@ -20,20 +20,7 @@ vi.mock('../../lib/nip46Service', () => ({
     BUNKER_REGEX: /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/,
 }));
 
-import {
-    AuthService,
-    AuthValidator,
-    NsecAuthenticator,
-    Nip07Authenticator,
-    ProfileCacheCleaner,
-    AuthInitializer
-} from '../../lib/authService';
-
-// --- モッククラス定義 ---
-
-class MockPublicKeyState {
-    setNsec = vi.fn();
-}
+import { AuthService } from '../../lib/authService';
 
 function createMockDependencies(): AuthServiceDependencies {
     return {
@@ -57,54 +44,21 @@ function createMockDependencies(): AuthServiceDependencies {
         setNsecAuth: vi.fn(),
         setNip07Auth: vi.fn(),
         setNip46Auth: vi.fn(),
-        setAuthInitialized: vi.fn(),
-        setTimeout: vi.fn()
     };
 }
 
-// --- AuthValidator テスト ---
-describe('AuthValidator', () => {
+// --- authenticateWithNsec テスト ---
+describe('AuthService.authenticateWithNsec', () => {
+    let authService: AuthService;
+    let mockDependencies: AuthServiceDependencies;
     let mockKeyManager: MockKeyManager;
-
-    beforeEach(() => {
-        mockKeyManager = new MockKeyManager();
-    });
-
-    it('有効な秘密鍵を正しく検証する', () => {
-        mockKeyManager.isValidNsec.mockReturnValue(true);
-
-        const result = AuthValidator.isValidSecretKey('valid-nsec', mockKeyManager);
-
-        expect(result).toBe(true);
-        expect(mockKeyManager.isValidNsec).toHaveBeenCalledWith('valid-nsec');
-    });
-
-    it('無効な秘密鍵を正しく拒否する', () => {
-        mockKeyManager.isValidNsec.mockReturnValue(false);
-
-        const result = AuthValidator.isValidSecretKey('invalid-nsec', mockKeyManager);
-
-        expect(result).toBe(false);
-    });
-});
-
-// --- NsecAuthenticator テスト ---
-describe('NsecAuthenticator', () => {
-    let authenticator: NsecAuthenticator;
-    let mockKeyManager: MockKeyManager;
-    let mockSetNsecAuth: ReturnType<typeof vi.fn>;
     let mockConsole: Console;
 
     beforeEach(() => {
-        mockKeyManager = new MockKeyManager();
-        mockSetNsecAuth = vi.fn();
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn(),
-            warn: vi.fn()
-        } as unknown as Console;
-
-        authenticator = new NsecAuthenticator(mockKeyManager, mockSetNsecAuth, mockConsole);
+        mockDependencies = createMockDependencies();
+        mockKeyManager = mockDependencies.keyManager as any;
+        mockConsole = mockDependencies.console!;
+        authService = new AuthService(mockDependencies);
     });
 
     it('有効な秘密鍵で認証に成功する', async () => {
@@ -116,17 +70,17 @@ describe('NsecAuthenticator', () => {
             nprofile: 'nprofile123'
         });
 
-        const result = await authenticator.authenticate('valid-nsec');
+        const result = await authService.authenticateWithNsec('valid-nsec');
 
         expect(result.success).toBe(true);
         expect(result.pubkeyHex).toBe('test-pubkey');
-        expect(mockSetNsecAuth).toHaveBeenCalledWith('test-pubkey', 'npub123', 'nprofile123');
+        expect(mockDependencies.setNsecAuth).toHaveBeenCalledWith('test-pubkey', 'npub123', 'nprofile123');
     });
 
     it('無効な秘密鍵で認証に失敗する', async () => {
         mockKeyManager.isValidNsec.mockReturnValue(false);
 
-        const result = await authenticator.authenticate('invalid-nsec');
+        const result = await authService.authenticateWithNsec('invalid-nsec');
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('invalid_secret');
@@ -136,7 +90,7 @@ describe('NsecAuthenticator', () => {
         mockKeyManager.isValidNsec.mockReturnValue(true);
         mockKeyManager.saveToStorage.mockReturnValue({ success: false });
 
-        const result = await authenticator.authenticate('valid-nsec');
+        const result = await authService.authenticateWithNsec('valid-nsec');
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('error_saving');
@@ -147,7 +101,7 @@ describe('NsecAuthenticator', () => {
         mockKeyManager.saveToStorage.mockReturnValue({ success: true });
         mockKeyManager.derivePublicKey.mockReturnValue({ hex: '' });
 
-        const result = await authenticator.authenticate('valid-nsec');
+        const result = await authService.authenticateWithNsec('valid-nsec');
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('derivation_failed');
@@ -160,74 +114,11 @@ describe('NsecAuthenticator', () => {
             throw new Error('Derivation error');
         });
 
-        const result = await authenticator.authenticate('valid-nsec');
+        const result = await authService.authenticateWithNsec('valid-nsec');
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('authentication_error');
         expect(mockConsole.error).toHaveBeenCalledWith('nsec認証処理中にエラー:', expect.any(Error));
-    });
-});
-
-// --- ExternalAuthWaiter is no longer used ---
-
-// --- ProfileCacheCleaner テスト ---
-describe('ProfileCacheCleaner', () => {
-    let cleaner: ProfileCacheCleaner;
-    let mockNavigator: any;
-    let mockConsole: Console;
-
-    beforeEach(() => {
-        mockConsole = {
-            log: vi.fn(),
-            error: vi.fn(),
-            warn: vi.fn()
-        } as unknown as Console;
-
-        mockNavigator = {
-            serviceWorker: {
-                controller: {
-                    postMessage: vi.fn()
-                }
-            }
-        };
-
-        cleaner = new ProfileCacheCleaner(mockNavigator, mockConsole);
-    });
-
-    it('プロフィールキャッシュクリアに成功する', async () => {
-        // MessageChannelのモック
-        const mockMessageChannel = {
-            port1: { onmessage: null as any },
-            port2: {}
-        };
-
-        Object.defineProperty(globalThis, 'MessageChannel', {
-            value: vi.fn().mockImplementation(() => mockMessageChannel),
-            writable: true
-        });
-
-        const promise = cleaner.clearProfileImageCache();
-
-        // 成功メッセージをシミュレート
-        setTimeout(() => {
-            if (mockMessageChannel.port1.onmessage) {
-                mockMessageChannel.port1.onmessage({
-                    data: { success: true }
-                } as any);
-            }
-        }, 10);
-
-        await expect(promise).resolves.toBeUndefined();
-        expect(mockConsole.log).toHaveBeenCalledWith('プロフィール画像キャッシュをクリアしました');
-    });
-
-    it('Service Workerが利用できない場合は何もしない', async () => {
-        cleaner = new ProfileCacheCleaner({ serviceWorker: {} } as any, mockConsole);
-
-        await cleaner.clearProfileImageCache();
-
-        // エラーログは出力されない
-        expect(mockConsole.error).not.toHaveBeenCalled();
     });
 });
 
@@ -236,14 +127,10 @@ describe('AuthService統合テスト', () => {
     let authService: AuthService;
     let mockDependencies: AuthServiceDependencies;
     let mockKeyManager: MockKeyManager;
-    let consoleSpy: MockInstance;
 
     beforeEach(() => {
         mockDependencies = createMockDependencies();
         mockKeyManager = mockDependencies.keyManager as any;
-
-        consoleSpy = vi.spyOn(mockDependencies.console!, 'error');
-
         authService = new AuthService(mockDependencies);
 
         // localStorageのモック
@@ -313,17 +200,20 @@ describe('AuthService統合テスト', () => {
         expect(result.hasAuth).toBe(false);
     });
 
-    it('内部コンポーネントへのアクセスが可能', () => {
-        expect(authService.getNsecAuthenticator()).toBeInstanceOf(NsecAuthenticator);
-        expect(authService.getProfileCacheCleaner()).toBeInstanceOf(ProfileCacheCleaner);
-        expect(authService.getAuthInitializer()).toBeInstanceOf(AuthInitializer);
+    it('isNip07Availableが利用可能', () => {
+        // デフォルトのwindowモックにはnostrがないのでfalse
+        expect(authService.isNip07Available()).toBe(false);
     });
 
     it('ログアウト処理が正常に動作する', () => {
+        const mockStorage = mockDependencies.localStorage as MockStorage;
+        mockStorage.setItem('testKey', 'testValue');
+
         expect(() => {
             authService.logout();
         }).not.toThrow();
 
-        expect(localStorage.clear).toHaveBeenCalled();
+        // ストレージがクリアされたことを確認
+        expect(mockStorage.getItem('testKey')).toBeNull();
     });
 });

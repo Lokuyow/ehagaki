@@ -184,9 +184,29 @@ describe('Nip07AuthService', () => {
     });
 });
 
-// --- Nip07Authenticator テスト（authServiceから） ---
+// --- AuthService NIP-07認証テスト ---
 
-describe('Nip07Authenticator', () => {
+vi.mock('../../lib/nip46Service', () => ({
+    nip46Service: {
+        connect: vi.fn(),
+        reconnect: vi.fn(),
+        disconnect: vi.fn().mockResolvedValue(undefined),
+        isConnected: vi.fn().mockReturnValue(false),
+        getSigner: vi.fn().mockReturnValue(null),
+        getUserPubkey: vi.fn().mockReturnValue(null),
+        saveSession: vi.fn(),
+    },
+    Nip46Service: {
+        loadSession: vi.fn().mockReturnValue(null),
+        clearSession: vi.fn(),
+    },
+    BUNKER_REGEX: /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/,
+}));
+
+import { AuthService } from '../../lib/authService';
+import { MockStorage, MockKeyManager } from '../helpers';
+
+describe('AuthService NIP-07認証', () => {
     let mockSetNip07Auth: ReturnType<typeof vi.fn>;
     let mockConsole: Console;
 
@@ -195,16 +215,22 @@ describe('Nip07Authenticator', () => {
         mockConsole = createMockConsole();
     });
 
+    function createAuthServiceWithWindow(windowObj: any): AuthService {
+        return new AuthService({
+            keyManager: new MockKeyManager() as any,
+            localStorage: new MockStorage(),
+            window: windowObj,
+            navigator: {} as Navigator,
+            console: mockConsole,
+            setNsecAuth: vi.fn(),
+            setNip07Auth: mockSetNip07Auth,
+            setNip46Auth: vi.fn(),
+        });
+    }
+
     it('NIP-07が利用不可の場合にエラーを返す', async () => {
-        const { Nip07Authenticator } = await import('../../lib/authService');
-
-        const authenticator = new Nip07Authenticator(
-            mockSetNip07Auth,
-            mockConsole,
-            createMockWindow() as any
-        );
-
-        const result = await authenticator.authenticate(50);
+        const authService = createAuthServiceWithWindow(createMockWindow() as any);
+        const result = await authService.authenticateWithNip07();
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('nip07_not_available');
@@ -212,19 +238,13 @@ describe('Nip07Authenticator', () => {
     });
 
     it('NIP-07が利用可能な場合に認証に成功する', async () => {
-        const { Nip07Authenticator } = await import('../../lib/authService');
         const testPubkeyHex = 'b'.repeat(64);
+        const authService = createAuthServiceWithWindow(createMockWindow({
+            getPublicKey: vi.fn().mockResolvedValue(testPubkeyHex),
+            signEvent: vi.fn(),
+        }) as any);
 
-        const authenticator = new Nip07Authenticator(
-            mockSetNip07Auth,
-            mockConsole,
-            createMockWindow({
-                getPublicKey: vi.fn().mockResolvedValue(testPubkeyHex),
-                signEvent: vi.fn(),
-            }) as any
-        );
-
-        const result = await authenticator.authenticate(50);
+        const result = await authService.authenticateWithNip07();
 
         expect(result.success).toBe(true);
         expect(result.pubkeyHex).toBe(testPubkeyHex);
@@ -235,24 +255,14 @@ describe('Nip07Authenticator', () => {
         );
     });
 
-    it('isAvailableが正しくチェックする', async () => {
-        const { Nip07Authenticator } = await import('../../lib/authService');
+    it('isNip07Availableが正しくチェックする', () => {
+        const noAuth = createAuthServiceWithWindow(createMockWindow() as any);
+        expect(noAuth.isNip07Available()).toBe(false);
 
-        const noAuth = new Nip07Authenticator(
-            mockSetNip07Auth,
-            mockConsole,
-            createMockWindow() as any
-        );
-        expect(noAuth.isAvailable()).toBe(false);
-
-        const withAuth = new Nip07Authenticator(
-            mockSetNip07Auth,
-            mockConsole,
-            createMockWindow({
-                getPublicKey: vi.fn(),
-                signEvent: vi.fn(),
-            }) as any
-        );
-        expect(withAuth.isAvailable()).toBe(true);
+        const withAuth = createAuthServiceWithWindow(createMockWindow({
+            getPublicKey: vi.fn(),
+            signEvent: vi.fn(),
+        }) as any);
+        expect(withAuth.isNip07Available()).toBe(true);
     });
 });
