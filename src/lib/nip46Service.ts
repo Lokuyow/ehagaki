@@ -160,7 +160,7 @@ export class Nip46Service {
         return this.userPubkey;
     }
 
-    async reconnect(session: Nip46SessionData, timeoutMs: number = 10000): Promise<string> {
+    async reconnect(session: Nip46SessionData): Promise<string> {
         const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
         const bp = {
             pubkey: session.remoteSignerPubkey,
@@ -178,15 +178,12 @@ export class Nip46Service {
             onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
         });
 
-        // セッション復元時はconnect()ではなくping()で接続確認する。
-        // connect()はNIP-46 "connect" メソッドを送信し、初回接続時のsecretが必要。
-        // 再接続ではsecretが無いため "invalid params" エラーになる。
-        await Promise.race([
-            this.bunkerSigner.ping(),
-            new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error('NIP-46 reconnect timeout')), timeoutMs)
-            ),
-        ]);
+        // セッション復元時はping()を行わない。
+        // Amber等のリモートサイナーはping含む全リクエストにユーザー承認が必要で、
+        // タイムアウトでセッションが破棄されてしまうため。
+        // リレー接続の確認はcreateConnectedPool()で行われており、
+        // 実際の署名時にリモートサイナーとの通信が検証される。
+        console.debug('[NIP-46] reconnect: session restored (relay connected, ping skipped)');
 
         this.userPubkey = session.userPubkey;
         this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);

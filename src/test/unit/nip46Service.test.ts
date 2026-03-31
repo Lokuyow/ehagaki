@@ -292,7 +292,7 @@ describe('Nip46Service', () => {
     });
 
     describe('reconnect', () => {
-        it('保存済みセッションから再接続', async () => {
+        it('保存済みセッションから再接続（pingなし）', async () => {
             const { BunkerSigner } = await import('nostr-tools/nip46');
             const sessionData = {
                 clientSecretKeyHex: 'ab'.repeat(32),
@@ -314,7 +314,8 @@ describe('Nip46Service', () => {
             expect(pubkey).toBe('user-pub-reconnect');
             expect(service.isConnected()).toBe(true);
             expect(BunkerSigner.fromBunker).toHaveBeenCalled();
-            expect(mockSigner.ping).toHaveBeenCalled();
+            // pingはスキップされる（Amber等のリモートサイナー対応）
+            expect(mockSigner.ping).not.toHaveBeenCalled();
         });
     });
 

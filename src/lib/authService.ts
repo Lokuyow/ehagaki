@@ -243,8 +243,9 @@ export class AuthService {
             this.setNip46AuthFn(pubkey, npub, nprofile);
             return { hasAuth: true, pubkeyHex: pubkey };
         } catch (error) {
+            // リレー接続エラー等。セッションはクリアしない（一時的なネットワーク障害の可能性）。
+            // ユーザーが明示的にログアウトするか、次回リフレッシュで復元を再試行する。
             this.console.error('NIP-46セッション復元エラー:', error);
-            Nip46Service.clearSession(this.localStorage);
             return { hasAuth: false };
         }
     }
