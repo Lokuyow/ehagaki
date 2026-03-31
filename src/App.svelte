@@ -236,19 +236,21 @@
   async function logoutAccount(pubkeyHex: string) {
     isLoggingOut = true;
     try {
-      // rx-nostrを破棄
-      if (rxNostr) {
-        rxNostr.dispose();
-        rxNostr = undefined;
-      }
-
       const nextPubkey = authService.logoutAccount(pubkeyHex);
 
       if (nextPubkey) {
-        // 次のアカウントに切替
+        // アクティブアカウントが削除された → 次のアカウントに切替
+        if (rxNostr) {
+          rxNostr.dispose();
+          rxNostr = undefined;
+        }
         await switchAccount(nextPubkey);
-      } else {
+      } else if (nextPubkey === null) {
         // アカウントが残っていない → 未認証状態
+        if (rxNostr) {
+          rxNostr.dispose();
+          rxNostr = undefined;
+        }
         clearAuthState();
         profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
         profileLoadedStore.set(false);
@@ -256,9 +258,12 @@
         secretKey = "";
         errorMessage = "";
       }
+      // undefined: 非アクティブアカウントの削除 → 現在のセッションは維持
 
       refreshAccountList();
-      closeLogoutDialog();
+      if (nextPubkey !== undefined) {
+        closeLogoutDialog();
+      }
     } catch (error) {
       console.error("ログアウト処理中にエラー:", error);
     } finally {

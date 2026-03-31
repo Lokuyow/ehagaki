@@ -127,7 +127,7 @@ export class AuthService {
      * 指定アカウントをログアウトする。
      * @returns 次のアクティブアカウントのpubkeyHex。アカウントが残っていない場合はnull。
      */
-    logoutAccount(pubkeyHex: string): string | null {
+    logoutAccount(pubkeyHex: string): string | null | undefined {
         try {
             // NIP-46の場合は接続を切断
             const accountType = this.accountManager?.getAccountType(pubkeyHex);
@@ -145,9 +145,7 @@ export class AuthService {
 
             this.clearProfileImageCache();
 
-            // nextPubkeyがundefined（非アクティブアカウント削除）の場合はnullを返す
-            // （呼び出し元でアクティブアカウントの変更は不要）
-            if (nextPubkey === undefined) return null;
+            // string: 次のアクティブアカウント, null: アカウント残なし, undefined: 非アクティブ削除
             return nextPubkey;
         } catch (error) {
             this.console.error('ログアウト処理中に予期しないエラー:', error);
