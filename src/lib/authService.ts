@@ -341,7 +341,8 @@ export class AuthService {
             return { success: true, pubkeyHex };
         } catch (error) {
             this.console.error('NIP-46認証エラー:', error);
-            return { success: false, error: 'nip46_connection_failed' };
+            const msg = error instanceof Error ? error.message : 'nip46_connection_failed';
+            return { success: false, error: msg };
         }
     }
 

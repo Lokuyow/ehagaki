@@ -11,6 +11,16 @@ vi.mock('nostr-tools/nip46', () => ({
     BUNKER_REGEX: /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/,
 }));
 
+// nostr-tools/pool をモック
+const mockPool = {
+    ensureRelay: vi.fn().mockResolvedValue({}),
+    destroy: vi.fn(),
+};
+vi.mock('nostr-tools/pool', () => ({
+    SimplePool: vi.fn(() => mockPool),
+    useWebSocketImplementation: vi.fn(),
+}));
+
 // nostr-tools/utils をモック
 vi.mock('nostr-tools/utils', () => ({
     bytesToHex: vi.fn((bytes: Uint8Array) => Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')),
@@ -92,6 +102,8 @@ describe('Nip46Service', () => {
     beforeEach(() => {
         service = new Nip46Service();
         mockStorage = new MockStorage();
+        mockPool.ensureRelay.mockReset().mockResolvedValue({});
+        mockPool.destroy.mockReset();
     });
 
     describe('connect', () => {
@@ -147,8 +159,36 @@ describe('Nip46Service', () => {
             };
             (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
 
-            await expect(service.connect(`bunker://${'a'.repeat(64)}`, 100)).rejects.toThrow('NIP-46 connect timeout');
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`, 100)).rejects.toThrow('Bunker did not respond');
             expect(service.isConnected()).toBe(false);
+        });
+
+        it('リレー接続失敗時にRelay connection failedエラー', async () => {
+            const { parseBunkerInput } = await import('nostr-tools/nip46');
+
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['wss://unreachable.relay.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            mockPool.ensureRelay.mockRejectedValue(new Error('connection timed out'));
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow('Relay connection failed');
+            expect(mockPool.destroy).toHaveBeenCalled();
+        });
+
+        it('relaysが空の場合エラー', async () => {
+            const { parseBunkerInput } = await import('nostr-tools/nip46');
+
+            (parseBunkerInput as any).mockResolvedValue({
+                pubkey: 'a'.repeat(64),
+                relays: [],
+                secret: null,
+            });
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow('No relays specified');
         });
     });
 
@@ -176,6 +216,7 @@ describe('Nip46Service', () => {
 
             await service.disconnect();
             expect(mockSigner.close).toHaveBeenCalled();
+            expect(mockPool.destroy).toHaveBeenCalled();
             expect(service.isConnected()).toBe(false);
             expect(service.getSigner()).toBeNull();
             expect(service.getUserPubkey()).toBeNull();
