@@ -525,8 +525,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 38px;
-            height: 38px;
+            width: 36px;
+            height: 36px;
             border: none;
             background: none;
             border-radius: 50%;
