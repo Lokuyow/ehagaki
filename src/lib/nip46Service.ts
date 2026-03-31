@@ -178,9 +178,11 @@ export class Nip46Service {
             onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
         });
 
-        // connect() がハングしないようタイムアウトを設ける
+        // セッション復元時はconnect()ではなくping()で接続確認する。
+        // connect()はNIP-46 "connect" メソッドを送信し、初回接続時のsecretが必要。
+        // 再接続ではsecretが無いため "invalid params" エラーになる。
         await Promise.race([
-            this.bunkerSigner.connect(),
+            this.bunkerSigner.ping(),
             new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('NIP-46 reconnect timeout')), timeoutMs)
             ),
@@ -255,7 +257,7 @@ export class Nip46Service {
                     pool,
                     onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
                 });
-                await this.bunkerSigner.connect();
+                await this.bunkerSigner.ping();
                 this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
                 return true;
             } catch {

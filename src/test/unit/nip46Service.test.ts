@@ -302,7 +302,7 @@ describe('Nip46Service', () => {
             };
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                ping: vi.fn().mockResolvedValue(undefined),
                 getPublicKey: vi.fn().mockResolvedValue('user-pub-reconnect'),
                 bp: { pubkey: 'd'.repeat(64), relays: ['wss://relay.test.com'], secret: null },
                 close: vi.fn(),
@@ -314,7 +314,7 @@ describe('Nip46Service', () => {
             expect(pubkey).toBe('user-pub-reconnect');
             expect(service.isConnected()).toBe(true);
             expect(BunkerSigner.fromBunker).toHaveBeenCalled();
-            expect(mockSigner.connect).toHaveBeenCalled();
+            expect(mockSigner.ping).toHaveBeenCalled();
         });
     });
 
@@ -371,11 +371,10 @@ describe('Nip46Service', () => {
 
             // 新しいsigner（再接続後用）
             const mockReconnectedSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                ping: vi.fn().mockResolvedValue(undefined),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
-                ping: vi.fn().mockResolvedValue(undefined),
             };
             (BunkerSigner.fromBunker as any).mockReturnValue(mockReconnectedSigner);
 
@@ -383,7 +382,7 @@ describe('Nip46Service', () => {
 
             expect(result).toBe(true);
             expect(mockSigner.close).toHaveBeenCalled();
-            expect(mockReconnectedSigner.connect).toHaveBeenCalled();
+            expect(mockReconnectedSigner.ping).toHaveBeenCalled();
         });
 
         it('未接続時はfalseを返す', async () => {
