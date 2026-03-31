@@ -148,6 +148,21 @@ describe('AccountManager', () => {
             expect(storage.getItem(STORAGE_KEYS.NOSTR_RELAYS + pubkey)).toBeNull();
             expect(storage.getItem(STORAGE_KEYS.NOSTR_PROFILE + pubkey)).toBeNull();
         });
+
+        it('localStorage.removeItemが例外を投げた場合にエラーログを出力する', () => {
+            const throwingStorage = new MockStorage();
+            throwingStorage.removeItem = vi.fn().mockImplementation(() => {
+                throw new Error('Storage error');
+            });
+            const errorManager = new AccountManager({ localStorage: throwingStorage, console: mockConsole });
+
+            errorManager.cleanupAccountData('abc123');
+
+            expect(mockConsole.error).toHaveBeenCalledWith(
+                'アカウントデータ削除エラー:',
+                expect.any(Error)
+            );
+        });
     });
 
     describe('migrateFromSingleAccount', () => {

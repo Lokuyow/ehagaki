@@ -14,6 +14,13 @@ vi.mock('nostr-tools/nip98', () => ({
     getToken: vi.fn().mockResolvedValue('Nostr mock-nip98-token'),
 }));
 
+// @rx-nostr/crypto の seckeySigner をモック
+vi.mock('@rx-nostr/crypto', () => ({
+    seckeySigner: vi.fn().mockReturnValue({
+        signEvent: vi.fn().mockResolvedValue({ id: 'seckey-signed', sig: 'sig' }),
+    }),
+}));
+
 // keyManager は setup.ts でグローバルモック済み
 // getFromStore / loadFromStorage の戻り値をここで制御する
 vi.mock('../../lib/keyManager.svelte', async () => {
@@ -108,6 +115,72 @@ describe('NostrAuthService', () => {
 
             // クリーンアップ
             (window as any).nostr = originalNostr;
+        });
+
+        it('秘密鍵（getFromStore）でseckeySigner署名→トークン生成', async () => {
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
+
+            const result = await service.buildAuthHeader(
+                'https://example.com/upload',
+                'POST'
+            );
+
+            expect(result).toBe('Nostr mock-nip98-token');
+
+            const { getToken } = await import('nostr-tools/nip98');
+            expect(getToken).toHaveBeenCalledWith(
+                'https://example.com/upload',
+                'POST',
+                expect.any(Function),
+                true
+            );
+
+            // クリーンアップ
+            vi.mocked(keyManager.getFromStore).mockReturnValue(null);
+        });
+
+        it('秘密鍵（loadFromStorage）でseckeySigner署名→トークン生成', async () => {
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            vi.mocked(keyManager.getFromStore).mockReturnValue(null);
+            vi.mocked(keyManager.loadFromStorage).mockReturnValue('nsec1testkey');
+
+            const result = await service.buildAuthHeader(
+                'https://example.com/upload',
+                'POST'
+            );
+
+            expect(result).toBe('Nostr mock-nip98-token');
+
+            // クリーンアップ
+            vi.mocked(keyManager.loadFromStorage).mockReturnValue(null);
+        });
+
+        it('NIP-46接続時にnip46Signer使用→トークン生成', async () => {
+            const { nip46Service } = await import('../../lib/nip46Service');
+            vi.mocked(nip46Service.isConnected).mockReturnValue(true);
+            vi.mocked(nip46Service.getSigner).mockReturnValue({
+                signEvent: vi.fn().mockResolvedValue({ id: 'nip46-signed', sig: 'sig' }),
+            } as any);
+
+            const result = await service.buildAuthHeader(
+                'https://example.com/upload',
+                'POST'
+            );
+
+            expect(result).toBe('Nostr mock-nip98-token');
+
+            const { getToken } = await import('nostr-tools/nip98');
+            expect(getToken).toHaveBeenCalledWith(
+                'https://example.com/upload',
+                'POST',
+                expect.any(Function),
+                true
+            );
+
+            // クリーンアップ
+            vi.mocked(nip46Service.isConnected).mockReturnValue(false);
+            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
         });
     });
 });

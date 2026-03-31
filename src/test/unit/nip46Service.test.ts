@@ -192,7 +192,44 @@ describe('Nip46Service', () => {
         });
     });
 
+    describe('初期状態', () => {
+        it('getSigner: 未接続時はnullを返す', () => {
+            expect(service.getSigner()).toBeNull();
+        });
+
+        it('getUserPubkey: 未接続時はnullを返す', () => {
+            expect(service.getUserPubkey()).toBeNull();
+        });
+
+        it('isConnected: 未接続時はfalseを返す', () => {
+            expect(service.isConnected()).toBe(false);
+        });
+    });
+
     describe('disconnect', () => {
+        it('接続後にdisconnectを二重呼び出ししてもエラーにならない', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['wss://relay.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockSigner = {
+                connect: vi.fn().mockResolvedValue(undefined),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn().mockResolvedValue(undefined),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            await service.connect(`bunker://${'a'.repeat(64)}`);
+            await service.disconnect();
+            await service.disconnect(); // 二重呼び出し → エラーにならない
+            expect(service.isConnected()).toBe(false);
+        });
+
         it('接続済みの場合close()を呼び状態をクリア', async () => {
             // 先に接続をセットアップ
             const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
@@ -260,6 +297,33 @@ describe('Nip46Service', () => {
             expect(typeof parsed.clientSecretKeyHex).toBe('string');
         });
 
+        it('saveSession: pubkeyHex指定時にprefixキーで保存', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+            const mockBp = {
+                pubkey: 'b'.repeat(64),
+                relays: ['wss://relay1.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockSigner = {
+                connect: vi.fn().mockResolvedValue(undefined),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn(),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            await service.connect(`bunker://${'b'.repeat(64)}`);
+            service.saveSession(mockStorage, 'user-pubkey-hex');
+
+            // per-userキーに保存される
+            const saved = mockStorage.getItem('nostr-nip46-session-user-pubkey-hex');
+            expect(saved).not.toBeNull();
+            // legacyキーには保存されない
+            expect(mockStorage.getItem('nostr-nip46-session')).toBeNull();
+        });
+
         it('loadSession: 保存済みセッションを復元', () => {
             const sessionData = {
                 clientSecretKeyHex: 'ab'.repeat(32),
@@ -271,6 +335,30 @@ describe('Nip46Service', () => {
 
             const loaded = Nip46Service.loadSession(mockStorage);
             expect(loaded).toEqual(sessionData);
+        });
+
+        it('loadSession: pubkeyHex指定時にprefixキーから読み取る', () => {
+            const sessionData = {
+                clientSecretKeyHex: 'ab'.repeat(32),
+                remoteSignerPubkey: 'c'.repeat(64),
+                relays: ['wss://relay.test.com'],
+                userPubkey: 'user-pub',
+            };
+            mockStorage.setItem('nostr-nip46-session-user-pub', JSON.stringify(sessionData));
+
+            const loaded = Nip46Service.loadSession(mockStorage, 'user-pub');
+            expect(loaded).toEqual(sessionData);
+            // legacyキーからは読まない
+            expect(Nip46Service.loadSession(mockStorage)).toBeNull();
+        });
+
+        it('clearSession: pubkeyHex指定時にprefixキーを削除', () => {
+            mockStorage.setItem('nostr-nip46-session-mypub', 'data');
+            mockStorage.setItem('nostr-nip46-session', 'legacy-data');
+            Nip46Service.clearSession(mockStorage, 'mypub');
+            expect(mockStorage.getItem('nostr-nip46-session-mypub')).toBeNull();
+            // legacyキーは残る
+            expect(mockStorage.getItem('nostr-nip46-session')).toBe('legacy-data');
         });
 
         it('loadSession: データがない場合null', () => {

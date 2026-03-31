@@ -156,6 +156,21 @@ describe('Nip07AuthService', () => {
             expect(result.error).toBe('nip07_auth_error');
             expect(mockConsole.error).toHaveBeenCalled();
         });
+
+        it('getPublicKeyがundefinedを返す場合にエラーを返す', async () => {
+            const service = new Nip07AuthService(
+                createMockWindow({
+                    getPublicKey: vi.fn().mockResolvedValue(undefined),
+                    signEvent: vi.fn(),
+                }),
+                mockConsole
+            );
+
+            const result = await service.authenticate();
+
+            expect(result.success).toBe(false);
+            expect(result.error).toBe('nip07_no_pubkey');
+        });
     });
 
     describe('signEvent', () => {
