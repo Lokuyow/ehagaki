@@ -128,6 +128,28 @@ describe('Nip46Service', () => {
 
             await expect(service.connect('invalid-url')).rejects.toThrow('Invalid bunker URL');
         });
+
+        it('connect()がタイムアウトした場合エラー', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['wss://relay.example.com'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockSigner = {
+                connect: vi.fn().mockImplementation(() => new Promise(() => { /* never resolves */ })),
+                getPublicKey: vi.fn(),
+                bp: mockBp,
+                close: vi.fn(),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`, 100)).rejects.toThrow('NIP-46 connect timeout');
+            expect(service.isConnected()).toBe(false);
+        });
     });
 
     describe('disconnect', () => {

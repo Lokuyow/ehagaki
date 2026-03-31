@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import { PublicKeyState } from "../lib/keyManager.svelte";
+    import { BUNKER_REGEX } from "../lib/nip46Service";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
@@ -13,7 +14,7 @@
         onClose: () => void;
         onSave: () => void;
         onNip07Login: () => void;
-        onNip46Login: (bunkerUrl: string) => void;
+        onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
         isNip07ExtensionAvailable?: boolean;
         isLoadingNip07?: boolean;
         isLoadingNip46?: boolean;
@@ -126,16 +127,18 @@
     // --- NIP-46 bunker URL ---
     let bunkerUrl = $state("");
     let bunkerError = $state("");
-    const BUNKER_REGEX = /^bunker:\/\/[0-9a-f]{64}\??[?\/\w:.=&%-]*$/;
 
-    function handleNip46Login() {
+    async function handleNip46Login() {
         const trimmed = bunkerUrl.trim();
         if (!trimmed || !BUNKER_REGEX.test(trimmed)) {
             bunkerError = $_("loginDialog.bunker_invalid");
             return;
         }
         bunkerError = "";
-        onNip46Login?.(trimmed);
+        const errorMsg = await onNip46Login?.(trimmed);
+        if (errorMsg) {
+            bunkerError = errorMsg;
+        }
     }
 
     // 新しいフォームsubmit用ハンドラ

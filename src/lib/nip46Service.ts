@@ -39,17 +39,29 @@ export class Nip46Service {
     private userPubkey: string | null = null;
     private clientSecretKeyHex: string | null = null;
 
-    async connect(bunkerUrl: string): Promise<string> {
+    async connect(bunkerUrl: string, timeoutMs: number = 30000): Promise<string> {
+        console.debug('[NIP-46] connect: parsing bunker URL...');
         const bp = await parseBunkerInput(bunkerUrl);
         if (!bp) {
             throw new Error('Invalid bunker URL');
         }
+        console.debug('[NIP-46] connect: parsed bp =', { pubkey: bp.pubkey, relays: bp.relays, secret: bp.secret ? '***' : null });
 
         const clientSecretKey = generateSecretKey();
         this.clientSecretKeyHex = bytesToHex(clientSecretKey);
 
-        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp);
-        await this.bunkerSigner.connect();
+        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+            onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+        });
+
+        console.debug('[NIP-46] connect: calling bunkerSigner.connect()...');
+        await Promise.race([
+            this.bunkerSigner.connect(),
+            new Promise<never>((_, reject) =>
+                setTimeout(() => reject(new Error('NIP-46 connect timeout')), timeoutMs)
+            ),
+        ]);
+        console.debug('[NIP-46] connect: connected successfully');
 
         this.userPubkey = await this.bunkerSigner.getPublicKey();
         this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
@@ -66,7 +78,9 @@ export class Nip46Service {
         };
 
         this.clientSecretKeyHex = session.clientSecretKeyHex;
-        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp);
+        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+            onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+        });
 
         // connect() がハングしないようタイムアウトを設ける
         await Promise.race([
@@ -131,7 +145,9 @@ export class Nip46Service {
                     relays: session.relays,
                     secret: null,
                 };
-                this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp);
+                this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+                    onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+                });
                 await this.bunkerSigner.connect();
                 this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
                 return true;

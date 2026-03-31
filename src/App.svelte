@@ -222,13 +222,15 @@
     }
   }
 
-  async function handleNip46Login(bunkerUrl: string) {
+  async function handleNip46Login(
+    bunkerUrl: string,
+  ): Promise<string | undefined> {
     isLoadingNip46 = true;
     try {
       const result = await authService.authenticateWithNip46(bunkerUrl);
       if (!result.success) {
         console.error("NIP-46認証失敗:", result.error);
-        return;
+        return result.error ?? "NIP-46 authentication failed";
       }
 
       if (result.pubkeyHex) {
@@ -250,8 +252,10 @@
           isLoadingProfileStore.set(false);
         }
       }
+      return undefined;
     } catch (error) {
       console.error("NIP-46ログインでエラー:", error);
+      return error instanceof Error ? error.message : "NIP-46 login failed";
     } finally {
       isLoadingNip46 = false;
     }
