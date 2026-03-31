@@ -9,19 +9,30 @@
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import type { StoredAccount } from "../lib/types";
 
     interface Props {
         show: boolean;
         onClose: () => void;
-        onLogout: () => void;
+        onLogout: (pubkeyHex: string) => void;
+        onSwitchAccount?: (pubkeyHex: string) => void;
+        onAddAccount?: () => void;
+        accounts?: StoredAccount[];
+        accountProfiles?: Map<string, { name: string; picture: string }>;
         isLoggingOut?: boolean;
+        isSwitchingAccount?: boolean;
     }
 
     let {
         show = $bindable(false),
         onClose,
         onLogout,
+        onSwitchAccount,
+        onAddAccount,
+        accounts = [],
+        accountProfiles = new Map(),
         isLoggingOut = false,
+        isSwitchingAccount = false,
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -52,8 +63,9 @@
         }
     });
 
-    function handleLogout() {
-        onLogout?.();
+    function handleLogout(pubkeyHex?: string) {
+        const key = pubkeyHex ?? auth?.pubkey;
+        if (key) onLogout?.(key);
     }
 
     async function handleCopy(text: string, type: string, event: MouseEvent) {
@@ -186,22 +198,89 @@
                     </span>
                 {/if}
             </div>
-
-            <!-- ログアウトボタン -->
-            <Button
-                onClick={handleLogout}
-                className="logout-btn {isLoggingOut ? 'loading' : ''}"
-                variant="danger"
-                shape="square"
-                disabled={isLoggingOut}
-            >
-                {#if isLoggingOut}
-                    <LoadingPlaceholder text={true} showLoader={true} />
-                {:else}
-                    {$_("logoutDialog.logout")}
-                {/if}
-            </Button>
         </div>
+
+        <!-- アカウント一覧 -->
+        {#if accounts.length > 0}
+            <div class="accounts-section">
+                <div class="profile-info-label">
+                    {$_("profileDialog.accounts")}
+                </div>
+                <div class="account-list">
+                    {#each accounts as account (account.pubkeyHex)}
+                        {@const isActive = account.pubkeyHex === auth?.pubkey}
+                        {@const cachedProfile = accountProfiles.get(
+                            account.pubkeyHex,
+                        )}
+                        <div class="account-item" class:active={isActive}>
+                            <button
+                                class="account-info-button"
+                                onclick={() => {
+                                    if (!isActive && !isSwitchingAccount) {
+                                        onSwitchAccount?.(account.pubkeyHex);
+                                    }
+                                }}
+                                disabled={isActive || isSwitchingAccount}
+                            >
+                                <div class="account-avatar">
+                                    {#if cachedProfile?.picture}
+                                        <img
+                                            src={cachedProfile.picture}
+                                            alt={cachedProfile.name || ""}
+                                            class="account-avatar-img"
+                                        />
+                                    {:else}
+                                        <div
+                                            class="account-avatar-placeholder svg-icon"
+                                        ></div>
+                                    {/if}
+                                </div>
+                                <div class="account-details">
+                                    <span class="account-name">
+                                        {cachedProfile?.name ||
+                                            $_("profileDialog.anonymous")}
+                                    </span>
+                                    <span class="account-type-badge">
+                                        {#if account.type === "nsec"}
+                                            {$_(
+                                                "profileDialog.login_method_nsec",
+                                            )}
+                                        {:else if account.type === "nip07"}
+                                            NIP-07
+                                        {:else if account.type === "nip46"}
+                                            NIP-46
+                                        {/if}
+                                    </span>
+                                </div>
+                                {#if isActive}
+                                    <span class="active-badge"
+                                        >{$_("profileDialog.active")}</span
+                                    >
+                                {/if}
+                            </button>
+                            <button
+                                class="account-logout-button"
+                                onclick={() => handleLogout(account.pubkeyHex)}
+                                disabled={isLoggingOut || isSwitchingAccount}
+                                aria-label={$_("profileDialog.logout_account")}
+                            >
+                                <div class="xmark-small-icon svg-icon"></div>
+                            </button>
+                        </div>
+                    {/each}
+                </div>
+                <Button
+                    onClick={() => onAddAccount?.()}
+                    className="add-account-btn"
+                    variant="default"
+                    shape="square"
+                >
+                    <span class="add-account-label"
+                        >+ {$_("profileDialog.add_account")}</span
+                    >
+                </Button>
+            </div>
+        {/if}
     </div>
 
     {#snippet footer()}
@@ -340,13 +419,142 @@
             width: 100%;
             gap: 10px;
         }
+    }
 
-        :global(button.logout-btn) {
-            width: 100%;
+    .accounts-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
 
-            :global(.square) {
-                background-color: whitesmoke;
+        .account-list {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .account-item {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 6px 8px;
+            border-radius: 8px;
+            background-color: var(--btn-bg);
+            transition: background-color 0.15s;
+
+            &.active {
+                background-color: var(--btn-bg-hover, rgba(0, 0, 0, 0.08));
             }
+        }
+
+        .account-info-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            min-width: 0;
+            border: none;
+            background: none;
+            padding: 0;
+            cursor: pointer;
+            color: inherit;
+            font: inherit;
+
+            &:disabled {
+                cursor: default;
+            }
+        }
+
+        .account-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            overflow: hidden;
+            flex-shrink: 0;
+        }
+
+        .account-avatar-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .account-avatar-placeholder {
+            mask-image: url("/icons/circle-user-solid-full.svg");
+            width: 100%;
+            height: 100%;
+        }
+
+        .account-details {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            min-width: 0;
+        }
+
+        .account-name {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 160px;
+        }
+
+        .account-type-badge {
+            font-size: 0.7rem;
+            color: var(--text-light);
+        }
+
+        .active-badge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--primary, #6366f1);
+            margin-left: auto;
+            flex-shrink: 0;
+        }
+
+        .account-logout-button {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border: none;
+            background: none;
+            border-radius: 50%;
+            cursor: pointer;
+            flex-shrink: 0;
+            color: var(--text-light);
+            transition:
+                background-color 0.15s,
+                color 0.15s;
+
+            &:hover:not(:disabled) {
+                background-color: rgba(239, 68, 68, 0.1);
+                color: #ef4444;
+            }
+
+            &:disabled {
+                opacity: 0.4;
+                cursor: default;
+            }
+        }
+
+        .xmark-small-icon {
+            mask-image: url("/icons/xmark-solid-full.svg");
+            width: 14px;
+            height: 14px;
+        }
+
+        :global(button.add-account-btn) {
+            width: 100%;
+            margin-top: 4px;
+        }
+
+        .add-account-label {
+            font-size: 0.875rem;
         }
     }
 

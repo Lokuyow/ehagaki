@@ -4,6 +4,7 @@ import { setAuthInitialized, setNsecAuth, setNip07Auth, setNip46Auth, clearAuthS
 import type { AuthResult, AuthServiceDependencies } from './types';
 import { Nip07AuthService } from './nip07AuthService';
 import { nip46Service, Nip46Service } from './nip46Service';
+import type { AccountManager } from './accountManager';
 
 const NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
 
@@ -16,6 +17,7 @@ export class AuthService {
     private navigator: Navigator;
     private console: Console;
     private nip46Svc: Nip46Service;
+    private accountManager: AccountManager | null = null;
     private setNsecAuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private setNip07AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private setNip46AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
@@ -45,6 +47,12 @@ export class AuthService {
         this.nip07Service = new Nip07AuthService(windowObj, consoleObj);
     }
 
+    // --- AccountManager設定 ---
+
+    setAccountManager(accountManager: AccountManager): void {
+        this.accountManager = accountManager;
+    }
+
     // --- nsec認証 ---
 
     async authenticateWithNsec(secretKey: string): Promise<AuthResult> {
@@ -52,19 +60,21 @@ export class AuthService {
             return { success: false, error: 'invalid_secret' };
         }
 
-        const { success } = this.keyManager.saveToStorage(secretKey);
-        if (!success) {
-            return { success: false, error: 'error_saving' };
-        }
-
         try {
             const derived = this.keyManager.derivePublicKey(secretKey);
-            if (derived.hex) {
-                this.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
-                return { success: true, pubkeyHex: derived.hex };
-            } else {
+            if (!derived.hex) {
                 return { success: false, error: 'derivation_failed' };
             }
+
+            // per-accountストレージに保存
+            const { success } = this.keyManager.saveToStorage(secretKey, derived.hex);
+            if (!success) {
+                return { success: false, error: 'error_saving' };
+            }
+
+            this.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
+            this.accountManager?.addAccount(derived.hex, 'nsec');
+            return { success: true, pubkeyHex: derived.hex };
         } catch (error) {
             this.console.error('nsec認証処理中にエラー:', error);
             return { success: false, error: 'authentication_error' };
@@ -89,12 +99,7 @@ export class AuthService {
         }
 
         this.setNip07AuthFn(result.pubkeyData.hex, result.pubkeyData.npub, result.pubkeyData.nprofile);
-
-        try {
-            this.localStorage.setItem(NIP07_STORAGE_KEY, result.pubkeyHex);
-        } catch (e) {
-            this.console.error('NIP-07セッション保存エラー:', e);
-        }
+        this.accountManager?.addAccount(result.pubkeyHex, 'nip07');
         return { success: true, pubkeyHex: result.pubkeyHex };
     }
 
@@ -106,7 +111,8 @@ export class AuthService {
             const npub = nip19.npubEncode(pubkeyHex);
             const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] });
             this.setNip46AuthFn(pubkeyHex, npub, nprofile);
-            this.nip46Svc.saveSession(this.localStorage);
+            this.nip46Svc.saveSession(this.localStorage, pubkeyHex);
+            this.accountManager?.addAccount(pubkeyHex, 'nip46');
             return { success: true, pubkeyHex };
         } catch (error) {
             this.console.error('NIP-46認証エラー:', error);
@@ -117,6 +123,41 @@ export class AuthService {
 
     // --- ログアウト ---
 
+    /**
+     * 指定アカウントをログアウトする。
+     * @returns 次のアクティブアカウントのpubkeyHex。アカウントが残っていない場合はnull。
+     */
+    logoutAccount(pubkeyHex: string): string | null {
+        try {
+            // NIP-46の場合は接続を切断
+            const accountType = this.accountManager?.getAccountType(pubkeyHex);
+            if (accountType === 'nip46') {
+                this.nip46Svc.disconnect().catch(e => {
+                    this.console.error('NIP-46切断エラー:', e);
+                });
+            }
+
+            // per-accountデータを削除
+            this.accountManager?.cleanupAccountData(pubkeyHex);
+
+            // アカウントリストから削除
+            const nextPubkey = this.accountManager?.removeAccount(pubkeyHex);
+
+            this.clearProfileImageCache();
+
+            // nextPubkeyがundefined（非アクティブアカウント削除）の場合はnullを返す
+            // （呼び出し元でアクティブアカウントの変更は不要）
+            if (nextPubkey === undefined) return null;
+            return nextPubkey;
+        } catch (error) {
+            this.console.error('ログアウト処理中に予期しないエラー:', error);
+            return null;
+        }
+    }
+
+    /**
+     * @deprecated Use logoutAccount() instead. Kept for backward compatibility.
+     */
     logout(onReload?: () => void): void {
         try {
             this.nip46Svc.disconnect().catch(e => {
@@ -170,15 +211,37 @@ export class AuthService {
 
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
         try {
-            // nsecストレージキーを優先的にチェック
+            // マイグレーション実行（旧→マルチアカウント形式）
+            this.accountManager?.migrateFromSingleAccount();
+
+            // マルチアカウント: アクティブアカウントを復元
+            const activePubkey = this.accountManager?.getActiveAccountPubkey();
+            if (activePubkey) {
+                const accountType = this.accountManager?.getAccountType(activePubkey);
+                if (accountType) {
+                    const result = await this.restoreAccount(activePubkey, accountType);
+                    if (result.hasAuth) return result;
+                }
+            }
+
+            // アクティブアカウントの復元に失敗した場合、他のアカウントを試行
+            const accounts = this.accountManager?.getAccounts() ?? [];
+            for (const account of accounts) {
+                if (account.pubkeyHex === activePubkey) continue;
+                const result = await this.restoreAccount(account.pubkeyHex, account.type);
+                if (result.hasAuth) {
+                    this.accountManager?.setActiveAccount(account.pubkeyHex);
+                    return result;
+                }
+            }
+
+            // フォールバック: レガシー形式のチェック（マイグレーション失敗時）
             const nsecResult = await this.checkNsecAuth();
             if (nsecResult.hasAuth) return nsecResult;
 
-            // NIP-07セッションの復元
             const nip07Result = await this.checkNip07Auth();
             if (nip07Result.hasAuth) return nip07Result;
 
-            // NIP-46セッションの復元
             const nip46Result = await this.checkNip46Auth();
             if (nip46Result.hasAuth) return nip46Result;
         } catch (error) {
@@ -186,6 +249,71 @@ export class AuthService {
         }
 
         return { hasAuth: false };
+    }
+
+    /**
+     * 指定アカウントの認証を復元する。
+     */
+    async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46'): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        switch (type) {
+            case 'nsec':
+                return this.restoreNsecAccount(pubkeyHex);
+            case 'nip07':
+                return this.restoreNip07Account(pubkeyHex);
+            case 'nip46':
+                return this.restoreNip46Account(pubkeyHex);
+            default:
+                return { hasAuth: false };
+        }
+    }
+
+    private async restoreNsecAccount(pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        const storedKey = this.keyManager.loadFromStorage(pubkeyHex);
+        if (!storedKey) return { hasAuth: false };
+
+        this.publicKeyState.setNsec(storedKey);
+
+        try {
+            const derived = this.keyManager.derivePublicKey(storedKey);
+            if (derived.hex) {
+                this.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
+                return { hasAuth: true, pubkeyHex: derived.hex };
+            }
+        } catch {
+            // derivation failed
+        }
+        return { hasAuth: false };
+    }
+
+    private async restoreNip07Account(pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        const available = await this.nip07Service.waitForExtension(1000);
+        if (!available) return { hasAuth: false };
+
+        try {
+            const npub = nip19.npubEncode(pubkeyHex);
+            const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] });
+            this.setNip07AuthFn(pubkeyHex, npub, nprofile);
+            return { hasAuth: true, pubkeyHex };
+        } catch (error) {
+            this.console.error('NIP-07アカウント復元エラー:', error);
+            return { hasAuth: false };
+        }
+    }
+
+    private async restoreNip46Account(pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+        const session = Nip46Service.loadSession(this.localStorage, pubkeyHex);
+        if (!session) return { hasAuth: false };
+
+        try {
+            await this.nip46Svc.reconnect(session);
+            const npub = nip19.npubEncode(pubkeyHex);
+            const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] });
+            this.setNip46AuthFn(pubkeyHex, npub, nprofile);
+            return { hasAuth: true, pubkeyHex };
+        } catch (error) {
+            this.console.error('NIP-46アカウント復元エラー:', error);
+            return { hasAuth: false };
+        }
     }
 
     private async checkNsecAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
@@ -198,6 +326,8 @@ export class AuthService {
             const derived = this.keyManager.derivePublicKey(storedKey);
             if (derived.hex) {
                 this.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
+                // レガシーログインをマルチアカウントに移行
+                this.accountManager?.addAccount(derived.hex, 'nsec');
                 return { hasAuth: true, pubkeyHex: derived.hex };
             } else {
                 this.keyManager.saveToStorage('');
@@ -223,6 +353,9 @@ export class AuthService {
             const npub = nip19.npubEncode(storedPubkey);
             const nprofile = nip19.nprofileEncode({ pubkey: storedPubkey, relays: [] });
             this.setNip07AuthFn(storedPubkey, npub, nprofile);
+            // レガシーログインをマルチアカウントに移行
+            this.accountManager?.addAccount(storedPubkey, 'nip07');
+            this.localStorage.removeItem(NIP07_STORAGE_KEY);
             return { hasAuth: true, pubkeyHex: storedPubkey };
         } catch (error) {
             this.console.error('NIP-07セッション復元エラー:', error);
@@ -241,10 +374,12 @@ export class AuthService {
             const npub = nip19.npubEncode(pubkey);
             const nprofile = nip19.nprofileEncode({ pubkey, relays: [] });
             this.setNip46AuthFn(pubkey, npub, nprofile);
+            // レガシーログインをマルチアカウントに移行
+            this.accountManager?.addAccount(pubkey, 'nip46');
+            this.nip46Svc.saveSession(this.localStorage, pubkey);
+            Nip46Service.clearSession(this.localStorage); // レガシーキー削除
             return { hasAuth: true, pubkeyHex: pubkey };
         } catch (error) {
-            // リレー接続エラー等。セッションはクリアしない（一時的なネットワーク障害の可能性）。
-            // ユーザーが明示的にログアウトするか、次回リフレッシュで復元を再試行する。
             this.console.error('NIP-46セッション復元エラー:', error);
             return { hasAuth: false };
         }

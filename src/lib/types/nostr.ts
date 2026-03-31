@@ -155,6 +155,13 @@ export interface PostManagerDeps {
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
 }
 
+// マルチアカウント管理
+export interface StoredAccount {
+    pubkeyHex: string;
+    type: 'nsec' | 'nip07' | 'nip46';
+    addedAt: number;
+}
+
 // profileManager.ts から移動した型定義
 export interface ProfileManagerDeps {
     localStorage?: Storage;

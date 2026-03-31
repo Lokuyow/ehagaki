@@ -1,5 +1,6 @@
 import type { PublicKeyData, KeyManagerDeps, KeyManagerError } from "./types";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/nostrUtils';
+import { STORAGE_KEYS } from './constants';
 
 // --- 純粋関数（テストしやすい） ---
 export class KeyValidator {
@@ -30,7 +31,13 @@ export class KeyStorage {
         private secretKeyStore: { value: string | null; set: (value: string | null) => void }
     ) { }
 
-    saveToStorage(key: string): { success: boolean; error?: KeyManagerError } {
+    private getStorageKey(pubkeyHex?: string): string {
+        return pubkeyHex
+            ? STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkeyHex
+            : STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY;
+    }
+
+    saveToStorage(key: string, pubkeyHex?: string): { success: boolean; error?: KeyManagerError } {
         if (!key?.trim()) {
             return {
                 success: false,
@@ -39,7 +46,7 @@ export class KeyStorage {
         }
         try {
             const trimmedKey = key.trim();
-            this.localStorage.setItem("nostr-secret-key", trimmedKey);
+            this.localStorage.setItem(this.getStorageKey(pubkeyHex), trimmedKey);
             this.secretKeyStore.set(trimmedKey);
             return { success: true };
         } catch (error) {
@@ -53,14 +60,15 @@ export class KeyStorage {
         }
     }
 
-    loadFromStorage(): string | null {
-        // まずストアから取得を試行
-        let key = this.secretKeyStore.value;
-        if (key) return key;
+    loadFromStorage(pubkeyHex?: string): string | null {
+        // pubkeyHex未指定の場合のみストアから取得を試行
+        if (!pubkeyHex) {
+            let key = this.secretKeyStore.value;
+            if (key) return key;
+        }
 
-        // ストアが空の場合はローカルストレージから取得してストアに保存
         try {
-            key = this.localStorage.getItem("nostr-secret-key");
+            const key = this.localStorage.getItem(this.getStorageKey(pubkeyHex));
             if (key) {
                 this.secretKeyStore.set(key);
             }
@@ -75,12 +83,20 @@ export class KeyStorage {
         return this.secretKeyStore.value;
     }
 
-    hasStoredKey(): boolean {
+    hasStoredKey(pubkeyHex?: string): boolean {
         try {
-            return !!this.localStorage.getItem("nostr-secret-key");
+            return !!this.localStorage.getItem(this.getStorageKey(pubkeyHex));
         } catch (error) {
             this.console.error("ストレージアクセスエラー:", error);
             return false;
+        }
+    }
+
+    removeFromStorage(pubkeyHex: string): void {
+        try {
+            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkeyHex);
+        } catch (error) {
+            this.console.error("鍵の削除に失敗:", error);
         }
     }
 }
@@ -219,20 +235,24 @@ export class KeyManager {
     }
 
     // --- ストレージ操作 ---
-    saveToStorage(key: string): { success: boolean; error?: KeyManagerError } {
-        return this.storage.saveToStorage(key);
+    saveToStorage(key: string, pubkeyHex?: string): { success: boolean; error?: KeyManagerError } {
+        return this.storage.saveToStorage(key, pubkeyHex);
     }
 
-    loadFromStorage(): string | null {
-        return this.storage.loadFromStorage();
+    loadFromStorage(pubkeyHex?: string): string | null {
+        return this.storage.loadFromStorage(pubkeyHex);
     }
 
     getFromStore(): string | null {
         return this.storage.getFromStore();
     }
 
-    hasStoredKey(): boolean {
-        return this.storage.hasStoredKey();
+    hasStoredKey(pubkeyHex?: string): boolean {
+        return this.storage.hasStoredKey(pubkeyHex);
+    }
+
+    removeFromStorage(pubkeyHex: string): void {
+        return this.storage.removeFromStorage(pubkeyHex);
     }
 
     // --- 外部認証 ---

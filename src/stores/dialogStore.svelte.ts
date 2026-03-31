@@ -5,6 +5,7 @@ let showLogin = $state(false);
 let showLogout = $state(false);
 let showSettings = $state(false);
 let showWelcome = $state(false);
+let showAddAccount = $state(false);
 
 export const showLoginDialogStore = {
     get value() { return showLogin; },
@@ -53,3 +54,12 @@ export function openLogoutDialog() { showLogoutDialogStore.set(true); }
 export function closeLogoutDialog() { showLogoutDialogStore.set(false); }
 export function openSettingsDialog() { showSettingsDialogStore.set(true); }
 export function closeSettingsDialog() { showSettingsDialogStore.set(false); }
+
+// --- アカウント追加ダイアログ ---
+export const showAddAccountDialogStore = {
+    get value() { return showAddAccount; },
+    set: (value: boolean) => { showAddAccount = value; }
+};
+
+export function openAddAccountDialog() { showAddAccountDialogStore.set(true); }
+export function closeAddAccountDialog() { showAddAccountDialogStore.set(false); }

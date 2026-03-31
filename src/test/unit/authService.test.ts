@@ -88,6 +88,11 @@ describe('AuthService.authenticateWithNsec', () => {
 
     it('保存に失敗した場合にエラーを返す', async () => {
         mockKeyManager.isValidNsec.mockReturnValue(true);
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: 'test-pubkey',
+            npub: 'npub123',
+            nprofile: 'nprofile123'
+        });
         mockKeyManager.saveToStorage.mockReturnValue({ success: false });
 
         const result = await authService.authenticateWithNsec('valid-nsec');

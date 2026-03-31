@@ -42,7 +42,9 @@
     "bunker_input_title": "Enter bunker URL",
     "bunker_url_required": "Please enter a bunker URL",
     "bunker_invalid": "Invalid bunker URL",
-    "bunker_connection_failed": "Connection failed"
+    "bunker_connection_failed": "Connection failed",
+    "add_account_title": "Add Account",
+    "add_account_hint": "Login with the account you want to add"
   },
   "logoutDialog": {
     "logout_confirmation": "Logout Confirmation",
@@ -59,7 +61,12 @@
     "login_method": "Login Method",
     "login_method_nsec": "Secret Key",
     "login_method_nip07": "Browser Extension (NIP-07)",
-    "login_method_nip46": "Remote Signer (NIP-46)"
+    "login_method_nip46": "Remote Signer (NIP-46)",
+    "accounts": "Accounts",
+    "add_account": "Add Account",
+    "switch_account": "Switch",
+    "active": "Active",
+    "logout_account": "Logout"
   },
   "settingsDialog": {
     "info_header_setting": "Setting",

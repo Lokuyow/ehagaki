@@ -1,4 +1,4 @@
-import type { AuthState } from '../lib/types';
+import type { AuthState, StoredAccount } from '../lib/types';
 
 // --- 認証状態管理 ---
 const initialAuthState: AuthState = {
@@ -77,4 +77,22 @@ let secretKey = $state<string | null>(null);
 export const secretKeyStore = {
     get value() { return secretKey; },
     set: (value: string | null) => { secretKey = value; }
+};
+
+// --- マルチアカウント管理 ---
+let accountList = $state<StoredAccount[]>([]);
+let accountProfileCache = $state<Map<string, { name: string; picture: string }>>(new Map());
+
+export const accountListStore = {
+    get value() { return accountList; },
+    set: (accounts: StoredAccount[]) => { accountList = accounts; }
+};
+
+export const accountProfileCacheStore = {
+    get value() { return accountProfileCache; },
+    set: (cache: Map<string, { name: string; picture: string }>) => { accountProfileCache = cache; },
+    setProfile: (pubkeyHex: string, profile: { name: string; picture: string }) => {
+        accountProfileCache = new Map(accountProfileCache);
+        accountProfileCache.set(pubkeyHex, profile);
+    }
 };

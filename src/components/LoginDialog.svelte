@@ -18,6 +18,7 @@
         isNip07ExtensionAvailable?: boolean;
         isLoadingNip07?: boolean;
         isLoadingNip46?: boolean;
+        isAddAccountMode?: boolean;
     }
 
     let {
@@ -30,6 +31,7 @@
         isNip07ExtensionAvailable = false,
         isLoadingNip07 = false,
         isLoadingNip46 = false,
+        isAddAccountMode = false,
     }: Props = $props();
 
     // ダイアログを閉じるハンドラ
@@ -189,8 +191,12 @@
 <DialogWrapper
     bind:open={show}
     onOpenChange={(open) => !open && handleClose()}
-    title={$_("loginDialog.input_secret")}
-    description={$_("loginDialog.hint_input_secret")}
+    title={isAddAccountMode
+        ? $_("loginDialog.add_account_title")
+        : $_("loginDialog.input_secret")}
+    description={isAddAccountMode
+        ? $_("loginDialog.add_account_hint")
+        : $_("loginDialog.hint_input_secret")}
     contentClass="login-dialog"
     footerVariant="close-button"
 >

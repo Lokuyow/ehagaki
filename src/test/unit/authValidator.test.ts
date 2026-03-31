@@ -152,6 +152,11 @@ describe('認証バリデーション ユニットテスト', () => {
         it('ストレージ保存失敗が検出できること', async () => {
             const mockKeyManager = new MockKeyManager();
             mockKeyManager.isValidNsec.mockReturnValue(true);
+            mockKeyManager.derivePublicKey.mockReturnValue({
+                hex: 'test-pubkey',
+                npub: 'npub123',
+                nprofile: 'nprofile123'
+            });
             mockKeyManager.saveToStorage.mockReturnValue({ success: false });
 
             const authService = createAuthService(mockKeyManager);

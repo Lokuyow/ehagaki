@@ -21,6 +21,8 @@ export {
     setNip46Auth,
     setAuthInitialized,
     secretKeyStore,
+    accountListStore,
+    accountProfileCacheStore,
 } from './authStore.svelte';
 
 export {
@@ -55,6 +57,9 @@ export {
     closeLogoutDialog,
     openSettingsDialog,
     closeSettingsDialog,
+    showAddAccountDialogStore,
+    openAddAccountDialog,
+    closeAddAccountDialog,
 } from './dialogStore.svelte';
 
 export {

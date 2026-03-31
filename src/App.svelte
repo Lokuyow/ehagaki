@@ -16,6 +16,7 @@
   import DraftListDialog from "./components/DraftListDialog.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService } from "./lib/authService";
+  import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
@@ -49,9 +50,15 @@
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
     mediaFreePlacementStore,
+    clearAuthState,
+    accountListStore,
+    accountProfileCacheStore,
+    showAddAccountDialogStore,
+    openAddAccountDialog,
+    closeAddAccountDialog,
   } from "./stores/appStore.svelte";
-  import type { UploadProgress, Draft } from "./lib/types";
-  import { getDefaultEndpoint } from "./lib/constants";
+  import type { UploadProgress, Draft, StoredAccount } from "./lib/types";
+  import { getDefaultEndpoint, STORAGE_KEYS } from "./lib/constants";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import {
     checkServiceWorkerStatus,
@@ -109,6 +116,12 @@
   let postComponentRef: any = $state();
   let footerComponentRef: any = $state();
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
+  let isSwitchingAccount = $state(false); // アカウント切替中フラグ
+  let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
+
+  // AccountManager初期化
+  const accountManager = new AccountManager({ localStorage });
+  authService.setAccountManager(accountManager);
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     rxNostr = createRxNostr({ verifier });
@@ -137,15 +150,45 @@
   async function handlePostAuth(pubkeyHex: string): Promise<void> {
     isLoadingProfileStore.set(true);
     closeLoginDialog();
+    closeAddAccountDialog();
     try {
       await initializeNostr(pubkeyHex);
       const profile = await relayProfileService.initializeForLogin(pubkeyHex);
       if (profile) {
         profileDataStore.set(profile);
         profileLoadedStore.set(true);
+        // アカウントプロフィールキャッシュも更新
+        accountProfileCacheStore.setProfile(pubkeyHex, {
+          name: profile.name,
+          picture: profile.picture,
+        });
       }
     } finally {
       isLoadingProfileStore.set(false);
+      refreshAccountList();
+    }
+  }
+
+  /** アカウントリストストアをlocalStorageから同期 */
+  function refreshAccountList(): void {
+    accountListStore.set(accountManager.getAccounts());
+    // 各アカウントのプロフィールキャッシュを更新
+    const accounts = accountManager.getAccounts();
+    for (const account of accounts) {
+      try {
+        const profileData = localStorage.getItem(
+          STORAGE_KEYS.NOSTR_PROFILE + account.pubkeyHex,
+        );
+        if (profileData) {
+          const profile = JSON.parse(profileData);
+          accountProfileCacheStore.setProfile(account.pubkeyHex, {
+            name: profile.name || "",
+            picture: profile.picture || "",
+          });
+        }
+      } catch {
+        // ignore
+      }
     }
   }
 
@@ -168,7 +211,7 @@
   }
 
   function logout() {
-    isLoggingOut = true; // 追加: ログアウト開始時にローディング状態をtrueに
+    isLoggingOut = true;
     authService.logout();
     profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
     profileLoadedStore.set(false);
@@ -182,11 +225,93 @@
       });
     }
     hideImageSizeInfo();
-    // 削除: closeLogoutDialog(); // ダイアログを開いたままにする
 
-    // ログアウト時にも入力をクリアしておく
     secretKey = "";
     errorMessage = "";
+  }
+
+  /**
+   * 指定アカウントのログアウト（マルチアカウント対応）
+   */
+  async function logoutAccount(pubkeyHex: string) {
+    isLoggingOut = true;
+    try {
+      // rx-nostrを破棄
+      if (rxNostr) {
+        rxNostr.dispose();
+        rxNostr = undefined;
+      }
+
+      const nextPubkey = authService.logoutAccount(pubkeyHex);
+
+      if (nextPubkey) {
+        // 次のアカウントに切替
+        await switchAccount(nextPubkey);
+      } else {
+        // アカウントが残っていない → 未認証状態
+        clearAuthState();
+        profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
+        profileLoadedStore.set(false);
+        await initializeNostr(); // pubkeyなしでブートストラップリレーのみ
+        secretKey = "";
+        errorMessage = "";
+      }
+
+      refreshAccountList();
+      closeLogoutDialog();
+    } catch (error) {
+      console.error("ログアウト処理中にエラー:", error);
+    } finally {
+      isLoggingOut = false;
+    }
+  }
+
+  /**
+   * アカウント切替
+   */
+  async function switchAccount(pubkeyHex: string) {
+    if (isSwitchingAccount) return;
+    isSwitchingAccount = true;
+    try {
+      // rx-nostrを破棄
+      if (rxNostr) {
+        rxNostr.dispose();
+        rxNostr = undefined;
+      }
+
+      accountManager.setActiveAccount(pubkeyHex);
+      const accountType = accountManager.getAccountType(pubkeyHex);
+      if (!accountType) {
+        console.error("アカウントタイプが見つかりません:", pubkeyHex);
+        return;
+      }
+
+      const result = await authService.restoreAccount(pubkeyHex, accountType);
+      if (result.hasAuth && result.pubkeyHex) {
+        await handlePostAuth(result.pubkeyHex);
+      } else {
+        console.error("アカウント復元に失敗:", pubkeyHex);
+      }
+    } catch (error) {
+      console.error("アカウント切替中にエラー:", error);
+    } finally {
+      isSwitchingAccount = false;
+    }
+  }
+
+  /**
+   * アカウント追加ダイアログを表示
+   * closeLogoutDialogのhistory.back()が非同期popstateを発火するため、
+   * LoginDialogのpushStateが巻き戻されないよう遅延して開く。
+   * 切替中はtransition overlayでちらつきを防止。
+   */
+  function handleAddAccount() {
+    showTransitionOverlay = true;
+    closeLogoutDialog();
+    setTimeout(() => {
+      openAddAccountDialog();
+      showTransitionOverlay = false;
+    }, 50);
   }
 
   async function handleNip07Login() {
@@ -286,6 +411,7 @@
             await initializeNostr();
             isLoadingProfileStore.set(false);
           }
+          refreshAccountList();
         } catch (error) {
           console.error("認証初期化中にエラー:", error);
           await initializeNostr();
@@ -357,9 +483,11 @@
         authState.value.type === "nip46" &&
         nip46Service.isConnected()
       ) {
-        nip46Service.ensureConnection().catch((err) => {
-          console.error("NIP-46 reconnection failed:", err);
-        });
+        nip46Service
+          .ensureConnection(undefined, authState.value.pubkey)
+          .catch((err) => {
+            console.error("NIP-46 reconnection failed:", err);
+          });
       }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
@@ -642,12 +770,34 @@
           {isLoadingNip46}
         />
       {/if}
+      {#if showTransitionOverlay}
+        <div class="transition-overlay"></div>
+      {/if}
+      {#if showAddAccountDialogStore.value}
+        <LoginDialog
+          show={showAddAccountDialogStore.value}
+          bind:secretKey
+          onClose={closeAddAccountDialog}
+          onSave={saveSecretKey}
+          onNip07Login={handleNip07Login}
+          onNip46Login={handleNip46Login}
+          isNip07ExtensionAvailable={nip07ExtensionAvailable}
+          {isLoadingNip07}
+          {isLoadingNip46}
+          isAddAccountMode={true}
+        />
+      {/if}
       {#if showLogoutDialogStore.value}
         <ProfileComponent
           show={showLogoutDialogStore.value}
           onClose={closeLogoutDialog}
-          onLogout={logout}
+          onLogout={logoutAccount}
+          onSwitchAccount={switchAccount}
+          onAddAccount={handleAddAccount}
+          accounts={accountListStore.value}
+          accountProfiles={accountProfileCacheStore.value}
           {isLoggingOut}
+          {isSwitchingAccount}
         />
       {/if}
       {#if showWelcomeDialogStore.value}
@@ -696,6 +846,17 @@
     flex-direction: column;
     height: 100svh;
     overflow: hidden;
+  }
+
+  .transition-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--dialog-overlay);
+    z-index: 100;
+    pointer-events: none;
   }
 
   .main-content {
