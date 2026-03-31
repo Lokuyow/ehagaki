@@ -317,7 +317,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 30px;
+        gap: 28px;
         width: 100%;
         height: 100%;
     }
@@ -330,8 +330,8 @@
         gap: 10px;
 
         .profile-image-container {
-            width: 120px;
-            height: 120px;
+            width: 80px;
+            height: 80px;
             border-radius: 50%;
             overflow: hidden;
         }
@@ -349,7 +349,7 @@
         }
 
         .profile-name {
-            font-size: 1.5rem;
+            font-size: 1.375rem;
             font-weight: 600;
             color: var(--text);
             text-align: center;
