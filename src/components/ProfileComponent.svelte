@@ -516,7 +516,7 @@
         .active-badge {
             font-size: 0.875rem;
             font-weight: 600;
-            color: var(--primary, #6366f1);
+            color: var(--theme);
             margin-left: auto;
             flex-shrink: 0;
         }
