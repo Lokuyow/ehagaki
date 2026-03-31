@@ -274,8 +274,9 @@
                     variant="default"
                     shape="square"
                 >
+                    <div class="plus-icon svg-icon" aria-hidden="true"></div>
                     <span class="add-account-label"
-                        >+ {$_("profileDialog.add_account")}</span
+                        >{$_("profileDialog.add_account")}</span
                     >
                 </Button>
             </div>
@@ -554,16 +555,26 @@
         }
 
         :global(button.add-account-btn) {
+            display: flex;
+            align-items: center;
+            gap: 4px;
             width: 100%;
             margin-top: 4px;
         }
 
         .add-account-label {
-            font-size: 0.875rem;
+            font-size: 1rem;
         }
     }
 
     .copy-icon {
         mask-image: url("/icons/copy-solid-full.svg");
+    }
+
+    .plus-icon.svg-icon {
+        mask-image: url("/icons/plus-solid-full.svg");
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
     }
 </style>
