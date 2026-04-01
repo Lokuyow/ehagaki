@@ -334,7 +334,7 @@
         width: 100%;
         gap: 16px;
         padding: 8px 0;
-        border-bottom: 1px solid var(--border);
+        border-bottom: 1px solid var(--border-hr);
     }
 
     .profile-summary {
