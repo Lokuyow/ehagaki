@@ -209,6 +209,9 @@ export class AuthService {
 
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
         try {
+            // nostr-loginライブラリの残留データをクリーンアップ
+            this.accountManager?.cleanupNostrLoginData();
+
             // マイグレーション実行（旧→マルチアカウント形式）
             this.accountManager?.migrateFromSingleAccount();
 

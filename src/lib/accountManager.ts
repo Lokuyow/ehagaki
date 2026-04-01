@@ -176,6 +176,22 @@ export class AccountManager {
     }
 
     /**
+     * 旧nostr-loginライブラリが残したlocalStorageキーを削除する。
+     * 既存のNostrLoginユーザーが新バージョンのアプリにアクセスした際の残留データをクリーンアップする。
+     */
+    cleanupNostrLoginData(): void {
+        const nostrLoginKeys = [
+            '__nostrlogin_nip46',
+            '__nostrlogin_accounts',
+            '__nostrlogin_recent',
+            'nl-dark-mode',
+        ];
+        for (const key of nostrLoginKeys) {
+            this.localStorage.removeItem(key);
+        }
+    }
+
+    /**
      * 指定アカウントの per-user データ（認証情報、リレー、プロフィール）を全て削除する。
      */
     cleanupAccountData(pubkeyHex: string): void {

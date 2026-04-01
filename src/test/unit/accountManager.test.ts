@@ -240,4 +240,36 @@ describe('AccountManager', () => {
             expect(manager.getActiveAccountPubkey()).toBe(nsecPub);
         });
     });
+
+    describe('cleanupNostrLoginData', () => {
+        const nostrLoginKeys = [
+            '__nostrlogin_nip46',
+            '__nostrlogin_accounts',
+            '__nostrlogin_recent',
+            'nl-dark-mode',
+        ];
+
+        it('NostrLoginの残留キーをすべて削除する', () => {
+            for (const key of nostrLoginKeys) {
+                storage.setItem(key, 'some-value');
+            }
+            manager.cleanupNostrLoginData();
+            for (const key of nostrLoginKeys) {
+                expect(storage.getItem(key)).toBeNull();
+            }
+        });
+
+        it('NostrLoginキーが存在しない場合でもエラーにならない', () => {
+            expect(() => manager.cleanupNostrLoginData()).not.toThrow();
+        });
+
+        it('NostrLogin以外のキーは削除しない', () => {
+            storage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, '[{"pubkeyHex":"abc","type":"nsec","addedAt":1}]');
+            storage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, 'abc');
+            storage.setItem('__nostrlogin_nip46', '{}');
+            manager.cleanupNostrLoginData();
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_ACCOUNTS)).not.toBeNull();
+            expect(storage.getItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT)).not.toBeNull();
+        });
+    });
 });
