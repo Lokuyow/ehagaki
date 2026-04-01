@@ -421,15 +421,27 @@
             align-items: center;
             gap: 8px;
             padding: 6px 8px;
-            border-radius: 8px;
             background-color: var(--btn-bg);
+            border: solid 1px var(--btn-bg);
+            border-radius: 8px;
+            /* background-color: var(--btn-bg); */
             transition: background-color 0.15s;
 
             &.active {
-                background-color: rgba(0, 0, 0, 0.08);
-
+                background-color: transparent;
+                border: solid 1px var(--border);
                 :global(:disabled) {
                     opacity: 1;
+                }
+            }
+
+            @media (min-width: 601px) {
+                :global(:root.light &:hover) {
+                    filter: brightness(96%);
+                }
+
+                :global(:root.dark &:hover) {
+                    filter: brightness(115%);
                 }
             }
         }
