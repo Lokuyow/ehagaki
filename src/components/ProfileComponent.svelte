@@ -108,85 +108,89 @@
     footerVariant="close-button"
 >
     <div class="profile-container">
-        <div class="profile-summary">
-            <!-- プロフィール画像 -->
-            <div class="profile-image-container">
-                {#if displayedProfile.picture}
-                    <img
-                        src={displayedProfile.picture}
-                        alt={displayedProfile.name || "Profile"}
-                        class="profile-image"
-                    />
-                {:else}
-                    <div
-                        class="profile-image-placeholder svg-icon"
-                        aria-label="Profile image placeholder"
-                    ></div>
-                {/if}
+        <div class="current-account-section">
+            <div class="profile-summary">
+                <!-- プロフィール画像 -->
+                <div class="profile-image-container">
+                    {#if displayedProfile.picture}
+                        <img
+                            src={displayedProfile.picture}
+                            alt={displayedProfile.name || "Profile"}
+                            class="profile-image"
+                        />
+                    {:else}
+                        <div
+                            class="profile-image-placeholder svg-icon"
+                            aria-label="Profile image placeholder"
+                        ></div>
+                    {/if}
+                </div>
+
+                <!-- 名前 -->
+                <div class="profile-name">
+                    {displayedProfile.name || $_("profileDialog.anonymous")}
+                </div>
             </div>
 
-            <!-- 名前 -->
-            <div class="profile-name">
-                {displayedProfile.name || $_("profileDialog.anonymous")}
-            </div>
-        </div>
-
-        <div class="nostr-ids">
-            <div class="profile-info-label">
-                {$_("profileDialog.npub")}
-            </div>
-            <div class="profile-info-container">
-                <!-- npub -->
-                {#if displayedProfile.npub}
-                    <div class="profile-info-row">
-                        <div class="profile-info-content">
-                            <span class="profile-info-text"
-                                >{displayedProfile.npub}</span
-                            >
-                            <button
-                                class="copy-button"
-                                onclick={(event) =>
-                                    handleCopy(
-                                        displayedProfile.npub!,
-                                        "npub",
-                                        event,
-                                    )}
-                                aria-label={$_("profileDialog.copy_npub")}
-                            >
-                                <div
-                                    class="copy-icon svg-icon"
-                                    aria-label="Copy npub"
-                                ></div>
-                            </button>
+            <div class="nostr-ids">
+                <div class="profile-info-label">
+                    {$_("profileDialog.npub")}
+                </div>
+                <div class="profile-info-container">
+                    <!-- npub -->
+                    {#if displayedProfile.npub}
+                        <div class="profile-info-row">
+                            <div class="profile-info-content">
+                                <span class="profile-info-text"
+                                    >{displayedProfile.npub}</span
+                                >
+                                <button
+                                    class="copy-button"
+                                    onclick={(event) =>
+                                        handleCopy(
+                                            displayedProfile.npub!,
+                                            "npub",
+                                            event,
+                                        )}
+                                    aria-label={$_("profileDialog.copy_npub")}
+                                >
+                                    <div
+                                        class="copy-icon svg-icon"
+                                        aria-label="Copy npub"
+                                    ></div>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                {/if}
+                    {/if}
 
-                <!-- nprofile -->
-                {#if displayedProfile.nprofile}
-                    <div class="profile-info-row">
-                        <div class="profile-info-content">
-                            <span class="profile-info-text"
-                                >{displayedProfile.nprofile}</span
-                            >
-                            <button
-                                class="copy-button"
-                                onclick={(event) =>
-                                    handleCopy(
-                                        displayedProfile.nprofile!,
-                                        "nprofile",
-                                        event,
+                    <!-- nprofile -->
+                    {#if displayedProfile.nprofile}
+                        <div class="profile-info-row">
+                            <div class="profile-info-content">
+                                <span class="profile-info-text"
+                                    >{displayedProfile.nprofile}</span
+                                >
+                                <button
+                                    class="copy-button"
+                                    onclick={(event) =>
+                                        handleCopy(
+                                            displayedProfile.nprofile!,
+                                            "nprofile",
+                                            event,
+                                        )}
+                                    aria-label={$_(
+                                        "profileDialog.copy_nprofile",
                                     )}
-                                aria-label={$_("profileDialog.copy_nprofile")}
-                            >
-                                <div
-                                    class="copy-icon svg-icon"
-                                    aria-label="Copy nprofile"
-                                ></div>
-                            </button>
+                                >
+                                    <div
+                                        class="copy-icon svg-icon"
+                                        aria-label="Copy nprofile"
+                                    ></div>
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                {/if}
+                    {/if}
+                </div>
             </div>
         </div>
 
@@ -321,6 +325,16 @@
         gap: 28px;
         width: 100%;
         height: 100%;
+    }
+
+    .current-account-section {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        gap: 16px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
     }
 
     .profile-summary {
