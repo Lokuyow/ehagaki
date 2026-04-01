@@ -14,6 +14,40 @@
   --dark-gray: hsl(0, 0%, 66%);
   --light-gray: hsl(0, 0%, 83%);
 
+  /* ライトモード用カラー変数（デフォルト） */
+  --bg: hsl(152, 0%, 94%);
+  --bg-input: hsl(0, 0%, 100%);
+  --bg-footer: hsl(0, 0%, 84%);
+  --bg-translucent: #EDEDEDcc;
+  --bg-buttonbar: hsl(0, 0%, 94%);
+
+  --btn-bg: hsl(0, 0%, 94%);
+  --btn-border: hsl(0, 0%, 75%);
+
+  --border: var(--light-gray);
+  --border-hr: hsl(0, 0%, 84%);
+
+  --text: hsl(0, 0%, 24%);
+  --text-light: hsl(0, 0%, 46%);
+  --text-muted: hsl(0, 0%, 60%);
+  --text-red: hsl(0, 99%, 45%);
+  --text-r: #e6e6e6;
+
+  --link: #1a0dab;
+  --link-visited: #681da8;
+
+  --dialog: white;
+  --dialog-overlay: rgba(0, 0, 0, 0.6);
+
+  --svg: hsl(0, 0%, 32%);
+  --svg-light: var(--text-light);
+  --shadow: rgba(0, 0, 0, 0.1);
+  --hagaki: hsl(0, 77%, 56%);
+  --hashtag-text: #106BC7;
+  --hashtag-bg: #106BC71a;
+  --toggle-bg: var(--svg);
+  --toggle-circle: var(--dialog);
+
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
 
@@ -133,138 +167,7 @@ select {
   height: 28px;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    /* ライトモード用カラー変数 */
-    --bg: hsl(152, 0%, 94%);
-    --bg-input: hsl(0, 0%, 100%);
-    --bg-footer: hsl(0, 0%, 84%);
-    --bg-translucent: #EDEDEDcc;
-    --bg-buttonbar: hsl(0, 0%, 94%);
-
-    --btn-bg: hsl(0, 0%, 94%);
-    --btn-border: hsl(0, 0%, 75%);
-
-    --border: var(--light-gray);
-    --border-hr: hsl(0, 0%, 84%);
-
-    --text: hsl(0, 0%, 24%);
-    --text-light: hsl(0, 0%, 46%);
-    --text-muted: hsl(0, 0%, 60%);
-    --text-red: hsl(0, 99%, 45%);
-    --text-r: #e6e6e6;
-
-    --link: #1a0dab;
-    --link-visited: #681da8;
-
-    --dialog: white;
-    --dialog-overlay: rgba(0, 0, 0, 0.6);
-
-    --svg: hsl(0, 0%, 32%);
-    --svg-light: var(--text-light);
-    --shadow: rgba(0, 0, 0, 0.1);
-    --hagaki: hsl(0, 77%, 56%);
-    --hashtag-text: #106BC7;
-    --hashtag-bg: #106BC71a;
-    --toggle-bg: var(--svg);
-    --toggle-circle: var(--dialog);
-  }
-
-  @media (min-width: 601px) {
-
-    button:hover:not(:disabled),
-    a:hover,
-    select:hover {
-      filter: brightness(96%);
-    }
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    /* ダークモード用カラー変数 */
-    --bg: hsl(152, 0%, 12%);
-    --bg-input: hsl(0, 0%, 19%);
-    --bg-footer: hsl(0, 0%, 10%);
-    --bg-translucent: #212121cc;
-    --bg-buttonbar: hsl(0, 0%, 28%);
-
-    --btn-bg: hsl(0, 0%, 25%);
-    --btn-border: hsl(0, 0%, 30%);
-
-    --border: gray;
-    --border-hr: hsl(0, 0%, 30%);
-
-    --text: hsl(0, 0%, 90%);
-    --text-light: hsl(0, 0%, 75%);
-    --text-muted: hsl(0, 0%, 60%);
-    --text-red: hsl(0, 99%, 69%);
-    --text-r: #3D3D3D;
-
-    --link: #99c3ff;
-    --link-visited: #c58af9;
-
-    --dialog: hsl(0, 0%, 14%);
-    --dialog-overlay: rgba(0, 0, 0, 0.8);
-
-    --svg: hsl(0, 0%, 94%);
-    --svg-light: var(--text-light);
-
-    --shadow: rgba(255, 255, 255, 0.1);
-    --hagaki: hsl(5, 99%, 71%);
-    --hashtag-text: #65B1FC;
-    --hashtag-bg: #65B1FC1a;
-    --toggle-bg: var(--svg);
-    --toggle-circle: var(--dialog);
-  }
-
-  @media (min-width: 601px) {
-
-    button:hover:not(:disabled),
-    a:hover,
-    select:hover {
-      filter: brightness(115%);
-    }
-  }
-}
-
-/* クラスベース: ライト強制（OS設定に依存しない） */
-:root.light {
-  --bg: hsl(152, 0%, 94%);
-  --bg-input: hsl(0, 0%, 100%);
-  --bg-footer: hsl(0, 0%, 84%);
-  --bg-translucent: #EDEDEDcc;
-  --bg-buttonbar: hsl(0, 0%, 94%);
-
-  --btn-bg: hsl(0, 0%, 94%);
-  --btn-border: hsl(0, 0%, 75%);
-
-  --border: var(--light-gray);
-  --border-hr: hsl(0, 0%, 84%);
-
-  --text: hsl(0, 0%, 24%);
-  --text-light: hsl(0, 0%, 46%);
-  --text-muted: hsl(0, 0%, 60%);
-  --text-red: hsl(0, 99%, 45%);
-  --text-r: #e6e6e6;
-
-  --link: #1a0dab;
-  --link-visited: #681da8;
-
-  --dialog: white;
-  --dialog-overlay: rgba(0, 0, 0, 0.6);
-
-  --svg: hsl(0, 0%, 32%);
-  --svg-light: var(--text-light);
-  --shadow: rgba(0, 0, 0, 0.1);
-  --hagaki: hsl(0, 77%, 56%);
-  --hashtag-text: #106BC7;
-  --hashtag-bg: #106BC71a;
-  --toggle-bg: var(--svg);
-  --toggle-circle: var(--dialog);
-}
-
-/* クラスベース: ダーク強制（OS設定に依存しない） */
+/* クラスベース: ダークモード（index.htmlのインラインスクリプトで適用） */
 :root.dark {
   --bg: hsl(152, 0%, 12%);
   --bg-input: hsl(0, 0%, 19%);
