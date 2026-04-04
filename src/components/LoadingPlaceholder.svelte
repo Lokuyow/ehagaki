@@ -133,7 +133,7 @@
         animation: compactFloatAndRotate 4s infinite ease-in-out;
     }
 
-    :global(.primary .square) {
+    :global(.primary.loading div.loader-container div.square) {
         background-color: whitesmoke;
     }
 
