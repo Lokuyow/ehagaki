@@ -433,29 +433,25 @@
         .account-item {
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 6px 8px;
-            background-color: var(--btn-bg);
-            border: solid 1px var(--btn-bg);
+            padding: 0;
             border-radius: 8px;
-            /* background-color: var(--btn-bg); */
             transition: background-color 0.15s;
 
             &.active {
-                background-color: transparent;
-                border: solid 1px var(--border);
                 :global(:disabled) {
                     opacity: 1;
                 }
-            }
 
-            @media (min-width: 601px) {
-                :global(:root.light &:hover) {
-                    filter: brightness(96%);
+                .account-info-button {
+                    background-color: transparent;
+                    border: solid 1px var(--border);
+                    border-right: none;
                 }
 
-                :global(:root.dark &:hover) {
-                    filter: brightness(115%);
+                .account-logout-button {
+                    background-color: transparent;
+                    border: solid 1px var(--border);
+                    border-left: none;
                 }
             }
         }
@@ -466,9 +462,9 @@
             gap: 8px;
             flex: 1;
             min-width: 0;
-            border: none;
-            background: none;
-            padding: 0;
+            height: 50px;
+            padding-left: 8px;
+            border-radius: 8px 0 0 8px;
             cursor: pointer;
             color: inherit;
             font: inherit;
@@ -551,11 +547,11 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 36px;
-            height: 36px;
-            border: none;
-            background: none;
-            border-radius: 50%;
+            width: 40px;
+            height: 50px;
+            border: solid 1px var(--btn-bg);
+            border-left: none;
+            border-radius: 0 8px 8px 0;
             cursor: pointer;
             flex-shrink: 0;
             color: var(--text-light);
