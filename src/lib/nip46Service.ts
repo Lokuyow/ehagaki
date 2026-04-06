@@ -59,8 +59,8 @@ class Nip46WebSocket extends WebSocket {
             console.debug('[NIP-46 WS] error:', wsUrl);
         });
     }
-    send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
-        let outData = data;
+    send(data: string | Blob | BufferSource): void {
+        let outData: string | Blob | BufferSource = data;
         if (typeof data === 'string') {
             try {
                 const parsed = JSON.parse(data);
@@ -210,23 +210,25 @@ export class Nip46Service {
     }
 
     /**
-     * 接続が生きているか確認し、切れている場合はセッションから再接続する。
+     * リレー接続が生きているか確認し、切れている場合はセッションから再接続する。
      * visibilitychange でバックグラウンド復帰時に呼び出す。
+     * Amber等のリモートサイナーはping含む全リクエストにユーザー承認が必要なため、
+     * pingは使用せずリレー接続の確認のみ行う。
      */
     async ensureConnection(storage?: Storage, pubkeyHex?: string): Promise<boolean> {
         if (!this.bunkerSigner || !this.userPubkey) return false;
 
+        // リレー接続を再確認（WebSocketが切れていれば再接続される）
         try {
-            // ping で接続確認（タイムアウト付き）
-            await Promise.race([
-                this.bunkerSigner.ping(),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('ping timeout')), 5000)
-                ),
-            ]);
+            const relays = this.bunkerSigner.bp.relays;
+            if (this.pool && relays.length > 0) {
+                for (const relay of relays) {
+                    await this.pool.ensureRelay(relay, { connectionTimeout: RELAY_CONNECT_TIMEOUT_MS });
+                }
+            }
             return true;
         } catch {
-            // 接続切れ → セッションから再接続
+            // リレー再接続失敗 → セッションから完全に再構築
             const resolvedStorage = storage ?? (typeof localStorage !== 'undefined' ? localStorage : null);
             if (!resolvedStorage) return false;
 
@@ -254,8 +256,8 @@ export class Nip46Service {
                     pool,
                     onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
                 });
-                await this.bunkerSigner.ping();
                 this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+                console.debug('[NIP-46] ensureConnection: reconnected from session (ping skipped)');
                 return true;
             } catch {
                 return false;

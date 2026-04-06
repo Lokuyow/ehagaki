@@ -408,7 +408,7 @@ describe('Nip46Service', () => {
     });
 
     describe('ensureConnection', () => {
-        it('ping成功時はtrueを返し再接続しない', async () => {
+        it('リレー接続確認成功時はtrueを返し再接続しない', async () => {
             const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
             const mockBp = {
                 pubkey: 'a'.repeat(64),
@@ -422,7 +422,6 @@ describe('Nip46Service', () => {
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
-                ping: vi.fn().mockResolvedValue(undefined),
             };
             (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
 
@@ -430,12 +429,12 @@ describe('Nip46Service', () => {
             const result = await service.ensureConnection(mockStorage);
 
             expect(result).toBe(true);
-            expect(mockSigner.ping).toHaveBeenCalled();
+            // pingは使用しない（Amber等のリモートサイナー対応）
             // close は呼ばれない（再接続なし）
             expect(mockSigner.close).not.toHaveBeenCalled();
         });
 
-        it('ping失敗時にセッションから再接続しtrueを返す', async () => {
+        it('リレー接続失敗時にセッションから再接続しtrueを返す', async () => {
             const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
             const mockBp = {
                 pubkey: 'a'.repeat(64),
@@ -449,7 +448,6 @@ describe('Nip46Service', () => {
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn().mockResolvedValue(undefined),
-                ping: vi.fn().mockRejectedValue(new Error('connection lost')),
             };
             (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
 
@@ -458,9 +456,14 @@ describe('Nip46Service', () => {
             // セッション保存
             service.saveSession(mockStorage);
 
+            // リレー接続確認を失敗させる
+            mockPool.ensureRelay.mockRejectedValueOnce(new Error('connection lost'));
+
+            // 再接続時はensureRelayが成功するようにリセット
+            mockPool.ensureRelay.mockResolvedValue({});
+
             // 新しいsigner（再接続後用）
             const mockReconnectedSigner = {
-                ping: vi.fn().mockResolvedValue(undefined),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
@@ -471,7 +474,6 @@ describe('Nip46Service', () => {
 
             expect(result).toBe(true);
             expect(mockSigner.close).toHaveBeenCalled();
-            expect(mockReconnectedSigner.ping).toHaveBeenCalled();
         });
 
         it('未接続時はfalseを返す', async () => {
@@ -479,7 +481,7 @@ describe('Nip46Service', () => {
             expect(result).toBe(false);
         });
 
-        it('ping失敗かつセッションなしでfalseを返す', async () => {
+        it('リレー接続失敗かつセッションなしでfalseを返す', async () => {
             const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
             const mockBp = {
                 pubkey: 'a'.repeat(64),
@@ -493,11 +495,13 @@ describe('Nip46Service', () => {
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn().mockResolvedValue(undefined),
-                ping: vi.fn().mockRejectedValue(new Error('connection lost')),
             };
             (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
 
             await service.connect(`bunker://${'a'.repeat(64)}`);
+
+            // リレー接続確認を失敗させる
+            mockPool.ensureRelay.mockRejectedValueOnce(new Error('connection lost'));
 
             // セッション保存しない → storage は空
             const emptyStorage = new MockStorage();

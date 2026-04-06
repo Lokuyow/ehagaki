@@ -620,7 +620,7 @@ describe('AuthService.initializeAuth', () => {
             userPubkey: validPubkey
         };
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
-        vi.mocked(nip46Service.reconnect).mockResolvedValue(undefined);
+        vi.mocked(nip46Service.reconnect).mockResolvedValue(validPubkey);
         vi.mocked(nip46Service.saveSession).mockImplementation(() => { });
 
         const service = new AuthService(mockDependencies);
@@ -715,7 +715,7 @@ describe('AuthService.restoreAccount', () => {
             userPubkey: validPubkey
         };
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
-        vi.mocked(nip46Service.reconnect).mockResolvedValue(undefined);
+        vi.mocked(nip46Service.reconnect).mockResolvedValue(validPubkey);
 
         const service = new AuthService(mockDependencies);
         const result = await service.restoreAccount(validPubkey, 'nip46');
