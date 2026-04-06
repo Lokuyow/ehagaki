@@ -78,6 +78,11 @@
         if (key) onLogout?.(key);
     }
 
+    function handleSwitchAccount(pubkeyHex: string) {
+        onSwitchAccount?.(pubkeyHex);
+        handleClose();
+    }
+
     async function handleCopy(text: string, type: string, event: MouseEvent) {
         try {
             await copyToClipboard(text, type, navigator, window);
@@ -211,7 +216,7 @@
                                 class="account-info-button"
                                 onclick={() => {
                                     if (!isActive && !isSwitchingAccount) {
-                                        onSwitchAccount?.(account.pubkeyHex);
+                                        handleSwitchAccount(account.pubkeyHex);
                                     }
                                 }}
                                 disabled={isActive || isSwitchingAccount}
