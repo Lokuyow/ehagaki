@@ -6,7 +6,6 @@ export const BOOTSTRAP_RELAYS = [
 ];
 
 export const FALLBACK_RELAYS = [
-    "wss://relay.nostr.band/",
     "wss://nos.lol/",
     "wss://relay.damus.io/",
     "wss://relay-jp.nostr.wirednet.jp/",

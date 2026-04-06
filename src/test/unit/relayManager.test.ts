@@ -560,7 +560,6 @@ describe('RelayManager統合テスト', () => {
             expect(result.success).toBe(false); // 取得失敗
             expect(result.source).toBe('fallback');
             expect(result.relayConfig).toEqual([
-                "wss://relay.nostr.band/",
                 "wss://nos.lol/",
                 "wss://relay.damus.io/",
                 "wss://relay-jp.nostr.wirednet.jp/",
