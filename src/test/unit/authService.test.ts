@@ -495,6 +495,7 @@ describe('AuthService.initializeAuth', () => {
             getAccountType: vi.fn(),
             removeAccount: vi.fn(),
             cleanupAccountData: vi.fn(),
+            cleanupNostrLoginData: vi.fn(),
             getActiveAccountPubkey: vi.fn().mockReturnValue(null),
             getAccounts: vi.fn().mockReturnValue([]),
             setActiveAccount: vi.fn(),
