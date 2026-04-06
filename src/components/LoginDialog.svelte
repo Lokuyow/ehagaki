@@ -52,6 +52,18 @@
     // --- エラーメッセージ管理 ---
     let inputEl: HTMLInputElement | null = $state(null);
 
+    // --- NIP-46 bunker URL ---
+    let bunkerUrl = $state("");
+    let bunkerInputEl: HTMLInputElement | null = $state(null);
+
+    // --- ダイアログを開くたびに入力をクリア ---
+    $effect(() => {
+        if (show) {
+            secretKey = "";
+            bunkerUrl = "";
+        }
+    });
+
     // --- 秘密鍵入力の監視と公開鍵状態の更新 ---
     $effect(() => {
         if (secretKey !== undefined) {
@@ -123,10 +135,6 @@
     function handleNip07Login() {
         onNip07Login?.();
     }
-
-    // --- NIP-46 bunker URL ---
-    let bunkerUrl = $state("");
-    let bunkerInputEl: HTMLInputElement | null = $state(null);
 
     async function handleNip46Login() {
         if (bunkerInputEl) {

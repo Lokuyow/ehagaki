@@ -83,14 +83,6 @@
     publicKeyState.setNsec(secretKey);
   });
 
-  // --- 追加: ログインダイアログが開かれたら前の入力をクリア ---
-  $effect(() => {
-    if (showLoginDialogStore.value) {
-      secretKey = "";
-      errorMessage = "";
-    }
-  });
-
   let isAuthenticated = $derived(authState.value?.isAuthenticated ?? false);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
