@@ -383,13 +383,13 @@
         color: var(--text);
         border-radius: 0 0 10px 10px;
         z-index: 101;
-        font-size: 0.9375rem;
+        font-family: monospace;
+        font-size: 1rem;
         line-height: 1.2;
         word-break: break-all;
         flex-direction: column;
         align-items: flex-start;
         gap: 6px;
-        opacity: 0.9;
         padding: 8px 14px 14px 14px;
         margin-bottom: 8px;
     }
