@@ -392,25 +392,30 @@
             width: 100%;
 
             .profile-info-row {
+                min-height: 50px;
                 width: 100%;
                 display: flex;
                 flex-direction: column;
-                gap: 0.5rem;
 
                 .profile-info-content {
                     display: flex;
                     align-items: center;
-                    gap: 0.5rem;
-                    padding: 0.5rem;
                     background-color: var(--btn-bg);
-                    border-radius: 0.375rem;
+                    border-radius: 8px;
 
                     .profile-info-text {
                         flex: 1;
                         font-family: monospace;
                         font-size: 1rem;
-                        line-height: 1.3;
+                        line-height: 1.2;
                         color: var(--text);
+                        margin: 6px 0 6px 8px;
+                    }
+
+                    .copy-button {
+                        height: 40px;
+                        width: 40px;
+                        border-radius: 50%;
                     }
                 }
             }
