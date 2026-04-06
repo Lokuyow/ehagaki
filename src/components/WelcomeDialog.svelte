@@ -86,7 +86,6 @@
         font-size: 1.0625rem;
         margin-bottom: 1.5rem;
         line-height: 1.6;
-        word-break: auto-phrase;
     }
 
     .features {

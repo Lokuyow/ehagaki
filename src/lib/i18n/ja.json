@@ -134,10 +134,10 @@
     "hashtag_pin_tooltip": "ハッシュタグを保持"
   },
   "imageNode": {
-    "uploading": "画像をアップロード中..."
+    "uploading": "画像を<wbr>アップロード中..."
   },
   "videoNode": {
-    "uploading": "動画をアップロード中...",
+    "uploading": "動画を<wbr>アップロード中...",
     "not_supported": "お使いのブラウザは動画タグをサポートしていません。"
   },
   "videoQualityLabelSuffix": "品質",

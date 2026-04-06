@@ -73,7 +73,6 @@
         line-height: 1.2;
         color: #333;
         margin: auto 0 auto 8px;
-        word-break: auto-phrase;
     }
     .balloon-message-wrapper.info .balloon-message {
         font-size: 0.875rem;

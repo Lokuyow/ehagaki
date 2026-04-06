@@ -71,7 +71,7 @@ body {
   color: var(--text);
   background-color: var(--bg);
   overflow-wrap: anywhere;
-  word-break: normal;
+  word-break: auto-phrase;
   line-break: strict;
   line-height: 1.0;
 }

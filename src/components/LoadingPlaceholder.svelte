@@ -22,6 +22,22 @@
               ? $_("loadingPlaceholder.loading")
               : "",
     );
+
+    // <wbr>のみを許可するサニタイズ
+    function sanitizeForWbr(text: string): string {
+        return text
+            .split("<wbr>")
+            .map((part) =>
+                part
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;"),
+            )
+            .join("<wbr>");
+    }
+
+    let safeDisplayText = $derived(sanitizeForWbr(displayText));
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>
@@ -38,7 +54,9 @@
         <div class="placeholder-image" aria-hidden="true"></div>
     {/if}
     {#if displayText}
-        <span class="placeholder-text loading-text">{displayText}</span>
+        <span class="placeholder-text loading-text"
+            >{@html safeDisplayText}</span
+        >
     {/if}
 </div>
 
@@ -64,8 +82,10 @@
         flex-shrink: 0;
     }
     .placeholder-text {
+        padding: 0 4px;
         color: var(--text);
         opacity: 0.6;
+        font-size: 0.875rem;
         font-weight: 500;
     }
     .loading-text {
