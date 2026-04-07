@@ -36,6 +36,8 @@ function logToDevFooter(...args: any[]) {
 
 // --- console.logフック ---
 const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
 if (typeof window !== "undefined") {
     (window as any).__originalConsoleLog = originalConsoleLog;
 }
@@ -53,6 +55,14 @@ if (
         }
         originalConsoleLog.apply(console, args);
         logToDevFooter(...args);
+    };
+    console.error = function (...args: any[]) {
+        originalConsoleError.apply(console, args);
+        logToDevFooter("❌", ...args);
+    };
+    console.warn = function (...args: any[]) {
+        originalConsoleWarn.apply(console, args);
+        logToDevFooter("⚠️", ...args);
     };
     (window as any).__devLogHooked = true;
 

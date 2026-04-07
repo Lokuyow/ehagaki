@@ -26,7 +26,15 @@ export class Nip46SignerAdapter {
             tags: params.tags ?? [],
             created_at: params.created_at ?? Math.floor(Date.now() / 1000),
         };
-        return await this.bunkerSigner.signEvent(template);
+        console.log('[NIP-46] signEvent: requesting remote signature for kind', params.kind);
+        try {
+            const signed = await this.bunkerSigner.signEvent(template);
+            console.log('[NIP-46] signEvent: signature received successfully');
+            return signed;
+        } catch (err) {
+            console.log('[NIP-46] signEvent: signature failed:', err instanceof Error ? err.message : String(err));
+            throw err;
+        }
     }
 
     async getPublicKey(): Promise<string> {
@@ -213,75 +221,48 @@ export class Nip46Service {
      * リレー接続が生きているか確認し、切れている場合はセッションから再接続する。
      * visibilitychange でバックグラウンド復帰時に呼び出す。
      * Amber等のリモートサイナーはping含む全リクエストにユーザー承認が必要なため、
-     * pingは使用せずリレー接続の確認のみ行う。
+     * pingは使用せず、pool + BunkerSignerの完全再構築で確実な接続復元を行う。
+     *
+     * バックグラウンド移行時にWebSocketが切断されると、SimplePool内のリレーオブジェクトが
+     * 削除され（enableReconnect=false時）、BunkerSignerの内部サブスクリプションも失われる。
+     * pool.ensureRelay()で再接続してもゾンビ接続（readyState=OPENだが実際は切断済み）の
+     * 可能性があるため、常にpool + BunkerSignerを完全に再構築する。
      */
     async ensureConnection(storage?: Storage, pubkeyHex?: string): Promise<boolean> {
-        if (!this.bunkerSigner || !this.userPubkey) return false;
+        if (!this.bunkerSigner || !this.userPubkey || !this.clientSecretKeyHex) return false;
 
-        // リレー接続を再確認（WebSocketが切れていれば再接続される）
+        // 再構築に必要なデータを事前に保存（close()後もアクセスできるように）
+        const relays = [...this.bunkerSigner.bp.relays];
+        const remotePubkey = this.bunkerSigner.bp.pubkey;
+        const clientSecretKeyHex = this.clientSecretKeyHex;
+
         try {
-            const relays = this.bunkerSigner.bp.relays;
-            if (this.pool && relays.length > 0) {
-                for (const relay of relays) {
-                    await this.pool.ensureRelay(relay, { connectionTimeout: RELAY_CONNECT_TIMEOUT_MS });
-                }
+            // 古い signer と pool を閉じる
+            try { await this.bunkerSigner.close(); } catch { /* ignore */ }
+            if (this.pool) {
+                this.pool.destroy();
+                this.pool = null;
             }
 
-            // BunkerSignerを再作成して内部サブスクリプション（kind 24133レスポンス待ちREQ）を復元する。
-            // WebSocket再接続だけではBunkerSignerの内部サブスクリプションは復元されず、
-            // 署名リクエストのレスポンスを受信できなくなるため。
-            if (this.clientSecretKeyHex) {
-                try { await this.bunkerSigner.close(); } catch { /* ignore */ }
-                const clientSecretKey = hexToBytes(this.clientSecretKeyHex);
-                const bp = {
-                    pubkey: this.bunkerSigner.bp.pubkey,
-                    relays,
-                    secret: null,
-                };
-                this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
-                    pool: this.pool!,
-                    onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
-                });
-                this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
-                console.debug('[NIP-46] ensureConnection: BunkerSigner rebuilt for subscription recovery');
-            }
-
+            // 新しい pool + BunkerSigner を作成
+            const clientSecretKey = hexToBytes(clientSecretKeyHex);
+            const bp = {
+                pubkey: remotePubkey,
+                relays,
+                secret: null,
+            };
+            const pool = await createConnectedPool(relays);
+            this.pool = pool;
+            this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+                pool,
+                onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+            });
+            this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+            console.log('[NIP-46] ensureConnection: pool + BunkerSigner rebuilt successfully');
             return true;
-        } catch {
-            // リレー再接続失敗 → セッションから完全に再構築
-            const resolvedStorage = storage ?? (typeof localStorage !== 'undefined' ? localStorage : null);
-            if (!resolvedStorage) return false;
-
-            const session = Nip46Service.loadSession(resolvedStorage, pubkeyHex);
-            if (!session) return false;
-
-            try {
-                // 古い signer を静かに閉じる
-                try { await this.bunkerSigner.close(); } catch { /* ignore */ }
-                if (this.pool) {
-                    this.pool.destroy();
-                    this.pool = null;
-                }
-
-                // 新しい pool + BunkerSigner を作成し接続
-                const clientSecretKey = hexToBytes(session.clientSecretKeyHex);
-                const bp = {
-                    pubkey: session.remoteSignerPubkey,
-                    relays: session.relays,
-                    secret: null,
-                };
-                const pool = await createConnectedPool(bp.relays);
-                this.pool = pool;
-                this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
-                    pool,
-                    onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
-                });
-                this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
-                console.debug('[NIP-46] ensureConnection: reconnected from session (ping skipped)');
-                return true;
-            } catch {
-                return false;
-            }
+        } catch (err) {
+            console.log('[NIP-46] ensureConnection: rebuild failed:', err instanceof Error ? err.message : String(err));
+            return false;
         }
     }
 
