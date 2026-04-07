@@ -1,24 +1,30 @@
 import { nip19 } from "nostr-tools";
+import { waitNostr } from "nip07-awaiter";
 import type { AuthResult, PublicKeyData } from "./types";
 
 // --- NIP-07（ブラウザ拡張機能）認証サービス ---
 
 /**
  * window.nostrの検出とNIP-07認証を担当するサービス
- * 直接window.nostrを利用
+ * nip07-awaiterを利用してブラウザ拡張機能の注入タイミングを待機
  */
 export class Nip07AuthService {
     /**
-     * 構築時点で捕捉したwindow.nostrの参照。
+     * 捕捉したwindow.nostrの参照。
      */
     private capturedNostr: any;
+
+    /** テスト用: waitNostrの代替関数 */
+    private waitNostrFn: (timeout: number) => Promise<any>;
 
     constructor(
         private windowObj: Window = typeof window !== 'undefined' ? window : {} as Window,
         private console: Console = typeof window !== 'undefined' ? window.console : {} as Console,
+        waitNostrFn?: (timeout: number) => Promise<any>,
     ) {
         // 構築時点でwindow.nostrを捕捉する
         this.capturedNostr = this.getValidNostr();
+        this.waitNostrFn = waitNostrFn || waitNostr;
     }
 
     /**
@@ -45,29 +51,18 @@ export class Nip07AuthService {
     }
 
     /**
-     * window.nostrが利用可能になるまでポーリングで待機し、見つかり次第capturedNostrを更新する。
-     * ブラウザ拡張機能は document_end で注入されるため、少し遅延する場合がある。
+     * window.nostrが利用可能になるまでnip07-awaiterで待機し、見つかり次第capturedNostrを更新する。
+     * nos2x等のdocument_endで注入される拡張機能にも対応。
      */
-    async waitForExtension(maxWaitMs: number = 3000, pollIntervalMs: number = 100): Promise<boolean> {
+    async waitForExtension(maxWaitMs: number = 3000): Promise<boolean> {
         if (this.isAvailable()) return true;
 
-        const startTime = Date.now();
-        return new Promise((resolve) => {
-            const check = () => {
-                const detected = this.getValidNostr();
-                if (detected) {
-                    this.capturedNostr = detected;
-                    resolve(true);
-                    return;
-                }
-                if (Date.now() - startTime >= maxWaitMs) {
-                    resolve(false);
-                    return;
-                }
-                setTimeout(check, pollIntervalMs);
-            };
-            check();
-        });
+        const nostr = await this.waitNostrFn(maxWaitMs);
+        if (nostr) {
+            this.capturedNostr = nostr;
+            return true;
+        }
+        return false;
     }
 
     /**

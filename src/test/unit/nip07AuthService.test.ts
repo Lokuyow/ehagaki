@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Nip07AuthService } from '../../lib/nip07AuthService';
 
+// nip07-awaiterをモック（AuthService経由で使われる場合のデフォルト値）
+vi.mock('nip07-awaiter', () => ({
+    waitNostr: vi.fn().mockResolvedValue(undefined),
+    getNostr: vi.fn().mockReturnValue(undefined),
+    isNostr: vi.fn().mockReturnValue(false),
+}));
+
 // --- Nip07AuthService テスト ---
 
 function createMockWindow(nostr?: any): Window {
@@ -63,36 +70,36 @@ describe('Nip07AuthService', () => {
 
     describe('waitForExtension', () => {
         it('既に利用可能な場合は即座にtrueを返す', async () => {
+            const mockWaitNostr = vi.fn();
             const service = new Nip07AuthService(
                 createMockWindow({ getPublicKey: vi.fn(), signEvent: vi.fn() }),
-                mockConsole
+                mockConsole,
+                mockWaitNostr,
             );
 
-            const result = await service.waitForExtension(100, 10);
+            const result = await service.waitForExtension(100);
             expect(result).toBe(true);
+            // 既に利用可能なのでwaitNostrは呼ばれない
+            expect(mockWaitNostr).not.toHaveBeenCalled();
         });
 
         it('タイムアウト後にfalseを返す', async () => {
-            const service = new Nip07AuthService(createMockWindow(), mockConsole);
+            const mockWaitNostr = vi.fn().mockResolvedValue(undefined);
+            const service = new Nip07AuthService(createMockWindow(), mockConsole, mockWaitNostr);
 
-            const result = await service.waitForExtension(50, 10);
+            const result = await service.waitForExtension(50);
             expect(result).toBe(false);
+            expect(mockWaitNostr).toHaveBeenCalledWith(50);
         });
 
         it('遅延後に利用可能になった場合はtrueを返す', async () => {
-            const mockWindow = createMockWindow() as any;
-            const service = new Nip07AuthService(mockWindow, mockConsole);
+            const mockNostr = { getPublicKey: vi.fn(), signEvent: vi.fn() };
+            const mockWaitNostr = vi.fn().mockResolvedValue(mockNostr);
+            const service = new Nip07AuthService(createMockWindow(), mockConsole, mockWaitNostr);
 
-            // 50ms後にnostrを注入
-            setTimeout(() => {
-                mockWindow.nostr = {
-                    getPublicKey: vi.fn(),
-                    signEvent: vi.fn(),
-                };
-            }, 30);
-
-            const result = await service.waitForExtension(200, 10);
+            const result = await service.waitForExtension(200);
             expect(result).toBe(true);
+            expect(mockWaitNostr).toHaveBeenCalledWith(200);
         });
     });
 

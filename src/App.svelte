@@ -16,6 +16,7 @@
   import DraftListDialog from "./components/DraftListDialog.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService } from "./lib/authService";
+  import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
   import HeaderComponent from "./components/HeaderComponent.svelte";
@@ -102,8 +103,8 @@
   let sharedMediaReceived = false;
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
-  // シングルトンの認証サービスが構築された時点で検出された値を使用
-  const nip07ExtensionAvailable = authService.isNip07Available();
+  // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
+  let nip07ExtensionAvailable = $state(authService.isNip07Available());
   let footerInfoDisplay: any;
   let postComponentRef: any = $state();
   let footerComponentRef: any = $state();
@@ -377,6 +378,13 @@
     localStorage.getItem("sharedMediaProcessed") === "1";
 
   onMount(() => {
+    // NIP-07拡張機能の遅延注入を検出（nos2x等のdocument_endで注入される拡張機能に対応）
+    if (!nip07ExtensionAvailable) {
+      waitNostr(3000).then((nostr) => {
+        if (nostr) nip07ExtensionAvailable = true;
+      });
+    }
+
     // Define an inner async function for initialization
     const init = async () => {
       const storedLocale = localStorage.getItem("locale");

@@ -2,6 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import type { AuthServiceDependencies, Nip46SessionData } from '../../lib/types';
 import { MockStorage, MockKeyManager } from '../helpers';
 
+// nip07-awaiterをモック（Nip07AuthServiceがインポートするため）
+vi.mock('nip07-awaiter', () => ({
+    waitNostr: vi.fn().mockResolvedValue(undefined),
+    getNostr: vi.fn().mockReturnValue(undefined),
+    isNostr: vi.fn().mockReturnValue(false),
+}));
+
 // nip46Service をモック（authService.ts のモジュールレベルインポート対策）
 vi.mock('../../lib/nip46Service', () => ({
     nip46Service: {
