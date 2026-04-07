@@ -1,6 +1,7 @@
 import type { PublicKeyData, KeyManagerDeps, KeyManagerError } from "./types";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/nostrUtils';
 import { STORAGE_KEYS } from './constants';
+import { secretKeyStore } from '../stores/authStore.svelte';
 
 // --- 純粋関数（テストしやすい） ---
 export class KeyValidator {
@@ -275,4 +276,6 @@ export class KeyManager {
 }
 
 // --- 既存のkeyManagerインスタンス（後方互換性のため） ---
-export const keyManager = new KeyManager();
+export const keyManager = new KeyManager({
+    secretKeyStore
+});

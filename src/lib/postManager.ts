@@ -182,7 +182,7 @@ export class PostManager {
       }
 
       // ローカルキーを使用（秘密鍵直入れの場合）
-      const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage();
+      const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage(auth.pubkey);
       if (!storedKey) {
         this.deps.iframeMessageService?.notifyPostError("key_not_found");
         return { success: false, error: "key_not_found" };
