@@ -226,6 +226,26 @@ export class Nip46Service {
                     await this.pool.ensureRelay(relay, { connectionTimeout: RELAY_CONNECT_TIMEOUT_MS });
                 }
             }
+
+            // BunkerSignerを再作成して内部サブスクリプション（kind 24133レスポンス待ちREQ）を復元する。
+            // WebSocket再接続だけではBunkerSignerの内部サブスクリプションは復元されず、
+            // 署名リクエストのレスポンスを受信できなくなるため。
+            if (this.clientSecretKeyHex) {
+                try { await this.bunkerSigner.close(); } catch { /* ignore */ }
+                const clientSecretKey = hexToBytes(this.clientSecretKeyHex);
+                const bp = {
+                    pubkey: this.bunkerSigner.bp.pubkey,
+                    relays,
+                    secret: null,
+                };
+                this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+                    pool: this.pool!,
+                    onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
+                });
+                this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
+                console.debug('[NIP-46] ensureConnection: BunkerSigner rebuilt for subscription recovery');
+            }
+
             return true;
         } catch {
             // リレー再接続失敗 → セッションから完全に再構築

@@ -408,7 +408,7 @@ describe('Nip46Service', () => {
     });
 
     describe('ensureConnection', () => {
-        it('リレー接続確認成功時はtrueを返し再接続しない', async () => {
+        it('リレー接続確認成功時はBunkerSignerを再作成しtrueを返す', async () => {
             const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
             const mockBp = {
                 pubkey: 'a'.repeat(64),
@@ -423,15 +423,26 @@ describe('Nip46Service', () => {
                 bp: mockBp,
                 close: vi.fn(),
             };
+            // 再作成後のsigner
+            const mockRebuiltSigner = {
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: mockBp,
+                close: vi.fn(),
+            };
             (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
 
             await service.connect(`bunker://${'a'.repeat(64)}`);
+            const callCountAfterConnect = (BunkerSigner.fromBunker as any).mock.calls.length;
+
+            // ensureConnection時はrebuiltSignerを返す
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockRebuiltSigner);
             const result = await service.ensureConnection(mockStorage);
 
             expect(result).toBe(true);
-            // pingは使用しない（Amber等のリモートサイナー対応）
-            // close は呼ばれない（再接続なし）
-            expect(mockSigner.close).not.toHaveBeenCalled();
+            // 古いsignerがclose()され、BunkerSignerが再作成される
+            expect(mockSigner.close).toHaveBeenCalled();
+            // ensureConnectionでBunkerSignerが1回再作成される
+            expect((BunkerSigner.fromBunker as any).mock.calls.length - callCountAfterConnect).toBe(1);
         });
 
         it('リレー接続失敗時にセッションから再接続しtrueを返す', async () => {
