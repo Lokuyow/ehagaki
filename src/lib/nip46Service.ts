@@ -26,15 +26,7 @@ export class Nip46SignerAdapter {
             tags: params.tags ?? [],
             created_at: params.created_at ?? Math.floor(Date.now() / 1000),
         };
-        console.log('[NIP-46] signEvent: requesting remote signature for kind', params.kind);
-        try {
-            const signed = await this.bunkerSigner.signEvent(template);
-            console.log('[NIP-46] signEvent: signature received successfully');
-            return signed;
-        } catch (err) {
-            console.log('[NIP-46] signEvent: signature failed:', err instanceof Error ? err.message : String(err));
-            throw err;
-        }
+        return await this.bunkerSigner.signEvent(template);
     }
 
     async getPublicKey(): Promise<string> {
@@ -228,7 +220,7 @@ export class Nip46Service {
      * pool.ensureRelay()で再接続してもゾンビ接続（readyState=OPENだが実際は切断済み）の
      * 可能性があるため、常にpool + BunkerSignerを完全に再構築する。
      */
-    async ensureConnection(storage?: Storage, pubkeyHex?: string): Promise<boolean> {
+    async ensureConnection(): Promise<boolean> {
         if (!this.bunkerSigner || !this.userPubkey || !this.clientSecretKeyHex) return false;
 
         // 再構築に必要なデータを事前に保存（close()後もアクセスできるように）
@@ -258,10 +250,9 @@ export class Nip46Service {
                 onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
             });
             this.signerAdapter = new Nip46SignerAdapter(this.bunkerSigner);
-            console.log('[NIP-46] ensureConnection: pool + BunkerSigner rebuilt successfully');
+            console.debug('[NIP-46] ensureConnection: pool + BunkerSigner rebuilt');
             return true;
-        } catch (err) {
-            console.log('[NIP-46] ensureConnection: rebuild failed:', err instanceof Error ? err.message : String(err));
+        } catch {
             return false;
         }
     }

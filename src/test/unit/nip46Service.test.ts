@@ -435,7 +435,7 @@ describe('Nip46Service', () => {
 
             // ensureConnection時はrebuiltSignerを返す
             (BunkerSigner.fromBunker as any).mockReturnValue(mockRebuiltSigner);
-            const result = await service.ensureConnection(mockStorage);
+            const result = await service.ensureConnection();
 
             expect(result).toBe(true);
             // 古いsignerとpoolが破棄される
@@ -467,13 +467,13 @@ describe('Nip46Service', () => {
             // createConnectedPool内のensureRelayを失敗させる
             mockPool.ensureRelay.mockRejectedValue(new Error('connection lost'));
 
-            const result = await service.ensureConnection(mockStorage);
+            const result = await service.ensureConnection();
 
             expect(result).toBe(false);
         });
 
         it('未接続時はfalseを返す', async () => {
-            const result = await service.ensureConnection(mockStorage);
+            const result = await service.ensureConnection();
             expect(result).toBe(false);
         });
     });

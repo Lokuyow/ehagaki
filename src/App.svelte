@@ -480,11 +480,9 @@
         authState.value.type === "nip46" &&
         nip46Service.isConnected()
       ) {
-        nip46Service
-          .ensureConnection(undefined, authState.value.pubkey)
-          .catch((err) => {
-            console.error("NIP-46 reconnection failed:", err);
-          });
+        nip46Service.ensureConnection().catch((err) => {
+          console.error("NIP-46 reconnection failed:", err);
+        });
       }
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
