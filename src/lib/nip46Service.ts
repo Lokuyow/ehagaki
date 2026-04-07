@@ -9,6 +9,14 @@ export { BUNKER_REGEX };
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
 
+/**
+ * NIP-46 connect時にリモートサイナーへ要求するパーミッション。
+ * Amberなどのリモートサイナーで「アプリが要求するkindのみ許可」を選択した場合に使われる。
+ * - sign_event:1 — ショートテキストノート（投稿）
+ * - sign_event:27235 — NIP-98 HTTP認証（ファイルアップロード）
+ */
+const NIP46_REQUESTED_PERMS = 'sign_event:1,sign_event:27235';
+
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {
     constructor(private bunkerSigner: BunkerSigner) { }
@@ -145,9 +153,9 @@ export class Nip46Service {
         });
         console.debug('[NIP-46] connect: BunkerSigner created, subscription initiated (check WS logs for REQ)');
 
-        console.debug('[NIP-46] connect: calling bunkerSigner.connect()...');
+        console.debug('[NIP-46] connect: calling bunkerSigner.connect() with perms...');
         await Promise.race([
-            this.bunkerSigner.connect(),
+            this.bunkerSigner.sendRequest('connect', [bp.pubkey, bp.secret || '', NIP46_REQUESTED_PERMS]),
             new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Bunker did not respond. The relay is connected but the remote signer may be offline or the secret may have expired.')), timeoutMs)
             ),

@@ -119,7 +119,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
@@ -132,6 +132,10 @@ describe('Nip46Service', () => {
             expect(service.isConnected()).toBe(true);
             expect(service.getUserPubkey()).toBe('user-pubkey-hex');
             expect(service.getSigner()).not.toBeNull();
+            expect(mockSigner.sendRequest).toHaveBeenCalledWith(
+                'connect',
+                [mockBp.pubkey, 'test-secret', 'sign_event:1,sign_event:27235']
+            );
         });
 
         it('無効なbunker URLでエラー', async () => {
@@ -152,7 +156,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockImplementation(() => new Promise(() => { /* never resolves */ })),
+                sendRequest: vi.fn().mockImplementation(() => new Promise(() => { /* never resolves */ })),
                 getPublicKey: vi.fn(),
                 bp: mockBp,
                 close: vi.fn(),
@@ -217,7 +221,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn().mockResolvedValue(undefined),
@@ -241,7 +245,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn().mockResolvedValue(undefined),
@@ -277,7 +281,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
@@ -307,7 +311,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
@@ -418,7 +422,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn(),
@@ -455,7 +459,7 @@ describe('Nip46Service', () => {
             (parseBunkerInput as any).mockResolvedValue(mockBp);
 
             const mockSigner = {
-                connect: vi.fn().mockResolvedValue(undefined),
+                sendRequest: vi.fn().mockResolvedValue('ack'),
                 getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
                 bp: mockBp,
                 close: vi.fn().mockResolvedValue(undefined),
