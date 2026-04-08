@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.14.2test1';
+const PRECACHE_VERSION = '1.14.2test2';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -545,52 +545,51 @@ class ClientManager {
 
     // 既存クライアント通知の改善
     async focusAndNotifyClient(client) {
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
+
+        // 共有データをIndexedDBに永続化（focus/メッセージ送信の成否に関係なく必ず先に実行）
+        if (sharedCache) {
+            try {
+                const indexedDBManager = new IndexedDBManager();
+                await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                this.console.log('SW: Shared media persisted to IndexedDB for fallback');
+            } catch (dbError) {
+                this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
+            }
+        }
+
+        // フォーカス試行（Androidバックグラウンド時は失敗しうるが、エラーにしない）
         try {
             await client.focus();
-            const sharedCache = ServiceWorkerState.getSharedMediaCache();
-
-            this.console.log('SW: Attempting to notify client', {
-                hasClient: !!client,
-                hasPostMessage: typeof client.postMessage === 'function',
-                hasSharedCache: !!sharedCache,
-                clientId: client.id || 'unknown'
-            });
-
-            // 共有データをIndexedDBに永続化（メッセージ送信に関係なく必ず実行）
-            if (sharedCache) {
-                try {
-                    const indexedDBManager = new IndexedDBManager();
-                    await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
-                    this.console.log('SW: Shared media persisted to IndexedDB for fallback');
-                } catch (dbError) {
-                    this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
-                }
-            }
-
-            // メッセージ送信（失敗してもエラーにしない）
-            if (client && typeof client.postMessage === 'function') {
-                try {
-                    client.postMessage({
-                        type: 'SHARED_MEDIA',
-                        data: sharedCache,
-                        timestamp: Date.now(),
-                        requestId: `sw-${Date.now()}`
-                    });
-                    this.console.log('SW: Message sent to client successfully');
-                } catch (messageError) {
-                    this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
-                }
-            }
-
-            // メッセージ送信の成否に関係なく、リダイレクトは成功とする
-            // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
-            return Utilities.createRedirectResponse();
-
-        } catch (error) {
-            this.console.error('SW: Client focus/notification error:', error);
-            // 重大なエラーの場合のみエラーリダイレクト
-            return Utilities.createRedirectResponse(undefined, 'client-error', this.location);
+        } catch (focusError) {
+            this.console.warn('SW: Client focus failed (may be backgrounded):', focusError);
         }
+
+        this.console.log('SW: Attempting to notify client', {
+            hasClient: !!client,
+            hasPostMessage: typeof client.postMessage === 'function',
+            hasSharedCache: !!sharedCache,
+            clientId: client.id || 'unknown'
+        });
+
+        // メッセージ送信（失敗してもエラーにしない）
+        if (client && typeof client.postMessage === 'function') {
+            try {
+                client.postMessage({
+                    type: 'SHARED_MEDIA',
+                    data: sharedCache,
+                    timestamp: Date.now(),
+                    requestId: `sw-${Date.now()}`
+                });
+                this.console.log('SW: Message sent to client successfully');
+            } catch (messageError) {
+                this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
+            }
+        }
+
+        // メッセージ送信の成否に関係なく、リダイレクトは成功とする
+        // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
+        return Utilities.createRedirectResponse();
     }
 
     // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
