@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.14.2test2';
+const PRECACHE_VERSION = '1.14.2test3';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -130,10 +130,12 @@ const Utilities = {
     },
 
     // リダイレクトレスポンス
-    createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location) {
+    createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location, { shared = true } = {}) {
         const url = new URL(path, location.origin);
-        if (error) {
+        if (shared) {
             url.searchParams.set('shared', 'true');
+        }
+        if (error) {
             url.searchParams.set('error', error);
         }
         return Response.redirect(url.href, 303);
