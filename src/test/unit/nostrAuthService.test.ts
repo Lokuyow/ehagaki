@@ -182,5 +182,34 @@ describe('NostrAuthService', () => {
             vi.mocked(nip46Service.isConnected).mockReturnValue(false);
             vi.mocked(nip46Service.getSigner).mockReturnValue(null);
         });
+
+        it('NIP-46認証状態で接続未完了時、接続完了を待ってからトークン生成', async () => {
+            const { authState } = await import('../../stores/appStore.svelte');
+            const { nip46Service } = await import('../../lib/nip46Service');
+
+            // authState.value.type = 'nip46' だが isConnected は最初 false
+            (authState as any).value = { ...authState.value, type: 'nip46' };
+            vi.mocked(nip46Service.isConnected).mockReturnValue(false);
+
+            // 200ms後に接続完了をシミュレート
+            setTimeout(() => {
+                vi.mocked(nip46Service.isConnected).mockReturnValue(true);
+                vi.mocked(nip46Service.getSigner).mockReturnValue({
+                    signEvent: vi.fn().mockResolvedValue({ id: 'nip46-signed', sig: 'sig' }),
+                } as any);
+            }, 200);
+
+            const result = await service.buildAuthHeader(
+                'https://example.com/upload',
+                'POST'
+            );
+
+            expect(result).toBe('Nostr mock-nip98-token');
+
+            // クリーンアップ
+            (authState as any).value = { ...authState.value, type: 'nsec' };
+            vi.mocked(nip46Service.isConnected).mockReturnValue(false);
+            vi.mocked(nip46Service.getSigner).mockReturnValue(null);
+        });
     });
 });

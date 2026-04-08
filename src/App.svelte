@@ -405,26 +405,24 @@
         }
       }
 
-      // --- 修正: initializeAuthの処理を改善 ---
-      (async () => {
-        try {
-          const authResult = await authService.initializeAuth();
+      // --- 認証初期化（共有メディア処理の前に完了させる） ---
+      try {
+        const authResult = await authService.initializeAuth();
 
-          if (authResult.hasAuth && authResult.pubkeyHex) {
-            await handlePostAuth(authResult.pubkeyHex);
-          } else {
-            await initializeNostr();
-            isLoadingProfileStore.set(false);
-          }
-          refreshAccountList();
-        } catch (error) {
-          console.error("認証初期化中にエラー:", error);
+        if (authResult.hasAuth && authResult.pubkeyHex) {
+          await handlePostAuth(authResult.pubkeyHex);
+        } else {
           await initializeNostr();
           isLoadingProfileStore.set(false);
-        } finally {
-          authService.markAuthInitialized();
         }
-      })();
+        refreshAccountList();
+      } catch (error) {
+        console.error("認証初期化中にエラー:", error);
+        await initializeNostr();
+        isLoadingProfileStore.set(false);
+      } finally {
+        authService.markAuthInitialized();
+      }
       // --- ここまで ---
 
       // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
