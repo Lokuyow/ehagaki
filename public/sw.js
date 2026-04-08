@@ -1,5 +1,5 @@
 // 定数定義
-const PRECACHE_VERSION = '1.14.2test0';
+const PRECACHE_VERSION = '1.14.2test1';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
@@ -512,6 +512,35 @@ class ClientManager {
             this.console.error('クライアント処理エラー:', error);
             return Utilities.createRedirectResponse(undefined, 'client-error', this.location);
         }
+    }
+
+    // 新しいクライアントウィンドウを開いて共有データを渡す
+    async openNewClient() {
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
+
+        // IndexedDBに共有データを永続化（新しいウィンドウからの取得用）
+        if (sharedCache) {
+            try {
+                const indexedDBManager = new IndexedDBManager();
+                await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                this.console.log('SW: Shared media persisted to IndexedDB for new client');
+            } catch (dbError) {
+                this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
+            }
+        }
+
+        // ?shared=true 付きでアプリを新規ウィンドウで開く
+        const url = new URL(BASE_PATH, this.location.origin);
+        url.searchParams.set('shared', 'true');
+        try {
+            await this.clients.openWindow(url.href);
+            this.console.log('SW: New client window opened:', url.href);
+        } catch (openError) {
+            this.console.warn('SW: Failed to open new window:', openError);
+        }
+
+        // createRedirectResponseはfetchイベントのレスポンスとして必要
+        return Utilities.createRedirectResponse();
     }
 
     // 既存クライアント通知の改善
