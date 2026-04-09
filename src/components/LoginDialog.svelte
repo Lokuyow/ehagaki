@@ -208,28 +208,30 @@
     contentClass="login-dialog"
     footerVariant="close-button"
 >
-    <Button
-        variant="primary"
-        shape="rounded"
-        className="nip07-login-button u-control {isLoadingNip07
-            ? 'loading'
-            : ''}"
-        onClick={handleNip07Login}
-        disabled={isLoadingNip07 || !isNip07Available}
-    >
-        {#if isLoadingNip07}
-            <LoadingPlaceholder
-                text={true}
-                showLoader={true}
-                customClass="nip07-login-placeholder"
-            />
-        {:else}
-            <div class="extension-icon svg-icon"></div>
-            <span class="btn-text"
-                >{$_("loginDialog.login_with_extension")}</span
-            >
-        {/if}
-    </Button>
+    <div class="nip07-login-section">
+        <Button
+            variant="primary"
+            shape="rounded"
+            className="nip07-login-button u-control {isLoadingNip07
+                ? 'loading'
+                : ''}"
+            onClick={handleNip07Login}
+            disabled={isLoadingNip07 || !isNip07Available}
+        >
+            {#if isLoadingNip07}
+                <LoadingPlaceholder
+                    text={true}
+                    showLoader={true}
+                    customClass="nip07-login-placeholder"
+                />
+            {:else}
+                <div class="extension-icon svg-icon"></div>
+                <span class="btn-text"
+                    >{$_("loginDialog.login_with_extension")}</span
+                >
+            {/if}
+        </Button>
+    </div>
 
     <div class="divider">
         <span>or</span>
@@ -359,9 +361,6 @@
         mask-image: url("/icons/xmark-solid-full.svg");
     }
 
-    h3 {
-        margin: 0 0 16px 0;
-    }
     form {
         width: 100%;
         display: flex;
@@ -404,70 +403,17 @@
         }
     }
 
-    .secret-input {
-        font-family: monospace;
-        font-size: 1rem;
-        padding: 0.6rem;
-        background-color: var(--btn-bg);
-        border: none;
-        flex: 1;
-    }
-
-    /* NIP-07拡張機能ログインボタン */
-    .svg-icon.extension-icon {
-        mask-image: url("/icons/puzzle-piece-solid-full.svg");
-        width: 32px;
-        height: 32px;
-    }
-
-    /* 秘密鍵入力のアイコンとレイアウト */
-    .secret-input-row {
+    .nip07-login-section {
         display: flex;
-        gap: 8px;
-        width: 100%;
-        align-items: center;
-    }
-
-    .secret-heading-row {
-        display: flex;
-        gap: 6px;
         justify-content: center;
         align-items: center;
-        width: 100%;
-        margin: 0 0 8px 0;
+        width: auto;
+        height: 120px;
     }
-
-    .secret-heading-row h3 {
-        margin: 0;
-    }
-
-    .bunker-heading-row {
-        display: flex;
-        gap: 6px;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        margin: 0 0 8px 0;
-    }
-
-    .bunker-heading-row h3 {
-        margin: 0;
-    }
-
-    .secret-icon {
-        mask-image: url("/icons/key-solid-full.svg");
-        width: 28px;
-        height: 28px;
-        flex: 0 0 28px;
-        display: inline-block;
-        vertical-align: middle;
-    }
-
     :global(.nip07-login-button.primary) {
+        width: 100%;
         height: 70px;
         flex-shrink: 0;
-        margin-top: 26px;
-        margin-bottom: 8px;
         position: relative;
         overflow: hidden;
         border-radius: 8px;
@@ -481,12 +427,75 @@
         cursor: not-allowed;
     }
 
+    .svg-icon.extension-icon {
+        mask-image: url("/icons/puzzle-piece-solid-full.svg");
+        width: 32px;
+        height: 32px;
+    }
+
+    .bunker-section,
+    .secret-key-section {
+        width: 100%;
+        min-height: 100px;
+    }
+
+    .secret-heading-row,
+    .bunker-heading-row {
+        display: flex;
+        gap: 6px;
+        justify-content: center;
+        align-items: center;
+        width: 100%;
+        margin: 0 0 10px 0;
+    }
+
+    .secret-input-row,
+    .bunker-input-row {
+        display: flex;
+        gap: 6px;
+        width: 100%;
+    }
+
+    .secret-input,
+    .bunker-input {
+        font-family: monospace;
+        font-size: 1rem;
+        padding: 0.6rem;
+        background-color: var(--btn-bg);
+        border: none;
+        flex: 1;
+    }
+
+    .secret-heading-row h3,
+    .bunker-heading-row h3 {
+        margin: 0;
+    }
+
+    .secret-icon {
+        mask-image: url("/icons/key-solid-full.svg");
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+
+    .vault-icon {
+        mask-image: url("/icons/vault-solid-full.svg");
+        width: 30px;
+        height: 30px;
+        padding: 12px 18px 12px 16px;
+        display: inline-block;
+        vertical-align: middle;
+    }
+
     .divider {
         display: flex;
         align-items: center;
         text-align: center;
-        margin: 32px 0;
+        margin: 0;
         width: 100%;
+        height: 64px;
     }
 
     .divider::before,
@@ -503,48 +512,12 @@
         font-size: 1rem;
     }
 
-    /* NIP-46 bunker URL入力 */
-    .bunker-section,
-    .secret-key-section {
-        width: 100%;
-        min-height: 54px;
-    }
-
-    .bunker-input-row {
-        display: flex;
-        gap: 8px;
-        width: 100%;
-    }
-
-    .bunker-input {
-        font-family: monospace;
-        font-size: 0.875rem;
-        padding: 0.6rem;
-        background-color: var(--btn-bg);
-        border: none;
-        flex: 1;
-        min-width: 0;
-    }
-
-    :global(button.primary.square.bunker-connect-btn) {
-        flex-shrink: 0;
-        padding: 12px 18px 12px 16px;
-    }
-
-    .vault-icon {
-        mask-image: url("/icons/vault-solid-full.svg");
-        width: 30px;
-        height: 30px;
-        padding: 12px 18px 12px 16px;
-        display: inline-block;
-        vertical-align: middle;
-    }
-
     /* 共通コントロール高さ 54px */
     :global(input.u-control, button.u-control) {
         height: 54px;
         min-height: 54px;
-        min-width: 120px;
+        min-width: 60px;
+        width: 120px;
         display: inline-flex;
         align-items: center;
         box-sizing: border-box;
