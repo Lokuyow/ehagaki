@@ -202,7 +202,7 @@
         }
     }
 
-    .close {
+    button.close {
         --btn-bg: rgba(0, 0, 0, 0.5);
         --svg: whitesmoke;
         backdrop-filter: blur(4px);
@@ -225,7 +225,7 @@
         }
     }
 
-    .copy {
+    button.copy {
         --btn-bg: rgba(0, 0, 0, 0.5);
         --svg: whitesmoke;
         backdrop-filter: blur(4px);
@@ -236,8 +236,8 @@
         transition: background 0.2s ease;
 
         :global(.svg-icon) {
-            width: 26px;
-            height: 26px;
+            width: 28px;
+            height: 28px;
             mask-image: url("/icons/copy-solid-full.svg");
         }
 

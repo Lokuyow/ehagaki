@@ -63,28 +63,21 @@
 </Button>
 
 <style>
-    /* --- 削除ボタン共通 --- */
-    :global(.media-delete-btn) {
+    :global(button.media-delete-btn.circle.close) {
         position: absolute;
-        top: 4px;
-        right: 4px;
+        top: 6px;
+        right: 6px;
         z-index: 10;
-        width: 40px;
-        height: 40px;
-    }
-    :global(button.circle.media-delete-btn--editor-image),
-    :global(button.circle.media-delete-btn--editor-video) {
-        width: 40px;
-        height: 40px;
+        width: 50px;
+        height: 50px;
     }
 
-    /* --- コピーボタン共通 --- */
-    :global(button.media-copy-btn.circle) {
+    :global(button.media-copy-btn.circle.copy) {
         position: absolute;
-        top: 48px;
-        right: 4px;
+        top: 62px;
+        right: 6px;
         z-index: 10;
-        width: 40px;
-        height: 40px;
+        width: 50px;
+        height: 50px;
     }
 </style>
