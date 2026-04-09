@@ -54,7 +54,7 @@
   },
   "profileDialog": {
     "title": "Profile",
-    "anonymous": "Anonymous",
+    "anonymous": "Name not set",
     "npub": "Public Key",
     "copy_npub": "Copy npub",
     "copy_nprofile": "Copy nprofile",

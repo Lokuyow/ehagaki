@@ -54,7 +54,7 @@
   },
   "profileDialog": {
     "title": "プロフィール",
-    "anonymous": "名無し",
+    "anonymous": "名前未設定",
     "npub": "公開鍵",
     "copy_npub": "npubをコピー",
     "copy_nprofile": "nprofileをコピー",
