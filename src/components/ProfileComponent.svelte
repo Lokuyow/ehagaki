@@ -28,7 +28,10 @@
         onSwitchAccount?: (pubkeyHex: string) => void;
         onAddAccount?: () => void;
         accounts?: StoredAccount[];
-        accountProfiles?: Map<string, { name: string; picture: string }>;
+        accountProfiles?: Map<
+            string,
+            { name: string; displayName: string; picture: string }
+        >;
         isLoggingOut?: boolean;
         isSwitchingAccount?: boolean;
     }
@@ -120,7 +123,9 @@
                     {#if displayedProfile.picture}
                         <img
                             src={displayedProfile.picture}
-                            alt={displayedProfile.name || "Profile"}
+                            alt={displayedProfile.displayName ||
+                                displayedProfile.name ||
+                                "Profile"}
                             class="profile-image"
                         />
                     {:else}
@@ -133,7 +138,9 @@
 
                 <!-- 名前 -->
                 <div class="profile-name">
-                    {displayedProfile.name || $_("profileDialog.anonymous")}
+                    {displayedProfile.displayName ||
+                        displayedProfile.name ||
+                        $_("profileDialog.anonymous")}
                 </div>
             </div>
 
@@ -225,7 +232,9 @@
                                     {#if cachedProfile?.picture}
                                         <img
                                             src={cachedProfile.picture}
-                                            alt={cachedProfile.name || ""}
+                                            alt={cachedProfile.displayName ||
+                                                cachedProfile.name ||
+                                                ""}
                                             class="account-avatar-img"
                                         />
                                     {:else}
@@ -237,7 +246,8 @@
                                 <div class="account-details">
                                     <div class="account-name-row">
                                         <span class="account-name">
-                                            {cachedProfile?.name ||
+                                            {cachedProfile?.displayName ||
+                                                cachedProfile?.name ||
                                                 $_("profileDialog.anonymous")}
                                         </span>
                                         <span class="account-npub-short">

@@ -1,7 +1,7 @@
 import type { ProfileData } from '../lib/types';
 
 // --- プロフィール管理 ---
-let profileData = $state<ProfileData>({ name: "", picture: "", npub: "", nprofile: "" });
+let profileData = $state<ProfileData>({ name: "", displayName: "", picture: "", npub: "", nprofile: "" });
 let profileLoaded = $state(false);
 let isLoadingProfile = $state(false);
 

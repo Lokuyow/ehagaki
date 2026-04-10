@@ -166,6 +166,7 @@
         // アカウントプロフィールキャッシュも更新
         accountProfileCacheStore.setProfile(pubkeyHex, {
           name: profile.name,
+          displayName: profile.displayName,
           picture: profile.picture,
         });
       }
@@ -189,6 +190,7 @@
           const profile = JSON.parse(profileData);
           accountProfileCacheStore.setProfile(account.pubkeyHex, {
             name: profile.name || "",
+            displayName: profile.displayName || "",
             picture: profile.picture || "",
           });
         }
@@ -219,7 +221,13 @@
   function logout() {
     isLoggingOut = true;
     authService.logout();
-    profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
+    profileDataStore.set({
+      name: "",
+      displayName: "",
+      picture: "",
+      npub: "",
+      nprofile: "",
+    });
     profileLoadedStore.set(false);
     if (postComponentRef?.resetPostContent) postComponentRef.resetPostContent();
     if (footerInfoDisplay?.updateProgress) {
@@ -258,7 +266,13 @@
           rxNostr = undefined;
         }
         clearAuthState();
-        profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
+        profileDataStore.set({
+          name: "",
+          displayName: "",
+          picture: "",
+          npub: "",
+          nprofile: "",
+        });
         profileLoadedStore.set(false);
         await initializeNostr(); // pubkeyなしでブートストラップリレーのみ
         secretKey = "";
@@ -508,8 +522,12 @@
                     relayProfileService
                       .fetchProfile(event.pubkey)
                       .then((profile) => {
-                        if (profile?.name) {
-                          updateAuthorDisplayName(profile.name);
+                        if (profile) {
+                          const displayName =
+                            profile.displayName || profile.name;
+                          if (displayName) {
+                            updateAuthorDisplayName(displayName);
+                          }
                         }
                       });
                   }

@@ -106,7 +106,7 @@ describe('ProfileStorage', () => {
     });
 
     it('プロフィールを保存する', () => {
-        const profile = { name: 'Test', picture: '', npub: 'npub123', nprofile: '' };
+        const profile = { name: 'Test', displayName: '', picture: '', npub: 'npub123', nprofile: '' };
 
         storage.save('pubkey123', profile);
 

@@ -60,6 +60,7 @@ export class ProfileDataFactory {
 
     return {
       name: content?.name || "",
+      displayName: content?.display_name || "",
       picture,
       npub: toNpub(pubkeyHex),
       nprofile: toNprofile(pubkeyHex, profileRelays, writeRelays),

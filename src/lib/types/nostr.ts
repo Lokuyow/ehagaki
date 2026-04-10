@@ -180,6 +180,7 @@ export interface ProfileManagerDeps {
 
 export interface ProfileData {
     name: string;
+    displayName: string;
     picture: string;
     npub: string;
     nprofile: string;

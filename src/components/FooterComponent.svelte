@@ -39,11 +39,13 @@
 
     // プロフィール画像のaltテキスト取得
     const getProfileAlt = () =>
-        profileData?.name
-            ? profileData.name
-            : profileData?.npub
-              ? profileData.npub
-              : "User";
+        profileData?.displayName
+            ? profileData.displayName
+            : profileData?.name
+              ? profileData.name
+              : profileData?.npub
+                ? profileData.npub
+                : "User";
 
     // 画像読み込みエラーハンドラ
     function handleImageError(event: Event) {

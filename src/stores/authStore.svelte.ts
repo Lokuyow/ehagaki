@@ -81,7 +81,7 @@ export const secretKeyStore = {
 
 // --- マルチアカウント管理 ---
 let accountList = $state<StoredAccount[]>([]);
-let accountProfileCache = $state<Map<string, { name: string; picture: string }>>(new Map());
+let accountProfileCache = $state<Map<string, { name: string; displayName: string; picture: string }>>(new Map());
 
 export const accountListStore = {
     get value() { return accountList; },
@@ -90,8 +90,8 @@ export const accountListStore = {
 
 export const accountProfileCacheStore = {
     get value() { return accountProfileCache; },
-    set: (cache: Map<string, { name: string; picture: string }>) => { accountProfileCache = cache; },
-    setProfile: (pubkeyHex: string, profile: { name: string; picture: string }) => {
+    set: (cache: Map<string, { name: string; displayName: string; picture: string }>) => { accountProfileCache = cache; },
+    setProfile: (pubkeyHex: string, profile: { name: string; displayName: string; picture: string }) => {
         accountProfileCache = new Map(accountProfileCache);
         accountProfileCache.set(pubkeyHex, profile);
     }
