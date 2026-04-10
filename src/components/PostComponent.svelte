@@ -31,6 +31,11 @@
 
   import { postComponentUIStore } from "../stores/appStore.svelte";
   import {
+    replyQuoteState,
+    clearReplyQuote,
+  } from "../stores/replyQuoteStore.svelte";
+  import { ReplyQuoteService } from "../lib/replyQuoteService";
+  import {
     editorState,
     updateEditorContent,
     updatePostStatus,
@@ -83,6 +88,9 @@
       if (!postManager)
         postManager = new PostManager(rxNostr as RxNostr, {
           getNip46SignerFn: () => nip46Service.getSigner(),
+          replyQuoteState,
+          replyQuoteService: new ReplyQuoteService(),
+          clearReplyQuoteFn: clearReplyQuote,
         });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }

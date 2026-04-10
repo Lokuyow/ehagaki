@@ -93,6 +93,20 @@ export class RelayConfigUtils {
     }
 
     /**
+     * リレー設定からreadリレーのみを抽出
+     */
+    static extractReadRelays(config: RelayConfig): string[] {
+        if (Array.isArray(config)) {
+            return config.map(url => this.normalizeRelayUrl(url));
+        } else if (typeof config === 'object') {
+            return Object.keys(config)
+                .filter(url => config[url]?.read !== false)
+                .map(url => this.normalizeRelayUrl(url));
+        }
+        return [];
+    }
+
+    /**
      * リレー設定からwriteリレーのみを抽出
      */
     static extractWriteRelays(config: RelayConfig): string[] {

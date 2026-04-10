@@ -264,5 +264,14 @@
         "明日<wbr>起きれるん？"
       ]
     }
+  },
+  "replyQuote": {
+    "reply_label": "リプライ",
+    "quote_label": "引用",
+    "loading": "読み込み中...",
+    "fetch_error": "イベントの取得に失敗しました",
+    "cancel": "リプライ/引用を取り消す",
+    "collapse": "折りたたむ",
+    "expand": "展開する"
   }
 }

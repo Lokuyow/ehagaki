@@ -51,12 +51,18 @@ export class PostEventBuilder {
         createImetaTagFn?: (meta: any) => Promise<string[]>,
         getClientTagFn?: () => string[] | null,
         contentWarningEnabled?: boolean,
-        contentWarningReason?: string
+        contentWarningReason?: string,
+        replyQuoteTags?: string[][]
     ): Promise<any> {
+        // リプライ/引用タグを先頭に配置
+        const eventTags: string[][] = replyQuoteTags ? [...replyQuoteTags] : [];
+
         // 既にストアに tags が作られていればそれをコピー、なければ hashtags から小文字化して作成
-        const eventTags: string[][] = Array.isArray(tags) && tags.length
-            ? [...tags]
-            : (Array.isArray(hashtags) ? hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]) : []);
+        if (Array.isArray(tags) && tags.length) {
+            eventTags.push(...tags);
+        } else if (Array.isArray(hashtags)) {
+            eventTags.push(...hashtags.map((hashtag: string) => ['t', hashtag.toLowerCase()]));
+        }
 
         // Content Warning タグ追加 (NIP-36)
         // nsfw ハッシュタグがある場合も自動的に content-warning タグを追加

@@ -3,6 +3,8 @@ import {
   getContentFromUrlQuery,
   cleanupAllQueryParams,
   hasContentQueryParam,
+  getReplyQuoteFromUrlQuery,
+  hasReplyQuoteQueryParam,
 } from '../../lib/urlQueryHandler';
 
 describe('urlQueryHandler', () => {
@@ -247,6 +249,101 @@ describe('urlQueryHandler', () => {
       cleanupAllQueryParams();
 
       expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
+    });
+  });
+
+  describe('getReplyQuoteFromUrlQuery', () => {
+    const validNevent = 'nevent1qgsthwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwcpzamhxue69uhhyetvv9ujuetcv9khqmr99e3k7mgqyz424242424242424242424242424242424242424242424242425grql2v';
+    const validNote = 'note1424242424242424242424242424242424242424242424242424qv3q9y6';
+    const expectedEventId = 'a'.repeat(64);
+
+    it('replyパラメータからneventをデコードできる', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?reply=${validNevent}`,
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result).not.toBeNull();
+      expect(result!.mode).toBe('reply');
+      expect(result!.eventId).toBe(expectedEventId);
+      expect(result!.relayHints).toContain('wss://relay.example.com');
+      expect(result!.authorPubkey).toBe('b'.repeat(64));
+    });
+
+    it('quoteパラメータからneventをデコードできる', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?quote=${validNevent}`,
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result).not.toBeNull();
+      expect(result!.mode).toBe('quote');
+      expect(result!.eventId).toBe(expectedEventId);
+    });
+
+    it('noteフォーマットをデコードできる', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?reply=${validNote}`,
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result).not.toBeNull();
+      expect(result!.mode).toBe('reply');
+      expect(result!.eventId).toBe(expectedEventId);
+      expect(result!.relayHints).toHaveLength(0);
+      expect(result!.authorPubkey).toBeNull();
+    });
+
+    it('パラメータがない場合はnullを返す', () => {
+      // @ts-ignore
+      window.location = {
+        search: '',
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result).toBeNull();
+    });
+
+    it('無効なbech32の場合はnullを返す', () => {
+      // @ts-ignore
+      window.location = {
+        search: '?reply=invalid_value',
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('hasReplyQuoteQueryParam', () => {
+    it('replyパラメータがある場合はtrueを返す', () => {
+      // @ts-ignore
+      window.location = {
+        search: '?reply=nevent1xxx',
+      } as Location;
+
+      expect(hasReplyQuoteQueryParam()).toBe(true);
+    });
+
+    it('quoteパラメータがある場合はtrueを返す', () => {
+      // @ts-ignore
+      window.location = {
+        search: '?quote=note1xxx',
+      } as Location;
+
+      expect(hasReplyQuoteQueryParam()).toBe(true);
+    });
+
+    it('どちらもない場合はfalseを返す', () => {
+      // @ts-ignore
+      window.location = {
+        search: '?content=hello',
+      } as Location;
+
+      expect(hasReplyQuoteQueryParam()).toBe(false);
     });
   });
 });

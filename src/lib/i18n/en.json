@@ -264,5 +264,14 @@
         "Can you wake up tomorrow?"
       ]
     }
+  },
+  "replyQuote": {
+    "reply_label": "Reply",
+    "quote_label": "Quote",
+    "loading": "Loading...",
+    "fetch_error": "Failed to fetch event",
+    "cancel": "Cancel reply/quote",
+    "collapse": "Collapse",
+    "expand": "Expand"
   }
 }

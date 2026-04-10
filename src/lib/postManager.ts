@@ -14,6 +14,8 @@ import { iframeMessageService } from "./iframeMessageService";
 import { saveHashtagsToHistory } from "./utils/hashtagHistory";
 import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
 import { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
+import { ReplyQuoteService } from "./replyQuoteService";
+import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svelte";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -48,6 +50,18 @@ export class PostManager {
   setRxNostr(rxNostr: RxNostr) {
     this.rxNostr = rxNostr;
     this.eventSender = new PostEventSender(rxNostr, this.deps.console || console);
+  }
+
+  private clearReplyQuoteAfterSuccess(): void {
+    const clearFn = this.deps.clearReplyQuoteFn || clearReplyQuote;
+    clearFn();
+  }
+
+  private getReplyQuoteNotifyOptions(): { replyTo?: string; quotedEvent?: string } | undefined {
+    const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
+    if (!rqState) return undefined;
+    if (rqState.mode === 'reply') return { replyTo: rqState.eventId };
+    return { quotedEvent: rqState.eventId };
   }
 
   // 外部APIは変更なし（後方互換性のため）
@@ -91,6 +105,17 @@ export class PostManager {
       const contentWarningEnabled = contentWarningStore.value;
       const contentWarningReason = contentWarningReasonStore.value;
 
+      // リプライ/引用タグを構築
+      const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
+      let replyQuoteTags: string[][] | undefined;
+      const rqNotifyOptions = this.getReplyQuoteNotifyOptions();
+      if (rqState) {
+        const rqService = this.deps.replyQuoteService || new ReplyQuoteService();
+        replyQuoteTags = rqState.mode === 'reply'
+          ? rqService.buildReplyTags(rqState)
+          : rqService.buildQuoteTags(rqState);
+      }
+
       const auth = authStateStore.value;
       const isExtensionAuth = auth.type === 'nip07';
 
@@ -112,7 +137,8 @@ export class PostManager {
             this.deps.createImetaTagFn,
             this.deps.getClientTagFn,
             contentWarningEnabled,
-            contentWarningReason
+            contentWarningReason,
+            replyQuoteTags
           );
 
           // 型ガードで signEvent の存在を確認
@@ -123,7 +149,8 @@ export class PostManager {
             // 投稿結果をiframe親ウィンドウに通知
             if (result.success) {
               this.deps.saveHashtagsToHistoryFn?.(hashtags);
-              this.deps.iframeMessageService?.notifyPostSuccess();
+              this.clearReplyQuoteAfterSuccess();
+              this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
             } else {
               this.deps.iframeMessageService?.notifyPostError(result.error);
             }
@@ -163,13 +190,15 @@ export class PostManager {
             this.deps.createImetaTagFn,
             this.deps.getClientTagFn,
             contentWarningEnabled,
-            contentWarningReason
+            contentWarningReason,
+            replyQuoteTags
           );
 
           const result = await this.eventSender.sendEvent(event, nip46Signer);
           if (result.success) {
             this.deps.saveHashtagsToHistoryFn?.(hashtags);
-            this.deps.iframeMessageService?.notifyPostSuccess();
+            this.clearReplyQuoteAfterSuccess();
+            this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
           } else {
             this.deps.iframeMessageService?.notifyPostError(result.error);
           }
@@ -197,7 +226,8 @@ export class PostManager {
         this.deps.createImetaTagFn,
         this.deps.getClientTagFn,
         contentWarningEnabled,
-        contentWarningReason
+        contentWarningReason,
+        replyQuoteTags
       );
 
       const signer = this.deps.seckeySignerFn
@@ -207,7 +237,8 @@ export class PostManager {
       // 投稿結果をiframe親ウィンドウに通知
       if (result.success) {
         this.deps.saveHashtagsToHistoryFn?.(hashtags);
-        this.deps.iframeMessageService?.notifyPostSuccess();
+        this.clearReplyQuoteAfterSuccess();
+        this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
       } else {
         this.deps.iframeMessageService?.notifyPostError(result.error);
       }
@@ -325,6 +356,8 @@ export class PostManager {
     contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
     // ギャラリーモード: ギャラリーもリセット
     mediaGalleryStore.clearAll();
+    // リプライ/引用状態もクリア
+    this.deps.clearReplyQuoteFn?.();
   }
 
   clearContentAfterSuccess(editor: TipTapEditor): void {

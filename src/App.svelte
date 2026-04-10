@@ -23,6 +23,7 @@
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
+  import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
     sharedMediaStore,
@@ -71,10 +72,21 @@
     getContentFromUrlQuery,
     hasContentQueryParam,
     cleanupAllQueryParams,
+    getReplyQuoteFromUrlQuery,
+    hasReplyQuoteQueryParam,
   } from "./lib/urlQueryHandler";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
   import { generateMediaItemId } from "./lib/utils/appUtils";
+  import {
+    setReplyQuote,
+    updateReferencedEvent,
+    setReplyQuoteError,
+    replyQuoteState,
+    clearReplyQuote,
+  } from "./stores/replyQuoteStore.svelte";
+  import { relayConfigStore } from "./stores/relayStore.svelte";
+  import { ReplyQuoteService } from "./lib/replyQuoteService";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -471,6 +483,42 @@
         }
       }
 
+      // URLクエリパラメータからリプライ/引用情報を取得
+      if (hasReplyQuoteQueryParam()) {
+        const replyQuoteQuery = getReplyQuoteFromUrlQuery();
+        if (replyQuoteQuery) {
+          setReplyQuote(replyQuoteQuery);
+          // イベント取得を非同期で開始
+          if (rxNostr) {
+            const rqService = new ReplyQuoteService();
+            rqService
+              .fetchReferencedEvent(
+                replyQuoteQuery.eventId,
+                replyQuoteQuery.relayHints,
+                rxNostr,
+                relayConfigStore.value,
+              )
+              .then((event) => {
+                if (event) {
+                  const threadInfo = rqService.extractThreadInfo(event);
+                  updateReferencedEvent(event, threadInfo);
+                  // 引用モードの場合、nostr: URIをエディタに挿入
+                  if (replyQuoteQuery.mode === "quote" && postComponentRef) {
+                    const uri = rqService.generateNostrUri(
+                      replyQuoteQuery.eventId,
+                      replyQuoteQuery.relayHints,
+                      replyQuoteQuery.authorPubkey,
+                    );
+                    postComponentRef.insertTextContent("\n" + uri + "\n");
+                  }
+                } else {
+                  setReplyQuoteError("Event not found");
+                }
+              });
+          }
+        }
+      }
+
       // すべての不要なクエリパラメータをクリーンアップ
       // （空のcontentや想定外のパラメータを削除）
       cleanupAllQueryParams();
@@ -735,6 +783,7 @@
           onShowDraftList={handleShowDraftList}
           balloonMessage={balloon.finalMessage}
         />
+        <ReplyQuotePreview />
         <PostComponent
           bind:this={postComponentRef}
           {rxNostr}
