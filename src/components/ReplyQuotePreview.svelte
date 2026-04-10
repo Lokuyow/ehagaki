@@ -47,7 +47,7 @@
 </script>
 
 {#if rqState}
-    <div class="reply-quote-preview" class:expanded>
+    <div class="reply-quote-preview">
         <div class="preview-header">
             <button
                 class="preview-label"
@@ -102,6 +102,8 @@
 
 <style>
     .reply-quote-preview {
+        display: flex;
+        flex-direction: column;
         border-left: 3px solid var(--theme);
         background-color: var(--bg-input);
         max-width: 800px;
