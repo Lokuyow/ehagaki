@@ -520,7 +520,7 @@
                   // 著者のプロフィールを取得して表示名を更新
                   if (event.pubkey && relayProfileService) {
                     relayProfileService
-                      .fetchProfile(event.pubkey)
+                      .fetchProfileRealtime(event.pubkey)
                       .then((profile) => {
                         if (profile) {
                           const displayName =

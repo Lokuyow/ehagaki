@@ -301,6 +301,16 @@ export class ProfileManager {
     return profile;
   }
 
+  async fetchProfileDataNetworkOnly(
+    pubkeyHex: string,
+    opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
+  ): Promise<ProfileData | null> {
+    const consoleObj = this.networkFetcher['console'];
+    consoleObj.log(`プロフィール逐次取得開始(保存なし): ${pubkeyHex}`);
+
+    return this.networkFetcher.fetchFromNetwork(pubkeyHex, opts);
+  }
+
   // テスト用の内部コンポーネントへのアクセス
   getStorage(): ProfileStorage {
     return this.storage;
