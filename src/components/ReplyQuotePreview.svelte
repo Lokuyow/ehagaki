@@ -108,7 +108,6 @@
         background-color: var(--bg-input);
         max-width: 800px;
         width: 100%;
-        padding: 6px 8px;
         margin-bottom: 4px;
         font-size: 1rem;
         flex-shrink: 0;
@@ -124,21 +123,21 @@
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        gap: 4px;
+        gap: 2px;
         width: 100%;
         min-width: 0;
+        padding-left: 10px;
         overflow: hidden;
         background: none;
         border: none;
-        padding: 0;
         cursor: pointer;
         font: inherit;
         color: inherit;
     }
 
     .preview-mode-icon {
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         flex-shrink: 0;
     }
 
@@ -151,6 +150,7 @@
     }
 
     .mode-text {
+        font-size: 1rem;
         font-weight: 600;
         color: var(--theme);
         white-space: nowrap;
@@ -162,11 +162,12 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        font-size: 0.875rem;
+        margin-left: 4px;
     }
 
     .cancel-button {
-        height: 100%;
+        height: 50px;
+        width: 50px;
         background: none;
         border: none;
         cursor: pointer;
@@ -174,7 +175,6 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 4px;
         flex-shrink: 0;
     }
 
@@ -183,8 +183,8 @@
     }
 
     .cancel-button .close-icon {
-        width: 32px;
-        height: 32px;
+        width: 30px;
+        height: 30px;
         mask-image: url("/icons/xmark-solid-full.svg");
     }
 
@@ -206,7 +206,7 @@
     .preview-content {
         display: block;
         width: 100%;
-        padding: 4px 0;
+        padding: 4px 10px;
         margin: 0;
         background: none;
         border: none;
@@ -223,5 +223,12 @@
         white-space: pre-wrap;
         word-break: break-word;
         line-height: 1.4;
+    }
+
+    .preview-label,
+    .preview-content {
+        &:active:not(:disabled) {
+            transform: scale(0.992);
+        }
     }
 </style>
