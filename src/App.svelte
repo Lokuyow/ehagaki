@@ -81,6 +81,7 @@
   import {
     setReplyQuote,
     updateReferencedEvent,
+    updateAuthorDisplayName,
     setReplyQuoteError,
     replyQuoteState,
     clearReplyQuote,
@@ -502,6 +503,16 @@
                 if (event) {
                   const threadInfo = rqService.extractThreadInfo(event);
                   updateReferencedEvent(event, threadInfo);
+                  // 著者のプロフィールを取得して表示名を更新
+                  if (event.pubkey && relayProfileService) {
+                    relayProfileService
+                      .fetchProfile(event.pubkey)
+                      .then((profile) => {
+                        if (profile?.name) {
+                          updateAuthorDisplayName(profile.name);
+                        }
+                      });
+                  }
                   // 引用モードの場合、nostr: URIをエディタに挿入
                   if (replyQuoteQuery.mode === "quote" && postComponentRef) {
                     const uri = rqService.generateNostrUri(

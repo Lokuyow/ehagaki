@@ -194,6 +194,7 @@ export interface ReplyQuoteState {
     eventId: string;
     relayHints: string[];
     authorPubkey: string | null;
+    authorDisplayName: string | null;
     referencedEvent: NostrEvent | null;
     rootEventId: string | null;
     rootRelayHint: string | null;

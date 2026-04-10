@@ -111,6 +111,7 @@ export {
     replyQuoteState,
     setReplyQuote,
     updateReferencedEvent,
+    updateAuthorDisplayName,
     setReplyQuoteError,
     clearReplyQuote,
 } from './replyQuoteStore.svelte';

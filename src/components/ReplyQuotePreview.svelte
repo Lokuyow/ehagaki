@@ -18,19 +18,9 @@
 
     let authorDisplay = $derived.by(() => {
         if (!rqState?.authorPubkey) return "";
-        // localStorageからプロフィール情報を取得を試みる
-        try {
-            const profileJson = localStorage.getItem(
-                `nostr-profile-${rqState.authorPubkey}`,
-            );
-            if (profileJson) {
-                const profile = JSON.parse(profileJson);
-                if (profile?.name) return profile.name;
-            }
-        } catch {
-            // ignore
-        }
-        // npub短縮表示
+        // リアクティブな表示名を優先
+        if (rqState.authorDisplayName) return rqState.authorDisplayName;
+        // npub短縮表示にフォールバック
         const npub = nip19.npubEncode(rqState.authorPubkey);
         return npub.slice(0, 12) + "..." + npub.slice(-4);
     });

@@ -18,6 +18,7 @@ export function setReplyQuote(params: {
         eventId: params.eventId,
         relayHints: params.relayHints,
         authorPubkey: params.authorPubkey,
+        authorDisplayName: null,
         referencedEvent: null,
         rootEventId: null,
         rootRelayHint: null,
@@ -51,6 +52,11 @@ export function setReplyQuoteError(error: string): void {
     if (!replyQuote) return;
     replyQuote.loading = false;
     replyQuote.error = error;
+}
+
+export function updateAuthorDisplayName(name: string): void {
+    if (!replyQuote) return;
+    replyQuote.authorDisplayName = name;
 }
 
 export function clearReplyQuote(): void {
