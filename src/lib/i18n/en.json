@@ -179,7 +179,9 @@
     },
     "media": {
       "image": "[Image]",
-      "video": "[Video]"
+      "video": "[Video]",
+      "reply": "[Reply]",
+      "quote": "[Quote]"
     }
   },
   "balloonMessage": {

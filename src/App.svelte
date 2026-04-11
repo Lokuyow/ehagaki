@@ -84,6 +84,7 @@
     updateAuthorDisplayName,
     setReplyQuoteError,
     replyQuoteState,
+    restoreReplyQuote,
     clearReplyQuote,
   } from "./stores/replyQuoteStore.svelte";
   import { relayConfigStore } from "./stores/relayStore.svelte";
@@ -635,10 +636,30 @@
     )
       return false;
 
-    const result = saveDraft(htmlContent, galleryItems);
+    // リプライ/引用状態を取得
+    const rqState = replyQuoteState.value;
+    const replyQuoteData = rqState
+      ? {
+          mode: rqState.mode,
+          eventId: rqState.eventId,
+          relayHints: rqState.relayHints,
+          authorPubkey: rqState.authorPubkey,
+          authorDisplayName: rqState.authorDisplayName,
+          referencedEvent: rqState.referencedEvent,
+          rootEventId: rqState.rootEventId,
+          rootRelayHint: rqState.rootRelayHint,
+          rootPubkey: rqState.rootPubkey,
+        }
+      : undefined;
+
+    const result = saveDraft(htmlContent, galleryItems, replyQuoteData);
     if (result.needsConfirmation) {
       // 上限に達している場合は確認ダイアログを表示
-      pendingDraftContentStore.set({ content: htmlContent, galleryItems });
+      pendingDraftContentStore.set({
+        content: htmlContent,
+        galleryItems,
+        replyQuoteData,
+      });
       showDraftLimitConfirmStore.set(true);
       return false;
     }
@@ -648,7 +669,11 @@
   function handleConfirmDraftReplace() {
     const pending = pendingDraftContentStore.value;
     if (pending) {
-      saveDraftWithReplaceOldest(pending.content, pending.galleryItems);
+      saveDraftWithReplaceOldest(
+        pending.content,
+        pending.galleryItems,
+        pending.replyQuoteData,
+      );
     }
     pendingDraftContentStore.set(null);
     showDraftLimitConfirmStore.set(false);
@@ -747,6 +772,13 @@
       if (draft.galleryItems && draft.galleryItems.length > 0) {
         postComponentRef?.appendMediaToEditor(draft.galleryItems);
       }
+    }
+
+    // リプライ/引用状態を復元
+    if (draft.replyQuoteData) {
+      restoreReplyQuote(draft.replyQuoteData);
+    } else {
+      clearReplyQuote();
     }
   }
 

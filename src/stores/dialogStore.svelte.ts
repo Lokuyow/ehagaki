@@ -28,9 +28,11 @@ export const showWelcomeDialogStore = {
 };
 
 // --- 下書きダイアログ状態管理 ---
+import type { DraftReplyQuoteData } from '../lib/types';
+
 let showDraftList = $state(false);
 let showDraftLimitConfirm = $state(false);
-let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[] } | null>(null);
+let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null>(null);
 
 export const showDraftListDialogStore = {
     get value() { return showDraftList; },
@@ -44,7 +46,7 @@ export const showDraftLimitConfirmStore = {
 
 export const pendingDraftContentStore = {
     get value() { return pendingDraftContent; },
-    set: (value: { content: string; galleryItems: MediaGalleryItem[] } | null) => { pendingDraftContent = value; }
+    set: (value: { content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
 };
 
 // --- ダイアログ操作ヘルパー ---

@@ -113,5 +113,6 @@ export {
     updateReferencedEvent,
     updateAuthorDisplayName,
     setReplyQuoteError,
+    restoreReplyQuote,
     clearReplyQuote,
 } from './replyQuoteStore.svelte';

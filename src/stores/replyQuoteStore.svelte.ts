@@ -1,4 +1,4 @@
-import type { ReplyQuoteState, ReplyQuoteMode, NostrEvent } from '../lib/types';
+import type { ReplyQuoteState, ReplyQuoteMode, NostrEvent, DraftReplyQuoteData } from '../lib/types';
 
 // --- リプライ・引用状態管理 ---
 let replyQuote = $state<ReplyQuoteState | null>(null);
@@ -57,6 +57,14 @@ export function setReplyQuoteError(error: string): void {
 export function updateAuthorDisplayName(name: string): void {
     if (!replyQuote) return;
     replyQuote.authorDisplayName = name;
+}
+
+export function restoreReplyQuote(data: DraftReplyQuoteData): void {
+    replyQuote = {
+        ...data,
+        loading: false,
+        error: null,
+    };
 }
 
 export function clearReplyQuote(): void {

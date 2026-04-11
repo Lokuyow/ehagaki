@@ -179,7 +179,9 @@
     },
     "media": {
       "image": "[画像]",
-      "video": "[動画]"
+      "video": "[動画]",
+      "reply": "[リプライ]",
+      "quote": "[引用]"
     }
   },
   "balloonMessage": {
