@@ -217,7 +217,7 @@
     .preview-content {
         display: block;
         width: 100%;
-        padding: 4px 10px;
+        padding: 4px 10px 10px 20px;
         margin: 0;
         background: none;
         border: none;
