@@ -47,7 +47,11 @@
 </script>
 
 {#if rqState}
-    <div class="reply-quote-preview">
+    <div
+        class="reply-quote-preview"
+        class:reply-preview={isReply}
+        class:quote-preview={!isReply}
+    >
         <div class="preview-header">
             <button
                 class="preview-label"
@@ -108,9 +112,16 @@
         background-color: var(--bg-input);
         max-width: 800px;
         width: 100%;
-        margin-bottom: 4px;
         font-size: 1rem;
         flex-shrink: 0;
+    }
+
+    .reply-preview {
+        margin-bottom: 4px;
+    }
+
+    .quote-preview {
+        margin-top: 4px;
     }
 
     .preview-header {

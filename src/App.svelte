@@ -531,15 +531,6 @@
                         }
                       });
                   }
-                  // 引用モードの場合、nostr: URIをエディタに挿入
-                  if (replyQuoteQuery.mode === "quote" && postComponentRef) {
-                    const uri = rqService.generateNostrUri(
-                      replyQuoteQuery.eventId,
-                      replyQuoteQuery.relayHints,
-                      replyQuoteQuery.authorPubkey,
-                    );
-                    postComponentRef.insertTextContent("\n" + uri + "\n");
-                  }
                 } else {
                   setReplyQuoteError("Event not found");
                 }
@@ -812,7 +803,9 @@
           onShowDraftList={handleShowDraftList}
           balloonMessage={balloon.finalMessage}
         />
-        <ReplyQuotePreview />
+        {#if replyQuoteState.value?.mode === "reply"}
+          <ReplyQuotePreview />
+        {/if}
         <PostComponent
           bind:this={postComponentRef}
           {rxNostr}
@@ -821,6 +814,9 @@
           onUploadStatusChange={handleUploadStatusChange}
           onUploadProgress={handleUploadProgress}
         />
+        {#if replyQuoteState.value?.mode === "quote"}
+          <ReplyQuotePreview />
+        {/if}
       </div>
       <ReasonInput />
       <KeyboardButtonBar

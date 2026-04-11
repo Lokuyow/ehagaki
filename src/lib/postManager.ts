@@ -79,7 +79,19 @@ export class PostManager {
     imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>
   ): Promise<PostResult> {
     // 末尾のメディアURL直後の改行を削除
-    const processedContent = trimTrailingNewlineAfterMedia(content);
+    let processedContent = trimTrailingNewlineAfterMedia(content);
+
+    // 引用モードの場合、文末にnostr: URIを追加
+    const rqStateForUri = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
+    if (rqStateForUri?.mode === 'quote') {
+      const rqService = this.deps.replyQuoteService || new ReplyQuoteService();
+      const nostrUri = rqService.generateNostrUri(
+        rqStateForUri.eventId,
+        rqStateForUri.relayHints,
+        rqStateForUri.authorPubkey,
+      );
+      processedContent = processedContent.trimEnd() + '\n' + nostrUri;
+    }
 
     const validation = this.validatePost(processedContent);
     if (!validation.valid) {
