@@ -4,6 +4,7 @@ import type { NostrEvent, ReplyQuoteState } from "../../lib/types";
 import { createMockRxNostr, createMockObservable } from "../helpers";
 import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
+import { FALLBACK_RELAYS } from "../../lib/constants";
 
 describe("ReplyQuoteService", () => {
     let service: ReplyQuoteService;
@@ -376,7 +377,7 @@ describe("ReplyQuoteService", () => {
             expect(result).toBeNull();
         });
 
-        it("デフォルトreadリレーを使用し、リレーヒントをテンポラリリレーとして追加する", async () => {
+        it("readリレーがある場合はdefaultReadRelaysを使用し、リレーヒントを追加する", async () => {
             let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {
                 use: vi.fn().mockImplementation((_req: any, opts: any) => {
@@ -394,6 +395,7 @@ describe("ReplyQuoteService", () => {
                 "target-id",
                 ["wss://hint-relay.example.com"],
                 mockRxNostr,
+                { "wss://user-relay.example.com/": { read: true, write: true } },
             );
 
             // defaultReadRelaysが有効
@@ -402,7 +404,7 @@ describe("ReplyQuoteService", () => {
             expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
         });
 
-        it("リレーヒントが空の場合はdefaultReadRelaysのみ使用する", async () => {
+        it("リレーヒントが空かつreadリレーがある場合はdefaultReadRelaysのみ使用する", async () => {
             let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {
                 use: vi.fn().mockImplementation((_req: any, opts: any) => {
@@ -420,12 +422,41 @@ describe("ReplyQuoteService", () => {
                 "target-id",
                 [],
                 mockRxNostr,
+                { "wss://user-relay.example.com/": { read: true, write: true } },
             );
 
             // defaultReadRelaysが有効
             expect(capturedOnParams.defaultReadRelays).toBe(true);
             // relaysは未設定
             expect(capturedOnParams.relays).toBeUndefined();
+        });
+
+        it("readリレーが0件の場合はFALLBACK_RELAYSを使用する", async () => {
+            let capturedOnParams: any = {};
+            const mockRxNostr: RxNostr = {
+                use: vi.fn().mockImplementation((_req: any, opts: any) => {
+                    capturedOnParams = opts?.on || {};
+                    return {
+                        subscribe: vi.fn((observer: any) => {
+                            observer.complete?.();
+                            return { unsubscribe: vi.fn() };
+                        }),
+                    };
+                }),
+            } as any;
+
+            await service.fetchReferencedEvent(
+                "target-id",
+                ["wss://hint-relay.example.com"],
+                mockRxNostr,
+                { "wss://write-only.example.com/": { read: false, write: true } },
+            );
+
+            expect(capturedOnParams.defaultReadRelays).toBe(false);
+            expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
+            for (const fallbackRelay of FALLBACK_RELAYS) {
+                expect(capturedOnParams.relays).toContain(fallbackRelay);
+            }
         });
     });
 

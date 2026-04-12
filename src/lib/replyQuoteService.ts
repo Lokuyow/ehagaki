@@ -3,6 +3,7 @@ import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
 import type { NostrEvent, ReplyQuoteState, RelayConfig } from "./types";
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { FALLBACK_RELAYS } from "./constants";
 
 export interface ReplyQuoteServiceDeps {
     console?: Console;
@@ -28,7 +29,7 @@ export class ReplyQuoteService {
         eventId: string,
         relayHints: string[],
         rxNostr: RxNostr,
-        _relayConfig?: RelayConfig | null,
+        relayConfig?: RelayConfig | null,
         timeoutMs: number = 5000
     ): Promise<NostrEvent | null> {
         return new Promise((resolve) => {
@@ -56,15 +57,23 @@ export class ReplyQuoteService {
                 }
             };
 
-            // デフォルトreadリレー + リレーヒント（テンポラリ）を使用
+            // readリレーが0件の場合はFALLBACK_RELAYSを使用
             const normalizedHints = relayHints
                 .map(r => RelayConfigUtils.normalizeRelayUrl(r))
                 .filter(r => r.length > 0);
+            const hasReadRelays = !!relayConfig && RelayConfigUtils.extractReadRelays(relayConfig).length > 0;
+            const temporaryRelays = new Set<string>(normalizedHints);
+            if (!hasReadRelays) {
+                FALLBACK_RELAYS
+                    .map(r => RelayConfigUtils.normalizeRelayUrl(r))
+                    .forEach(r => temporaryRelays.add(r));
+            }
+
             const onParams: { defaultReadRelays: boolean; relays?: string[] } = {
-                defaultReadRelays: true,
+                defaultReadRelays: hasReadRelays,
             };
-            if (normalizedHints.length > 0) {
-                onParams.relays = normalizedHints;
+            if (temporaryRelays.size > 0) {
+                onParams.relays = Array.from(temporaryRelays);
             }
 
             try {
