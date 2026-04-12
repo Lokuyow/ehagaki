@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import DOMPurify from "dompurify";
     import { nip19 } from "nostr-tools";
+    import Button from "./Button.svelte";
     import {
         replyQuoteState,
         clearReplyQuote,
@@ -53,32 +54,38 @@
         class:quote-preview={!isReply}
     >
         <div class="preview-header">
-            <button
-                class="preview-label"
-                onclick={sanitizedContent ? toggleExpand : undefined}
-                aria-expanded={expanded}
-                aria-label={expanded
-                    ? $_("replyQuote.collapse")
-                    : $_("replyQuote.expand")}
-            >
-                <div
-                    class="preview-mode-icon svg-icon"
-                    class:reply-icon={isReply}
-                    class:quote-icon={!isReply}
-                ></div>
-                <span class="mode-text">{modeLabel}</span>
+            <div class="preview-meta">
+                <Button
+                    className="preview-label"
+                    variant="default"
+                    shape="square"
+                    onClick={sanitizedContent ? toggleExpand : undefined}
+                    aria-expanded={expanded}
+                    ariaLabel={expanded
+                        ? $_("replyQuote.collapse")
+                        : $_("replyQuote.expand")}
+                >
+                    <div
+                        class="preview-mode-icon svg-icon"
+                        class:reply-icon={isReply}
+                        class:quote-icon={!isReply}
+                    ></div>
+                    <span class="mode-text">{modeLabel}</span>
+                </Button>
                 {#if authorDisplay}
                     <span class="author-name">{authorDisplay}</span>
                 {/if}
-            </button>
-            <button
-                class="cancel-button"
-                onclick={handleCancel}
+            </div>
+            <Button
+                className="cancel-button"
+                variant="default"
+                shape="square"
+                onClick={handleCancel}
                 title={$_("replyQuote.cancel")}
-                aria-label={$_("replyQuote.cancel")}
+                ariaLabel={$_("replyQuote.cancel")}
             >
                 <div class="close-icon svg-icon"></div>
-            </button>
+            </Button>
         </div>
 
         {#if rqState.loading}
@@ -91,14 +98,9 @@
             </div>
         {:else if sanitizedContent}
             {#if expanded}
-                <button
-                    class="preview-content"
-                    onclick={toggleExpand}
-                    aria-expanded={true}
-                    aria-label={$_("replyQuote.collapse")}
-                >
+                <div class="preview-content">
                     <p class="content-text">{sanitizedContent}</p>
-                </button>
+                </div>
             {/if}
         {/if}
     </div>
@@ -128,22 +130,29 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-    }
+        gap: 12px;
 
-    .preview-label {
-        display: flex;
-        align-items: center;
-        justify-content: flex-start;
-        gap: 2px;
-        width: 100%;
-        min-width: 0;
-        padding-left: 10px;
-        overflow: hidden;
-        background: none;
-        border: none;
-        cursor: pointer;
-        font: inherit;
-        color: inherit;
+        .preview-meta {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-width: 0;
+            flex: 1;
+
+            :global(.preview-label) {
+                gap: 6px;
+                height: 50px;
+                min-width: fit-content;
+                padding: 0 10px 0 10px;
+            }
+        }
+
+        :global(.cancel-button) {
+            height: 50px;
+            width: 50px;
+            padding: 2px;
+            flex-shrink: 0;
+        }
     }
 
     .preview-mode-icon {
@@ -169,31 +178,14 @@
     }
 
     .author-name {
+        min-width: 0;
         color: var(--text-light);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        margin-left: 4px;
     }
 
-    .cancel-button {
-        height: 50px;
-        width: 50px;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 2px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        flex-shrink: 0;
-    }
-
-    .cancel-button:hover {
-        background-color: var(--btn-bg);
-    }
-
-    .cancel-button .close-icon {
+    :global(.cancel-button .close-icon) {
         width: 30px;
         height: 30px;
         mask-image: url("/icons/xmark-solid-full.svg");
@@ -217,12 +209,9 @@
     .preview-content {
         display: block;
         width: 100%;
-        padding: 4px 10px 10px 20px;
+        padding: 10px 20px 10px 20px;
         margin: 0;
-        background: none;
-        border: none;
         text-align: left;
-        cursor: pointer;
         color: var(--text);
         font: inherit;
         max-height: 200px;
@@ -234,12 +223,5 @@
         white-space: pre-wrap;
         word-break: break-word;
         line-height: 1.4;
-    }
-
-    .preview-label,
-    .preview-content {
-        &:active:not(:disabled) {
-            transform: scale(0.992);
-        }
     }
 </style>
