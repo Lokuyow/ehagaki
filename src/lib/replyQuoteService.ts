@@ -3,7 +3,6 @@ import type { RxNostr } from "rx-nostr";
 import { nip19 } from "nostr-tools";
 import type { NostrEvent, ReplyQuoteState, RelayConfig } from "./types";
 import { RelayConfigUtils } from "./relayConfigUtils";
-import { BOOTSTRAP_RELAYS } from "./constants";
 
 export interface ReplyQuoteServiceDeps {
     console?: Console;
@@ -29,7 +28,7 @@ export class ReplyQuoteService {
         eventId: string,
         relayHints: string[],
         rxNostr: RxNostr,
-        relayConfig?: RelayConfig | null,
+        _relayConfig?: RelayConfig | null,
         timeoutMs: number = 5000
     ): Promise<NostrEvent | null> {
         return new Promise((resolve) => {
@@ -57,17 +56,19 @@ export class ReplyQuoteService {
                 }
             };
 
-            // リレーリスト構築: relayHints → readリレー → BOOTSTRAP_RELAYS
-            const relaySet = new Set<string>();
-            relayHints.forEach(r => relaySet.add(RelayConfigUtils.normalizeRelayUrl(r)));
-            if (relayConfig) {
-                RelayConfigUtils.extractReadRelays(relayConfig).forEach(r => relaySet.add(r));
+            // デフォルトreadリレー + リレーヒント（テンポラリ）を使用
+            const normalizedHints = relayHints
+                .map(r => RelayConfigUtils.normalizeRelayUrl(r))
+                .filter(r => r.length > 0);
+            const onParams: { defaultReadRelays: boolean; relays?: string[] } = {
+                defaultReadRelays: true,
+            };
+            if (normalizedHints.length > 0) {
+                onParams.relays = normalizedHints;
             }
-            BOOTSTRAP_RELAYS.forEach(r => relaySet.add(RelayConfigUtils.normalizeRelayUrl(r)));
-            const relays = Array.from(relaySet);
 
             try {
-                subscription = rxNostr.use(rxReq, { on: { relays } }).subscribe({
+                subscription = rxNostr.use(rxReq, { on: onParams }).subscribe({
                     next: (packet: any) => {
                         if (resolved) return;
                         if (packet.event?.id === eventId) {

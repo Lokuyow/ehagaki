@@ -376,11 +376,11 @@ describe("ReplyQuoteService", () => {
             expect(result).toBeNull();
         });
 
-        it("relayConfigが指定された場合にreadリレーを含める", async () => {
-            let capturedRelays: string[] = [];
+        it("デフォルトreadリレーを使用し、リレーヒントをテンポラリリレーとして追加する", async () => {
+            let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {
                 use: vi.fn().mockImplementation((_req: any, opts: any) => {
-                    capturedRelays = opts?.on?.relays || [];
+                    capturedOnParams = opts?.on || {};
                     return {
                         subscribe: vi.fn((observer: any) => {
                             observer.complete?.();
@@ -390,26 +390,42 @@ describe("ReplyQuoteService", () => {
                 }),
             } as any;
 
-            const relayConfig = {
-                "wss://read-relay.example.com/": { read: true, write: false },
-                "wss://write-relay.example.com/": { read: false, write: true },
-            };
-
             await service.fetchReferencedEvent(
                 "target-id",
                 ["wss://hint-relay.example.com"],
                 mockRxNostr,
-                relayConfig,
             );
 
-            // readリレーが含まれている
-            expect(capturedRelays).toContain("wss://read-relay.example.com/");
-            // writeのみリレーは含まれない
-            expect(capturedRelays).not.toContain("wss://write-relay.example.com/");
-            // hintリレーも含まれている
-            expect(
-                capturedRelays.some((r) => r.includes("hint-relay")),
-            ).toBe(true);
+            // defaultReadRelaysが有効
+            expect(capturedOnParams.defaultReadRelays).toBe(true);
+            // hintリレーがテンポラリリレーとして含まれている
+            expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
+        });
+
+        it("リレーヒントが空の場合はdefaultReadRelaysのみ使用する", async () => {
+            let capturedOnParams: any = {};
+            const mockRxNostr: RxNostr = {
+                use: vi.fn().mockImplementation((_req: any, opts: any) => {
+                    capturedOnParams = opts?.on || {};
+                    return {
+                        subscribe: vi.fn((observer: any) => {
+                            observer.complete?.();
+                            return { unsubscribe: vi.fn() };
+                        }),
+                    };
+                }),
+            } as any;
+
+            await service.fetchReferencedEvent(
+                "target-id",
+                [],
+                mockRxNostr,
+            );
+
+            // defaultReadRelaysが有効
+            expect(capturedOnParams.defaultReadRelays).toBe(true);
+            // relaysは未設定
+            expect(capturedOnParams.relays).toBeUndefined();
         });
     });
 
