@@ -157,7 +157,8 @@ export interface PostManagerDeps {
     replyQuoteService?: {
         buildReplyTags: (state: ReplyQuoteState) => string[][];
         buildQuoteTags: (state: ReplyQuoteState) => string[][];
-        generateNostrUri: (eventId: string, relayHints: string[], authorPubkey: string) => string;
+        generateNostrUri: (eventId: string, relayHints: string[], authorPubkey?: string | null) => string;
+        extractInlineQuoteTags?: (content: string) => string[][];
     };
     clearReplyQuoteFn?: () => void;
 }

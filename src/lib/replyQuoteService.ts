@@ -205,4 +205,51 @@ export class ReplyQuoteService {
         });
         return `nostr:${nevent}`;
     }
+
+    /**
+     * コンテンツ内のnostr:nevent1.../nostr:note1... URIを検出し、引用用のq/pタグを構築する
+     * 複数URIがある場合は出現順に処理する
+     */
+    extractInlineQuoteTags(content: string): string[][] {
+        const regex = /nostr:(nevent1[a-z0-9]+|note1[a-z0-9]+)/gi;
+        const tags: string[][] = [];
+        const seenEventIds = new Set<string>();
+        const pPubkeys = new Set<string>();
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+            try {
+                const decoded = nip19.decode(match[1]);
+                let eventId: string;
+                let relayHint = '';
+                let authorPubkey: string | undefined;
+
+                if (decoded.type === 'nevent') {
+                    eventId = decoded.data.id;
+                    relayHint = decoded.data.relays?.[0] || '';
+                    authorPubkey = decoded.data.author;
+                } else if (decoded.type === 'note') {
+                    eventId = decoded.data as string;
+                } else {
+                    continue;
+                }
+
+                // 同一イベントIDの重複qタグを防ぐ
+                if (seenEventIds.has(eventId)) continue;
+                seenEventIds.add(eventId);
+
+                tags.push(['q', eventId, relayHint, ...(authorPubkey ? [authorPubkey] : [])]);
+                if (authorPubkey) {
+                    pPubkeys.add(authorPubkey);
+                }
+            } catch {
+                continue;
+            }
+        }
+
+        // pタグを末尾にまとめて追加（重複排除済み）
+        pPubkeys.forEach(pk => tags.push(['p', pk]));
+
+        return tags;
+    }
 }

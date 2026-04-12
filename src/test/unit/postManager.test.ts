@@ -17,6 +17,7 @@ import { updateHashtagData } from '../../lib/tags/hashtagManager';
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { RxNostr } from 'rx-nostr';
 import { createMockRxNostr, MockKeyManager } from '../helpers';
+import { nip19 } from 'nostr-tools';
 
 class MockClassList {
     private classes = new Set<string>();
@@ -1116,6 +1117,142 @@ describe('PostManager統合テスト', () => {
             expect(result.success).toBe(true);
             expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
             expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('インラインnostr: URI引用タグ', () => {
+        const eventId1 = "a".repeat(64);
+        const eventId2 = "b".repeat(64);
+        const authorPubkey1 = "c".repeat(64);
+
+        function createSuccessMock() {
+            return {
+                subscribe: vi.fn((observer: any) => {
+                    process.nextTick(() => {
+                        observer.next({
+                            from: 'relay1',
+                            ok: true,
+                            done: true,
+                            eventId: 'test-event-id',
+                            type: 'ok',
+                            message: ''
+                        });
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+        }
+
+        it('コンテンツ内のnostr:nevent1 URIからqタグとpタグを生成する', async () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `テスト投稿\nnostr:${nevent}`;
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            const pTags = sentEvent.tags.filter((t: string[]) => t[0] === 'p');
+            expect(qTags).toHaveLength(1);
+            expect(qTags[0][1]).toBe(eventId1);
+            expect(pTags.some((t: string[]) => t[1] === authorPubkey1)).toBe(true);
+        });
+
+        it('コンテンツ内のnostr:note1 URIからqタグを生成する', async () => {
+            const note = nip19.noteEncode(eventId1);
+            const content = `テスト投稿\nnostr:${note}`;
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            expect(qTags).toHaveLength(1);
+            expect(qTags[0][1]).toBe(eventId1);
+        });
+
+        it('複数のnostr: URIから順番通りにqタグを生成する', async () => {
+            const nevent1 = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay1.example.com"],
+                author: authorPubkey1,
+            });
+            const nevent2 = nip19.neventEncode({
+                id: eventId2,
+                relays: ["wss://relay2.example.com"],
+            });
+            const content = `テキスト\nnostr:${nevent1}\nテキスト\nnostr:${nevent2}`;
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            expect(qTags).toHaveLength(2);
+            expect(qTags[0][1]).toBe(eventId1);
+            expect(qTags[1][1]).toBe(eventId2);
+        });
+
+        it('ストアベース引用とインライン引用が共存する場合、重複を排除する', async () => {
+            const inlineEventId = eventId2;
+            const nevent = nip19.neventEncode({
+                id: inlineEventId,
+                relays: ["wss://relay2.example.com"],
+            });
+            const content = `テスト投稿\nnostr:${nevent}`;
+
+            const storeQuoteEventId = eventId1;
+            mockDeps.replyQuoteState = {
+                value: {
+                    mode: 'quote',
+                    eventId: storeQuoteEventId,
+                    relayHints: ["wss://relay1.example.com"],
+                    authorPubkey: authorPubkey1,
+                    authorDisplayName: null,
+                    referencedEvent: null,
+                    rootEventId: null,
+                    rootRelayHint: null,
+                    rootPubkey: null,
+                    loading: false,
+                    error: null,
+                }
+            };
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            // ストアベースのqタグ + インラインのqタグ（異なるイベントID）
+            expect(qTags).toHaveLength(2);
+            expect(qTags[0][1]).toBe(storeQuoteEventId); // ストアベースが先
+            expect(qTags[1][1]).toBe(inlineEventId);
+        });
+
+        it('nostr: URIがない場合はqタグを生成しない', async () => {
+            const content = '普通のテキスト https://example.com';
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            expect(qTags).toHaveLength(0);
         });
     });
 });

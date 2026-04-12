@@ -3,6 +3,7 @@ import { ReplyQuoteService } from "../../lib/replyQuoteService";
 import type { NostrEvent, ReplyQuoteState } from "../../lib/types";
 import { createMockRxNostr, createMockObservable } from "../helpers";
 import type { RxNostr } from "rx-nostr";
+import { nip19 } from "nostr-tools";
 
 describe("ReplyQuoteService", () => {
     let service: ReplyQuoteService;
@@ -409,6 +410,143 @@ describe("ReplyQuoteService", () => {
             expect(
                 capturedRelays.some((r) => r.includes("hint-relay")),
             ).toBe(true);
+        });
+    });
+
+    describe("extractInlineQuoteTags", () => {
+        const eventId1 = "a".repeat(64);
+        const eventId2 = "b".repeat(64);
+        const authorPubkey1 = "c".repeat(64);
+        const authorPubkey2 = "d".repeat(64);
+
+        it("nostr:nevent1... URIからq/pタグを抽出する", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `テキスト\nnostr:${nevent}\nテキスト`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            expect(tags).toHaveLength(2);
+            expect(tags[0][0]).toBe("q");
+            expect(tags[0][1]).toBe(eventId1);
+            expect(tags[0][2]).toBe("wss://relay.example.com");
+            expect(tags[0][3]).toBe(authorPubkey1);
+            expect(tags[1]).toEqual(["p", authorPubkey1]);
+        });
+
+        it("nostr:note1... URIからqタグを抽出する（pタグなし）", () => {
+            const note = nip19.noteEncode(eventId1);
+            const content = `テキスト\nnostr:${note}\nテキスト`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            expect(tags).toHaveLength(1);
+            expect(tags[0][0]).toBe("q");
+            expect(tags[0][1]).toBe(eventId1);
+            expect(tags[0][2]).toBe("");
+        });
+
+        it("複数のnostr: URIを出現順に処理する", () => {
+            const nevent1 = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay1.example.com"],
+                author: authorPubkey1,
+            });
+            const nevent2 = nip19.neventEncode({
+                id: eventId2,
+                relays: ["wss://relay2.example.com"],
+                author: authorPubkey2,
+            });
+            const content = `テキスト\nnostr:${nevent1}\nテキスト\nnostr:${nevent2}`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            // qタグ2つ + pタグ2つ
+            const qTags = tags.filter(t => t[0] === "q");
+            const pTags = tags.filter(t => t[0] === "p");
+            expect(qTags).toHaveLength(2);
+            expect(pTags).toHaveLength(2);
+            // 順番通り
+            expect(qTags[0][1]).toBe(eventId1);
+            expect(qTags[1][1]).toBe(eventId2);
+        });
+
+        it("neventとnoteが混在する場合も処理する", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const note = nip19.noteEncode(eventId2);
+            const content = `nostr:${nevent}\nnostr:${note}`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            const qTags = tags.filter(t => t[0] === "q");
+            const pTags = tags.filter(t => t[0] === "p");
+            expect(qTags).toHaveLength(2);
+            expect(qTags[0][1]).toBe(eventId1);
+            expect(qTags[1][1]).toBe(eventId2);
+            expect(pTags).toHaveLength(1);
+            expect(pTags[0][1]).toBe(authorPubkey1);
+        });
+
+        it("同一イベントIDの重複URIはqタグを1つだけ生成する", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `nostr:${nevent}\nnostr:${nevent}`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            const qTags = tags.filter(t => t[0] === "q");
+            expect(qTags).toHaveLength(1);
+        });
+
+        it("同一著者の重複pタグは1つだけ生成する", () => {
+            const nevent1 = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const nevent2 = nip19.neventEncode({
+                id: eventId2,
+                relays: ["wss://relay2.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `nostr:${nevent1}\nnostr:${nevent2}`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            const pTags = tags.filter(t => t[0] === "p");
+            expect(pTags).toHaveLength(1);
+            expect(pTags[0][1]).toBe(authorPubkey1);
+        });
+
+        it("nostr: URIがない場合は空配列を返す", () => {
+            const content = "普通のテキスト https://example.com";
+            const tags = service.extractInlineQuoteTags(content);
+            expect(tags).toHaveLength(0);
+        });
+
+        it("不正なbech32文字列は無視する", () => {
+            const content = "nostr:nevent1invalid nostr:note1invalid";
+            const tags = service.extractInlineQuoteTags(content);
+            expect(tags).toHaveLength(0);
+        });
+
+        it("authorなしのneventからはpタグを生成しない", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+            });
+            const content = `nostr:${nevent}`;
+
+            const tags = service.extractInlineQuoteTags(content);
+            expect(tags).toHaveLength(1);
+            expect(tags[0][0]).toBe("q");
+            expect(tags[0][1]).toBe(eventId1);
+            const pTags = tags.filter(t => t[0] === "p");
+            expect(pTags).toHaveLength(0);
         });
     });
 });

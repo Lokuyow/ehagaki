@@ -81,6 +81,10 @@ export class PostManager {
     // 末尾のメディアURL直後の改行を削除
     let processedContent = trimTrailingNewlineAfterMedia(content);
 
+    // インラインのnostr: URIから引用タグを抽出（ストアベースのURI追加前に実行）
+    const inlineQuoteTags = this.deps.replyQuoteService?.extractInlineQuoteTags?.(processedContent)
+      ?? new ReplyQuoteService().extractInlineQuoteTags(processedContent);
+
     // 引用モードの場合、文末にnostr: URIを追加
     const rqStateForUri = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
     if (rqStateForUri?.mode === 'quote') {
@@ -126,6 +130,28 @@ export class PostManager {
         replyQuoteTags = rqState.mode === 'reply'
           ? rqService.buildReplyTags(rqState)
           : rqService.buildQuoteTags(rqState);
+      }
+
+      // インライン引用タグをマージ（重複排除）
+      if (inlineQuoteTags.length > 0) {
+        if (!replyQuoteTags) {
+          replyQuoteTags = [];
+        }
+        const existingQEventIds = new Set(
+          replyQuoteTags.filter(t => t[0] === 'q').map(t => t[1])
+        );
+        const existingPPubkeys = new Set(
+          replyQuoteTags.filter(t => t[0] === 'p').map(t => t[1])
+        );
+        for (const tag of inlineQuoteTags) {
+          if (tag[0] === 'q' && !existingQEventIds.has(tag[1])) {
+            replyQuoteTags.push(tag);
+            existingQEventIds.add(tag[1]);
+          } else if (tag[0] === 'p' && !existingPPubkeys.has(tag[1])) {
+            replyQuoteTags.push(tag);
+            existingPPubkeys.add(tag[1]);
+          }
+        }
       }
 
       const auth = authStateStore.value;
