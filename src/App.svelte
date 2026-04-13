@@ -1,13 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { createRxNostr } from "rx-nostr";
-  import { verifier } from "@rx-nostr/crypto";
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
-  import { ProfileManager, ProfileUrlUtils } from "./lib/profileManager";
-  import { RelayManager } from "./lib/relayManager";
-  import { RelayProfileService } from "./lib/relayProfileService";
+  import type { RelayProfileService } from "./lib/relayProfileService";
   import PostComponent from "./components/PostComponent.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import ProfileComponent from "./components/ProfileComponent.svelte";
@@ -70,21 +66,7 @@
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
   import type { Draft } from "./lib/types";
-  import { STORAGE_KEYS } from "./lib/constants";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
-  import {
-    checkServiceWorkerStatus,
-    testServiceWorkerCommunication,
-    getSharedMediaWithFallback,
-  } from "./lib/utils/swCommunication";
-  import { checkIfOpenedFromShare } from "./lib/shareHandler";
-  import {
-    getContentFromUrlQuery,
-    hasContentQueryParam,
-    cleanupAllQueryParams,
-    getReplyQuoteFromUrlQuery,
-    hasReplyQuoteQueryParam,
-  } from "./lib/urlQueryHandler";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
   import { generateMediaItemId } from "./lib/utils/appUtils";
@@ -98,7 +80,13 @@
     clearReplyQuote,
   } from "./stores/replyQuoteStore.svelte";
   import { relayConfigStore } from "./stores/relayStore.svelte";
-  import { ReplyQuoteService } from "./lib/replyQuoteService";
+  import {
+    initializeNostrSession,
+    completePostAuthBootstrap,
+    syncAccountStores,
+    type NostrSessionBootstrap,
+  } from "./lib/bootstrap/authBootstrap";
+  import { runExternalInputBootstrap } from "./lib/bootstrap/externalInputBootstrap";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -111,7 +99,7 @@
   let isAuthenticated = $derived(authState.value?.isAuthenticated ?? false);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
-  let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
+  let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
   let relayProfileService: RelayProfileService;
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
@@ -127,79 +115,55 @@
   authService.setAccountManager(accountManager);
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
-    rxNostr = createRxNostr({ verifier });
-    const profileManager = new ProfileManager(rxNostr);
-    const relayManager = new RelayManager(rxNostr, {
+    const session = await initializeNostrSession({
+      pubkeyHex,
       relayListUpdatedStore: {
         value: relayListUpdatedStore.value,
-        set: (v: number) => relayListUpdatedStore.set(v),
+        set: (value: number) => relayListUpdatedStore.set(value),
       },
+      setRelayManager,
     });
-    relayProfileService = new RelayProfileService(
-      rxNostr,
-      relayManager,
-      profileManager,
-    );
 
-    // RelayManagerをappStoreに設定
-    setRelayManager(relayManager);
-
-    await relayProfileService.initializeRelays(pubkeyHex);
+    rxNostr = session.rxNostr;
+    relayProfileService = session.relayProfileService;
   }
 
   /**
    * 認証成功後の共通処理: Nostr初期化 → リレー・プロフィール取得 → ストア更新
    */
   async function handlePostAuth(pubkeyHex: string): Promise<void> {
-    isLoadingProfileStore.set(true);
-    showLoginDialogStore.set(false);
-    showAddAccountDialogStore.set(false);
-    try {
-      await initializeNostr(pubkeyHex);
-      const profile = await relayProfileService.initializeForLogin(pubkeyHex);
-      if (profile) {
-        profileDataStore.set(profile);
-        profileLoadedStore.set(true);
-        // アカウントプロフィールキャッシュも更新
-        accountProfileCacheStore.setProfile(pubkeyHex, {
-          name: profile.name,
-          displayName: profile.displayName,
-          picture: profile.picture,
-        });
-      }
-    } finally {
-      isLoadingProfileStore.set(false);
-      refreshAccountList();
-    }
+    const session = await completePostAuthBootstrap({
+      pubkeyHex,
+      closeAuthDialogs: () => {
+        showLoginDialogStore.set(false);
+        showAddAccountDialogStore.set(false);
+      },
+      relayListUpdatedStore: {
+        value: relayListUpdatedStore.value,
+        set: (value: number) => relayListUpdatedStore.set(value),
+      },
+      setRelayManager,
+      profileDataStore,
+      profileLoadedStore,
+      isLoadingProfileStore,
+      accountManager,
+      accountListStore,
+      accountProfileCacheStore,
+      localStorage,
+    });
+
+    rxNostr = session.rxNostr;
+    relayProfileService = session.relayProfileService;
   }
 
   /** アカウントリストストアをlocalStorageから同期 */
   function refreshAccountList(): void {
-    accountListStore.set(accountManager.getAccounts());
-    // 各アカウントのプロフィールキャッシュを更新
-    const accounts = accountManager.getAccounts();
-    for (const account of accounts) {
-      try {
-        const profileData = localStorage.getItem(
-          STORAGE_KEYS.NOSTR_PROFILE + account.pubkeyHex,
-        );
-        if (profileData) {
-          const profile = JSON.parse(profileData);
-          const picture =
-            typeof profile.picture === "string"
-              ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
-              : "";
-
-          accountProfileCacheStore.setProfile(account.pubkeyHex, {
-            name: profile.name || "",
-            displayName: profile.displayName || "",
-            picture,
-          });
-        }
-      } catch {
-        // ignore
-      }
-    }
+    syncAccountStores({
+      accountManager,
+      accountListStore,
+      accountProfileCacheStore,
+      localStorage,
+    });
   }
 
   // --- 秘密鍵認証・保存処理 ---
@@ -373,23 +337,6 @@
 
   let localeInitialized = $state(false);
 
-  function getSharedMediaErrorMessage(errorCode: string | null): string | null {
-    switch (errorCode) {
-      case "processing-error":
-        return "共有メディアの処理中にエラーが発生しました";
-      case "no-image":
-        return "共有メディアが見つかりませんでした";
-      case "upload-failed":
-        return "メディアのアップロードに失敗しました";
-      case "network-error":
-        return "ネットワークエラーが発生しました";
-      case "client-error":
-        return "メディア共有処理でエラーが発生しました";
-      default:
-        return null;
-    }
-  }
-
   onMount(() => {
     // NIP-07拡張機能の遅延注入を検出（nos2x等のdocument_endで注入される拡張機能に対応）
     if (!nip07ExtensionAvailable) {
@@ -407,19 +354,6 @@
       clearSharedMediaError();
       await waitLocale();
       localeInitialized = true;
-
-      // Service Worker状態チェック（本番環境でも実行）
-      if (checkIfOpenedFromShare()) {
-        const swStatus = await checkServiceWorkerStatus();
-        const canCommunicate = await testServiceWorkerCommunication();
-
-        if (!swStatus.isReady || !swStatus.hasController || !canCommunicate) {
-          console.warn(
-            "Service Worker not ready for shared image processing:",
-            swStatus,
-          );
-        }
-      }
 
       // --- 認証初期化（共有メディア処理の前に完了させる） ---
       try {
@@ -439,103 +373,25 @@
       } finally {
         authService.markAuthInitialized();
       }
-      // --- ここまで ---
 
-      // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
-      if (checkIfOpenedFromShare() && !isSharedMediaProcessed()) {
-        try {
-          // まず実際に共有メディアが取得できるかチェック
-          const shared = await getSharedMediaWithFallback();
-          if (shared?.images?.length) {
-            // メディアが取得できた場合は、エラーパラメータを無視して処理を続行
-            sharedMediaStore.files = shared.images;
-            sharedMediaStore.metadata = shared.metadata;
-            sharedMediaStore.received = true;
-            markSharedMediaProcessed();
-          } else {
-            console.warn("No shared media data received");
-            const sharedMediaErrorMessage =
-              getSharedMediaErrorMessage(sharedError);
-            if (sharedMediaErrorMessage) {
-              setSharedMediaError(sharedMediaErrorMessage, 5000);
-            }
-            if (sharedError) {
-              console.error(
-                "Shared image processing failed with error parameter:",
-                {
-                  error: sharedError,
-                  location: window.location.href,
-                },
-              );
-            }
-          }
-        } catch (error) {
-          console.error("共有メディアの処理中にエラー:", error);
-          const sharedMediaErrorMessage =
-            getSharedMediaErrorMessage(sharedError);
-          if (sharedMediaErrorMessage) {
-            setSharedMediaError(sharedMediaErrorMessage, 5000);
-          }
-        }
-      }
-
-      // 初回アクセス判定
-      if (consumeFirstVisitFlag()) {
-        showWelcomeDialogStore.set(true);
-      }
-
-      // URLクエリパラメータからコンテンツを取得
-      if (hasContentQueryParam()) {
-        const queryContent = getContentFromUrlQuery();
-        if (queryContent) {
-          updateUrlQueryContentStore(queryContent);
-        }
-      }
-
-      // URLクエリパラメータからリプライ/引用情報を取得
-      if (hasReplyQuoteQueryParam()) {
-        const replyQuoteQuery = getReplyQuoteFromUrlQuery();
-        if (replyQuoteQuery) {
-          setReplyQuote(replyQuoteQuery);
-          // イベント取得を非同期で開始
-          if (rxNostr) {
-            const rqService = new ReplyQuoteService();
-            rqService
-              .fetchReferencedEvent(
-                replyQuoteQuery.eventId,
-                replyQuoteQuery.relayHints,
-                rxNostr,
-                relayConfigStore.value,
-              )
-              .then((event) => {
-                if (event) {
-                  const threadInfo = rqService.extractThreadInfo(event);
-                  updateReferencedEvent(event, threadInfo);
-                  // 著者のプロフィールを取得して表示名を更新
-                  if (event.pubkey && relayProfileService) {
-                    relayProfileService
-                      .fetchProfileRealtime(event.pubkey)
-                      .then((profile) => {
-                        if (profile) {
-                          const displayName =
-                            profile.displayName || profile.name;
-                          if (displayName) {
-                            updateAuthorDisplayName(displayName);
-                          }
-                        }
-                      });
-                  }
-                } else {
-                  setReplyQuoteError("Event not found");
-                }
-              });
-          }
-        }
-      }
-
-      // すべての不要なクエリパラメータをクリーンアップ
-      // （空のcontentや想定外のパラメータを削除）
-      cleanupAllQueryParams();
+      await runExternalInputBootstrap({
+        sharedError,
+        sharedMediaStore,
+        isSharedMediaProcessed,
+        markSharedMediaProcessed,
+        setSharedMediaError,
+        consumeFirstVisitFlag,
+        showWelcomeDialog: () => showWelcomeDialogStore.set(true),
+        updateUrlQueryContentStore,
+        setReplyQuote,
+        updateReferencedEvent,
+        updateAuthorDisplayName,
+        setReplyQuoteError,
+        relayProfileService,
+        rxNostr,
+        relayConfig: relayConfigStore.value,
+        locationHref: window.location.href,
+      });
     };
 
     // Call the async initializer

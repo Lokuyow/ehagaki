@@ -135,6 +135,56 @@ function validateAndBuildPlaceholderEntries(
     return entries;
 }
 
+interface ReplacementResultHandlers {
+    onAborted: (placeholder: PlaceholderEntry) => Promise<void> | void;
+    onSuccess: (result: FileUploadResponse, matched: PlaceholderEntry) => Promise<void> | void;
+    onFailure: (placeholder: PlaceholderEntry) => Promise<void> | void;
+    onRemaining: (placeholder: PlaceholderEntry) => Promise<void> | void;
+}
+
+async function processReplacementResults(
+    results: FileUploadResponse[],
+    placeholderMap: PlaceholderEntry[],
+    handlers: ReplacementResultHandlers,
+): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string }> {
+    const failedResults: FileUploadResponse[] = [];
+    const remainingPlaceholders = [...placeholderMap];
+
+    for (const result of results) {
+        if (result.aborted) {
+            const aborted = remainingPlaceholders.shift();
+            if (aborted) {
+                await handlers.onAborted(aborted);
+            }
+            continue;
+        }
+
+        if (result.success && result.url) {
+            const { matched, matchedIndex } = findMatchedPlaceholder(remainingPlaceholders, result);
+            if (matched && matchedIndex !== -1) {
+                remainingPlaceholders.splice(matchedIndex, 1);
+                await handlers.onSuccess(result, matched);
+            }
+            continue;
+        }
+
+        failedResults.push(result);
+        const failed = remainingPlaceholders.shift();
+        if (failed) {
+            await handlers.onFailure(failed);
+        }
+    }
+
+    for (const remaining of remainingPlaceholders) {
+        await handlers.onRemaining(remaining);
+    }
+
+    return {
+        failedResults,
+        errorMessage: buildUploadErrorMessage(failedResults),
+    };
+}
+
 // ============================================================
 // Blurhash生成（共通）
 // ============================================================
@@ -286,39 +336,36 @@ export async function replacePlaceholdersWithResults(
     calculateImageHash: (url: string) => Promise<string | null>,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string; imageServerBlurhashMap: Record<string, string> }> {
-    const failedResults: FileUploadResponse[] = [];
     const imageServerBlurhashMap: Record<string, string> = {};
-    let errorMessage = '';
-    const remainingPlaceholders = [...placeholderMap];
+    const removeEditorPlaceholder = async (entry: PlaceholderEntry) => {
+        removePlaceholderNode(
+            entry.placeholderId,
+            entry.file.type.startsWith('video/'),
+            currentEditor,
+            imageSizeMapStore,
+            devMode,
+        );
+    };
 
-    for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-
-        if (devMode) {
-            console.log('[uploadHelper] Processing result', i, ':', {
-                success: result.success, url: result.url,
-                filename: result.filename, sizeInfo: result.sizeInfo, aborted: result.aborted
-            });
-        }
-
-        if (result.aborted) {
-            const aborted = remainingPlaceholders.shift();
-            if (aborted) {
-                removePlaceholderNode(aborted.placeholderId, aborted.file.type.startsWith('video/'), currentEditor, imageSizeMapStore, devMode);
-            }
-            continue;
-        }
-
-        if (result.success && result.url) {
-            const { matched, matchedIndex } = findMatchedPlaceholder(remainingPlaceholders, result);
-
-            if (matched && matchedIndex !== -1 && currentEditor) {
-                remainingPlaceholders.splice(matchedIndex, 1);
+    const { failedResults, errorMessage } = await processReplacementResults(
+        results,
+        placeholderMap,
+        {
+            onAborted: removeEditorPlaceholder,
+            onFailure: removeEditorPlaceholder,
+            onRemaining: removeEditorPlaceholder,
+            onSuccess: async (result, matched) => {
+                const url = result.url;
+                if (!url) {
+                    return;
+                }
                 const isVideo = matched.file.type.startsWith('video/');
 
                 if (devMode) {
                     console.log('[uploadHelper] Replacing placeholder', {
-                        placeholderId: matched.placeholderId, url: result.url, isVideo
+                        placeholderId: matched.placeholderId,
+                        url: result.url,
+                        isVideo,
                     });
                 }
 
@@ -327,56 +374,63 @@ export async function replacePlaceholdersWithResults(
                     (node: any) => {
                         const nodeType = node.type?.name;
                         const isSameNode = (isVideo && nodeType === 'video') || (!isVideo && nodeType === 'image');
-                        return isSameNode && node.attrs?.src === matched!.placeholderId;
+                        return isSameNode && node.attrs?.src === matched.placeholderId;
                     },
                     (node: any, pos: number) => {
                         if (isVideo) {
                             const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
-                                ...node.attrs, src: result.url, isPlaceholder: false,
+                                ...node.attrs,
+                                src: url,
+                                isPlaceholder: false,
                             });
                             currentEditor!.view.dispatch(tr);
-                        } else {
-                            const newAttrs: any = {
-                                ...node.attrs, src: result.url, isPlaceholder: false,
-                                blurhash: matched!.blurhash ?? undefined,
-                            };
-                            if (matched!.dimensions) {
-                                newAttrs.dim = `${matched!.dimensions.width}x${matched!.dimensions.height}`;
-                            }
-                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                            currentEditor!.view.dispatch(tr);
-
-                            imageSizeMapStore.update(map => {
-                                const newMap = { ...map };
-                                delete newMap[matched!.placeholderId];
-                                if (matched!.dimensions) newMap[result.url!] = matched!.dimensions;
-                                return newMap;
-                            });
+                            return;
                         }
-                    }
+
+                        const newAttrs: any = {
+                            ...node.attrs,
+                            src: url,
+                            isPlaceholder: false,
+                            blurhash: matched.blurhash ?? undefined,
+                        };
+                        if (matched.dimensions) {
+                            newAttrs.dim = `${matched.dimensions.width}x${matched.dimensions.height}`;
+                        }
+                        const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                        currentEditor!.view.dispatch(tr);
+
+                        imageSizeMapStore.update(map => {
+                            const newMap = { ...map };
+                            delete newMap[matched.placeholderId];
+                            if (matched.dimensions) {
+                                newMap[url] = matched.dimensions;
+                            }
+                            return newMap;
+                        });
+                    },
                 );
 
                 if (!isVideo) {
                     const nip94 = result.nip94 || {};
                     const { serverBlurhash, oxFromServer, xFromServer } = extractNip94Metadata(nip94);
-                    if (serverBlurhash) imageServerBlurhashMap[result.url] = serverBlurhash;
-                    await recordOxAndXMaps(result.url, matched, oxFromServer, xFromServer, imageOxMap, imageXMap, calculateImageHash, devMode);
+                    if (serverBlurhash) {
+                        imageServerBlurhashMap[url] = serverBlurhash;
+                    }
+                    await recordOxAndXMaps(
+                        url,
+                        matched,
+                        oxFromServer,
+                        xFromServer,
+                        imageOxMap,
+                        imageXMap,
+                        calculateImageHash,
+                        devMode,
+                    );
                 }
-            }
-        } else if (!result.success) {
-            failedResults.push(result);
-            const failed = remainingPlaceholders.shift();
-            if (failed) {
-                removePlaceholderNode(failed.placeholderId, failed.file.type.startsWith('video/'), currentEditor, imageSizeMapStore, devMode);
-            }
-        }
-    }
+            },
+        },
+    );
 
-    for (const remaining of remainingPlaceholders) {
-        removePlaceholderNode(remaining.placeholderId, remaining.file.type.startsWith('video/'), currentEditor, imageSizeMapStore, devMode);
-    }
-
-    if (failedResults.length) errorMessage = buildUploadErrorMessage(failedResults);
     return { failedResults, errorMessage, imageServerBlurhashMap };
 }
 
@@ -442,81 +496,76 @@ export async function replacePlaceholdersInGallery(
     getMimeTypeFromUrl: (url: string) => string,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string }> {
-    const failedResults: FileUploadResponse[] = [];
-    let errorMessage = '';
-    const remainingPlaceholders = [...placeholderMap];
-
-    for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-
-        if (result.aborted) {
-            const aborted = remainingPlaceholders.shift();
-            if (aborted) removeGalleryPlaceholder(aborted.placeholderId, imageSizeMapStore);
-            continue;
-        }
-
-        if (result.success && result.url) {
-            const { matched, matchedIndex } = findMatchedPlaceholder(remainingPlaceholders, result);
-
-            if (matched && matchedIndex !== -1) {
-                remainingPlaceholders.splice(matchedIndex, 1);
-                const isVideo = matched.file.type.startsWith('video/');
-                const nip94 = result.nip94 || {};
-
-                if (isVideo) {
-                    mediaGalleryStore.updateItem(matched.placeholderId, {
-                        src: result.url,
-                        isPlaceholder: false,
-                        mimeType: getMimeTypeFromUrl(result.url),
-                    });
-                } else {
-                    const { serverBlurhash, oxFromServer, xFromServer, dimFromServer } = extractNip94Metadata(nip94);
-                    const mimeType = getMimeTypeFromUrl(result.url);
-
-                    mediaGalleryStore.updateItem(matched.placeholderId, {
-                        src: result.url,
-                        isPlaceholder: false,
-                        blurhash: serverBlurhash ?? matched.blurhash,
-                        mimeType,
-                        ox: oxFromServer ?? matched.ox,
-                        dim: dimFromServer ?? (matched.dimensions
-                            ? `${matched.dimensions.width}x${matched.dimensions.height}`
-                            : undefined),
-                    });
-
-                    const x = await recordOxAndXMaps(
-                        result.url, matched, oxFromServer, xFromServer,
-                        imageOxMap, imageXMap, calculateImageHash, devMode
-                    );
-                    if (x) mediaGalleryStore.updateItem(matched.placeholderId, { x });
-
-                    if (matched.dimensions) {
-                        imageSizeMapStore.update(map => {
-                            const newMap = { ...map };
-                            delete newMap[matched!.placeholderId];
-                            newMap[result.url!] = matched!.dimensions!;
-                            return newMap;
-                        });
-                    }
-                }
-
-                if (devMode) {
-                    console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', result.url);
-                }
+    return processReplacementResults(results, placeholderMap, {
+        onAborted: async (entry) => {
+            removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
+        },
+        onFailure: async (entry) => {
+            removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
+        },
+        onRemaining: async (entry) => {
+            removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
+        },
+        onSuccess: async (result, matched) => {
+            const url = result.url;
+            if (!url) {
+                return;
             }
-        } else if (!result.success) {
-            failedResults.push(result);
-            const failed = remainingPlaceholders.shift();
-            if (failed) removeGalleryPlaceholder(failed.placeholderId, imageSizeMapStore);
-        }
-    }
+            const isVideo = matched.file.type.startsWith('video/');
+            const nip94 = result.nip94 || {};
 
-    for (const remaining of remainingPlaceholders) {
-        removeGalleryPlaceholder(remaining.placeholderId, imageSizeMapStore);
-    }
+            if (isVideo) {
+                mediaGalleryStore.updateItem(matched.placeholderId, {
+                    src: url,
+                    isPlaceholder: false,
+                    mimeType: getMimeTypeFromUrl(url),
+                });
+                return;
+            }
 
-    if (failedResults.length) errorMessage = buildUploadErrorMessage(failedResults);
-    return { failedResults, errorMessage };
+            const { serverBlurhash, oxFromServer, xFromServer, dimFromServer } = extractNip94Metadata(nip94);
+            const mimeType = getMimeTypeFromUrl(url);
+
+            mediaGalleryStore.updateItem(matched.placeholderId, {
+                src: url,
+                isPlaceholder: false,
+                blurhash: serverBlurhash ?? matched.blurhash,
+                mimeType,
+                ox: oxFromServer ?? matched.ox,
+                dim: dimFromServer ?? (matched.dimensions
+                    ? `${matched.dimensions.width}x${matched.dimensions.height}`
+                    : undefined),
+            });
+
+            const x = await recordOxAndXMaps(
+                url,
+                matched,
+                oxFromServer,
+                xFromServer,
+                imageOxMap,
+                imageXMap,
+                calculateImageHash,
+                devMode,
+            );
+            if (x) {
+                mediaGalleryStore.updateItem(matched.placeholderId, { x });
+            }
+
+            if (matched.dimensions) {
+                const dimensions = matched.dimensions;
+                imageSizeMapStore.update(map => {
+                    const newMap = { ...map };
+                    delete newMap[matched.placeholderId];
+                    newMap[url] = dimensions;
+                    return newMap;
+                });
+            }
+
+            if (devMode) {
+                console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', url);
+            }
+        },
+    });
 }
 
 /**

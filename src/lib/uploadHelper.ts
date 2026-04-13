@@ -200,6 +200,39 @@ function handleAbortedUpload(
     };
 }
 
+function createGalleryCleanupContext(
+    galleryMode: boolean,
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
+): { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } } | undefined {
+    return galleryMode ? { imageSizeMapStore } : undefined;
+}
+
+function getAbortCheckpointResult(
+    fileArray: File[],
+    placeholderMap: PlaceholderEntry[],
+    currentEditor: TipTapEditor | null,
+    updateUploadState: (isUploading: boolean, errorMessage?: string) => void,
+    uploadCallbacks: UploadInfoCallbacks | undefined,
+    devMode: boolean,
+    cleanupPlaceholders: boolean,
+    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } },
+): UploadHelperResult | null {
+    if (!uploadAbortFlagStore.value) {
+        return null;
+    }
+
+    return handleAbortedUpload(
+        fileArray,
+        placeholderMap,
+        currentEditor,
+        updateUploadState,
+        uploadCallbacks,
+        devMode,
+        cleanupPlaceholders,
+        galleryCleanup,
+    );
+}
+
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({
     localStorage: window.localStorage,
@@ -254,33 +287,40 @@ export async function uploadHelper({
     } catch (error) {
         // 中止された場合
         if (error instanceof Error && error.message === 'Upload aborted by user') {
-            updateUploadState(false);
-            notifyUploadProgress(
+            return handleAbortedUpload(
+                fileArray,
+                [],
+                currentEditor,
+                updateUploadState,
                 managedUploadCallbacks,
-                createUploadProgress(fileArray.length, {
-                    aborted: fileArray.length,
-                }),
+                devMode,
+                false,
             );
-            return {
-                placeholderMap: [],
-                results: null,
-                imageOxMap,
-                imageXMap,
-                failedResults: [],
-                errorMessage: "Upload aborted by user",
-            };
         }
         // その他のエラーは再スロー
         throw error;
     }
 
     // 中止チェック（ファイル処理後）
-    if (uploadAbortFlagStore.value) {
-        return handleAbortedUpload(fileArray, [], currentEditor, updateUploadState, managedUploadCallbacks, devMode, false);
+    const abortAfterFileProcessing = getAbortCheckpointResult(
+        fileArray,
+        [],
+        currentEditor,
+        updateUploadState,
+        managedUploadCallbacks,
+        devMode,
+        false,
+    );
+    if (abortAfterFileProcessing) {
+        return abortAfterFileProcessing;
     }
 
     // プレースホルダー挿入（モードに応じてエディタまたはギャラリーへ）
     const galleryMode = !mediaFreePlacementStore.value;
+    const galleryCleanup = createGalleryCleanupContext(
+        galleryMode,
+        dependencies.imageSizeMapStore,
+    );
     let placeholderMap = galleryMode
         ? insertPlaceholdersIntoGallery(
             fileArray,
@@ -313,11 +353,18 @@ export async function uploadHelper({
     }
 
     // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
-    if (uploadAbortFlagStore.value) {
-        return handleAbortedUpload(
-            fileArray, placeholderMap, currentEditor, updateUploadState, managedUploadCallbacks, devMode, true,
-            galleryMode ? { imageSizeMapStore: dependencies.imageSizeMapStore } : undefined
-        );
+    const abortAfterPlaceholderInsert = getAbortCheckpointResult(
+        fileArray,
+        placeholderMap,
+        currentEditor,
+        updateUploadState,
+        managedUploadCallbacks,
+        devMode,
+        true,
+        galleryCleanup,
+    );
+    if (abortAfterPlaceholderInsert) {
+        return abortAfterPlaceholderInsert;
     }
 
     // アップロード状態を更新（圧縮開始前に設定）
@@ -331,11 +378,18 @@ export async function uploadHelper({
     );
 
     // 中止チェック（Blurhash生成後）
-    if (uploadAbortFlagStore.value) {
-        return handleAbortedUpload(
-            fileArray, placeholderMap, currentEditor, updateUploadState, managedUploadCallbacks, devMode, true,
-            galleryMode ? { imageSizeMapStore: dependencies.imageSizeMapStore } : undefined
-        );
+    const abortAfterBlurhash = getAbortCheckpointResult(
+        fileArray,
+        placeholderMap,
+        currentEditor,
+        updateUploadState,
+        managedUploadCallbacks,
+        devMode,
+        true,
+        galleryCleanup,
+    );
+    if (abortAfterBlurhash) {
+        return abortAfterBlurhash;
     }
 
     // アップロード処理
@@ -362,24 +416,19 @@ export async function uploadHelper({
     }
 
     // 中止された場合は後続処理をスキップ
-    if (uploadAbortFlagStore.value) {
+    const abortAfterUpload = getAbortCheckpointResult(
+        fileArray,
+        placeholderMap,
+        currentEditor,
+        updateUploadState,
+        managedUploadCallbacks,
+        devMode,
+        true,
+        galleryCleanup,
+    );
+    if (abortAfterUpload) {
         if (fileInput) fileInput.value = "";
-        // アップロード完了後に中止された場合もプレースホルダーを削除
-        if (placeholderMap.length > 0) {
-            if (galleryMode) {
-                removeAllGalleryPlaceholders(placeholderMap, dependencies.imageSizeMapStore);
-            } else if (currentEditor) {
-                removeAllPlaceholders(currentEditor, devMode);
-            }
-        }
-        return {
-            placeholderMap: [],
-            results: null,
-            imageOxMap,
-            imageXMap,
-            failedResults: [],
-            errorMessage: "Upload aborted by user",
-        };
+        return abortAfterUpload;
     }
 
     await dependencies.tick();
