@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach, MockInstance } from 'vitest';
-import * as editorUtils from '../../lib/utils/editorUtils';
+import * as editorUrlUtils from '../../lib/utils/editorUrlUtils';
+import * as editorDocumentUtils from '../../lib/utils/editorDocumentUtils';
+import * as editorNodeActions from '../../lib/utils/editorNodeActions';
 import { requestImageFullscreen } from '../../lib/utils/mediaNodeUtils';
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
+
+const editorUtils = {
+    ...editorUrlUtils,
+    ...editorDocumentUtils,
+    ...editorNodeActions,
+};
 
 // モック設定
 vi.mock('../../constants', () => ({

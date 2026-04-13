@@ -8,7 +8,7 @@ import {
     validateAndNormalizeImageUrl,
     isValidProtocol,
     isValidImageExtension
-} from '../../lib/utils/editorUtils';
+} from '../../lib/utils/editorUrlUtils';
 import {
     extractHashtagsFromContent,
     updateHashtagData

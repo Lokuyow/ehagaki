@@ -3,7 +3,7 @@ import { Editor } from '@tiptap/core';
 import Document from '@tiptap/extension-document';
 import Paragraph from '@tiptap/extension-paragraph';
 import Text from '@tiptap/extension-text';
-import { normalizeLineBreaks } from '../../lib/utils/editorUtils';
+import { normalizeLineBreaks } from '../../lib/utils/editorUrlUtils';
 
 /**
  * insertTextContent関数のロジックをテスト用に抽出
@@ -17,22 +17,22 @@ function insertTextContentLogic(
 
   // 実際の関数と同じく改行コードを正規化
   const normalizedContent = normalizeLineBreaks(content);
-  
+
   // 改行で分割してパラグラフの配列を作成
   const lines = normalizedContent.split('\n');
-  
+
   // Tiptapのパラグラフノードとして構造化
   const paragraphNodes = lines.map((line) => ({
     type: 'paragraph',
     content: line ? [{ type: 'text', text: line }] : undefined,
   }));
-  
+
   // アクセス時の処理なので、常に直接挿入（既存内容を置き換え）
   return {
     type: 'doc',
     content: paragraphNodes,
   };
-}describe('insertTextContent - Tiptap paragraph node structure', () => {
+} describe('insertTextContent - Tiptap paragraph node structure', () => {
   it('単一行のテキストを正しいパラグラフノードとして構造化', () => {
     const content = 'Hello World';
     const result = insertTextContentLogic(content, '');
