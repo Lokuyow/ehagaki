@@ -175,7 +175,7 @@ export function removeAllPlaceholders(
     if (deletedCount > 0) {
         currentEditor.view.dispatch(tr);
         if (devMode) {
-            console.log(`[editorUtils] Deleted ${deletedCount} placeholder(s)`);
+            console.log(`[editorNodeActions] Deleted ${deletedCount} placeholder(s)`);
         }
     }
 }

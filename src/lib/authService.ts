@@ -1,18 +1,19 @@
-import { nip19 } from 'nostr-tools';
 import { KeyManager, PublicKeyState } from './keyManager.svelte';
 import { setAuthInitialized, setNsecAuth, setNip07Auth, setNip46Auth, clearAuthState, secretKeyStore } from '../stores/authStore.svelte';
-import type { AuthResult, AuthServiceDependencies, PublicKeyData, StoredAccount } from './types';
+import type { AuthResult, AuthServiceDependencies, StoredAccount } from './types';
 import { Nip07AuthService } from './nip07AuthService';
 import { nip46Service, Nip46Service } from './nip46Service';
 import type { AccountManager } from './accountManager';
+import {
+    applyPublicKeyAuth,
+    restoreNsecFromStoredKey,
+    runLegacyAuthChecks,
+    type RestoreResult,
+} from './authRestoreUtils';
 
-const NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
-const ACCOUNT_AUTH_TYPES = ['nsec', 'nip07', 'nip46'] as const;
 type AccountAuthType = StoredAccount['type'];
-type RestoreResult = { hasAuth: boolean; pubkeyHex?: string };
 type AuthStrategy = {
     restore: (pubkeyHex: string) => Promise<RestoreResult>;
-    legacyCheck: () => Promise<RestoreResult>;
 };
 
 // --- メインのAuthServiceクラス ---
@@ -28,18 +29,15 @@ export class AuthService {
     private setNsecAuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private setNip07AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private setNip46AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
-    private readonly authStrategies: Record<AccountAuthType, AuthStrategy> = {
+    private readonly restoreStrategies: Record<AccountAuthType, AuthStrategy> = {
         nsec: {
             restore: (pubkeyHex) => this.restoreNsecAccount(pubkeyHex),
-            legacyCheck: () => this.checkNsecAuth(),
         },
         nip07: {
             restore: (pubkeyHex) => this.restoreNip07Account(pubkeyHex),
-            legacyCheck: () => this.checkNip07Auth(),
         },
         nip46: {
             restore: (pubkeyHex) => this.restoreNip46Account(pubkeyHex),
-            legacyCheck: () => this.checkNip46Auth(),
         },
     };
 
@@ -129,9 +127,10 @@ export class AuthService {
     async authenticateWithNip46(bunkerUrl: string): Promise<AuthResult> {
         try {
             const pubkeyHex = await this.nip46Svc.connect(bunkerUrl);
-            const npub = nip19.npubEncode(pubkeyHex);
-            const nprofile = nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] });
-            this.setNip46AuthFn(pubkeyHex, npub, nprofile);
+            applyPublicKeyAuth('nip46', pubkeyHex, {
+                setNip07AuthFn: this.setNip07AuthFn,
+                setNip46AuthFn: this.setNip46AuthFn,
+            });
             this.nip46Svc.saveSession(this.localStorage, pubkeyHex);
             this.accountManager?.addAccount(pubkeyHex, 'nip46');
             return { success: true, pubkeyHex };
@@ -195,7 +194,7 @@ export class AuthService {
      * 指定アカウントの認証を復元する。
      */
     async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46'): Promise<RestoreResult> {
-        const strategy = this.authStrategies[type];
+        const strategy = this.restoreStrategies[type];
         return strategy ? strategy.restore(pubkeyHex) : { hasAuth: false };
     }
 
@@ -209,12 +208,18 @@ export class AuthService {
     }
 
     private async initializeLegacyAuth(): Promise<RestoreResult> {
-        for (const type of ACCOUNT_AUTH_TYPES) {
-            const result = await this.authStrategies[type].legacyCheck();
-            if (result.hasAuth) return result;
-        }
-
-        return { hasAuth: false };
+        return runLegacyAuthChecks({
+            keyManager: this.keyManager,
+            publicKeyState: this.publicKeyState,
+            setNsecAuthFn: this.setNsecAuthFn,
+            localStorage: this.localStorage,
+            nip07Service: this.nip07Service,
+            setNip07AuthFn: this.setNip07AuthFn,
+            setNip46AuthFn: this.setNip46AuthFn,
+            nip46Svc: this.nip46Svc,
+            accountManager: this.accountManager,
+            console: this.console,
+        });
     }
 
     private async restoreActiveAccount(activePubkey: string | null | undefined): Promise<RestoreResult> {
@@ -233,7 +238,7 @@ export class AuthService {
         for (const account of accounts) {
             if (account.pubkeyHex === skippedPubkey) continue;
 
-            const result = await this.authStrategies[account.type].restore(account.pubkeyHex);
+            const result = await this.restoreStrategies[account.type].restore(account.pubkeyHex);
             if (result.hasAuth) {
                 this.accountManager?.setActiveAccount(account.pubkeyHex);
                 return result;
@@ -243,58 +248,16 @@ export class AuthService {
         return { hasAuth: false };
     }
 
-    private createProfileRefs(pubkeyHex: string): { npub: string; nprofile: string } {
-        return {
-            npub: nip19.npubEncode(pubkeyHex),
-            nprofile: nip19.nprofileEncode({ pubkey: pubkeyHex, relays: [] }),
-        };
-    }
-
-    private applyPublicKeyAuth(type: 'nip07' | 'nip46', pubkeyHex: string): RestoreResult {
-        const { npub, nprofile } = this.createProfileRefs(pubkeyHex);
-
-        if (type === 'nip07') {
-            this.setNip07AuthFn(pubkeyHex, npub, nprofile);
-        } else {
-            this.setNip46AuthFn(pubkeyHex, npub, nprofile);
-        }
-
-        return { hasAuth: true, pubkeyHex };
-    }
-
-    private restoreNsecFromStoredKey(
-        secretKey: string,
-        options: { clearLegacyKeyOnFailure?: boolean; migrateLegacyAccount?: boolean } = {},
-    ): RestoreResult {
-        this.publicKeyState.setNsec(secretKey);
-
-        try {
-            const derived = this.keyManager.derivePublicKey(secretKey) as PublicKeyData;
-            if (!derived.hex) {
-                if (options.clearLegacyKeyOnFailure) {
-                    this.keyManager.saveToStorage('');
-                }
-                return { hasAuth: false };
-            }
-
-            this.setNsecAuthFn(derived.hex, derived.npub, derived.nprofile);
-            if (options.migrateLegacyAccount) {
-                this.accountManager?.addAccount(derived.hex, 'nsec');
-            }
-            return { hasAuth: true, pubkeyHex: derived.hex };
-        } catch {
-            if (options.clearLegacyKeyOnFailure) {
-                this.keyManager.saveToStorage('');
-            }
-            return { hasAuth: false };
-        }
-    }
-
     private async restoreNsecAccount(pubkeyHex: string): Promise<RestoreResult> {
         const storedKey = this.keyManager.loadFromStorage(pubkeyHex);
         if (!storedKey) return { hasAuth: false };
 
-        return this.restoreNsecFromStoredKey(storedKey);
+        return restoreNsecFromStoredKey(storedKey, {
+            keyManager: this.keyManager,
+            publicKeyState: this.publicKeyState,
+            setNsecAuthFn: this.setNsecAuthFn,
+            accountManager: this.accountManager,
+        });
     }
 
     private async restoreNip07Account(pubkeyHex: string): Promise<RestoreResult> {
@@ -302,7 +265,10 @@ export class AuthService {
         if (!available) return { hasAuth: false };
 
         try {
-            return this.applyPublicKeyAuth('nip07', pubkeyHex);
+            return applyPublicKeyAuth('nip07', pubkeyHex, {
+                setNip07AuthFn: this.setNip07AuthFn,
+                setNip46AuthFn: this.setNip46AuthFn,
+            });
         } catch (error) {
             this.console.error('NIP-07アカウント復元エラー:', error);
             return { hasAuth: false };
@@ -315,61 +281,12 @@ export class AuthService {
 
         try {
             await this.nip46Svc.reconnect(session);
-            return this.applyPublicKeyAuth('nip46', pubkeyHex);
+            return applyPublicKeyAuth('nip46', pubkeyHex, {
+                setNip07AuthFn: this.setNip07AuthFn,
+                setNip46AuthFn: this.setNip46AuthFn,
+            });
         } catch (error) {
             this.console.error('NIP-46アカウント復元エラー:', error);
-            return { hasAuth: false };
-        }
-    }
-
-    private async checkNsecAuth(): Promise<RestoreResult> {
-        const storedKey = this.keyManager.loadFromStorage();
-        if (!storedKey) return { hasAuth: false };
-
-        return this.restoreNsecFromStoredKey(storedKey, {
-            clearLegacyKeyOnFailure: true,
-            migrateLegacyAccount: true,
-        });
-    }
-
-    private async checkNip07Auth(): Promise<RestoreResult> {
-        const storedPubkey = this.localStorage.getItem(NIP07_STORAGE_KEY);
-        if (!storedPubkey) return { hasAuth: false };
-
-        const available = await this.nip07Service.waitForExtension(1000);
-        if (!available) {
-            this.localStorage.removeItem(NIP07_STORAGE_KEY);
-            return { hasAuth: false };
-        }
-
-        try {
-            const result = this.applyPublicKeyAuth('nip07', storedPubkey);
-            // レガシーログインをマルチアカウントに移行
-            this.accountManager?.addAccount(storedPubkey, 'nip07');
-            this.localStorage.removeItem(NIP07_STORAGE_KEY);
-            return result;
-        } catch (error) {
-            this.console.error('NIP-07セッション復元エラー:', error);
-            this.localStorage.removeItem(NIP07_STORAGE_KEY);
-            return { hasAuth: false };
-        }
-    }
-
-    private async checkNip46Auth(): Promise<RestoreResult> {
-        const session = Nip46Service.loadSession(this.localStorage);
-        if (!session) return { hasAuth: false };
-
-        try {
-            await this.nip46Svc.reconnect(session);
-            const pubkey = session.userPubkey;
-            const result = this.applyPublicKeyAuth('nip46', pubkey);
-            // レガシーログインをマルチアカウントに移行
-            this.accountManager?.addAccount(pubkey, 'nip46');
-            this.nip46Svc.saveSession(this.localStorage, pubkey);
-            Nip46Service.clearSession(this.localStorage); // レガシーキー削除
-            return result;
-        } catch (error) {
-            this.console.error('NIP-46セッション復元エラー:', error);
             return { hasAuth: false };
         }
     }
