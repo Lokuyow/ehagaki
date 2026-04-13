@@ -104,12 +104,25 @@ export interface CleanupEditorParams {
 }
 
 // Draft types
+export interface DraftReplyQuoteData {
+    mode: import('./nostr').ReplyQuoteMode;
+    eventId: string;
+    relayHints: string[];
+    authorPubkey: string | null;
+    authorDisplayName: string | null;
+    referencedEvent: import('./nostr').NostrEvent | null;
+    rootEventId: string | null;
+    rootRelayHint: string | null;
+    rootPubkey: string | null;
+}
+
 export interface Draft {
     id: string;
     content: string;
     preview: string;
     timestamp: number;
     galleryItems?: MediaGalleryItem[];
+    replyQuoteData?: DraftReplyQuoteData;
 }
 
 // TransformStore関連型定義

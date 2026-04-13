@@ -5,7 +5,7 @@
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
-  import { ProfileManager } from "./lib/profileManager";
+  import { ProfileManager, ProfileUrlUtils } from "./lib/profileManager";
   import { RelayManager } from "./lib/relayManager";
   import { RelayProfileService } from "./lib/relayProfileService";
   import PostComponent from "./components/PostComponent.svelte";
@@ -23,6 +23,7 @@
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
+  import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
     sharedMediaStore,
@@ -71,10 +72,23 @@
     getContentFromUrlQuery,
     hasContentQueryParam,
     cleanupAllQueryParams,
+    getReplyQuoteFromUrlQuery,
+    hasReplyQuoteQueryParam,
   } from "./lib/urlQueryHandler";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
   import { generateMediaItemId } from "./lib/utils/appUtils";
+  import {
+    setReplyQuote,
+    updateReferencedEvent,
+    updateAuthorDisplayName,
+    setReplyQuoteError,
+    replyQuoteState,
+    restoreReplyQuote,
+    clearReplyQuote,
+  } from "./stores/replyQuoteStore.svelte";
+  import { relayConfigStore } from "./stores/relayStore.svelte";
+  import { ReplyQuoteService } from "./lib/replyQuoteService";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -153,6 +167,7 @@
         // アカウントプロフィールキャッシュも更新
         accountProfileCacheStore.setProfile(pubkeyHex, {
           name: profile.name,
+          displayName: profile.displayName,
           picture: profile.picture,
         });
       }
@@ -174,9 +189,15 @@
         );
         if (profileData) {
           const profile = JSON.parse(profileData);
+          const picture =
+            typeof profile.picture === "string"
+              ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
+              : "";
+
           accountProfileCacheStore.setProfile(account.pubkeyHex, {
             name: profile.name || "",
-            picture: profile.picture || "",
+            displayName: profile.displayName || "",
+            picture,
           });
         }
       } catch {
@@ -206,7 +227,13 @@
   function logout() {
     isLoggingOut = true;
     authService.logout();
-    profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
+    profileDataStore.set({
+      name: "",
+      displayName: "",
+      picture: "",
+      npub: "",
+      nprofile: "",
+    });
     profileLoadedStore.set(false);
     if (postComponentRef?.resetPostContent) postComponentRef.resetPostContent();
     if (footerInfoDisplay?.updateProgress) {
@@ -245,7 +272,13 @@
           rxNostr = undefined;
         }
         clearAuthState();
-        profileDataStore.set({ name: "", picture: "", npub: "", nprofile: "" });
+        profileDataStore.set({
+          name: "",
+          displayName: "",
+          picture: "",
+          npub: "",
+          nprofile: "",
+        });
         profileLoadedStore.set(false);
         await initializeNostr(); // pubkeyなしでブートストラップリレーのみ
         secretKey = "";
@@ -471,6 +504,47 @@
         }
       }
 
+      // URLクエリパラメータからリプライ/引用情報を取得
+      if (hasReplyQuoteQueryParam()) {
+        const replyQuoteQuery = getReplyQuoteFromUrlQuery();
+        if (replyQuoteQuery) {
+          setReplyQuote(replyQuoteQuery);
+          // イベント取得を非同期で開始
+          if (rxNostr) {
+            const rqService = new ReplyQuoteService();
+            rqService
+              .fetchReferencedEvent(
+                replyQuoteQuery.eventId,
+                replyQuoteQuery.relayHints,
+                rxNostr,
+                relayConfigStore.value,
+              )
+              .then((event) => {
+                if (event) {
+                  const threadInfo = rqService.extractThreadInfo(event);
+                  updateReferencedEvent(event, threadInfo);
+                  // 著者のプロフィールを取得して表示名を更新
+                  if (event.pubkey && relayProfileService) {
+                    relayProfileService
+                      .fetchProfileRealtime(event.pubkey)
+                      .then((profile) => {
+                        if (profile) {
+                          const displayName =
+                            profile.displayName || profile.name;
+                          if (displayName) {
+                            updateAuthorDisplayName(displayName);
+                          }
+                        }
+                      });
+                  }
+                } else {
+                  setReplyQuoteError("Event not found");
+                }
+              });
+          }
+        }
+      }
+
       // すべての不要なクエリパラメータをクリーンアップ
       // （空のcontentや想定外のパラメータを削除）
       cleanupAllQueryParams();
@@ -567,10 +641,30 @@
     )
       return false;
 
-    const result = saveDraft(htmlContent, galleryItems);
+    // リプライ/引用状態を取得
+    const rqState = replyQuoteState.value;
+    const replyQuoteData = rqState
+      ? {
+          mode: rqState.mode,
+          eventId: rqState.eventId,
+          relayHints: rqState.relayHints,
+          authorPubkey: rqState.authorPubkey,
+          authorDisplayName: rqState.authorDisplayName,
+          referencedEvent: rqState.referencedEvent,
+          rootEventId: rqState.rootEventId,
+          rootRelayHint: rqState.rootRelayHint,
+          rootPubkey: rqState.rootPubkey,
+        }
+      : undefined;
+
+    const result = saveDraft(htmlContent, galleryItems, replyQuoteData);
     if (result.needsConfirmation) {
       // 上限に達している場合は確認ダイアログを表示
-      pendingDraftContentStore.set({ content: htmlContent, galleryItems });
+      pendingDraftContentStore.set({
+        content: htmlContent,
+        galleryItems,
+        replyQuoteData,
+      });
       showDraftLimitConfirmStore.set(true);
       return false;
     }
@@ -580,7 +674,11 @@
   function handleConfirmDraftReplace() {
     const pending = pendingDraftContentStore.value;
     if (pending) {
-      saveDraftWithReplaceOldest(pending.content, pending.galleryItems);
+      saveDraftWithReplaceOldest(
+        pending.content,
+        pending.galleryItems,
+        pending.replyQuoteData,
+      );
     }
     pendingDraftContentStore.set(null);
     showDraftLimitConfirmStore.set(false);
@@ -680,6 +778,13 @@
         postComponentRef?.appendMediaToEditor(draft.galleryItems);
       }
     }
+
+    // リプライ/引用状態を復元
+    if (draft.replyQuoteData) {
+      restoreReplyQuote(draft.replyQuoteData);
+    } else {
+      clearReplyQuote();
+    }
   }
 
   // バルーンメッセージフック
@@ -735,6 +840,9 @@
           onShowDraftList={handleShowDraftList}
           balloonMessage={balloon.finalMessage}
         />
+        {#if replyQuoteState.value?.mode === "reply"}
+          <ReplyQuotePreview />
+        {/if}
         <PostComponent
           bind:this={postComponentRef}
           {rxNostr}
@@ -743,6 +851,9 @@
           onUploadStatusChange={handleUploadStatusChange}
           onUploadProgress={handleUploadProgress}
         />
+        {#if replyQuoteState.value?.mode === "quote"}
+          <ReplyQuotePreview />
+        {/if}
       </div>
       <ReasonInput />
       <KeyboardButtonBar

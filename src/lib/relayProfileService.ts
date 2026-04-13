@@ -96,6 +96,21 @@ export class RelayProfileService {
     }
 
     /**
+     * プロフィールを逐次取得（キャッシュ参照・保存なし）
+     * リプライ/引用プレビュー用
+     */
+    async fetchProfileRealtime(pubkeyHex: string): Promise<ProfileData | null> {
+        if (!pubkeyHex) return null;
+
+        const { writeRelays, additionalRelays } = this.relayManager.getRelayListsForProfile(pubkeyHex);
+
+        return this.profileManager.fetchProfileDataNetworkOnly(pubkeyHex, {
+            writeRelays,
+            additionalRelays
+        });
+    }
+
+    /**
      * ログイン時の初期化処理
      * 1. リレーリスト取得（キャッシュがない場合のみ）
      * 2. プロフィール取得

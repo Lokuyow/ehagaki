@@ -54,7 +54,7 @@
   },
   "profileDialog": {
     "title": "プロフィール",
-    "anonymous": "名無し",
+    "anonymous": "名前未設定",
     "npub": "公開鍵",
     "copy_npub": "npubをコピー",
     "copy_nprofile": "nprofileをコピー",
@@ -179,7 +179,9 @@
     },
     "media": {
       "image": "[画像]",
-      "video": "[動画]"
+      "video": "[動画]",
+      "reply": "[リプライ]",
+      "quote": "[引用]"
     }
   },
   "balloonMessage": {
@@ -264,5 +266,14 @@
         "明日<wbr>起きれるん？"
       ]
     }
+  },
+  "replyQuote": {
+    "reply_label": "リプライ",
+    "quote_label": "引用",
+    "loading": "読み込み中...",
+    "fetch_error": "イベントの取得に失敗しました",
+    "cancel": "リプライ/引用を取り消す",
+    "collapse": "折りたたむ",
+    "expand": "展開する"
   }
 }

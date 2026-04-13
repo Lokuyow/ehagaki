@@ -234,6 +234,7 @@ describe('RelayProfileService', () => {
         it('プロフィール取得結果を返す', async () => {
             const expectedProfile = {
                 name: 'Refreshed User',
+                displayName: '',
                 picture: 'https://example.com/new.jpg',
                 npub: 'npub1refreshed',
                 nprofile: 'nprofile1refreshed'

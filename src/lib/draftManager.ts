@@ -1,4 +1,4 @@
-import type { Draft } from './types';
+import type { Draft, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
 import { get as getStore } from 'svelte/store';
@@ -31,7 +31,7 @@ function saveDraftsToStorage(drafts: Draft[]): void {
  * HTMLコンテンツからプレビューテキストを生成
  * テキスト、画像、動画の有無を検出し、適切なプレビュー文字列を生成
  */
-export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[]): string {
+export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): string {
     // HTMLタグを除去してテキストのみを抽出
     const tempDiv = document.createElement('div');
     tempDiv.innerHTML = htmlContent;
@@ -65,8 +65,21 @@ export function generatePreview(htmlContent: string, galleryItems?: MediaGallery
         videoLabel = loc.startsWith('ja') ? '[動画]' : '[Video]';
     }
 
+    // リプライ・引用ラベルを取得
+    let replyLabel = '[リプライ]';
+    let quoteLabel = '[引用]';
+    try {
+        replyLabel = t('draft.media.reply') || (loc.startsWith('ja') ? '[リプライ]' : '[Reply]');
+        quoteLabel = t('draft.media.quote') || (loc.startsWith('ja') ? '[引用]' : '[Quote]');
+    } catch {
+        replyLabel = loc.startsWith('ja') ? '[リプライ]' : '[Reply]';
+        quoteLabel = loc.startsWith('ja') ? '[引用]' : '[Quote]';
+    }
+
     // メディアラベルを構築
     const mediaLabels: string[] = [];
+    if (replyQuoteData?.mode === 'reply') mediaLabels.push(replyLabel);
+    if (replyQuoteData?.mode === 'quote') mediaLabels.push(quoteLabel);
     if (hasImage) mediaLabels.push(imageLabel);
     if (hasVideo) mediaLabels.push(videoLabel);
     const mediaText = mediaLabels.join('');
@@ -118,7 +131,7 @@ function generateId(): string {
  * 新しい下書きを保存する
  * @returns 保存が成功した場合はtrue、上限に達してユーザーの確認が必要な場合はfalse
  */
-export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[]): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
+export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
     const drafts = loadDrafts();
 
     // 上限チェック
@@ -129,9 +142,10 @@ export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[]
     const newDraft: Draft = {
         id: generateId(),
         content: htmlContent,
-        preview: generatePreview(htmlContent, galleryItems),
+        preview: generatePreview(htmlContent, galleryItems, replyQuoteData),
         timestamp: Date.now(),
         galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+        replyQuoteData: replyQuoteData || undefined,
     };
 
     const updatedDrafts = [newDraft, ...drafts];
@@ -143,7 +157,7 @@ export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[]
 /**
  * 最も古い下書きを削除して新しい下書きを保存する
  */
-export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: MediaGalleryItem[]): Draft[] {
+export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): Draft[] {
     const drafts = loadDrafts();
 
     // 最も古い下書きを削除（配列の末尾）
@@ -152,9 +166,10 @@ export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: M
     const newDraft: Draft = {
         id: generateId(),
         content: htmlContent,
-        preview: generatePreview(htmlContent, galleryItems),
+        preview: generatePreview(htmlContent, galleryItems, replyQuoteData),
         timestamp: Date.now(),
         galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+        replyQuoteData: replyQuoteData || undefined,
     };
 
     const updatedDrafts = [newDraft, ...remainingDrafts];

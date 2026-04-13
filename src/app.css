@@ -15,11 +15,11 @@
   --light-gray: hsl(0, 0%, 83%);
 
   /* ライトモード用カラー変数（デフォルト） */
-  --bg: hsl(152, 0%, 94%);
+  --bg: hsl(0, 0%, 89%);
   --bg-input: hsl(0, 0%, 100%);
-  --bg-footer: hsl(0, 0%, 84%);
+  --bg-footer: hsl(0, 0%, 82%);
   --bg-translucent: #EDEDEDcc;
-  --bg-buttonbar: hsl(0, 0%, 94%);
+  --bg-buttonbar: hsl(0, 0%, 91%);
 
   --btn-bg: hsl(0, 0%, 94%);
   --btn-border: hsl(0, 0%, 75%);
@@ -169,7 +169,7 @@ select {
 
 /* クラスベース: ダークモード（index.htmlのインラインスクリプトで適用） */
 :root.dark {
-  --bg: hsl(152, 0%, 12%);
+  --bg: hsl(0, 0%, 12%);
   --bg-input: hsl(0, 0%, 19%);
   --bg-footer: hsl(0, 0%, 10%);
   --bg-translucent: #212121cc;

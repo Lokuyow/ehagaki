@@ -148,11 +148,19 @@ export interface PostManagerDeps {
     resetEditorStateFn?: () => void;
     resetPostStatusFn?: () => void;
     iframeMessageService?: {
-        notifyPostSuccess: () => boolean;
+        notifyPostSuccess: (options?: { replyTo?: string; quotedEvent?: string }) => boolean;
         notifyPostError: (error?: string) => boolean;
     };
     hashtagPinStore?: { value: boolean };
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
+    replyQuoteState?: { value: ReplyQuoteState | null };
+    replyQuoteService?: {
+        buildReplyTags: (state: ReplyQuoteState) => string[][];
+        buildQuoteTags: (state: ReplyQuoteState) => string[][];
+        generateNostrUri: (eventId: string, relayHints: string[], authorPubkey?: string | null) => string;
+        extractInlineQuoteTags?: (content: string) => string[][];
+    };
+    clearReplyQuoteFn?: () => void;
 }
 
 // マルチアカウント管理
@@ -174,10 +182,45 @@ export interface ProfileManagerDeps {
 
 export interface ProfileData {
     name: string;
+    displayName: string;
     picture: string;
     npub: string;
     nprofile: string;
     profileRelays?: string[];
+}
+
+// Reply / Quote types (NIP-10, NIP-18, NIP-21)
+export type ReplyQuoteMode = 'reply' | 'quote';
+
+export interface ReplyQuoteState {
+    mode: ReplyQuoteMode;
+    eventId: string;
+    relayHints: string[];
+    authorPubkey: string | null;
+    authorDisplayName: string | null;
+    referencedEvent: NostrEvent | null;
+    rootEventId: string | null;
+    rootRelayHint: string | null;
+    rootPubkey: string | null;
+    loading: boolean;
+    error: string | null;
+}
+
+export interface NostrEvent {
+    id: string;
+    pubkey: string;
+    created_at: number;
+    kind: number;
+    tags: string[][];
+    content: string;
+    sig: string;
+}
+
+export interface ReplyQuoteQueryResult {
+    mode: ReplyQuoteMode;
+    eventId: string;
+    relayHints: string[];
+    authorPubkey: string | null;
 }
 
 // Global Window extensions

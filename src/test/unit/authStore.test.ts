@@ -171,14 +171,14 @@ describe('authStore', () => {
     describe('accountProfileCacheStore', () => {
         it('getter/setter動作', () => {
             expect(accountProfileCacheStore.value.size).toBe(0);
-            const cache = new Map([['abc', { name: 'Test', picture: 'https://example.com/pic.jpg' }]]);
+            const cache = new Map([['abc', { name: 'Test', displayName: '', picture: 'https://example.com/pic.jpg' }]]);
             accountProfileCacheStore.set(cache);
             expect(accountProfileCacheStore.value.get('abc')?.name).toBe('Test');
         });
 
         it('setProfileで新Map生成', () => {
             const originalMap = accountProfileCacheStore.value;
-            accountProfileCacheStore.setProfile('key1', { name: 'User1', picture: 'pic1' });
+            accountProfileCacheStore.setProfile('key1', { name: 'User1', displayName: '', picture: 'pic1' });
 
             expect(accountProfileCacheStore.value.get('key1')?.name).toBe('User1');
             // 新しいMapインスタンスが生成される（イミュータブル更新）

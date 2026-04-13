@@ -46,6 +46,20 @@ describe('ProfileUrlUtils', () => {
             expect(result).toBe('https://example.com/image.jpg?other=param&profile=true');
         });
     });
+
+    describe('ensureProfileMarker', () => {
+        it('profileパラメータがないURLにprofile=trueを追加する', () => {
+            const url = 'https://example.com/image.jpg?cb=123&other=param';
+            const result = ProfileUrlUtils.ensureProfileMarker(url);
+            expect(result).toBe('https://example.com/image.jpg?cb=123&other=param&profile=true');
+        });
+
+        it('既にprofileパラメータがあるURLは変更しない', () => {
+            const url = 'https://example.com/image.jpg?cb=123&profile=true';
+            const result = ProfileUrlUtils.ensureProfileMarker(url);
+            expect(result).toBe(url);
+        });
+    });
 });
 
 describe('ProfileDataFactory', () => {
@@ -106,7 +120,7 @@ describe('ProfileStorage', () => {
     });
 
     it('プロフィールを保存する', () => {
-        const profile = { name: 'Test', picture: '', npub: 'npub123', nprofile: '' };
+        const profile = { name: 'Test', displayName: '', picture: '', npub: 'npub123', nprofile: '' };
 
         storage.save('pubkey123', profile);
 
@@ -123,6 +137,20 @@ describe('ProfileStorage', () => {
         expect(result).toBeTruthy();
         expect(result?.name).toBe('Test');
         expect(result?.picture).toBe('https://example.com/pic.jpg?profile=true');
+    });
+
+    it('新形式の保存データでもprofileマーカーを補完する', () => {
+        const profile = {
+            name: 'Stored User',
+            picture: 'https://example.com/pic.jpg?cb=123',
+            npub: 'npub123',
+            nprofile: 'nprofile123'
+        };
+        mockLocalStorage.setItem('nostr-profile-pubkey123', JSON.stringify(profile));
+
+        const result = storage.get('pubkey123');
+
+        expect(result?.picture).toBe('https://example.com/pic.jpg?cb=123&profile=true');
     });
 
     it('存在しないプロフィールに対してnullを返す', () => {

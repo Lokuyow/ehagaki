@@ -5,6 +5,7 @@
         videoCompressionProgressStore,
         imageCompressionProgressStore,
         abortAllUploads,
+        authState,
     } from "../stores/appStore.svelte";
     import { currentEditorStore } from "../stores/editorStore.svelte";
     import type { UploadProgress } from "../lib/types";
@@ -24,6 +25,9 @@
     // URLパラメータから共有画像エラーをチェック
     $effect(() => {
         if (typeof window !== "undefined") {
+            // 認証初期化完了まで待機（リアクティブ依存として追跡される）
+            if (!authState.value.isInitialized) return;
+
             const urlParams = new URLSearchParams(window.location.search);
             const sharedError = urlParams.get("error");
 
@@ -52,16 +56,26 @@
                     return;
                 }
 
-                // 少し遅延させてから再度チェック（App.svelteの処理完了を待つ）
-                setTimeout(() => {
+                // 認証初期化後、共有メディア処理の完了をポーリングで待機
+                // （App.svelteのinit()内で認証初期化→共有メディア取得が順次実行されるため）
+                let attempts = 0;
+                const maxAttempts = 25; // 25 × 200ms = 5秒
+                const pollInterval = 200;
+
+                const poll = () => {
                     if (checkImageProcessed()) {
                         console.log(
-                            "Shared image processing detected after delay, not showing error",
+                            "Shared image processing detected after polling, not showing error",
                         );
                         return;
                     }
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        setTimeout(poll, pollInterval);
+                        return;
+                    }
 
-                    // この時点でまだ処理されていない場合のみエラーを表示
+                    // タイムアウト: 実際にメディアが処理されなかった場合のみエラーを表示
                     let errorMessage = "";
                     switch (sharedError) {
                         case "processing-error":
@@ -100,7 +114,9 @@
                             sharedMediaError = null;
                         }, 5000);
                     }, 1000);
-                }, 100); // 100ms遅延させてApp.svelteの処理完了を待つ
+                };
+
+                setTimeout(poll, pollInterval);
             }
         }
     });

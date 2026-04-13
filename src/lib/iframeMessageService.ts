@@ -11,6 +11,8 @@ export interface IframeMessagePayload {
     type: 'POST_SUCCESS' | 'POST_ERROR';
     timestamp: number;
     error?: string;
+    replyTo?: string;
+    quotedEvent?: string;
 }
 
 export interface IframeMessageServiceConfig {
@@ -118,11 +120,14 @@ export class IframeMessageService {
     /**
      * 投稿成功を通知
      */
-    notifyPostSuccess(): boolean {
-        return this.sendMessageToParent({
+    notifyPostSuccess(options?: { replyTo?: string; quotedEvent?: string }): boolean {
+        const payload: IframeMessagePayload = {
             type: 'POST_SUCCESS',
-            timestamp: Date.now()
-        });
+            timestamp: Date.now(),
+        };
+        if (options?.replyTo) payload.replyTo = options.replyTo;
+        if (options?.quotedEvent) payload.quotedEvent = options.quotedEvent;
+        return this.sendMessageToParent(payload);
     }
 
     /**

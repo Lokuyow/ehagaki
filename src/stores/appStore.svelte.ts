@@ -106,3 +106,13 @@ export {
 export {
     darkModeStore,
 } from './themeStore.svelte';
+
+export {
+    replyQuoteState,
+    setReplyQuote,
+    updateReferencedEvent,
+    updateAuthorDisplayName,
+    setReplyQuoteError,
+    restoreReplyQuote,
+    clearReplyQuote,
+} from './replyQuoteStore.svelte';

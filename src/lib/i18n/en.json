@@ -54,7 +54,7 @@
   },
   "profileDialog": {
     "title": "Profile",
-    "anonymous": "Anonymous",
+    "anonymous": "Name not set",
     "npub": "Public Key",
     "copy_npub": "Copy npub",
     "copy_nprofile": "Copy nprofile",
@@ -179,7 +179,9 @@
     },
     "media": {
       "image": "[Image]",
-      "video": "[Video]"
+      "video": "[Video]",
+      "reply": "[Reply]",
+      "quote": "[Quote]"
     }
   },
   "balloonMessage": {
@@ -264,5 +266,14 @@
         "Can you wake up tomorrow?"
       ]
     }
+  },
+  "replyQuote": {
+    "reply_label": "Reply",
+    "quote_label": "Quote",
+    "loading": "Loading...",
+    "fetch_error": "Failed to fetch event",
+    "cancel": "Cancel reply/quote",
+    "collapse": "Collapse",
+    "expand": "Expand"
   }
 }
