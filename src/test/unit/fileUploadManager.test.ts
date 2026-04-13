@@ -3,6 +3,7 @@ import {
     FileUploadManager,
     MimeTypeSupport
 } from '../../lib/fileUploadManager';
+import { setImageSizeInfoFromFileSize } from '../../stores/appStore.svelte';
 import type {
     FileUploadDependencies,
     CompressionService,
@@ -10,7 +11,7 @@ import type {
     SharedMediaData
 } from '../../lib/types';
 
-vi.mock("../../lib/utils/appUtils", () => ({
+vi.mock("../../lib/utils/fileSizeUtils", () => ({
     createFileSizeInfo: vi.fn((original, compressed, wasCompressed, originalName, compressedName, wasSkipped) => ({
         originalSize: original,
         compressedSize: compressed,
@@ -21,7 +22,9 @@ vi.mock("../../lib/utils/appUtils", () => ({
         compressedFilename: compressedName,
         wasSkipped
     })),
-    generateSizeDisplayInfo: vi.fn(() => null),
+}));
+
+vi.mock("../../lib/utils/fileUtils", () => ({
     calculateSHA256Hex: vi.fn(async () => "mockhash"),
     getImageDimensions: vi.fn(async () => ({ width: 100, height: 200 })),
     renameByMimeType: vi.fn((name, type) => name)
@@ -32,7 +35,7 @@ vi.mock("../../lib/debug", () => ({
 }));
 
 vi.mock("../../stores/appStore.svelte", () => ({
-    showImageSizeInfo: vi.fn(),
+    setImageSizeInfoFromFileSize: vi.fn(),
     setVideoCompressionService: vi.fn(),
     setImageCompressionService: vi.fn(),
     getVideoCompressionService: vi.fn(() => null),
@@ -44,20 +47,7 @@ vi.mock("../../stores/appStore.svelte", () => ({
     }
 }));
 
-vi.mock("../../stores/appStore.svelte", () => ({
-    showImageSizeInfo: vi.fn(),
-    setVideoCompressionService: vi.fn(),
-    setImageCompressionService: vi.fn(),
-    getVideoCompressionService: vi.fn(() => null),
-    getImageCompressionService: vi.fn(() => null),
-    uploadAbortFlagStore: {
-        value: false,
-        set: vi.fn(),
-        reset: vi.fn()
-    }
-}));
-
-vi.mock("../lib/tags/imetaTag", () => ({
+vi.mock("../../lib/tags/imetaTag", () => ({
     generateBlurhashForFile: vi.fn(async () => "blurhash123"),
     createPlaceholderUrl: vi.fn(async () => "placeholder-url")
 }));
@@ -352,6 +342,49 @@ describe('FileUploadManager', () => {
             expect(mockAuthService.buildAuthHeader).toHaveBeenCalledWith(
                 expect.any(String),
                 'POST'
+            );
+        });
+
+        it('uploadFileWithCallbacks 成功時にサイズ情報表示 action を呼び出す', async () => {
+            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
+            };
+
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({
+                    file,
+                    wasCompressed: false,
+                    wasSkipped: false
+                }),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                status: 'success',
+                nip94_event: {
+                    tags: [['url', 'https://example.com/image.jpg']]
+                }
+            }));
+
+            await uploadManager.uploadFileWithCallbacks(file);
+
+            expect(setImageSizeInfoFromFileSize).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    originalSize: file.size,
+                    compressedSize: file.size,
+                    originalFilename: file.name,
+                    compressedFilename: file.name,
+                })
             );
         });
 

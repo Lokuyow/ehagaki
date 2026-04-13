@@ -1,7 +1,13 @@
 import { tick } from "svelte";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { FileUploadManager } from "./fileUploadManager";
-import { uploadAbortFlagStore, mediaFreePlacementStore } from '../stores/appStore.svelte';
+import {
+    uploadAbortFlagStore,
+    mediaFreePlacementStore,
+    videoCompressionProgressStore,
+    imageCompressionProgressStore,
+    setUploadProgress,
+} from '../stores/appStore.svelte';
 import { removeAllPlaceholders } from './utils/editorUtils';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
@@ -78,6 +84,46 @@ export class UploadManager {
     }
 }
 
+function createUploadProgress(
+    total: number,
+    overrides: Partial<UploadProgress> = {},
+): UploadProgress {
+    return {
+        total,
+        completed: 0,
+        failed: 0,
+        aborted: 0,
+        inProgress: false,
+        ...overrides,
+    };
+}
+
+function notifyUploadProgress(
+    uploadCallbacks: UploadInfoCallbacks | undefined,
+    progress: UploadProgress,
+): void {
+    uploadCallbacks?.onProgress?.(progress);
+}
+
+function createManagedUploadCallbacks(
+    uploadCallbacks?: UploadInfoCallbacks,
+): UploadInfoCallbacks {
+    return {
+        onProgress: (progress: UploadProgress) => {
+            setUploadProgress(progress);
+            uploadCallbacks?.onProgress?.(progress);
+        },
+        onVideoCompressionProgress: (progress: number) => {
+            videoCompressionProgressStore.set(progress);
+            uploadCallbacks?.onVideoCompressionProgress?.(progress);
+        },
+        onImageCompressionProgress: (progress: number) => {
+            imageCompressionProgressStore.set(progress);
+            uploadCallbacks?.onImageCompressionProgress?.(progress);
+        },
+    };
+}
+
 // 中止チェック用のヘルパー関数
 function handleAbortedUpload(
     fileArray: File[],
@@ -99,15 +145,12 @@ function handleAbortedUpload(
         }
     }
 
-    if (uploadCallbacks?.onProgress) {
-        uploadCallbacks.onProgress({
-            completed: 0,
-            failed: 0,
+    notifyUploadProgress(
+        uploadCallbacks,
+        createUploadProgress(fileArray.length, {
             aborted: fileArray.length,
-            total: fileArray.length,
-            inProgress: false
-        });
-    }
+        }),
+    );
 
     return {
         placeholderMap: cleanupPlaceholders ? [] : placeholderMap,
@@ -149,6 +192,7 @@ export async function uploadHelper({
     dependencies = createDefaultDependencies(),
 }: UploadHelperParams): Promise<UploadHelperResult> {
     const fileArray = Array.from(files);
+    const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
     const endpoint = dependencies.localStorage.getItem("uploadEndpoint") || "";
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
@@ -156,15 +200,10 @@ export async function uploadHelper({
     const modeLabel = import.meta.env.MODE === "development" ? "[dev]" : "[preview]";
 
     // 処理開始を即座に通知（プレースホルダー挿入前）
-    if (uploadCallbacks?.onProgress) {
-        uploadCallbacks.onProgress({
-            completed: 0,
-            failed: 0,
-            aborted: 0,
-            total: fileArray.length,
-            inProgress: true
-        });
-    }
+    notifyUploadProgress(
+        managedUploadCallbacks,
+        createUploadProgress(fileArray.length, { inProgress: true }),
+    );
 
     // 中止フラグをリセット
     uploadAbortFlagStore.reset();
@@ -180,15 +219,12 @@ export async function uploadHelper({
         // 中止された場合
         if (error instanceof Error && error.message === 'Upload aborted by user') {
             updateUploadState(false);
-            if (uploadCallbacks?.onProgress) {
-                uploadCallbacks.onProgress({
-                    completed: 0,
-                    failed: 0,
+            notifyUploadProgress(
+                managedUploadCallbacks,
+                createUploadProgress(fileArray.length, {
                     aborted: fileArray.length,
-                    total: fileArray.length,
-                    inProgress: false
-                });
-            }
+                }),
+            );
             return {
                 placeholderMap: [],
                 results: null,
@@ -204,7 +240,7 @@ export async function uploadHelper({
 
     // 中止チェック（ファイル処理後）
     if (uploadAbortFlagStore.value) {
-        return handleAbortedUpload(fileArray, [], currentEditor, updateUploadState, uploadCallbacks, devMode, false);
+        return handleAbortedUpload(fileArray, [], currentEditor, updateUploadState, managedUploadCallbacks, devMode, false);
     }
 
     // プレースホルダー挿入（モードに応じてエディタまたはギャラリーへ）
@@ -243,7 +279,7 @@ export async function uploadHelper({
     // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
     if (uploadAbortFlagStore.value) {
         return handleAbortedUpload(
-            fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true,
+            fileArray, placeholderMap, currentEditor, updateUploadState, managedUploadCallbacks, devMode, true,
             galleryMode ? { imageSizeMapStore: dependencies.imageSizeMapStore } : undefined
         );
     }
@@ -261,7 +297,7 @@ export async function uploadHelper({
     // 中止チェック（Blurhash生成後）
     if (uploadAbortFlagStore.value) {
         return handleAbortedUpload(
-            fileArray, placeholderMap, currentEditor, updateUploadState, uploadCallbacks, devMode, true,
+            fileArray, placeholderMap, currentEditor, updateUploadState, managedUploadCallbacks, devMode, true,
             galleryMode ? { imageSizeMapStore: dependencies.imageSizeMapStore } : undefined
         );
     }
@@ -272,7 +308,7 @@ export async function uploadHelper({
 
     try {
         const metadataList = prepareMetadataList(validFiles);
-        results = await uploadManager.uploadFiles(validFiles, endpoint, uploadCallbacks, metadataList);
+        results = await uploadManager.uploadFiles(validFiles, endpoint, managedUploadCallbacks, metadataList);
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
         showUploadError(errorMsg, 5000);
@@ -385,31 +421,6 @@ export async function uploadHelper({
 
 // --- 統合されたアップロード関連関数 ---
 
-export interface CreateUploadCallbacksParams {
-    onUploadProgress?: (progress: UploadProgress) => void;
-    videoCompressionProgressStore: {
-        set: (value: number) => void;
-    };
-    imageCompressionProgressStore: {
-        set: (value: number) => void;
-    };
-}
-
-export function createUploadCallbacks(params: CreateUploadCallbacksParams): UploadInfoCallbacks | undefined {
-    const { onUploadProgress, videoCompressionProgressStore, imageCompressionProgressStore } = params;
-    return onUploadProgress
-        ? {
-            onProgress: onUploadProgress,
-            onVideoCompressionProgress: (progress: number) => {
-                videoCompressionProgressStore.set(progress);
-            },
-            onImageCompressionProgress: (progress: number) => {
-                imageCompressionProgressStore.set(progress);
-            },
-        }
-        : undefined;
-}
-
 export interface ShowUploadErrorMessageParams {
     updateUploadState: (isUploading: boolean, message?: string) => void;
 }
@@ -484,16 +495,9 @@ export interface UploadFilesParams {
     files: File[] | FileList;
     currentEditor: TipTapEditor | null;
     fileInput?: HTMLInputElement;
-    onUploadProgress?: (progress: UploadProgress) => void;
     updateUploadState: (isUploading: boolean, message?: string) => void;
     imageOxMap: Record<string, string>;
     imageXMap: Record<string, string>;
-    videoCompressionProgressStore: {
-        set: (value: number) => void;
-    };
-    imageCompressionProgressStore: {
-        set: (value: number) => void;
-    };
     getUploadFailedText: (key: string) => string;
     dependencies?: UploadHelperDependencies;
 }
@@ -503,27 +507,17 @@ export async function uploadFiles(params: UploadFilesParams): Promise<void> {
         files,
         currentEditor,
         fileInput,
-        onUploadProgress,
         updateUploadState,
         imageOxMap,
         imageXMap,
-        videoCompressionProgressStore,
-        imageCompressionProgressStore,
         getUploadFailedText,
         dependencies,
     } = params;
-
-    const uploadCallbacks = createUploadCallbacks({
-        onUploadProgress,
-        videoCompressionProgressStore,
-        imageCompressionProgressStore,
-    });
 
     await performFileUpload({
         files,
         currentEditor,
         fileInput,
-        uploadCallbacks,
         updateUploadState,
         devMode: import.meta.env.MODE === "development",
         imageOxMap,

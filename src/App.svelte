@@ -27,7 +27,6 @@
   import {
     authState,
     sharedMediaStore,
-    hideImageSizeInfo,
     showLoginDialogStore,
     showLogoutDialogStore,
     showSettingsDialogStore,
@@ -41,7 +40,6 @@
     profileDataStore,
     profileLoadedStore,
     isLoadingProfileStore,
-    isUploadingStore,
     relayListUpdatedStore,
     showWelcomeDialogStore,
     urlQueryContentStore,
@@ -58,8 +56,11 @@
     showAddAccountDialogStore,
     openAddAccountDialog,
     closeAddAccountDialog,
+    setSharedMediaError,
+    clearSharedMediaError,
+    resetUploadDisplayState,
   } from "./stores/appStore.svelte";
-  import type { UploadProgress, Draft, StoredAccount } from "./lib/types";
+  import type { Draft } from "./lib/types";
   import { getDefaultEndpoint, STORAGE_KEYS } from "./lib/constants";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import {
@@ -114,14 +115,11 @@
 
   let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
   let relayProfileService: RelayProfileService;
-  let sharedMediaReceived = false;
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
-  let footerInfoDisplay: any;
   let postComponentRef: any = $state();
-  let footerComponentRef: any = $state();
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
@@ -224,38 +222,13 @@
     }
   }
 
-  function logout() {
-    isLoggingOut = true;
-    authService.logout();
-    profileDataStore.set({
-      name: "",
-      displayName: "",
-      picture: "",
-      npub: "",
-      nprofile: "",
-    });
-    profileLoadedStore.set(false);
-    if (postComponentRef?.resetPostContent) postComponentRef.resetPostContent();
-    if (footerInfoDisplay?.updateProgress) {
-      footerInfoDisplay.updateProgress({
-        total: 0,
-        completed: 0,
-        failed: 0,
-        inProgress: false,
-      });
-    }
-    hideImageSizeInfo();
-
-    secretKey = "";
-    errorMessage = "";
-  }
-
   /**
    * 指定アカウントのログアウト（マルチアカウント対応）
    */
   async function logoutAccount(pubkeyHex: string) {
     isLoggingOut = true;
     try {
+      resetUploadDisplayState();
       const nextPubkey = authService.logoutAccount(pubkeyHex);
 
       if (nextPubkey) {
@@ -406,6 +379,23 @@
 
   let localeInitialized = $state(false);
 
+  function getSharedMediaErrorMessage(errorCode: string | null): string | null {
+    switch (errorCode) {
+      case "processing-error":
+        return "共有メディアの処理中にエラーが発生しました";
+      case "no-image":
+        return "共有メディアが見つかりませんでした";
+      case "upload-failed":
+        return "メディアのアップロードに失敗しました";
+      case "network-error":
+        return "ネットワークエラーが発生しました";
+      case "client-error":
+        return "メディア共有処理でエラーが発生しました";
+      default:
+        return null;
+    }
+  }
+
   // 共有画像取得済みフラグ
   const sharedMediaAlreadyProcessed =
     localStorage.getItem("sharedMediaProcessed") === "1";
@@ -421,6 +411,11 @@
     // Define an inner async function for initialization
     const init = async () => {
       const storedLocale = localStorage.getItem("locale");
+      const urlParams = new URLSearchParams(window.location.search);
+      const sharedError = urlParams.get("error");
+
+      clearSharedMediaError();
+
       if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
       await waitLocale();
       localeInitialized = true;
@@ -471,9 +466,11 @@
             localStorage.setItem("sharedMediaProcessed", "1");
           } else {
             console.warn("No shared media data received");
-            // 画像が取得できない場合のみエラーパラメータをログ出力
-            const urlParams = new URLSearchParams(window.location.search);
-            const sharedError = urlParams.get("error");
+            const sharedMediaErrorMessage =
+              getSharedMediaErrorMessage(sharedError);
+            if (sharedMediaErrorMessage) {
+              setSharedMediaError(sharedMediaErrorMessage, 5000);
+            }
             if (sharedError) {
               console.error(
                 "Shared image processing failed with error parameter:",
@@ -486,6 +483,11 @@
           }
         } catch (error) {
           console.error("共有メディアの処理中にエラー:", error);
+          const sharedMediaErrorMessage =
+            getSharedMediaErrorMessage(sharedError);
+          if (sharedMediaErrorMessage) {
+            setSharedMediaError(sharedMediaErrorMessage, 5000);
+          }
         }
       }
 
@@ -601,23 +603,9 @@
     }
   });
 
-  function handleUploadStatusChange(uploading: boolean) {
-    isUploadingStore.set(uploading);
-    if (!uploading) sharedMediaReceived = false;
-  }
-
-  function handleUploadProgress(progress: UploadProgress): void {
-    // 型を利用
-    if (footerComponentRef) {
-      footerComponentRef.updateProgress(progress);
-    }
-  }
-
   function handlePostSuccess() {
     // 投稿成功時にfooter情報を全て削除
-    if (footerComponentRef?.reset) {
-      footerComponentRef.reset();
-    }
+    resetUploadDisplayState();
     // 共有メディアフラグをクリア
     localStorage.removeItem("sharedMediaProcessed");
   }
@@ -838,8 +826,6 @@
           {rxNostr}
           hasStoredKey={isAuthenticated}
           onPostSuccess={handlePostSuccess}
-          onUploadStatusChange={handleUploadStatusChange}
-          onUploadProgress={handleUploadProgress}
         />
         {#if replyQuoteState.value?.mode === "quote"}
           <ReplyQuotePreview />
@@ -851,7 +837,6 @@
         onPostButtonTap={() => balloon.showTips()}
       />
       <FooterComponent
-        bind:this={footerComponentRef}
         {isAuthenticated}
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh}

@@ -27,8 +27,15 @@ export {
 
 export {
     imageSizeInfoStore,
-    showImageSizeInfo,
+    setImageSizeInfoFromFileSize,
     hideImageSizeInfo,
+    uploadProgressStore,
+    setUploadProgress,
+    resetUploadProgress,
+    sharedMediaErrorStore,
+    setSharedMediaError,
+    clearSharedMediaError,
+    resetUploadDisplayState,
     uploadAbortFlagStore,
     setVideoCompressionService,
     getVideoCompressionService,

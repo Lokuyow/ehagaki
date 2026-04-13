@@ -1,7 +1,8 @@
-import type { SizeDisplayInfo, CompressionService } from '../lib/types';
+import type { SizeDisplayInfo, CompressionService, UploadProgress, FileSizeInfo } from '../lib/types';
 import type { VideoCompressionService } from '../lib/videoCompression/videoCompressionService';
 import { mediaGalleryStore } from './mediaGalleryStore.svelte';
 import { imageSizeMapStore } from './tagsStore.svelte';
+import { generateSizeDisplayInfo } from '../lib/utils/fileSizeUtils';
 
 // --- 画像サイズ情報表示管理 ---
 let imageSizeInfo = $state<{ info: SizeDisplayInfo | null; visible: boolean }>({
@@ -14,7 +15,7 @@ export const imageSizeInfoStore = {
     set: (value: { info: SizeDisplayInfo | null; visible: boolean }) => { imageSizeInfo = value; }
 };
 
-export function showImageSizeInfo(info: SizeDisplayInfo | null): void {
+function showImageSizeInfo(info: SizeDisplayInfo | null): void {
     if (info === null) {
         hideImageSizeInfo();
         return;
@@ -22,8 +23,106 @@ export function showImageSizeInfo(info: SizeDisplayInfo | null): void {
     imageSizeInfoStore.set({ info, visible: true });
 }
 
+export function setImageSizeInfoFromFileSize(sizeInfo: FileSizeInfo | null): void {
+    showImageSizeInfo(generateSizeDisplayInfo(sizeInfo));
+}
+
 export function hideImageSizeInfo(): void {
     imageSizeInfoStore.set({ info: null, visible: false });
+}
+
+function createEmptyUploadProgress(): UploadProgress {
+    return {
+        total: 0,
+        completed: 0,
+        failed: 0,
+        aborted: 0,
+        inProgress: false,
+    };
+}
+
+let uploadProgressResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearUploadProgressResetTimer(): void {
+    if (uploadProgressResetTimer !== null) {
+        clearTimeout(uploadProgressResetTimer);
+        uploadProgressResetTimer = null;
+    }
+}
+
+let uploadProgressState = $state<UploadProgress>(createEmptyUploadProgress());
+
+export const uploadProgressStore = {
+    get value() { return uploadProgressState; },
+    set: (value: UploadProgress) => { uploadProgressState = value; },
+    reset: () => {
+        clearUploadProgressResetTimer();
+        uploadProgressState = createEmptyUploadProgress();
+        isUploadingStore.set(false);
+    }
+};
+
+export function setUploadProgress(progress: UploadProgress): void {
+    clearUploadProgressResetTimer();
+    uploadProgressStore.set(progress);
+    isUploadingStore.set(progress.inProgress);
+
+    if (!progress.inProgress && progress.total > 0) {
+        uploadProgressResetTimer = setTimeout(() => {
+            uploadProgressStore.reset();
+        }, 1000);
+    }
+}
+
+export function resetUploadProgress(): void {
+    uploadProgressStore.reset();
+}
+
+let sharedMediaErrorMessage = $state<string | null>(null);
+let sharedMediaErrorTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearSharedMediaErrorTimer(): void {
+    if (sharedMediaErrorTimer !== null) {
+        clearTimeout(sharedMediaErrorTimer);
+        sharedMediaErrorTimer = null;
+    }
+}
+
+export const sharedMediaErrorStore = {
+    get value() { return sharedMediaErrorMessage; },
+    set: (value: string | null) => { sharedMediaErrorMessage = value; },
+    clear: () => {
+        clearSharedMediaErrorTimer();
+        sharedMediaErrorMessage = null;
+    }
+};
+
+export function setSharedMediaError(message: string | null, durationMs?: number): void {
+    clearSharedMediaErrorTimer();
+    sharedMediaErrorStore.set(message);
+
+    if (message && durationMs && durationMs > 0) {
+        sharedMediaErrorTimer = setTimeout(() => {
+            sharedMediaErrorStore.clear();
+        }, durationMs);
+    }
+}
+
+export function clearSharedMediaError(): void {
+    sharedMediaErrorStore.clear();
+}
+
+export function resetUploadDisplayState(options?: { imageSizeInfoOnly?: boolean }): void {
+    if (options?.imageSizeInfoOnly) {
+        hideImageSizeInfo();
+        return;
+    }
+
+    resetUploadProgress();
+    videoCompressionProgressStore.set(0);
+    imageCompressionProgressStore.set(0);
+    hideImageSizeInfo();
+    clearSharedMediaError();
 }
 
 // --- グローバルアップロード中止フラグ ---
@@ -85,6 +184,7 @@ export function abortImageCompression(): void {
 export function abortAllUploads(): void {
     const isDev = import.meta.env.DEV;
     if (isDev) console.log('[uploadStore] abortAllUploads called');
+    resetUploadDisplayState();
     abortVideoCompression();
     abortImageCompression();
 

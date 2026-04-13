@@ -21,9 +21,38 @@ const mockAppStore = {
     clearSharedMediaStore: vi.fn(),
     getSharedMediaFiles: vi.fn(() => []),
     getSharedMediaMetadata: vi.fn(() => undefined),
-    showImageSizeInfo: vi.fn(),
+    setImageSizeInfoFromFileSize: vi.fn(),
+    uploadProgressStore: {
+        value: {
+            total: 0,
+            completed: 0,
+            failed: 0,
+            aborted: 0,
+            inProgress: false,
+        },
+        set: vi.fn(),
+        reset: vi.fn()
+    },
+    setUploadProgress: vi.fn(),
+    resetUploadProgress: vi.fn(),
+    sharedMediaErrorStore: {
+        value: null,
+        set: vi.fn(),
+        clear: vi.fn()
+    },
+    setSharedMediaError: vi.fn(),
+    clearSharedMediaError: vi.fn(),
+    resetUploadDisplayState: vi.fn(),
     setVideoCompressionService: vi.fn(),
     setImageCompressionService: vi.fn(),
+    videoCompressionProgressStore: {
+        value: 0,
+        set: vi.fn()
+    },
+    imageCompressionProgressStore: {
+        value: 0,
+        set: vi.fn()
+    },
     uploadAbortFlagStore: {
         value: false,
         set: vi.fn(),

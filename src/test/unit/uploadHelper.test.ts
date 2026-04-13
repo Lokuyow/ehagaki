@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { uploadHelper } from "../../lib/uploadHelper";
+import { performFileUpload, uploadHelper } from "../../lib/uploadHelper";
 import { insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
 import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/fileUtils";
+import {
+    setUploadProgress,
+    videoCompressionProgressStore,
+    imageCompressionProgressStore,
+} from "../../stores/appStore.svelte";
 import type {
     UploadHelperDependencies,
     FileUploadManagerInterface,
@@ -373,6 +378,83 @@ describe("uploadHelper", () => {
     });
 
     describe("uploadHelper integration", () => {
+        it("merges store updates with external progress callbacks", async () => {
+            const file = new File(["content"], "test.png", { type: "image/png" });
+            const updateUploadState = vi.fn();
+            const externalOnProgress = vi.fn();
+            const externalOnVideoCompressionProgress = vi.fn();
+            const externalOnImageCompressionProgress = vi.fn();
+
+            const mockFileUploadManager: FileUploadManagerInterface = {
+                validateImageFile: vi.fn(() => ({ isValid: true })),
+                validateMediaFile: vi.fn(() => ({ isValid: true })),
+                generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                uploadFileWithCallbacks: vi.fn(async (_file: File, _endpoint: string, callbacks) => {
+                    callbacks?.onVideoCompressionProgress?.(12);
+                    callbacks?.onImageCompressionProgress?.(34);
+                    callbacks?.onProgress?.({
+                        total: 1,
+                        completed: 1,
+                        failed: 0,
+                        aborted: 0,
+                        inProgress: false,
+                    });
+
+                    return {
+                        success: true,
+                        url: "https://mock.com/test.png",
+                        sizeInfo: {
+                            originalFilename: file.name,
+                            originalSize: file.size,
+                            compressedSize: file.size,
+                            wasCompressed: false,
+                            compressionRatio: 1,
+                            sizeReduction: "0%",
+                        },
+                    };
+                }),
+                uploadMultipleFilesWithCallbacks: vi.fn(),
+            };
+
+            const customDependencies = {
+                ...mockDependencies,
+                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface,
+            };
+
+            await performFileUpload({
+                files: [file],
+                currentEditor,
+                uploadCallbacks: {
+                    onProgress: externalOnProgress,
+                    onVideoCompressionProgress: externalOnVideoCompressionProgress,
+                    onImageCompressionProgress: externalOnImageCompressionProgress,
+                },
+                updateUploadState,
+                devMode: false,
+                imageOxMap: {},
+                imageXMap: {},
+                dependencies: customDependencies,
+                getUploadFailedText: (key: string) => key,
+            });
+
+            expect(setUploadProgress).toHaveBeenCalledWith(
+                expect.objectContaining({ total: 1, inProgress: true }),
+            );
+            expect(setUploadProgress).toHaveBeenCalledWith(
+                expect.objectContaining({ total: 1, completed: 1, inProgress: false }),
+            );
+            expect(videoCompressionProgressStore.set).toHaveBeenCalledWith(12);
+            expect(imageCompressionProgressStore.set).toHaveBeenCalledWith(34);
+            expect(externalOnProgress).toHaveBeenCalledWith(
+                expect.objectContaining({ total: 1, inProgress: true }),
+            );
+            expect(externalOnProgress).toHaveBeenCalledWith(
+                expect.objectContaining({ total: 1, completed: 1, inProgress: false }),
+            );
+            expect(externalOnVideoCompressionProgress).toHaveBeenCalledWith(12);
+            expect(externalOnImageCompressionProgress).toHaveBeenCalledWith(34);
+        });
+
         it("uploads a single valid file successfully", async () => {
             const file = new File(["content"], "test.png", { type: "image/png" });
             const showUploadError = vi.fn();
@@ -501,7 +583,11 @@ describe("uploadHelper", () => {
             expect(mockFileUploadManager.uploadFileWithCallbacks).toHaveBeenCalledWith(
                 validFile,
                 "https://endpoint", // localStorageから取得される実際の値
-                undefined,
+                expect.objectContaining({
+                    onProgress: expect.any(Function),
+                    onVideoCompressionProgress: expect.any(Function),
+                    onImageCompressionProgress: expect.any(Function),
+                }),
                 false,
                 {
                     caption: "valid.png",
@@ -570,7 +656,11 @@ describe("uploadHelper", () => {
             expect(mockFileUploadManager.uploadMultipleFilesWithCallbacks).toHaveBeenCalledWith(
                 [validFile1, validFile2],
                 "https://endpoint",
-                undefined,
+                expect.objectContaining({
+                    onProgress: expect.any(Function),
+                    onVideoCompressionProgress: expect.any(Function),
+                    onImageCompressionProgress: expect.any(Function),
+                }),
                 [
                     {
                         caption: "valid1.png",

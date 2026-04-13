@@ -1,6 +1,6 @@
-import { createFileSizeInfo, generateSizeDisplayInfo } from "./utils/fileSizeUtils";
+import { createFileSizeInfo } from "./utils/fileSizeUtils";
 import { calculateSHA256Hex } from "./utils/fileUtils";
-import { showImageSizeInfo, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
+import { setImageSizeInfoFromFileSize, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
   FileUploadResponse,
@@ -420,8 +420,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       // 中止された場合はサイズ情報表示をスキップ
       if (result.success && result.sizeInfo && !result.aborted) {
-        const displayInfo = generateSizeDisplayInfo(result.sizeInfo);
-        if (displayInfo) showImageSizeInfo(displayInfo);
+        setImageSizeInfoFromFileSize(result.sizeInfo);
       }
       return result;
     } catch (error) {
@@ -460,8 +459,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     if (!uploadAbortFlagStore.value) {
       const firstSuccess = results.find(r => r.success && r.sizeInfo);
       if (firstSuccess?.sizeInfo) {
-        const displayInfo = generateSizeDisplayInfo(firstSuccess.sizeInfo);
-        if (displayInfo) showImageSizeInfo(displayInfo);
+        setImageSizeInfoFromFileSize(firstSuccess.sizeInfo);
       }
     }
 

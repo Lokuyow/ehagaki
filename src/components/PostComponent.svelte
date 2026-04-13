@@ -5,13 +5,9 @@
   import { EditorContent } from "svelte-tiptap";
   import type { Editor as TipTapEditor } from "@tiptap/core";
   import type { RxNostr } from "rx-nostr";
-  import type { UploadProgress, FullscreenMediaItem } from "../lib/types";
+  import type { FullscreenMediaItem } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
-  import {
-    videoCompressionProgressStore,
-    imageCompressionProgressStore,
-    mediaFreePlacementStore,
-  } from "../stores/appStore.svelte";
+  import { mediaFreePlacementStore } from "../stores/appStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { nip46Service } from "../lib/nip46Service";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
@@ -52,12 +48,9 @@
     rxNostr?: RxNostr;
     hasStoredKey: boolean;
     onPostSuccess?: () => void;
-    onUploadStatusChange?: (isUploading: boolean) => void;
-    onUploadProgress?: (progress: UploadProgress) => void;
   }
 
-  let { rxNostr, hasStoredKey, onPostSuccess, onUploadProgress }: Props =
-    $props();
+  let { rxNostr, hasStoredKey, onPostSuccess }: Props = $props();
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
@@ -105,15 +98,12 @@
       files,
       currentEditor,
       fileInput,
-      onUploadProgress,
       updateUploadState: (isUploading: boolean, message?: string) => {
         editorState.isUploading = isUploading;
         editorState.uploadErrorMessage = message || "";
       },
       imageOxMap,
       imageXMap,
-      videoCompressionProgressStore,
-      imageCompressionProgressStore,
       getUploadFailedText: (key: string) => $_(key),
     });
   }

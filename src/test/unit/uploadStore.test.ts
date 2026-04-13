@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // vi.mockは巧き上げされるため、内部で使う変数はvi.hoistedで宣言する
 const { mockRemovePlaceholders, mockImageSizeMapUpdate } = vi.hoisted(() => ({
@@ -20,9 +20,167 @@ vi.mock('../../stores/tagsStore.svelte', () => ({
     },
 }));
 
-import { abortAllUploads } from '../../stores/uploadStore.svelte';
+import {
+    abortAllUploads,
+    setImageSizeInfoFromFileSize,
+    setUploadProgress,
+    uploadProgressStore,
+    setSharedMediaError,
+    sharedMediaErrorStore,
+    resetUploadDisplayState,
+    imageSizeInfoStore,
+    videoCompressionProgressStore,
+    imageCompressionProgressStore,
+    isUploadingStore,
+} from '../../stores/uploadStore.svelte';
 
 describe('uploadStore', () => {
+    beforeEach(() => {
+        resetUploadDisplayState();
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.runOnlyPendingTimers();
+        vi.useRealTimers();
+    });
+
+    describe('setUploadProgress()', () => {
+        it('アップロード進捗と isUploadingStore を更新する', () => {
+            setUploadProgress({
+                total: 3,
+                completed: 1,
+                failed: 0,
+                aborted: 0,
+                inProgress: true,
+            });
+
+            expect(uploadProgressStore.value).toEqual({
+                total: 3,
+                completed: 1,
+                failed: 0,
+                aborted: 0,
+                inProgress: true,
+            });
+            expect(isUploadingStore.value).toBe(true);
+        });
+
+        it('完了済み進捗は一定時間後に自動リセットされる', () => {
+            setUploadProgress({
+                total: 2,
+                completed: 2,
+                failed: 0,
+                aborted: 0,
+                inProgress: false,
+            });
+
+            expect(uploadProgressStore.value.total).toBe(2);
+
+            vi.advanceTimersByTime(1000);
+
+            expect(uploadProgressStore.value).toEqual({
+                total: 0,
+                completed: 0,
+                failed: 0,
+                aborted: 0,
+                inProgress: false,
+            });
+            expect(isUploadingStore.value).toBe(false);
+        });
+    });
+
+    describe('setSharedMediaError()', () => {
+        it('指定時間後に共有メディアエラーをクリアする', () => {
+            setSharedMediaError('共有エラー', 5000);
+
+            expect(sharedMediaErrorStore.value).toBe('共有エラー');
+
+            vi.advanceTimersByTime(5000);
+
+            expect(sharedMediaErrorStore.value).toBeNull();
+        });
+    });
+
+    describe('setImageSizeInfoFromFileSize()', () => {
+        it('FileSizeInfo から表示用のサイズ情報を設定する', () => {
+            setImageSizeInfoFromFileSize({
+                originalSize: 2048,
+                compressedSize: 1024,
+                wasCompressed: true,
+                compressionRatio: 50,
+                sizeReduction: '2KB → 1KB',
+                originalFilename: 'sample.png',
+                compressedFilename: 'sample.webp',
+                wasSkipped: false,
+            });
+
+            expect(imageSizeInfoStore.value).toEqual({
+                info: {
+                    wasCompressed: true,
+                    originalSize: '2KB',
+                    compressedSize: '1KB',
+                    compressionRatio: 50,
+                    originalFilename: 'sample.png',
+                    compressedFilename: 'sample.webp',
+                    wasSkipped: false,
+                },
+                visible: true,
+            });
+        });
+    });
+
+    describe('resetUploadDisplayState()', () => {
+        it('imageSizeInfoOnly 指定時は画像サイズ情報だけをクリアする', () => {
+            setUploadProgress({
+                total: 1,
+                completed: 0,
+                failed: 0,
+                aborted: 0,
+                inProgress: true,
+            });
+            imageSizeInfoStore.set({
+                info: {
+                    wasCompressed: true,
+                    originalSize: '10MB',
+                    compressedSize: '5MB',
+                    compressionRatio: 50,
+                },
+                visible: true,
+            });
+
+            resetUploadDisplayState({ imageSizeInfoOnly: true });
+
+            expect(imageSizeInfoStore.value).toEqual({ info: null, visible: false });
+            expect(uploadProgressStore.value.inProgress).toBe(true);
+        });
+
+        it('進捗・圧縮・共有エラーをまとめてクリアする', () => {
+            setUploadProgress({
+                total: 1,
+                completed: 0,
+                failed: 0,
+                aborted: 0,
+                inProgress: true,
+            });
+            setSharedMediaError('共有エラー');
+            videoCompressionProgressStore.set(44);
+            imageCompressionProgressStore.set(55);
+
+            resetUploadDisplayState();
+
+            expect(uploadProgressStore.value).toEqual({
+                total: 0,
+                completed: 0,
+                failed: 0,
+                aborted: 0,
+                inProgress: false,
+            });
+            expect(sharedMediaErrorStore.value).toBeNull();
+            expect(videoCompressionProgressStore.value).toBe(0);
+            expect(imageCompressionProgressStore.value).toBe(0);
+        });
+    });
+
     describe('abortAllUploads()', () => {
         beforeEach(() => {
             vi.clearAllMocks();

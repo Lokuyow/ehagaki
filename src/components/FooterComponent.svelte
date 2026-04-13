@@ -33,8 +33,6 @@
     let isLoadingProfile = $derived(isLoadingProfileStore.value);
     let profileLoaded = $derived(profileLoadedStore.value);
 
-    let footerInfoDisplayRef: any = $state();
-
     // プロフィール画像のaltテキスト取得
     const getProfileAlt = () =>
         profileData?.displayName
@@ -95,14 +93,6 @@
             isSameOriginPicture = false;
         }
     });
-
-    // 外部から呼び出せるようにメソッドをexport
-    export function updateProgress(progress: number) {
-        footerInfoDisplayRef?.updateProgress(progress);
-    }
-    export function reset() {
-        footerInfoDisplayRef?.reset();
-    }
 </script>
 
 <div class="footer-bar">
@@ -161,7 +151,7 @@
         </Button>
     {/if}
 
-    <FooterInfoDisplay bind:this={footerInfoDisplayRef} />
+    <FooterInfoDisplay />
 
     <Button
         variant="default"
