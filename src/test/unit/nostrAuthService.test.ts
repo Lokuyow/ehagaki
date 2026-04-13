@@ -184,7 +184,7 @@ describe('NostrAuthService', () => {
         });
 
         it('NIP-46認証状態で接続未完了時、接続完了を待ってからトークン生成', async () => {
-            const { authState } = await import('../../stores/appStore.svelte');
+            const { authState } = await import('../../stores/authStore.svelte');
             const { nip46Service } = await import('../../lib/nip46Service');
 
             // authState.value.type = 'nip46' だが isConnected は最初 false

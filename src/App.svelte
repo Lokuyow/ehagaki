@@ -34,19 +34,11 @@
     showLoginDialogStore,
     showLogoutDialogStore,
     showSettingsDialogStore,
-    showLoginDialog,
-    closeLoginDialog,
-    openLogoutDialog,
-    closeLogoutDialog,
-    openSettingsDialog,
-    closeSettingsDialog,
     showWelcomeDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
     showAddAccountDialogStore,
-    openAddAccountDialog,
-    closeAddAccountDialog,
   } from "./stores/dialogStore.svelte";
   import { swNeedRefresh } from "./stores/swStore.svelte";
   import {
@@ -119,17 +111,6 @@
   let isAuthenticated = $derived(authState.value?.isAuthenticated ?? false);
   let isAuthInitialized = $derived(authState.value?.isInitialized ?? false);
 
-  // --- 追加: 初回レンダリング時にローカルストレージで即時認証判定 ---
-  let initialAuthChecked = false;
-
-  // ローカルストレージから即時判定
-  if (!initialAuthChecked) {
-    const nsec = localStorage.getItem("nsec");
-    if (nsec) {
-    }
-    initialAuthChecked = true;
-  }
-
   let rxNostr: ReturnType<typeof createRxNostr> | undefined = $state();
   let relayProfileService: RelayProfileService;
   let isLoadingNip07 = $state(false);
@@ -171,8 +152,8 @@
    */
   async function handlePostAuth(pubkeyHex: string): Promise<void> {
     isLoadingProfileStore.set(true);
-    closeLoginDialog();
-    closeAddAccountDialog();
+    showLoginDialogStore.set(false);
+    showAddAccountDialogStore.set(false);
     try {
       await initializeNostr(pubkeyHex);
       const profile = await relayProfileService.initializeForLogin(pubkeyHex);
@@ -278,7 +259,7 @@
 
       refreshAccountList();
       if (nextPubkey !== undefined) {
-        closeLogoutDialog();
+        showLogoutDialogStore.set(false);
       }
     } catch (error) {
       console.error("ログアウト処理中にエラー:", error);
@@ -328,9 +309,9 @@
    */
   function handleAddAccount() {
     showTransitionOverlay = true;
-    closeLogoutDialog();
+    showLogoutDialogStore.set(false);
     setTimeout(() => {
-      openAddAccountDialog();
+      showAddAccountDialogStore.set(true);
       showTransitionOverlay = false;
     }, 50);
   }
@@ -826,15 +807,15 @@
         {isAuthenticated}
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh}
-        onShowLoginDialog={showLoginDialog}
-        onOpenSettingsDialog={openSettingsDialog}
-        onOpenLogoutDialog={openLogoutDialog}
+        onShowLoginDialog={() => showLoginDialogStore.set(true)}
+        onOpenSettingsDialog={() => showSettingsDialogStore.set(true)}
+        onOpenLogoutDialog={() => showLogoutDialogStore.set(true)}
       />
       {#if showLoginDialogStore.value}
         <LoginDialog
           show={showLoginDialogStore.value}
           bind:secretKey
-          onClose={closeLoginDialog}
+          onClose={() => showLoginDialogStore.set(false)}
           onSave={saveSecretKey}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
@@ -850,7 +831,7 @@
         <LoginDialog
           show={showAddAccountDialogStore.value}
           bind:secretKey
-          onClose={closeAddAccountDialog}
+          onClose={() => showAddAccountDialogStore.set(false)}
           onSave={saveSecretKey}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
@@ -863,7 +844,7 @@
       {#if showLogoutDialogStore.value}
         <ProfileComponent
           show={showLogoutDialogStore.value}
-          onClose={closeLogoutDialog}
+          onClose={() => showLogoutDialogStore.set(false)}
           onLogout={logoutAccount}
           onSwitchAccount={switchAccount}
           onAddAccount={handleAddAccount}
@@ -902,7 +883,7 @@
       {/if}
       <SettingsDialog
         show={showSettingsDialogStore.value}
-        onClose={closeSettingsDialog}
+        onClose={() => showSettingsDialogStore.set(false)}
         onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
         onOpenWelcomeDialog={() => showWelcomeDialogStore.set(true)}
       />

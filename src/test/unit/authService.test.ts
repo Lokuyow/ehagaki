@@ -275,17 +275,6 @@ describe('AuthService統合テスト', () => {
         expect(authService.isNip07Available()).toBe(false);
     });
 
-    it('ログアウト処理が正常に動作する', () => {
-        const mockStorage = mockDependencies.localStorage as MockStorage;
-        mockStorage.setItem('testKey', 'testValue');
-
-        expect(() => {
-            authService.logout();
-        }).not.toThrow();
-
-        // ストレージがクリアされたことを確認
-        expect(mockStorage.getItem('testKey')).toBeNull();
-    });
 });
 
 // --- authenticateWithNip07 テスト ---

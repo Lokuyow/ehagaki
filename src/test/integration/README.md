@@ -320,7 +320,7 @@ npm test -- editor-media.integration
 Service Workerやキャッシュ機能は`virtual:pwa-register/svelte`をモックしています。
 
 ### Storeのモック
-アプリケーション状態は`appStore.svelte.ts`と`editorStore.svelte.ts`をモックしています。
+アプリケーション状態は各ドメイン store を個別にモックしています。
 
 ### 外部ライブラリのモック
 - `browser-image-compression`: 画像圧縮

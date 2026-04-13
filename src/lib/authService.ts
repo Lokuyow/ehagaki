@@ -153,58 +153,6 @@ export class AuthService {
         }
     }
 
-    /**
-     * @deprecated Use logoutAccount() instead. Kept for backward compatibility.
-     */
-    logout(onReload?: () => void): void {
-        try {
-            this.nip46Svc.disconnect().catch(e => {
-                this.console.error('NIP-46切断エラー:', e);
-            });
-
-            try {
-                const firstVisit = this.localStorage.getItem("firstVisit");
-                this.localStorage.clear();
-                if (firstVisit) {
-                    this.localStorage.setItem("firstVisit", firstVisit);
-                }
-            } catch (error) {
-                this.console.error('ローカルストレージクリア中にエラー:', error);
-            }
-
-            this.clearProfileImageCache();
-
-            if (onReload) {
-                onReload();
-            } else {
-                setTimeout(() => {
-                    try {
-                        if (typeof window !== 'undefined' &&
-                            window.location &&
-                            typeof window.location.replace === 'function') {
-                            window.location.replace(window.location.pathname);
-                        } else if (typeof window !== 'undefined' && window.location) {
-                            window.location.href = window.location.pathname;
-                        }
-                    } catch (error) {
-                        this.console.error('ページリロード中にエラー:', error);
-                    }
-                }, 500);
-            }
-        } catch (error) {
-            this.console.error('ログアウト処理中に予期しないエラー:', error);
-            setTimeout(() => {
-                try {
-                    if (typeof window !== 'undefined' && window.location) {
-                        window.location.href = window.location.pathname;
-                    }
-                } catch (reloadError) {
-                    this.console.error('ページリロード中にエラー:', reloadError);
-                }
-            }, 2000);
-        }
-    }
-
     // --- 初期化 ---
 
     async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {

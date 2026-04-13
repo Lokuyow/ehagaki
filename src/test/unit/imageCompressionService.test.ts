@@ -267,7 +267,7 @@ describe('ImageCompressionService', () => {
         describe('中止フラグ', () => {
             it('圧縮開始前に中止フラグが立っている場合はaborted=trueを返す', async () => {
                 // uploadAbortFlagStoreはsetup.tsでモックされている
-                const { uploadAbortFlagStore } = await import('../../stores/appStore.svelte');
+                const { uploadAbortFlagStore } = await import('../../stores/uploadStore.svelte');
                 (uploadAbortFlagStore as any).value = true;
 
                 const file = createTestFile('photo.jpg', 'image/jpeg', 500000);

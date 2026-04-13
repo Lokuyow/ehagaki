@@ -49,19 +49,8 @@ export const pendingDraftContentStore = {
     set: (value: { content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
 };
 
-// --- ダイアログ操作ヘルパー ---
-export function showLoginDialog() { showLoginDialogStore.set(true); }
-export function closeLoginDialog() { showLoginDialogStore.set(false); }
-export function openLogoutDialog() { showLogoutDialogStore.set(true); }
-export function closeLogoutDialog() { showLogoutDialogStore.set(false); }
-export function openSettingsDialog() { showSettingsDialogStore.set(true); }
-export function closeSettingsDialog() { showSettingsDialogStore.set(false); }
-
 // --- アカウント追加ダイアログ ---
 export const showAddAccountDialogStore = {
     get value() { return showAddAccount; },
     set: (value: boolean) => { showAddAccount = value; }
 };
-
-export function openAddAccountDialog() { showAddAccountDialogStore.set(true); }
-export function closeAddAccountDialog() { showAddAccountDialogStore.set(false); }

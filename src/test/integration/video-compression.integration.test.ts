@@ -10,7 +10,7 @@ import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
  */
 
 // uploadAbortFlagStoreのモック
-vi.mock('../../stores/appStore.svelte', () => ({
+vi.mock('../../stores/uploadStore.svelte', () => ({
     uploadAbortFlagStore: {
         value: false,
         set: vi.fn(),
@@ -162,7 +162,7 @@ describe('Video Compression Integration Tests', () => {
         it('lowレベルの圧縮設定が適用される', async () => {
             storage.setItem('videoCompressionLevel', 'low');
             expect(service.hasCompressionSettings()).toBe(true);
-            
+
             const video = createTestVideoFile(500 * 1024);
             const result = await service.compress(video);
 
@@ -201,11 +201,11 @@ describe('Video Compression Integration Tests', () => {
         it('圧縮後のファイル名に_compressedが付加される（拡張子あり）', async () => {
             storage.setItem('videoCompressionLevel', 'medium');
             const video = createTestVideoFile(500 * 1024, 'my-video.mp4');
-            
+
             // MediaBunnyが使用できない環境ではFFmpegにフォールバック
             // いずれの場合も圧縮が試行される
             const result = await service.compress(video);
-            
+
             expect(result.file).toBeDefined();
             if (result.wasCompressed) {
                 expect(result.file.name).toBe('my-video_compressed.mp4');
@@ -215,9 +215,9 @@ describe('Video Compression Integration Tests', () => {
         it('拡張子なしのファイル名も正しく処理される', async () => {
             storage.setItem('videoCompressionLevel', 'medium');
             const video = createTestVideoFile(500 * 1024, 'video');
-            
+
             const result = await service.compress(video);
-            
+
             expect(result.file).toBeDefined();
             if (result.wasCompressed) {
                 expect(result.file.name).toBe('video_compressed.mp4');
@@ -228,12 +228,12 @@ describe('Video Compression Integration Tests', () => {
     describe('エラーハンドリング', () => {
         it('圧縮エラーが発生しても元のファイルが返される', async () => {
             storage.setItem('videoCompressionLevel', 'medium');
-            
+
             // 不正なファイルを作成
             const invalidVideo = new File(['invalid'], 'invalid.mp4', { type: 'video/mp4' });
-            
+
             const result = await service.compress(invalidVideo);
-            
+
             // エラーが発生してもアプリケーションはクラッシュせず、
             // 元のファイルまたはスキップフラグ付きの結果が返される
             expect(result).toBeDefined();
@@ -259,24 +259,24 @@ describe('Video Compression Integration Tests', () => {
     describe('リソース管理', () => {
         it('cleanupが正常に実行される', async () => {
             storage.setItem('videoCompressionLevel', 'medium');
-            
+
             const video = createTestVideoFile(300 * 1024);
             await service.compress(video);
-            
+
             await expect(service.cleanup()).resolves.not.toThrow();
         });
 
         it('cleanup後も圧縮処理が実行可能', async () => {
             storage.setItem('videoCompressionLevel', 'medium');
-            
+
             const video1 = createTestVideoFile(300 * 1024);
             await service.compress(video1);
-            
+
             await service.cleanup();
-            
+
             const video2 = createTestVideoFile(300 * 1024);
             const result = await service.compress(video2);
-            
+
             expect(result).toBeDefined();
             expect(result.file).toBeDefined();
         });
@@ -286,14 +286,14 @@ describe('Video Compression Integration Tests', () => {
         it('進捗コールバックが設定できる', () => {
             const progressCallback = vi.fn();
             service.setProgressCallback(progressCallback);
-            
+
             // コールバック設定自体がエラーにならないことを確認
             expect(() => service.setProgressCallback(progressCallback)).not.toThrow();
         });
 
         it('進捗コールバックをundefinedに設定できる', () => {
             service.setProgressCallback(undefined);
-            
+
             expect(() => service.setProgressCallback(undefined)).not.toThrow();
         });
     });
@@ -306,7 +306,7 @@ describe('Video Compression Integration Tests', () => {
         it('複数回のabort()呼び出しが安全に処理される', () => {
             service.abort();
             service.abort();
-            
+
             expect(() => service.abort()).not.toThrow();
         });
     });
@@ -323,7 +323,7 @@ describe('Video Compression Integration Tests', () => {
 
         it('有効な圧縮レベルが設定されている場合はtrueを返す', () => {
             const levels: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high'];
-            
+
             levels.forEach(level => {
                 storage.setItem('videoCompressionLevel', level);
                 expect(service.hasCompressionSettings()).toBe(true);
@@ -369,13 +369,13 @@ describe('Video Compression Integration Tests', () => {
             delete (globalThis as any).AudioEncoder;
 
             storage.setItem('videoCompressionLevel', 'medium');
-            
+
             // 新しいサービスインスタンスを作成（WebCodecsチェックをリセット）
             const testService = new VideoCompressionService(storage);
             const video = createTestVideoFile(500 * 1024, 'webcodecs-unavailable.mp4');
-            
+
             const result = await testService.compress(video);
-            
+
             // FFmpegでの圧縮が試行される
             expect(result).toBeDefined();
             expect(result.file).toBeDefined();
@@ -387,13 +387,13 @@ describe('Video Compression Integration Tests', () => {
             delete (globalThis as any).AudioEncoder;
 
             storage.setItem('videoCompressionLevel', 'medium');
-            
+
             // 新しいサービスインスタンスを作成
             const testService = new VideoCompressionService(storage);
             const video = createTestVideoFile(500 * 1024, 'audio-encoding-unavailable.mp4');
-            
+
             const result = await testService.compress(video);
-            
+
             // MediaBunnyでビデオ圧縮 + FFmpegでオーディオマージが試行される
             // 実際の動作は環境依存だが、エラーにならないことを確認
             expect(result).toBeDefined();
@@ -404,14 +404,14 @@ describe('Video Compression Integration Tests', () => {
         it('WebCodecs APIに完全対応している環境ではビデオとオーディオの両方をWebCodecs APIで変換する', async () => {
             // VideoEncoder/VideoDecoder/AudioEncoderがすべて存在する状態
             // （テスト環境によってはモックが必要だが、基本的には既存の状態を維持）
-            
+
             storage.setItem('videoCompressionLevel', 'medium');
-            
+
             const testService = new VideoCompressionService(storage);
             const video = createTestVideoFile(500 * 1024, 'full-webcodecs-support.mp4');
-            
+
             const result = await testService.compress(video);
-            
+
             // MediaBunnyでビデオとオーディオ両方を圧縮
             expect(result).toBeDefined();
             expect(result.file).toBeDefined();

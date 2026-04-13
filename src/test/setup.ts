@@ -5,8 +5,6 @@ import mockAppStore from './mocks/appStore';
 import mockKeyManager from './mocks/keyManager';
 
 // グローバルモックを設定
-vi.mock('../stores/appStore.svelte', () => mockAppStore);
-vi.mock('../stores/appStore.svelte.ts', () => mockAppStore);
 vi.mock('../stores/authStore.svelte', () => ({
     authState: mockAppStore.authState,
     updateAuthState: mockAppStore.updateAuthState,
