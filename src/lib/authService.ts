@@ -7,6 +7,7 @@ import { nip46Service, Nip46Service } from './nip46Service';
 import type { AccountManager } from './accountManager';
 
 const NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
+type RestoreResult = { hasAuth: boolean; pubkeyHex?: string };
 
 // --- メインのAuthServiceクラス ---
 export class AuthService {
@@ -155,55 +156,25 @@ export class AuthService {
 
     // --- 初期化 ---
 
-    async initializeAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    async initializeAuth(): Promise<RestoreResult> {
         try {
-            // nostr-loginライブラリの残留データをクリーンアップ
-            this.accountManager?.cleanupNostrLoginData();
-
-            // マイグレーション実行（旧→マルチアカウント形式）
-            this.accountManager?.migrateFromSingleAccount();
-
-            // マルチアカウント: アクティブアカウントを復元
-            const activePubkey = this.accountManager?.getActiveAccountPubkey();
-            if (activePubkey) {
-                const accountType = this.accountManager?.getAccountType(activePubkey);
-                if (accountType) {
-                    const result = await this.restoreAccount(activePubkey, accountType);
-                    if (result.hasAuth) return result;
-                }
+            if (this.accountManager) {
+                this.accountManager.cleanupNostrLoginData();
+                this.accountManager.migrateFromSingleAccount();
+                return await this.initializeManagedAuth();
             }
 
-            // アクティブアカウントの復元に失敗した場合、他のアカウントを試行
-            const accounts = this.accountManager?.getAccounts() ?? [];
-            for (const account of accounts) {
-                if (account.pubkeyHex === activePubkey) continue;
-                const result = await this.restoreAccount(account.pubkeyHex, account.type);
-                if (result.hasAuth) {
-                    this.accountManager?.setActiveAccount(account.pubkeyHex);
-                    return result;
-                }
-            }
-
-            // フォールバック: レガシー形式のチェック（マイグレーション失敗時）
-            const nsecResult = await this.checkNsecAuth();
-            if (nsecResult.hasAuth) return nsecResult;
-
-            const nip07Result = await this.checkNip07Auth();
-            if (nip07Result.hasAuth) return nip07Result;
-
-            const nip46Result = await this.checkNip46Auth();
-            if (nip46Result.hasAuth) return nip46Result;
+            return await this.initializeLegacyAuth();
         } catch (error) {
             this.console.error('認証初期化失敗:', error);
+            return { hasAuth: false };
         }
-
-        return { hasAuth: false };
     }
 
     /**
      * 指定アカウントの認証を復元する。
      */
-    async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46'): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46'): Promise<RestoreResult> {
         switch (type) {
             case 'nsec':
                 return this.restoreNsecAccount(pubkeyHex);
@@ -216,7 +187,57 @@ export class AuthService {
         }
     }
 
-    private async restoreNsecAccount(pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    private async initializeManagedAuth(): Promise<RestoreResult> {
+        const activePubkey = this.accountManager?.getActiveAccountPubkey();
+        const activeResult = await this.restoreActiveAccount(activePubkey);
+        if (activeResult.hasAuth) return activeResult;
+
+        const accounts = this.accountManager?.getAccounts() ?? [];
+        return this.restoreFallbackAccounts(accounts, activePubkey);
+    }
+
+    private async initializeLegacyAuth(): Promise<RestoreResult> {
+        const legacyChecks = [
+            () => this.checkNsecAuth(),
+            () => this.checkNip07Auth(),
+            () => this.checkNip46Auth(),
+        ];
+
+        for (const checkLegacyAuth of legacyChecks) {
+            const result = await checkLegacyAuth();
+            if (result.hasAuth) return result;
+        }
+
+        return { hasAuth: false };
+    }
+
+    private async restoreActiveAccount(activePubkey: string | null | undefined): Promise<RestoreResult> {
+        if (!activePubkey) return { hasAuth: false };
+
+        const accountType = this.accountManager?.getAccountType(activePubkey);
+        if (!accountType) return { hasAuth: false };
+
+        return this.restoreAccount(activePubkey, accountType);
+    }
+
+    private async restoreFallbackAccounts(
+        accounts: Array<{ pubkeyHex: string; type: 'nsec' | 'nip07' | 'nip46' }>,
+        skippedPubkey?: string | null,
+    ): Promise<RestoreResult> {
+        for (const account of accounts) {
+            if (account.pubkeyHex === skippedPubkey) continue;
+
+            const result = await this.restoreAccount(account.pubkeyHex, account.type);
+            if (result.hasAuth) {
+                this.accountManager?.setActiveAccount(account.pubkeyHex);
+                return result;
+            }
+        }
+
+        return { hasAuth: false };
+    }
+
+    private async restoreNsecAccount(pubkeyHex: string): Promise<RestoreResult> {
         const storedKey = this.keyManager.loadFromStorage(pubkeyHex);
         if (!storedKey) return { hasAuth: false };
 
@@ -234,7 +255,7 @@ export class AuthService {
         return { hasAuth: false };
     }
 
-    private async restoreNip07Account(pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    private async restoreNip07Account(pubkeyHex: string): Promise<RestoreResult> {
         const available = await this.nip07Service.waitForExtension(1000);
         if (!available) return { hasAuth: false };
 
@@ -249,7 +270,7 @@ export class AuthService {
         }
     }
 
-    private async restoreNip46Account(pubkeyHex: string): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    private async restoreNip46Account(pubkeyHex: string): Promise<RestoreResult> {
         const session = Nip46Service.loadSession(this.localStorage, pubkeyHex);
         if (!session) return { hasAuth: false };
 
@@ -265,7 +286,7 @@ export class AuthService {
         }
     }
 
-    private async checkNsecAuth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    private async checkNsecAuth(): Promise<RestoreResult> {
         const storedKey = this.keyManager.loadFromStorage();
         if (!storedKey) return { hasAuth: false };
 
@@ -288,7 +309,7 @@ export class AuthService {
         }
     }
 
-    private async checkNip07Auth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    private async checkNip07Auth(): Promise<RestoreResult> {
         const storedPubkey = this.localStorage.getItem(NIP07_STORAGE_KEY);
         if (!storedPubkey) return { hasAuth: false };
 
@@ -313,7 +334,7 @@ export class AuthService {
         }
     }
 
-    private async checkNip46Auth(): Promise<{ hasAuth: boolean; pubkeyHex?: string }> {
+    private async checkNip46Auth(): Promise<RestoreResult> {
         const session = Nip46Service.loadSession(this.localStorage);
         if (!session) return { hasAuth: false };
 

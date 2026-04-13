@@ -1,6 +1,6 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
-import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUtils';
+import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../utils/editorUrlUtils';
 import { mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 import { generateMediaItemId } from '../utils/appUtils';

@@ -2,7 +2,7 @@
  * URLクエリパラメータからコンテンツを取得する
  */
 import { nip19 } from 'nostr-tools';
-import { normalizeLineBreaks } from './utils/editorUtils';
+import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { ReplyQuoteQueryResult } from './types';
 export function getContentFromUrlQuery(): string | null {
   if (typeof window === 'undefined' || !window.location) return null;

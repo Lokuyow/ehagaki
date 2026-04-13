@@ -35,7 +35,8 @@ vi.mock("../../lib/fileUploadManager", () => ({
     }))
 }));
 
-vi.mock("../../lib/utils/editorUtils", () => ({
+vi.mock("../../lib/utils/editorNodeActions", () => ({
+    removeAllPlaceholders: vi.fn(),
     findAndExecuteOnNode: vi.fn(),
     updateImageSizeMap: vi.fn()
 }));

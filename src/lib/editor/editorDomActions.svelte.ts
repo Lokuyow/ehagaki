@@ -4,7 +4,7 @@
  * Svelte5 のアクション機能を有効活用。
  */
 
-import { extractContentWithImages } from "../utils/editorUtils";
+import { extractContentWithImages } from "../utils/editorDocumentUtils";
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import { domUtils } from "../utils/appDomUtils";
 import type { Node as PMNode } from "prosemirror-model"; // 追加

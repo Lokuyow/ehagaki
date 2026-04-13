@@ -8,7 +8,8 @@ import type { Transaction } from '@tiptap/pm/state';
 // モック設定
 vi.mock('../../constants', () => ({
     ALLOWED_PROTOCOLS: ['http:', 'https:'],
-    ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp']
+    ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
+    ALLOWED_VIDEO_EXTENSIONS: ['.mp4', '.webm', '.mov']
 }));
 
 describe('editorUtils', () => {

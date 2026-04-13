@@ -14,7 +14,7 @@ import {
     setVideoCompressionService,
     setImageCompressionService,
 } from '../stores/uploadStore.svelte';
-import { removeAllPlaceholders } from './utils/editorUtils';
+import { removeAllPlaceholders } from './utils/editorNodeActions';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/fileUtils";

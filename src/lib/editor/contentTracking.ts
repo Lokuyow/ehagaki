@@ -1,7 +1,15 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import { validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocEmpty, isParagraphWithOnlyImageUrl } from '../utils/editorUtils';
+import {
+    validateAndNormalizeImageUrl,
+    isWordBoundary,
+    cleanUrlEnd,
+} from '../utils/editorUrlUtils';
+import {
+    isEditorDocEmpty,
+    isParagraphWithOnlyImageUrl,
+} from '../utils/editorDocumentUtils';
 import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
 import { CONTENT_TRACKING_CONFIG } from '../constants';
 import type { ContentTrackingOptions } from '../types';

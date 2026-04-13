@@ -9,7 +9,7 @@
  * 
  * 注意: ProseMirror/Tiptapのノード操作は含まない（clipboardExtension.tsが担当）
  */
-import { normalizeLineBreaks } from './editorUtils';
+import { normalizeLineBreaks } from './editorUrlUtils';
 
 /**
  * クリップボードテキストの正規化オプション

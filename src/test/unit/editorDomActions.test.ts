@@ -33,11 +33,11 @@ import {
 } from "../../lib/editor/editorDomActions.svelte";
 
 // extractContentWithImages をモック
-vi.mock("../../lib/utils/editorUtils", () => ({
+vi.mock("../../lib/utils/editorDocumentUtils", () => ({
     extractContentWithImages: vi.fn(),
 }));
 
-import { extractContentWithImages } from "../../lib/utils/editorUtils";
+import { extractContentWithImages } from "../../lib/utils/editorDocumentUtils";
 
 // extractContentWithImagesをMocked型にキャスト
 const mockedExtractContentWithImages = vi.mocked(extractContentWithImages);

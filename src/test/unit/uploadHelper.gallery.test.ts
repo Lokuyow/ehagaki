@@ -43,7 +43,7 @@ vi.mock('../../lib/fileUploadManager', () => ({
     FileUploadManager: vi.fn(),
 }));
 
-vi.mock('../../lib/utils/editorUtils', () => ({
+vi.mock('../../lib/utils/editorNodeActions', () => ({
     removeAllPlaceholders: vi.fn(),
     findAndExecuteOnNode: vi.fn(),
     updateImageSizeMap: vi.fn(),
@@ -61,7 +61,7 @@ vi.mock('svelte', () => ({ tick: vi.fn() }));
 // ---------- 依存関係 ----------
 import { uploadHelper } from '../../lib/uploadHelper';
 import { uploadAbortFlagStore, mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
-import { removeAllPlaceholders } from '../../lib/utils/editorUtils';
+import { removeAllPlaceholders } from '../../lib/utils/editorNodeActions';
 import type {
     UploadHelperDependencies,
     FileUploadManagerInterface,
