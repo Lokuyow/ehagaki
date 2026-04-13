@@ -9,7 +9,7 @@ import {
     restoreManagedNip07Account,
     restoreManagedNip46Account,
     restoreManagedNsecAccount,
-    restoreNsecFromStoredKey,
+    runManagedAuthRestore,
     runLegacyAuthChecks,
     type ManagedAuthRestoreDependencies,
     type RestoreResult,
@@ -184,7 +184,10 @@ export class AuthService {
             if (this.accountManager) {
                 this.accountManager.cleanupNostrLoginData();
                 this.accountManager.migrateFromSingleAccount();
-                return await this.initializeManagedAuth();
+                return await runManagedAuthRestore({
+                    accountManager: this.accountManager,
+                    restoreAccount: (pubkeyHex, type) => this.restoreAccount(pubkeyHex, type),
+                });
             }
 
             return await this.initializeLegacyAuth();
@@ -202,15 +205,6 @@ export class AuthService {
         return strategy ? strategy.restore(pubkeyHex) : { hasAuth: false };
     }
 
-    private async initializeManagedAuth(): Promise<RestoreResult> {
-        const activePubkey = this.accountManager?.getActiveAccountPubkey();
-        const activeResult = await this.restoreActiveAccount(activePubkey);
-        if (activeResult.hasAuth) return activeResult;
-
-        const accounts = this.accountManager?.getAccounts() ?? [];
-        return this.restoreFallbackAccounts(accounts, activePubkey);
-    }
-
     private async initializeLegacyAuth(): Promise<RestoreResult> {
         return runLegacyAuthChecks({
             keyManager: this.keyManager,
@@ -224,32 +218,6 @@ export class AuthService {
             accountManager: this.accountManager,
             console: this.console,
         });
-    }
-
-    private async restoreActiveAccount(activePubkey: string | null | undefined): Promise<RestoreResult> {
-        if (!activePubkey) return { hasAuth: false };
-
-        const accountType = this.accountManager?.getAccountType(activePubkey);
-        if (!accountType) return { hasAuth: false };
-
-        return this.restoreAccount(activePubkey, accountType);
-    }
-
-    private async restoreFallbackAccounts(
-        accounts: Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>,
-        skippedPubkey?: string | null,
-    ): Promise<RestoreResult> {
-        for (const account of accounts) {
-            if (account.pubkeyHex === skippedPubkey) continue;
-
-            const result = await this.restoreStrategies[account.type].restore(account.pubkeyHex);
-            if (result.hasAuth) {
-                this.accountManager?.setActiveAccount(account.pubkeyHex);
-                return result;
-            }
-        }
-
-        return { hasAuth: false };
     }
 
     private getManagedRestoreDependencies(): ManagedAuthRestoreDependencies {

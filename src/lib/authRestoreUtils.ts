@@ -59,6 +59,19 @@ interface LegacyNip46Dependencies extends PublicKeyAuthDependencies {
     console: Console;
 }
 
+interface ManagedAccountRestoreDependencies {
+    accountManager: Pick<
+        AccountMigrationTarget,
+        never
+    > & {
+        getActiveAccountPubkey(): string | null;
+        getAccountType(pubkeyHex: string): AccountAuthType | null;
+        getAccounts(): Array<Pick<StoredAccount, 'pubkeyHex' | 'type'>>;
+        setActiveAccount(pubkeyHex: string): void;
+    };
+    restoreAccount(pubkeyHex: string, type: AccountAuthType): Promise<RestoreResult>;
+}
+
 export interface LegacyAuthCheckDependencies extends LegacyNsecDependencies, LegacyNip07Dependencies, LegacyNip46Dependencies { }
 
 function createProfileRefs(pubkeyHex: string): { npub: string; nprofile: string } {
@@ -222,6 +235,33 @@ export async function runLegacyAuthChecks(
     for (const check of checks) {
         const result = await check(dependencies as never);
         if (result.hasAuth) return result;
+    }
+
+    return { hasAuth: false };
+}
+
+export async function runManagedAuthRestore(
+    dependencies: ManagedAccountRestoreDependencies,
+): Promise<RestoreResult> {
+    const activePubkey = dependencies.accountManager.getActiveAccountPubkey();
+
+    if (activePubkey) {
+        const accountType = dependencies.accountManager.getAccountType(activePubkey);
+        if (accountType) {
+            const activeResult = await dependencies.restoreAccount(activePubkey, accountType);
+            if (activeResult.hasAuth) return activeResult;
+        }
+    }
+
+    const accounts = dependencies.accountManager.getAccounts();
+    for (const account of accounts) {
+        if (account.pubkeyHex === activePubkey) continue;
+
+        const result = await dependencies.restoreAccount(account.pubkeyHex, account.type);
+        if (result.hasAuth) {
+            dependencies.accountManager.setActiveAccount(account.pubkeyHex);
+            return result;
+        }
     }
 
     return { hasAuth: false };
