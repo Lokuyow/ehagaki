@@ -6,19 +6,12 @@ import { nip46Service, Nip46Service } from './nip46Service';
 import type { AccountManager } from './accountManager';
 import {
     applyPublicKeyAuth,
-    restoreManagedNip07Account,
-    restoreManagedNip46Account,
-    restoreManagedNsecAccount,
+    createManagedAuthRestoreDependencies,
+    restoreManagedAccount,
     runManagedAuthRestore,
     runLegacyAuthChecks,
-    type ManagedAuthRestoreDependencies,
     type RestoreResult,
 } from './authRestoreUtils';
-
-type AccountAuthType = StoredAccount['type'];
-type AuthStrategy = {
-    restore: (pubkeyHex: string) => Promise<RestoreResult>;
-};
 
 // --- メインのAuthServiceクラス ---
 export class AuthService {
@@ -33,17 +26,6 @@ export class AuthService {
     private setNsecAuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private setNip07AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private setNip46AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
-    private readonly restoreStrategies: Record<AccountAuthType, AuthStrategy> = {
-        nsec: {
-            restore: (pubkeyHex) => restoreManagedNsecAccount(pubkeyHex, this.getManagedRestoreDependencies()),
-        },
-        nip07: {
-            restore: (pubkeyHex) => restoreManagedNip07Account(pubkeyHex, this.getManagedRestoreDependencies()),
-        },
-        nip46: {
-            restore: (pubkeyHex) => restoreManagedNip46Account(pubkeyHex, this.getManagedRestoreDependencies()),
-        },
-    };
 
     constructor(dependencies: AuthServiceDependencies = {}) {
         const localStorage = dependencies.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
@@ -201,8 +183,22 @@ export class AuthService {
      * 指定アカウントの認証を復元する。
      */
     async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46'): Promise<RestoreResult> {
-        const strategy = this.restoreStrategies[type];
-        return strategy ? strategy.restore(pubkeyHex) : { hasAuth: false };
+        return restoreManagedAccount(
+            pubkeyHex,
+            type,
+            createManagedAuthRestoreDependencies({
+                keyManager: this.keyManager,
+                publicKeyState: this.publicKeyState,
+                setNsecAuthFn: this.setNsecAuthFn,
+                setNip07AuthFn: this.setNip07AuthFn,
+                setNip46AuthFn: this.setNip46AuthFn,
+                localStorage: this.localStorage,
+                nip07Service: this.nip07Service,
+                nip46Svc: this.nip46Svc,
+                accountManager: this.accountManager,
+                console: this.console,
+            }),
+        );
     }
 
     private async initializeLegacyAuth(): Promise<RestoreResult> {
@@ -218,21 +214,6 @@ export class AuthService {
             accountManager: this.accountManager,
             console: this.console,
         });
-    }
-
-    private getManagedRestoreDependencies(): ManagedAuthRestoreDependencies {
-        return {
-            keyManager: this.keyManager,
-            publicKeyState: this.publicKeyState,
-            setNsecAuthFn: this.setNsecAuthFn,
-            setNip07AuthFn: this.setNip07AuthFn,
-            setNip46AuthFn: this.setNip46AuthFn,
-            localStorage: this.localStorage,
-            nip07Service: this.nip07Service,
-            nip46Svc: this.nip46Svc,
-            accountManager: this.accountManager,
-            console: this.console,
-        };
     }
 
     // --- プロフィール画像キャッシュクリア ---

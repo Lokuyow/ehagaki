@@ -1,10 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuthServiceDependencies, Nip46SessionData } from '../../lib/types';
+import type { AuthServiceDependencies } from '../../lib/types';
 import { MockStorage, type MockKeyManager } from '../helpers';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
-import { createMockAccountManager, createMockDependencies } from './authServiceTestUtils';
+import {
+    createMockAccountManager,
+    createMockDependencies,
+    createMockNip07Dependencies,
+    createMockNip46Session,
+} from './authServiceTestUtils';
 
 describe('AuthService.initializeAuth', () => {
     let mockDependencies: AuthServiceDependencies;
@@ -104,13 +109,7 @@ describe('AuthService.initializeAuth', () => {
         const storage = mockDependencies.localStorage as MockStorage;
         storage.setItem('nostr-nip07-pubkey', validPubkey);
 
-        const nip07Deps = { ...mockDependencies };
-        nip07Deps.window = {
-            nostr: {
-                getPublicKey: vi.fn().mockResolvedValue(validPubkey),
-                signEvent: vi.fn(),
-            },
-        } as any;
+        const nip07Deps = createMockNip07Dependencies(validPubkey, mockDependencies);
 
         const service = new AuthService(nip07Deps);
         const result = await service.initializeAuth();
@@ -124,12 +123,7 @@ describe('AuthService.initializeAuth', () => {
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
         mockKeyManager.loadFromStorage.mockReturnValue(null);
 
-        const session: Nip46SessionData = {
-            clientSecretKeyHex: 'abc',
-            remoteSignerPubkey: 'remote',
-            relays: ['wss://relay'],
-            userPubkey: validPubkey,
-        };
+        const session = createMockNip46Session(validPubkey);
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
         vi.mocked(nip46Service.reconnect).mockResolvedValue(validPubkey);
         vi.mocked(nip46Service.saveSession).mockImplementation(() => { });

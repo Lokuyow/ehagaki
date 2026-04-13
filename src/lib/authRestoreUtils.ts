@@ -39,6 +39,7 @@ export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies,
     localStorage: Storage;
     nip07Service: Pick<Nip07AuthService, 'waitForExtension'>;
     nip46Svc: Pick<Nip46Service, 'reconnect'>;
+    accountManager?: AccountMigrationTarget | null;
     console: Console;
     keyManager: NsecRestoreDependencies['keyManager'] & {
         loadFromStorage(pubkeyHex?: string): string | null;
@@ -165,6 +166,33 @@ export async function restoreManagedNip46Account(
         dependencies.console.error('NIP-46アカウント復元エラー:', error);
         return { hasAuth: false };
     }
+}
+
+const managedRestoreStrategies: Record<
+    AccountAuthType,
+    (pubkeyHex: string, dependencies: ManagedAuthRestoreDependencies) => Promise<RestoreResult>
+> = {
+    nsec: restoreManagedNsecAccount,
+    nip07: restoreManagedNip07Account,
+    nip46: restoreManagedNip46Account,
+};
+
+export function createManagedAuthRestoreDependencies(
+    source: ManagedAuthRestoreDependencies,
+): ManagedAuthRestoreDependencies {
+    return {
+        ...source,
+        accountManager: source.accountManager ?? null,
+    };
+}
+
+export async function restoreManagedAccount(
+    pubkeyHex: string,
+    type: AccountAuthType,
+    dependencies: ManagedAuthRestoreDependencies,
+): Promise<RestoreResult> {
+    const strategy = managedRestoreStrategies[type];
+    return strategy ? strategy(pubkeyHex, dependencies) : { hasAuth: false };
 }
 
 export async function checkLegacyNsecAuth(

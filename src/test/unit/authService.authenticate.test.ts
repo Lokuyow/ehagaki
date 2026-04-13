@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { AuthServiceDependencies, Nip46SessionData } from '../../lib/types';
+import type { AuthServiceDependencies } from '../../lib/types';
 import type { MockKeyManager } from '../helpers';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
-import { createMockAccountManager, createMockDependencies } from './authServiceTestUtils';
+import { createMockAccountManager, createMockDependencies, createMockNip07Dependencies } from './authServiceTestUtils';
 
 describe('AuthService.authenticateWithNsec', () => {
     let authService: AuthService;
@@ -168,13 +168,7 @@ describe('AuthService.authenticateWithNip07', () => {
     });
 
     it('認証成功でsetNip07Auth呼出', async () => {
-        const nip07Deps = createMockDependencies();
-        nip07Deps.window = {
-            nostr: {
-                getPublicKey: vi.fn().mockResolvedValue('abcdef1234567890'),
-                signEvent: vi.fn(),
-            },
-        } as any;
+        const nip07Deps = createMockNip07Dependencies('abcdef1234567890');
         const service = new AuthService(nip07Deps);
 
         const result = await service.authenticateWithNip07();
@@ -185,13 +179,7 @@ describe('AuthService.authenticateWithNip07', () => {
     });
 
     it('認証成功でaccountManager.addAccount呼出', async () => {
-        const nip07Deps = createMockDependencies();
-        nip07Deps.window = {
-            nostr: {
-                getPublicKey: vi.fn().mockResolvedValue('abcdef1234567890'),
-                signEvent: vi.fn(),
-            },
-        } as any;
+        const nip07Deps = createMockNip07Dependencies('abcdef1234567890');
         const service = new AuthService(nip07Deps);
         const mockAccountManager = createMockAccountManager();
         service.setAccountManager(mockAccountManager as any);
@@ -203,13 +191,7 @@ describe('AuthService.authenticateWithNip07', () => {
     });
 
     it('authenticate失敗でエラーを返す', async () => {
-        const nip07Deps = createMockDependencies();
-        nip07Deps.window = {
-            nostr: {
-                getPublicKey: vi.fn().mockResolvedValue(''),
-                signEvent: vi.fn(),
-            },
-        } as any;
+        const nip07Deps = createMockNip07Dependencies('');
         const service = new AuthService(nip07Deps);
 
         const result = await service.authenticateWithNip07();

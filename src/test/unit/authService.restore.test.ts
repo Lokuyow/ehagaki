@@ -1,10 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { AuthServiceDependencies, Nip46SessionData } from '../../lib/types';
+import type { AuthServiceDependencies } from '../../lib/types';
 import type { MockKeyManager } from '../helpers';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
-import { createMockDependencies } from './authServiceTestUtils';
+import {
+    createMockDependencies,
+    createMockNip07Dependencies,
+    createMockNip46Session,
+} from './authServiceTestUtils';
 
 describe('AuthService.restoreAccount', () => {
     let mockDependencies: AuthServiceDependencies;
@@ -43,13 +47,7 @@ describe('AuthService.restoreAccount', () => {
 
     it('restoreNip07Account: 拡張機能待機→認証成功', async () => {
         const validPubkey = 'ef'.repeat(32);
-        const nip07Deps = createMockDependencies();
-        nip07Deps.window = {
-            nostr: {
-                getPublicKey: vi.fn().mockResolvedValue(validPubkey),
-                signEvent: vi.fn(),
-            },
-        } as any;
+        const nip07Deps = createMockNip07Dependencies(validPubkey);
 
         const service = new AuthService(nip07Deps);
         const result = await service.restoreAccount(validPubkey, 'nip07');
@@ -69,12 +67,7 @@ describe('AuthService.restoreAccount', () => {
     it('restoreNip46Account: セッション復元→再接続成功', async () => {
         const validPubkey = 'ab'.repeat(32);
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
-        const session: Nip46SessionData = {
-            clientSecretKeyHex: 'abc',
-            remoteSignerPubkey: 'remote',
-            relays: ['wss://relay'],
-            userPubkey: validPubkey,
-        };
+        const session = createMockNip46Session(validPubkey);
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
         vi.mocked(nip46Service.reconnect).mockResolvedValue(validPubkey);
 
@@ -100,12 +93,7 @@ describe('AuthService.restoreAccount', () => {
     it('restoreNip46Account: 再接続失敗→失敗', async () => {
         const validPubkey = 'cd'.repeat(32);
         const { nip46Service, Nip46Service: Nip46ServiceClass } = await import('../../lib/nip46Service');
-        const session: Nip46SessionData = {
-            clientSecretKeyHex: 'abc',
-            remoteSignerPubkey: 'remote',
-            relays: ['wss://relay'],
-            userPubkey: validPubkey,
-        };
+        const session = createMockNip46Session(validPubkey);
         vi.mocked(Nip46ServiceClass.loadSession).mockReturnValue(session);
         vi.mocked(nip46Service.reconnect).mockRejectedValue(new Error('reconnect failed'));
 
