@@ -689,21 +689,6 @@
     showDraftLimitConfirmStore.set(false);
   }
 
-  // Draft-limit確認ダイアログの開閉状態（ローカル変数でbind管理）
-  let showDraftLimitDialog = $state(false);
-
-  // showDraftLimitConfirmStoreの変化を監視してローカル変数に反映
-  $effect(() => {
-    showDraftLimitDialog = showDraftLimitConfirmStore.value;
-  });
-
-  // ローカル変数の変化をストアに反映
-  $effect(() => {
-    if (!showDraftLimitDialog && showDraftLimitConfirmStore.value) {
-      showDraftLimitConfirmStore.set(false);
-    }
-  });
-
   function handleShowDraftList() {
     showDraftListDialogStore.set(true);
   }
@@ -930,9 +915,11 @@
           onApplyDraft={handleApplyDraft}
         />
       {/if}
-      {#if showDraftLimitDialog}
+      {#if showDraftLimitConfirmStore.value}
         <ConfirmDialog
-          bind:open={showDraftLimitDialog}
+          open={showDraftLimitConfirmStore.value}
+          onOpenChange={(open) =>
+            !open && showDraftLimitConfirmStore.set(false)}
           title={$_("common.confirm")}
           description={$_("draft.limit_reached")}
           confirmLabel={$_("common.ok")}

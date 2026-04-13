@@ -16,7 +16,7 @@
   import { nip46Service } from "../lib/nip46Service";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
   import PopupModal from "./PopupModal.svelte";
-  import SecretKeyWarningDialog from "./SecretKeyWarningDialog.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import MediaGallery from "./MediaGallery.svelte";
   import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
   import {
@@ -577,10 +577,17 @@
   {/if}
 </div>
 
-<SecretKeyWarningDialog
-  bind:show={showSecretKeyDialog}
+<ConfirmDialog
+  open={showSecretKeyDialog}
+  title={$_("postComponent.warning")}
+  description={$_("postComponent.secret_key_detected")}
+  confirmLabel={$_("postComponent.post")}
+  cancelLabel={$_("postComponent.cancel")}
+  confirmVariant="danger"
   onConfirm={confirmSendWithSecretKey}
   onCancel={cancelSendWithSecretKey}
+  contentClass="secretkey-warning-dialog"
+  addToHistory={false}
 />
 
 <ImageFullscreen

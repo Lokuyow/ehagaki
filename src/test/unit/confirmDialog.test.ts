@@ -93,6 +93,23 @@ describe('ConfirmDialog', () => {
         expect(mockOnConfirm).toHaveBeenCalledTimes(1);
     });
 
+    it('確認時にonOpenChange(false)が呼ばれる', async () => {
+        const mockOnOpenChange = vi.fn();
+
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm,
+                onOpenChange: mockOnOpenChange
+            }
+        });
+
+        await fireEvent.click(screen.getByText('OK'));
+
+        expect(mockOnOpenChange).toHaveBeenCalledWith(false);
+    });
+
     it('キャンセルボタンをクリックするとonCancelが呼ばれる', async () => {
         render(ConfirmDialog, {
             props: {
@@ -148,7 +165,7 @@ describe('ConfirmDialog', () => {
             }
         });
 
-        // DialogWrapperに渡されたcontentClassが適用されることを確認
+        // AlertDialog.Contentに渡されたcontentClassが適用されることを確認
         // ポータルでbodyに直接レンダリングされるためdocument.bodyから検索
         const dialog = document.body.querySelector('.custom-confirm-dialog');
         expect(dialog).toBeTruthy();
