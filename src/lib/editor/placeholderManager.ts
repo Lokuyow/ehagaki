@@ -222,6 +222,51 @@ interface ReplacementResultHandlers {
     onRemaining: (placeholder: PlaceholderEntry) => Promise<void> | void;
 }
 
+interface MediaReplacementSuccessStrategy {
+    onBeforeReplace?: (context: {
+        url: string;
+        matched: PlaceholderEntry;
+        isVideo: boolean;
+    }) => void;
+    onVideoSuccess: (url: string, matched: PlaceholderEntry) => Promise<void> | void;
+    onImageSuccess: (context: {
+        url: string;
+        matched: PlaceholderEntry;
+        imageMetadata: ReturnType<typeof resolveImageReplacementMetadata>;
+    }) => Promise<void> | void;
+}
+
+function createMediaReplacementSuccessHandler(
+    strategy: MediaReplacementSuccessStrategy,
+): ReplacementResultHandlers['onSuccess'] {
+    return async (result, matched) => {
+        const url = result.url;
+
+        if (!url) {
+            return;
+        }
+
+        const isVideo = matched.file.type.startsWith('video/');
+
+        strategy.onBeforeReplace?.({
+            url,
+            matched,
+            isVideo,
+        });
+
+        if (isVideo) {
+            await strategy.onVideoSuccess(url, matched);
+            return;
+        }
+
+        await strategy.onImageSuccess({
+            url,
+            matched,
+            imageMetadata: resolveImageReplacementMetadata(result, matched),
+        });
+    };
+}
+
 async function processReplacementResults(
     results: FileUploadResponse[],
     placeholderMap: PlaceholderEntry[],
@@ -430,72 +475,68 @@ export async function replacePlaceholdersWithResults(
     const { failedResults, errorMessage } = await processReplacementResults(
         results,
         placeholderMap,
-        createReplacementResultHandlers(removeEditorPlaceholder, async (result, matched) => {
-            const url = result.url;
-            if (!url) {
-                return;
-            }
-            const isVideo = matched.file.type.startsWith('video/');
-            const imageMetadata = isVideo
-                ? undefined
-                : resolveImageReplacementMetadata(result, matched);
-
-            if (devMode) {
-                console.log('[uploadHelper] Replacing placeholder', {
-                    placeholderId: matched.placeholderId,
-                    url: result.url,
-                    isVideo,
-                });
-            }
-
-            findAndExecuteOnNode(
-                currentEditor,
-                (node: any) => {
-                    const nodeType = node.type?.name;
-                    const isSameNode = (isVideo && nodeType === 'video') || (!isVideo && nodeType === 'image');
-                    return isSameNode && node.attrs?.src === matched.placeholderId;
-                },
-                (node: any, pos: number) => {
-                    if (isVideo) {
-                        const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
-                            ...node.attrs,
-                            src: url,
-                            isPlaceholder: false,
+        createReplacementResultHandlers(
+            removeEditorPlaceholder,
+            createMediaReplacementSuccessHandler({
+                onBeforeReplace: ({ url, matched, isVideo }) => {
+                    if (devMode) {
+                        console.log('[uploadHelper] Replacing placeholder', {
+                            placeholderId: matched.placeholderId,
+                            url,
+                            isVideo,
                         });
-                        currentEditor!.view.dispatch(tr);
-                        return;
                     }
-
-                    const newAttrs: any = {
-                        ...node.attrs,
-                        src: url,
-                        isPlaceholder: false,
-                        blurhash: imageMetadata?.blurhash,
-                    };
-                    if (imageMetadata?.dim) {
-                        newAttrs.dim = imageMetadata.dim;
-                    }
-                    const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                    currentEditor!.view.dispatch(tr);
                 },
-            );
+                onVideoSuccess: (url, matched) => {
+                    findAndExecuteOnNode(
+                        currentEditor,
+                        (node: any) => node.type?.name === 'video' && node.attrs?.src === matched.placeholderId,
+                        (node: any, pos: number) => {
+                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
+                                ...node.attrs,
+                                src: url,
+                                isPlaceholder: false,
+                            });
+                            currentEditor!.view.dispatch(tr);
+                        },
+                    );
+                },
+                onImageSuccess: async ({ url, matched, imageMetadata }) => {
+                    findAndExecuteOnNode(
+                        currentEditor,
+                        (node: any) => node.type?.name === 'image' && node.attrs?.src === matched.placeholderId,
+                        (node: any, pos: number) => {
+                            const newAttrs: any = {
+                                ...node.attrs,
+                                src: url,
+                                isPlaceholder: false,
+                                blurhash: imageMetadata.blurhash,
+                            };
+                            if (imageMetadata.dim) {
+                                newAttrs.dim = imageMetadata.dim;
+                            }
+                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                            currentEditor!.view.dispatch(tr);
+                        },
+                    );
 
-            if (!isVideo && imageMetadata) {
-                if (imageMetadata.serverBlurhash) {
-                    imageServerBlurhashMap[url] = imageMetadata.serverBlurhash;
-                }
-                await finalizeImageReplacement(
-                    url,
-                    matched,
-                    imageMetadata,
-                    imageOxMap,
-                    imageXMap,
-                    imageSizeMapStore,
-                    calculateImageHash,
-                    devMode,
-                );
-            }
-        }),
+                    if (imageMetadata.serverBlurhash) {
+                        imageServerBlurhashMap[url] = imageMetadata.serverBlurhash;
+                    }
+
+                    await finalizeImageReplacement(
+                        url,
+                        matched,
+                        imageMetadata,
+                        imageOxMap,
+                        imageXMap,
+                        imageSizeMapStore,
+                        calculateImageHash,
+                        devMode,
+                    );
+                },
+            }),
+        ),
     );
 
     return { failedResults, errorMessage, imageServerBlurhashMap };
@@ -563,57 +604,54 @@ export async function replacePlaceholdersInGallery(
     getMimeTypeFromUrl: (url: string) => string,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string }> {
-    return processReplacementResults(results, placeholderMap, createReplacementResultHandlers(
-        async (entry) => {
-            removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
-        },
-        async (result, matched) => {
-            const url = result.url;
-            if (!url) {
-                return;
-            }
-            const isVideo = matched.file.type.startsWith('video/');
+    return processReplacementResults(
+        results,
+        placeholderMap,
+        createReplacementResultHandlers(
+            async (entry) => {
+                removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
+            },
+            createMediaReplacementSuccessHandler({
+                onVideoSuccess: (url, matched) => {
+                    mediaGalleryStore.updateItem(matched.placeholderId, {
+                        src: url,
+                        isPlaceholder: false,
+                        mimeType: getMimeTypeFromUrl(url),
+                    });
+                },
+                onImageSuccess: async ({ url, matched, imageMetadata }) => {
+                    const mimeType = getMimeTypeFromUrl(url);
 
-            if (isVideo) {
-                mediaGalleryStore.updateItem(matched.placeholderId, {
-                    src: url,
-                    isPlaceholder: false,
-                    mimeType: getMimeTypeFromUrl(url),
-                });
-                return;
-            }
+                    mediaGalleryStore.updateItem(matched.placeholderId, {
+                        src: url,
+                        isPlaceholder: false,
+                        blurhash: imageMetadata.blurhash,
+                        mimeType,
+                        ox: imageMetadata.ox,
+                        dim: imageMetadata.dim,
+                    });
 
-            const imageMetadata = resolveImageReplacementMetadata(result, matched);
-            const mimeType = getMimeTypeFromUrl(url);
+                    const x = await finalizeImageReplacement(
+                        url,
+                        matched,
+                        imageMetadata,
+                        imageOxMap,
+                        imageXMap,
+                        imageSizeMapStore,
+                        calculateImageHash,
+                        devMode,
+                    );
+                    if (x) {
+                        mediaGalleryStore.updateItem(matched.placeholderId, { x });
+                    }
 
-            mediaGalleryStore.updateItem(matched.placeholderId, {
-                src: url,
-                isPlaceholder: false,
-                blurhash: imageMetadata.blurhash,
-                mimeType,
-                ox: imageMetadata.ox,
-                dim: imageMetadata.dim,
-            });
-
-            const x = await finalizeImageReplacement(
-                url,
-                matched,
-                imageMetadata,
-                imageOxMap,
-                imageXMap,
-                imageSizeMapStore,
-                calculateImageHash,
-                devMode,
-            );
-            if (x) {
-                mediaGalleryStore.updateItem(matched.placeholderId, { x });
-            }
-
-            if (devMode) {
-                console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', url);
-            }
-        },
-    ));
+                    if (devMode) {
+                        console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', url);
+                    }
+                },
+            }),
+        ),
+    );
 }
 
 /**

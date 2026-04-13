@@ -94,6 +94,10 @@
     applyDraftToComposer,
     createDraftSavePayload,
   } from "./lib/draftContentUtils";
+  import {
+    createDialogVisibilityHandlers,
+    createDraftLimitConfirmHandlers,
+  } from "./lib/appDialogUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -122,6 +126,24 @@
   const accountManager = new AccountManager({ localStorage });
   authService.setAccountManager(accountManager);
 
+  const loginDialog = createDialogVisibilityHandlers(showLoginDialogStore);
+  const logoutDialog = createDialogVisibilityHandlers(showLogoutDialogStore);
+  const settingsDialog = createDialogVisibilityHandlers(
+    showSettingsDialogStore,
+  );
+  const welcomeDialog = createDialogVisibilityHandlers(showWelcomeDialogStore);
+  const draftListDialog = createDialogVisibilityHandlers(
+    showDraftListDialogStore,
+  );
+  const addAccountDialog = createDialogVisibilityHandlers(
+    showAddAccountDialogStore,
+  );
+  const draftLimitConfirm = createDraftLimitConfirmHandlers({
+    pendingDraftContentStore,
+    showDraftLimitConfirmStore,
+    saveDraftWithReplaceOldest,
+  });
+
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     const session = await initializeNostrSession({
       pubkeyHex,
@@ -143,8 +165,8 @@
     const session = await completePostAuthBootstrap({
       pubkeyHex,
       closeAuthDialogs: () => {
-        showLoginDialogStore.set(false);
-        showAddAccountDialogStore.set(false);
+        loginDialog.close();
+        addAccountDialog.close();
       },
       relayListUpdatedStore: {
         value: relayListUpdatedStore.value,
@@ -281,9 +303,9 @@
    */
   function handleAddAccount() {
     showTransitionOverlay = true;
-    showLogoutDialogStore.set(false);
+    logoutDialog.close();
     setTimeout(() => {
-      showAddAccountDialogStore.set(true);
+      addAccountDialog.open();
       showTransitionOverlay = false;
     }, 50);
   }
@@ -373,7 +395,7 @@
         markSharedMediaProcessed,
         setSharedMediaError,
         consumeFirstVisitFlag,
-        showWelcomeDialog: () => showWelcomeDialogStore.set(true),
+        showWelcomeDialog: welcomeDialog.open,
         updateUrlQueryContentStore,
         setReplyQuote,
         updateReferencedEvent,
@@ -457,38 +479,14 @@
       payload.replyQuoteData,
     );
     if (result.needsConfirmation) {
-      // 上限に達している場合は確認ダイアログを表示
-      pendingDraftContentStore.set({
+      draftLimitConfirm.stage({
         content: payload.content,
         galleryItems: payload.galleryItems,
         replyQuoteData: payload.replyQuoteData,
       });
-      showDraftLimitConfirmStore.set(true);
       return false;
     }
     return result.success;
-  }
-
-  function handleConfirmDraftReplace() {
-    const pending = pendingDraftContentStore.value;
-    if (pending) {
-      saveDraftWithReplaceOldest(
-        pending.content,
-        pending.galleryItems,
-        pending.replyQuoteData,
-      );
-    }
-    pendingDraftContentStore.set(null);
-    showDraftLimitConfirmStore.set(false);
-  }
-
-  function handleCancelDraftReplace() {
-    pendingDraftContentStore.set(null);
-    showDraftLimitConfirmStore.set(false);
-  }
-
-  function handleShowDraftList() {
-    showDraftListDialogStore.set(true);
   }
 
   function handleApplyDraft(draft: Draft) {
@@ -543,7 +541,7 @@
         <HeaderComponent
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
-          onShowDraftList={handleShowDraftList}
+          onShowDraftList={draftListDialog.open}
           balloonMessage={balloon.finalMessage}
         />
         {#if replyQuoteState.value?.mode === "reply"}
@@ -568,15 +566,15 @@
         {isAuthenticated}
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh}
-        onShowLoginDialog={() => showLoginDialogStore.set(true)}
-        onOpenSettingsDialog={() => showSettingsDialogStore.set(true)}
-        onOpenLogoutDialog={() => showLogoutDialogStore.set(true)}
+        onShowLoginDialog={loginDialog.open}
+        onOpenSettingsDialog={settingsDialog.open}
+        onOpenLogoutDialog={logoutDialog.open}
       />
       {#if showLoginDialogStore.value}
         <LoginDialog
           show={showLoginDialogStore.value}
           bind:secretKey
-          onClose={() => showLoginDialogStore.set(false)}
+          onClose={loginDialog.close}
           onSave={saveSecretKey}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
@@ -592,7 +590,7 @@
         <LoginDialog
           show={showAddAccountDialogStore.value}
           bind:secretKey
-          onClose={() => showAddAccountDialogStore.set(false)}
+          onClose={addAccountDialog.close}
           onSave={saveSecretKey}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
@@ -605,7 +603,7 @@
       {#if showLogoutDialogStore.value}
         <ProfileComponent
           show={showLogoutDialogStore.value}
-          onClose={() => showLogoutDialogStore.set(false)}
+          onClose={logoutDialog.close}
           onLogout={logoutAccount}
           onSwitchAccount={switchAccount}
           onAddAccount={handleAddAccount}
@@ -618,35 +616,34 @@
       {#if showWelcomeDialogStore.value}
         <WelcomeDialog
           show={showWelcomeDialogStore.value}
-          onClose={() => showWelcomeDialogStore.set(false)}
+          onClose={welcomeDialog.close}
         />
       {/if}
       {#if showDraftListDialogStore.value}
         <DraftListDialog
           show={showDraftListDialogStore.value}
-          onClose={() => showDraftListDialogStore.set(false)}
+          onClose={draftListDialog.close}
           onApplyDraft={handleApplyDraft}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}
         <ConfirmDialog
           open={showDraftLimitConfirmStore.value}
-          onOpenChange={(open) =>
-            !open && showDraftLimitConfirmStore.set(false)}
+          onOpenChange={draftLimitConfirm.handleOpenChange}
           title={$_("common.confirm")}
           description={$_("draft.limit_reached")}
           confirmLabel={$_("common.ok")}
           cancelLabel={$_("common.cancel")}
           confirmVariant="danger"
-          onConfirm={handleConfirmDraftReplace}
-          onCancel={handleCancelDraftReplace}
+          onConfirm={draftLimitConfirm.confirm}
+          onCancel={draftLimitConfirm.cancel}
         />
       {/if}
       <SettingsDialog
         show={showSettingsDialogStore.value}
-        onClose={() => showSettingsDialogStore.set(false)}
+        onClose={settingsDialog.close}
         onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
-        onOpenWelcomeDialog={() => showWelcomeDialogStore.set(true)}
+        onOpenWelcomeDialog={welcomeDialog.open}
       />
     </main>
   </Tooltip.Provider>
