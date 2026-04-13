@@ -35,6 +35,16 @@ interface LegacyNsecDependencies extends NsecRestoreDependencies {
     };
 }
 
+export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies, PublicKeyAuthDependencies {
+    localStorage: Storage;
+    nip07Service: Pick<Nip07AuthService, 'waitForExtension'>;
+    nip46Svc: Pick<Nip46Service, 'reconnect'>;
+    console: Console;
+    keyManager: NsecRestoreDependencies['keyManager'] & {
+        loadFromStorage(pubkeyHex?: string): string | null;
+    };
+}
+
 interface LegacyNip07Dependencies extends PublicKeyAuthDependencies {
     localStorage: Storage;
     nip07Service: Pick<Nip07AuthService, 'waitForExtension'>;
@@ -99,6 +109,47 @@ export function restoreNsecFromStoredKey(
         if (options.clearLegacyKeyOnFailure) {
             dependencies.keyManager.saveToStorage('');
         }
+        return { hasAuth: false };
+    }
+}
+
+export async function restoreManagedNsecAccount(
+    pubkeyHex: string,
+    dependencies: ManagedAuthRestoreDependencies,
+): Promise<RestoreResult> {
+    const storedKey = dependencies.keyManager.loadFromStorage(pubkeyHex);
+    if (!storedKey) return { hasAuth: false };
+
+    return restoreNsecFromStoredKey(storedKey, dependencies);
+}
+
+export async function restoreManagedNip07Account(
+    pubkeyHex: string,
+    dependencies: ManagedAuthRestoreDependencies,
+): Promise<RestoreResult> {
+    const available = await dependencies.nip07Service.waitForExtension(1000);
+    if (!available) return { hasAuth: false };
+
+    try {
+        return applyPublicKeyAuth('nip07', pubkeyHex, dependencies);
+    } catch (error) {
+        dependencies.console.error('NIP-07アカウント復元エラー:', error);
+        return { hasAuth: false };
+    }
+}
+
+export async function restoreManagedNip46Account(
+    pubkeyHex: string,
+    dependencies: ManagedAuthRestoreDependencies,
+): Promise<RestoreResult> {
+    const session = Nip46Storage.loadSession(dependencies.localStorage, pubkeyHex);
+    if (!session) return { hasAuth: false };
+
+    try {
+        await dependencies.nip46Svc.reconnect(session);
+        return applyPublicKeyAuth('nip46', pubkeyHex, dependencies);
+    } catch (error) {
+        dependencies.console.error('NIP-46アカウント復元エラー:', error);
         return { hasAuth: false };
     }
 }

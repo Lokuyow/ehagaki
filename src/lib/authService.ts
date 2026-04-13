@@ -6,8 +6,12 @@ import { nip46Service, Nip46Service } from './nip46Service';
 import type { AccountManager } from './accountManager';
 import {
     applyPublicKeyAuth,
+    restoreManagedNip07Account,
+    restoreManagedNip46Account,
+    restoreManagedNsecAccount,
     restoreNsecFromStoredKey,
     runLegacyAuthChecks,
+    type ManagedAuthRestoreDependencies,
     type RestoreResult,
 } from './authRestoreUtils';
 
@@ -31,13 +35,13 @@ export class AuthService {
     private setNip46AuthFn: (pubkey: string, npub: string, nprofile: string) => void;
     private readonly restoreStrategies: Record<AccountAuthType, AuthStrategy> = {
         nsec: {
-            restore: (pubkeyHex) => this.restoreNsecAccount(pubkeyHex),
+            restore: (pubkeyHex) => restoreManagedNsecAccount(pubkeyHex, this.getManagedRestoreDependencies()),
         },
         nip07: {
-            restore: (pubkeyHex) => this.restoreNip07Account(pubkeyHex),
+            restore: (pubkeyHex) => restoreManagedNip07Account(pubkeyHex, this.getManagedRestoreDependencies()),
         },
         nip46: {
-            restore: (pubkeyHex) => this.restoreNip46Account(pubkeyHex),
+            restore: (pubkeyHex) => restoreManagedNip46Account(pubkeyHex, this.getManagedRestoreDependencies()),
         },
     };
 
@@ -248,47 +252,19 @@ export class AuthService {
         return { hasAuth: false };
     }
 
-    private async restoreNsecAccount(pubkeyHex: string): Promise<RestoreResult> {
-        const storedKey = this.keyManager.loadFromStorage(pubkeyHex);
-        if (!storedKey) return { hasAuth: false };
-
-        return restoreNsecFromStoredKey(storedKey, {
+    private getManagedRestoreDependencies(): ManagedAuthRestoreDependencies {
+        return {
             keyManager: this.keyManager,
             publicKeyState: this.publicKeyState,
             setNsecAuthFn: this.setNsecAuthFn,
+            setNip07AuthFn: this.setNip07AuthFn,
+            setNip46AuthFn: this.setNip46AuthFn,
+            localStorage: this.localStorage,
+            nip07Service: this.nip07Service,
+            nip46Svc: this.nip46Svc,
             accountManager: this.accountManager,
-        });
-    }
-
-    private async restoreNip07Account(pubkeyHex: string): Promise<RestoreResult> {
-        const available = await this.nip07Service.waitForExtension(1000);
-        if (!available) return { hasAuth: false };
-
-        try {
-            return applyPublicKeyAuth('nip07', pubkeyHex, {
-                setNip07AuthFn: this.setNip07AuthFn,
-                setNip46AuthFn: this.setNip46AuthFn,
-            });
-        } catch (error) {
-            this.console.error('NIP-07アカウント復元エラー:', error);
-            return { hasAuth: false };
-        }
-    }
-
-    private async restoreNip46Account(pubkeyHex: string): Promise<RestoreResult> {
-        const session = Nip46Service.loadSession(this.localStorage, pubkeyHex);
-        if (!session) return { hasAuth: false };
-
-        try {
-            await this.nip46Svc.reconnect(session);
-            return applyPublicKeyAuth('nip46', pubkeyHex, {
-                setNip07AuthFn: this.setNip07AuthFn,
-                setNip46AuthFn: this.setNip46AuthFn,
-            });
-        } catch (error) {
-            this.console.error('NIP-46アカウント復元エラー:', error);
-            return { hasAuth: false };
-        }
+            console: this.console,
+        };
     }
 
     // --- プロフィール画像キャッシュクリア ---
