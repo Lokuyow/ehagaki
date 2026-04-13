@@ -130,10 +130,12 @@ const Utilities = {
     },
 
     // リダイレクトレスポンス
-    createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location) {
+    createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location, { shared = true } = {}) {
         const url = new URL(path, location.origin);
-        if (error) {
+        if (shared) {
             url.searchParams.set('shared', 'true');
+        }
+        if (error) {
             url.searchParams.set('error', error);
         }
         return Response.redirect(url.href, 303);
@@ -514,54 +516,82 @@ class ClientManager {
         }
     }
 
+    // 新しいクライアントウィンドウを開いて共有データを渡す
+    async openNewClient() {
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
+
+        // IndexedDBに共有データを永続化（新しいウィンドウからの取得用）
+        if (sharedCache) {
+            try {
+                const indexedDBManager = new IndexedDBManager();
+                await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                this.console.log('SW: Shared media persisted to IndexedDB for new client');
+            } catch (dbError) {
+                this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
+            }
+        }
+
+        // ?shared=true 付きでアプリを新規ウィンドウで開く
+        const url = new URL(BASE_PATH, this.location.origin);
+        url.searchParams.set('shared', 'true');
+        try {
+            await this.clients.openWindow(url.href);
+            this.console.log('SW: New client window opened:', url.href);
+        } catch (openError) {
+            this.console.warn('SW: Failed to open new window:', openError);
+        }
+
+        // createRedirectResponseはfetchイベントのレスポンスとして必要
+        return Utilities.createRedirectResponse();
+    }
+
     // 既存クライアント通知の改善
     async focusAndNotifyClient(client) {
+        const sharedCache = ServiceWorkerState.getSharedMediaCache();
+
+        // 共有データをIndexedDBに永続化（focus/メッセージ送信の成否に関係なく必ず先に実行）
+        if (sharedCache) {
+            try {
+                const indexedDBManager = new IndexedDBManager();
+                await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                this.console.log('SW: Shared media persisted to IndexedDB for fallback');
+            } catch (dbError) {
+                this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
+            }
+        }
+
+        // フォーカス試行（Androidバックグラウンド時は失敗しうるが、エラーにしない）
         try {
             await client.focus();
-            const sharedCache = ServiceWorkerState.getSharedMediaCache();
-
-            this.console.log('SW: Attempting to notify client', {
-                hasClient: !!client,
-                hasPostMessage: typeof client.postMessage === 'function',
-                hasSharedCache: !!sharedCache,
-                clientId: client.id || 'unknown'
-            });
-
-            // 共有データをIndexedDBに永続化（メッセージ送信に関係なく必ず実行）
-            if (sharedCache) {
-                try {
-                    const indexedDBManager = new IndexedDBManager();
-                    await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
-                    this.console.log('SW: Shared media persisted to IndexedDB for fallback');
-                } catch (dbError) {
-                    this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
-                }
-            }
-
-            // メッセージ送信（失敗してもエラーにしない）
-            if (client && typeof client.postMessage === 'function') {
-                try {
-                    client.postMessage({
-                        type: 'SHARED_MEDIA',
-                        data: sharedCache,
-                        timestamp: Date.now(),
-                        requestId: `sw-${Date.now()}`
-                    });
-                    this.console.log('SW: Message sent to client successfully');
-                } catch (messageError) {
-                    this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
-                }
-            }
-
-            // メッセージ送信の成否に関係なく、リダイレクトは成功とする
-            // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
-            return Utilities.createRedirectResponse();
-
-        } catch (error) {
-            this.console.error('SW: Client focus/notification error:', error);
-            // 重大なエラーの場合のみエラーリダイレクト
-            return Utilities.createRedirectResponse(undefined, 'client-error', this.location);
+        } catch (focusError) {
+            this.console.warn('SW: Client focus failed (may be backgrounded):', focusError);
         }
+
+        this.console.log('SW: Attempting to notify client', {
+            hasClient: !!client,
+            hasPostMessage: typeof client.postMessage === 'function',
+            hasSharedCache: !!sharedCache,
+            clientId: client.id || 'unknown'
+        });
+
+        // メッセージ送信（失敗してもエラーにしない）
+        if (client && typeof client.postMessage === 'function') {
+            try {
+                client.postMessage({
+                    type: 'SHARED_MEDIA',
+                    data: sharedCache,
+                    timestamp: Date.now(),
+                    requestId: `sw-${Date.now()}`
+                });
+                this.console.log('SW: Message sent to client successfully');
+            } catch (messageError) {
+                this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
+            }
+        }
+
+        // メッセージ送信の成否に関係なく、リダイレクトは成功とする
+        // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
+        return Utilities.createRedirectResponse();
     }
 
     // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
