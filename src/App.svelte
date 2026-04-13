@@ -807,6 +807,11 @@
     if (profile) {
       profileDataStore.set(profile);
       profileLoadedStore.set(true);
+      accountProfileCacheStore.setProfile(authState.value.pubkey, {
+        name: profile.name,
+        displayName: profile.displayName,
+        picture: profile.picture,
+      });
     }
   }
 
