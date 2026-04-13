@@ -30,7 +30,7 @@
         contentClass?: string;
         /** 本文のカスタムレンダリング */
         children?: Snippet;
-        /** ブラウザ履歴に追加するか（デフォルト: false） */
+        /** ブラウザ履歴に追加するか（デフォルト: true） */
         addToHistory?: boolean;
     }
 
@@ -47,7 +47,7 @@
         onCancel,
         contentClass = "confirm-dialog",
         children,
-        addToHistory = false,
+        addToHistory = true,
     }: Props = $props();
 
     // デフォルトのラベル（ローカライズ）

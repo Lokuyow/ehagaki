@@ -49,6 +49,7 @@ export function useDialogHistory(
     // popstateイベント（戻る/進むボタン）のハンドラ
     const handlePopState = (event: PopStateEvent) => {
         const currentOpen = getOpen();
+
         // ダイアログが開いていて、履歴IDが一致しない場合は閉じる
         if (currentOpen && event.state?.modalId !== historyStateId) {
             onClose();

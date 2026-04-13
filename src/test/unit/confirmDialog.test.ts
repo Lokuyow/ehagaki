@@ -23,6 +23,7 @@ vi.mock('../../lib/hooks/useDialogHistory.svelte', () => ({
 }));
 
 import ConfirmDialog from '../../components/ConfirmDialog.svelte';
+import { useDialogHistory } from '../../lib/hooks/useDialogHistory.svelte';
 
 describe('ConfirmDialog', () => {
     const mockOnConfirm = vi.fn();
@@ -30,6 +31,37 @@ describe('ConfirmDialog', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+    });
+
+    it('デフォルトで履歴連携が有効になる', () => {
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm
+            }
+        });
+
+        const enabled = vi.mocked(useDialogHistory).mock.calls[0]?.[2];
+
+        expect(typeof enabled).toBe('function');
+        expect((enabled as () => boolean)()).toBe(true);
+    });
+
+    it('addToHistory=falseで履歴連携を明示的に無効化できる', () => {
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm,
+                addToHistory: false
+            }
+        });
+
+        const enabled = vi.mocked(useDialogHistory).mock.calls[0]?.[2];
+
+        expect(typeof enabled).toBe('function');
+        expect((enabled as () => boolean)()).toBe(false);
     });
 
     it('デフォルトのラベルで正しくレンダリングされる', () => {

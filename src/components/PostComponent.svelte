@@ -587,7 +587,6 @@
   onConfirm={confirmSendWithSecretKey}
   onCancel={cancelSendWithSecretKey}
   contentClass="secretkey-warning-dialog"
-  addToHistory={false}
 />
 
 <ImageFullscreen
