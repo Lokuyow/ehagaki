@@ -12,6 +12,7 @@
         fallbackClassName?: string;
         fallbackAriaLabel?: string;
         fallbackDelayMs?: number;
+        preferInstantDisplay?: boolean;
         loadingStatus?: AvatarImageStatus;
         onLoadingStatusChange?: (status: AvatarImageStatus) => void;
         crossorigin?: HTMLImgAttributes["crossorigin"];
@@ -27,18 +28,69 @@
         fallbackClassName = "",
         fallbackAriaLabel = "User",
         fallbackDelayMs = 120,
+        preferInstantDisplay = true,
         loadingStatus = undefined,
         onLoadingStatusChange = undefined,
         crossorigin = undefined,
         referrerpolicy = undefined,
         delayMs = 0,
     }: Props = $props();
+
+    const getInitialAvatarStatus = (): AvatarImageStatus => {
+        if (loadingStatus !== undefined) return loadingStatus;
+        if (!src) return "error";
+        return preferInstantDisplay ? "loaded" : "loading";
+    };
+
+    let avatarLoadingStatus = $state<AvatarImageStatus>(
+        getInitialAvatarStatus(),
+    );
+
+    function setAvatarLoadingStatus(status: AvatarImageStatus) {
+        if (avatarLoadingStatus === status) return;
+        avatarLoadingStatus = status;
+        onLoadingStatusChange?.(status);
+    }
+
+    function handleRootLoadingStatusChange(status: AvatarImageStatus) {
+        if (loadingStatus !== undefined) {
+            onLoadingStatusChange?.(status);
+            return;
+        }
+        setAvatarLoadingStatus(status);
+    }
+
+    function handleImageLoad() {
+        if (loadingStatus === undefined) {
+            setAvatarLoadingStatus("loaded");
+        }
+    }
+
+    function handleImageError() {
+        if (loadingStatus === undefined) {
+            setAvatarLoadingStatus("error");
+        }
+    }
+
+    $effect(() => {
+        if (!src) {
+            setAvatarLoadingStatus("error");
+            return;
+        }
+
+        if (loadingStatus !== undefined) {
+            setAvatarLoadingStatus(loadingStatus);
+            return;
+        }
+
+        setAvatarLoadingStatus(preferInstantDisplay ? "loaded" : "loading");
+    });
 </script>
 
 <Avatar.Root
     class={rootClassName}
-    {loadingStatus}
-    {onLoadingStatusChange}
+    loadingStatus={avatarLoadingStatus}
+    onLoadingStatusChange={handleRootLoadingStatusChange}
     {delayMs}
 >
     {#if src}
@@ -49,6 +101,8 @@
             loading="lazy"
             {crossorigin}
             {referrerpolicy}
+            onload={handleImageLoad}
+            onerror={handleImageError}
         />
     {/if}
     <Avatar.Fallback
