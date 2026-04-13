@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+vi.unmock('../../stores/authStore.svelte');
+
 // authStore.svelte.ts はストアモジュールなので、テストごとに状態をリセットするため
 // vi.mock ではなく直接インポートする（setup.ts の $state モックが適用される）
 import {

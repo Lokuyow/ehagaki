@@ -7,7 +7,7 @@ import {
     videoCompressionProgressStore,
     imageCompressionProgressStore,
     setUploadProgress,
-} from '../stores/appStore.svelte';
+} from '../stores/uploadStore.svelte';
 import { removeAllPlaceholders } from './utils/editorUtils';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";

@@ -8,7 +8,7 @@
         profileDataStore,
         isLoadingProfileStore,
         profileLoadedStore,
-    } from "../stores/appStore.svelte";
+    } from "../stores/profileStore.svelte";
 
     interface Props {
         isAuthenticated: boolean;

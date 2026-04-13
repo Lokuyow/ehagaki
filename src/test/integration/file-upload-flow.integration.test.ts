@@ -10,14 +10,17 @@ vi.mock("virtual:pwa-register/svelte", () => ({
     })
 }));
 
-vi.mock("../../stores/appStore.svelte.ts", () => ({
+vi.mock("../../stores/authStore.svelte", () => ({
     authState: {
         value: {
             isAuthenticated: true,
             type: "nsec",
             pubkey: "testpubkey123"
         }
-    },
+    }
+}));
+
+vi.mock("../../stores/uploadStore.svelte", () => ({
     uploadAbortFlagStore: {
         value: false,
         set: vi.fn(),
@@ -434,7 +437,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
 
     describe('エラーハンドリング統合', () => {
         it('圧縮中にアボートフラグが立った場合、処理が中断されること', async () => {
-            const { uploadAbortFlagStore } = await import('../../stores/appStore.svelte');
+            const { uploadAbortFlagStore } = await import('../../stores/uploadStore.svelte');
             (uploadAbortFlagStore as any).value = true;
 
             const mockLocalStorage = {

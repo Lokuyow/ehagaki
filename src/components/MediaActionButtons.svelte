@@ -1,7 +1,7 @@
 <script lang="ts">
     import Button from "./Button.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
-    import { postComponentUIStore } from "../stores/appStore.svelte";
+    import { postComponentUIStore } from "../stores/postUIStore.svelte";
 
     interface Props {
         src: string;

@@ -2,7 +2,7 @@ import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
-import { saveRelayConfigToStorage } from "../stores/appStore.svelte";
+import { saveRelayConfigToStorage } from "../stores/relayStore.svelte";
 import { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
 
 // 後方互換性のためre-export

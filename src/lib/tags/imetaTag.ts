@@ -1,6 +1,6 @@
 // imeta.ts
 // NIP-92 imetaタグ生成ユーティリティ
-import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 
 export interface ImetaField extends Partial<Record<string, any>> {
     url: string;

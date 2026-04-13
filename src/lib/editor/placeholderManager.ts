@@ -3,7 +3,7 @@ import { NodeSelection } from '@tiptap/pm/state';
 import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGalleryItem, FileUploadManagerInterface } from '../types';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorUtils';
 import { generateSimpleUUID } from '../utils/appUtils';
-import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 
 // ============================================================

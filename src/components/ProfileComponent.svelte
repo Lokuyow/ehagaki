@@ -5,7 +5,8 @@
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
     import PopupModal from "./PopupModal.svelte";
-    import { profileDataStore, authState } from "../stores/appStore.svelte";
+    import { profileDataStore } from "../stores/profileStore.svelte";
+    import { authState } from "../stores/authStore.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
     import { calculateContextMenuPosition } from "../lib/utils/appUtils";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";

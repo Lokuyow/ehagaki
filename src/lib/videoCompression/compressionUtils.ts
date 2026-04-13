@@ -1,5 +1,5 @@
 import type { VideoCompressionResult } from '../types';
-import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 
 /**
  * 開発環境でのログ出力用ヘルパー

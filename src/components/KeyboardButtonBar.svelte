@@ -13,7 +13,7 @@
         keyboardHeightStore,
         setupViewportListener,
     } from "../stores/uiStore.svelte";
-    import { authState } from "../stores/appStore.svelte";
+    import { authState } from "../stores/authStore.svelte";
     import { editorState, submitPost } from "../stores/editorStore.svelte";
     import {
         triggerVibration,

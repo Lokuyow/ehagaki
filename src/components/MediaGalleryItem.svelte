@@ -2,7 +2,7 @@
     import type { MediaGalleryItem } from "../lib/types";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import MediaActionButtons from "./MediaActionButtons.svelte";
-    import { postComponentUIStore } from "../stores/appStore.svelte";
+    import { postComponentUIStore } from "../stores/postUIStore.svelte";
     import { _ } from "svelte-i18n";
     import { useLongPress } from "../lib/hooks/useLongPress.svelte";
     import { useMediaLoadState } from "../lib/hooks/useMediaLoadState.svelte";

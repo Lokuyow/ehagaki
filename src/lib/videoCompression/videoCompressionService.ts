@@ -1,4 +1,4 @@
-import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../constants';
 import type { VideoCompressionResult, VideoCompressionLevel } from '../types';
 import type { MediaBunnyCompression } from './mediabunnyCompression';

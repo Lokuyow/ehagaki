@@ -1,6 +1,6 @@
 import { nip19 } from 'nostr-tools';
 import { KeyManager, PublicKeyState } from './keyManager.svelte';
-import { setAuthInitialized, setNsecAuth, setNip07Auth, setNip46Auth, clearAuthState, secretKeyStore } from '../stores/appStore.svelte';
+import { setAuthInitialized, setNsecAuth, setNip07Auth, setNip46Auth, clearAuthState, secretKeyStore } from '../stores/authStore.svelte';
 import type { AuthResult, AuthServiceDependencies } from './types';
 import { Nip07AuthService } from './nip07AuthService';
 import { nip46Service, Nip46Service } from './nip46Service';

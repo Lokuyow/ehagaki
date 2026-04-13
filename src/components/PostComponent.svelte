@@ -7,7 +7,7 @@
   import type { RxNostr } from "rx-nostr";
   import type { FullscreenMediaItem } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
-  import { mediaFreePlacementStore } from "../stores/appStore.svelte";
+  import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { nip46Service } from "../lib/nip46Service";
   import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
@@ -25,7 +25,7 @@
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import { containsSecretKey } from "../lib/utils/nostrUtils";
 
-  import { postComponentUIStore } from "../stores/appStore.svelte";
+  import { postComponentUIStore } from "../stores/postUIStore.svelte";
   import {
     replyQuoteState,
     clearReplyQuote,

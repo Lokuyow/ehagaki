@@ -3,7 +3,7 @@ import {
   clearSharedMediaStore,
   getSharedMediaFiles,
   getSharedMediaMetadata
-} from '../stores/appStore.svelte';
+} from '../stores/sharedContentStore.svelte';
 import { FileUploadManager } from './fileUploadManager';
 import type {
   SharedMediaData,

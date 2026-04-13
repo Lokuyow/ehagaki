@@ -1,6 +1,6 @@
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
 import { calculateSHA256Hex } from "./utils/fileUtils";
-import { setImageSizeInfoFromFileSize, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService } from "../stores/appStore.svelte";
+import { setImageSizeInfoFromFileSize, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService, uploadAbortFlagStore } from "../stores/uploadStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
   FileUploadResponse,
@@ -21,7 +21,6 @@ import {
   UPLOAD_POLLING_CONFIG
 } from "./constants";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
-import { uploadAbortFlagStore } from '../stores/appStore.svelte';
 import { MimeTypeSupport } from './mimeTypeSupport';
 import { ImageCompressionService } from './imageCompressionService';
 import { NostrAuthService } from './nostrAuthService';

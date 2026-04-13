@@ -6,17 +6,21 @@
     import DialogWrapper from "./DialogWrapper.svelte";
     import {
         authState,
+    } from "../stores/authStore.svelte";
+    import {
         swVersionStore,
         fetchSwVersion,
         swNeedRefresh,
         handleSwUpdate,
+    } from "../stores/swStore.svelte";
+    import {
         writeRelaysStore,
         showRelaysStore,
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
-        mediaFreePlacementStore,
-        darkModeStore,
-    } from "../stores/appStore.svelte";
+    } from "../stores/relayStore.svelte";
+    import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
+    import { darkModeStore } from "../stores/themeStore.svelte";
     import {
         uploadEndpoints,
         getCompressionLevels,

@@ -1,7 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
-import { authState } from "../stores/appStore.svelte";
+import { authState } from "../stores/authStore.svelte";
 import type { AuthService } from "./types";
 
 /** NIP-46再接続の完了を待つ最大時間(ms) */

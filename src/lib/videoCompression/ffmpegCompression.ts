@@ -1,6 +1,6 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
-import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import type { VideoCompressionResult } from '../types';
 import { BaseCompression } from './baseCompression';
 import { createCompressedFile, devLog, devWarn } from './compressionUtils';

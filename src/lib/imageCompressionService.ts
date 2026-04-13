@@ -1,7 +1,7 @@
 import imageCompression from "browser-image-compression";
 import type { CompressionService, MimeTypeSupportInterface } from './types';
 import { COMPRESSION_OPTIONS_MAP } from './constants';
-import { uploadAbortFlagStore } from '../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../stores/uploadStore.svelte';
 import { renameByMimeType } from './utils/fileUtils';
 import { showCompressedImagePreview } from './debug';
 

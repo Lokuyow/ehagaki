@@ -6,7 +6,7 @@ import {
     setUploadProgress,
     videoCompressionProgressStore,
     imageCompressionProgressStore,
-} from "../../stores/appStore.svelte";
+} from "../../stores/uploadStore.svelte";
 import type {
     UploadHelperDependencies,
     FileUploadManagerInterface,

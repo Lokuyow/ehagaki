@@ -7,7 +7,7 @@ import {
     imageCompressionProgressStore,
     abortAllUploads,
     resetUploadDisplayState,
-} from "../../stores/appStore.svelte";
+} from "../../stores/uploadStore.svelte";
 import { currentEditorStore } from "../../stores/editorStore.svelte";
 import { removeAllPlaceholders } from "../utils/editorUtils";
 import type { SizeDisplayInfo } from "../types";

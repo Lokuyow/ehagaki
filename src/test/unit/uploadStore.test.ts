@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+vi.unmock('../../stores/uploadStore.svelte');
+
 // vi.mockは巧き上げされるため、内部で使う変数はvi.hoistedで宣言する
 const { mockRemovePlaceholders, mockImageSizeMapUpdate } = vi.hoisted(() => ({
     mockRemovePlaceholders: vi.fn(() => [] as string[]),

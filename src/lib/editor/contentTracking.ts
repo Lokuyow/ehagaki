@@ -5,7 +5,7 @@ import { validateAndNormalizeImageUrl, isWordBoundary, cleanUrlEnd, isEditorDocE
 import { updateHashtagData, getHashtagRangesFromDoc } from '../tags/hashtagManager';
 import { CONTENT_TRACKING_CONFIG } from '../constants';
 import type { ContentTrackingOptions } from '../types';
-import { mediaFreePlacementStore } from '../../stores/appStore.svelte';
+import { mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 import { generateMediaItemId } from '../utils/appUtils';
 

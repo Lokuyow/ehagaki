@@ -5,7 +5,83 @@ import mockAppStore from './mocks/appStore';
 import mockKeyManager from './mocks/keyManager';
 
 // グローバルモックを設定
+vi.mock('../stores/appStore.svelte', () => mockAppStore);
 vi.mock('../stores/appStore.svelte.ts', () => mockAppStore);
+vi.mock('../stores/authStore.svelte', () => ({
+    authState: mockAppStore.authState,
+    updateAuthState: mockAppStore.updateAuthState,
+    clearAuthState: mockAppStore.clearAuthState,
+    setNsecAuth: mockAppStore.setNsecAuth,
+    setNip07Auth: mockAppStore.setNip07Auth,
+    setNip46Auth: mockAppStore.setNip46Auth,
+    setAuthInitialized: mockAppStore.setAuthInitialized,
+    secretKeyStore: mockAppStore.secretKeyStore,
+    accountListStore: mockAppStore.accountListStore,
+    accountProfileCacheStore: mockAppStore.accountProfileCacheStore,
+}));
+vi.mock('../stores/uploadStore.svelte', () => ({
+    imageSizeInfoStore: mockAppStore.imageSizeInfoStore,
+    setImageSizeInfoFromFileSize: mockAppStore.setImageSizeInfoFromFileSize,
+    hideImageSizeInfo: vi.fn(),
+    uploadProgressStore: mockAppStore.uploadProgressStore,
+    setUploadProgress: mockAppStore.setUploadProgress,
+    resetUploadProgress: mockAppStore.resetUploadProgress,
+    sharedMediaErrorStore: mockAppStore.sharedMediaErrorStore,
+    setSharedMediaError: mockAppStore.setSharedMediaError,
+    clearSharedMediaError: mockAppStore.clearSharedMediaError,
+    resetUploadDisplayState: mockAppStore.resetUploadDisplayState,
+    uploadAbortFlagStore: mockAppStore.uploadAbortFlagStore,
+    setVideoCompressionService: mockAppStore.setVideoCompressionService,
+    getVideoCompressionService: mockAppStore.getVideoCompressionService,
+    abortVideoCompression: vi.fn(),
+    setImageCompressionService: mockAppStore.setImageCompressionService,
+    getImageCompressionService: mockAppStore.getImageCompressionService,
+    abortImageCompression: vi.fn(),
+    abortAllUploads: mockAppStore.abortAllUploads,
+    isUploadingStore: mockAppStore.isUploadingStore,
+    videoCompressionProgressStore: mockAppStore.videoCompressionProgressStore,
+    imageCompressionProgressStore: mockAppStore.imageCompressionProgressStore,
+    mediaFreePlacementStore: mockAppStore.mediaFreePlacementStore,
+}));
+vi.mock('../stores/sharedContentStore.svelte', () => ({
+    sharedMediaStore: mockAppStore.sharedMediaStore,
+    updateSharedMediaStore: mockAppStore.updateSharedMediaStore,
+    clearSharedMediaStore: mockAppStore.clearSharedMediaStore,
+    getSharedMediaFiles: mockAppStore.getSharedMediaFiles,
+    getSharedMediaMetadata: mockAppStore.getSharedMediaMetadata,
+    isSharedMediaReceived: vi.fn(() => mockAppStore.sharedMediaStore.received),
+    urlQueryContentStore: mockAppStore.urlQueryContentStore,
+    updateUrlQueryContentStore: mockAppStore.updateUrlQueryContentStore,
+    clearUrlQueryContentStore: mockAppStore.clearUrlQueryContentStore,
+}));
+vi.mock('../stores/swStore.svelte', () => ({
+    swNeedRefresh: mockAppStore.swNeedRefresh,
+    swUpdateServiceWorker: mockAppStore.swUpdateServiceWorker,
+    swVersionStore: mockAppStore.swVersionStore,
+    handleSwUpdate: mockAppStore.handleSwUpdate,
+    fetchSwVersion: mockAppStore.fetchSwVersion,
+}));
+vi.mock('../stores/profileStore.svelte', () => ({
+    profileDataStore: mockAppStore.profileDataStore,
+    profileLoadedStore: mockAppStore.profileLoadedStore,
+    isLoadingProfileStore: mockAppStore.isLoadingProfileStore,
+}));
+vi.mock('../stores/relayStore.svelte', () => ({
+    writeRelaysStore: mockAppStore.writeRelaysStore,
+    relayConfigStore: mockAppStore.relayConfigStore,
+    showRelaysStore: mockAppStore.showRelaysStore,
+    isSwUpdatingStore: mockAppStore.isSwUpdatingStore,
+    relayListUpdatedStore: mockAppStore.relayListUpdatedStore,
+    setRelayManager: mockAppStore.setRelayManager,
+    loadRelayConfigFromStorage: mockAppStore.loadRelayConfigFromStorage,
+    saveRelayConfigToStorage: mockAppStore.saveRelayConfigToStorage,
+}));
+vi.mock('../stores/postUIStore.svelte', () => ({
+    postComponentUIStore: mockAppStore.postComponentUIStore,
+}));
+vi.mock('../stores/themeStore.svelte', () => ({
+    darkModeStore: mockAppStore.darkModeStore,
+}));
 vi.mock('../lib/keyManager.svelte.ts', () => mockKeyManager);
 vi.mock('../lib/debug', () => ({
     debugLog: vi.fn()

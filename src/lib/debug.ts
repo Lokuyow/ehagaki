@@ -1,4 +1,4 @@
-import { swNeedRefresh } from "../stores/appStore.svelte";
+import { swNeedRefresh } from "../stores/swStore.svelte";
 import { editorState } from "../stores/editorStore.svelte";
 import { copyToClipboard } from "./utils/clipboardUtils";
 import { writable, type Writable } from "svelte/store";

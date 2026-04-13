@@ -1,4 +1,4 @@
-import { uploadAbortFlagStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import type { ImageDimensions, UploadHelperDependencies } from "../types";
 import { calculateImageDisplaySize } from './mediaNodeUtils';
 

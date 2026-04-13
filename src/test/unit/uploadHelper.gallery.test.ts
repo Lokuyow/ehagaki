@@ -60,7 +60,7 @@ vi.mock('svelte', () => ({ tick: vi.fn() }));
 
 // ---------- 依存関係 ----------
 import { uploadHelper } from '../../lib/uploadHelper';
-import { uploadAbortFlagStore, mediaFreePlacementStore } from '../../stores/appStore.svelte';
+import { uploadAbortFlagStore, mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
 import { removeAllPlaceholders } from '../../lib/utils/editorUtils';
 import type {
     UploadHelperDependencies,

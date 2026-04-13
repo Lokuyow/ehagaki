@@ -26,7 +26,11 @@
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
-    sharedMediaStore,
+    clearAuthState,
+    accountListStore,
+    accountProfileCacheStore,
+  } from "./stores/authStore.svelte";
+  import {
     showLoginDialogStore,
     showLogoutDialogStore,
     showSettingsDialogStore,
@@ -36,30 +40,36 @@
     closeLogoutDialog,
     openSettingsDialog,
     closeSettingsDialog,
-    swNeedRefresh,
-    profileDataStore,
-    profileLoadedStore,
-    isLoadingProfileStore,
-    relayListUpdatedStore,
     showWelcomeDialogStore,
-    urlQueryContentStore,
-    updateUrlQueryContentStore,
-    clearUrlQueryContentStore,
-    setRelayManager,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
-    mediaFreePlacementStore,
-    clearAuthState,
-    accountListStore,
-    accountProfileCacheStore,
     showAddAccountDialogStore,
     openAddAccountDialog,
     closeAddAccountDialog,
+  } from "./stores/dialogStore.svelte";
+  import { swNeedRefresh } from "./stores/swStore.svelte";
+  import {
+    profileDataStore,
+    profileLoadedStore,
+    isLoadingProfileStore,
+  } from "./stores/profileStore.svelte";
+  import {
+    setRelayManager,
+    relayListUpdatedStore,
+  } from "./stores/relayStore.svelte";
+  import {
+    sharedMediaStore,
+    urlQueryContentStore,
+    updateUrlQueryContentStore,
+    clearUrlQueryContentStore,
+  } from "./stores/sharedContentStore.svelte";
+  import {
+    mediaFreePlacementStore,
     setSharedMediaError,
     clearSharedMediaError,
     resetUploadDisplayState,
-  } from "./stores/appStore.svelte";
+  } from "./stores/uploadStore.svelte";
   import type { Draft } from "./lib/types";
   import { getDefaultEndpoint, STORAGE_KEYS } from "./lib/constants";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
