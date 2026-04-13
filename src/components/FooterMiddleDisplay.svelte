@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { Progress } from "bits-ui";
     import { _ } from "svelte-i18n";
     import {
         imageSizeInfoStore,
@@ -227,6 +228,28 @@
         return `${minutes}m ${remainingSeconds}s`;
     }
 
+    function clampProgressValue(value: number): number {
+        return Math.min(100, Math.max(0, Math.round(value)));
+    }
+
+    function getProgressIndicatorStyle(value: number): string {
+        return `transform: translateX(-${100 - clampProgressValue(value)}%);`;
+    }
+
+    function buildUploadProgressText(): string {
+        let text = `${$_("footerInfoDisplay.uploading")}: ${uploadProgress.completed}/${uploadProgress.total}`;
+
+        if (uploadProgress.failed > 0) {
+            text += ` (${$_("footerInfoDisplay.failed")}: ${uploadProgress.failed})`;
+        }
+
+        if (uploadProgress.aborted > 0) {
+            text += ` (${$_("footerInfoDisplay.aborted")}: ${uploadProgress.aborted})`;
+        }
+
+        return text;
+    }
+
     // 統合された中止ハンドラー（動画・画像・アップロード全て）
     function handleAbortAll() {
         const isDev = import.meta.env.DEV;
@@ -358,6 +381,32 @@
             uploadProgress.total > 0 ||
             (imageSizeInfoVisible && imageSizeInfo !== null),
     );
+
+    let imageCompressionProgressValue = $derived(
+        clampProgressValue(imageCompressionProgress),
+    );
+    let imageCompressionText = $derived(
+        `${$_("imageCompression.compressing")}: ${imageCompressionProgressValue}% (${formatElapsedTime(compressionElapsedSeconds)})`,
+    );
+
+    let videoCompressionLevelLabel = $derived(
+        getVideoCompressionLevelLabel(getVideoCompressionLevel()),
+    );
+    let videoCompressionProgressValue = $derived(
+        clampProgressValue(videoCompressionProgress),
+    );
+    let videoCompressionText = $derived(
+        `${videoCompressionLevelLabel}${$_("videoQualityLabelSuffix")}: ${videoCompressionProgressValue}% (${formatElapsedTime(compressionElapsedSeconds)})`,
+    );
+
+    let uploadProgressValue = $derived(
+        uploadProgress.total > 0
+            ? clampProgressValue(
+                  (uploadProgress.completed / uploadProgress.total) * 100,
+              )
+            : 0,
+    );
+    let uploadProgressText = $derived(buildUploadProgressText());
 </script>
 
 {#if shouldShowDevLog() && $devLog.length}
@@ -397,15 +446,22 @@
                 </Button>
                 <div class="upload-progress">
                     <div class="progress-text">
-                        {$_("imageCompression.compressing")}: {imageCompressionProgress}%
-                        ({formatElapsedTime(compressionElapsedSeconds)})
+                        {imageCompressionText}
                     </div>
-                    <div class="progress-bar">
+                    <Progress.Root
+                        value={imageCompressionProgressValue}
+                        max={100}
+                        aria-label={$_("imageCompression.compressing")}
+                        aria-valuetext={imageCompressionText}
+                        class="footer-progress-root"
+                    >
                         <div
-                            class="progress-fill"
-                            style="width: {imageCompressionProgress}%"
+                            class="footer-progress-indicator"
+                            style={getProgressIndicatorStyle(
+                                imageCompressionProgressValue,
+                            )}
                         ></div>
-                    </div>
+                    </Progress.Root>
                 </div>
             </div>
         {:else if videoCompressionProgress > 0 && videoCompressionProgress < 100}
@@ -421,17 +477,22 @@
                 </Button>
                 <div class="upload-progress">
                     <div class="progress-text">
-                        {getVideoCompressionLevelLabel(
-                            getVideoCompressionLevel(),
-                        )}{$_("videoQualityLabelSuffix")}: {videoCompressionProgress}%
-                        ({formatElapsedTime(compressionElapsedSeconds)})
+                        {videoCompressionText}
                     </div>
-                    <div class="progress-bar">
+                    <Progress.Root
+                        value={videoCompressionProgressValue}
+                        max={100}
+                        aria-label={`${videoCompressionLevelLabel}${$_("videoQualityLabelSuffix")}`}
+                        aria-valuetext={videoCompressionText}
+                        class="footer-progress-root"
+                    >
                         <div
-                            class="progress-fill"
-                            style="width: {videoCompressionProgress}%"
+                            class="footer-progress-indicator"
+                            style={getProgressIndicatorStyle(
+                                videoCompressionProgressValue,
+                            )}
                         ></div>
-                    </div>
+                    </Progress.Root>
                 </div>
             </div>
         {:else if uploadProgress.inProgress || uploadProgress.total > 0}
@@ -448,53 +509,41 @@
                         <div class="stop-icon svg-icon"></div>
                     </Button>
                     <div class="upload-progress">
-                        <div class="progress-text">
-                            {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
-                            {#if uploadProgress.failed > 0}
-                                ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
-                            {/if}
-                            {#if uploadProgress.aborted > 0}
-                                ({$_("footerInfoDisplay.aborted")}: {uploadProgress.aborted})
-                            {/if}
-                        </div>
-                        <div class="progress-bar">
+                        <div class="progress-text">{uploadProgressText}</div>
+                        <Progress.Root
+                            value={uploadProgressValue}
+                            max={100}
+                            aria-label={$_("footerInfoDisplay.uploading")}
+                            aria-valuetext={uploadProgressText}
+                            class="footer-progress-root"
+                        >
                             <div
-                                class="progress-fill"
-                                style="width: {uploadProgress.total > 0
-                                    ? Math.round(
-                                          (uploadProgress.completed /
-                                              uploadProgress.total) *
-                                              100,
-                                      )
-                                    : 0}%"
+                                class="footer-progress-indicator"
+                                style={getProgressIndicatorStyle(
+                                    uploadProgressValue,
+                                )}
                             ></div>
-                        </div>
+                        </Progress.Root>
                     </div>
                 </div>
             {:else}
                 <!-- アップロード完了/結果表示: 中止ボタンなし -->
                 <div class="upload-progress">
-                    <div class="progress-text">
-                        {$_("footerInfoDisplay.uploading")}: {uploadProgress.completed}/{uploadProgress.total}
-                        {#if uploadProgress.failed > 0}
-                            ({$_("footerInfoDisplay.failed")}: {uploadProgress.failed})
-                        {/if}
-                        {#if uploadProgress.aborted > 0}
-                            ({$_("footerInfoDisplay.aborted")}: {uploadProgress.aborted})
-                        {/if}
-                    </div>
-                    <div class="progress-bar">
+                    <div class="progress-text">{uploadProgressText}</div>
+                    <Progress.Root
+                        value={uploadProgressValue}
+                        max={100}
+                        aria-label={$_("footerInfoDisplay.uploading")}
+                        aria-valuetext={uploadProgressText}
+                        class="footer-progress-root"
+                    >
                         <div
-                            class="progress-fill"
-                            style="width: {uploadProgress.total > 0
-                                ? Math.round(
-                                      (uploadProgress.completed /
-                                          uploadProgress.total) *
-                                          100,
-                                  )
-                                : 0}%"
+                            class="footer-progress-indicator"
+                            style={getProgressIndicatorStyle(
+                                uploadProgressValue,
+                            )}
                         ></div>
-                    </div>
+                    </Progress.Root>
                 </div>
             {/if}
         {:else if imageSizeInfoVisible && imageSizeInfo}
@@ -598,17 +647,23 @@
         }
     }
 
-    .progress-bar {
+    :global(.footer-progress-root) {
         width: 100%;
         height: 14px;
         background-color: white;
         overflow: hidden;
     }
 
-    .progress-fill {
+    :global(.footer-progress-root:focus-visible) {
+        outline: 2px solid var(--theme);
+        outline-offset: 2px;
+    }
+
+    :global(.footer-progress-indicator) {
+        width: 100%;
         height: 100%;
         background-color: var(--theme);
-        transition: width 0.3s ease;
+        transition: transform 0.3s ease;
     }
 
     /* 統合: dev-console-logをフッターの上に浮かせる＋dev-console-log本体 */
