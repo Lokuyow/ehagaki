@@ -8,6 +8,7 @@ import {
     abortAllUploads,
     resetUploadDisplayState,
 } from "../../stores/uploadStore.svelte";
+import { settingsStore } from "../../stores/settingsStore.svelte";
 import { currentEditorStore } from "../../stores/editorStore.svelte";
 import { removeAllPlaceholders } from "../utils/editorUtils";
 import type { SizeDisplayInfo } from "../types";
@@ -47,6 +48,7 @@ export function useFooterMiddleDisplay(
     let imageCompressionProgress = $derived(
         imageCompressionProgressStore.value,
     );
+    let videoCompressionLevel = $derived(settingsStore.videoCompressionLevel);
     let imageSizeInfo = $derived(imageSizeInfoStore.value.info);
     let imageSizeInfoVisible = $derived(imageSizeInfoStore.value.visible);
 
@@ -93,11 +95,6 @@ export function useFooterMiddleDisplay(
         }
 
         return text;
-    }
-
-    function getVideoCompressionLevel(): string {
-        if (typeof window === "undefined") return "medium";
-        return localStorage.getItem("videoCompressionLevel") || "medium";
     }
 
     function getVideoCompressionLevelLabel(level: string): string {
@@ -199,7 +196,7 @@ export function useFooterMiddleDisplay(
 
         if (isVideoCompressionActive) {
             const videoCompressionLevelLabel = getVideoCompressionLevelLabel(
-                getVideoCompressionLevel(),
+                videoCompressionLevel,
             );
             const ariaLabel = `${videoCompressionLevelLabel}${translate("videoQualityLabelSuffix")}`;
             const value = clampProgressValue(videoCompressionProgress);

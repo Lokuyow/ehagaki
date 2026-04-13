@@ -1,5 +1,4 @@
-// 新規ファイル: clientTag 用ユーティリティ
-import { STORAGE_KEYS } from "../constants";
+import { settingsStore } from "../../stores/settingsStore.svelte";
 
 /**
  * client タグのデフォルト内容（既存実装を移植）
@@ -15,23 +14,12 @@ const DEFAULT_CLIENT_TAG = [
  * デフォルト動作は有効(true)（既存実装に合わせる）
  */
 export function getClientTag(): string[] | null {
-    try {
-        const stored = localStorage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
-        const enabled = stored === null ? true : stored === "true";
-        return enabled ? [...DEFAULT_CLIENT_TAG] : null;
-    } catch {
-        // localStorage にアクセスできない環境ではデフォルトで有効を返す
-        return [...DEFAULT_CLIENT_TAG];
-    }
+    return settingsStore.clientTagEnabled ? [...DEFAULT_CLIENT_TAG] : null;
 }
 
 /**
  * clientTag の有効/無効を保存するユーティリティ
  */
 export function setClientTagEnabled(enabled: boolean): void {
-    try {
-        localStorage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, enabled ? "true" : "false");
-    } catch {
-        // silent
-    }
+    settingsStore.clientTagEnabled = enabled;
 }

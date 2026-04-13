@@ -4,9 +4,7 @@
     import { Dialog, Switch } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
-    import {
-        authState,
-    } from "../stores/authStore.svelte";
+    import { authState } from "../stores/authStore.svelte";
     import {
         swVersionStore,
         fetchSwVersion,
@@ -19,17 +17,14 @@
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
     } from "../stores/relayStore.svelte";
-    import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
     import { darkModeStore } from "../stores/themeStore.svelte";
+    import { settingsStore } from "../stores/settingsStore.svelte";
     import {
         uploadEndpoints,
         getCompressionLevels,
-        getDefaultEndpoint,
-        STORAGE_KEYS,
         SW_UPDATE_TIMEOUT,
     } from "../lib/constants";
     import {
-        initializeSettingsValues,
         handleServiceWorkerRefresh,
         chunkArray,
     } from "../lib/utils/appUtils";
@@ -45,10 +40,6 @@
         show = $bindable(false),
         onClose,
         onRefreshRelaysAndProfile = () => {},
-        selectedCompression = "medium",
-        onSelectedCompressionChange = undefined,
-        selectedEndpoint = "",
-        onSelectedEndpointChange = undefined,
         onOpenWelcomeDialog = undefined,
     }: SettingsDialogProps = $props();
 
@@ -73,20 +64,7 @@
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(true);
-    let mediaFreePlacement = $state(false);
     let darkMode = $state(darkModeStore.value);
-    let _selectedCompression: string = $state("");
-    let _selectedVideoCompression: string = $state("medium");
-    let _selectedEndpoint: string = $state("");
-    let isInitialized = $state(false); // 初期化完了フラグ
-
-    // propsから初期値を同期
-    $effect(() => {
-        if (!isInitialized) {
-            _selectedCompression = selectedCompression;
-            _selectedEndpoint = selectedEndpoint;
-        }
-    });
 
     // Store派生値
     let swVersion = $derived(swVersionStore.value);
@@ -94,90 +72,8 @@
     let showRelays = $derived(showRelaysStore.value);
     let isUpdating = $derived(isSwUpdatingStore.value);
 
-    // 直接同期処理（$effectを使用）
     $effect(() => {
-        const externalValue = selectedCompression;
-        if (externalValue !== undefined && externalValue !== "") {
-            _selectedCompression = externalValue;
-        }
-    });
-
-    $effect(() => {
-        if (
-            onSelectedCompressionChange &&
-            _selectedCompression !== selectedCompression
-        ) {
-            onSelectedCompressionChange(_selectedCompression);
-        }
-    });
-
-    $effect(() => {
-        const externalValue = selectedEndpoint;
-        if (externalValue !== undefined && externalValue !== "") {
-            _selectedEndpoint = externalValue;
-        }
-    });
-
-    $effect(() => {
-        if (
-            onSelectedEndpointChange &&
-            _selectedEndpoint !== selectedEndpoint
-        ) {
-            onSelectedEndpointChange(_selectedEndpoint);
-        }
-    });
-
-    // localStorage保存処理（初期化完了後のみ）
-    $effect(() => {
-        if (isInitialized && _selectedCompression) {
-            localStorage.setItem(
-                STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL,
-                _selectedCompression,
-            );
-        }
-    });
-
-    $effect(() => {
-        if (isInitialized && _selectedVideoCompression) {
-            localStorage.setItem(
-                STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
-                _selectedVideoCompression,
-            );
-        }
-    });
-
-    $effect(() => {
-        if (isInitialized && _selectedEndpoint) {
-            localStorage.setItem(
-                STORAGE_KEYS.UPLOAD_ENDPOINT,
-                _selectedEndpoint,
-            );
-        }
-    });
-
-    $effect(() => {
-        if (isInitialized) {
-            localStorage.setItem(
-                STORAGE_KEYS.CLIENT_TAG_ENABLED,
-                clientTagEnabled ? "true" : "false",
-            );
-        }
-    });
-
-    $effect(() => {
-        if (isInitialized) {
-            localStorage.setItem(
-                STORAGE_KEYS.MEDIA_FREE_PLACEMENT,
-                mediaFreePlacement ? "true" : "false",
-            );
-            mediaFreePlacementStore.set(mediaFreePlacement);
-        }
-    });
-
-    $effect(() => {
-        if (isInitialized) {
-            darkModeStore.set(darkMode);
-        }
+        darkModeStore.set(darkMode);
     });
 
     function handleSwRefresh() {
@@ -190,63 +86,22 @@
         );
     }
 
-    // 設定の初期化処理
-    function initializeSettings() {
-        const settings = initializeSettingsValues({
-            selectedEndpoint,
-            selectedCompression,
-        });
-        _selectedEndpoint = settings.endpoint;
-        clientTagEnabled = settings.clientTagEnabled;
-        _selectedCompression = settings.compression;
-
-        // メディア自由配置モード設定の読み込み
-        const savedMediaFreePlacement = localStorage.getItem(
-            STORAGE_KEYS.MEDIA_FREE_PLACEMENT,
-        );
-        if (savedMediaFreePlacement !== null) {
-            mediaFreePlacement = savedMediaFreePlacement !== "false";
-        } else {
-            // 初回: デフォルトOFF（ギャラリーモード）
-            mediaFreePlacement = false;
-            localStorage.setItem(STORAGE_KEYS.MEDIA_FREE_PLACEMENT, "false");
-        }
-        mediaFreePlacementStore.set(mediaFreePlacement);
-
-        // 動画圧縮設定の初期化（既存の値がある場合はそれを使用、ない場合のみデフォルト値を設定）
-        const savedVideoCompression = localStorage.getItem(
-            STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
-        );
-        if (savedVideoCompression) {
-            // 旧バージョンからの移行: "skip" を "none" に変換
-            if (savedVideoCompression === "skip") {
-                _selectedVideoCompression = "none";
-                localStorage.setItem(
-                    STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
-                    "none",
-                );
-            } else {
-                _selectedVideoCompression = savedVideoCompression;
-            }
-        } else {
-            // 初回のみデフォルト値を設定
-            _selectedVideoCompression = "medium";
-            localStorage.setItem(
-                STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
-                "medium",
-            );
-        }
-
-        // 初期化完了をマーク
-        isInitialized = true;
-    }
-
     onMount(() => {
-        initializeSettings();
+        settingsStore.reload();
+        clientTagEnabled = settingsStore.clientTagEnabled;
+        darkMode = darkModeStore.value;
         fetchSwVersion();
         if (authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
         }
+    });
+
+    $effect(() => {
+        clientTagEnabled = settingsStore.clientTagEnabled;
+    });
+
+    $effect(() => {
+        settingsStore.clientTagEnabled = clientTagEnabled;
     });
 
     // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化
@@ -267,15 +122,8 @@
         })();
     });
 
-    // $locale変更時、保存がなければデフォルトエンドポイントを再設定
-    $effect(() => {
-        if ($locale && !localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)) {
-            _selectedEndpoint = getDefaultEndpoint($locale);
-        }
-    });
-
     function toggleLanguage() {
-        locale.set($locale === "ja" ? "en" : "ja");
+        settingsStore.locale = $locale === "ja" ? "en" : "ja";
     }
 </script>
 
@@ -420,12 +268,13 @@
         <!-- 画像・動画圧縮設定セクション -->
         <SettingsCompressionSection
             {compressionPairs}
-            selectedCompression={_selectedCompression}
-            onCompressionChange={(value) => (_selectedCompression = value)}
+            selectedCompression={settingsStore.imageCompressionLevel}
+            onCompressionChange={(value) =>
+                (settingsStore.imageCompressionLevel = value)}
             {videoCompressionPairs}
-            selectedVideoCompression={_selectedVideoCompression}
+            selectedVideoCompression={settingsStore.videoCompressionLevel}
             onVideoCompressionChange={(value) =>
-                (_selectedVideoCompression = value)}
+                (settingsStore.videoCompressionLevel = value)}
         />
 
         <!-- アップロード先設定セクション -->
@@ -436,7 +285,10 @@
                         "アップロード先"}</span
                 >
                 <div class="setting-control">
-                    <select id="{uid}-endpoint" bind:value={_selectedEndpoint}>
+                    <select
+                        id="{uid}-endpoint"
+                        bind:value={settingsStore.uploadEndpoint}
+                    >
                         {#each uploadEndpoints as ep}
                             <option value={ep.url}>{ep.label}</option>
                         {/each}
@@ -455,7 +307,7 @@
                 <div class="setting-control">
                     <Switch.Root
                         class="bui-switch"
-                        bind:checked={mediaFreePlacement}
+                        bind:checked={settingsStore.mediaFreePlacement}
                     >
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>

@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-    FileUploadManager,
-    MimeTypeSupport
-} from '../../lib/fileUploadManager';
+import { FileUploadManager } from '../../lib/fileUploadManager';
+import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { setImageSizeInfoFromFileSize } from '../../stores/uploadStore.svelte';
 import type {
     FileUploadDependencies,
@@ -34,12 +32,8 @@ vi.mock("../../lib/debug", () => ({
     showCompressedImagePreview: vi.fn()
 }));
 
-vi.mock("../../stores/appStore.svelte", () => ({
+vi.mock("../../stores/uploadStore.svelte", () => ({
     setImageSizeInfoFromFileSize: vi.fn(),
-    setVideoCompressionService: vi.fn(),
-    setImageCompressionService: vi.fn(),
-    getVideoCompressionService: vi.fn(() => null),
-    getImageCompressionService: vi.fn(() => null),
     uploadAbortFlagStore: {
         value: false,
         set: vi.fn(),

@@ -1,17 +1,20 @@
 import { register, init, getLocaleFromNavigator, locale } from "svelte-i18n";
+import {
+  getStoredLocalePreference,
+  normalizeLocale,
+} from "./lib/utils/settingsStorage";
 
 register("ja", () => import("./lib/i18n/ja.json"));
 register("en", () => import("./lib/i18n/en.json"));
 
 // ロケール判定ロジックを関数として抽出
 export function determineInitialLocale(): string {
-  const storedLocale = localStorage.getItem("locale");
-  const navLocale = getLocaleFromNavigator();
-  return storedLocale && (storedLocale === "ja" || storedLocale === "en")
-    ? storedLocale
-    : navLocale && navLocale.startsWith("ja")
-      ? "ja"
-      : "en";
+  const storedLocale = getStoredLocalePreference(localStorage);
+  if (storedLocale) {
+    return storedLocale;
+  }
+
+  return normalizeLocale(getLocaleFromNavigator());
 }
 
 const initialLocale = determineInitialLocale();

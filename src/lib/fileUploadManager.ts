@@ -1,6 +1,6 @@
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
 import { calculateSHA256Hex } from "./utils/fileUtils";
-import { setImageSizeInfoFromFileSize, setVideoCompressionService, setImageCompressionService, getVideoCompressionService, getImageCompressionService, uploadAbortFlagStore } from "../stores/uploadStore.svelte";
+import { setImageSizeInfoFromFileSize, uploadAbortFlagStore } from "../stores/uploadStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
   FileUploadResponse,
@@ -18,16 +18,13 @@ import type {
 import {
   DEFAULT_API_URL,
   MAX_FILE_SIZE,
+  STORAGE_KEYS,
   UPLOAD_POLLING_CONFIG
 } from "./constants";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { MimeTypeSupport } from './mimeTypeSupport';
 import { ImageCompressionService } from './imageCompressionService';
 import { NostrAuthService } from './nostrAuthService';
-export { MimeTypeSupport } from './mimeTypeSupport';
-export { ImageCompressionService } from './imageCompressionService';
-// 後方互換性のためre-export
-export { NostrAuthService } from './nostrAuthService';
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -54,18 +51,6 @@ export class FileUploadManager implements FileUploadManagerInterface {
     this.imageCompressionService = imageCompressionService || new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
     this.videoCompressionService = videoCompressionService || new VideoCompressionService(dependencies.localStorage);
     this.authService = authService || new NostrAuthService();
-
-    // VideoCompressionServiceインスタンスをストアに登録
-    if (this.videoCompressionService instanceof VideoCompressionService && !getVideoCompressionService()) {
-      setVideoCompressionService(this.videoCompressionService);
-      console.log('[FileUploadManager] VideoCompressionService registered to store');
-    }
-
-    // ImageCompressionServiceインスタンスをストアに登録
-    if (this.imageCompressionService instanceof ImageCompressionService && !getImageCompressionService()) {
-      setImageCompressionService(this.imageCompressionService);
-      console.log('[FileUploadManager] ImageCompressionService registered to store');
-    }
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -98,7 +83,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
   }
 
   private getUploadEndpoint(apiUrl: string): string {
-    const stored = this.dependencies.localStorage.getItem("uploadEndpoint");
+    const stored = this.dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
     const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
     return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
   }

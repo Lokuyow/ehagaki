@@ -121,7 +121,8 @@ const createMockDependencies = (): UploadHelperDependencies => {
         FileUploadManager: vi.fn((
             deps?: FileUploadDependencies,
             auth?: AuthService,
-            compression?: CompressionService,
+            imageCompression?: CompressionService,
+            videoCompression?: CompressionService,
             mime?: MimeTypeSupportInterface
         ) => {
             // 依存関係注入パターンに対応
@@ -129,7 +130,8 @@ const createMockDependencies = (): UploadHelperDependencies => {
         }) as new (
             deps?: FileUploadDependencies,
             auth?: AuthService,
-            compression?: CompressionService,
+            imageCompression?: CompressionService,
+            videoCompression?: CompressionService,
             mime?: MimeTypeSupportInterface
         ) => FileUploadManagerInterface,
         getImageDimensions: vi.fn(async () => ({ width: 100, height: 200, displayWidth: 100, displayHeight: 200 })),

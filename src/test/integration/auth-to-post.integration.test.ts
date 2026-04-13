@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PostValidator, PostEventBuilder } from '../../lib/postManager';
-import { MimeTypeSupport } from '../../lib/fileUploadManager';
+import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
@@ -10,7 +10,7 @@ vi.mock("virtual:pwa-register/svelte", () => ({
     })
 }));
 
-vi.mock("../../stores/appStore.svelte.ts", () => ({
+vi.mock("../../stores/authStore.svelte", () => ({
     authState: {
         value: {
             isAuthenticated: true,
@@ -22,6 +22,9 @@ vi.mock("../../stores/appStore.svelte.ts", () => ({
             isInitialized: true
         }
     },
+}));
+
+vi.mock("../../stores/uploadStore.svelte", () => ({
     uploadAbortFlagStore: {
         value: false
     }

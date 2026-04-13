@@ -133,7 +133,8 @@ export interface UploadHelperDependencies {
     FileUploadManager: new (
         deps?: FileUploadDependencies,
         auth?: AuthService,
-        compression?: CompressionService,
+        imageCompression?: CompressionService,
+        videoCompression?: CompressionService,
         mime?: MimeTypeSupportInterface
     ) => FileUploadManagerInterface;
     getImageDimensions: (file: File) => Promise<ImageDimensions | null>;

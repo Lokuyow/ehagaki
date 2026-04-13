@@ -115,6 +115,14 @@ export {
 } from './themeStore.svelte';
 
 export {
+    settingsStore,
+    consumeFirstVisitFlag,
+    isSharedMediaProcessed,
+    markSharedMediaProcessed,
+    clearSharedMediaProcessed,
+} from './settingsStore.svelte';
+
+export {
     replyQuoteState,
     setReplyQuote,
     updateReferencedEvent,

@@ -101,6 +101,8 @@ export const STORAGE_KEYS = {
     CLIENT_TAG_ENABLED: "clientTagEnabled",
     IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
     VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
+    FIRST_VISIT: "firstVisit",
+    SHARED_MEDIA_PROCESSED: "sharedMediaProcessed",
     NOSTR_RELAYS: "nostr-relays-",
     DRAFTS: "nostr-drafts",
     HASHTAG_HISTORY: "hashtagHistory",

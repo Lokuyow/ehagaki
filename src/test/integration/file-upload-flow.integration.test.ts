@@ -1,5 +1,7 @@
 ﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ImageCompressionService, MimeTypeSupport, NostrAuthService } from '../../lib/fileUploadManager';
+import { ImageCompressionService } from '../../lib/imageCompressionService';
+import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
+import { NostrAuthService } from '../../lib/nostrAuthService';
 import type { FileValidationResult } from '../../lib/types';
 
 // PWA関連のモック

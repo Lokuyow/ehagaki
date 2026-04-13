@@ -70,8 +70,15 @@
     clearSharedMediaError,
     resetUploadDisplayState,
   } from "./stores/uploadStore.svelte";
+  import {
+    settingsStore,
+    consumeFirstVisitFlag,
+    isSharedMediaProcessed,
+    markSharedMediaProcessed,
+    clearSharedMediaProcessed,
+  } from "./stores/settingsStore.svelte";
   import type { Draft } from "./lib/types";
-  import { getDefaultEndpoint, STORAGE_KEYS } from "./lib/constants";
+  import { STORAGE_KEYS } from "./lib/constants";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import {
     checkServiceWorkerStatus,
@@ -370,10 +377,6 @@
     }
   }
 
-  $effect(() => {
-    if ($locale) localStorage.setItem("locale", $locale);
-  });
-
   // 認証状態が変わったら自動的にリレー設定を読み込む
   $effect(() => {
     const pubkey = authState.value?.pubkey;
@@ -406,10 +409,6 @@
     }
   }
 
-  // 共有画像取得済みフラグ
-  const sharedMediaAlreadyProcessed =
-    localStorage.getItem("sharedMediaProcessed") === "1";
-
   onMount(() => {
     // NIP-07拡張機能の遅延注入を検出（nos2x等のdocument_endで注入される拡張機能に対応）
     if (!nip07ExtensionAvailable) {
@@ -420,13 +419,11 @@
 
     // Define an inner async function for initialization
     const init = async () => {
-      const storedLocale = localStorage.getItem("locale");
+      settingsStore.reload();
       const urlParams = new URLSearchParams(window.location.search);
       const sharedError = urlParams.get("error");
 
       clearSharedMediaError();
-
-      if (storedLocale && storedLocale !== $locale) locale.set(storedLocale);
       await waitLocale();
       localeInitialized = true;
 
@@ -464,7 +461,7 @@
       // --- ここまで ---
 
       // 共有画像取得: エラーパラメータがあっても実際に画像が取得できるかチェック
-      if (checkIfOpenedFromShare() && !sharedMediaAlreadyProcessed) {
+      if (checkIfOpenedFromShare() && !isSharedMediaProcessed()) {
         try {
           // まず実際に共有メディアが取得できるかチェック
           const shared = await getSharedMediaWithFallback();
@@ -473,7 +470,7 @@
             sharedMediaStore.files = shared.images;
             sharedMediaStore.metadata = shared.metadata;
             sharedMediaStore.received = true;
-            localStorage.setItem("sharedMediaProcessed", "1");
+            markSharedMediaProcessed();
           } else {
             console.warn("No shared media data received");
             const sharedMediaErrorMessage =
@@ -502,10 +499,8 @@
       }
 
       // 初回アクセス判定
-      const isFirstVisit = localStorage.getItem("firstVisit") !== "1";
-      if (isFirstVisit) {
+      if (consumeFirstVisitFlag()) {
         showWelcomeDialogStore.set(true);
-        localStorage.setItem("firstVisit", "1");
       }
 
       // URLクエリパラメータからコンテンツを取得
@@ -595,9 +590,9 @@
       sharedMediaStore.metadata = undefined;
       sharedMediaStore.received = false;
       // 取得済みフラグをセット
-      localStorage.setItem("sharedMediaProcessed", "1");
+      markSharedMediaProcessed();
       // 受信直後に一度クリア（次回共有のため）
-      setTimeout(() => localStorage.removeItem("sharedMediaProcessed"), 500);
+      setTimeout(() => clearSharedMediaProcessed(), 500);
     }
   });
 
@@ -617,7 +612,7 @@
     // 投稿成功時にfooter情報を全て削除
     resetUploadDisplayState();
     // 共有メディアフラグをクリア
-    localStorage.removeItem("sharedMediaProcessed");
+    clearSharedMediaProcessed();
   }
 
   // 追加: エディター内容クリア
@@ -797,25 +792,6 @@
       });
     }
   }
-
-  // --- 追加: 設定ダイアログの画像圧縮設定を管理 ---
-  let selectedCompression = $state(
-    localStorage.getItem("imageCompressionLevel") || "medium",
-  );
-
-  function handleSelectedCompressionChange(value: string) {
-    selectedCompression = value;
-  }
-
-  // --- 追加: 設定ダイアログのアップロード先設定を管理 ---
-
-  let selectedEndpoint = $state(
-    localStorage.getItem("uploadEndpoint") || getDefaultEndpoint($locale),
-  );
-
-  function handleSelectedEndpointChange(value: string) {
-    selectedEndpoint = value;
-  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -928,10 +904,6 @@
         show={showSettingsDialogStore.value}
         onClose={closeSettingsDialog}
         onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
-        {selectedCompression}
-        onSelectedCompressionChange={handleSelectedCompressionChange}
-        {selectedEndpoint}
-        onSelectedEndpointChange={handleSelectedEndpointChange}
         onOpenWelcomeDialog={() => showWelcomeDialogStore.set(true)}
       />
     </main>

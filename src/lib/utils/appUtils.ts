@@ -5,10 +5,11 @@ import type {
   TimeoutAdapter,
 } from "../types";
 import {
-  STORAGE_KEYS,
-  uploadEndpoints,
-  getDefaultEndpoint,
-} from '../constants';
+  getClientTagEnabledPreference,
+  getEffectiveLocale,
+  getImageCompressionLevelPreference,
+  getUploadEndpointPreference,
+} from './settingsStorage';
 
 // =============================================================================
 // External Dependencies (Injectable for Testing)
@@ -64,53 +65,6 @@ export function generateSimpleUUID(): string {
 // =============================================================================
 
 /**
- * 有効なロケールを取得
- */
-function getEffectiveLocale(
-  storage: StorageAdapter,
-  navigator: NavigatorAdapter
-): string {
-  const storedLocale = storage.getItem(STORAGE_KEYS.LOCALE);
-  const browserLocale = navigator.language;
-  return storedLocale || (browserLocale && browserLocale.startsWith("ja") ? "ja" : "en");
-}
-
-/**
- * アップロード先エンドポイントを取得
- */
-function getEndpoint(
-  effectiveLocale: string,
-  storage: StorageAdapter,
-  selectedEndpoint?: string
-): string {
-  const savedEndpoint = storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
-  if (savedEndpoint && uploadEndpoints.some((ep) => ep.url === savedEndpoint)) {
-    return savedEndpoint;
-  }
-  return selectedEndpoint || getDefaultEndpoint(effectiveLocale);
-}
-
-/**
- * クライアントタグ設定を取得
- */
-function getClientTagEnabled(storage: StorageAdapter): boolean {
-  const clientTagSetting = storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
-  const enabled = clientTagSetting === null ? true : clientTagSetting === "true";
-  if (clientTagSetting === null) {
-    storage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, "true");
-  }
-  return enabled;
-}
-
-/**
- * 圧縮設定を取得
- */
-function getCompression(storage: StorageAdapter, selectedCompression?: string): string {
-  const savedCompression = storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL);
-  return savedCompression || selectedCompression || "medium";
-}
-
-/**
  * 設定の初期化処理
  */
 export function initializeSettingsValues(
@@ -129,9 +83,9 @@ export function initializeSettingsValues(
   } = options;
 
   const effectiveLocale = getEffectiveLocale(storage, nav);
-  const endpoint = getEndpoint(effectiveLocale, storage, selectedEndpoint);
-  const clientTagEnabled = getClientTagEnabled(storage);
-  const compression = getCompression(storage, selectedCompression);
+  const endpoint = getUploadEndpointPreference(storage, effectiveLocale, selectedEndpoint);
+  const clientTagEnabled = getClientTagEnabledPreference(storage);
+  const compression = getImageCompressionLevelPreference(storage, selectedCompression);
 
   return {
     endpoint,

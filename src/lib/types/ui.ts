@@ -5,10 +5,6 @@ export interface SettingsDialogProps {
     show?: boolean;
     onClose: () => void;
     onRefreshRelaysAndProfile?: () => void;
-    selectedCompression?: string;
-    onSelectedCompressionChange?: (value: string) => void;
-    selectedEndpoint?: string;
-    onSelectedEndpointChange?: (value: string) => void;
     onOpenWelcomeDialog?: () => void;
 }
 

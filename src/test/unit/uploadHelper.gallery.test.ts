@@ -117,13 +117,15 @@ function createDeps(
             (
                 _deps?: FileUploadDependencies,
                 _auth?: AuthService,
-                _compression?: CompressionService,
+                _imageCompression?: CompressionService,
+                _videoCompression?: CompressionService,
                 _mime?: MimeTypeSupportInterface
             ) => mockFUM
         ) as unknown as new (
             deps?: FileUploadDependencies,
             auth?: AuthService,
-            compression?: CompressionService,
+            imageCompression?: CompressionService,
+            videoCompression?: CompressionService,
             mime?: MimeTypeSupportInterface
         ) => FileUploadManagerInterface,
         getImageDimensions: vi.fn(async () => ({
