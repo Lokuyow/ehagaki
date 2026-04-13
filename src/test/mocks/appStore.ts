@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 
-const mockAppStore = {
+export const mockAuthStoreModule = {
     updateAuthState: vi.fn(),
     setAuthInitialized: vi.fn(),
     setNsecAuth: vi.fn(),
@@ -27,21 +27,9 @@ const mockAppStore = {
             pubkey: "testpubkey123"
         }
     },
-    sharedMediaStore: {
-        files: [],
-        metadata: undefined,
-        received: false,
-    },
-    updateSharedMediaStore: vi.fn(),
-    clearSharedMediaStore: vi.fn(),
-    getSharedMediaFiles: vi.fn(() => []),
-    getSharedMediaMetadata: vi.fn(() => undefined),
-    urlQueryContentStore: {
-        content: null,
-        received: false,
-    },
-    updateUrlQueryContentStore: vi.fn(),
-    clearUrlQueryContentStore: vi.fn(),
+};
+
+export const mockUploadStoreModule = {
     imageSizeInfoStore: {
         value: { info: null, visible: false },
         set: vi.fn(),
@@ -86,6 +74,66 @@ const mockAppStore = {
         set: vi.fn(),
         reset: vi.fn()
     },
+    isUploadingStore: {
+        value: false,
+        set: vi.fn()
+    },
+    mediaFreePlacementStore: {
+        value: true,
+        set: vi.fn()
+    },
+};
+
+export const mockSharedContentStoreModule = {
+    sharedMediaStore: {
+        files: [],
+        metadata: undefined,
+        received: false,
+    },
+    updateSharedMediaStore: vi.fn(),
+    clearSharedMediaStore: vi.fn(),
+    getSharedMediaFiles: vi.fn(() => []),
+    getSharedMediaMetadata: vi.fn(() => undefined),
+    urlQueryContentStore: {
+        content: null,
+        received: false,
+    },
+    updateUrlQueryContentStore: vi.fn(),
+    clearUrlQueryContentStore: vi.fn(),
+    isSharedMediaReceived: vi.fn(),
+};
+
+mockSharedContentStoreModule.isSharedMediaReceived.mockImplementation(() => mockSharedContentStoreModule.sharedMediaStore.received);
+
+export const mockSwStoreModule = {
+    swNeedRefresh: {
+        subscribe: vi.fn(() => () => { }),
+    },
+    swUpdateServiceWorker: vi.fn(),
+    swVersionStore: {
+        value: null,
+        set: vi.fn(),
+    },
+    handleSwUpdate: vi.fn(),
+    fetchSwVersion: vi.fn(async () => null),
+};
+
+export const mockProfileStoreModule = {
+    profileDataStore: {
+        value: { name: '', picture: '', npub: '', nprofile: '' },
+        set: vi.fn()
+    },
+    profileLoadedStore: {
+        value: false,
+        set: vi.fn()
+    },
+    isLoadingProfileStore: {
+        value: false,
+        set: vi.fn()
+    },
+};
+
+export const mockRelayStoreModule = {
     // リレー関連のストア
     writeRelaysStore: {
         value: [],
@@ -109,39 +157,11 @@ const mockAppStore = {
     },
     setRelayManager: vi.fn(),
     loadRelayConfigFromStorage: vi.fn(),
-    profileDataStore: {
-        value: { name: '', picture: '', npub: '', nprofile: '' },
-        set: vi.fn()
-    },
-    profileLoadedStore: {
-        value: false,
-        set: vi.fn()
-    },
-    isLoadingProfileStore: {
-        value: false,
-        set: vi.fn()
-    },
-    isUploadingStore: {
-        value: false,
-        set: vi.fn()
-    },
-    swNeedRefresh: {
-        subscribe: vi.fn(() => () => { }),
-    },
-    swUpdateServiceWorker: vi.fn(),
-    swVersionStore: {
-        value: null,
-        set: vi.fn(),
-    },
-    handleSwUpdate: vi.fn(),
-    fetchSwVersion: vi.fn(async () => null),
     // リレー設定保存関数
     saveRelayConfigToStorage: vi.fn(),
-    // メディア自由配置モード
-    mediaFreePlacementStore: {
-        value: true,
-        set: vi.fn()
-    },
+};
+
+export const mockPostUIStoreModule = {
     postComponentUIStore: {
         value: {
             showSecretKeyDialog: false,
@@ -162,11 +182,12 @@ const mockAppStore = {
         showPopupMessage: vi.fn(),
         hidePopupMessage: vi.fn(),
     },
+};
+
+export const mockThemeStoreModule = {
     darkModeStore: {
         value: false,
         set: vi.fn(),
         reset: vi.fn(),
     }
 };
-
-export default mockAppStore;
