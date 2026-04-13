@@ -90,6 +90,60 @@ function extractNip94Metadata(nip94: Record<string, any>) {
     };
 }
 
+function resolveImageReplacementMetadata(
+    result: FileUploadResponse,
+    matched: PlaceholderEntry,
+): {
+    serverBlurhash?: string;
+    oxFromServer?: string;
+    xFromServer?: string;
+    blurhash?: string;
+    ox?: string;
+    dim?: string;
+} {
+    const { serverBlurhash, oxFromServer, xFromServer, dimFromServer } = extractNip94Metadata(result.nip94 || {});
+
+    return {
+        serverBlurhash,
+        oxFromServer,
+        xFromServer,
+        blurhash: serverBlurhash ?? matched.blurhash,
+        ox: oxFromServer ?? matched.ox,
+        dim: dimFromServer ?? (matched.dimensions
+            ? `${matched.dimensions.width}x${matched.dimensions.height}`
+            : undefined),
+    };
+}
+
+async function finalizeImageReplacement(
+    url: string,
+    matched: PlaceholderEntry,
+    metadata: ReturnType<typeof resolveImageReplacementMetadata>,
+    imageOxMap: Record<string, string>,
+    imageXMap: Record<string, string>,
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
+    calculateImageHash: (url: string) => Promise<string | null>,
+    devMode: boolean,
+): Promise<string | undefined> {
+    updateImageSizeMapEntry(
+        imageSizeMapStore,
+        matched.placeholderId,
+        matched.dimensions ? url : undefined,
+        matched.dimensions,
+    );
+
+    return recordOxAndXMaps(
+        url,
+        matched,
+        metadata.oxFromServer,
+        metadata.xFromServer,
+        imageOxMap,
+        imageXMap,
+        calculateImageHash,
+        devMode,
+    );
+}
+
 /**
  * ox/xマップへの記録（エディタ・ギャラリー共通）
  * xハッシュが計算された場合はその値を返す
@@ -382,6 +436,9 @@ export async function replacePlaceholdersWithResults(
                 return;
             }
             const isVideo = matched.file.type.startsWith('video/');
+            const imageMetadata = isVideo
+                ? undefined
+                : resolveImageReplacementMetadata(result, matched);
 
             if (devMode) {
                 console.log('[uploadHelper] Replacing placeholder', {
@@ -413,36 +470,27 @@ export async function replacePlaceholdersWithResults(
                         ...node.attrs,
                         src: url,
                         isPlaceholder: false,
-                        blurhash: matched.blurhash ?? undefined,
+                        blurhash: imageMetadata?.blurhash,
                     };
-                    if (matched.dimensions) {
-                        newAttrs.dim = `${matched.dimensions.width}x${matched.dimensions.height}`;
+                    if (imageMetadata?.dim) {
+                        newAttrs.dim = imageMetadata.dim;
                     }
                     const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
                     currentEditor!.view.dispatch(tr);
-
-                    updateImageSizeMapEntry(
-                        imageSizeMapStore,
-                        matched.placeholderId,
-                        matched.dimensions ? url : undefined,
-                        matched.dimensions,
-                    );
                 },
             );
 
-            if (!isVideo) {
-                const nip94 = result.nip94 || {};
-                const { serverBlurhash, oxFromServer, xFromServer } = extractNip94Metadata(nip94);
-                if (serverBlurhash) {
-                    imageServerBlurhashMap[url] = serverBlurhash;
+            if (!isVideo && imageMetadata) {
+                if (imageMetadata.serverBlurhash) {
+                    imageServerBlurhashMap[url] = imageMetadata.serverBlurhash;
                 }
-                await recordOxAndXMaps(
+                await finalizeImageReplacement(
                     url,
                     matched,
-                    oxFromServer,
-                    xFromServer,
+                    imageMetadata,
                     imageOxMap,
                     imageXMap,
+                    imageSizeMapStore,
                     calculateImageHash,
                     devMode,
                 );
@@ -525,7 +573,6 @@ export async function replacePlaceholdersInGallery(
                 return;
             }
             const isVideo = matched.file.type.startsWith('video/');
-            const nip94 = result.nip94 || {};
 
             if (isVideo) {
                 mediaGalleryStore.updateItem(matched.placeholderId, {
@@ -536,40 +583,31 @@ export async function replacePlaceholdersInGallery(
                 return;
             }
 
-            const { serverBlurhash, oxFromServer, xFromServer, dimFromServer } = extractNip94Metadata(nip94);
+            const imageMetadata = resolveImageReplacementMetadata(result, matched);
             const mimeType = getMimeTypeFromUrl(url);
 
             mediaGalleryStore.updateItem(matched.placeholderId, {
                 src: url,
                 isPlaceholder: false,
-                blurhash: serverBlurhash ?? matched.blurhash,
+                blurhash: imageMetadata.blurhash,
                 mimeType,
-                ox: oxFromServer ?? matched.ox,
-                dim: dimFromServer ?? (matched.dimensions
-                    ? `${matched.dimensions.width}x${matched.dimensions.height}`
-                    : undefined),
+                ox: imageMetadata.ox,
+                dim: imageMetadata.dim,
             });
 
-            const x = await recordOxAndXMaps(
+            const x = await finalizeImageReplacement(
                 url,
                 matched,
-                oxFromServer,
-                xFromServer,
+                imageMetadata,
                 imageOxMap,
                 imageXMap,
+                imageSizeMapStore,
                 calculateImageHash,
                 devMode,
             );
             if (x) {
                 mediaGalleryStore.updateItem(matched.placeholderId, { x });
             }
-
-            updateImageSizeMapEntry(
-                imageSizeMapStore,
-                matched.placeholderId,
-                matched.dimensions ? url : undefined,
-                matched.dimensions,
-            );
 
             if (devMode) {
                 console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', url);
