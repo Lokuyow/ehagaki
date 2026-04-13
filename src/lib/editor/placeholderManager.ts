@@ -41,17 +41,43 @@ function buildUploadErrorMessage(failedResults: FileUploadResponse[]): string {
         : `${failedResults.length}個のファイルのアップロードに失敗しました`;
 }
 
+function updateImageSizeMapEntry(
+    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
+    previousKey: string,
+    nextKey?: string,
+    dimensions?: ImageDimensions,
+): void {
+    imageSizeMapStore.update(map => {
+        const newMap = { ...map };
+        delete newMap[previousKey];
+
+        if (nextKey && dimensions) {
+            newMap[nextKey] = dimensions;
+        }
+
+        return newMap;
+    });
+}
+
+function createReplacementResultHandlers(
+    removePlaceholder: (placeholder: PlaceholderEntry) => Promise<void> | void,
+    onSuccess: ReplacementResultHandlers['onSuccess'],
+): ReplacementResultHandlers {
+    return {
+        onAborted: removePlaceholder,
+        onFailure: removePlaceholder,
+        onRemaining: removePlaceholder,
+        onSuccess,
+    };
+}
+
 /** ギャラリーからプレースホルダーアイテムを削除しサイズマップも更新する */
 function removeGalleryPlaceholder(
     id: string,
     imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void }
 ): void {
     mediaGalleryStore.removeItem(id);
-    imageSizeMapStore.update(map => {
-        const newMap = { ...map };
-        delete newMap[id];
-        return newMap;
-    });
+    updateImageSizeMapEntry(imageSizeMapStore, id);
 }
 
 /** NIP-94メタデータから各フィールドを抽出する */
@@ -350,85 +376,78 @@ export async function replacePlaceholdersWithResults(
     const { failedResults, errorMessage } = await processReplacementResults(
         results,
         placeholderMap,
-        {
-            onAborted: removeEditorPlaceholder,
-            onFailure: removeEditorPlaceholder,
-            onRemaining: removeEditorPlaceholder,
-            onSuccess: async (result, matched) => {
-                const url = result.url;
-                if (!url) {
-                    return;
-                }
-                const isVideo = matched.file.type.startsWith('video/');
+        createReplacementResultHandlers(removeEditorPlaceholder, async (result, matched) => {
+            const url = result.url;
+            if (!url) {
+                return;
+            }
+            const isVideo = matched.file.type.startsWith('video/');
 
-                if (devMode) {
-                    console.log('[uploadHelper] Replacing placeholder', {
-                        placeholderId: matched.placeholderId,
-                        url: result.url,
-                        isVideo,
-                    });
-                }
+            if (devMode) {
+                console.log('[uploadHelper] Replacing placeholder', {
+                    placeholderId: matched.placeholderId,
+                    url: result.url,
+                    isVideo,
+                });
+            }
 
-                findAndExecuteOnNode(
-                    currentEditor,
-                    (node: any) => {
-                        const nodeType = node.type?.name;
-                        const isSameNode = (isVideo && nodeType === 'video') || (!isVideo && nodeType === 'image');
-                        return isSameNode && node.attrs?.src === matched.placeholderId;
-                    },
-                    (node: any, pos: number) => {
-                        if (isVideo) {
-                            const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
-                                ...node.attrs,
-                                src: url,
-                                isPlaceholder: false,
-                            });
-                            currentEditor!.view.dispatch(tr);
-                            return;
-                        }
-
-                        const newAttrs: any = {
+            findAndExecuteOnNode(
+                currentEditor,
+                (node: any) => {
+                    const nodeType = node.type?.name;
+                    const isSameNode = (isVideo && nodeType === 'video') || (!isVideo && nodeType === 'image');
+                    return isSameNode && node.attrs?.src === matched.placeholderId;
+                },
+                (node: any, pos: number) => {
+                    if (isVideo) {
+                        const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, {
                             ...node.attrs,
                             src: url,
                             isPlaceholder: false,
-                            blurhash: matched.blurhash ?? undefined,
-                        };
-                        if (matched.dimensions) {
-                            newAttrs.dim = `${matched.dimensions.width}x${matched.dimensions.height}`;
-                        }
-                        const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
-                        currentEditor!.view.dispatch(tr);
-
-                        imageSizeMapStore.update(map => {
-                            const newMap = { ...map };
-                            delete newMap[matched.placeholderId];
-                            if (matched.dimensions) {
-                                newMap[url] = matched.dimensions;
-                            }
-                            return newMap;
                         });
-                    },
-                );
-
-                if (!isVideo) {
-                    const nip94 = result.nip94 || {};
-                    const { serverBlurhash, oxFromServer, xFromServer } = extractNip94Metadata(nip94);
-                    if (serverBlurhash) {
-                        imageServerBlurhashMap[url] = serverBlurhash;
+                        currentEditor!.view.dispatch(tr);
+                        return;
                     }
-                    await recordOxAndXMaps(
-                        url,
-                        matched,
-                        oxFromServer,
-                        xFromServer,
-                        imageOxMap,
-                        imageXMap,
-                        calculateImageHash,
-                        devMode,
+
+                    const newAttrs: any = {
+                        ...node.attrs,
+                        src: url,
+                        isPlaceholder: false,
+                        blurhash: matched.blurhash ?? undefined,
+                    };
+                    if (matched.dimensions) {
+                        newAttrs.dim = `${matched.dimensions.width}x${matched.dimensions.height}`;
+                    }
+                    const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
+                    currentEditor!.view.dispatch(tr);
+
+                    updateImageSizeMapEntry(
+                        imageSizeMapStore,
+                        matched.placeholderId,
+                        matched.dimensions ? url : undefined,
+                        matched.dimensions,
                     );
+                },
+            );
+
+            if (!isVideo) {
+                const nip94 = result.nip94 || {};
+                const { serverBlurhash, oxFromServer, xFromServer } = extractNip94Metadata(nip94);
+                if (serverBlurhash) {
+                    imageServerBlurhashMap[url] = serverBlurhash;
                 }
-            },
-        },
+                await recordOxAndXMaps(
+                    url,
+                    matched,
+                    oxFromServer,
+                    xFromServer,
+                    imageOxMap,
+                    imageXMap,
+                    calculateImageHash,
+                    devMode,
+                );
+            }
+        }),
     );
 
     return { failedResults, errorMessage, imageServerBlurhashMap };
@@ -496,17 +515,11 @@ export async function replacePlaceholdersInGallery(
     getMimeTypeFromUrl: (url: string) => string,
     devMode: boolean = false
 ): Promise<{ failedResults: FileUploadResponse[]; errorMessage: string }> {
-    return processReplacementResults(results, placeholderMap, {
-        onAborted: async (entry) => {
+    return processReplacementResults(results, placeholderMap, createReplacementResultHandlers(
+        async (entry) => {
             removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
         },
-        onFailure: async (entry) => {
-            removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
-        },
-        onRemaining: async (entry) => {
-            removeGalleryPlaceholder(entry.placeholderId, imageSizeMapStore);
-        },
-        onSuccess: async (result, matched) => {
+        async (result, matched) => {
             const url = result.url;
             if (!url) {
                 return;
@@ -551,21 +564,18 @@ export async function replacePlaceholdersInGallery(
                 mediaGalleryStore.updateItem(matched.placeholderId, { x });
             }
 
-            if (matched.dimensions) {
-                const dimensions = matched.dimensions;
-                imageSizeMapStore.update(map => {
-                    const newMap = { ...map };
-                    delete newMap[matched.placeholderId];
-                    newMap[url] = dimensions;
-                    return newMap;
-                });
-            }
+            updateImageSizeMapEntry(
+                imageSizeMapStore,
+                matched.placeholderId,
+                matched.dimensions ? url : undefined,
+                matched.dimensions,
+            );
 
             if (devMode) {
                 console.log('[gallery] replaced placeholder:', matched.placeholderId, '->', url);
             }
         },
-    });
+    ));
 }
 
 /**

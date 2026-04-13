@@ -5,6 +5,7 @@ import { RelayManager } from "../relayManager";
 import { RelayProfileService } from "../relayProfileService";
 import { STORAGE_KEYS } from "../constants";
 import type { AccountManager } from "../accountManager";
+import type { ProfileData } from "../types";
 
 export interface NostrSessionBootstrap {
     rxNostr: ReturnType<typeof createRxNostr>;
@@ -55,6 +56,22 @@ interface CompletePostAuthBootstrapParams extends SyncAccountStoresParams, Initi
     profileDataStore: ProfileDataStoreLike;
     profileLoadedStore: BooleanStoreLike;
     isLoadingProfileStore: BooleanStoreLike;
+}
+
+interface ApplyProfileToStoresParams {
+    pubkeyHex: string;
+    profile: ProfileData;
+    profileDataStore: ProfileDataStoreLike;
+    profileLoadedStore: BooleanStoreLike;
+    accountProfileCacheStore: AccountProfileCacheStoreLike;
+}
+
+interface RefreshRelaysAndProfileForAccountParams {
+    pubkeyHex: string;
+    relayProfileService: Pick<RelayProfileService, 'refreshRelaysAndProfile'>;
+    profileDataStore: ProfileDataStoreLike;
+    profileLoadedStore: BooleanStoreLike;
+    accountProfileCacheStore: AccountProfileCacheStoreLike;
 }
 
 export async function initializeNostrSession({
@@ -120,6 +137,45 @@ export function syncAccountStores({
     }
 }
 
+export function applyProfileToStores({
+    pubkeyHex,
+    profile,
+    profileDataStore,
+    profileLoadedStore,
+    accountProfileCacheStore,
+}: ApplyProfileToStoresParams): void {
+    profileDataStore.set(profile);
+    profileLoadedStore.set(true);
+    accountProfileCacheStore.setProfile(pubkeyHex, {
+        name: profile.name,
+        displayName: profile.displayName,
+        picture: profile.picture,
+    });
+}
+
+export async function refreshRelaysAndProfileForAccount({
+    pubkeyHex,
+    relayProfileService,
+    profileDataStore,
+    profileLoadedStore,
+    accountProfileCacheStore,
+}: RefreshRelaysAndProfileForAccountParams): Promise<ProfileData | null> {
+    const profile = await relayProfileService.refreshRelaysAndProfile(pubkeyHex);
+    if (!profile) {
+        return null;
+    }
+
+    applyProfileToStores({
+        pubkeyHex,
+        profile,
+        profileDataStore,
+        profileLoadedStore,
+        accountProfileCacheStore,
+    });
+
+    return profile;
+}
+
 export async function completePostAuthBootstrap({
     pubkeyHex,
     closeAuthDialogs,
@@ -145,12 +201,12 @@ export async function completePostAuthBootstrap({
         const profile = await session.relayProfileService.initializeForLogin(pubkeyHex);
 
         if (profile) {
-            profileDataStore.set(profile);
-            profileLoadedStore.set(true);
-            accountProfileCacheStore.setProfile(pubkeyHex, {
-                name: profile.name,
-                displayName: profile.displayName,
-                picture: profile.picture,
+            applyProfileToStores({
+                pubkeyHex,
+                profile,
+                profileDataStore,
+                profileLoadedStore,
+                accountProfileCacheStore,
             });
         }
 

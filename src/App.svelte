@@ -83,6 +83,7 @@
   import {
     initializeNostrSession,
     completePostAuthBootstrap,
+    refreshRelaysAndProfileForAccount,
     syncAccountStores,
     type NostrSessionBootstrap,
   } from "./lib/bootstrap/authBootstrap";
@@ -593,19 +594,17 @@
       await initializeNostr(authState.value.pubkey);
     }
 
-    // RelayProfileServiceを使用してリレーとプロフィールを強制的に再取得
-    const profile = await relayProfileService.refreshRelaysAndProfile(
-      authState.value.pubkey,
-    );
-    if (profile) {
-      profileDataStore.set(profile);
-      profileLoadedStore.set(true);
-      accountProfileCacheStore.setProfile(authState.value.pubkey, {
-        name: profile.name,
-        displayName: profile.displayName,
-        picture: profile.picture,
-      });
+    if (!relayProfileService) {
+      return;
     }
+
+    await refreshRelaysAndProfileForAccount({
+      pubkeyHex: authState.value.pubkey,
+      relayProfileService,
+      profileDataStore,
+      profileLoadedStore,
+      accountProfileCacheStore,
+    });
   }
 </script>
 

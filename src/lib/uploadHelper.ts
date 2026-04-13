@@ -233,6 +233,38 @@ function getAbortCheckpointResult(
     );
 }
 
+interface AbortCheckpointCheckerParams {
+    fileArray: File[];
+    currentEditor: TipTapEditor | null;
+    updateUploadState: (isUploading: boolean, errorMessage?: string) => void;
+    uploadCallbacks: UploadInfoCallbacks | undefined;
+    devMode: boolean;
+    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } };
+}
+
+function createAbortCheckpointChecker({
+    fileArray,
+    currentEditor,
+    updateUploadState,
+    uploadCallbacks,
+    devMode,
+    galleryCleanup,
+}: AbortCheckpointCheckerParams) {
+    return (
+        placeholderMap: PlaceholderEntry[],
+        cleanupPlaceholders: boolean,
+    ): UploadHelperResult | null => getAbortCheckpointResult(
+        fileArray,
+        placeholderMap,
+        currentEditor,
+        updateUploadState,
+        uploadCallbacks,
+        devMode,
+        cleanupPlaceholders,
+        galleryCleanup,
+    );
+}
+
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({
     localStorage: window.localStorage,
@@ -301,26 +333,27 @@ export async function uploadHelper({
         throw error;
     }
 
-    // 中止チェック（ファイル処理後）
-    const abortAfterFileProcessing = getAbortCheckpointResult(
-        fileArray,
-        [],
-        currentEditor,
-        updateUploadState,
-        managedUploadCallbacks,
-        devMode,
-        false,
-    );
-    if (abortAfterFileProcessing) {
-        return abortAfterFileProcessing;
-    }
-
     // プレースホルダー挿入（モードに応じてエディタまたはギャラリーへ）
     const galleryMode = !mediaFreePlacementStore.value;
     const galleryCleanup = createGalleryCleanupContext(
         galleryMode,
         dependencies.imageSizeMapStore,
     );
+    const checkAbort = createAbortCheckpointChecker({
+        fileArray,
+        currentEditor,
+        updateUploadState,
+        uploadCallbacks: managedUploadCallbacks,
+        devMode,
+        galleryCleanup,
+    });
+
+    // 中止チェック（ファイル処理後）
+    const abortAfterFileProcessing = checkAbort([], false);
+    if (abortAfterFileProcessing) {
+        return abortAfterFileProcessing;
+    }
+
     let placeholderMap = galleryMode
         ? insertPlaceholdersIntoGallery(
             fileArray,
@@ -353,16 +386,7 @@ export async function uploadHelper({
     }
 
     // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
-    const abortAfterPlaceholderInsert = getAbortCheckpointResult(
-        fileArray,
-        placeholderMap,
-        currentEditor,
-        updateUploadState,
-        managedUploadCallbacks,
-        devMode,
-        true,
-        galleryCleanup,
-    );
+    const abortAfterPlaceholderInsert = checkAbort(placeholderMap, true);
     if (abortAfterPlaceholderInsert) {
         return abortAfterPlaceholderInsert;
     }
@@ -378,16 +402,7 @@ export async function uploadHelper({
     );
 
     // 中止チェック（Blurhash生成後）
-    const abortAfterBlurhash = getAbortCheckpointResult(
-        fileArray,
-        placeholderMap,
-        currentEditor,
-        updateUploadState,
-        managedUploadCallbacks,
-        devMode,
-        true,
-        galleryCleanup,
-    );
+    const abortAfterBlurhash = checkAbort(placeholderMap, true);
     if (abortAfterBlurhash) {
         return abortAfterBlurhash;
     }
@@ -416,16 +431,7 @@ export async function uploadHelper({
     }
 
     // 中止された場合は後続処理をスキップ
-    const abortAfterUpload = getAbortCheckpointResult(
-        fileArray,
-        placeholderMap,
-        currentEditor,
-        updateUploadState,
-        managedUploadCallbacks,
-        devMode,
-        true,
-        galleryCleanup,
-    );
+    const abortAfterUpload = checkAbort(placeholderMap, true);
     if (abortAfterUpload) {
         if (fileInput) fileInput.value = "";
         return abortAfterUpload;
