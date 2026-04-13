@@ -33,6 +33,19 @@ export class ProfileUrlUtils {
       return imageUrl;
     }
   }
+
+  static ensureProfileMarker(imageUrl: string): string {
+    if (!imageUrl) return imageUrl;
+    try {
+      const url = new URL(imageUrl);
+      if (!url.searchParams.has('profile')) {
+        url.searchParams.set('profile', 'true');
+      }
+      return url.toString();
+    } catch {
+      return imageUrl;
+    }
+  }
 }
 
 // --- プロフィール変換ロジック（テストしやすい純粋関数） ---
@@ -100,9 +113,14 @@ export class ProfileStorage {
       // ローカルストレージから取得時は、保存されたデータをそのまま返す
       // (npubとnprofileはすでに生成済みのため、再生成せずに使用)
       if (parsed.npub && parsed.nprofile) {
+        const picture = typeof parsed.picture === 'string'
+          ? ProfileUrlUtils.ensureProfileMarker(parsed.picture)
+          : "";
+
         // profileRelaysがない場合は空配列を設定（後方互換性）
         return {
           ...parsed,
+          picture,
           profileRelays: parsed.profileRelays || undefined
         } as ProfileData;
       }

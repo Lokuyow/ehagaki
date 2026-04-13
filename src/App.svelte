@@ -5,7 +5,7 @@
   import "./i18n";
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
-  import { ProfileManager } from "./lib/profileManager";
+  import { ProfileManager, ProfileUrlUtils } from "./lib/profileManager";
   import { RelayManager } from "./lib/relayManager";
   import { RelayProfileService } from "./lib/relayProfileService";
   import PostComponent from "./components/PostComponent.svelte";
@@ -189,10 +189,15 @@
         );
         if (profileData) {
           const profile = JSON.parse(profileData);
+          const picture =
+            typeof profile.picture === "string"
+              ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
+              : "";
+
           accountProfileCacheStore.setProfile(account.pubkeyHex, {
             name: profile.name || "",
             displayName: profile.displayName || "",
-            picture: profile.picture || "",
+            picture,
           });
         }
       } catch {

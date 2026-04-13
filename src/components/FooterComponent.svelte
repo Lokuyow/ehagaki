@@ -2,6 +2,7 @@
     import FooterInfoDisplay from "./FooterMiddleDisplay.svelte";
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import { _ } from "svelte-i18n";
     import {
         profileDataStore,
@@ -34,9 +35,6 @@
 
     let footerInfoDisplayRef: any = $state();
 
-    // プロフィール画像読み込みエラー状態
-    let imageLoadError = $state(false);
-
     // プロフィール画像のaltテキスト取得
     const getProfileAlt = () =>
         profileData?.displayName
@@ -47,13 +45,12 @@
                 ? profileData.npub
                 : "User";
 
-    // 画像読み込みエラーハンドラ
-    function handleImageError(event: Event) {
-        console.log("プロフィール画像の読み込みに失敗しました:", event);
-        imageLoadError = true;
-
-        // Service Workerが利用可能な場合、キャッシュの問題かどうかをチェック
+    function handleAvatarLoadingStatusChange(
+        status: "loading" | "loaded" | "error",
+    ) {
         if (
+            status === "error" &&
+            profileData?.picture &&
             "serviceWorker" in navigator &&
             navigator.serviceWorker.controller
         ) {
@@ -80,8 +77,6 @@
     // プロフィールデータが変更されたら画像エラー状態をリセット
     $effect(() => {
         if (profileData?.picture) {
-            imageLoadError = false;
-
             // Service Workerでのキャッシュ処理をログ出力
             if (
                 "serviceWorker" in navigator &&
@@ -139,25 +134,20 @@
         >
             {#if isLoadingProfile}
                 <LoadingPlaceholder showLoader={true} />
-            {:else if profileData?.picture && !imageLoadError}
-                <img
-                    src={profileData.picture}
-                    alt={getProfileAlt()}
-                    class="profile-picture"
-                    loading="lazy"
-                    {...isSameOriginPicture
-                        ? {
-                              crossorigin: "anonymous",
-                              referrerpolicy: "no-referrer",
-                          }
-                        : {}}
-                    onerror={handleImageError}
-                />
             {:else}
-                <div
-                    class="profile-picture default svg-icon"
-                    aria-label="User"
-                ></div>
+                <ProfileAvatar
+                    src={profileData?.picture || ""}
+                    alt={getProfileAlt()}
+                    rootClassName="profile-picture"
+                    imageClassName="profile-picture-image"
+                    fallbackClassName="profile-picture-fallback"
+                    fallbackAriaLabel="User"
+                    onLoadingStatusChange={handleAvatarLoadingStatusChange}
+                    crossorigin={isSameOriginPicture ? "anonymous" : undefined}
+                    referrerpolicy={isSameOriginPicture
+                        ? "no-referrer"
+                        : undefined}
+                />
             {/if}
         </Button>
     {:else if !isLoadingProfile && !isAuthenticated}
@@ -265,15 +255,21 @@
         }
     }
 
-    .profile-picture {
+    :global(.profile-picture) {
+        width: 100%;
+        height: 100%;
+        border-radius: 50%;
+        overflow: hidden;
+    }
+
+    :global(.profile-picture-image) {
         width: 100%;
         height: 100%;
         border-radius: 50%;
         object-fit: cover;
     }
 
-    .profile-picture.default {
-        mask-image: url("/icons/circle-user-solid-full.svg");
+    :global(.profile-picture-fallback) {
         width: 100%;
         height: 100%;
     }

@@ -3,7 +3,7 @@
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
-    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import ProfileAvatar from "./ProfileAvatar.svelte";
     import PopupModal from "./PopupModal.svelte";
     import { profileDataStore, authState } from "../stores/appStore.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
@@ -119,22 +119,16 @@
         <div class="current-account-section">
             <div class="profile-summary">
                 <!-- プロフィール画像 -->
-                <div class="profile-image-container">
-                    {#if displayedProfile.picture}
-                        <img
-                            src={displayedProfile.picture}
-                            alt={displayedProfile.displayName ||
-                                displayedProfile.name ||
-                                "Profile"}
-                            class="profile-image"
-                        />
-                    {:else}
-                        <div
-                            class="profile-image-placeholder svg-icon"
-                            aria-label="Profile image placeholder"
-                        ></div>
-                    {/if}
-                </div>
+                <ProfileAvatar
+                    src={displayedProfile.picture}
+                    alt={displayedProfile.displayName ||
+                        displayedProfile.name ||
+                        "Profile"}
+                    rootClassName="profile-image-container"
+                    imageClassName="profile-image"
+                    fallbackClassName="profile-image-placeholder"
+                    fallbackAriaLabel="Profile image placeholder"
+                />
 
                 <!-- 名前 -->
                 <div class="profile-name">
@@ -228,21 +222,16 @@
                                 }}
                                 disabled={isActive || isSwitchingAccount}
                             >
-                                <div class="account-avatar">
-                                    {#if cachedProfile?.picture}
-                                        <img
-                                            src={cachedProfile.picture}
-                                            alt={cachedProfile.displayName ||
-                                                cachedProfile.name ||
-                                                ""}
-                                            class="account-avatar-img"
-                                        />
-                                    {:else}
-                                        <div
-                                            class="account-avatar-placeholder svg-icon"
-                                        ></div>
-                                    {/if}
-                                </div>
+                                <ProfileAvatar
+                                    src={cachedProfile?.picture}
+                                    alt={cachedProfile?.displayName ||
+                                        cachedProfile?.name ||
+                                        ""}
+                                    rootClassName="account-avatar"
+                                    imageClassName="account-avatar-img"
+                                    fallbackClassName="account-avatar-placeholder"
+                                    fallbackAriaLabel="Profile image placeholder"
+                                />
                                 <div class="account-details">
                                     <div class="account-name-row">
                                         <span class="account-name">
@@ -359,21 +348,20 @@
         width: 100%;
         gap: 10px;
 
-        .profile-image-container {
+        :global(.profile-image-container) {
             width: 80px;
             height: 80px;
             border-radius: 50%;
             overflow: hidden;
         }
 
-        .profile-image {
+        :global(.profile-image) {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .profile-image-placeholder {
-            mask-image: url("/icons/circle-user-solid-full.svg");
+        :global(.profile-image-placeholder) {
             width: 100%;
             height: 100%;
         }
@@ -494,7 +482,7 @@
             }
         }
 
-        .account-avatar {
+        :global(.account-avatar) {
             width: 38px;
             height: 38px;
             border-radius: 50%;
@@ -502,14 +490,13 @@
             flex-shrink: 0;
         }
 
-        .account-avatar-img {
+        :global(.account-avatar-img) {
             width: 100%;
             height: 100%;
             object-fit: cover;
         }
 
-        .account-avatar-placeholder {
-            mask-image: url("/icons/circle-user-solid-full.svg");
+        :global(.account-avatar-placeholder) {
             width: 100%;
             height: 100%;
         }
