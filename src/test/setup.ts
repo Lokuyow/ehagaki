@@ -10,7 +10,7 @@ import {
     mockSwStoreModule,
     mockThemeStoreModule,
     mockUploadStoreModule,
-} from './mocks/appStore';
+} from './mocks/storeModules';
 import mockKeyManager from './mocks/keyManager';
 
 // グローバルモックを設定

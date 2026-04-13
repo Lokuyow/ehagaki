@@ -86,7 +86,10 @@
     syncAccountStores,
     type NostrSessionBootstrap,
   } from "./lib/bootstrap/authBootstrap";
-  import { runExternalInputBootstrap } from "./lib/bootstrap/externalInputBootstrap";
+  import {
+    runAppInitializationBootstrap,
+    registerNip46VisibilityHandler,
+  } from "./lib/bootstrap/appInitializationBootstrap";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -345,37 +348,21 @@
       });
     }
 
-    // Define an inner async function for initialization
-    const init = async () => {
-      settingsStore.reload();
-      const urlParams = new URLSearchParams(window.location.search);
-      const sharedError = urlParams.get("error");
-
-      clearSharedMediaError();
-      await waitLocale();
-      localeInitialized = true;
-
-      // --- 認証初期化（共有メディア処理の前に完了させる） ---
-      try {
-        const authResult = await authService.initializeAuth();
-
-        if (authResult.hasAuth && authResult.pubkeyHex) {
-          await handlePostAuth(authResult.pubkeyHex);
-        } else {
-          await initializeNostr();
-          isLoadingProfileStore.set(false);
-        }
-        refreshAccountList();
-      } catch (error) {
-        console.error("認証初期化中にエラー:", error);
-        await initializeNostr();
-        isLoadingProfileStore.set(false);
-      } finally {
-        authService.markAuthInitialized();
-      }
-
-      await runExternalInputBootstrap({
-        sharedError,
+    runAppInitializationBootstrap({
+      reloadSettings: () => settingsStore.reload(),
+      locationSearch: window.location.search,
+      clearSharedMediaError,
+      waitForLocale: waitLocale,
+      markLocaleInitialized: () => {
+        localeInitialized = true;
+      },
+      initializeAuth: () => authService.initializeAuth(),
+      handleAuthenticated: handlePostAuth,
+      initializeGuestSession: () => initializeNostr(),
+      stopProfileLoading: () => isLoadingProfileStore.set(false),
+      refreshAccountList,
+      markAuthInitialized: () => authService.markAuthInitialized(),
+      getExternalInputBootstrapParams: () => ({
         sharedMediaStore,
         isSharedMediaProcessed,
         markSharedMediaProcessed,
@@ -391,28 +378,19 @@
         rxNostr,
         relayConfig: relayConfigStore.value,
         locationHref: window.location.href,
-      });
-    };
+      }),
+      console,
+    });
 
-    // Call the async initializer
-    init();
-
-    // NIP-46: バックグラウンド復帰時にWebSocket再接続
-    function handleVisibilityChange() {
-      if (
-        document.visibilityState === "visible" &&
-        authState.value.type === "nip46" &&
-        nip46Service.isConnected()
-      ) {
-        nip46Service.ensureConnection().catch((err) => {
-          console.error("NIP-46 reconnection failed:", err);
-        });
-      }
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    const cleanupVisibilityHandler = registerNip46VisibilityHandler({
+      document,
+      authState,
+      nip46Service,
+      console,
+    });
 
     return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      cleanupVisibilityHandler();
     };
   });
 

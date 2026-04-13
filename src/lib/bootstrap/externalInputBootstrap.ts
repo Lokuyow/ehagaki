@@ -20,7 +20,7 @@ interface SharedMediaStoreLike {
     received: boolean;
 }
 
-interface RunExternalInputBootstrapParams {
+export interface RunExternalInputBootstrapParams {
     sharedError: string | null;
     sharedMediaStore: SharedMediaStoreLike;
     isSharedMediaProcessed: () => boolean;

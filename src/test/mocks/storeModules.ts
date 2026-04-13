@@ -9,7 +9,7 @@ export const mockAuthStoreModule = {
     clearAuthState: vi.fn(),
     secretKeyStore: {
         value: null,
-        set: vi.fn()
+        set: vi.fn(),
     },
     accountListStore: {
         value: [],
@@ -23,9 +23,9 @@ export const mockAuthStoreModule = {
     authState: {
         value: {
             isAuthenticated: true,
-            type: "nsec",
-            pubkey: "testpubkey123"
-        }
+            type: 'nsec',
+            pubkey: 'testpubkey123',
+        },
     },
 };
 
@@ -44,14 +44,14 @@ export const mockUploadStoreModule = {
             inProgress: false,
         },
         set: vi.fn(),
-        reset: vi.fn()
+        reset: vi.fn(),
     },
     setUploadProgress: vi.fn(),
     resetUploadProgress: vi.fn(),
     sharedMediaErrorStore: {
         value: null,
         set: vi.fn(),
-        clear: vi.fn()
+        clear: vi.fn(),
     },
     setSharedMediaError: vi.fn(),
     clearSharedMediaError: vi.fn(),
@@ -63,24 +63,24 @@ export const mockUploadStoreModule = {
     abortAllUploads: vi.fn(),
     videoCompressionProgressStore: {
         value: 0,
-        set: vi.fn()
+        set: vi.fn(),
     },
     imageCompressionProgressStore: {
         value: 0,
-        set: vi.fn()
+        set: vi.fn(),
     },
     uploadAbortFlagStore: {
         value: false,
         set: vi.fn(),
-        reset: vi.fn()
+        reset: vi.fn(),
     },
     isUploadingStore: {
         value: false,
-        set: vi.fn()
+        set: vi.fn(),
     },
     mediaFreePlacementStore: {
         value: true,
-        set: vi.fn()
+        set: vi.fn(),
     },
 };
 
@@ -103,7 +103,9 @@ export const mockSharedContentStoreModule = {
     isSharedMediaReceived: vi.fn(),
 };
 
-mockSharedContentStoreModule.isSharedMediaReceived.mockImplementation(() => mockSharedContentStoreModule.sharedMediaStore.received);
+mockSharedContentStoreModule.isSharedMediaReceived.mockImplementation(
+    () => mockSharedContentStoreModule.sharedMediaStore.received,
+);
 
 export const mockSwStoreModule = {
     swNeedRefresh: {
@@ -121,23 +123,22 @@ export const mockSwStoreModule = {
 export const mockProfileStoreModule = {
     profileDataStore: {
         value: { name: '', picture: '', npub: '', nprofile: '' },
-        set: vi.fn()
+        set: vi.fn(),
     },
     profileLoadedStore: {
         value: false,
-        set: vi.fn()
+        set: vi.fn(),
     },
     isLoadingProfileStore: {
         value: false,
-        set: vi.fn()
+        set: vi.fn(),
     },
 };
 
 export const mockRelayStoreModule = {
-    // リレー関連のストア
     writeRelaysStore: {
         value: [],
-        set: vi.fn()
+        set: vi.fn(),
     },
     relayConfigStore: {
         value: null,
@@ -153,11 +154,10 @@ export const mockRelayStoreModule = {
     },
     relayListUpdatedStore: {
         value: 0,
-        set: vi.fn()
+        set: vi.fn(),
     },
     setRelayManager: vi.fn(),
     loadRelayConfigFromStorage: vi.fn(),
-    // リレー設定保存関数
     saveRelayConfigToStorage: vi.fn(),
 };
 
@@ -189,5 +189,5 @@ export const mockThemeStoreModule = {
         value: false,
         set: vi.fn(),
         reset: vi.fn(),
-    }
+    },
 };
