@@ -41,6 +41,7 @@ import {
     replacePlaceholdersInGallery,
     removeAllGalleryPlaceholders,
 } from "./editor/placeholderManager";
+import { buildUploadFailureMessage } from "./uploadResultUtils";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -120,6 +121,82 @@ async function uploadValidFiles(
     }
 
     return null;
+}
+
+interface PlaceholderReplacementOutcome {
+    failedResults: FileUploadResponse[];
+    errorMessage: string;
+    imageServerBlurhashMap: Record<string, string>;
+}
+
+async function replaceUploadedPlaceholders(params: {
+    results: FileUploadResponse[] | null;
+    placeholderMap: PlaceholderEntry[];
+    galleryMode: boolean;
+    currentEditor: TipTapEditor | null;
+    imageOxMap: Record<string, string>;
+    imageXMap: Record<string, string>;
+    imageSizeMapStore: UploadHelperDependencies["imageSizeMapStore"];
+    calculateImageHash: UploadHelperDependencies["calculateImageHash"];
+    getMimeTypeFromUrl: UploadHelperDependencies["getMimeTypeFromUrl"];
+    devMode: boolean;
+}): Promise<PlaceholderReplacementOutcome> {
+    const {
+        results,
+        placeholderMap,
+        galleryMode,
+        currentEditor,
+        imageOxMap,
+        imageXMap,
+        imageSizeMapStore,
+        calculateImageHash,
+        getMimeTypeFromUrl,
+        devMode,
+    } = params;
+
+    if (!results || placeholderMap.length === 0) {
+        return {
+            failedResults: [],
+            errorMessage: "",
+            imageServerBlurhashMap: {},
+        };
+    }
+
+    if (galleryMode) {
+        const replacementResult = await replacePlaceholdersInGallery(
+            results,
+            placeholderMap,
+            imageOxMap,
+            imageXMap,
+            imageSizeMapStore,
+            calculateImageHash,
+            getMimeTypeFromUrl,
+            devMode,
+        );
+
+        return {
+            failedResults: replacementResult.failedResults,
+            errorMessage: replacementResult.errorMessage,
+            imageServerBlurhashMap: {},
+        };
+    }
+
+    const replacementResult = await replacePlaceholdersWithResults(
+        results,
+        placeholderMap,
+        currentEditor,
+        imageOxMap,
+        imageXMap,
+        imageSizeMapStore,
+        calculateImageHash,
+        devMode,
+    );
+
+    return {
+        failedResults: replacementResult.failedResults,
+        errorMessage: replacementResult.errorMessage,
+        imageServerBlurhashMap: replacementResult.imageServerBlurhashMap,
+    };
 }
 
 function createUploadProgress(
@@ -440,40 +517,23 @@ export async function uploadHelper({
     await dependencies.tick();
 
     // プレースホルダー置換・失敗時削除
-    const failedResults: FileUploadResponse[] = [];
-    let errorMessage = "";
-    let imageServerBlurhashMap: Record<string, string> = {};
+    const replacementOutcome = await replaceUploadedPlaceholders({
+        results,
+        placeholderMap,
+        galleryMode,
+        currentEditor: currentEditor as TipTapEditor | null,
+        imageOxMap,
+        imageXMap,
+        imageSizeMapStore: dependencies.imageSizeMapStore,
+        calculateImageHash: dependencies.calculateImageHash,
+        getMimeTypeFromUrl: dependencies.getMimeTypeFromUrl,
+        devMode,
+    });
+    const failedResults = [...replacementOutcome.failedResults];
+    const errorMessage = replacementOutcome.errorMessage;
+    let imageServerBlurhashMap = replacementOutcome.imageServerBlurhashMap;
 
     if (results && placeholderMap.length > 0) {
-        if (galleryMode) {
-            const replacementResult = await replacePlaceholdersInGallery(
-                results,
-                placeholderMap,
-                imageOxMap,
-                imageXMap,
-                dependencies.imageSizeMapStore,
-                dependencies.calculateImageHash,
-                dependencies.getMimeTypeFromUrl,
-                devMode
-            );
-            failedResults.push(...replacementResult.failedResults);
-            errorMessage = replacementResult.errorMessage;
-        } else {
-            const replacementResult = await replacePlaceholdersWithResults(
-                results,
-                placeholderMap,
-                currentEditor as TipTapEditor | null,
-                imageOxMap,
-                imageXMap,
-                dependencies.imageSizeMapStore,
-                dependencies.calculateImageHash,
-                devMode
-            );
-            failedResults.push(...replacementResult.failedResults);
-            errorMessage = replacementResult.errorMessage;
-            imageServerBlurhashMap = replacementResult.imageServerBlurhashMap;
-        }
-
         // 置換処理後、placeholderMapをクリア
         placeholderMap = [];
     }
@@ -579,10 +639,10 @@ export async function performFileUpload(params: PerformFileUploadParams): Promis
 
     if (result.failedResults?.length) {
         showUploadErrorMessage(
-            result.errorMessage ||
-            (result.failedResults.length === 1
-                ? result.failedResults[0].error || getUploadFailedText("postComponent.upload_failed")
-                : `${result.failedResults.length}個のファイルのアップロードに失敗しました`),
+            result.errorMessage || buildUploadFailureMessage(
+                result.failedResults,
+                getUploadFailedText("postComponent.upload_failed"),
+            ),
             5000,
             { updateUploadState }
         );

@@ -5,6 +5,7 @@ import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorNode
 import { generateSimpleUUID } from '../utils/appUtils';
 import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
+import { buildUploadFailureMessage } from '../uploadResultUtils';
 
 // ============================================================
 // 共通プライベートヘルパー
@@ -35,10 +36,7 @@ function findMatchedPlaceholder(
 
 /** 失敗アップロード結果のエラーメッセージを構築する */
 function buildUploadErrorMessage(failedResults: FileUploadResponse[]): string {
-    if (failedResults.length === 0) return '';
-    return failedResults.length === 1
-        ? failedResults[0].error || 'postComponent.upload_failed'
-        : `${failedResults.length}個のファイルのアップロードに失敗しました`;
+    return buildUploadFailureMessage(failedResults, 'postComponent.upload_failed');
 }
 
 function updateImageSizeMapEntry(
