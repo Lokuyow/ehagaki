@@ -330,18 +330,22 @@
     }
   }
 
-  async function handleParentClientLogin() {
+  async function handleParentClientLogin(): Promise<string | undefined> {
     isLoadingParentClient = true;
     try {
       const result = await authService.authenticateWithParentClient();
       if (!result.success) {
         console.error("親クライアント連携認証失敗:", result.error);
-        return;
+        return result.error ?? "parent_client_auth_error";
       }
 
       await handleSuccessfulAuthResult(result, handlePostAuth);
+      return undefined;
     } catch (error) {
       console.error("親クライアント連携ログインでエラー:", error);
+      return error instanceof Error
+        ? error.message
+        : "parent_client_auth_error";
     } finally {
       isLoadingParentClient = false;
     }

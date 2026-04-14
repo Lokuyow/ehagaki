@@ -33,6 +33,7 @@ export const mockAuthStoreModule = {
     setNsecAuth: vi.fn(),
     setNip07Auth: vi.fn(),
     setNip46Auth: vi.fn(),
+    setParentClientAuth: vi.fn(),
     clearAuthState: vi.fn(),
     secretKeyStore: {
         value: null,

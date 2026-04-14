@@ -13,7 +13,7 @@
         secretKey: string;
         onClose: () => void;
         onSave: () => void;
-        onParentClientLogin?: () => void;
+        onParentClientLogin?: () => Promise<string | undefined>;
         onNip07Login: () => void;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
         isParentClientAvailable?: boolean;
@@ -62,12 +62,14 @@
     // --- NIP-46 bunker URL ---
     let bunkerUrl = $state("");
     let bunkerInputEl: HTMLInputElement | null = $state(null);
+    let parentClientErrorMessage = $state("");
 
     // --- ダイアログを開くたびに入力をクリア ---
     $effect(() => {
         if (show) {
             secretKey = "";
             bunkerUrl = "";
+            parentClientErrorMessage = "";
         }
     });
 
@@ -143,8 +145,34 @@
         onNip07Login?.();
     }
 
-    function handleParentClientLogin() {
-        onParentClientLogin?.();
+    function resolveParentClientErrorMessage(errorMessage: string): string {
+        switch (errorMessage) {
+            case "parent_client_not_available":
+                return $_("loginDialog.parent_client_not_available");
+            case "parent_client_timeout":
+                return $_("loginDialog.parent_client_timeout");
+            case "parent_client_auth_rejected":
+                return $_("loginDialog.parent_client_auth_rejected");
+            case "parent_client_disconnected":
+                return $_("loginDialog.parent_client_disconnected");
+            case "parent_client_invalid_response":
+                return $_("loginDialog.parent_client_invalid_response");
+            case "parent_client_auth_error":
+                return $_("loginDialog.parent_client_auth_error");
+            default:
+                return errorMessage.startsWith("parent_client_")
+                    ? $_("loginDialog.parent_client_auth_error")
+                    : errorMessage;
+        }
+    }
+
+    async function handleParentClientLogin() {
+        parentClientErrorMessage = "";
+        const errorMessage = await onParentClientLogin?.();
+        if (errorMessage) {
+            parentClientErrorMessage =
+                resolveParentClientErrorMessage(errorMessage);
+        }
     }
 
     async function handleNip46Login() {
@@ -243,6 +271,17 @@
                     >
                 {/if}
             </Button>
+
+            <div
+                class="parent-client-feedback {parentClientErrorMessage
+                    ? 'error'
+                    : 'info'}"
+                aria-live="polite"
+                role={parentClientErrorMessage ? "alert" : "status"}
+            >
+                {parentClientErrorMessage ||
+                    $_("loginDialog.parent_client_hint")}
+            </div>
         </div>
 
         <div class="divider">
@@ -445,13 +484,42 @@
         }
     }
 
-    .parent-client-section,
+    .parent-client-section {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: stretch;
+        width: 100%;
+        min-height: 136px;
+        gap: 10px;
+    }
+
     .nip07-login-section {
         display: flex;
         justify-content: center;
         align-items: center;
         width: auto;
         height: 120px;
+    }
+
+    .parent-client-feedback {
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        text-align: center;
+    }
+
+    .parent-client-feedback.info {
+        background: var(--btn-bg);
+        border: 1px solid var(--border-hr);
+        color: var(--text-light);
+    }
+
+    .parent-client-feedback.error {
+        background: var(--balloon-error-bg, hsl(351, 99%, 96%));
+        border: 1px solid var(--balloon-error-border, hsl(351, 99%, 70%));
+        color: var(--balloon-error-color, hsl(351, 99%, 32%));
     }
 
     :global(.parent-client-login-button.primary),
