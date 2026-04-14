@@ -239,31 +239,58 @@ function createManagedUploadCallbacks(
     };
 }
 
+type ImageSizeMapStore = UploadHelperDependencies["imageSizeMapStore"];
+
+interface GalleryCleanupContext {
+    imageSizeMapStore: ImageSizeMapStore;
+}
+
+interface UploadAbortContext {
+    fileArray: File[];
+    currentEditor: TipTapEditor | null;
+    updateUploadState: (isUploading: boolean, errorMessage?: string) => void;
+    uploadCallbacks?: UploadInfoCallbacks;
+    devMode: boolean;
+    galleryCleanup?: GalleryCleanupContext;
+}
+
+interface AbortCheckpointParams {
+    placeholderMap: PlaceholderEntry[];
+    cleanupPlaceholders: boolean;
+}
+
+function cleanupUploadPlaceholders(
+    context: Pick<UploadAbortContext, "currentEditor" | "devMode" | "galleryCleanup">,
+    placeholderMap: PlaceholderEntry[],
+): void {
+    if (context.galleryCleanup) {
+        removeAllGalleryPlaceholders(
+            placeholderMap,
+            context.galleryCleanup.imageSizeMapStore,
+        );
+        return;
+    }
+
+    if (context.currentEditor) {
+        removeAllPlaceholders(context.currentEditor, context.devMode);
+    }
+}
+
 // 中止チェック用のヘルパー関数
 function handleAbortedUpload(
-    fileArray: File[],
-    placeholderMap: PlaceholderEntry[],
-    currentEditor: TipTapEditor | null,
-    updateUploadState: (isUploading: boolean, errorMessage?: string) => void,
-    uploadCallbacks?: UploadInfoCallbacks,
-    devMode: boolean = false,
-    cleanupPlaceholders: boolean = false,
-    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } }
+    context: UploadAbortContext,
+    { placeholderMap, cleanupPlaceholders }: AbortCheckpointParams,
 ): UploadHelperResult {
-    updateUploadState(false);
+    context.updateUploadState(false);
 
     if (cleanupPlaceholders) {
-        if (galleryCleanup) {
-            removeAllGalleryPlaceholders(placeholderMap, galleryCleanup.imageSizeMapStore);
-        } else if (currentEditor) {
-            removeAllPlaceholders(currentEditor, devMode);
-        }
+        cleanupUploadPlaceholders(context, placeholderMap);
     }
 
     notifyUploadProgress(
-        uploadCallbacks,
-        createUploadProgress(fileArray.length, {
-            aborted: fileArray.length,
+        context.uploadCallbacks,
+        createUploadProgress(context.fileArray.length, {
+            aborted: context.fileArray.length,
         }),
     );
 
@@ -279,67 +306,27 @@ function handleAbortedUpload(
 
 function createGalleryCleanupContext(
     galleryMode: boolean,
-    imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void },
-): { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } } | undefined {
+    imageSizeMapStore: ImageSizeMapStore,
+): GalleryCleanupContext | undefined {
     return galleryMode ? { imageSizeMapStore } : undefined;
 }
 
-function getAbortCheckpointResult(
-    fileArray: File[],
-    placeholderMap: PlaceholderEntry[],
-    currentEditor: TipTapEditor | null,
-    updateUploadState: (isUploading: boolean, errorMessage?: string) => void,
-    uploadCallbacks: UploadInfoCallbacks | undefined,
-    devMode: boolean,
-    cleanupPlaceholders: boolean,
-    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } },
-): UploadHelperResult | null {
-    if (!uploadAbortFlagStore.value) {
-        return null;
-    }
-
-    return handleAbortedUpload(
-        fileArray,
-        placeholderMap,
-        currentEditor,
-        updateUploadState,
-        uploadCallbacks,
-        devMode,
-        cleanupPlaceholders,
-        galleryCleanup,
-    );
-}
-
-interface AbortCheckpointCheckerParams {
-    fileArray: File[];
-    currentEditor: TipTapEditor | null;
-    updateUploadState: (isUploading: boolean, errorMessage?: string) => void;
-    uploadCallbacks: UploadInfoCallbacks | undefined;
-    devMode: boolean;
-    galleryCleanup?: { imageSizeMapStore: { update: (fn: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void } };
-}
-
 function createAbortCheckpointChecker({
-    fileArray,
-    currentEditor,
-    updateUploadState,
-    uploadCallbacks,
-    devMode,
-    galleryCleanup,
-}: AbortCheckpointCheckerParams) {
-    return (
-        placeholderMap: PlaceholderEntry[],
-        cleanupPlaceholders: boolean,
-    ): UploadHelperResult | null => getAbortCheckpointResult(
-        fileArray,
+    ...context
+}: UploadAbortContext) {
+    return ({
         placeholderMap,
-        currentEditor,
-        updateUploadState,
-        uploadCallbacks,
-        devMode,
         cleanupPlaceholders,
-        galleryCleanup,
-    );
+    }: AbortCheckpointParams): UploadHelperResult | null => {
+        if (!uploadAbortFlagStore.value) {
+            return null;
+        }
+
+        return handleAbortedUpload(context, {
+            placeholderMap,
+            cleanupPlaceholders,
+        });
+    };
 }
 
 // デフォルトの依存関係
@@ -397,13 +384,17 @@ export async function uploadHelper({
         // 中止された場合
         if (error instanceof Error && error.message === 'Upload aborted by user') {
             return handleAbortedUpload(
-                fileArray,
-                [],
-                currentEditor,
-                updateUploadState,
-                managedUploadCallbacks,
-                devMode,
-                false,
+                {
+                    fileArray,
+                    currentEditor,
+                    updateUploadState,
+                    uploadCallbacks: managedUploadCallbacks,
+                    devMode,
+                },
+                {
+                    placeholderMap: [],
+                    cleanupPlaceholders: false,
+                },
             );
         }
         // その他のエラーは再スロー
@@ -426,7 +417,10 @@ export async function uploadHelper({
     });
 
     // 中止チェック（ファイル処理後）
-    const abortAfterFileProcessing = checkAbort([], false);
+    const abortAfterFileProcessing = checkAbort({
+        placeholderMap: [],
+        cleanupPlaceholders: false,
+    });
     if (abortAfterFileProcessing) {
         return abortAfterFileProcessing;
     }
@@ -463,7 +457,10 @@ export async function uploadHelper({
     }
 
     // 中止チェック（プレースホルダー挿入後 & Blurhash生成前）
-    const abortAfterPlaceholderInsert = checkAbort(placeholderMap, true);
+    const abortAfterPlaceholderInsert = checkAbort({
+        placeholderMap,
+        cleanupPlaceholders: true,
+    });
     if (abortAfterPlaceholderInsert) {
         return abortAfterPlaceholderInsert;
     }
@@ -479,7 +476,10 @@ export async function uploadHelper({
     );
 
     // 中止チェック（Blurhash生成後）
-    const abortAfterBlurhash = checkAbort(placeholderMap, true);
+    const abortAfterBlurhash = checkAbort({
+        placeholderMap,
+        cleanupPlaceholders: true,
+    });
     if (abortAfterBlurhash) {
         return abortAfterBlurhash;
     }
@@ -508,7 +508,10 @@ export async function uploadHelper({
     }
 
     // 中止された場合は後続処理をスキップ
-    const abortAfterUpload = checkAbort(placeholderMap, true);
+    const abortAfterUpload = checkAbort({
+        placeholderMap,
+        cleanupPlaceholders: true,
+    });
     if (abortAfterUpload) {
         if (fileInput) fileInput.value = "";
         return abortAfterUpload;

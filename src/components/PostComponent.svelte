@@ -10,7 +10,10 @@
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { nip46Service } from "../lib/nip46Service";
-  import { uploadFiles as uploadFilesHelper } from "../lib/uploadHelper";
+  import {
+    createPostUploadHandlers,
+    updateEditorUploadState,
+  } from "../lib/postUploadUtils";
   import PopupModal from "./PopupModal.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import MediaGallery from "./MediaGallery.svelte";
@@ -89,24 +92,16 @@
     }
   });
 
-  async function performUpload(
-    files: File[] | FileList | null | undefined,
-  ): Promise<void> {
-    if (!files || files.length === 0) return;
-
-    await uploadFilesHelper({
-      files,
-      currentEditor,
-      fileInput,
-      updateUploadState: (isUploading: boolean, message?: string) => {
-        editorState.isUploading = isUploading;
-        editorState.uploadErrorMessage = message || "";
-      },
-      imageOxMap,
-      imageXMap,
-      getUploadFailedText: (key: string) => $_(key),
-    });
-  }
+  const uploadHandlers = createPostUploadHandlers({
+    getCurrentEditor: () => currentEditor,
+    getFileInput: () => fileInput,
+    getImageOxMap: () => imageOxMap,
+    getImageXMap: () => imageXMap,
+    getUploadFailedText: (key: string) => $_(key),
+    updateUploadState: (isUploading: boolean, message?: string) => {
+      updateEditorUploadState(editorState, isUploading, message);
+    },
+  });
 
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
@@ -120,7 +115,7 @@
       hasStoredKey,
       submitPost,
       uploadFiles: (files: File[] | FileList) => {
-        void performUpload(files);
+        void uploadHandlers.performUpload(files);
       },
       eventCallbacks: {
         onContentUpdate: updateEditorContent,
@@ -171,15 +166,10 @@
     };
   });
 
-  function handleFileSelect(event: Event) {
-    const input = event.target as HTMLInputElement;
-    if (input?.files?.length) {
-      void performUpload(input.files);
-    }
-  }
+  const handleFileSelect = uploadHandlers.handleFileSelect;
 
   export async function uploadFiles(files: File[] | FileList): Promise<void> {
-    await performUpload(files);
+    await uploadHandlers.performUpload(files);
   }
 
   export function insertTextContent(content: string): void {

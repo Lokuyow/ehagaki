@@ -26,8 +26,14 @@ vi.mock("../../stores/authStore.svelte", () => ({
 
 vi.mock("../../stores/uploadStore.svelte", () => ({
     uploadAbortFlagStore: {
-        value: false
-    }
+        value: false,
+        set: vi.fn(),
+        reset: vi.fn(),
+    },
+    mediaFreePlacementStore: {
+        value: true,
+        set: vi.fn(),
+    },
 }));
 
 /**
