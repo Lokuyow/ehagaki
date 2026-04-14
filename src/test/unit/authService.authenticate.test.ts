@@ -247,7 +247,7 @@ describe('AuthService.authenticateWithParentClient', () => {
         vi.clearAllMocks();
     });
 
-    it('親クライアント認証成功でsetParentClientAuth + session保存 + addAccount', async () => {
+    it('親クライアント認証成功でsetParentClientAuth + session保存を行い、account追加はApp側へ委譲する', async () => {
         const validPubkey = '34'.repeat(32);
         const session = createMockParentClientSession(validPubkey);
         const { parentClientAuthService, ParentClientAuthService } = await import('../../lib/parentClientAuthService');
@@ -258,16 +258,23 @@ describe('AuthService.authenticateWithParentClient', () => {
         const mockAccountManager = createMockAccountManager();
         service.setAccountManager(mockAccountManager as any);
 
-        const result = await service.authenticateWithParentClient();
+        const result = await service.authenticateWithParentClient({
+            silent: true,
+            timeoutMs: 1200,
+        });
 
         expect(result.success).toBe(true);
         expect(result.pubkeyHex).toBe(validPubkey);
+        expect(parentClientAuthService.connect).toHaveBeenCalledWith({
+            silent: true,
+            timeoutMs: 1200,
+        });
         expect(mockDependencies.setParentClientAuth).toHaveBeenCalled();
         expect(ParentClientAuthService.saveSession).toHaveBeenCalledWith(
             mockDependencies.localStorage,
             session,
         );
-        expect(mockAccountManager.addAccount).toHaveBeenCalledWith(validPubkey, 'parentClient');
+        expect(mockAccountManager.addAccount).not.toHaveBeenCalled();
     });
 
     it('親クライアント認証失敗でエラーを返す', async () => {

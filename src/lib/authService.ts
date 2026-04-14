@@ -10,7 +10,9 @@ import {
     type RestoreResult,
 } from './authRestoreUtils';
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
-import { ParentClientAuthService } from './parentClientAuthService';
+import { ParentClientAuthService, type ParentClientConnectOptions } from './parentClientAuthService';
+
+type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
 
 // --- メインのAuthServiceクラス ---
 export class AuthService {
@@ -99,9 +101,11 @@ export class AuthService {
 
     // --- 親クライアント連携認証 ---
 
-    async authenticateWithParentClient(): Promise<AuthResult> {
+    async authenticateWithParentClient(
+        options: ParentClientAuthOptions = {},
+    ): Promise<AuthResult> {
         try {
-            const pubkeyHex = await this.runtime.parentClientSvc.connect();
+            const pubkeyHex = await this.runtime.parentClientSvc.connect(options);
             applyPublicKeyAuth('parentClient', pubkeyHex, {
                 setNip07AuthFn: this.runtime.setNip07AuthFn,
                 setNip46AuthFn: this.runtime.setNip46AuthFn,
@@ -116,7 +120,6 @@ export class AuthService {
                 );
             }
 
-            this.accountManager?.addAccount(pubkeyHex, 'parentClient');
             return { success: true, pubkeyHex };
         } catch (error) {
             this.runtime.console.error('親クライアント連携認証エラー:', error);
@@ -136,15 +139,19 @@ export class AuthService {
         options: { notifyParentClient?: boolean } = {},
     ): string | null | undefined {
         try {
+            const isRuntimeParentClientAccount =
+                this.runtime.parentClientSvc.isConnected()
+                && this.runtime.parentClientSvc.getUserPubkey() === pubkeyHex;
+
             // NIP-46の場合は接続を切断
             const accountType = this.accountManager?.getAccountType(pubkeyHex);
-            if (accountType === 'nip46') {
+            if (accountType === 'parentClient' || isRuntimeParentClientAccount) {
+                this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
+                ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
+            } else if (accountType === 'nip46') {
                 this.runtime.nip46Svc.disconnect().catch(e => {
                     this.runtime.console.error('NIP-46切断エラー:', e);
                 });
-            } else if (accountType === 'parentClient') {
-                this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
-                ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
             }
 
             // per-accountデータを削除

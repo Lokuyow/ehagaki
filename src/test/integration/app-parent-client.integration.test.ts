@@ -8,10 +8,15 @@ import {
 } from '../mocks/storeModules';
 
 const PARENT_CLIENT_PUBKEY = 'ab'.repeat(32);
+const SECOND_PARENT_CLIENT_PUBKEY = 'cd'.repeat(32);
 
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
     const logoutAccount = vi.fn(() => null);
+    const authenticateWithParentClient = vi.fn(async () => ({
+        success: true,
+        pubkeyHex: PARENT_CLIENT_PUBKEY,
+    }));
     const initializeNostrSession = vi.fn(async () => ({
         rxNostr: undefined,
         relayProfileService: {
@@ -30,10 +35,20 @@ const mockState = vi.hoisted(() => {
     }));
     const runAppInitializationBootstrap = vi.fn((params: {
         markLocaleInitialized: () => void;
+        resolveAuthenticatedSession?: (currentResult: {
+            hasAuth: boolean;
+            pubkeyHex?: string;
+        }) => Promise<{
+            hasAuth: boolean;
+            pubkeyHex?: string;
+        }>;
     }) => {
+        mockState.bootstrapParams = params;
         params.markLocaleInitialized();
+        return Promise.resolve();
     });
     const cleanupVisibilityHandler = vi.fn();
+    const remoteLoginCleanup = vi.fn();
     const remoteLogoutCleanup = vi.fn();
     const syncAccountStores = vi.fn();
     const accountManager = {
@@ -52,13 +67,25 @@ const mockState = vi.hoisted(() => {
     return {
         setNsec,
         logoutAccount,
+        authenticateWithParentClient,
         initializeNostrSession,
         completePostAuthBootstrap,
         runAppInitializationBootstrap,
         cleanupVisibilityHandler,
+        remoteLoginCleanup,
         remoteLogoutCleanup,
         syncAccountStores,
         accountManager,
+        bootstrapParams: null as {
+            resolveAuthenticatedSession?: (currentResult: {
+                hasAuth: boolean;
+                pubkeyHex?: string;
+            }) => Promise<{
+                hasAuth: boolean;
+                pubkeyHex?: string;
+            }>;
+        } | null,
+        parentRemoteLoginListener: null as ((pubkeyHex: string | null) => void) | null,
         parentRemoteLogoutListener: null as ((pubkeyHex: string | null) => void) | null,
     };
 });
@@ -103,7 +130,7 @@ vi.mock('../../lib/authService', () => ({
         authenticateWithNsec: vi.fn(),
         authenticateWithNip07: vi.fn(),
         authenticateWithNip46: vi.fn(),
-        authenticateWithParentClient: vi.fn(),
+        authenticateWithParentClient: mockState.authenticateWithParentClient,
         initializeAuth: vi.fn(async () => ({ hasAuth: true, pubkeyHex: PARENT_CLIENT_PUBKEY })),
         markAuthInitialized: vi.fn(),
         logoutAccount: mockState.logoutAccount,
@@ -120,10 +147,16 @@ vi.mock('../../lib/parentClientAuthService', () => ({
     parentClientAuthService: {
         initialize: vi.fn(() => true),
         announceReady: vi.fn(() => true),
+        onRemoteLogin: vi.fn((listener: (pubkeyHex: string | null) => void) => {
+            mockState.parentRemoteLoginListener = listener;
+            return mockState.remoteLoginCleanup;
+        }),
         onRemoteLogout: vi.fn((listener: (pubkeyHex: string | null) => void) => {
             mockState.parentRemoteLogoutListener = listener;
             return mockState.remoteLogoutCleanup;
         }),
+        isConnected: vi.fn(() => false),
+        getUserPubkey: vi.fn(() => null),
     },
 }));
 
@@ -160,9 +193,16 @@ import App from '../../App.svelte';
 describe('App parentClient integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        mockState.bootstrapParams = null;
+        mockState.parentRemoteLoginListener = null;
         mockState.parentRemoteLogoutListener = null;
         mockState.logoutAccount.mockReturnValue(null);
+        mockState.authenticateWithParentClient.mockResolvedValue({
+            success: true,
+            pubkeyHex: PARENT_CLIENT_PUBKEY,
+        });
         mockState.accountManager.getAccountType.mockReturnValue('parentClient');
+        mockState.accountManager.hasAccount.mockReturnValue(true);
         mockAuthStoreModule.authState.value = {
             isAuthenticated: true,
             isInitialized: true,
@@ -175,7 +215,122 @@ describe('App parentClient integration', () => {
         mockProfileStoreModule.profileLoadedStore.set.mockClear();
         mockUploadStoreModule.resetUploadDisplayState.mockClear();
         mockState.initializeNostrSession.mockClear();
+        mockState.completePostAuthBootstrap.mockClear();
         mockState.syncAccountStores.mockClear();
+    });
+
+    it('起動時の自動親クライアント認証で新規アカウントを追加して切り替える', async () => {
+        mockState.accountManager.hasAccount.mockReturnValue(false);
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: false,
+            isInitialized: false,
+            isValid: false,
+            type: 'none',
+            pubkey: '',
+        } as any;
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.bootstrapParams?.resolveAuthenticatedSession).toBeTruthy();
+        });
+
+        const resolved = await mockState.bootstrapParams?.resolveAuthenticatedSession?.({
+            hasAuth: false,
+        });
+
+        expect(mockState.authenticateWithParentClient).toHaveBeenCalledWith({
+            silent: true,
+            timeoutMs: 1500,
+        });
+        expect(mockState.accountManager.addAccount).toHaveBeenCalledWith(
+            PARENT_CLIENT_PUBKEY,
+            'parentClient',
+        );
+        expect(mockState.accountManager.setActiveAccount).not.toHaveBeenCalled();
+        expect(resolved).toEqual({
+            hasAuth: true,
+            pubkeyHex: PARENT_CLIENT_PUBKEY,
+        });
+    });
+
+    it('起動時の自動親クライアント認証で同一pubkeyの既存アカウントへ切り替える', async () => {
+        mockState.accountManager.hasAccount.mockReturnValue(true);
+        mockState.accountManager.getAccountType.mockReturnValue('nip07');
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: false,
+            isInitialized: false,
+            isValid: false,
+            type: 'none',
+            pubkey: '',
+        } as any;
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.bootstrapParams?.resolveAuthenticatedSession).toBeTruthy();
+        });
+
+        const resolved = await mockState.bootstrapParams?.resolveAuthenticatedSession?.({
+            hasAuth: true,
+            pubkeyHex: PARENT_CLIENT_PUBKEY,
+        });
+
+        expect(mockState.accountManager.setActiveAccount).toHaveBeenCalledWith(
+            PARENT_CLIENT_PUBKEY,
+        );
+        expect(mockState.accountManager.addAccount).not.toHaveBeenCalled();
+        expect(resolved).toEqual({
+            hasAuth: true,
+            pubkeyHex: PARENT_CLIENT_PUBKEY,
+        });
+    });
+
+    it('remote login を受け取ると silent parentClient 認証を行って post-auth bootstrap する', async () => {
+        mockState.accountManager.hasAccount.mockReturnValue(false);
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: false,
+            isInitialized: true,
+            isValid: false,
+            type: 'none',
+            pubkey: '',
+        } as any;
+        mockState.authenticateWithParentClient.mockResolvedValue({
+            success: true,
+            pubkeyHex: SECOND_PARENT_CLIENT_PUBKEY,
+        });
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.parentRemoteLoginListener).toBeTruthy();
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        mockState.parentRemoteLoginListener?.(SECOND_PARENT_CLIENT_PUBKEY);
+
+        await waitFor(() => {
+            expect(mockState.authenticateWithParentClient).toHaveBeenCalledWith({
+                silent: true,
+                timeoutMs: 5000,
+            });
+        });
+
+        await waitFor(() => {
+            expect(mockState.accountManager.addAccount).toHaveBeenCalledWith(
+                SECOND_PARENT_CLIENT_PUBKEY,
+                'parentClient',
+            );
+        });
+        await waitFor(() => {
+            expect(mockState.completePostAuthBootstrap).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: SECOND_PARENT_CLIENT_PUBKEY,
+                }),
+            );
+        });
     });
 
     it('remote logout を受け取ると parentClient アカウントを notify なしでログアウトする', async () => {
@@ -208,8 +363,13 @@ describe('App parentClient integration', () => {
         expect(mockState.syncAccountStores).toHaveBeenCalledTimes(1);
     });
 
-    it('remote logout は parentClient 以外のアカウントでは無視する', async () => {
-        mockState.accountManager.getAccountType.mockReturnValue('nip07');
+    it('remote logout で保存済みtypeがparentClientでなければそのアカウントへ復帰する', async () => {
+        const { authService } = await import('../../lib/authService');
+        mockState.accountManager.getAccountType.mockReturnValue('nsec');
+        vi.mocked(authService.restoreAccount).mockResolvedValue({
+            hasAuth: true,
+            pubkeyHex: PARENT_CLIENT_PUBKEY,
+        });
 
         render(App);
 
@@ -220,8 +380,31 @@ describe('App parentClient integration', () => {
         mockState.parentRemoteLogoutListener?.(PARENT_CLIENT_PUBKEY);
 
         await waitFor(() => {
-            expect(mockState.accountManager.getAccountType).toHaveBeenCalledWith(PARENT_CLIENT_PUBKEY);
+            expect(authService.restoreAccount).toHaveBeenCalledWith(
+                PARENT_CLIENT_PUBKEY,
+                'nsec',
+            );
         });
+
+        expect(mockState.logoutAccount).not.toHaveBeenCalled();
+    });
+
+    it('remote logout は parentClient 以外のアカウントでは無視する', async () => {
+        mockAuthStoreModule.authState.value = {
+            isAuthenticated: true,
+            isInitialized: true,
+            isValid: true,
+            type: 'nip07',
+            pubkey: PARENT_CLIENT_PUBKEY,
+        } as any;
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.parentRemoteLogoutListener).toBeTruthy();
+        });
+
+        mockState.parentRemoteLogoutListener?.(PARENT_CLIENT_PUBKEY);
 
         expect(mockState.logoutAccount).not.toHaveBeenCalled();
         expect(mockAuthStoreModule.clearAuthState).not.toHaveBeenCalled();

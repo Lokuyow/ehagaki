@@ -110,6 +110,37 @@ describe('runAppInitializationBootstrap', () => {
         expect(params.markAuthInitialized).toHaveBeenCalledOnce();
     });
 
+    it('親クライアント自動認証が成功した場合はその結果を優先する', async () => {
+        const resolveAuthenticatedSession = vi.fn().mockResolvedValue({
+            hasAuth: true,
+            pubkeyHex: 'parent-pubkey',
+        });
+        const params = createBootstrapParams({
+            initializeAuth: vi.fn().mockResolvedValue({ hasAuth: false }),
+            resolveAuthenticatedSession,
+        });
+
+        await runAppInitializationBootstrap(params as never);
+
+        expect(resolveAuthenticatedSession).toHaveBeenCalledWith({ hasAuth: false });
+        expect(params.handleAuthenticated).toHaveBeenCalledWith('parent-pubkey');
+        expect(params.initializeGuestSession).not.toHaveBeenCalled();
+    });
+
+    it('親クライアント自動認証で例外が出ても既存の認証結果を維持する', async () => {
+        const error = new Error('auto auth failed');
+        const resolveAuthenticatedSession = vi.fn().mockRejectedValue(error);
+        const params = createBootstrapParams({
+            initializeAuth: vi.fn().mockResolvedValue({ hasAuth: true, pubkeyHex: 'restored-pubkey' }),
+            resolveAuthenticatedSession,
+        });
+
+        await runAppInitializationBootstrap(params as never);
+
+        expect(params.console.error).toHaveBeenCalledWith('親クライアント連携自動認証中にエラー:', error);
+        expect(params.handleAuthenticated).toHaveBeenCalledWith('restored-pubkey');
+    });
+
     it('認証初期化エラー時も guest 初期化と external input bootstrap を継続する', async () => {
         const error = new Error('auth failed');
         const params = createBootstrapParams({

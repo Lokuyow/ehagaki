@@ -179,4 +179,27 @@ describe('ParentClientAuthService', () => {
         expect(onRemoteLogout).toHaveBeenCalledWith('aa'.repeat(32));
         expect(service.isConnected()).toBe(false);
     });
+
+    it('auth.login を受け取ると remote login listener が呼ばれる', () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+        const onRemoteLogin = vi.fn();
+        service.onRemoteLogin(onRemoteLogin);
+        service.initialize();
+
+        listeners.get('message')?.({
+            data: {
+                namespace: 'ehagaki.parentClient',
+                version: 1,
+                type: 'auth.login',
+                payload: {
+                    pubkeyHex: 'bb'.repeat(32),
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteLogin).toHaveBeenCalledWith('bb'.repeat(32));
+    });
 });

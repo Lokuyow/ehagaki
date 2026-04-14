@@ -66,7 +66,7 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type { Draft, MediaGalleryItem } from "./lib/types";
+  import type { AuthResult, Draft, MediaGalleryItem } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -130,6 +130,13 @@
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
+  let isBootstrappingApp = true;
+
+  let parentClientAuthPromise: Promise<AuthResult> | null = null;
+  let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
+
+  const PARENT_CLIENT_STARTUP_TIMEOUT_MS = 1500;
+  const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
 
   // AccountManager初期化
   const accountManager = new AccountManager({ localStorage });
@@ -205,6 +212,161 @@
     });
   }
 
+  function syncParentClientAccount(pubkeyHex: string): void {
+    if (accountManager.hasAccount(pubkeyHex)) {
+      accountManager.setActiveAccount(pubkeyHex);
+      return;
+    }
+
+    accountManager.addAccount(pubkeyHex, "parentClient");
+  }
+
+  function isCurrentParentClientRuntime(pubkeyHex?: string | null): boolean {
+    const currentPubkey = authState.value?.pubkey;
+    const connectedPubkey = parentClientAuthService.getUserPubkey();
+
+    if (
+      authState.value?.type !== "parentClient" ||
+      !parentClientAuthService.isConnected() ||
+      !currentPubkey ||
+      !connectedPubkey
+    ) {
+      return false;
+    }
+
+    if (!pubkeyHex) {
+      return currentPubkey === connectedPubkey;
+    }
+
+    return currentPubkey === pubkeyHex && connectedPubkey === pubkeyHex;
+  }
+
+  async function requestParentClientAuth(
+    options: {
+      silent?: boolean;
+      timeoutMs?: number;
+    } = {},
+  ): Promise<AuthResult> {
+    if (parentClientAuthPromise) {
+      return parentClientAuthPromise;
+    }
+
+    isLoadingParentClient = true;
+    parentClientAuthPromise = authService
+      .authenticateWithParentClient(options)
+      .finally(() => {
+        isLoadingParentClient = false;
+        parentClientAuthPromise = null;
+      });
+
+    return parentClientAuthPromise;
+  }
+
+  async function synchronizeParentClientAuth(
+    options: {
+      silent?: boolean;
+      timeoutMs?: number;
+    } = {},
+  ): Promise<AuthResult> {
+    const result = await requestParentClientAuth(options);
+    if (result.success && result.pubkeyHex) {
+      syncParentClientAccount(result.pubkeyHex);
+    }
+
+    return result;
+  }
+
+  async function activateParentClientAuth(
+    options: {
+      silent?: boolean;
+      timeoutMs?: number;
+    } = {},
+  ): Promise<string | undefined> {
+    const result = await synchronizeParentClientAuth(options);
+    if (!result.success || !result.pubkeyHex) {
+      return result.error ?? "parent_client_auth_error";
+    }
+
+    rxNostr = disposeNostrSession(rxNostr);
+    await handlePostAuth(result.pubkeyHex);
+    return undefined;
+  }
+
+  async function resolveParentClientAutoAuth(currentResult: {
+    hasAuth: boolean;
+    pubkeyHex?: string;
+  }): Promise<{
+    hasAuth: boolean;
+    pubkeyHex?: string;
+  }> {
+    if (!parentClientAvailable) {
+      return currentResult;
+    }
+
+    if (isCurrentParentClientRuntime(currentResult.pubkeyHex)) {
+      return currentResult;
+    }
+
+    const result = await synchronizeParentClientAuth({
+      silent: true,
+      timeoutMs: PARENT_CLIENT_STARTUP_TIMEOUT_MS,
+    });
+
+    if (!result.success || !result.pubkeyHex) {
+      return currentResult;
+    }
+
+    return {
+      hasAuth: true,
+      pubkeyHex: result.pubkeyHex,
+    };
+  }
+
+  async function handleRemoteParentClientLogin(
+    pubkeyHex: string | null,
+  ): Promise<void> {
+    if (isBootstrappingApp) {
+      pendingRemoteParentLoginPubkey = pubkeyHex;
+      return;
+    }
+
+    if (isCurrentParentClientRuntime(pubkeyHex)) {
+      return;
+    }
+
+    const error = await activateParentClientAuth({
+      silent: true,
+      timeoutMs: PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS,
+    });
+
+    if (error) {
+      console.error("親クライアント連携の自動同期に失敗:", error);
+    }
+  }
+
+  async function handleRemoteParentClientLogout(
+    pubkeyHex: string | null,
+  ): Promise<void> {
+    const targetPubkey = pubkeyHex || authState.value?.pubkey;
+    if (!targetPubkey) return;
+    if (authState.value?.type !== "parentClient") return;
+    if (authState.value?.pubkey !== targetPubkey) return;
+
+    const storedType = accountManager.getAccountType(targetPubkey);
+    if (storedType && storedType !== "parentClient") {
+      const restored = await switchAccount(targetPubkey);
+      if (restored) {
+        refreshAccountList();
+        return;
+      }
+    }
+
+    await logoutAccount(targetPubkey, {
+      closeDialog: false,
+      notifyParentClient: false,
+    });
+  }
+
   // --- 秘密鍵認証・保存処理 ---
   async function saveSecretKey() {
     const result = await authService.authenticateWithNsec(secretKey);
@@ -270,13 +432,13 @@
   /**
    * アカウント切替
    */
-  async function switchAccount(pubkeyHex: string) {
-    if (isSwitchingAccount) return;
+  async function switchAccount(pubkeyHex: string): Promise<boolean> {
+    if (isSwitchingAccount) return false;
     isSwitchingAccount = true;
     try {
       rxNostr = disposeNostrSession(rxNostr);
 
-      await restoreManagedAccountSession({
+      return await restoreManagedAccountSession({
         pubkeyHex,
         accountManager,
         restoreAccount: (
@@ -293,6 +455,7 @@
       });
     } catch (error) {
       console.error("アカウント切替中にエラー:", error);
+      return false;
     } finally {
       isSwitchingAccount = false;
     }
@@ -333,23 +496,13 @@
   }
 
   async function handleParentClientLogin(): Promise<string | undefined> {
-    isLoadingParentClient = true;
     try {
-      const result = await authService.authenticateWithParentClient();
-      if (!result.success) {
-        console.error("親クライアント連携認証失敗:", result.error);
-        return result.error ?? "parent_client_auth_error";
-      }
-
-      await handleSuccessfulAuthResult(result, handlePostAuth);
-      return undefined;
+      return await activateParentClientAuth();
     } catch (error) {
       console.error("親クライアント連携ログインでエラー:", error);
       return error instanceof Error
         ? error.message
         : "parent_client_auth_error";
-    } finally {
-      isLoadingParentClient = false;
     }
   }
 
@@ -393,6 +546,17 @@
     parentClientAvailable = parentClientAuthService.initialize({
       locationSearch: window.location.search,
     });
+
+    const cleanupParentClientLoginHandler =
+      parentClientAuthService.onRemoteLogin((pubkeyHex) => {
+        void handleRemoteParentClientLogin(pubkeyHex);
+      });
+
+    const cleanupParentClientLogoutHandler =
+      parentClientAuthService.onRemoteLogout((pubkeyHex) => {
+        void handleRemoteParentClientLogout(pubkeyHex);
+      });
+
     if (parentClientAvailable) {
       parentClientAuthService.announceReady();
     }
@@ -404,7 +568,7 @@
       });
     }
 
-    runAppInitializationBootstrap({
+    void runAppInitializationBootstrap({
       reloadSettings: () => settingsStore.reload(),
       locationSearch: window.location.search,
       clearSharedMediaError,
@@ -413,6 +577,7 @@
         localeInitialized = true;
       },
       initializeAuth: () => authService.initializeAuth(),
+      resolveAuthenticatedSession: resolveParentClientAutoAuth,
       handleAuthenticated: handlePostAuth,
       initializeGuestSession: () => initializeNostr(),
       stopProfileLoading: () => isLoadingProfileStore.set(false),
@@ -436,6 +601,14 @@
         locationHref: window.location.href,
       }),
       console,
+    }).finally(() => {
+      isBootstrappingApp = false;
+
+      if (pendingRemoteParentLoginPubkey !== undefined) {
+        const queuedPubkey = pendingRemoteParentLoginPubkey;
+        pendingRemoteParentLoginPubkey = undefined;
+        void handleRemoteParentClientLogin(queuedPubkey);
+      }
     });
 
     const cleanupVisibilityHandler = registerNip46VisibilityHandler({
@@ -445,21 +618,9 @@
       console,
     });
 
-    const cleanupParentClientLogoutHandler =
-      parentClientAuthService.onRemoteLogout((pubkeyHex) => {
-        const targetPubkey = pubkeyHex || authState.value?.pubkey;
-        if (!targetPubkey) return;
-        if (accountManager.getAccountType(targetPubkey) !== "parentClient")
-          return;
-
-        void logoutAccount(targetPubkey, {
-          closeDialog: false,
-          notifyParentClient: false,
-        });
-      });
-
     return () => {
       cleanupVisibilityHandler();
+      cleanupParentClientLoginHandler();
       cleanupParentClientLogoutHandler();
     };
   });

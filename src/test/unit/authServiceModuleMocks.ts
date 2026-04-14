@@ -28,6 +28,7 @@ vi.mock('../../lib/parentClientAuthService', () => ({
         initialize: vi.fn().mockReturnValue(false),
         isAvailable: vi.fn().mockReturnValue(false),
         announceReady: vi.fn().mockReturnValue(true),
+        onRemoteLogin: vi.fn(),
         connect: vi.fn(),
         reconnect: vi.fn(),
         disconnect: vi.fn(),

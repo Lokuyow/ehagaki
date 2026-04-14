@@ -15,6 +15,7 @@ export const DEFAULT_PARENT_CLIENT_CAPABILITIES: ParentClientCapability[] = [
 
 type ParentClientMessageType =
     | "ready"
+    | "auth.login"
     | "auth.request"
     | "auth.result"
     | "auth.logout"
@@ -68,6 +69,7 @@ type PendingRequest = {
     timeoutId: ReturnType<typeof setTimeout>;
 };
 
+type RemoteLoginListener = (pubkeyHex: string | null) => void;
 type RemoteLogoutListener = (pubkeyHex: string | null) => void;
 
 function dedupeCapabilities(
@@ -125,6 +127,7 @@ export class ParentClientAuthService {
     private activeSession: ParentClientSessionData | null = null;
     private signerAdapter: ParentClientSignerAdapter | null = null;
     private pendingRequests = new Map<string, PendingRequest>();
+    private remoteLoginListeners = new Set<RemoteLoginListener>();
     private remoteLogoutListeners = new Set<RemoteLogoutListener>();
     private isListening = false;
 
@@ -314,6 +317,13 @@ export class ParentClientAuthService {
         return this.activeSession !== null;
     }
 
+    onRemoteLogin(listener: RemoteLoginListener): () => void {
+        this.remoteLoginListeners.add(listener);
+        return () => {
+            this.remoteLoginListeners.delete(listener);
+        };
+    }
+
     onRemoteLogout(listener: RemoteLogoutListener): () => void {
         this.remoteLogoutListeners.add(listener);
         return () => {
@@ -407,6 +417,12 @@ export class ParentClientAuthService {
 
         const message = event.data;
         const requestId = message.requestId;
+
+        if (message.type === "auth.login") {
+            const payload = message.payload as { pubkeyHex?: string } | undefined;
+            this.notifyRemoteLogin(payload?.pubkeyHex ?? null);
+            return;
+        }
 
         if (message.type === "auth.logout") {
             const payload = message.payload as { pubkeyHex?: string } | undefined;
@@ -551,6 +567,12 @@ export class ParentClientAuthService {
 
     private notifyRemoteLogout(pubkeyHex: string | null): void {
         for (const listener of this.remoteLogoutListeners) {
+            listener(pubkeyHex);
+        }
+    }
+
+    private notifyRemoteLogin(pubkeyHex: string | null): void {
+        for (const listener of this.remoteLoginListeners) {
             listener(pubkeyHex);
         }
     }

@@ -29,6 +29,9 @@ interface RunAppInitializationBootstrapParams {
     waitForLocale: () => Promise<void>;
     markLocaleInitialized: () => void;
     initializeAuth: () => Promise<AuthInitializationResult>;
+    resolveAuthenticatedSession?: (
+        currentResult: AuthInitializationResult,
+    ) => Promise<AuthInitializationResult>;
     handleAuthenticated: (pubkeyHex: string) => Promise<void>;
     initializeGuestSession: () => Promise<void>;
     stopProfileLoading: () => void;
@@ -56,6 +59,7 @@ export async function runAppInitializationBootstrap({
     waitForLocale,
     markLocaleInitialized,
     initializeAuth,
+    resolveAuthenticatedSession,
     handleAuthenticated,
     initializeGuestSession,
     stopProfileLoading,
@@ -72,7 +76,15 @@ export async function runAppInitializationBootstrap({
     markLocaleInitialized();
 
     try {
-        const authResult = await initializeAuth();
+        let authResult = await initializeAuth();
+
+        if (resolveAuthenticatedSession) {
+            try {
+                authResult = await resolveAuthenticatedSession(authResult);
+            } catch (error) {
+                console.error('親クライアント連携自動認証中にエラー:', error);
+            }
+        }
 
         if (authResult.hasAuth && authResult.pubkeyHex) {
             await handleAuthenticated(authResult.pubkeyHex);
