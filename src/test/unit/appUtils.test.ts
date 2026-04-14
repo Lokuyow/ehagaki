@@ -347,8 +347,10 @@ describe('Settings Utilities', () => {
                 navigator: mockNavigator
             });
 
+            expect(result.endpoint).toBe('https://nostrcheck.me/api/v2/media');
             expect(result.compression).toBe('medium');
             expect(result.clientTagEnabled).toBe(true);
+            expect(mockStorage.setItem).toHaveBeenCalledWith('uploadEndpoint', 'https://nostrcheck.me/api/v2/media');
             expect(mockStorage.setItem).toHaveBeenCalledWith('clientTagEnabled', 'true');
         });
 
@@ -361,7 +363,7 @@ describe('Settings Utilities', () => {
                 navigator: mockNavigator
             });
 
-            // Should use Japanese default endpoint (implementation detail)
+            expect(mockStorage.setItem).toHaveBeenCalledWith('uploadEndpoint', 'https://share.yabu.me/api/v2/media');
         });
 
         it('should use stored values when available', () => {

@@ -337,6 +337,57 @@ describe('FileUploadManager', () => {
             );
         });
 
+        it('保存済みアップロード先がない場合はロケール既定の送信先を使う', async () => {
+            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+
+            mockDependencies.navigator = {
+                language: 'ja-JP',
+                serviceWorker: {
+                    controller: null,
+                },
+            } as any;
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
+            };
+
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({
+                    file,
+                    wasCompressed: false,
+                    wasSkipped: false
+                }),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                status: 'success',
+                nip94_event: {
+                    tags: [['url', 'https://example.com/image.jpg']]
+                }
+            }));
+
+            await uploadManager.uploadFile(file);
+
+            expect(mockAuthService.buildAuthHeader).toHaveBeenCalledWith(
+                'https://share.yabu.me/api/v2/media',
+                'POST'
+            );
+            expect(mockFetch).toHaveBeenCalledWith(
+                'https://share.yabu.me/api/v2/media',
+                expect.objectContaining({ method: 'POST' })
+            );
+            expect(mockDependencies.localStorage.getItem('uploadEndpoint')).toBe('https://share.yabu.me/api/v2/media');
+        });
+
         it('uploadFileWithCallbacks 成功時にサイズ情報表示 action を呼び出す', async () => {
             const file = createMockFile('test.jpg', 'image/jpeg', 1000);
 

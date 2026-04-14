@@ -5,10 +5,10 @@ import type {
   TimeoutAdapter,
 } from "../types";
 import {
+  ensureUploadEndpointPreference,
   getClientTagEnabledPreference,
   getEffectiveLocale,
   getImageCompressionLevelPreference,
-  getUploadEndpointPreference,
 } from './settingsStorage';
 
 // =============================================================================
@@ -83,7 +83,7 @@ export function initializeSettingsValues(
   } = options;
 
   const effectiveLocale = getEffectiveLocale(storage, nav);
-  const endpoint = getUploadEndpointPreference(storage, effectiveLocale, selectedEndpoint);
+  const endpoint = ensureUploadEndpointPreference(storage, effectiveLocale, selectedEndpoint);
   const clientTagEnabled = getClientTagEnabledPreference(storage);
   const compression = getImageCompressionLevelPreference(storage, selectedCompression);
 

@@ -61,6 +61,16 @@ export function getUploadEndpointPreference(
     return getDefaultEndpoint(locale);
 }
 
+export function ensureUploadEndpointPreference(
+    storage: ReadWriteStorage,
+    locale: string | null | undefined,
+    selectedEndpoint?: string,
+): string {
+    const endpoint = getUploadEndpointPreference(storage, locale, selectedEndpoint);
+    storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, endpoint);
+    return endpoint;
+}
+
 export function getClientTagEnabledPreference(storage: ReadWriteStorage): boolean {
     const storedValue = storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED);
     if (storedValue === null) {

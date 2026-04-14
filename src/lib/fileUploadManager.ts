@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import {
   DEFAULT_API_URL,
+  getDefaultEndpoint,
   MAX_FILE_SIZE,
   STORAGE_KEYS,
   UPLOAD_POLLING_CONFIG
@@ -25,6 +26,7 @@ import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { MimeTypeSupport } from './mimeTypeSupport';
 import { ImageCompressionService } from './imageCompressionService';
 import { NostrAuthService } from './nostrAuthService';
+import { isValidUploadEndpoint, normalizeLocale } from './utils/settingsStorage';
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -84,8 +86,24 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
   private getUploadEndpoint(apiUrl: string): string {
     const stored = this.dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
-    const pick = (v?: string | null) => (v && v.trim().length > 0 ? v : undefined);
-    return pick(stored) ?? pick(apiUrl) ?? DEFAULT_API_URL;
+    if (isValidUploadEndpoint(stored)) {
+      return stored;
+    }
+
+    const normalizedApiUrl = apiUrl?.trim();
+    if (normalizedApiUrl && normalizedApiUrl !== DEFAULT_API_URL) {
+      return normalizedApiUrl;
+    }
+
+    const fallbackEndpoint = getDefaultEndpoint(
+      normalizeLocale(
+        this.dependencies.localStorage.getItem(STORAGE_KEYS.LOCALE) ??
+        this.dependencies.navigator?.language,
+      ),
+    );
+
+    this.dependencies.localStorage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, fallbackEndpoint);
+    return fallbackEndpoint;
   }
 
   private async pollUploadStatus(

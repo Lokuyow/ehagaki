@@ -1,6 +1,7 @@
 import { locale as i18nLocale } from "svelte-i18n";
 import {
     getClientTagEnabledPreference,
+    ensureUploadEndpointPreference,
     getEffectiveLocale,
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
@@ -32,10 +33,11 @@ interface SettingsState {
 
 function readSettingsState(): SettingsState {
     const effectiveLocale = getEffectiveLocale(localStorage, navigator);
+    const uploadEndpoint = ensureUploadEndpointPreference(localStorage, effectiveLocale);
 
     return {
         locale: effectiveLocale,
-        uploadEndpoint: getUploadEndpointPreference(localStorage, effectiveLocale),
+        uploadEndpoint,
         clientTagEnabled: getClientTagEnabledPreference(localStorage),
         imageCompressionLevel: getImageCompressionLevelPreference(localStorage),
         videoCompressionLevel: getVideoCompressionLevelPreference(localStorage),
@@ -71,9 +73,9 @@ export const settingsStore = {
         settingsState.locale = nextLocale;
 
         if (!hadStoredEndpoint) {
-            settingsState.uploadEndpoint = setUploadEndpointPreference(
+            settingsState.uploadEndpoint = ensureUploadEndpointPreference(
                 localStorage,
-                getUploadEndpointPreference(localStorage, nextLocale),
+                nextLocale,
             );
         }
 
