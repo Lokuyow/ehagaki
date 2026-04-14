@@ -21,6 +21,16 @@ import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svel
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
 
+type ImageImetaMap = Record<string, {
+  m: string;
+  blurhash?: string;
+  dim?: string;
+  alt?: string;
+  [key: string]: any;
+}>;
+
+type ReplyQuoteNotifyOptions = { replyTo?: string; quotedEvent?: string };
+
 // --- メインのPostManager（依存性を組み合わせ） ---
 export class PostManager {
   private rxNostr: RxNostr | null = null;
@@ -58,11 +68,85 @@ export class PostManager {
     clearFn();
   }
 
-  private getReplyQuoteNotifyOptions(): { replyTo?: string; quotedEvent?: string } | undefined {
+  private getReplyQuoteNotifyOptions(): ReplyQuoteNotifyOptions | undefined {
     const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
     if (!rqState) return undefined;
     if (rqState.mode === 'reply') return { replyTo: rqState.eventId };
     return { quotedEvent: rqState.eventId };
+  }
+
+  private notifyPostFailure(error: string): PostResult {
+    this.deps.iframeMessageService?.notifyPostError(error);
+    return { success: false, error };
+  }
+
+  private handleSubmissionError(logMessage: string, error: unknown): PostResult {
+    this.deps.console?.error(logMessage, error);
+    return this.notifyPostFailure('post_error');
+  }
+
+  private async buildSubmissionEvent(params: {
+    processedContent: string;
+    hashtags: string[];
+    tags: string[][];
+    pubkey?: string;
+    imageImetaMap?: ImageImetaMap;
+    contentWarningEnabled: boolean;
+    contentWarningReason: string;
+    replyQuoteTags?: string[][];
+  }): Promise<any> {
+    return PostEventBuilder.buildEvent(
+      params.processedContent,
+      params.hashtags,
+      params.tags,
+      params.pubkey,
+      params.imageImetaMap,
+      this.deps.createImetaTagFn,
+      this.deps.getClientTagFn,
+      params.contentWarningEnabled,
+      params.contentWarningReason,
+      params.replyQuoteTags,
+    );
+  }
+
+  private finalizeSubmittedPost(
+    result: PostResult,
+    hashtags: string[],
+    rqNotifyOptions?: ReplyQuoteNotifyOptions,
+  ): PostResult {
+    if (result.success) {
+      this.deps.saveHashtagsToHistoryFn?.(hashtags);
+      this.clearReplyQuoteAfterSuccess();
+      this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
+      return result;
+    }
+
+    this.deps.iframeMessageService?.notifyPostError(result.error);
+    return result;
+  }
+
+  private async sendPreparedEvent(params: {
+    event: any;
+    hashtags: string[];
+    rqNotifyOptions?: ReplyQuoteNotifyOptions;
+    signer?: any;
+    signEvent?: (event: any) => Promise<any>;
+    logSignedEvent?: boolean;
+  }): Promise<PostResult> {
+    const eventToSend = params.signEvent
+      ? await params.signEvent(params.event)
+      : params.event;
+
+    if (params.signEvent && params.logSignedEvent) {
+      this.deps.console?.log('署名済みイベント:', eventToSend);
+    }
+
+    const result = await this.eventSender!.sendEvent(eventToSend, params.signer);
+    return this.finalizeSubmittedPost(
+      result,
+      params.hashtags,
+      params.rqNotifyOptions,
+    );
   }
 
   // 外部APIは変更なし（後方互換性のため）
@@ -77,7 +161,7 @@ export class PostManager {
 
   async submitPost(
     content: string,
-    imageImetaMap?: Record<string, { m: string; blurhash?: string; dim?: string; alt?: string;[key: string]: any }>
+    imageImetaMap?: ImageImetaMap,
   ): Promise<PostResult> {
     // 末尾のメディアURL直後の改行を削除
     let processedContent = trimTrailingNewlineAfterMedia(content);
@@ -100,14 +184,11 @@ export class PostManager {
 
     const validation = this.validatePost(processedContent);
     if (!validation.valid) {
-      // 投稿失敗をiframe親ウィンドウに通知
-      this.deps.iframeMessageService?.notifyPostError(validation.error);
-      return { success: false, error: validation.error };
+      return this.notifyPostFailure(validation.error!);
     }
 
     if (!this.eventSender) {
-      this.deps.iframeMessageService?.notifyPostError("nostr_not_ready");
-      return { success: false, error: "nostr_not_ready" };
+      return this.notifyPostFailure("nostr_not_ready");
     }
 
     try {
@@ -163,45 +244,37 @@ export class PostManager {
         try {
           const pubkey = auth.pubkey;
           if (!pubkey) {
-            this.deps.iframeMessageService?.notifyPostError("pubkey_not_found");
-            return { success: false, error: "pubkey_not_found" };
+            return this.notifyPostFailure('pubkey_not_found');
           }
 
-          const event = await PostEventBuilder.buildEvent(
+          const signEvent = typeof (windowObj.nostr as any).signEvent === 'function'
+            ? (windowObj.nostr as { signEvent: (event: any) => Promise<any> }).signEvent.bind(windowObj.nostr)
+            : undefined;
+
+          if (!signEvent) {
+            return this.notifyPostFailure('nostr_sign_event_not_supported');
+          }
+
+          const event = await this.buildSubmissionEvent({
             processedContent,
             hashtags,
             tags,
             pubkey,
             imageImetaMap,
-            this.deps.createImetaTagFn,
-            this.deps.getClientTagFn,
             contentWarningEnabled,
             contentWarningReason,
-            replyQuoteTags
-          );
+            replyQuoteTags,
+          });
 
-          // 型ガードで signEvent の存在を確認
-          if (typeof (windowObj.nostr as any).signEvent === "function") {
-            const signedEvent = await (windowObj.nostr as { signEvent: (event: any) => Promise<any> }).signEvent(event);
-            this.deps.console?.log("署名済みイベント:", signedEvent);
-            const result = await this.eventSender.sendEvent(signedEvent);
-            // 投稿結果をiframe親ウィンドウに通知
-            if (result.success) {
-              this.deps.saveHashtagsToHistoryFn?.(hashtags);
-              this.clearReplyQuoteAfterSuccess();
-              this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
-            } else {
-              this.deps.iframeMessageService?.notifyPostError(result.error);
-            }
-            return result;
-          } else {
-            this.deps.iframeMessageService?.notifyPostError("nostr_sign_event_not_supported");
-            return { success: false, error: "nostr_sign_event_not_supported" };
-          }
+          return await this.sendPreparedEvent({
+            event,
+            hashtags,
+            rqNotifyOptions,
+            signEvent,
+            logSignedEvent: true,
+          });
         } catch (err) {
-          this.deps.console?.error("window.nostrでの投稿エラー:", err);
-          this.deps.iframeMessageService?.notifyPostError("post_error");
-          return { success: false, error: "post_error" };
+          return this.handleSubmissionError('window.nostrでの投稿エラー:', err);
         }
       }
 
@@ -209,84 +282,65 @@ export class PostManager {
       if (auth.type === 'nip46') {
         const nip46Signer = this.deps.getNip46SignerFn?.();
         if (!nip46Signer) {
-          this.deps.iframeMessageService?.notifyPostError("nip46_signer_not_available");
-          return { success: false, error: "nip46_signer_not_available" };
+          return this.notifyPostFailure('nip46_signer_not_available');
         }
 
         const pubkey = auth.pubkey;
         if (!pubkey) {
-          this.deps.iframeMessageService?.notifyPostError("pubkey_not_found");
-          return { success: false, error: "pubkey_not_found" };
+          return this.notifyPostFailure('pubkey_not_found');
         }
 
         try {
-          const event = await PostEventBuilder.buildEvent(
+          const event = await this.buildSubmissionEvent({
             processedContent,
             hashtags,
             tags,
             pubkey,
             imageImetaMap,
-            this.deps.createImetaTagFn,
-            this.deps.getClientTagFn,
             contentWarningEnabled,
             contentWarningReason,
-            replyQuoteTags
-          );
+            replyQuoteTags,
+          });
 
-          const result = await this.eventSender.sendEvent(event, nip46Signer);
-          if (result.success) {
-            this.deps.saveHashtagsToHistoryFn?.(hashtags);
-            this.clearReplyQuoteAfterSuccess();
-            this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
-          } else {
-            this.deps.iframeMessageService?.notifyPostError(result.error);
-          }
-          return result;
+          return await this.sendPreparedEvent({
+            event,
+            hashtags,
+            rqNotifyOptions,
+            signer: nip46Signer,
+          });
         } catch (err) {
-          this.deps.console?.error("NIP-46での投稿エラー:", err);
-          this.deps.iframeMessageService?.notifyPostError("post_error");
-          return { success: false, error: "post_error" };
+          return this.handleSubmissionError('NIP-46での投稿エラー:', err);
         }
       }
 
       // ローカルキーを使用（秘密鍵直入れの場合）
       const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage(auth.pubkey);
       if (!storedKey) {
-        this.deps.iframeMessageService?.notifyPostError("key_not_found");
-        return { success: false, error: "key_not_found" };
+        return this.notifyPostFailure('key_not_found');
       }
 
-      const event = await PostEventBuilder.buildEvent(
+      const event = await this.buildSubmissionEvent({
         processedContent,
         hashtags,
         tags,
-        undefined,
         imageImetaMap,
-        this.deps.createImetaTagFn,
-        this.deps.getClientTagFn,
         contentWarningEnabled,
         contentWarningReason,
-        replyQuoteTags
-      );
+        replyQuoteTags,
+      });
 
       const signer = this.deps.seckeySignerFn
         ? this.deps.seckeySignerFn(storedKey)
         : seckeySigner(storedKey);
-      const result = await this.eventSender.sendEvent(event, signer);
-      // 投稿結果をiframe親ウィンドウに通知
-      if (result.success) {
-        this.deps.saveHashtagsToHistoryFn?.(hashtags);
-        this.clearReplyQuoteAfterSuccess();
-        this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
-      } else {
-        this.deps.iframeMessageService?.notifyPostError(result.error);
-      }
-      return result;
+      return await this.sendPreparedEvent({
+        event,
+        hashtags,
+        rqNotifyOptions,
+        signer,
+      });
 
     } catch (err) {
-      this.deps.console?.error("投稿エラー:", err);
-      this.deps.iframeMessageService?.notifyPostError("post_error");
-      return { success: false, error: "post_error" };
+      return this.handleSubmissionError('投稿エラー:', err);
     }
   }
 

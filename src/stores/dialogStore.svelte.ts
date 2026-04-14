@@ -1,31 +1,33 @@
 // --- UIダイアログ状態管理 ---
 import type { MediaGalleryItem } from '../lib/types';
 
+function createBooleanStore(getValue: () => boolean, setValue: (value: boolean) => void) {
+    return {
+        get value() { return getValue(); },
+        set: (value: boolean) => { setValue(value); }
+    };
+}
+
+function createValueStore<T>(getValue: () => T, setValue: (value: T) => void) {
+    return {
+        get value() { return getValue(); },
+        set: (value: T) => { setValue(value); }
+    };
+}
+
 let showLogin = $state(false);
 let showLogout = $state(false);
 let showSettings = $state(false);
 let showWelcome = $state(false);
 let showAddAccount = $state(false);
 
-export const showLoginDialogStore = {
-    get value() { return showLogin; },
-    set: (value: boolean) => { showLogin = value; }
-};
+export const showLoginDialogStore = createBooleanStore(() => showLogin, (value) => { showLogin = value; });
 
-export const showLogoutDialogStore = {
-    get value() { return showLogout; },
-    set: (value: boolean) => { showLogout = value; }
-};
+export const showLogoutDialogStore = createBooleanStore(() => showLogout, (value) => { showLogout = value; });
 
-export const showSettingsDialogStore = {
-    get value() { return showSettings; },
-    set: (value: boolean) => { showSettings = value; }
-};
+export const showSettingsDialogStore = createBooleanStore(() => showSettings, (value) => { showSettings = value; });
 
-export const showWelcomeDialogStore = {
-    get value() { return showWelcome; },
-    set: (value: boolean) => { showWelcome = value; }
-};
+export const showWelcomeDialogStore = createBooleanStore(() => showWelcome, (value) => { showWelcome = value; });
 
 // --- 下書きダイアログ状態管理 ---
 import type { DraftReplyQuoteData } from '../lib/types';
@@ -34,23 +36,14 @@ let showDraftList = $state(false);
 let showDraftLimitConfirm = $state(false);
 let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null>(null);
 
-export const showDraftListDialogStore = {
-    get value() { return showDraftList; },
-    set: (value: boolean) => { showDraftList = value; }
-};
+export const showDraftListDialogStore = createBooleanStore(() => showDraftList, (value) => { showDraftList = value; });
 
-export const showDraftLimitConfirmStore = {
-    get value() { return showDraftLimitConfirm; },
-    set: (value: boolean) => { showDraftLimitConfirm = value; }
-};
+export const showDraftLimitConfirmStore = createBooleanStore(() => showDraftLimitConfirm, (value) => { showDraftLimitConfirm = value; });
 
-export const pendingDraftContentStore = {
-    get value() { return pendingDraftContent; },
-    set: (value: { content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
-};
+export const pendingDraftContentStore = createValueStore(
+    () => pendingDraftContent,
+    (value: { content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
+);
 
 // --- アカウント追加ダイアログ ---
-export const showAddAccountDialogStore = {
-    get value() { return showAddAccount; },
-    set: (value: boolean) => { showAddAccount = value; }
-};
+export const showAddAccountDialogStore = createBooleanStore(() => showAddAccount, (value) => { showAddAccount = value; });

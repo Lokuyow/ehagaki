@@ -4,6 +4,8 @@ import {
     collectFullscreenMediaItems,
     createPostStatusHandlers,
     getFullscreenMediaItemAt,
+    moveEditorMediaToGallery,
+    moveGalleryMediaToEditor,
     submitPendingPostWithSecretKey,
 } from '../../lib/postComponentUtils';
 
@@ -185,5 +187,150 @@ describe('getFullscreenMediaItemAt', () => {
 
         expect(getFullscreenMediaItemAt(items, 1)).toEqual(items[1]);
         expect(getFullscreenMediaItemAt(items, 3)).toBeUndefined();
+    });
+});
+
+describe('moveEditorMediaToGallery', () => {
+    it('editor の非プレースホルダーメディアを gallery item に変換して削除する', () => {
+        const addGalleryItem = vi.fn();
+        const deleteMock = vi.fn().mockReturnThis();
+        const dispatch = vi.fn();
+        const currentEditor = {
+            state: {
+                doc: {
+                    descendants: (callback: (node: any, pos: number) => void) => {
+                        callback({
+                            type: { name: 'image' },
+                            attrs: {
+                                src: 'https://example.com/a.jpg',
+                                blurhash: 'blurhash-a',
+                                dim: '100x100',
+                                alt: 'a',
+                                isPlaceholder: false,
+                            },
+                            nodeSize: 1,
+                        }, 2);
+                        callback({
+                            type: { name: 'video' },
+                            attrs: {
+                                src: 'https://example.com/b.mp4',
+                                isPlaceholder: false,
+                            },
+                            nodeSize: 1,
+                        }, 4);
+                    },
+                },
+                tr: {
+                    delete: deleteMock,
+                },
+            },
+            view: {
+                dispatch,
+            },
+        } as any;
+
+        const moved = moveEditorMediaToGallery({
+            currentEditor,
+            imageOxMap: { 'https://example.com/a.jpg': 'ox-a' },
+            imageXMap: { 'https://example.com/a.jpg': 'x-a' },
+            addGalleryItem,
+            createMediaItemId: vi.fn()
+                .mockReturnValueOnce('item-1')
+                .mockReturnValueOnce('item-2'),
+        });
+
+        expect(moved).toBe(true);
+        expect(addGalleryItem).toHaveBeenNthCalledWith(1, {
+            id: 'item-1',
+            type: 'image',
+            src: 'https://example.com/a.jpg',
+            isPlaceholder: false,
+            blurhash: 'blurhash-a',
+            ox: 'ox-a',
+            x: 'x-a',
+            dim: '100x100',
+            alt: 'a',
+        });
+        expect(addGalleryItem).toHaveBeenNthCalledWith(2, {
+            id: 'item-2',
+            type: 'video',
+            src: 'https://example.com/b.mp4',
+            isPlaceholder: false,
+            blurhash: undefined,
+            ox: undefined,
+            x: undefined,
+            dim: undefined,
+            alt: undefined,
+        });
+        expect(deleteMock).toHaveBeenNthCalledWith(1, 4, 5);
+        expect(deleteMock).toHaveBeenNthCalledWith(2, 2, 3);
+        expect(dispatch).toHaveBeenCalledOnce();
+    });
+});
+
+describe('moveGalleryMediaToEditor', () => {
+    it('gallery items を editor node に変換し ox/x map を返す', () => {
+        const insertMock = vi.fn().mockReturnThis();
+        const dispatch = vi.fn();
+        const currentEditor = {
+            state: {
+                doc: {
+                    content: { size: 10 },
+                },
+                tr: {
+                    insert: insertMock,
+                },
+                schema: {
+                    nodes: {
+                        image: {
+                            create: vi.fn((attrs) => ({ ...attrs, nodeSize: 1 })),
+                        },
+                        video: {
+                            create: vi.fn((attrs) => ({ ...attrs, nodeSize: 1 })),
+                        },
+                    },
+                },
+            },
+            view: {
+                dispatch,
+            },
+        } as any;
+
+        const result = moveGalleryMediaToEditor({
+            currentEditor,
+            items: [
+                {
+                    id: 'item-1',
+                    type: 'image',
+                    src: 'https://example.com/a.jpg',
+                    isPlaceholder: false,
+                    blurhash: 'blurhash-a',
+                    ox: 'ox-a',
+                    x: 'x-a',
+                    dim: '100x100',
+                    alt: 'a',
+                },
+                {
+                    id: 'item-2',
+                    type: 'video',
+                    src: 'https://example.com/b.mp4',
+                    isPlaceholder: false,
+                },
+                {
+                    id: 'item-3',
+                    type: 'image',
+                    src: 'placeholder',
+                    isPlaceholder: true,
+                },
+            ],
+        });
+
+        expect(result).toEqual({
+            imageOxMap: { 'https://example.com/a.jpg': 'ox-a' },
+            imageXMap: { 'https://example.com/a.jpg': 'x-a' },
+            hadItems: true,
+        });
+        expect(insertMock).toHaveBeenCalledTimes(2);
+        expect(dispatch).toHaveBeenCalledOnce();
     });
 });

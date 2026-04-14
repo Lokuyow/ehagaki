@@ -1,5 +1,32 @@
 import { vi } from 'vitest';
 
+export function createUploadStoreLocalMock(overrides?: Record<string, any>) {
+    const base = {
+        uploadAbortFlagStore: {
+            value: false,
+            set: vi.fn(),
+            reset: vi.fn(),
+        },
+        mediaFreePlacementStore: {
+            value: true,
+            set: vi.fn(),
+        },
+    };
+
+    return {
+        ...base,
+        ...overrides,
+        uploadAbortFlagStore: {
+            ...base.uploadAbortFlagStore,
+            ...(overrides?.uploadAbortFlagStore ?? {}),
+        },
+        mediaFreePlacementStore: {
+            ...base.mediaFreePlacementStore,
+            ...(overrides?.mediaFreePlacementStore ?? {}),
+        },
+    };
+}
+
 export const mockAuthStoreModule = {
     updateAuthState: vi.fn(),
     setAuthInitialized: vi.fn(),

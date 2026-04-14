@@ -98,6 +98,12 @@
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
   } from "./lib/appDialogUtils";
+  import {
+    disposeNostrSession,
+    handleSuccessfulAuthResult,
+    resolveLogoutAccountAction,
+    restoreManagedAccountSession,
+  } from "./lib/appAuthUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -206,9 +212,7 @@
     errorMessage = "";
 
     try {
-      if (result.pubkeyHex) {
-        await handlePostAuth(result.pubkeyHex);
-      }
+      await handleSuccessfulAuthResult(result, handlePostAuth);
     } catch (e) {
       isLoadingProfileStore.set(false);
     }
@@ -221,21 +225,15 @@
     isLoggingOut = true;
     try {
       resetUploadDisplayState();
-      const nextPubkey = authService.logoutAccount(pubkeyHex);
+      const nextAction = resolveLogoutAccountAction(
+        authService.logoutAccount(pubkeyHex),
+      );
 
-      if (nextPubkey) {
-        // アクティブアカウントが削除された → 次のアカウントに切替
-        if (rxNostr) {
-          rxNostr.dispose();
-          rxNostr = undefined;
-        }
-        await switchAccount(nextPubkey);
-      } else if (nextPubkey === null) {
-        // アカウントが残っていない → 未認証状態
-        if (rxNostr) {
-          rxNostr.dispose();
-          rxNostr = undefined;
-        }
+      if (nextAction.kind === "switch") {
+        rxNostr = disposeNostrSession(rxNostr);
+        await switchAccount(nextAction.pubkeyHex);
+      } else if (nextAction.kind === "guest") {
+        rxNostr = disposeNostrSession(rxNostr);
         clearAuthState();
         profileDataStore.set({
           name: "",
@@ -249,11 +247,10 @@
         secretKey = "";
         errorMessage = "";
       }
-      // undefined: 非アクティブアカウントの削除 → 現在のセッションは維持
 
       refreshAccountList();
-      if (nextPubkey !== undefined) {
-        showLogoutDialogStore.set(false);
+      if (nextAction.kind !== "keep-current") {
+        logoutDialog.close();
       }
     } catch (error) {
       console.error("ログアウト処理中にエラー:", error);
@@ -269,25 +266,23 @@
     if (isSwitchingAccount) return;
     isSwitchingAccount = true;
     try {
-      // rx-nostrを破棄
-      if (rxNostr) {
-        rxNostr.dispose();
-        rxNostr = undefined;
-      }
+      rxNostr = disposeNostrSession(rxNostr);
 
-      accountManager.setActiveAccount(pubkeyHex);
-      const accountType = accountManager.getAccountType(pubkeyHex);
-      if (!accountType) {
-        console.error("アカウントタイプが見つかりません:", pubkeyHex);
-        return;
-      }
-
-      const result = await authService.restoreAccount(pubkeyHex, accountType);
-      if (result.hasAuth && result.pubkeyHex) {
-        await handlePostAuth(result.pubkeyHex);
-      } else {
-        console.error("アカウント復元に失敗:", pubkeyHex);
-      }
+      await restoreManagedAccountSession({
+        pubkeyHex,
+        accountManager,
+        restoreAccount: (
+          nextPubkeyHex: string,
+          type: "nsec" | "nip07" | "nip46",
+        ) => authService.restoreAccount(nextPubkeyHex, type),
+        handlePostAuth,
+        onMissingAccountType: () => {
+          console.error("アカウントタイプが見つかりません:", pubkeyHex);
+        },
+        onRestoreFailure: () => {
+          console.error("アカウント復元に失敗:", pubkeyHex);
+        },
+      });
     } catch (error) {
       console.error("アカウント切替中にエラー:", error);
     } finally {
@@ -319,9 +314,7 @@
         return;
       }
 
-      if (result.pubkeyHex) {
-        await handlePostAuth(result.pubkeyHex);
-      }
+      await handleSuccessfulAuthResult(result, handlePostAuth);
     } catch (error) {
       console.error("NIP-07ログインでエラー:", error);
     } finally {
@@ -340,9 +333,7 @@
         return result.error ?? "NIP-46 authentication failed";
       }
 
-      if (result.pubkeyHex) {
-        await handlePostAuth(result.pubkeyHex);
-      }
+      await handleSuccessfulAuthResult(result, handlePostAuth);
       return undefined;
     } catch (error) {
       console.error("NIP-46ログインでエラー:", error);

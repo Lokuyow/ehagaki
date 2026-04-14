@@ -32,18 +32,12 @@ vi.mock("../../lib/debug", () => ({
     showCompressedImagePreview: vi.fn()
 }));
 
-vi.mock("../../stores/uploadStore.svelte", () => ({
-    setImageSizeInfoFromFileSize: vi.fn(),
-    uploadAbortFlagStore: {
-        value: false,
-        set: vi.fn(),
-        reset: vi.fn()
-    },
-    mediaFreePlacementStore: {
-        value: true,
-        set: vi.fn(),
-    },
-}));
+vi.mock("../../stores/uploadStore.svelte", async () => {
+    const { createUploadStoreLocalMock } = await import('../mocks/storeModules');
+    return createUploadStoreLocalMock({
+        setImageSizeInfoFromFileSize: vi.fn(),
+    });
+});
 
 vi.mock("../../lib/tags/imetaTag", () => ({
     generateBlurhashForFile: vi.fn(async () => "blurhash123"),

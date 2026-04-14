@@ -10,16 +10,10 @@ import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../../lib/constants';
  */
 
 // uploadAbortFlagStoreのモック
-vi.mock('../../stores/uploadStore.svelte', () => ({
-    uploadAbortFlagStore: {
-        value: false,
-        set: vi.fn(),
-    },
-    mediaFreePlacementStore: {
-        value: true,
-        set: vi.fn(),
-    },
-}));
+vi.mock('../../stores/uploadStore.svelte', async () => {
+    const { createUploadStoreLocalMock } = await import('../mocks/storeModules');
+    return createUploadStoreLocalMock();
+});
 
 // テスト用のストレージ実装
 class TestStorage implements Storage {

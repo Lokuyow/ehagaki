@@ -31,6 +31,8 @@
     collectFullscreenMediaItems,
     createPostStatusHandlers,
     getFullscreenMediaItemAt,
+    moveEditorMediaToGallery,
+    moveGalleryMediaToEditor,
     submitPendingPostWithSecretKey,
   } from "../lib/postComponentUtils";
 
@@ -356,91 +358,40 @@
       return;
     }
     if (!currentEditor) return;
+    const editorInstance = currentEditor;
 
     if (isGalleryMode) {
-      // フリーモード → ギャラリーモード: エディタのメディアノードをギャラリーに移動
-      const doc = currentEditor.state.doc;
-      const mediaNodes: Array<{ node: any; pos: number }> = [];
+      const moved = untrack(() =>
+        moveEditorMediaToGallery({
+          currentEditor: editorInstance,
+          imageOxMap,
+          imageXMap,
+          addGalleryItem: (item: MediaGalleryItem) =>
+            mediaGalleryStore.addItem(item),
+          createMediaItemId: generateMediaItemId,
+        }),
+      );
 
-      doc.descendants((node: any, pos: number) => {
-        if (
-          (node.type.name === "image" || node.type.name === "video") &&
-          !node.attrs.isPlaceholder
-        ) {
-          mediaNodes.push({ node, pos });
-        }
-      });
-
-      if (mediaNodes.length > 0) {
-        // ギャラリーに追加 (untrack: 書き込みがエフェクトを再トリガーしないように)
-        untrack(() => {
-          mediaNodes.forEach(({ node }) => {
-            const src = node.attrs.src as string;
-            if (!src) return;
-            mediaGalleryStore.addItem({
-              id: generateMediaItemId(),
-              type: node.type.name as "image" | "video",
-              src,
-              isPlaceholder: false,
-              blurhash: node.attrs.blurhash ?? undefined,
-              ox: imageOxMap[src] ?? undefined,
-              x: imageXMap[src] ?? undefined,
-              dim: node.attrs.dim ?? undefined,
-              alt: node.attrs.alt ?? undefined,
-            });
-          });
-        });
-
-        // エディタからメディアノードを削除 (後ろから)
-        let tr = currentEditor.state.tr;
-        [...mediaNodes].reverse().forEach(({ node, pos }) => {
-          tr = tr.delete(pos, pos + node.nodeSize);
-        });
-        currentEditor.view.dispatch(tr);
-
+      if (moved) {
         untrack(() => {
           imageOxMap = {};
           imageXMap = {};
         });
       }
     } else {
-      // ギャラリーモード → フリーモード: ギャラリーのメディアをエディタに移動
-      // untrack: getItems()の読み取りとclearAll()の書き込みがループを起こさないように
       const items = untrack(() => mediaGalleryStore.getItems());
-      if (items.length > 0) {
-        const { schema } = currentEditor.state;
-        let transaction = currentEditor.state.tr;
-        let insertPos = currentEditor.state.doc.content.size;
-        const newOxMap: Record<string, string> = {};
-        const newXMap: Record<string, string> = {};
+      const transferResult = moveGalleryMediaToEditor({
+        currentEditor: editorInstance,
+        items,
+      });
 
-        items.forEach((item) => {
-          if (item.isPlaceholder) return;
-          const src = item.src;
-          if (item.type === "image" && schema.nodes.image) {
-            const imageNode = schema.nodes.image.create({
-              src,
-              alt: item.alt ?? "Image",
-              blurhash: item.blurhash ?? null,
-              dim: item.dim ?? null,
-            });
-            transaction = transaction.insert(insertPos, imageNode);
-            insertPos += imageNode.nodeSize;
-          } else if (item.type === "video" && schema.nodes.video) {
-            const videoNode = schema.nodes.video.create({ src });
-            transaction = transaction.insert(insertPos, videoNode);
-            insertPos += videoNode.nodeSize;
-          }
-          if (item.ox) newOxMap[src] = item.ox;
-          if (item.x) newXMap[src] = item.x;
-        });
-
-        currentEditor.view.dispatch(transaction);
+      if (transferResult.hadItems) {
         untrack(() => {
-          imageOxMap = newOxMap;
-          imageXMap = newXMap;
+          imageOxMap = transferResult.imageOxMap;
+          imageXMap = transferResult.imageXMap;
         });
       }
+
       untrack(() => mediaGalleryStore.clearAll());
     }
   });

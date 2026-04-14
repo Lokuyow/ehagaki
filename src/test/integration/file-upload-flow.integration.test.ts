@@ -22,17 +22,10 @@ vi.mock("../../stores/authStore.svelte", () => ({
     }
 }));
 
-vi.mock("../../stores/uploadStore.svelte", () => ({
-    uploadAbortFlagStore: {
-        value: false,
-        set: vi.fn(),
-        reset: vi.fn()
-    },
-    mediaFreePlacementStore: {
-        value: true,
-        set: vi.fn(),
-    },
-}));
+vi.mock("../../stores/uploadStore.svelte", async () => {
+    const { createUploadStoreLocalMock } = await import('../mocks/storeModules');
+    return createUploadStoreLocalMock();
+});
 
 vi.mock("../../lib/keyManager.svelte", () => ({
     keyManager: {
