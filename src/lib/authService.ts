@@ -131,7 +131,10 @@ export class AuthService {
      * 指定アカウントをログアウトする。
      * @returns 次のアクティブアカウントのpubkeyHex。アカウントが残っていない場合はnull。
      */
-    logoutAccount(pubkeyHex: string): string | null | undefined {
+    logoutAccount(
+        pubkeyHex: string,
+        options: { notifyParentClient?: boolean } = {},
+    ): string | null | undefined {
         try {
             // NIP-46の場合は接続を切断
             const accountType = this.accountManager?.getAccountType(pubkeyHex);
@@ -140,7 +143,8 @@ export class AuthService {
                     this.runtime.console.error('NIP-46切断エラー:', e);
                 });
             } else if (accountType === 'parentClient') {
-                this.runtime.parentClientSvc.disconnect(true);
+                this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
+                ParentClientAuthService.clearSession(this.runtime.localStorage, pubkeyHex);
             }
 
             // per-accountデータを削除

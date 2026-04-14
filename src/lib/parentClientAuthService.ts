@@ -68,6 +68,8 @@ type PendingRequest = {
     timeoutId: ReturnType<typeof setTimeout>;
 };
 
+type RemoteLogoutListener = (pubkeyHex: string | null) => void;
+
 function dedupeCapabilities(
     capabilities: ParentClientCapability[] | undefined,
 ): ParentClientCapability[] {
@@ -123,6 +125,7 @@ export class ParentClientAuthService {
     private activeSession: ParentClientSessionData | null = null;
     private signerAdapter: ParentClientSignerAdapter | null = null;
     private pendingRequests = new Map<string, PendingRequest>();
+    private remoteLogoutListeners = new Set<RemoteLogoutListener>();
     private isListening = false;
 
     constructor(
@@ -311,6 +314,13 @@ export class ParentClientAuthService {
         return this.activeSession !== null;
     }
 
+    onRemoteLogout(listener: RemoteLogoutListener): () => void {
+        this.remoteLogoutListeners.add(listener);
+        return () => {
+            this.remoteLogoutListeners.delete(listener);
+        };
+    }
+
     disconnect(notifyParent: boolean = false): void {
         if (notifyParent && this.activeSession) {
             this.postEnvelope("auth.logout", {
@@ -399,7 +409,10 @@ export class ParentClientAuthService {
         const requestId = message.requestId;
 
         if (message.type === "auth.logout") {
+            const payload = message.payload as { pubkeyHex?: string } | undefined;
+            const pubkeyHex = payload?.pubkeyHex ?? this.activeSession?.pubkeyHex ?? null;
             this.disconnect(false);
+            this.notifyRemoteLogout(pubkeyHex);
             return;
         }
 
@@ -533,6 +546,12 @@ export class ParentClientAuthService {
 
         if (!this.activeSession.capabilities.includes(capability)) {
             throw new Error("parent_client_capability_not_available");
+        }
+    }
+
+    private notifyRemoteLogout(pubkeyHex: string | null): void {
+        for (const listener of this.remoteLogoutListeners) {
+            listener(pubkeyHex);
         }
     }
 }

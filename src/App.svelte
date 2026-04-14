@@ -224,12 +224,17 @@
   /**
    * 指定アカウントのログアウト（マルチアカウント対応）
    */
-  async function logoutAccount(pubkeyHex: string) {
+  async function logoutAccount(
+    pubkeyHex: string,
+    options: { closeDialog?: boolean; notifyParentClient?: boolean } = {},
+  ) {
     isLoggingOut = true;
     try {
       resetUploadDisplayState();
       const nextAction = resolveLogoutAccountAction(
-        authService.logoutAccount(pubkeyHex),
+        authService.logoutAccount(pubkeyHex, {
+          notifyParentClient: options.notifyParentClient,
+        }),
       );
 
       if (nextAction.kind === "switch") {
@@ -252,7 +257,7 @@
       }
 
       refreshAccountList();
-      if (nextAction.kind !== "keep-current") {
+      if (options.closeDialog !== false && nextAction.kind !== "keep-current") {
         logoutDialog.close();
       }
     } catch (error) {
@@ -434,8 +439,22 @@
       console,
     });
 
+    const cleanupParentClientLogoutHandler =
+      parentClientAuthService.onRemoteLogout((pubkeyHex) => {
+        const targetPubkey = pubkeyHex || authState.value?.pubkey;
+        if (!targetPubkey) return;
+        if (accountManager.getAccountType(targetPubkey) !== "parentClient")
+          return;
+
+        void logoutAccount(targetPubkey, {
+          closeDialog: false,
+          notifyParentClient: false,
+        });
+      });
+
     return () => {
       cleanupVisibilityHandler();
+      cleanupParentClientLogoutHandler();
     };
   });
 

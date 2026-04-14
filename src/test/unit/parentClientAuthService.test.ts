@@ -138,4 +138,45 @@ describe('ParentClientAuthService', () => {
             ParentClientAuthService.loadSession(storage, session.pubkeyHex),
         ).toEqual(session);
     });
+
+    it('auth.logout を受け取ると remote logout listener が呼ばれる', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+        const onRemoteLogout = vi.fn();
+        service.onRemoteLogout(onRemoteLogout);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        listeners.get('message')?.({
+            data: {
+                namespace: 'ehagaki.parentClient',
+                version: 1,
+                type: 'auth.result',
+                requestId: authRequest.requestId,
+                payload: {
+                    pubkeyHex: 'aa'.repeat(32),
+                    capabilities: ['signEvent'],
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+        await connectPromise;
+
+        listeners.get('message')?.({
+            data: {
+                namespace: 'ehagaki.parentClient',
+                version: 1,
+                type: 'auth.logout',
+                payload: {
+                    pubkeyHex: 'aa'.repeat(32),
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteLogout).toHaveBeenCalledWith('aa'.repeat(32));
+        expect(service.isConnected()).toBe(false);
+    });
 });

@@ -43,6 +43,24 @@ describe('AuthService.logoutAccount', () => {
         expect(nip46Service.disconnect).toHaveBeenCalled();
     });
 
+    it('parentClientアカウントのログアウト → parentClientAuthService.disconnect(true)呼出', async () => {
+        const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+        mockAccountManager.getAccountType.mockReturnValue('parentClient');
+
+        authService.logoutAccount('pubkey1');
+
+        expect(parentClientAuthService.disconnect).toHaveBeenCalledWith(true);
+    });
+
+    it('parentClientアカウントのリモートログアウト → notifyなしで切断', async () => {
+        const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+        mockAccountManager.getAccountType.mockReturnValue('parentClient');
+
+        authService.logoutAccount('pubkey1', { notifyParentClient: false });
+
+        expect(parentClientAuthService.disconnect).toHaveBeenCalledWith(false);
+    });
+
     it('次のアクティブアカウント返却', () => {
         mockAccountManager.removeAccount.mockReturnValue('next-active');
         const result = authService.logoutAccount('pubkey1');
