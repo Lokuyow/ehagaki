@@ -38,6 +38,7 @@
     "parent_client_invalid_response": "親ページから無効な応答が返されました",
     "parent_client_auth_error": "親クライアント連携に失敗しました",
     "login_with_extension": "ブラウザ拡張機能でログイン",
+    "extension_login_failed": "ブラウザ拡張機能でのログインに失敗しました",
     "extension_not_found": "NIP-07対応の拡張機能が見つかりません",
     "secret_required": "秘密鍵を入力してください",
     "secret_key_required": "秘密鍵を入力してください",

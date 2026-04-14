@@ -313,18 +313,20 @@
     }, 50);
   }
 
-  async function handleNip07Login() {
+  async function handleNip07Login(): Promise<string | undefined> {
     isLoadingNip07 = true;
     try {
       const result = await authService.authenticateWithNip07();
       if (!result.success) {
         console.error("NIP-07認証失敗:", result.error);
-        return;
+        return result.error ?? "nip07_auth_error";
       }
 
       await handleSuccessfulAuthResult(result, handlePostAuth);
+      return undefined;
     } catch (error) {
       console.error("NIP-07ログインでエラー:", error);
+      return error instanceof Error ? error.message : "nip07_auth_error";
     } finally {
       isLoadingNip07 = false;
     }

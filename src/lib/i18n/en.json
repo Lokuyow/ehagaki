@@ -38,6 +38,7 @@
     "parent_client_invalid_response": "The parent page returned an invalid response",
     "parent_client_auth_error": "Parent client login failed",
     "login_with_extension": "Login with Extension",
+    "extension_login_failed": "Login with the browser extension failed",
     "extension_not_found": "No NIP-07 compatible extension found",
     "secret_required": "Please enter your secret key",
     "secret_key_required": "Please enter your secret key",

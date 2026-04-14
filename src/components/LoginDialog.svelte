@@ -14,7 +14,7 @@
         onClose: () => void;
         onSave: () => void;
         onParentClientLogin?: () => Promise<string | undefined>;
-        onNip07Login: () => void;
+        onNip07Login: () => Promise<string | undefined>;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
         isParentClientAvailable?: boolean;
         isLoadingParentClient?: boolean;
@@ -63,6 +63,8 @@
     let bunkerUrl = $state("");
     let bunkerInputEl: HTMLInputElement | null = $state(null);
     let parentClientErrorMessage = $state("");
+    let nip07ErrorMessage = $state("");
+    let nip46ErrorMessage = $state("");
 
     // --- ダイアログを開くたびに入力をクリア ---
     $effect(() => {
@@ -70,6 +72,8 @@
             secretKey = "";
             bunkerUrl = "";
             parentClientErrorMessage = "";
+            nip07ErrorMessage = "";
+            nip46ErrorMessage = "";
         }
     });
 
@@ -141,8 +145,36 @@
         }
         onSave?.();
     }
-    function handleNip07Login() {
-        onNip07Login?.();
+    function resolveNip07ErrorMessage(errorMessage: string): string {
+        switch (errorMessage) {
+            case "nip07_not_available":
+                return $_("loginDialog.extension_not_found");
+            case "nip07_auth_error":
+                return $_("loginDialog.extension_login_failed");
+            default:
+                return errorMessage.startsWith("nip07_")
+                    ? $_("loginDialog.extension_login_failed")
+                    : errorMessage;
+        }
+    }
+
+    function resolveNip46ErrorMessage(errorMessage: string): string {
+        switch (errorMessage) {
+            case "Invalid bunker URL":
+                return $_("loginDialog.bunker_invalid");
+            case "nip46_connection_failed":
+                return $_("loginDialog.bunker_connection_failed");
+            default:
+                return errorMessage;
+        }
+    }
+
+    async function handleNip07Login() {
+        nip07ErrorMessage = "";
+        const errorMessage = await onNip07Login?.();
+        if (errorMessage) {
+            nip07ErrorMessage = resolveNip07ErrorMessage(errorMessage);
+        }
     }
 
     function resolveParentClientErrorMessage(errorMessage: string): string {
@@ -176,22 +208,21 @@
     }
 
     async function handleNip46Login() {
+        nip46ErrorMessage = "";
         if (bunkerInputEl) {
             const trimmed = bunkerInputEl.value.trim();
             bunkerUrl = trimmed;
 
             if (bunkerInputEl.validity.valueMissing) {
-                bunkerInputEl.setCustomValidity(
-                    $_("loginDialog.bunker_url_required"),
-                );
+                nip46ErrorMessage = $_("loginDialog.bunker_url_required");
+                bunkerInputEl.setCustomValidity(nip46ErrorMessage);
                 bunkerInputEl.reportValidity();
                 return;
             }
 
             if (!BUNKER_REGEX.test(trimmed)) {
-                bunkerInputEl.setCustomValidity(
-                    $_("loginDialog.bunker_invalid"),
-                );
+                nip46ErrorMessage = $_("loginDialog.bunker_invalid");
+                bunkerInputEl.setCustomValidity(nip46ErrorMessage);
                 bunkerInputEl.reportValidity();
                 return;
             }
@@ -202,14 +233,14 @@
         const trimmed = bunkerUrl.trim();
         const errorMsg = await onNip46Login?.(trimmed);
         if (errorMsg && bunkerInputEl) {
-            const localizedMessage =
-                errorMsg === "Invalid bunker URL"
-                    ? $_("loginDialog.bunker_invalid")
-                    : errorMsg;
+            const localizedMessage = resolveNip46ErrorMessage(errorMsg);
+            nip46ErrorMessage = localizedMessage;
             bunkerInputEl.setCustomValidity(localizedMessage);
             bunkerInputEl.reportValidity();
             return;
         }
+
+        nip46ErrorMessage = "";
     }
 
     // 新しいフォームsubmit用ハンドラ
@@ -312,6 +343,16 @@
                 >
             {/if}
         </Button>
+
+        {#if nip07ErrorMessage || !isNip07Available}
+            <div
+                class="section-feedback {nip07ErrorMessage ? 'error' : 'info'}"
+                aria-live="polite"
+                role={nip07ErrorMessage ? "alert" : "status"}
+            >
+                {nip07ErrorMessage || $_("loginDialog.extension_not_found")}
+            </div>
+        {/if}
     </div>
 
     <div class="divider">
@@ -341,6 +382,7 @@
                     bind:this={bunkerInputEl}
                     disabled={isLoadingNip46}
                     oninput={() => {
+                        nip46ErrorMessage = "";
                         if (bunkerInputEl) bunkerInputEl.setCustomValidity("");
                     }}
                 />
@@ -364,6 +406,16 @@
                     {/if}
                 </Button>
             </div>
+
+            {#if nip46ErrorMessage}
+                <div
+                    class="section-feedback error"
+                    aria-live="polite"
+                    role="alert"
+                >
+                    {nip46ErrorMessage}
+                </div>
+            {/if}
         </form>
     </div>
 
@@ -496,13 +548,16 @@
 
     .nip07-login-section {
         display: flex;
+        flex-direction: column;
         justify-content: center;
-        align-items: center;
-        width: auto;
-        height: 120px;
+        align-items: stretch;
+        width: 100%;
+        min-height: 120px;
+        gap: 10px;
     }
 
-    .parent-client-feedback {
+    .parent-client-feedback,
+    .section-feedback {
         border-radius: 10px;
         padding: 10px 12px;
         font-size: 0.95rem;
@@ -510,13 +565,15 @@
         text-align: center;
     }
 
-    .parent-client-feedback.info {
+    .parent-client-feedback.info,
+    .section-feedback.info {
         background: var(--btn-bg);
         border: 1px solid var(--border-hr);
         color: var(--text-light);
     }
 
-    .parent-client-feedback.error {
+    .parent-client-feedback.error,
+    .section-feedback.error {
         background: var(--balloon-error-bg, hsl(351, 99%, 96%));
         border: 1px solid var(--balloon-error-border, hsl(351, 99%, 70%));
         color: var(--balloon-error-color, hsl(351, 99%, 32%));

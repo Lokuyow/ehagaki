@@ -13,8 +13,13 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.parent_client_timeout': '親ページからの応答がありませんでした',
         'loginDialog.parent_client_auth_error': '親クライアント連携に失敗しました',
         'loginDialog.login_with_extension': 'ブラウザ拡張機能でログイン',
+        'loginDialog.extension_login_failed': 'ブラウザ拡張機能でのログインに失敗しました',
+        'loginDialog.extension_not_found': 'NIP-07対応の拡張機能が見つかりません',
         'loginDialog.bunker_input_title': 'バンカーURLを入力',
         'loginDialog.bunker_connect': '接続',
+        'loginDialog.bunker_connection_failed': '接続に失敗しました',
+        'loginDialog.bunker_invalid': '無効なbunker URLです',
+        'loginDialog.bunker_url_required': 'バンカーURLを入力してください',
         'loginDialog.save': '保存',
         'loadingPlaceholder.loading': '読み込み中...',
     };
@@ -153,5 +158,60 @@ describe('LoginDialog', () => {
         expect(
             screen.getByText('親ページ側でログインを許可すると接続します'),
         ).toBeTruthy();
+    });
+
+    it('NIP-07 が利用不可のとき未検出メッセージを表示する', () => {
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                isNip07ExtensionAvailable: false,
+            },
+        });
+
+        expect(
+            screen.getByText('NIP-07対応の拡張機能が見つかりません'),
+        ).toBeTruthy();
+    });
+
+    it('NIP-07 ログイン失敗時にエラーを表示する', async () => {
+        const onNip07Login = vi
+            .fn<() => Promise<string | undefined>>()
+            .mockResolvedValue('nip07_auth_error');
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNip07Login,
+            },
+        });
+
+        await fireEvent.click(screen.getByText('ブラウザ拡張機能でログイン'));
+
+        expect(onNip07Login).toHaveBeenCalledTimes(1);
+        expect(
+            await screen.findByText('ブラウザ拡張機能でのログインに失敗しました'),
+        ).toBeTruthy();
+    });
+
+    it('NIP-46 ログイン失敗時にエラーを表示する', async () => {
+        const onNip46Login = vi
+            .fn<(bunkerUrl: string) => Promise<string | undefined>>()
+            .mockResolvedValue('nip46_connection_failed');
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onNip46Login,
+            },
+        });
+
+        const bunkerInput = screen.getByPlaceholderText('bunker://...');
+        await fireEvent.input(bunkerInput, {
+            target: { value: 'bunker://example?relay=wss://relay.example.com' },
+        });
+        await fireEvent.click(screen.getByText('接続'));
+
+        expect(onNip46Login).toHaveBeenCalledTimes(1);
+        expect(await screen.findByText('接続に失敗しました')).toBeTruthy();
     });
 });
