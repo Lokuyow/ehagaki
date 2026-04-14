@@ -5,7 +5,7 @@ type DisposableSession = {
     dispose: () => void;
 };
 
-type ManagedAccountType = 'nsec' | 'nip07' | 'nip46';
+type ManagedAccountType = 'nsec' | 'nip07' | 'nip46' | 'parentClient';
 
 interface ManagedAccountController {
     setActiveAccount: (pubkeyHex: string) => void;

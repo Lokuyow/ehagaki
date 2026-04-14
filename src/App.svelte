@@ -15,6 +15,7 @@
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
+  import { parentClientAuthService } from "./lib/parentClientAuthService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
@@ -119,8 +120,10 @@
 
   let rxNostr: NostrSessionBootstrap["rxNostr"] | undefined = $state();
   let relayProfileService: RelayProfileService;
+  let isLoadingParentClient = $state(false);
   let isLoadingNip07 = $state(false);
   let isLoadingNip46 = $state(false);
+  let parentClientAvailable = $state(false);
   // NIP-07拡張機能の検出状態（nos2x等の遅延注入に対応するためリアクティブ）
   let nip07ExtensionAvailable = $state(authService.isNip07Available());
   let postComponentRef: any = $state();
@@ -273,7 +276,7 @@
         accountManager,
         restoreAccount: (
           nextPubkeyHex: string,
-          type: "nsec" | "nip07" | "nip46",
+          type: "nsec" | "nip07" | "nip46" | "parentClient",
         ) => authService.restoreAccount(nextPubkeyHex, type),
         handlePostAuth,
         onMissingAccountType: () => {
@@ -322,6 +325,23 @@
     }
   }
 
+  async function handleParentClientLogin() {
+    isLoadingParentClient = true;
+    try {
+      const result = await authService.authenticateWithParentClient();
+      if (!result.success) {
+        console.error("親クライアント連携認証失敗:", result.error);
+        return;
+      }
+
+      await handleSuccessfulAuthResult(result, handlePostAuth);
+    } catch (error) {
+      console.error("親クライアント連携ログインでエラー:", error);
+    } finally {
+      isLoadingParentClient = false;
+    }
+  }
+
   async function handleNip46Login(
     bunkerUrl: string,
   ): Promise<string | undefined> {
@@ -359,6 +379,13 @@
   let localeInitialized = $state(false);
 
   onMount(() => {
+    parentClientAvailable = parentClientAuthService.initialize({
+      locationSearch: window.location.search,
+    });
+    if (parentClientAvailable) {
+      parentClientAuthService.announceReady();
+    }
+
     // NIP-07拡張機能の遅延注入を検出（nos2x等のdocument_endで注入される拡張機能に対応）
     if (!nip07ExtensionAvailable) {
       waitNostr(3000).then((nostr) => {
@@ -567,8 +594,11 @@
           bind:secretKey
           onClose={loginDialog.close}
           onSave={saveSecretKey}
+          onParentClientLogin={handleParentClientLogin}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
+          isParentClientAvailable={parentClientAvailable}
+          {isLoadingParentClient}
           isNip07ExtensionAvailable={nip07ExtensionAvailable}
           {isLoadingNip07}
           {isLoadingNip46}
@@ -583,8 +613,11 @@
           bind:secretKey
           onClose={addAccountDialog.close}
           onSave={saveSecretKey}
+          onParentClientLogin={handleParentClientLogin}
           onNip07Login={handleNip07Login}
           onNip46Login={handleNip46Login}
+          isParentClientAvailable={parentClientAvailable}
+          {isLoadingParentClient}
           isNip07ExtensionAvailable={nip07ExtensionAvailable}
           {isLoadingNip07}
           {isLoadingNip46}

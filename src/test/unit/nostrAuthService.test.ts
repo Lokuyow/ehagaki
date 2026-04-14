@@ -42,6 +42,13 @@ vi.mock('../../lib/nip46Service', () => ({
     },
 }));
 
+vi.mock('../../lib/parentClientAuthService', () => ({
+    parentClientAuthService: {
+        isConnected: vi.fn().mockReturnValue(false),
+        getSigner: vi.fn().mockReturnValue(null),
+    },
+}));
+
 // =============================================================================
 // nostr-tools/nip98 インポートパス検証
 // nostr-tools アップデート時にパスやエクスポートが変わると即座に検出できる
@@ -210,6 +217,24 @@ describe('NostrAuthService', () => {
             (authState as any).value = { ...authState.value, type: 'nsec' };
             vi.mocked(nip46Service.isConnected).mockReturnValue(false);
             vi.mocked(nip46Service.getSigner).mockReturnValue(null);
+        });
+
+        it('親クライアント連携接続時にparent signer使用→トークン生成', async () => {
+            const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+            vi.mocked(parentClientAuthService.isConnected).mockReturnValue(true);
+            vi.mocked(parentClientAuthService.getSigner).mockReturnValue({
+                signEvent: vi.fn().mockResolvedValue({ id: 'parent-signed', sig: 'sig' }),
+            } as any);
+
+            const result = await service.buildAuthHeader(
+                'https://example.com/upload',
+                'POST'
+            );
+
+            expect(result).toBe('Nostr mock-nip98-token');
+
+            vi.mocked(parentClientAuthService.isConnected).mockReturnValue(false);
+            vi.mocked(parentClientAuthService.getSigner).mockReturnValue(null);
         });
     });
 });

@@ -257,6 +257,10 @@
                                             {$_(
                                                 "profileDialog.login_method_nip46",
                                             )}
+                                        {:else if account.type === "parentClient"}
+                                            {$_(
+                                                "profileDialog.login_method_parent_client",
+                                            )}
                                         {/if}
                                     </span>
                                 </div>

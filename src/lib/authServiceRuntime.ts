@@ -1,8 +1,9 @@
 import { KeyManager, PublicKeyState } from './keyManager.svelte';
-import { clearAuthState, secretKeyStore, setNip07Auth, setNip46Auth, setNsecAuth } from '../stores/authStore.svelte';
+import { clearAuthState, secretKeyStore, setNip07Auth, setNip46Auth, setNsecAuth, setParentClientAuth } from '../stores/authStore.svelte';
 import type { AuthServiceDependencies, PublicKeyData } from './types';
 import { Nip07AuthService } from './nip07AuthService';
 import { nip46Service, type Nip46Service } from './nip46Service';
+import { parentClientAuthService, type ParentClientAuthService } from './parentClientAuthService';
 
 type AuthSetter = (pubkey: string, npub: string, nprofile: string) => void;
 
@@ -21,9 +22,11 @@ export interface AuthServiceRuntime {
     navigator: Navigator;
     console: Console;
     nip46Svc: Nip46Service;
+    parentClientSvc: ParentClientAuthService;
     setNsecAuthFn: AuthSetter;
     setNip07AuthFn: AuthSetter;
     setNip46AuthFn: AuthSetter;
+    setParentClientAuthFn: AuthSetter;
 }
 
 export function createAuthServiceRuntime(dependencies: AuthServiceDependencies = {}): AuthServiceRuntime {
@@ -44,9 +47,11 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
         console: consoleObj,
         keyManager,
         nip46Svc: nip46Service,
+        parentClientSvc: parentClientAuthService,
         setNsecAuthFn: dependencies.setNsecAuth ?? setNsecAuth,
         setNip07AuthFn: dependencies.setNip07Auth ?? setNip07Auth,
         setNip46AuthFn: dependencies.setNip46Auth ?? setNip46Auth,
+        setParentClientAuthFn: dependencies.setParentClientAuth ?? setParentClientAuth,
         publicKeyState: new PublicKeyState({
             clearAuthStateFn,
         }),

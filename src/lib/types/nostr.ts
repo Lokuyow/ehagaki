@@ -5,7 +5,7 @@ import type { Editor as TipTapEditor } from "@tiptap/core";
 
 // App Store types
 export interface AuthState {
-    type: 'none' | 'nsec' | 'nip07' | 'nip46';
+    type: 'none' | 'nsec' | 'nip07' | 'nip46' | 'parentClient';
     isAuthenticated: boolean;
     pubkey: string;
     npub: string;
@@ -30,6 +30,21 @@ export interface Nip46SessionData {
     userPubkey: string;
 }
 
+export type ParentClientCapability =
+    | 'signEvent'
+    | 'nip04.encrypt'
+    | 'nip04.decrypt'
+    | 'nip44.encrypt'
+    | 'nip44.decrypt';
+
+export interface ParentClientSessionData {
+    version: 1;
+    pubkeyHex: string;
+    parentOrigin: string;
+    capabilities: ParentClientCapability[];
+    connectedAt: number;
+}
+
 // Auth-related types
 export interface AuthResult {
     success: boolean;
@@ -52,6 +67,7 @@ export interface AuthServiceDependencies {
     setNsecAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip07Auth?: (pubkey: string, npub: string, nprofile: string) => void;
     setNip46Auth?: (pubkey: string, npub: string, nprofile: string) => void;
+    setParentClientAuth?: (pubkey: string, npub: string, nprofile: string) => void;
     clearAuthState?: () => void;
     secretKeyStore?: {
         value: string | null;
@@ -143,6 +159,7 @@ export interface PostManagerDeps {
     getClientTagFn?: () => string[] | null;
     seckeySignerFn?: (key: string) => any;
     getNip46SignerFn?: () => any;
+    getParentClientSignerFn?: () => any;
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractImageBlurhashMapFn?: (editor: TipTapEditor) => Record<string, string>;
     resetEditorStateFn?: () => void;
@@ -166,7 +183,7 @@ export interface PostManagerDeps {
 // マルチアカウント管理
 export interface StoredAccount {
     pubkeyHex: string;
-    type: 'nsec' | 'nip07' | 'nip46';
+    type: 'nsec' | 'nip07' | 'nip46' | 'parentClient';
     addedAt: number;
 }
 

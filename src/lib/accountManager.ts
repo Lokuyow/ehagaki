@@ -198,6 +198,7 @@ export class AccountManager {
         try {
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkeyHex);
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkeyHex);
+            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex);
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex);
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex);
         } catch (error) {

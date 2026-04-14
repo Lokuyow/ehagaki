@@ -8,6 +8,7 @@ import {
     createMockDependencies,
     createMockNip07Dependencies,
     createMockNip46Session,
+    createMockParentClientSession,
 } from './authServiceTestUtils';
 
 describe('AuthService.restoreAccount', () => {
@@ -99,6 +100,45 @@ describe('AuthService.restoreAccount', () => {
 
         const service = new AuthService(mockDependencies);
         const result = await service.restoreAccount(validPubkey, 'nip46');
+
+        expect(result.hasAuth).toBe(false);
+    });
+
+    it('restoreParentClientAccount: セッション復元→再接続成功', async () => {
+        const validPubkey = 'ef'.repeat(32);
+        const { parentClientAuthService, ParentClientAuthService: ParentClientAuthServiceClass } = await import('../../lib/parentClientAuthService');
+        const session = createMockParentClientSession(validPubkey);
+        vi.mocked(ParentClientAuthServiceClass.loadSession).mockReturnValue(session);
+        vi.mocked(parentClientAuthService.reconnect).mockResolvedValue(validPubkey);
+
+        const service = new AuthService(mockDependencies);
+        const result = await service.restoreAccount(validPubkey, 'parentClient');
+
+        expect(result.hasAuth).toBe(true);
+        expect(result.pubkeyHex).toBe(validPubkey);
+        expect(mockDependencies.setParentClientAuth).toHaveBeenCalled();
+    });
+
+    it('restoreParentClientAccount: セッションなし→失敗', async () => {
+        const validPubkey = '12'.repeat(32);
+        const { ParentClientAuthService: ParentClientAuthServiceClass } = await import('../../lib/parentClientAuthService');
+        vi.mocked(ParentClientAuthServiceClass.loadSession).mockReturnValue(null);
+
+        const service = new AuthService(mockDependencies);
+        const result = await service.restoreAccount(validPubkey, 'parentClient');
+
+        expect(result.hasAuth).toBe(false);
+    });
+
+    it('restoreParentClientAccount: 再接続失敗→失敗', async () => {
+        const validPubkey = '56'.repeat(32);
+        const { parentClientAuthService, ParentClientAuthService: ParentClientAuthServiceClass } = await import('../../lib/parentClientAuthService');
+        const session = createMockParentClientSession(validPubkey);
+        vi.mocked(ParentClientAuthServiceClass.loadSession).mockReturnValue(session);
+        vi.mocked(parentClientAuthService.reconnect).mockRejectedValue(new Error('parent reconnect failed'));
+
+        const service = new AuthService(mockDependencies);
+        const result = await service.restoreAccount(validPubkey, 'parentClient');
 
         expect(result.hasAuth).toBe(false);
     });

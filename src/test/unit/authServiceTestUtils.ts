@@ -1,5 +1,5 @@
 import { vi } from 'vitest';
-import type { AuthServiceDependencies, Nip46SessionData } from '../../lib/types';
+import type { AuthServiceDependencies, Nip46SessionData, ParentClientSessionData } from '../../lib/types';
 import { MockStorage, MockKeyManager } from '../helpers';
 
 export function createMockDependencies(): AuthServiceDependencies {
@@ -24,6 +24,7 @@ export function createMockDependencies(): AuthServiceDependencies {
         setNsecAuth: vi.fn(),
         setNip07Auth: vi.fn(),
         setNip46Auth: vi.fn(),
+        setParentClientAuth: vi.fn(),
     };
 }
 
@@ -55,6 +56,20 @@ export function createMockNip46Session(
         remoteSignerPubkey: 'remote',
         relays: ['wss://relay'],
         userPubkey: pubkeyHex,
+        ...overrides,
+    };
+}
+
+export function createMockParentClientSession(
+    pubkeyHex: string,
+    overrides: Partial<ParentClientSessionData> = {},
+): ParentClientSessionData {
+    return {
+        version: 1,
+        pubkeyHex,
+        parentOrigin: 'https://parent.example.com',
+        capabilities: ['signEvent'],
+        connectedAt: Date.now(),
         ...overrides,
     };
 }

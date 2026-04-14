@@ -1,6 +1,7 @@
 import { seckeySigner } from "@rx-nostr/crypto";
 import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
+import { parentClientAuthService } from "./parentClientAuthService";
 import { authState } from "../stores/authStore.svelte";
 import type { AuthService } from "./types";
 
@@ -19,6 +20,9 @@ export class NostrAuthService implements AuthService {
         } else if (nip46Service.isConnected()) {
             const signer = nip46Service.getSigner()!;
             signFunc = (event) => signer.signEvent(event);
+        } else if (parentClientAuthService.isConnected()) {
+            const signer = parentClientAuthService.getSigner()!;
+            signFunc = (event) => signer.signEvent(event);
         } else if (authState.value.type === 'nip46') {
             // NIP-46認証だが接続が未完了（再接続中など）→ 接続完了を待つ
             const connected = await this.waitForNip46Connection();
@@ -28,6 +32,12 @@ export class NostrAuthService implements AuthService {
             } else {
                 throw new Error('Authentication required');
             }
+        } else if (authState.value.type === 'parentClient') {
+            const signer = parentClientAuthService.getSigner();
+            if (!signer) {
+                throw new Error('Authentication required');
+            }
+            signFunc = (event) => signer.signEvent(event);
         } else {
             // NIP-07の場合はwindow.nostrを即時利用
             const nostr = (window as any)?.nostr;

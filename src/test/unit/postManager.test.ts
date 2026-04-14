@@ -1118,6 +1118,56 @@ describe('PostManager統合テスト', () => {
             expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
             expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
         });
+
+        it('親クライアント連携の投稿成功時にparent signerを使用する', async () => {
+            const mockIframeService = {
+                notifyPostSuccess: vi.fn().mockReturnValue(true),
+                notifyPostError: vi.fn().mockReturnValue(true)
+            };
+
+            mockAuthState.type = 'parentClient';
+            mockAuthState.pubkey = 'a'.repeat(64);
+
+            const mockParentSigner = {
+                signEvent: vi.fn().mockResolvedValue({
+                    kind: 1,
+                    content: 'Test post content',
+                    pubkey: mockAuthState.pubkey,
+                    sig: 'parent-signature'
+                })
+            };
+
+            mockDeps.getParentClientSignerFn = () => mockParentSigner;
+            mockDeps.iframeMessageService = mockIframeService;
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            const mockObservable = {
+                subscribe: vi.fn((observer) => {
+                    process.nextTick(() => {
+                        observer.next({
+                            from: 'relay1',
+                            ok: true,
+                            done: true,
+                            eventId: 'test-event-id',
+                            type: 'ok',
+                            message: ''
+                        });
+                    });
+                    return { unsubscribe: vi.fn() };
+                })
+            };
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+            const result = await manager.submitPost('Test post content');
+
+            expect(result.success).toBe(true);
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
+            expect(mockRxNostr.send).toHaveBeenCalledWith(
+                expect.any(Object),
+                expect.objectContaining({ signer: mockParentSigner, completeOn: 'all-ok' })
+            );
+        });
     });
 
     describe('インラインnostr: URI引用タグ', () => {

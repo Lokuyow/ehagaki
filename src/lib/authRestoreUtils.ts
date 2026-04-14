@@ -1,22 +1,25 @@
 import { nip19 } from 'nostr-tools';
 import { Nip46Service as Nip46Storage } from './nip46Service';
+import { ParentClientAuthService as ParentClientStorage } from './parentClientAuthService';
 import type { PublicKeyState } from './keyManager.svelte';
 import type { Nip07AuthService } from './nip07AuthService';
 import type { Nip46Service } from './nip46Service';
 import type { PublicKeyData, StoredAccount } from './types';
+import type { ParentClientAuthService } from './parentClientAuthService';
 
 const LEGACY_NIP07_STORAGE_KEY = 'nostr-nip07-pubkey';
 
 export type RestoreResult = { hasAuth: boolean; pubkeyHex?: string };
 
 type AccountAuthType = StoredAccount['type'];
-type PublicKeyAuthType = 'nip07' | 'nip46';
+type PublicKeyAuthType = 'nip07' | 'nip46' | 'parentClient';
 type SetAuthFn = (pubkey: string, npub: string, nprofile: string) => void;
 type AccountMigrationTarget = Pick<{ addAccount(pubkeyHex: string, type: AccountAuthType): void }, 'addAccount'>;
 
 interface PublicKeyAuthDependencies {
     setNip07AuthFn: SetAuthFn;
     setNip46AuthFn: SetAuthFn;
+    setParentClientAuthFn: SetAuthFn;
 }
 
 interface NsecRestoreDependencies {
@@ -39,6 +42,7 @@ export interface ManagedAuthRestoreDependencies extends NsecRestoreDependencies,
     localStorage: Storage;
     nip07Service: Pick<Nip07AuthService, 'waitForExtension'>;
     nip46Svc: Pick<Nip46Service, 'reconnect'>;
+    parentClientSvc: Pick<ParentClientAuthService, 'reconnect'>;
     accountManager?: AccountMigrationTarget | null;
     console: Console;
     keyManager: NsecRestoreDependencies['keyManager'] & {
@@ -91,6 +95,8 @@ export function applyPublicKeyAuth(
 
     if (type === 'nip07') {
         dependencies.setNip07AuthFn(pubkeyHex, npub, nprofile);
+    } else if (type === 'parentClient') {
+        dependencies.setParentClientAuthFn(pubkeyHex, npub, nprofile);
     } else {
         dependencies.setNip46AuthFn(pubkeyHex, npub, nprofile);
     }
@@ -168,6 +174,22 @@ export async function restoreManagedNip46Account(
     }
 }
 
+export async function restoreManagedParentClientAccount(
+    pubkeyHex: string,
+    dependencies: ManagedAuthRestoreDependencies,
+): Promise<RestoreResult> {
+    const session = ParentClientStorage.loadSession(dependencies.localStorage, pubkeyHex);
+    if (!session) return { hasAuth: false };
+
+    try {
+        await dependencies.parentClientSvc.reconnect(session);
+        return applyPublicKeyAuth('parentClient', pubkeyHex, dependencies);
+    } catch (error) {
+        dependencies.console.error('親クライアント連携アカウント復元エラー:', error);
+        return { hasAuth: false };
+    }
+}
+
 const managedRestoreStrategies: Record<
     AccountAuthType,
     (pubkeyHex: string, dependencies: ManagedAuthRestoreDependencies) => Promise<RestoreResult>
@@ -175,6 +197,7 @@ const managedRestoreStrategies: Record<
     nsec: restoreManagedNsecAccount,
     nip07: restoreManagedNip07Account,
     nip46: restoreManagedNip46Account,
+    parentClient: restoreManagedParentClientAccount,
 };
 
 export function createManagedAuthRestoreDependencies(

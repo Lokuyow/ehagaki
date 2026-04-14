@@ -67,6 +67,14 @@ export function setNip46Auth(pubkey: string, npub: string, nprofile: string): vo
     updateAuthState({ type: 'nip46', pubkey, npub, nprofile, isValid: true });
 }
 
+export function setParentClientAuth(pubkey: string, npub: string, nprofile: string): void {
+    if (!pubkey || !npub || !nprofile) {
+        console.warn('setParentClientAuth: All parameters are required');
+        return;
+    }
+    updateAuthState({ type: 'parentClient', pubkey, npub, nprofile, isValid: true });
+}
+
 export function setAuthInitialized(): void {
     updateAuthState({ isInitialized: true });
 }

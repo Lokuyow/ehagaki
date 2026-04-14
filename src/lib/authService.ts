@@ -10,6 +10,7 @@ import {
     type RestoreResult,
 } from './authRestoreUtils';
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
+import { ParentClientAuthService } from './parentClientAuthService';
 
 // --- メインのAuthServiceクラス ---
 export class AuthService {
@@ -84,6 +85,7 @@ export class AuthService {
             applyPublicKeyAuth('nip46', pubkeyHex, {
                 setNip07AuthFn: this.runtime.setNip07AuthFn,
                 setNip46AuthFn: this.runtime.setNip46AuthFn,
+                setParentClientAuthFn: this.runtime.setParentClientAuthFn,
             });
             this.runtime.nip46Svc.saveSession(this.runtime.localStorage, pubkeyHex);
             this.accountManager?.addAccount(pubkeyHex, 'nip46');
@@ -91,6 +93,34 @@ export class AuthService {
         } catch (error) {
             this.runtime.console.error('NIP-46認証エラー:', error);
             const msg = error instanceof Error ? error.message : 'nip46_connection_failed';
+            return { success: false, error: msg };
+        }
+    }
+
+    // --- 親クライアント連携認証 ---
+
+    async authenticateWithParentClient(): Promise<AuthResult> {
+        try {
+            const pubkeyHex = await this.runtime.parentClientSvc.connect();
+            applyPublicKeyAuth('parentClient', pubkeyHex, {
+                setNip07AuthFn: this.runtime.setNip07AuthFn,
+                setNip46AuthFn: this.runtime.setNip46AuthFn,
+                setParentClientAuthFn: this.runtime.setParentClientAuthFn,
+            });
+
+            const session = this.runtime.parentClientSvc.getSessionData();
+            if (session) {
+                ParentClientAuthService.saveSession(
+                    this.runtime.localStorage,
+                    session,
+                );
+            }
+
+            this.accountManager?.addAccount(pubkeyHex, 'parentClient');
+            return { success: true, pubkeyHex };
+        } catch (error) {
+            this.runtime.console.error('親クライアント連携認証エラー:', error);
+            const msg = error instanceof Error ? error.message : 'parent_client_auth_error';
             return { success: false, error: msg };
         }
     }
@@ -109,6 +139,8 @@ export class AuthService {
                 this.runtime.nip46Svc.disconnect().catch(e => {
                     this.runtime.console.error('NIP-46切断エラー:', e);
                 });
+            } else if (accountType === 'parentClient') {
+                this.runtime.parentClientSvc.disconnect(true);
             }
 
             // per-accountデータを削除
@@ -150,7 +182,7 @@ export class AuthService {
     /**
      * 指定アカウントの認証を復元する。
      */
-    async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46'): Promise<RestoreResult> {
+    async restoreAccount(pubkeyHex: string, type: 'nsec' | 'nip07' | 'nip46' | 'parentClient'): Promise<RestoreResult> {
         return restoreManagedAccount(
             pubkeyHex,
             type,

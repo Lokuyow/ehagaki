@@ -4,7 +4,7 @@ import type { MockKeyManager } from '../helpers';
 import './authServiceModuleMocks';
 
 import { AuthService } from '../../lib/authService';
-import { createMockAccountManager, createMockDependencies, createMockNip07Dependencies } from './authServiceTestUtils';
+import { createMockAccountManager, createMockDependencies, createMockNip07Dependencies, createMockParentClientSession } from './authServiceTestUtils';
 
 describe('AuthService.authenticateWithNsec', () => {
     let authService: AuthService;
@@ -236,5 +236,48 @@ describe('AuthService.authenticateWithNip46', () => {
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('Connection timeout');
+    });
+});
+
+describe('AuthService.authenticateWithParentClient', () => {
+    let mockDependencies: AuthServiceDependencies;
+
+    beforeEach(() => {
+        mockDependencies = createMockDependencies();
+        vi.clearAllMocks();
+    });
+
+    it('親クライアント認証成功でsetParentClientAuth + session保存 + addAccount', async () => {
+        const validPubkey = '34'.repeat(32);
+        const session = createMockParentClientSession(validPubkey);
+        const { parentClientAuthService, ParentClientAuthService } = await import('../../lib/parentClientAuthService');
+        vi.mocked(parentClientAuthService.connect).mockResolvedValue(validPubkey);
+        vi.mocked(parentClientAuthService.getSessionData).mockReturnValue(session);
+
+        const service = new AuthService(mockDependencies);
+        const mockAccountManager = createMockAccountManager();
+        service.setAccountManager(mockAccountManager as any);
+
+        const result = await service.authenticateWithParentClient();
+
+        expect(result.success).toBe(true);
+        expect(result.pubkeyHex).toBe(validPubkey);
+        expect(mockDependencies.setParentClientAuth).toHaveBeenCalled();
+        expect(ParentClientAuthService.saveSession).toHaveBeenCalledWith(
+            mockDependencies.localStorage,
+            session,
+        );
+        expect(mockAccountManager.addAccount).toHaveBeenCalledWith(validPubkey, 'parentClient');
+    });
+
+    it('親クライアント認証失敗でエラーを返す', async () => {
+        const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+        vi.mocked(parentClientAuthService.connect).mockRejectedValue(new Error('parent_client_timeout'));
+
+        const service = new AuthService(mockDependencies);
+        const result = await service.authenticateWithParentClient();
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('parent_client_timeout');
     });
 });

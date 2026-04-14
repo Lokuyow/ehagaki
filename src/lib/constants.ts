@@ -112,6 +112,7 @@ export const STORAGE_KEYS = {
     NOSTR_ACTIVE_ACCOUNT: "nostr-active-account",
     NOSTR_SECRET_KEY_PREFIX: "nostr-secret-key-",
     NOSTR_NIP46_SESSION_PREFIX: "nostr-nip46-session-",
+    NOSTR_PARENT_CLIENT_SESSION_PREFIX: "nostr-parent-client-session-",
     NOSTR_NIP07_PUBKEY: "nostr-nip07-pubkey",
     NOSTR_SECRET_KEY_LEGACY: "nostr-secret-key",
     NOSTR_NIP46_SESSION_LEGACY: "nostr-nip46-session",

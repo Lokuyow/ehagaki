@@ -313,6 +313,41 @@ export class PostManager {
         }
       }
 
+      // 親クライアント連携の場合
+      if (auth.type === 'parentClient') {
+        const parentClientSigner = this.deps.getParentClientSignerFn?.();
+        if (!parentClientSigner) {
+          return this.notifyPostFailure('parent_client_signer_not_available');
+        }
+
+        const pubkey = auth.pubkey;
+        if (!pubkey) {
+          return this.notifyPostFailure('pubkey_not_found');
+        }
+
+        try {
+          const event = await this.buildSubmissionEvent({
+            processedContent,
+            hashtags,
+            tags,
+            pubkey,
+            imageImetaMap,
+            contentWarningEnabled,
+            contentWarningReason,
+            replyQuoteTags,
+          });
+
+          return await this.sendPreparedEvent({
+            event,
+            hashtags,
+            rqNotifyOptions,
+            signer: parentClientSigner,
+          });
+        } catch (err) {
+          return this.handleSubmissionError('親クライアント連携での投稿エラー:', err);
+        }
+      }
+
       // ローカルキーを使用（秘密鍵直入れの場合）
       const storedKey = keyMgr.getFromStore() || keyMgr.loadFromStorage(auth.pubkey);
       if (!storedKey) {

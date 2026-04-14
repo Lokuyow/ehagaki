@@ -10,6 +10,7 @@
   import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
   import { PostManager } from "../lib/postManager";
   import { nip46Service } from "../lib/nip46Service";
+  import { parentClientAuthService } from "../lib/parentClientAuthService";
   import {
     createPostUploadHandlers,
     updateEditorUploadState,
@@ -92,6 +93,7 @@
       if (!postManager)
         postManager = new PostManager(rxNostr as RxNostr, {
           getNip46SignerFn: () => nip46Service.getSigner(),
+          getParentClientSignerFn: () => parentClientAuthService.getSigner(),
           replyQuoteState,
           replyQuoteService: new ReplyQuoteService(),
           clearReplyQuoteFn: clearReplyQuote,

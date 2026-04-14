@@ -13,8 +13,11 @@
         secretKey: string;
         onClose: () => void;
         onSave: () => void;
+        onParentClientLogin?: () => void;
         onNip07Login: () => void;
         onNip46Login: (bunkerUrl: string) => Promise<string | undefined>;
+        isParentClientAvailable?: boolean;
+        isLoadingParentClient?: boolean;
         isNip07ExtensionAvailable?: boolean;
         isLoadingNip07?: boolean;
         isLoadingNip46?: boolean;
@@ -26,8 +29,11 @@
         secretKey = $bindable(),
         onClose,
         onSave,
+        onParentClientLogin,
         onNip07Login,
         onNip46Login,
+        isParentClientAvailable = false,
+        isLoadingParentClient = false,
         isNip07ExtensionAvailable = false,
         isLoadingNip07 = false,
         isLoadingNip46 = false,
@@ -45,6 +51,7 @@
 
     // --- NIP-07拡張機能の利用可能状態（App.svelteからpropとして受取）
     let isNip07Available = $derived(isNip07ExtensionAvailable);
+    let isParentClientEnabled = $derived(isParentClientAvailable);
 
     // --- 公開鍵状態管理 ---
     const publicKeyState = new PublicKeyState();
@@ -136,6 +143,10 @@
         onNip07Login?.();
     }
 
+    function handleParentClientLogin() {
+        onParentClientLogin?.();
+    }
+
     async function handleNip46Login() {
         if (bunkerInputEl) {
             const trimmed = bunkerInputEl.value.trim();
@@ -208,6 +219,37 @@
     contentClass="login-dialog"
     footerVariant="close-button"
 >
+    {#if isParentClientEnabled}
+        <div class="parent-client-section">
+            <Button
+                variant="primary"
+                shape="rounded"
+                className="parent-client-login-button u-control {isLoadingParentClient
+                    ? 'loading'
+                    : ''}"
+                onClick={handleParentClientLogin}
+                disabled={isLoadingParentClient}
+            >
+                {#if isLoadingParentClient}
+                    <LoadingPlaceholder
+                        text={true}
+                        showLoader={true}
+                        customClass="parent-client-login-placeholder"
+                    />
+                {:else}
+                    <div class="parent-client-icon svg-icon"></div>
+                    <span class="btn-text"
+                        >{$_("loginDialog.login_with_parent_client")}</span
+                    >
+                {/if}
+            </Button>
+        </div>
+
+        <div class="divider">
+            <span>or</span>
+        </div>
+    {/if}
+
     <div class="nip07-login-section">
         <Button
             variant="primary"
@@ -403,6 +445,7 @@
         }
     }
 
+    .parent-client-section,
     .nip07-login-section {
         display: flex;
         justify-content: center;
@@ -410,6 +453,8 @@
         width: auto;
         height: 120px;
     }
+
+    :global(.parent-client-login-button.primary),
     :global(.nip07-login-button.primary) {
         width: 100%;
         height: 70px;
@@ -423,8 +468,15 @@
         }
     }
 
+    :global(.parent-client-login-button.loading),
     :global(.nip07-login-button.loading) {
         cursor: not-allowed;
+    }
+
+    .svg-icon.parent-client-icon {
+        mask-image: url("/icons/circle-user-solid-full.svg");
+        width: 32px;
+        height: 32px;
     }
 
     .svg-icon.extension-icon {
