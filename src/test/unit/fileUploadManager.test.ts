@@ -38,7 +38,11 @@ vi.mock("../../stores/uploadStore.svelte", () => ({
         value: false,
         set: vi.fn(),
         reset: vi.fn()
-    }
+    },
+    mediaFreePlacementStore: {
+        value: true,
+        set: vi.fn(),
+    },
 }));
 
 vi.mock("../../lib/tags/imetaTag", () => ({

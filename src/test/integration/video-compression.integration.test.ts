@@ -15,6 +15,10 @@ vi.mock('../../stores/uploadStore.svelte', () => ({
         value: false,
         set: vi.fn(),
     },
+    mediaFreePlacementStore: {
+        value: true,
+        set: vi.fn(),
+    },
 }));
 
 // テスト用のストレージ実装

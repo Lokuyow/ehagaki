@@ -27,6 +27,12 @@
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import { containsSecretKey } from "../lib/utils/nostrUtils";
+  import {
+    collectFullscreenMediaItems,
+    createPostStatusHandlers,
+    getFullscreenMediaItemAt,
+    submitPendingPostWithSecretKey,
+  } from "../lib/postComponentUtils";
 
   import { postComponentUIStore } from "../stores/postUIStore.svelte";
   import {
@@ -101,6 +107,11 @@
     updateUploadState: (isUploading: boolean, message?: string) => {
       updateEditorUploadState(editorState, isUploading, message);
     },
+  });
+  const postStatusHandlers = createPostStatusHandlers({
+    updatePostStatus,
+    clearContentAfterSuccess,
+    onPostSuccess: () => onPostSuccess?.(),
   });
 
   // --- Editor初期化・クリーンアップ ---
@@ -253,33 +264,9 @@
       currentEditor,
       imageOxMap,
       imageXMap,
-      () =>
-        updatePostStatus({
-          sending: true,
-          success: false,
-          error: false,
-          message: "",
-          completed: false,
-        }),
-      () => {
-        updatePostStatus({
-          sending: false,
-          success: true,
-          error: false,
-          message: "postComponent.post_success",
-          completed: true,
-        });
-        clearContentAfterSuccess();
-        onPostSuccess?.();
-      },
-      (error) =>
-        updatePostStatus({
-          sending: false,
-          success: false,
-          error: true,
-          message: error || "postComponent.post_error",
-          completed: false,
-        }),
+      postStatusHandlers.markSending,
+      postStatusHandlers.markSuccess,
+      postStatusHandlers.markFailure,
     );
   }
 
@@ -298,87 +285,29 @@
     const pendingPost = postComponentUIStore.getPendingPost();
     postComponentUIStore.hideSecretKeyDialog();
     if (postManager && currentEditor) {
-      const imageBlurhashMap = postManager.prepareImageBlurhashMap(
+      await submitPendingPostWithSecretKey({
+        postManager,
         currentEditor,
         imageOxMap,
         imageXMap,
-      );
-      updatePostStatus({
-        sending: true,
-        success: false,
-        error: false,
-        message: "",
-        completed: false,
+        pendingPost,
+        onStart: postStatusHandlers.markSending,
+        onSuccess: postStatusHandlers.markSuccess,
+        onFailure: postStatusHandlers.markFailure,
       });
-      try {
-        const result = await postManager.submitPost(
-          pendingPost,
-          imageBlurhashMap,
-        );
-        if (result.success) {
-          updatePostStatus({
-            sending: false,
-            success: true,
-            error: false,
-            message: "postComponent.post_success",
-            completed: true,
-          });
-          clearContentAfterSuccess();
-          onPostSuccess?.();
-        } else {
-          updatePostStatus({
-            sending: false,
-            success: false,
-            error: true,
-            message: result.error || "postComponent.post_error",
-            completed: false,
-          });
-        }
-      } catch (error) {
-        updatePostStatus({
-          sending: false,
-          success: false,
-          error: true,
-          message: "postComponent.post_error",
-          completed: false,
-        });
-      }
     }
   }
 
-  function cancelSendWithSecretKey() {
-    postComponentUIStore.hideSecretKeyDialog();
-  }
-
-  function closeFullscreen() {
-    postComponentUIStore.hideImageFullscreen();
-  }
+  const cancelSendWithSecretKey = postComponentUIStore.hideSecretKeyDialog;
+  const closeFullscreen = postComponentUIStore.hideImageFullscreen;
 
   // --- フルスクリーンメディアリスト ---
   let fullscreenMediaList = $derived.by<FullscreenMediaItem[]>(() => {
-    if (!mediaFreePlacementStore.value) {
-      // ギャラリーモード: mediaGalleryStore から収集
-      return mediaGalleryStore.items
-        .filter((item) => !item.isPlaceholder)
-        .map((item) => ({ src: item.src, alt: item.alt, type: item.type }));
-    } else {
-      // フリー配置モード: エディターのdocからimage/videoノードを収集
-      if (!currentEditor) return [];
-      const items: FullscreenMediaItem[] = [];
-      currentEditor.state.doc.descendants((node: any) => {
-        if (
-          (node.type.name === "image" || node.type.name === "video") &&
-          !node.attrs.isPlaceholder
-        ) {
-          items.push({
-            src: node.attrs.src as string,
-            alt: node.attrs.alt as string | undefined,
-            type: node.type.name as "image" | "video",
-          });
-        }
-      });
-      return items;
-    }
+    return collectFullscreenMediaItems({
+      mediaFreePlacement,
+      galleryItems: mediaGalleryStore.items,
+      currentEditor,
+    });
   });
 
   let fullscreenMediaIndex = $derived(
@@ -386,7 +315,7 @@
   );
 
   function handleFullscreenNavigate(index: number): void {
-    const item = fullscreenMediaList[index];
+    const item = getFullscreenMediaItemAt(fullscreenMediaList, index);
     if (!item) return;
     postComponentUIStore.showImageFullscreen(item.src, item.alt ?? "");
   }
@@ -584,7 +513,7 @@
     show={showPopupModal}
     x={popupX}
     y={popupY}
-    onClose={() => postComponentUIStore.hidePopupMessage()}
+    onClose={postComponentUIStore.hidePopupMessage}
   >
     <div class="copy-success-message">{popupMessage}</div>
   </PopupModal>
