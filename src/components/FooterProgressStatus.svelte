@@ -127,11 +127,6 @@
         overflow: hidden;
     }
 
-    :global(.footer-progress-root:focus-visible) {
-        outline: 2px solid var(--theme);
-        outline-offset: 2px;
-    }
-
     :global(.footer-progress-indicator) {
         width: 100%;
         height: 100%;
