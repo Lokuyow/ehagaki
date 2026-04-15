@@ -139,6 +139,31 @@ describe('ParentClientAuthService', () => {
         ).toEqual(session);
     });
 
+    it('auth.error を受け取ると接続要求を明示的な認証エラーとして reject する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const promise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        listeners.get('message')?.({
+            data: {
+                namespace: 'ehagaki.parentClient',
+                version: 1,
+                type: 'auth.error',
+                requestId: authRequest.requestId,
+                payload: {
+                    code: 'parent_client_not_logged_in',
+                    message: 'parent_client_not_logged_in',
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(promise).rejects.toThrow('parent_client_not_logged_in');
+        expect(service.isConnected()).toBe(false);
+    });
+
     it('auth.logout を受け取ると remote logout listener が呼ばれる', async () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new ParentClientAuthService(windowObj, mockConsole);

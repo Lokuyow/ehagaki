@@ -122,8 +122,10 @@ export class AuthService {
 
             return { success: true, pubkeyHex };
         } catch (error) {
-            this.runtime.console.error('親クライアント連携認証エラー:', error);
             const msg = error instanceof Error ? error.message : 'parent_client_auth_error';
+            if (!options.silent) {
+                this.runtime.console.error('親クライアント連携認証エラー:', error);
+            }
             return { success: false, error: msg };
         }
     }

@@ -287,4 +287,16 @@ describe('AuthService.authenticateWithParentClient', () => {
         expect(result.success).toBe(false);
         expect(result.error).toBe('parent_client_timeout');
     });
+
+    it('silent 親クライアント認証失敗では console.error を出さない', async () => {
+        const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+        vi.mocked(parentClientAuthService.connect).mockRejectedValue(new Error('parent_client_not_logged_in'));
+
+        const service = new AuthService(mockDependencies);
+        const result = await service.authenticateWithParentClient({ silent: true });
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('parent_client_not_logged_in');
+        expect(mockDependencies.console!.error).not.toHaveBeenCalled();
+    });
 });

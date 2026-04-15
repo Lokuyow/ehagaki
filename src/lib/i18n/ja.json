@@ -34,6 +34,7 @@
     "parent_client_not_available": "親クライアント連携はこの埋め込みでは利用できません",
     "parent_client_timeout": "親ページからの応答がありませんでした",
     "parent_client_auth_rejected": "親ページでログインが拒否されました",
+    "parent_client_not_logged_in": "親ページ側でログインしてから再度お試しください",
     "parent_client_disconnected": "親クライアントとの接続が切れました",
     "parent_client_invalid_response": "親ページから無効な応答が返されました",
     "parent_client_auth_error": "親クライアント連携に失敗しました",

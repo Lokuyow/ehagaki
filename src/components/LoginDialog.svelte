@@ -185,6 +185,8 @@
                 return $_("loginDialog.parent_client_timeout");
             case "parent_client_auth_rejected":
                 return $_("loginDialog.parent_client_auth_rejected");
+            case "parent_client_not_logged_in":
+                return $_("loginDialog.parent_client_not_logged_in");
             case "parent_client_disconnected":
                 return $_("loginDialog.parent_client_disconnected");
             case "parent_client_invalid_response":

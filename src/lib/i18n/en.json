@@ -34,6 +34,7 @@
     "parent_client_not_available": "Parent client login is not available in this embed",
     "parent_client_timeout": "No response was received from the parent page",
     "parent_client_auth_rejected": "Login was rejected on the parent page",
+    "parent_client_not_logged_in": "Log in on the parent page and try again",
     "parent_client_disconnected": "The parent client connection was lost",
     "parent_client_invalid_response": "The parent page returned an invalid response",
     "parent_client_auth_error": "Parent client login failed",

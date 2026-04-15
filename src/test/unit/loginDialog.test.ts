@@ -11,6 +11,7 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'loginDialog.login_with_parent_client': '親クライアント連携でログイン',
         'loginDialog.parent_client_hint': '親ページ側でログインを許可すると接続します',
         'loginDialog.parent_client_timeout': '親ページからの応答がありませんでした',
+        'loginDialog.parent_client_not_logged_in': '親ページ側でログインしてから再度お試しください',
         'loginDialog.parent_client_auth_error': '親クライアント連携に失敗しました',
         'loginDialog.login_with_extension': 'ブラウザ拡張機能でログイン',
         'loginDialog.extension_login_failed': 'ブラウザ拡張機能でのログインに失敗しました',
@@ -118,6 +119,28 @@ describe('LoginDialog', () => {
         expect(onParentClientLogin).toHaveBeenCalledTimes(1);
         expect(
             await screen.findByText('親ページからの応答がありませんでした'),
+        ).toBeTruthy();
+    });
+
+    it('親クライアント未ログイン時に専用メッセージを表示する', async () => {
+        const onParentClientLogin = vi
+            .fn<() => Promise<string | undefined>>()
+            .mockResolvedValue('parent_client_not_logged_in');
+
+        render(LoginDialog, {
+            props: {
+                ...defaultProps,
+                onParentClientLogin,
+            },
+        });
+
+        await fireEvent.click(
+            screen.getByText('親クライアント連携でログイン'),
+        );
+
+        expect(onParentClientLogin).toHaveBeenCalledTimes(1);
+        expect(
+            await screen.findByText('親ページ側でログインしてから再度お試しください'),
         ).toBeTruthy();
     });
 

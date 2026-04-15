@@ -17,6 +17,7 @@ type ParentClientMessageType =
     | "ready"
     | "auth.login"
     | "auth.request"
+    | "auth.error"
     | "auth.result"
     | "auth.logout"
     | "rpc.request"
@@ -39,6 +40,11 @@ interface ParentClientAuthRequestPayload {
 interface ParentClientAuthResultPayload {
     pubkeyHex: string;
     capabilities?: ParentClientCapability[];
+}
+
+interface ParentClientAuthErrorPayload {
+    code?: string;
+    message?: string;
 }
 
 interface ParentClientRpcRequestPayload {
@@ -448,6 +454,18 @@ export class ParentClientAuthService {
             }
 
             pending.resolve(payload);
+            return;
+        }
+
+        if (message.type === "auth.error") {
+            const payload = message.payload as ParentClientAuthErrorPayload;
+            pending.reject(
+                new Error(
+                    payload?.code
+                    || payload?.message
+                    || "parent_client_auth_error",
+                ),
+            );
             return;
         }
 
