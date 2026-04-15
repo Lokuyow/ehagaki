@@ -1,6 +1,9 @@
+import { finalizeEvent, getPublicKey as getPublicKeyFromSecret } from "https://esm.sh/nostr-tools@2.23.3/pure";
+import { decode as decodeNip19 } from "https://esm.sh/nostr-tools@2.23.3/nip19";
+
 const EMBED_NAMESPACE = "ehagaki.embed";
 const EMBED_VERSION = 1;
-const PARENT_LOGIN_STORAGE_KEY = "ehagaki.parent-client-sample.logged-in";
+const PARENT_SESSION_STORAGE_KEY = "ehagaki.parent-client-sample.session";
 
 const INBOUND_TYPES = new Set([
     "ready",
@@ -24,15 +27,23 @@ const iframeSrcDisplay = document.getElementById("iframe-src");
 const eventLog = document.getElementById("event-log");
 const signerStatus = document.getElementById("signer-status");
 const parentAuthStatus = document.getElementById("parent-auth-status");
+const authFeedback = document.getElementById("auth-feedback");
 const handshakeStatus = document.getElementById("handshake-status");
+const loginNip07Button = document.getElementById("login-nip07");
+const secretKeyInput = document.getElementById("secret-key");
+const loginSecretKeyButton = document.getElementById("login-secret-key");
 const reloadIframeButton = document.getElementById("reload-iframe");
-const announceLoginButton = document.getElementById("announce-login");
 const announceLogoutButton = document.getElementById("announce-logout");
 const clearLogButton = document.getElementById("clear-log");
 const iframe = document.getElementById("ehagaki-iframe");
 
+const AUTH_METHOD_LABELS = {
+    nip07: "NIP-07",
+    nsec: "秘密鍵",
+};
+
 let lastPubkeyHex = null;
-let isParentLoggedIn = false;
+let activeParentSession = null;
 let isIframeReady = false;
 
 function isRecord(value) {
@@ -72,39 +83,279 @@ function appendLog(level, message, detail) {
     eventLog.value = eventLog.value ? `${next}\n\n${eventLog.value}` : next;
 }
 
-function loadParentLoginState() {
+function setAuthFeedback(message = "", tone = "") {
+    authFeedback.textContent = message;
+    if (tone) {
+        authFeedback.dataset.tone = tone;
+        return;
+    }
+    delete authFeedback.dataset.tone;
+}
+
+function getNip07Signer() {
+    const signer = window.nostr;
+    if (!signer || typeof signer.getPublicKey !== "function" || typeof signer.signEvent !== "function") {
+        throw new Error("親ページで利用できる NIP-07 signer が見つかりません");
+    }
+    return signer;
+}
+
+function createSecretKeySession(secretKey) {
+    const trimmed = typeof secretKey === "string" ? secretKey.trim() : "";
+    if (!trimmed) {
+        throw new Error("秘密鍵を入力してください");
+    }
+
+    let decoded;
     try {
-        return window.localStorage.getItem(PARENT_LOGIN_STORAGE_KEY) === "1";
+        decoded = decodeNip19(trimmed);
     } catch {
-        return false;
+        throw new Error("有効な nsec を入力してください");
+    }
+
+    if (decoded.type !== "nsec" || !(decoded.data instanceof Uint8Array) || decoded.data.length !== 32) {
+        throw new Error("有効な nsec を入力してください");
+    }
+
+    const pubkeyHex = getPublicKeyFromSecret(decoded.data);
+    if (!isHex64(pubkeyHex)) {
+        throw new Error("秘密鍵から公開鍵を導出できませんでした");
+    }
+
+    return {
+        method: "nsec",
+        pubkeyHex,
+        secretKey: trimmed,
+        secretKeyBytes: decoded.data,
+    };
+}
+
+function hydrateStoredParentSession(value) {
+    if (!isRecord(value) || !isNonEmptyString(value.method)) {
+        return null;
+    }
+
+    if (value.method === "nip07") {
+        return {
+            method: "nip07",
+            pubkeyHex: isHex64(value.pubkeyHex) ? value.pubkeyHex : null,
+        };
+    }
+
+    if (value.method === "nsec" && isNonEmptyString(value.secretKey)) {
+        try {
+            return createSecretKeySession(value.secretKey);
+        } catch {
+            return null;
+        }
+    }
+
+    return null;
+}
+
+function serializeParentSession(session) {
+    if (!session) {
+        return null;
+    }
+
+    return session.method === "nsec"
+        ? {
+            method: "nsec",
+            pubkeyHex: session.pubkeyHex,
+            secretKey: session.secretKey,
+        }
+        : {
+            method: "nip07",
+            pubkeyHex: session.pubkeyHex,
+        };
+}
+
+function loadParentSession() {
+    try {
+        const stored = window.localStorage.getItem(PARENT_SESSION_STORAGE_KEY);
+        if (!stored) {
+            return null;
+        }
+
+        return hydrateStoredParentSession(JSON.parse(stored));
+    } catch {
+        return null;
     }
 }
 
-function saveParentLoginState(isLoggedIn) {
+function saveParentSession(session) {
     try {
-        if (isLoggedIn) {
-            window.localStorage.setItem(PARENT_LOGIN_STORAGE_KEY, "1");
+        if (session) {
+            window.localStorage.setItem(
+                PARENT_SESSION_STORAGE_KEY,
+                JSON.stringify(serializeParentSession(session)),
+            );
             return;
         }
-        window.localStorage.removeItem(PARENT_LOGIN_STORAGE_KEY);
+        window.localStorage.removeItem(PARENT_SESSION_STORAGE_KEY);
     } catch {
         // ignore storage failures in the standalone sample
     }
 }
 
 function refreshParentAuthStatus() {
-    if (isParentLoggedIn) {
-        updateStatus(parentAuthStatus, "親クライアントログイン済み", "ok");
+    if (activeParentSession) {
+        updateStatus(
+            parentAuthStatus,
+            `親クライアントログイン済み (${AUTH_METHOD_LABELS[activeParentSession.method]})`,
+            "ok",
+        );
         return;
     }
 
     updateStatus(parentAuthStatus, "親クライアント未ログイン", "warn");
 }
 
-function setParentLoggedIn(nextLoggedIn) {
-    isParentLoggedIn = nextLoggedIn;
-    saveParentLoginState(nextLoggedIn);
+function getNip07Capabilities() {
+    const signer = window.nostr;
+    if (!signer) {
+        return [];
+    }
+
+    const capabilities = [];
+    if (typeof signer.signEvent === "function" && typeof signer.getPublicKey === "function") {
+        capabilities.push("signEvent");
+    }
+    if (typeof signer.nip04?.encrypt === "function") {
+        capabilities.push("nip04.encrypt");
+    }
+    if (typeof signer.nip04?.decrypt === "function") {
+        capabilities.push("nip04.decrypt");
+    }
+    if (typeof signer.nip44?.encrypt === "function") {
+        capabilities.push("nip44.encrypt");
+    }
+    if (typeof signer.nip44?.decrypt === "function") {
+        capabilities.push("nip44.decrypt");
+    }
+    return capabilities;
+}
+
+function getAvailableCapabilities() {
+    if (!activeParentSession) {
+        return [];
+    }
+
+    if (activeParentSession.method === "nsec") {
+        return ["signEvent"];
+    }
+
+    return getNip07Capabilities();
+}
+
+function refreshSignerStatus() {
+    if (activeParentSession?.method === "nsec") {
+        updateStatus(signerStatus, "秘密鍵 signer 利用中: signEvent", "ok");
+        return;
+    }
+
+    const capabilities = getNip07Capabilities();
+    if (activeParentSession?.method === "nip07") {
+        if (capabilities.length === 0) {
+            updateStatus(signerStatus, "NIP-07 signer 接続待ち", "warn");
+            return;
+        }
+
+        updateStatus(
+            signerStatus,
+            `NIP-07 signer 利用中: ${capabilities.join(", ")}`,
+            "ok",
+        );
+        return;
+    }
+
+    if (capabilities.length === 0) {
+        updateStatus(signerStatus, "NIP-07 signer 未検出 / 秘密鍵ログイン可", "warn");
+        return;
+    }
+
+    updateStatus(
+        signerStatus,
+        `NIP-07 利用可能: ${capabilities.join(", ")}`,
+        "ok",
+    );
+}
+
+function refreshAuthControls() {
+    const isLoggedIn = activeParentSession !== null;
+
+    loginNip07Button.disabled = isLoggedIn;
+    secretKeyInput.disabled = isLoggedIn;
+    loginSecretKeyButton.disabled = isLoggedIn || !isNonEmptyString(secretKeyInput.value);
+    announceLogoutButton.disabled = !isLoggedIn;
+}
+
+function setParentSession(session) {
+    activeParentSession = session;
+    saveParentSession(session);
+
+    if (session?.method === "nsec") {
+        secretKeyInput.value = session.secretKey;
+    } else if (!session) {
+        secretKeyInput.value = "";
+    } else {
+        secretKeyInput.value = "";
+    }
+
     refreshParentAuthStatus();
+    refreshSignerStatus();
+    refreshAuthControls();
+}
+
+function clearParentSession() {
+    activeParentSession = null;
+    saveParentSession(null);
+    secretKeyInput.value = "";
+    refreshParentAuthStatus();
+    refreshSignerStatus();
+    refreshAuthControls();
+}
+
+function ensureLoggedOutFor(nextMethod) {
+    if (!activeParentSession) {
+        return true;
+    }
+
+    const currentMethod = AUTH_METHOD_LABELS[activeParentSession.method];
+    const requestedMethod = AUTH_METHOD_LABELS[nextMethod];
+    const message = `${currentMethod} でログイン中です。${requestedMethod} でログインするには先にログアウトしてください。`;
+    setAuthFeedback(message, "warn");
+    appendLog("warn", message);
+    return false;
+}
+
+function buildSecretKeySigner(session) {
+    return {
+        async getPublicKey() {
+            return session.pubkeyHex;
+        },
+        async signEvent(event) {
+            return finalizeEvent(
+                {
+                    kind: event.kind,
+                    content: event.content,
+                    tags: event.tags ?? [],
+                    created_at: event.created_at,
+                },
+                session.secretKeyBytes,
+            );
+        },
+    };
+}
+
+function getActiveSigner() {
+    if (!activeParentSession) {
+        throw new Error("親クライアントがログインしていません");
+    }
+
+    return activeParentSession.method === "nip07"
+        ? getNip07Signer()
+        : buildSecretKeySigner(activeParentSession);
 }
 
 function getDefaultAppUrl() {
@@ -134,58 +385,21 @@ function loadIframe() {
     appendLog("info", "iframe を再読み込みしました", { embedUrl });
 }
 
-function getParentSigner() {
-    const signer = window.nostr;
-    if (!signer || typeof signer.getPublicKey !== "function" || typeof signer.signEvent !== "function") {
-        throw new Error("親ページで利用できる NIP-07 signer が見つかりません");
-    }
-    return signer;
-}
-
-function getAvailableCapabilities() {
-    const signer = window.nostr;
-    if (!signer) {
-        return [];
-    }
-
-    const capabilities = [];
-    if (typeof signer.signEvent === "function" && typeof signer.getPublicKey === "function") {
-        capabilities.push("signEvent");
-    }
-    if (typeof signer.nip04?.encrypt === "function") {
-        capabilities.push("nip04.encrypt");
-    }
-    if (typeof signer.nip04?.decrypt === "function") {
-        capabilities.push("nip04.decrypt");
-    }
-    if (typeof signer.nip44?.encrypt === "function") {
-        capabilities.push("nip44.encrypt");
-    }
-    if (typeof signer.nip44?.decrypt === "function") {
-        capabilities.push("nip44.decrypt");
-    }
-    return capabilities;
-}
-
-function refreshSignerStatus() {
-    const capabilities = getAvailableCapabilities();
-    if (capabilities.length === 0) {
-        updateStatus(signerStatus, "NIP-07 signer 未検出", "warn");
-        return;
-    }
-
-    updateStatus(
-        signerStatus,
-        `NIP-07 signer 利用可能: ${capabilities.join(", ")}`,
-        "ok",
-    );
-}
-
 async function resolveCurrentPubkey() {
-    const pubkeyHex = await getParentSigner().getPublicKey();
+    const pubkeyHex = await getActiveSigner().getPublicKey();
     if (!isHex64(pubkeyHex)) {
         throw new Error("signer が不正な pubkey を返しました");
     }
+
+    if (activeParentSession && activeParentSession.pubkeyHex !== pubkeyHex) {
+        activeParentSession = {
+            ...activeParentSession,
+            pubkeyHex,
+        };
+        saveParentSession(activeParentSession);
+        refreshParentAuthStatus();
+    }
+
     lastPubkeyHex = pubkeyHex;
     return pubkeyHex;
 }
@@ -382,7 +596,7 @@ function validateEnvelope(data) {
 async function handleReady() {
     isIframeReady = true;
 
-    if (!isParentLoggedIn) {
+    if (!activeParentSession) {
         updateStatus(handshakeStatus, "ready を受信。未ログイン待機中", "ok");
         appendLog("info", "ready を受信しました。親クライアントがログインした時点で auth.login を送信します");
         return;
@@ -391,6 +605,58 @@ async function handleReady() {
     updateStatus(handshakeStatus, "ready を受信。親ログイン状態を同期中", "ok");
     appendLog("info", "ready を受信したため保存済みの親ログイン状態を iframe へ同期します");
     await announceLogin({ source: "ready" });
+}
+
+async function activateParentSession(session, options = {}) {
+    setParentSession(session);
+    lastPubkeyHex = session.pubkeyHex;
+    setAuthFeedback(`${AUTH_METHOD_LABELS[session.method]}でログインしました`, "ok");
+    appendLog("info", `${AUTH_METHOD_LABELS[session.method]} で親クライアントをログイン状態にしました`, {
+        pubkeyHex: session.pubkeyHex,
+    });
+    await announceLogin({ source: options.source ?? "manual" });
+}
+
+async function handleNip07Login() {
+    if (!ensureLoggedOutFor("nip07")) {
+        return;
+    }
+
+    try {
+        const pubkeyHex = await getNip07Signer().getPublicKey();
+        if (!isHex64(pubkeyHex)) {
+            throw new Error("signer が不正な pubkey を返しました");
+        }
+
+        setAuthFeedback();
+        await activateParentSession({
+            method: "nip07",
+            pubkeyHex,
+        }, {
+            source: "manual",
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setAuthFeedback(`NIP-07 ログインに失敗しました: ${message}`, "error");
+        appendLog("error", "NIP-07 ログインに失敗しました", message);
+    }
+}
+
+async function handleSecretKeyLogin() {
+    if (!ensureLoggedOutFor("nsec")) {
+        return;
+    }
+
+    try {
+        setAuthFeedback();
+        await activateParentSession(createSecretKeySession(secretKeyInput.value), {
+            source: "manual",
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        setAuthFeedback(`秘密鍵ログインに失敗しました: ${message}`, "error");
+        appendLog("error", "秘密鍵ログインに失敗しました", message);
+    }
 }
 
 async function handleAuthRequest(message) {
@@ -443,7 +709,7 @@ async function handleAuthRequest(message) {
 
 async function handleRpcRequest(message) {
     const { method, params } = message.payload;
-    const signer = getParentSigner();
+    const signer = getActiveSigner();
 
     try {
         let result;
@@ -535,23 +801,31 @@ async function handleEmbedMessage(event) {
 }
 
 async function announceLogin(options = {}) {
+    const methodLabel = activeParentSession
+        ? AUTH_METHOD_LABELS[activeParentSession.method]
+        : "親クライアント";
+
     try {
+        if (!activeParentSession) {
+            throw new Error("parent_client_not_logged_in");
+        }
+
         const pubkeyHex = await resolveCurrentPubkey();
-        setParentLoggedIn(true);
 
         if (options.source !== "ready" && !isIframeReady) {
             updateStatus(handshakeStatus, "親ログイン済み。iframe ready 待ち", "ok");
-            appendLog("info", "親クライアントをログイン状態にしました。ready 受信後に auth.login を送信します", { pubkeyHex });
+            appendLog("info", `${methodLabel} でログイン済みです。ready 受信後に auth.login を送信します`, { pubkeyHex });
             return;
         }
 
         postToIframe("auth.login", { pubkeyHex });
         updateStatus(handshakeStatus, options.source === "ready"
-            ? "親ログイン状態を再同期しました"
-            : "親ログインに合わせ auth.login を送信しました", "ok");
+            ? `${methodLabel} のログイン状態を再同期しました`
+            : `${methodLabel} のログイン状態を同期しました`, "ok");
     } catch (error) {
         if (options.source === "ready") {
-            setParentLoggedIn(false);
+            clearParentSession();
+            setAuthFeedback("保存済みの親ログイン状態を復元できませんでした。再ログインしてください。", "warn");
             updateStatus(handshakeStatus, "親ログイン状態の再同期に失敗", "warn");
         }
         appendLog("error", "auth.login の送信に失敗しました", error instanceof Error ? error.message : String(error));
@@ -559,36 +833,59 @@ async function announceLogin(options = {}) {
 }
 
 async function announceLogout() {
+    const methodLabel = activeParentSession
+        ? AUTH_METHOD_LABELS[activeParentSession.method]
+        : "親クライアント";
+
     try {
-        const pubkeyHex = lastPubkeyHex ?? await resolveCurrentPubkey();
-        setParentLoggedIn(false);
+        const pubkeyHex = activeParentSession?.pubkeyHex ?? lastPubkeyHex;
+        clearParentSession();
+        setAuthFeedback(`${methodLabel} からログアウトしました`, "ok");
+
+        if (!pubkeyHex) {
+            updateStatus(handshakeStatus, "親ログアウト済み", "warn");
+            appendLog("info", `${methodLabel} をログアウトしました`);
+            return;
+        }
 
         if (!isIframeReady) {
             updateStatus(handshakeStatus, "親ログアウト済み。iframe 未接続", "warn");
-            appendLog("info", "親クライアントをログアウト状態にしました。再接続後も auth.login は送信されません", { pubkeyHex });
+            appendLog("info", `${methodLabel} をログアウトしました。再接続後も auth.login は送信されません`, { pubkeyHex });
             return;
         }
 
         postToIframe("auth.logout", { pubkeyHex });
         updateStatus(handshakeStatus, "親ログアウトに合わせ auth.logout を送信しました", "warn");
+        appendLog("info", `${methodLabel} のログアウトを iframe に通知しました`, { pubkeyHex });
     } catch (error) {
-        setParentLoggedIn(false);
         appendLog("error", "auth.logout の送信に失敗しました", error instanceof Error ? error.message : String(error));
     }
 }
 
 appUrlInput.value = getDefaultAppUrl();
 parentOriginInput.value = window.location.origin;
-isParentLoggedIn = loadParentLoginState();
-refreshParentAuthStatus();
-
-if (isParentLoggedIn) {
-    appendLog("info", "保存済みの親ログイン状態を復元しました。ready 受信後に auth.login を再送します");
+const storedParentSession = loadParentSession();
+if (storedParentSession) {
+    setParentSession(storedParentSession);
+    appendLog("info", `保存済みの ${AUTH_METHOD_LABELS[storedParentSession.method]} ログイン状態を復元しました。ready 受信後に auth.login を再送します`, {
+        pubkeyHex: storedParentSession.pubkeyHex ?? undefined,
+    });
+} else {
+    refreshParentAuthStatus();
+    refreshSignerStatus();
+    refreshAuthControls();
 }
 
 reloadIframeButton.addEventListener("click", loadIframe);
-announceLoginButton.addEventListener("click", () => {
-    void announceLogin();
+loginNip07Button.addEventListener("click", () => {
+    void handleNip07Login();
+});
+secretKeyInput.addEventListener("input", () => {
+    setAuthFeedback();
+    refreshAuthControls();
+});
+loginSecretKeyButton.addEventListener("click", () => {
+    void handleSecretKeyLogin();
 });
 announceLogoutButton.addEventListener("click", () => {
     void announceLogout();
@@ -602,5 +899,4 @@ window.addEventListener("message", (event) => {
 });
 window.addEventListener("focus", refreshSignerStatus);
 
-refreshSignerStatus();
 loadIframe();
