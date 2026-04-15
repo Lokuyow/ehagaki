@@ -6,8 +6,9 @@ import {
 
 type RemoteComposerSetContextListener = (
     payload: EmbedComposerSetContextPayload,
+    requestId?: string,
 ) => void;
-type RemoteComposerClearContextListener = () => void;
+type RemoteComposerClearContextListener = (requestId?: string) => void;
 
 function isComposerSetContextPayload(
     value: unknown,
@@ -29,6 +30,14 @@ function isComposerSetContextPayload(
         payload.quotes !== undefined
         && (!Array.isArray(payload.quotes)
             || payload.quotes.some((quote) => typeof quote !== "string"))
+    ) {
+        return false;
+    }
+
+    if (
+        payload.content !== undefined
+        && payload.content !== null
+        && typeof payload.content !== "string"
     ) {
         return false;
     }
@@ -97,14 +106,14 @@ export class EmbedComposerContextService {
             }
 
             for (const listener of this.remoteSetContextListeners) {
-                listener(message.payload);
+                listener(message.payload, message.requestId);
             }
             return;
         }
 
         if (message.type === "composer.clearContext") {
             for (const listener of this.remoteClearContextListeners) {
-                listener();
+                listener(message.requestId);
             }
         }
     };

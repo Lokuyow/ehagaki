@@ -135,6 +135,10 @@
             resize: vertical;
         }
 
+        .composer-field textarea {
+            min-height: 132px;
+        }
+
         .buttons {
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -404,14 +408,17 @@
                     <button id="announce-logout" type="button" class="secondary">ログアウト</button>
                 </div>
 
-                <div class="field">
-                    <label for="secret-key">秘密鍵ログイン (nsec)</label>
-                    <input id="secret-key" type="password" spellcheck="false" placeholder="nsec1..." autocomplete="off">
-                </div>
+                <form id="secret-key-login-form">
+                    <div class="field">
+                        <label for="secret-key">秘密鍵ログイン (nsec)</label>
+                        <input id="secret-key" type="password" spellcheck="false" placeholder="nsec1..."
+                            autocomplete="off">
+                    </div>
 
-                <div class="buttons">
-                    <button id="login-secret-key" type="button" class="secondary button-full">秘密鍵でログイン</button>
-                </div>
+                    <div class="buttons">
+                        <button id="login-secret-key" type="submit" class="secondary button-full">秘密鍵でログイン</button>
+                    </div>
+                </form>
 
                 <p id="auth-feedback" class="small feedback" role="status"></p>
             </div>
@@ -452,8 +459,9 @@
             <section class="panel timeline-panel">
                 <div class="timeline-header">
                     <h2>簡易タイムライン</h2>
-                    <p class="small">wss://nos.lol の最新 kind 1 を表示します。各イベントの reply / quote ボタンで iframe を再読み込みし、reply と
-                        quote の動作確認に使えます。</p>
+                    <p class="small">wss://nos.lol の最新 kind 1 を表示します。reply / quote と本文は iframe ready 後に postMessage
+                        で同期し、未接続時だけ URL
+                        クエリ付きで再読み込みします。</p>
                 </div>
 
                 <div class="timeline-toolbar">
@@ -465,6 +473,21 @@
                 </div>
 
                 <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件</div>
+
+                <div class="field composer-field">
+                    <label for="composer-content">本文同期テスト</label>
+                    <textarea id="composer-content" spellcheck="true"
+                        placeholder="composer.setContext で同期する本文を入力"></textarea>
+                </div>
+
+                <div class="buttons">
+                    <button id="sync-composer-content" type="button" class="secondary">本文を同期</button>
+                    <button id="clear-composer-content" type="button" class="ghost">本文をクリア</button>
+                </div>
+
+                <p class="small">reply / quote を付けたまま本文だけ差し替えることもできます。iframe からは requestId 付きで composer.contextApplied /
+                    composer.contextError が返ります。</p>
+
                 <div id="timeline-list" class="timeline-list"></div>
             </section>
         </div>

@@ -12,6 +12,7 @@
   import DraftListDialog from "./components/DraftListDialog.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService } from "./lib/authService";
+  import { iframeMessageService } from "./lib/iframeMessageService";
   import { waitNostr } from "nip07-awaiter";
   import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
@@ -144,8 +145,12 @@
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
   let pendingRemoteComposerAction:
-    | { type: "set"; payload: EmbedComposerSetContextPayload }
-    | { type: "clear" }
+    | {
+        type: "set";
+        payload: EmbedComposerSetContextPayload;
+        requestId?: string;
+      }
+    | { type: "clear"; requestId?: string }
     | undefined = undefined;
 
   const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
@@ -317,13 +322,55 @@
     };
   }
 
+  function notifyRemoteComposerApplied(requestId?: string): void {
+    iframeMessageService.notifyComposerContextApplied(requestId);
+  }
+
+  function notifyRemoteComposerError(
+    error: string | { code: string; message?: string },
+    requestId?: string,
+  ): void {
+    iframeMessageService.notifyComposerContextError(error, requestId);
+  }
+
+  function applyRemoteComposerContent(
+    content: string | null | undefined,
+  ): void {
+    if (content === undefined) {
+      return;
+    }
+
+    if (content === null) {
+      clearUrlQueryContentStore();
+      postComponentRef?.resetPostContent?.();
+      return;
+    }
+
+    if (postComponentRef?.insertTextContent) {
+      postComponentRef.insertTextContent(content);
+      clearUrlQueryContentStore();
+      return;
+    }
+
+    updateUrlQueryContentStore(content);
+  }
+
   async function applyRemoteComposerSetContext(
     payload: EmbedComposerSetContextPayload,
   ): Promise<void> {
+    applyRemoteComposerContent(payload.content);
+
     const replyQuoteQuery = getReplyQuoteFromEmbedPayload(payload);
+    const hasReplyQuoteContext =
+      payload.reply !== undefined ||
+      (Array.isArray(payload.quotes) && payload.quotes.length > 0);
+
     if (!replyQuoteQuery) {
+      if (!hasReplyQuoteContext) {
+        return;
+      }
       console.warn("親ページから無効な composer.setContext を受信:", payload);
-      return;
+      throw new Error("invalid_composer_context");
     }
 
     await applyReplyQuoteQuery({
@@ -334,27 +381,45 @@
 
   async function handleRemoteComposerSetContext(
     payload: EmbedComposerSetContextPayload,
+    requestId?: string,
   ): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       pendingRemoteComposerAction = {
         type: "set",
         payload,
+        requestId,
       };
       return;
     }
 
-    await applyRemoteComposerSetContext(payload);
+    try {
+      await applyRemoteComposerSetContext(payload);
+      notifyRemoteComposerApplied(requestId);
+    } catch (error) {
+      console.error("composer.setContext の適用に失敗:", error);
+      notifyRemoteComposerError(
+        {
+          code: "composer_context_apply_failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        requestId,
+      );
+    }
   }
 
-  async function handleRemoteComposerClearContext(): Promise<void> {
+  async function handleRemoteComposerClearContext(
+    requestId?: string,
+  ): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       pendingRemoteComposerAction = {
         type: "clear",
+        requestId,
       };
       return;
     }
 
     clearReplyQuote();
+    notifyRemoteComposerApplied(requestId);
   }
 
   async function flushPendingRemoteComposerAction(): Promise<void> {
@@ -370,10 +435,23 @@
 
     if (pendingAction.type === "clear") {
       clearReplyQuote();
+      notifyRemoteComposerApplied(pendingAction.requestId);
       return;
     }
 
-    await applyRemoteComposerSetContext(pendingAction.payload);
+    try {
+      await applyRemoteComposerSetContext(pendingAction.payload);
+      notifyRemoteComposerApplied(pendingAction.requestId);
+    } catch (error) {
+      console.error("保留中の composer.setContext の適用に失敗:", error);
+      notifyRemoteComposerError(
+        {
+          code: "composer_context_apply_failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        pendingAction.requestId,
+      );
+    }
   }
 
   async function flushPendingRemoteEmbedActions(): Promise<void> {
@@ -631,13 +709,13 @@
       });
 
     const cleanupRemoteComposerSetContextHandler =
-      embedComposerContextService.onRemoteSetContext((payload) => {
-        void handleRemoteComposerSetContext(payload);
+      embedComposerContextService.onRemoteSetContext((payload, requestId) => {
+        void handleRemoteComposerSetContext(payload, requestId);
       });
 
     const cleanupRemoteComposerClearContextHandler =
-      embedComposerContextService.onRemoteClearContext(() => {
-        void handleRemoteComposerClearContext();
+      embedComposerContextService.onRemoteClearContext((requestId) => {
+        void handleRemoteComposerClearContext(requestId);
       });
 
     if (parentClientAvailable) {

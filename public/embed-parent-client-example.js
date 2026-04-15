@@ -13,6 +13,8 @@ const INBOUND_TYPES = new Set([
     "ready",
     "auth.request",
     "rpc.request",
+    "composer.contextApplied",
+    "composer.contextError",
     "post.success",
     "post.error",
 ]);
@@ -36,6 +38,10 @@ const handshakeStatus = document.getElementById("handshake-status");
 const timelineStatus = document.getElementById("timeline-status");
 const timelineSelection = document.getElementById("timeline-selection");
 const timelineList = document.getElementById("timeline-list");
+const composerContentInput = document.getElementById("composer-content");
+const syncComposerContentButton = document.getElementById("sync-composer-content");
+const clearComposerContentButton = document.getElementById("clear-composer-content");
+const secretKeyLoginForm = document.getElementById("secret-key-login-form");
 const loginNip07Button = document.getElementById("login-nip07");
 const secretKeyInput = document.getElementById("secret-key");
 const loginSecretKeyButton = document.getElementById("login-secret-key");
@@ -58,6 +64,9 @@ let timelineEvents = [];
 let selectedReplyReference = null;
 let selectedQuoteReferences = [];
 let timelineSubscription = null;
+let composerRequestSequence = 0;
+
+const pendingComposerRequests = new Map();
 
 const timelinePool = new SimplePool({
     enablePing: true,
@@ -453,6 +462,35 @@ function updateTimelineSelection() {
     clearReplyQuoteButton.disabled = !selectedReplyReference && selectedQuoteReferences.length === 0;
 }
 
+function getComposerContentValue() {
+    return typeof composerContentInput.value === "string" && composerContentInput.value.length > 0
+        ? composerContentInput.value
+        : null;
+}
+
+function createComposerRequestId() {
+    if (typeof window.crypto?.randomUUID === "function") {
+        return `composer-${window.crypto.randomUUID()}`;
+    }
+
+    composerRequestSequence += 1;
+    return `composer-${Date.now()}-${composerRequestSequence}`;
+}
+
+function rememberComposerRequest(requestId, actionLabel) {
+    pendingComposerRequests.set(requestId, actionLabel);
+}
+
+function consumeComposerRequestAction(requestId) {
+    if (!requestId) {
+        return "composer context 更新";
+    }
+
+    const actionLabel = pendingComposerRequests.get(requestId) ?? "composer context 更新";
+    pendingComposerRequests.delete(requestId);
+    return actionLabel;
+}
+
 function createTimelineItem(event) {
     const article = document.createElement("article");
     article.className = "timeline-item";
@@ -535,32 +573,62 @@ function mergeTimelineEvents(events) {
         .slice(0, TIMELINE_EVENT_LIMIT);
 }
 
-function buildComposerContextPayload() {
-    return {
+function buildComposerContextPayload(options = {}) {
+    const { includeContent = false, clearContent = false } = options;
+    const content = clearContent ? null : getComposerContentValue();
+    const quoteValues = selectedQuoteReferences.map((reference) => reference.queryValue);
+    const payload = {
         ...(selectedReplyReference ? { reply: selectedReplyReference.queryValue } : {}),
-        quotes: selectedQuoteReferences.map((reference) => reference.queryValue),
+        ...(quoteValues.length > 0 ? { quotes: quoteValues } : {}),
     };
+
+    if (clearContent || includeContent || content !== null) {
+        payload.content = content;
+    }
+
+    return payload;
 }
 
-function reloadIframeForReplyQuote(reason, detail) {
+function sendRuntimeComposerMessage(type, payload, options) {
+    const {
+        actionLabel,
+        infoMessage,
+        detail,
+        failureMessage,
+    } = options;
+
     updateDisplayedEmbedUrl();
 
     if (!isIframeReady) {
         loadIframe();
-        appendLog("info", reason, detail);
+        appendLog("info", infoMessage, detail);
         return;
     }
 
+    let requestId = null;
     try {
-        const payload = buildComposerContextPayload();
-        postToIframe("composer.setContext", payload);
-        updateStatus(handshakeStatus, "reply / quote コンテキストを同期しました", "ok");
-        appendLog("info", reason, detail);
+        requestId = createComposerRequestId();
+        rememberComposerRequest(requestId, actionLabel);
+        postToIframe(type, payload, requestId);
+        updateStatus(handshakeStatus, `${actionLabel} を送信しました`, "ok");
+        appendLog("info", infoMessage, detail);
     } catch (error) {
-        appendLog("warn", "runtime context 同期に失敗したため iframe を再読み込みします", error instanceof Error ? error.message : String(error));
+        if (requestId) {
+            pendingComposerRequests.delete(requestId);
+        }
+        appendLog("warn", failureMessage, error instanceof Error ? error.message : String(error));
         loadIframe();
-        appendLog("info", reason, detail);
+        appendLog("info", infoMessage, detail);
     }
+}
+
+function reloadIframeForReplyQuote(reason, detail) {
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload(), {
+        actionLabel: "reply / quote コンテキスト更新",
+        infoMessage: reason,
+        detail,
+        failureMessage: "runtime context 同期に失敗したため iframe を再読み込みします",
+    });
 }
 
 async function selectReplyEvent(event) {
@@ -622,23 +690,45 @@ function clearReplyQuoteSelection() {
     selectedReplyReference = null;
     selectedQuoteReferences = [];
     renderTimeline();
-    updateDisplayedEmbedUrl();
+    sendRuntimeComposerMessage("composer.clearContext", undefined, {
+        actionLabel: "reply / quote コンテキスト解除",
+        infoMessage: "reply / quote テスト設定を解除しました",
+        detail: null,
+        failureMessage: "runtime context 解除に失敗したため iframe を再読み込みします",
+    });
+}
 
-    if (!isIframeReady) {
-        loadIframe();
-        appendLog("info", "reply / quote テスト設定を解除しました", null);
+function syncComposerContent() {
+    const content = getComposerContentValue();
+    if (content === null) {
+        updateStatus(handshakeStatus, "同期する本文が空です", "warn");
+        appendLog("warn", "本文同期をスキップしました", "composer-content が空です");
         return;
     }
 
-    try {
-        postToIframe("composer.clearContext");
-        updateStatus(handshakeStatus, "reply / quote コンテキストを解除しました", "ok");
-        appendLog("info", "reply / quote テスト設定を解除しました", null);
-    } catch (error) {
-        appendLog("warn", "runtime context 解除に失敗したため iframe を再読み込みします", error instanceof Error ? error.message : String(error));
-        loadIframe();
-        appendLog("info", "reply / quote テスト設定を解除しました", null);
-    }
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeContent: true }), {
+        actionLabel: "本文同期",
+        infoMessage: "本文同期を送信しました",
+        detail: {
+            contentLength: content.length,
+            hasReply: !!selectedReplyReference,
+            quoteCount: selectedQuoteReferences.length,
+        },
+        failureMessage: "runtime 本文同期に失敗したため iframe を再読み込みします",
+    });
+}
+
+function clearComposerContent() {
+    composerContentInput.value = "";
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ clearContent: true }), {
+        actionLabel: "本文クリア",
+        infoMessage: "本文クリアを送信しました",
+        detail: {
+            hasReply: !!selectedReplyReference,
+            quoteCount: selectedQuoteReferences.length,
+        },
+        failureMessage: "runtime 本文クリアに失敗したため iframe を再読み込みします",
+    });
 }
 
 function startTimelineSubscription() {
@@ -725,8 +815,14 @@ function getTargetOrigin() {
 function buildEmbedUrl() {
     const url = new URL(appUrlInput.value, window.location.href);
     url.searchParams.set("parentOrigin", window.location.origin);
+    url.searchParams.delete("content");
     url.searchParams.delete("reply");
     url.searchParams.delete("quote");
+
+    const content = getComposerContentValue();
+    if (content !== null) {
+        url.searchParams.set("content", content);
+    }
 
     if (selectedReplyReference) {
         url.searchParams.set("reply", selectedReplyReference.queryValue);
@@ -746,6 +842,7 @@ function updateDisplayedEmbedUrl() {
 function loadIframe() {
     const embedUrl = buildEmbedUrl();
     isIframeReady = false;
+    pendingComposerRequests.clear();
     iframe.src = embedUrl;
     iframeSrcDisplay.textContent = embedUrl;
     updateStatus(handshakeStatus, "iframe 読み込み中", "warn");
@@ -927,6 +1024,32 @@ function validatePostErrorPayload(payload) {
     return null;
 }
 
+function validateComposerContextAppliedPayload(payload) {
+    if (!isRecord(payload)) {
+        return "composer.contextApplied payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "composer.contextApplied payload.timestamp must be a number";
+    }
+    return null;
+}
+
+function validateComposerContextErrorPayload(payload) {
+    if (!isRecord(payload)) {
+        return "composer.contextError payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "composer.contextError payload.timestamp must be a number";
+    }
+    if (!isNonEmptyString(payload.code)) {
+        return "composer.contextError payload.code must be a non-empty string";
+    }
+    if (payload.message !== undefined && typeof payload.message !== "string") {
+        return "composer.contextError payload.message must be a string when provided";
+    }
+    return null;
+}
+
 function validateEnvelope(data) {
     if (!isRecord(data)) {
         return "message is not an object";
@@ -951,6 +1074,10 @@ function validateEnvelope(data) {
             return validateAuthRequestPayload(data.payload);
         case "rpc.request":
             return validateRpcRequestPayload(data.payload);
+        case "composer.contextApplied":
+            return validateComposerContextAppliedPayload(data.payload);
+        case "composer.contextError":
+            return validateComposerContextErrorPayload(data.payload);
         case "post.success":
             return validatePostSuccessPayload(data.payload);
         case "post.error":
@@ -1156,6 +1283,17 @@ async function handleEmbedMessage(event) {
         case "rpc.request":
             await handleRpcRequest(message);
             break;
+        case "composer.contextApplied": {
+            const actionLabel = consumeComposerRequestAction(message.requestId);
+            updateStatus(handshakeStatus, `${actionLabel} が iframe に反映されました`, "ok");
+            break;
+        }
+        case "composer.contextError": {
+            const actionLabel = consumeComposerRequestAction(message.requestId);
+            updateStatus(handshakeStatus, `${actionLabel} に失敗: ${message.payload.code}`, "error");
+            appendLog("warn", `${actionLabel} の反映に失敗しました`, message.payload);
+            break;
+        }
         case "post.success":
             updateStatus(handshakeStatus, "投稿成功を受信", "ok");
             break;
@@ -1246,6 +1384,7 @@ if (storedParentSession) {
 renderTimeline();
 updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
+composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
 loginNip07Button.addEventListener("click", () => {
     void handleNip07Login();
 });
@@ -1253,7 +1392,8 @@ secretKeyInput.addEventListener("input", () => {
     setAuthFeedback();
     refreshAuthControls();
 });
-loginSecretKeyButton.addEventListener("click", () => {
+secretKeyLoginForm.addEventListener("submit", (event) => {
+    event.preventDefault();
     void handleSecretKeyLogin();
 });
 announceLogoutButton.addEventListener("click", () => {
@@ -1263,6 +1403,8 @@ refreshTimelineButton.addEventListener("click", () => {
     void loadTimeline();
 });
 clearReplyQuoteButton.addEventListener("click", clearReplyQuoteSelection);
+syncComposerContentButton.addEventListener("click", syncComposerContent);
+clearComposerContentButton.addEventListener("click", clearComposerContent);
 clearLogButton.addEventListener("click", () => {
     eventLog.value = "";
 });

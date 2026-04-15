@@ -407,6 +407,81 @@ describe("IframeMessageService", () => {
     });
   });
 
+  describe("notifyComposerContextApplied", () => {
+    it("composer.contextApplied メッセージを送信する", () => {
+      const postMessageMock = vi.fn();
+      mockWindow = {
+        self: {},
+        top: {},
+        parent: {
+          postMessage: postMessageMock,
+        },
+      };
+
+      const service = new IframeMessageService({
+        window: mockWindow,
+        parentOrigin: 'https://example.com',
+        console: mockConsole,
+      });
+
+      const result = service.notifyComposerContextApplied('composer-request-1');
+
+      expect(result).toBe(true);
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "composer.contextApplied",
+          requestId: 'composer-request-1',
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+          }),
+        }),
+        "https://example.com"
+      );
+    });
+  });
+
+  describe("notifyComposerContextError", () => {
+    it("composer.contextError メッセージを送信する", () => {
+      const postMessageMock = vi.fn();
+      mockWindow = {
+        self: {},
+        top: {},
+        parent: {
+          postMessage: postMessageMock,
+        },
+      };
+
+      const service = new IframeMessageService({
+        window: mockWindow,
+        parentOrigin: 'https://example.com',
+        console: mockConsole,
+      });
+
+      const result = service.notifyComposerContextError(
+        { code: 'composer_context_apply_failed', message: 'bad payload' },
+        'composer-request-2',
+      );
+
+      expect(result).toBe(true);
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "composer.contextError",
+          requestId: 'composer-request-2',
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+            code: 'composer_context_apply_failed',
+            message: 'bad payload',
+          }),
+        }),
+        "https://example.com"
+      );
+    });
+  });
+
   describe("setAllowedOrigins and addAllowedOrigin", () => {
     it("許可オリジンを設定できる", () => {
       const service = new IframeMessageService({

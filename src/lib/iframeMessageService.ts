@@ -2,13 +2,15 @@ import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
     getParentOriginFromSearch,
+    type EmbedComposerContextAppliedPayload,
+    type EmbedComposerContextErrorPayload,
     type EmbedMessageEnvelope,
     type EmbedPostErrorPayload,
     type EmbedPostSuccessPayload,
 } from './embedProtocol';
 
 export interface IframeMessagePayload extends EmbedMessageEnvelope {
-    type: 'post.success' | 'post.error';
+    type: 'post.success' | 'post.error' | 'composer.contextApplied' | 'composer.contextError';
 }
 
 export interface IframeMessageServiceConfig {
@@ -134,6 +136,39 @@ export class IframeMessageService {
             namespace: EMBED_MESSAGE_NAMESPACE,
             version: EMBED_MESSAGE_VERSION,
             type: 'post.error',
+            payload,
+        });
+    }
+
+    notifyComposerContextApplied(requestId?: string): boolean {
+        const payload: EmbedComposerContextAppliedPayload = {
+            timestamp: Date.now(),
+        };
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'composer.contextApplied',
+            ...(requestId ? { requestId } : {}),
+            payload,
+        });
+    }
+
+    notifyComposerContextError(
+        error?: string | { code: string; message?: string },
+        requestId?: string,
+    ): boolean {
+        const payload: EmbedComposerContextErrorPayload = {
+            timestamp: Date.now(),
+            code: typeof error === 'string' ? error : error?.code ?? 'composer_context_error',
+            ...(typeof error === 'object' && error?.message ? { message: error.message } : {}),
+        };
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'composer.contextError',
+            ...(requestId ? { requestId } : {}),
             payload,
         });
     }

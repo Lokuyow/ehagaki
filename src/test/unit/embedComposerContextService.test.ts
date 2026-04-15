@@ -47,19 +47,25 @@ describe('EmbedComposerContextService', () => {
                 namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'composer.setContext',
+                requestId: 'composer-request-1',
                 payload: {
                     reply: 'note1424242424242424242424242424242424242424242424242424qv3q9y6',
                     quotes: [],
+                    content: 'runtime content',
                 },
             },
             origin: 'https://parent.example.com',
             source: parent,
         } as unknown as MessageEvent);
 
-        expect(onRemoteSetContext).toHaveBeenCalledWith({
-            reply: 'note1424242424242424242424242424242424242424242424242424qv3q9y6',
-            quotes: [],
-        });
+        expect(onRemoteSetContext).toHaveBeenCalledWith(
+            {
+                reply: 'note1424242424242424242424242424242424242424242424242424qv3q9y6',
+                quotes: [],
+                content: 'runtime content',
+            },
+            'composer-request-1',
+        );
     });
 
     it('composer.clearContext を受け取ると clear listener を呼ぶ', () => {
@@ -74,12 +80,13 @@ describe('EmbedComposerContextService', () => {
                 namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'composer.clearContext',
+                requestId: 'composer-request-2',
             },
             origin: 'https://parent.example.com',
             source: parent,
         } as unknown as MessageEvent);
 
-        expect(onRemoteClearContext).toHaveBeenCalledOnce();
+        expect(onRemoteClearContext).toHaveBeenCalledWith('composer-request-2');
     });
 
     it('origin が一致しないメッセージは無視する', () => {
@@ -99,6 +106,29 @@ describe('EmbedComposerContextService', () => {
                 },
             },
             origin: 'https://other.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteSetContext).not.toHaveBeenCalled();
+    });
+
+    it('不正な content を含む composer.setContext は無視する', () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedComposerContextService(windowObj, mockConsole);
+        const onRemoteSetContext = vi.fn();
+        service.onRemoteSetContext(onRemoteSetContext);
+        service.initialize();
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'composer.setContext',
+                payload: {
+                    content: 123,
+                },
+            },
+            origin: 'https://parent.example.com',
             source: parent,
         } as unknown as MessageEvent);
 
