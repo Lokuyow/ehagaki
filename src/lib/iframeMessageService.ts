@@ -4,13 +4,19 @@ import {
     getParentOriginFromSearch,
     type EmbedComposerContextAppliedPayload,
     type EmbedComposerContextErrorPayload,
+    type EmbedComposerContextUpdatedPayload,
     type EmbedMessageEnvelope,
     type EmbedPostErrorPayload,
     type EmbedPostSuccessPayload,
 } from './embedProtocol';
 
 export interface IframeMessagePayload extends EmbedMessageEnvelope {
-    type: 'post.success' | 'post.error' | 'composer.contextApplied' | 'composer.contextError';
+    type:
+        | 'post.success'
+        | 'post.error'
+        | 'composer.contextApplied'
+        | 'composer.contextError'
+        | 'composer.contextUpdated';
 }
 
 export interface IframeMessageServiceConfig {
@@ -169,6 +175,24 @@ export class IframeMessageService {
             version: EMBED_MESSAGE_VERSION,
             type: 'composer.contextError',
             ...(requestId ? { requestId } : {}),
+            payload,
+        });
+    }
+
+    notifyComposerContextUpdated(options: {
+        reply: string | null;
+        quotes: string[];
+    }): boolean {
+        const payload: EmbedComposerContextUpdatedPayload = {
+            timestamp: Date.now(),
+            reply: options.reply,
+            quotes: options.quotes,
+        };
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'composer.contextUpdated',
             payload,
         });
     }

@@ -14,6 +14,10 @@ let replyQuote = $state<ReplyQuoteComposerState>({
     quotes: [],
 });
 
+const replyQuoteChangeListeners = new Set<
+    (state: ReplyQuoteComposerState) => void
+>();
+
 function createReplyQuoteState(params: {
     mode: ReplyQuoteMode;
     eventId: string;
@@ -68,6 +72,21 @@ export const replyQuoteState = {
     get value() { return replyQuote; },
 };
 
+function notifyReplyQuoteChanged(): void {
+    replyQuoteChangeListeners.forEach((listener) => {
+        listener(replyQuote);
+    });
+}
+
+export function onReplyQuoteChanged(
+    listener: (state: ReplyQuoteComposerState) => void,
+): () => void {
+    replyQuoteChangeListeners.add(listener);
+    return () => {
+        replyQuoteChangeListeners.delete(listener);
+    };
+}
+
 export function setReplyQuote(params: ReplyQuoteQueryResult): void {
     replyQuote = {
         reply: params.reply
@@ -83,6 +102,7 @@ export function setReplyQuote(params: ReplyQuoteQueryResult): void {
             }),
         ),
     };
+    notifyReplyQuoteChanged();
 }
 
 export function updateReferencedEvent(
@@ -105,6 +125,7 @@ export function updateReferencedEvent(
             reference.rootPubkey = threadInfo.rootPubkey;
         }
     });
+    notifyReplyQuoteChanged();
 }
 
 export function setReplyQuoteError(eventId: string, error: string): void {
@@ -112,12 +133,14 @@ export function setReplyQuoteError(eventId: string, error: string): void {
         reference.loading = false;
         reference.error = error;
     });
+    notifyReplyQuoteChanged();
 }
 
 export function updateAuthorDisplayName(eventId: string, name: string): void {
     updateMatchingReferences(eventId, (reference) => {
         reference.authorDisplayName = name;
     });
+    notifyReplyQuoteChanged();
 }
 
 export function restoreReplyQuote(data: DraftReplyQuoteData): void {
@@ -126,6 +149,7 @@ export function restoreReplyQuote(data: DraftReplyQuoteData): void {
             reply: data.mode === 'reply' ? createDraftEntryState(data) : null,
             quotes: data.mode === 'quote' ? [createDraftEntryState(data)] : [],
         };
+        notifyReplyQuoteChanged();
         return;
     }
 
@@ -133,14 +157,17 @@ export function restoreReplyQuote(data: DraftReplyQuoteData): void {
         reply: data.reply ? createDraftEntryState(data.reply) : null,
         quotes: data.quotes.map((quote) => createDraftEntryState(quote)),
     };
+    notifyReplyQuoteChanged();
 }
 
 export function clearReplyReference(): void {
     replyQuote.reply = null;
+    notifyReplyQuoteChanged();
 }
 
 export function removeQuoteReference(eventId: string): void {
     replyQuote.quotes = replyQuote.quotes.filter((quote) => quote.eventId !== eventId);
+    notifyReplyQuoteChanged();
 }
 
 export function clearReplyQuote(): void {
@@ -148,4 +175,5 @@ export function clearReplyQuote(): void {
         reply: null,
         quotes: [],
     };
+    notifyReplyQuoteChanged();
 }

@@ -77,6 +77,7 @@
     updateReferencedEvent,
     updateAuthorDisplayName,
     setReplyQuoteError,
+    onReplyQuoteChanged,
     replyQuoteState,
     restoreReplyQuote,
     clearReplyQuote,
@@ -100,6 +101,10 @@
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
   import type { EmbedComposerSetContextPayload } from "./lib/embedProtocol";
+  import {
+    buildComposerContextSignature,
+    buildComposerContextUpdatedPayload,
+  } from "./lib/embedComposerContextNotification";
   import {
     applyDraftToComposer,
     createDraftSavePayload,
@@ -144,6 +149,7 @@
 
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
+  let lastNotifiedComposerContextSignature: string | null = null;
   let pendingRemoteComposerAction:
     | {
         type: "set";
@@ -331,6 +337,21 @@
     requestId?: string,
   ): void {
     iframeMessageService.notifyComposerContextError(error, requestId);
+  }
+
+  function notifyRemoteComposerContextUpdated(): void {
+    const payload = buildComposerContextUpdatedPayload(replyQuoteState.value);
+    const signature = buildComposerContextSignature(payload);
+
+    if (signature === lastNotifiedComposerContextSignature) {
+      return;
+    }
+
+    lastNotifiedComposerContextSignature = signature;
+    iframeMessageService.notifyComposerContextUpdated({
+      reply: payload.reply,
+      quotes: payload.quotes,
+    });
   }
 
   function applyRemoteComposerContent(
@@ -718,6 +739,14 @@
         void handleRemoteComposerClearContext(requestId);
       });
 
+    const cleanupReplyQuoteChangeHandler = onReplyQuoteChanged(() => {
+      if (isBootstrappingApp) {
+        return;
+      }
+
+      notifyRemoteComposerContextUpdated();
+    });
+
     if (parentClientAvailable) {
       parentClientAuthService.announceReady();
     }
@@ -768,7 +797,9 @@
       console,
     }).finally(() => {
       isBootstrappingApp = false;
-      void flushPendingRemoteEmbedActions();
+      void flushPendingRemoteEmbedActions().finally(() => {
+        notifyRemoteComposerContextUpdated();
+      });
     });
 
     const cleanupVisibilityHandler = registerNip46VisibilityHandler({
@@ -784,6 +815,7 @@
       cleanupParentClientLogoutHandler();
       cleanupRemoteComposerSetContextHandler();
       cleanupRemoteComposerClearContextHandler();
+      cleanupReplyQuoteChangeHandler();
     };
   });
 

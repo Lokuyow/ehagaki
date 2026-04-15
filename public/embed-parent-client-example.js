@@ -15,6 +15,7 @@ const INBOUND_TYPES = new Set([
     "rpc.request",
     "composer.contextApplied",
     "composer.contextError",
+    "composer.contextUpdated",
     "post.success",
     "post.error",
 ]);
@@ -439,6 +440,49 @@ function createTimelineReference(event) {
     };
 }
 
+function createReferenceFromQueryValue(queryValue) {
+    if (!isNonEmptyString(queryValue)) {
+        return null;
+    }
+
+    let decoded;
+    try {
+        decoded = decodeNip19(queryValue);
+    } catch {
+        return null;
+    }
+
+    let eventId = null;
+    let pubkey = null;
+    if (decoded.type === "nevent") {
+        if (!isRecord(decoded.data) || !isHex64(decoded.data.id)) {
+            return null;
+        }
+        eventId = decoded.data.id;
+        pubkey = isHex64(decoded.data.author) ? decoded.data.author : null;
+    } else if (decoded.type === "note") {
+        if (!isHex64(decoded.data)) {
+            return null;
+        }
+        eventId = decoded.data;
+    } else {
+        return null;
+    }
+
+    const matchingTimelineEvent = timelineEvents.find((event) => event.id === eventId);
+    if (matchingTimelineEvent) {
+        return createTimelineReference(matchingTimelineEvent);
+    }
+
+    return {
+        eventId,
+        queryValue,
+        pubkey,
+        createdAt: null,
+        preview: "",
+    };
+}
+
 function isReplySelected(eventId) {
     return selectedReplyReference?.eventId === eventId;
 }
@@ -449,7 +493,7 @@ function isQuoteSelected(eventId) {
 
 function updateTimelineSelection() {
     const replyLabel = selectedReplyReference
-        ? `${truncateMiddle(selectedReplyReference.eventId)} / ${truncateMiddle(selectedReplyReference.pubkey, 8, 6)}`
+        ? `${truncateMiddle(selectedReplyReference.eventId)}${selectedReplyReference.pubkey ? ` / ${truncateMiddle(selectedReplyReference.pubkey, 8, 6)}` : ""}`
         : "なし";
     const quoteLabel = selectedQuoteReferences.length === 0
         ? "0 件"
@@ -460,6 +504,30 @@ function updateTimelineSelection() {
 
     timelineSelection.textContent = `reply: ${replyLabel} / quote: ${quoteLabel}`;
     clearReplyQuoteButton.disabled = !selectedReplyReference && selectedQuoteReferences.length === 0;
+}
+
+function applyComposerContextUpdate(payload) {
+    selectedReplyReference = typeof payload.reply === "string"
+        ? createReferenceFromQueryValue(payload.reply)
+        : null;
+
+    const nextQuotes = Array.isArray(payload.quotes)
+        ? payload.quotes
+            .map((quoteValue) => createReferenceFromQueryValue(quoteValue))
+            .filter((reference) => reference !== null)
+        : [];
+
+    const seenQuoteIds = new Set();
+    selectedQuoteReferences = nextQuotes.filter((reference) => {
+        if (!reference || seenQuoteIds.has(reference.eventId)) {
+            return false;
+        }
+        seenQuoteIds.add(reference.eventId);
+        return true;
+    });
+
+    renderTimeline();
+    updateDisplayedEmbedUrl();
 }
 
 function getComposerContentValue() {
@@ -1050,6 +1118,22 @@ function validateComposerContextErrorPayload(payload) {
     return null;
 }
 
+function validateComposerContextUpdatedPayload(payload) {
+    if (!isRecord(payload)) {
+        return "composer.contextUpdated payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "composer.contextUpdated payload.timestamp must be a number";
+    }
+    if (payload.reply !== null && payload.reply !== undefined && !isNonEmptyString(payload.reply)) {
+        return "composer.contextUpdated payload.reply must be a non-empty string or null";
+    }
+    if (!isStringArray(payload.quotes)) {
+        return "composer.contextUpdated payload.quotes must be a string array";
+    }
+    return null;
+}
+
 function validateEnvelope(data) {
     if (!isRecord(data)) {
         return "message is not an object";
@@ -1078,6 +1162,8 @@ function validateEnvelope(data) {
             return validateComposerContextAppliedPayload(data.payload);
         case "composer.contextError":
             return validateComposerContextErrorPayload(data.payload);
+        case "composer.contextUpdated":
+            return validateComposerContextUpdatedPayload(data.payload);
         case "post.success":
             return validatePostSuccessPayload(data.payload);
         case "post.error":
@@ -1294,6 +1380,10 @@ async function handleEmbedMessage(event) {
             appendLog("warn", `${actionLabel} の反映に失敗しました`, message.payload);
             break;
         }
+        case "composer.contextUpdated":
+            applyComposerContextUpdate(message.payload);
+            updateStatus(handshakeStatus, "iframe 側の reply / quote 更新を反映しました", "ok");
+            break;
         case "post.success":
             updateStatus(handshakeStatus, "投稿成功を受信", "ok");
             break;

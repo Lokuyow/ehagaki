@@ -12,6 +12,7 @@ export type EmbedMessageType =
     | "composer.clearContext"
     | "composer.contextApplied"
     | "composer.contextError"
+    | "composer.contextUpdated"
     | "rpc.request"
     | "rpc.result"
     | "rpc.error"
@@ -54,6 +55,12 @@ export interface EmbedComposerContextAppliedPayload {
 
 export interface EmbedComposerContextErrorPayload extends EmbedErrorPayload {
     timestamp: number;
+}
+
+export interface EmbedComposerContextUpdatedPayload {
+    timestamp: number;
+    reply: string | null;
+    quotes: string[];
 }
 
 export function isEmbedMessageEnvelope(

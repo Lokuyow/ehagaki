@@ -482,6 +482,45 @@ describe("IframeMessageService", () => {
     });
   });
 
+  describe("notifyComposerContextUpdated", () => {
+    it("composer.contextUpdated メッセージを送信する", () => {
+      const postMessageMock = vi.fn();
+      mockWindow = {
+        self: {},
+        top: {},
+        parent: {
+          postMessage: postMessageMock,
+        },
+      };
+
+      const service = new IframeMessageService({
+        window: mockWindow,
+        parentOrigin: 'https://example.com',
+        console: mockConsole,
+      });
+
+      const result = service.notifyComposerContextUpdated({
+        reply: 'nevent1reply',
+        quotes: ['note1quote'],
+      });
+
+      expect(result).toBe(true);
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "composer.contextUpdated",
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+            reply: 'nevent1reply',
+            quotes: ['note1quote'],
+          }),
+        }),
+        "https://example.com"
+      );
+    });
+  });
+
   describe("setAllowedOrigins and addAllowedOrigin", () => {
     it("許可オリジンを設定できる", () => {
       const service = new IframeMessageService({

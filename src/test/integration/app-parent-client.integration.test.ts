@@ -69,6 +69,7 @@ const mockState = vi.hoisted(() => {
     const remoteComposerClearContextCleanup = vi.fn();
     const notifyComposerContextApplied = vi.fn();
     const notifyComposerContextError = vi.fn();
+    const notifyComposerContextUpdated = vi.fn();
     const syncAccountStores = vi.fn();
     const accountManager = {
         addAccount: vi.fn(),
@@ -99,6 +100,7 @@ const mockState = vi.hoisted(() => {
         remoteComposerClearContextCleanup,
         notifyComposerContextApplied,
         notifyComposerContextError,
+        notifyComposerContextUpdated,
         syncAccountStores,
         accountManager,
         bootstrapParams: null as {
@@ -210,6 +212,7 @@ vi.mock('../../lib/iframeMessageService', () => ({
     iframeMessageService: {
         notifyComposerContextApplied: mockState.notifyComposerContextApplied,
         notifyComposerContextError: mockState.notifyComposerContextError,
+        notifyComposerContextUpdated: mockState.notifyComposerContextUpdated,
     },
 }));
 
@@ -252,8 +255,11 @@ vi.mock('nip07-awaiter', () => ({
 import App from '../../App.svelte';
 
 describe('App parentClient integration', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
+        const { clearReplyQuote } = await import('../../stores/replyQuoteStore.svelte');
+
         vi.clearAllMocks();
+        clearReplyQuote();
         mockState.bootstrapParams = null;
         mockState.parentRemoteLoginListener = null;
         mockState.parentRemoteLogoutListener = null;
@@ -285,6 +291,7 @@ describe('App parentClient integration', () => {
         mockState.getReplyQuoteFromEmbedPayload.mockClear();
         mockState.notifyComposerContextApplied.mockClear();
         mockState.notifyComposerContextError.mockClear();
+        mockState.notifyComposerContextUpdated.mockClear();
         mockState.syncAccountStores.mockClear();
     });
 
@@ -645,4 +652,5 @@ describe('App parentClient integration', () => {
         });
         expect(mockSharedContentStoreModule.clearUrlQueryContentStore).not.toHaveBeenCalled();
     });
+
 });

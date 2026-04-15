@@ -113,6 +113,10 @@ window.addEventListener('message', (event) => {
   if (data.type === 'composer.contextError') {
     console.error('composer context 反映失敗', data.requestId, data.payload);
   }
+
+  if (data.type === 'composer.contextUpdated') {
+    console.log('iframe 側の reply / quote 変更', data.payload);
+  }
 });
 ```
 
@@ -122,6 +126,8 @@ window.addEventListener('message', (event) => {
 - `composer.clearContext` は現在の reply / quote だけをクリアします。本文は変更しません
 - `requestId` を付けると、iframe は `composer.contextApplied` / `composer.contextError` に同じ `requestId` を載せて返します
 - `composer.contextApplied` の payload は `{ timestamp }`、`composer.contextError` の payload は `{ timestamp, code, message? }` です
+- iframe 内の UI で reply / quote を変更した場合、子側から `composer.contextUpdated` が送られます
+- `composer.contextUpdated` の payload は `{ timestamp, reply, quotes }` です。`reply` は未設定時に `null`、`quotes` は常に配列です
 - `event.origin` と `event.source` の検証は URL 起動時と同じく必須です
 
 ## 3. 親クライアント連携ログイン
@@ -135,7 +141,7 @@ window.addEventListener('message', (event) => {
 - [public/embed-parent-client-example.html](public/embed-parent-client-example.html)
 - [public/embed-parent-client-example.js](public/embed-parent-client-example.js)
 
-このサンプルは NIP-07 ログインと秘密鍵ログインの両方に対応しています。NIP-07 ログイン時は親ページの `window.nostr` を使って `signEvent` / `nip04.*` / `nip44.*` を委譲し、秘密鍵ログイン時は sample に保存した nsec で `signEvent` を処理します。受信時には namespace、version、type、requestId、payload shape を検証します。親クライアントのログインボタンを押すと sample 側にログイン状態を保存し、その時点で `auth.login` を iframe に送ります。ページを再読み込みした場合も、親がログイン済みなら `ready` 受信後に `auth.login` を再送して eHagaki を再同期します。さらに sample 内には `wss://nos.lol` を読む簡易タイムラインと本文同期 UI を追加してあり、各イベントの `reply` / `quote` ボタンと本文入力から iframe の runtime composer 更新を直接試せます。iframe が mounted 済みなら runtime の `composer.setContext` / `composer.clearContext` を使い、未接続時だけ URL 付きで再読み込みします。runtime 更新には `requestId` を付け、結果は `composer.contextApplied` / `composer.contextError` で確認できます。
+このサンプルは NIP-07 ログインと秘密鍵ログインの両方に対応しています。NIP-07 ログイン時は親ページの `window.nostr` を使って `signEvent` / `nip04.*` / `nip44.*` を委譲し、秘密鍵ログイン時は sample に保存した nsec で `signEvent` を処理します。受信時には namespace、version、type、requestId、payload shape を検証します。親クライアントのログインボタンを押すと sample 側にログイン状態を保存し、その時点で `auth.login` を iframe に送ります。ページを再読み込みした場合も、親がログイン済みなら `ready` 受信後に `auth.login` を再送して eHagaki を再同期します。さらに sample 内には `wss://nos.lol` を読む簡易タイムラインと本文同期 UI を追加してあり、各イベントの `reply` / `quote` ボタンと本文入力から iframe の runtime composer 更新を直接試せます。iframe が mounted 済みなら runtime の `composer.setContext` / `composer.clearContext` を使い、未接続時だけ URL 付きで再読み込みします。runtime 更新には `requestId` を付け、結果は `composer.contextApplied` / `composer.contextError` で確認できます。iframe 内で reply / quote を解除した場合は `composer.contextUpdated` が返り、sample 側の selection UI も自動で追従します。
 
 ### 必須条件
 
