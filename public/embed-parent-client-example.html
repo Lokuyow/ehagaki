@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHagaki Parent Client Sample</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f3efe5;
+            --panel: #fffdf8;
+            --line: #d8cfbf;
+            --text: #261f12;
+            --muted: #6a5e49;
+            --accent: #c74d2f;
+            --accent-soft: #f7d9ce;
+            --ok: #2f7d4a;
+            --warn: #8a5b12;
+            --error: #9f2d2d;
+            --shadow: 0 18px 40px rgba(63, 43, 18, 0.12);
+            font-family: "Segoe UI", "Hiragino Sans", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background:
+                radial-gradient(circle at top left, rgba(199, 77, 47, 0.12), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(116, 141, 93, 0.16), transparent 32%),
+                var(--bg);
+            color: var(--text);
+        }
+
+        .page {
+            width: min(1200px, calc(100vw - 32px));
+            margin: 24px auto 40px;
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 20px;
+        }
+
+        .panel {
+            background: color-mix(in srgb, var(--panel) 92%, white 8%);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .sidebar {
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        h1,
+        h2 {
+            margin: 0;
+            font-family: Georgia, "Yu Mincho", serif;
+            letter-spacing: 0.02em;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            line-height: 1.2;
+        }
+
+        h2 {
+            font-size: 1rem;
+            color: var(--muted);
+        }
+
+        p {
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .lead {
+            color: var(--muted);
+        }
+
+        .card {
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.68);
+        }
+
+        .card strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.92rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .field label {
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        input,
+        textarea,
+        button {
+            font: inherit;
+        }
+
+        input,
+        textarea {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.96);
+            color: var(--text);
+        }
+
+        textarea {
+            min-height: 220px;
+            resize: vertical;
+        }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        button {
+            min-height: 44px;
+            padding: 10px 14px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            transition: transform 120ms ease, opacity 120ms ease;
+        }
+
+        button.secondary {
+            background: #746b5d;
+        }
+
+        button.ghost {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        .status-row {
+            display: grid;
+            gap: 10px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 0.86rem;
+            font-weight: 600;
+            background: var(--accent-soft);
+            color: var(--text);
+        }
+
+        .status-pill.ok {
+            background: rgba(47, 125, 74, 0.12);
+            color: var(--ok);
+        }
+
+        .status-pill.warn {
+            background: rgba(138, 91, 18, 0.14);
+            color: var(--warn);
+        }
+
+        .status-pill.error {
+            background: rgba(159, 45, 45, 0.12);
+            color: var(--error);
+        }
+
+        .viewer {
+            display: grid;
+            grid-template-rows: auto minmax(540px, 1fr);
+            min-height: 720px;
+        }
+
+        .viewer-header {
+            padding: 20px 22px 10px;
+            border-bottom: 1px solid var(--line);
+            display: grid;
+            gap: 8px;
+        }
+
+        .viewer-header code {
+            display: block;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #f5f1e8;
+            color: #5b4225;
+            overflow-wrap: anywhere;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            min-height: 540px;
+            border: 0;
+            border-radius: 0 0 20px 20px;
+            background: white;
+        }
+
+        .small {
+            font-size: 0.84rem;
+            color: var(--muted);
+        }
+
+        @media (max-width: 960px) {
+            .page {
+                grid-template-columns: 1fr;
+            }
+
+            .viewer {
+                min-height: 560px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <section class="panel sidebar">
+            <header>
+                <h1>Parent Client Sample</h1>
+                <p class="lead">親ページ側で NIP-07 signer を使い、eHagaki の embed protocol v1 を中継する実動サンプルです。</p>
+            </header>
+
+            <div class="card">
+                <strong>このサンプルが行うこと</strong>
+                <p>受信時に namespace、version、type、requestId、payload shape を検証し、許可した型だけを処理します。署名や暗号化は親ページの
+                    <code>window.nostr</code> を使います。</p>
+            </div>
+
+            <div class="status-row">
+                <div id="signer-status" class="status-pill warn">NIP-07 signer 未検出</div>
+                <div id="handshake-status" class="status-pill">iframe 未接続</div>
+            </div>
+
+            <div class="field">
+                <label for="app-url">eHagaki URL</label>
+                <input id="app-url" type="url" spellcheck="false">
+            </div>
+
+            <div class="field">
+                <label for="parent-origin">親ページ origin</label>
+                <input id="parent-origin" type="text" readonly>
+            </div>
+
+            <div class="buttons">
+                <button id="reload-iframe" type="button">iframe を再読み込み</button>
+                <button id="announce-login" type="button" class="secondary">auth.login を送る</button>
+                <button id="announce-logout" type="button" class="secondary">auth.logout を送る</button>
+                <button id="clear-log" type="button" class="ghost">ログを消す</button>
+            </div>
+
+            <div class="field">
+                <label for="event-log">イベントログ</label>
+                <textarea id="event-log" readonly></textarea>
+            </div>
+
+            <p class="small">NIP-07 がない場合、このサンプルは auth.error を返します。拡張が利用可能なら signEvent と対応する nip04/nip44 capability
+                を動的に公開します。</p>
+        </section>
+
+        <section class="panel viewer">
+            <div class="viewer-header">
+                <h2>埋め込み iframe</h2>
+                <code id="iframe-src"></code>
+            </div>
+            <iframe id="ehagaki-iframe" title="eHagaki embed sample"></iframe>
+        </section>
+    </main>
+
+    <script type="module" src="/embed-parent-client-example.js"></script>
+</body>
+
+</html>
