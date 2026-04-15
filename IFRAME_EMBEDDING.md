@@ -81,7 +81,7 @@ https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com
 
 1. iframe が `ready` を送る
 2. 親がログイン済みなら `auth.login` を送る
-3. iframe が `auth.request` を送る
+3. iframe が `capabilities` と必要に応じて `silent` を含む `auth.request` を送る
 4. 親が `auth.result` または `auth.error` を返す
 5. ログイン後は `rpc.request` で `signEvent` / `nip04.*` / `nip44.*` を要求される
 
@@ -108,28 +108,28 @@ https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com
     return event;
   }
 
-  async function encryptNip04(pubkey, plaintext) {
+  async function encryptNip04(peer, plaintext) {
     return plaintext;
   }
 
-  async function decryptNip04(pubkey, ciphertext) {
+  async function decryptNip04(peer, ciphertext) {
     return ciphertext;
   }
 
-  async function encryptNip44(pubkey, plaintext) {
+  async function encryptNip44(peer, plaintext) {
     return plaintext;
   }
 
-  async function decryptNip44(pubkey, ciphertext) {
+  async function decryptNip44(peer, ciphertext) {
     return ciphertext;
   }
 
   const rpcHandlers = {
     signEvent: async ({ event }) => signEventWithYourClient(event),
-    'nip04.encrypt': async ({ pubkey, plaintext }) => encryptNip04(pubkey, plaintext),
-    'nip04.decrypt': async ({ pubkey, ciphertext }) => decryptNip04(pubkey, ciphertext),
-    'nip44.encrypt': async ({ pubkey, plaintext }) => encryptNip44(pubkey, plaintext),
-    'nip44.decrypt': async ({ pubkey, ciphertext }) => decryptNip44(pubkey, ciphertext)
+    'nip04.encrypt': async ({ peer, plaintext }) => encryptNip04(peer, plaintext),
+    'nip04.decrypt': async ({ peer, ciphertext }) => decryptNip04(peer, ciphertext),
+    'nip44.encrypt': async ({ peer, plaintext }) => encryptNip44(peer, plaintext),
+    'nip44.decrypt': async ({ peer, ciphertext }) => decryptNip44(peer, ciphertext)
   };
 
   function postToIframe(message) {
@@ -247,6 +247,13 @@ https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com
 - `rpc.result`: 署名や暗号化の成功応答
 - `rpc.error`: 署名や暗号化の失敗応答
 - `auth.logout`: iframe 側をログアウトさせる
+
+### 親ページが受ける主な payload
+
+- `ready`: iframe 側の待受開始通知。`payload.capabilities` が付くことがあります
+- `auth.request`: `payload.capabilities` と `payload.silent` を含みます
+- `rpc.request`: `payload.method` と `payload.params` を含みます
+- `nip04.*` / `nip44.*` の `params` は現行実装では `pubkey` ではなく `peer` キーを使います
 
 ### capability 一覧
 
