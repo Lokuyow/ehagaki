@@ -1,5 +1,6 @@
 const EMBED_NAMESPACE = "ehagaki.embed";
 const EMBED_VERSION = 1;
+const PARENT_LOGIN_STORAGE_KEY = "ehagaki.parent-client-sample.logged-in";
 
 const INBOUND_TYPES = new Set([
     "ready",
@@ -22,6 +23,7 @@ const parentOriginInput = document.getElementById("parent-origin");
 const iframeSrcDisplay = document.getElementById("iframe-src");
 const eventLog = document.getElementById("event-log");
 const signerStatus = document.getElementById("signer-status");
+const parentAuthStatus = document.getElementById("parent-auth-status");
 const handshakeStatus = document.getElementById("handshake-status");
 const reloadIframeButton = document.getElementById("reload-iframe");
 const announceLoginButton = document.getElementById("announce-login");
@@ -30,6 +32,8 @@ const clearLogButton = document.getElementById("clear-log");
 const iframe = document.getElementById("ehagaki-iframe");
 
 let lastPubkeyHex = null;
+let isParentLoggedIn = false;
+let isIframeReady = false;
 
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -68,6 +72,41 @@ function appendLog(level, message, detail) {
     eventLog.value = eventLog.value ? `${next}\n\n${eventLog.value}` : next;
 }
 
+function loadParentLoginState() {
+    try {
+        return window.localStorage.getItem(PARENT_LOGIN_STORAGE_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function saveParentLoginState(isLoggedIn) {
+    try {
+        if (isLoggedIn) {
+            window.localStorage.setItem(PARENT_LOGIN_STORAGE_KEY, "1");
+            return;
+        }
+        window.localStorage.removeItem(PARENT_LOGIN_STORAGE_KEY);
+    } catch {
+        // ignore storage failures in the standalone sample
+    }
+}
+
+function refreshParentAuthStatus() {
+    if (isParentLoggedIn) {
+        updateStatus(parentAuthStatus, "親クライアントログイン済み", "ok");
+        return;
+    }
+
+    updateStatus(parentAuthStatus, "親クライアント未ログイン", "warn");
+}
+
+function setParentLoggedIn(nextLoggedIn) {
+    isParentLoggedIn = nextLoggedIn;
+    saveParentLoginState(nextLoggedIn);
+    refreshParentAuthStatus();
+}
+
 function getDefaultAppUrl() {
     const currentUrl = new URL(window.location.href);
     const pathSegments = currentUrl.pathname.split("/").filter(Boolean);
@@ -88,6 +127,7 @@ function buildEmbedUrl() {
 
 function loadIframe() {
     const embedUrl = buildEmbedUrl();
+    isIframeReady = false;
     iframe.src = embedUrl;
     iframeSrcDisplay.textContent = embedUrl;
     updateStatus(handshakeStatus, "iframe 読み込み中", "warn");
@@ -340,8 +380,17 @@ function validateEnvelope(data) {
 }
 
 async function handleReady() {
-    updateStatus(handshakeStatus, "ready を受信。auth.login 待機中", "ok");
-    appendLog("info", "ready を受信しました。必要になった時点で auth.login を送信してください");
+    isIframeReady = true;
+
+    if (!isParentLoggedIn) {
+        updateStatus(handshakeStatus, "ready を受信。未ログイン待機中", "ok");
+        appendLog("info", "ready を受信しました。親クライアントがログインした時点で auth.login を送信します");
+        return;
+    }
+
+    updateStatus(handshakeStatus, "ready を受信。親ログイン状態を同期中", "ok");
+    appendLog("info", "ready を受信したため保存済みの親ログイン状態を iframe へ同期します");
+    await announceLogin({ source: "ready" });
 }
 
 async function handleAuthRequest(message) {
@@ -485,12 +534,26 @@ async function handleEmbedMessage(event) {
     }
 }
 
-async function announceLogin() {
+async function announceLogin(options = {}) {
     try {
         const pubkeyHex = await resolveCurrentPubkey();
+        setParentLoggedIn(true);
+
+        if (options.source !== "ready" && !isIframeReady) {
+            updateStatus(handshakeStatus, "親ログイン済み。iframe ready 待ち", "ok");
+            appendLog("info", "親クライアントをログイン状態にしました。ready 受信後に auth.login を送信します", { pubkeyHex });
+            return;
+        }
+
         postToIframe("auth.login", { pubkeyHex });
-        updateStatus(handshakeStatus, "auth.login を送信", "ok");
+        updateStatus(handshakeStatus, options.source === "ready"
+            ? "親ログイン状態を再同期しました"
+            : "親ログインに合わせ auth.login を送信しました", "ok");
     } catch (error) {
+        if (options.source === "ready") {
+            setParentLoggedIn(false);
+            updateStatus(handshakeStatus, "親ログイン状態の再同期に失敗", "warn");
+        }
         appendLog("error", "auth.login の送信に失敗しました", error instanceof Error ? error.message : String(error));
     }
 }
@@ -498,15 +561,30 @@ async function announceLogin() {
 async function announceLogout() {
     try {
         const pubkeyHex = lastPubkeyHex ?? await resolveCurrentPubkey();
+        setParentLoggedIn(false);
+
+        if (!isIframeReady) {
+            updateStatus(handshakeStatus, "親ログアウト済み。iframe 未接続", "warn");
+            appendLog("info", "親クライアントをログアウト状態にしました。再接続後も auth.login は送信されません", { pubkeyHex });
+            return;
+        }
+
         postToIframe("auth.logout", { pubkeyHex });
-        updateStatus(handshakeStatus, "auth.logout を送信", "warn");
+        updateStatus(handshakeStatus, "親ログアウトに合わせ auth.logout を送信しました", "warn");
     } catch (error) {
+        setParentLoggedIn(false);
         appendLog("error", "auth.logout の送信に失敗しました", error instanceof Error ? error.message : String(error));
     }
 }
 
 appUrlInput.value = getDefaultAppUrl();
 parentOriginInput.value = window.location.origin;
+isParentLoggedIn = loadParentLoginState();
+refreshParentAuthStatus();
+
+if (isParentLoggedIn) {
+    appendLog("info", "保存済みの親ログイン状態を復元しました。ready 受信後に auth.login を再送します");
+}
 
 reloadIframeButton.addEventListener("click", loadIframe);
 announceLoginButton.addEventListener("click", () => {

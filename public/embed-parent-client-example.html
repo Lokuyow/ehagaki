@@ -257,6 +257,7 @@
 
             <div class="status-row">
                 <div id="signer-status" class="status-pill warn">NIP-07 signer 未検出</div>
+                <div id="parent-auth-status" class="status-pill warn">親クライアント未ログイン</div>
                 <div id="handshake-status" class="status-pill">iframe 未接続</div>
             </div>
 
@@ -272,8 +273,8 @@
 
             <div class="buttons">
                 <button id="reload-iframe" type="button">iframe を再読み込み</button>
-                <button id="announce-login" type="button" class="secondary">auth.login を送る</button>
-                <button id="announce-logout" type="button" class="secondary">auth.logout を送る</button>
+                <button id="announce-login" type="button" class="secondary">親クライアントでログイン</button>
+                <button id="announce-logout" type="button" class="secondary">親クライアントからログアウト</button>
                 <button id="clear-log" type="button" class="ghost">ログを消す</button>
             </div>
 
@@ -282,8 +283,8 @@
                 <textarea id="event-log" readonly></textarea>
             </div>
 
-            <p class="small">NIP-07 がない場合、このサンプルは auth.error を返します。拡張が利用可能なら signEvent と対応する nip04/nip44 capability
-                を動的に公開します。</p>
+            <p class="small">このサンプルでは「親クライアントのログイン状態」をローカルに保持します。ログイン済みのままページを再読み込みすると、iframe が ready を送った時点で auth.login
+                を再送して eHagaki を再同期します。</p>
         </section>
 
         <section class="panel viewer">
