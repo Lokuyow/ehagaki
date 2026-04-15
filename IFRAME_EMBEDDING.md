@@ -43,6 +43,38 @@
 - `post.success`: 投稿成功
 - `post.error`: 投稿失敗
 
+### 初回埋め込み時の設定注入
+
+親ページは iframe URL に埋め込み用設定クエリを付けることで、初回の埋め込み起動時だけ eHagaki の設定初期値を注入できます。
+
+```html
+<iframe
+  src="https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com&embedLocale=en&embedTheme=dark&embedShowMascot=false"
+  width="600"
+  height="400">
+</iframe>
+```
+
+使えるクエリは次のとおりです。
+
+- `embedLocale=ja|en`
+- `embedTheme=light|dark`
+- `embedUploadEndpoint=https://...`
+- `embedImageCompression=none|low|medium|high`
+- `embedVideoCompression=none|low|medium|high`
+- `embedClientTag=true|false`
+- `embedMediaFreePlacement=true|false`
+- `embedShowMascot=true|false`
+- `embedShowBalloonMessage=true|false`
+
+挙動は次のルールです。
+
+- これらの値は embed 初回だけ適用されます
+- ユーザーがすでに自分で変更した設定は、初回埋め込み時でも親ページから上書きされません
+- ユーザーが設定変更した後の再訪問では、親ページの埋め込み設定で再上書きされません
+- `embedShowMascot` と `embedShowBalloonMessage` は現在も埋め込み初期値として使えますが、ユーザーが変更する UI は今後設定ダイアログに追加予定です
+- 起動後の live 同期は行いません。初期値だけを渡したいときに使ってください
+
 ## 2. リプライ / 複数引用状態で起動する
 
 iframe の `src` に URL クエリを付けることで、埋め込み時点でリプライまたは引用を開始できます。

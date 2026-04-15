@@ -5,6 +5,8 @@ import {
     getEffectiveLocale,
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
+    getShowBalloonMessagePreference,
+    getShowMascotPreference,
     getUploadEndpointPreference,
     getVideoCompressionLevelPreference,
     hasStoredUploadEndpoint,
@@ -12,6 +14,8 @@ import {
     setImageCompressionLevelPreference,
     setLocalePreference,
     setMediaFreePlacementPreference,
+    setShowBalloonMessagePreference,
+    setShowMascotPreference,
     setUploadEndpointPreference,
     setVideoCompressionLevelPreference,
     consumeFirstVisit,
@@ -29,6 +33,8 @@ interface SettingsState {
     imageCompressionLevel: string;
     videoCompressionLevel: string;
     mediaFreePlacement: boolean;
+    showMascot: boolean;
+    showBalloonMessage: boolean;
 }
 
 function readSettingsState(): SettingsState {
@@ -42,6 +48,8 @@ function readSettingsState(): SettingsState {
         imageCompressionLevel: getImageCompressionLevelPreference(localStorage),
         videoCompressionLevel: getVideoCompressionLevelPreference(localStorage),
         mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
+        showMascot: getShowMascotPreference(localStorage),
+        showBalloonMessage: getShowBalloonMessagePreference(localStorage),
     };
 }
 
@@ -127,6 +135,25 @@ export const settingsStore = {
     set mediaFreePlacement(value: boolean) {
         settingsState.mediaFreePlacement = setMediaFreePlacementPreference(localStorage, value);
         updateMediaPlacement(settingsState.mediaFreePlacement);
+    },
+
+    get showMascot(): boolean {
+        return settingsState.showMascot;
+    },
+
+    set showMascot(value: boolean) {
+        settingsState.showMascot = setShowMascotPreference(localStorage, value);
+    },
+
+    get showBalloonMessage(): boolean {
+        return settingsState.showBalloonMessage;
+    },
+
+    set showBalloonMessage(value: boolean) {
+        settingsState.showBalloonMessage = setShowBalloonMessagePreference(
+            localStorage,
+            value,
+        );
     },
 };
 

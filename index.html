@@ -33,7 +33,55 @@
 <body ontouchstart="">
   <script>
     (function () {
-      var saved = localStorage.getItem('darkMode');
+      var DARK_MODE_KEY = 'darkMode';
+      var PREFERENCE_METADATA_KEY = 'settingsPreferenceMetadata';
+      var THEME_QUERY_KEY = 'embedTheme';
+
+      function readPreferenceMetadata() {
+        try {
+          var stored = localStorage.getItem(PREFERENCE_METADATA_KEY);
+          if (!stored) {
+            return {};
+          }
+
+          var parsed = JSON.parse(stored);
+          return typeof parsed === 'object' && parsed !== null ? parsed : {};
+        } catch {
+          return {};
+        }
+      }
+
+      function parseEmbedTheme(search) {
+        var value = new URLSearchParams(search).get(THEME_QUERY_KEY);
+        if (!value) {
+          return null;
+        }
+
+        var normalized = value.trim().toLowerCase();
+        if (normalized === 'dark') {
+          return true;
+        }
+
+        if (normalized === 'light') {
+          return false;
+        }
+
+        return null;
+      }
+
+      var metadata = readPreferenceMetadata();
+      var source = metadata.sources && metadata.sources.darkMode
+        ? metadata.sources.darkMode
+        : 'default';
+      var saved = localStorage.getItem(DARK_MODE_KEY);
+      var shouldApplyEmbedTheme = metadata.embedBootstrapApplied !== true && source !== 'user';
+      var embedTheme = shouldApplyEmbedTheme ? parseEmbedTheme(window.location.search) : null;
+
+      if (embedTheme !== null) {
+        saved = embedTheme ? 'true' : 'false';
+        localStorage.setItem(DARK_MODE_KEY, saved);
+      }
+
       var isDark = saved !== null
         ? saved === 'true'
         : window.matchMedia('(prefers-color-scheme: dark)').matches;

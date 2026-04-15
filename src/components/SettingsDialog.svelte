@@ -63,7 +63,7 @@
     let compressionPairs = $derived(chunkArray(compressionLevels, 2));
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
-    let clientTagEnabled = $state(true);
+    let clientTagEnabled = $state(settingsStore.clientTagEnabled);
     let darkMode = $state(darkModeStore.value);
 
     // Store派生値
@@ -73,7 +73,9 @@
     let isUpdating = $derived(isSwUpdatingStore.value);
 
     $effect(() => {
-        darkModeStore.set(darkMode);
+        if (darkMode !== darkModeStore.value) {
+            darkModeStore.set(darkMode);
+        }
     });
 
     function handleSwRefresh() {
@@ -101,7 +103,9 @@
     });
 
     $effect(() => {
-        settingsStore.clientTagEnabled = clientTagEnabled;
+        if (clientTagEnabled !== settingsStore.clientTagEnabled) {
+            settingsStore.clientTagEnabled = clientTagEnabled;
+        }
     });
 
     // showがtrueのたびにリレーリストを再取得、nostr-zap-view初期化

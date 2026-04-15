@@ -940,7 +940,11 @@
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
           onShowDraftList={draftListDialog.open}
-          balloonMessage={balloon.finalMessage}
+          balloonMessage={settingsStore.showBalloonMessage
+            ? balloon.finalMessage
+            : null}
+          showMascot={settingsStore.showMascot}
+          showBalloonMessage={settingsStore.showBalloonMessage}
         />
         {#if replyQuoteState.value.reply}
           <ReplyQuotePreview

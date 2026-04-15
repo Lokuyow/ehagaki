@@ -6,15 +6,20 @@
  * - localStorage に保存値がない場合、OS設定変化を自動追従する
  */
 
-import { STORAGE_KEYS } from '../lib/constants';
+import {
+    clearDarkModePreference,
+    getStoredDarkModePreference,
+    setDarkModePreference,
+    type PreferenceSource,
+} from '../lib/utils/settingsStorage';
 
 /**
  * localStorage の保存値を考慮しつつ、現在の有効なダークモード状態を返す
  */
 function getEffectiveDarkMode(): boolean {
-    const saved = localStorage.getItem(STORAGE_KEYS.DARK_MODE);
+    const saved = getStoredDarkModePreference(localStorage);
     if (saved !== null) {
-        return saved === 'true';
+        return saved;
     }
     // 保存値なし → OS設定に従う
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -47,7 +52,7 @@ applyTheme(initialDarkMode);
 if (typeof window !== 'undefined') {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', (e) => {
-        const saved = localStorage.getItem(STORAGE_KEYS.DARK_MODE);
+        const saved = getStoredDarkModePreference(localStorage);
         if (saved === null) {
             darkMode = e.matches;
             applyTheme(e.matches);
@@ -62,14 +67,14 @@ export const darkModeStore = {
     get value() {
         return darkMode;
     },
-    set: (isDark: boolean) => {
+    set: (isDark: boolean, source: PreferenceSource = 'user') => {
         darkMode = isDark;
         applyTheme(isDark);
-        localStorage.setItem(STORAGE_KEYS.DARK_MODE, isDark ? 'true' : 'false');
+        setDarkModePreference(localStorage, isDark, source);
     },
     /** localStorage の保存値を削除し OS 設定に戻す */
-    reset: () => {
-        localStorage.removeItem(STORAGE_KEYS.DARK_MODE);
+    reset: (source: PreferenceSource = 'user') => {
+        clearDarkModePreference(localStorage, source);
         const nextDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
         darkMode = nextDarkMode;
         applyTheme(nextDarkMode);

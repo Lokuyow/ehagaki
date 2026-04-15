@@ -12,6 +12,8 @@
         onSaveDraft: () => boolean;
         onShowDraftList: () => void;
         balloonMessage?: BalloonMessageType | null;
+        showMascot?: boolean;
+        showBalloonMessage?: boolean;
     }
 
     let {
@@ -19,6 +21,8 @@
         onSaveDraft,
         onShowDraftList,
         balloonMessage = null,
+        showMascot = true,
+        showBalloonMessage = true,
     }: Props = $props();
 
     // 下書き保存ポップアップの状態
@@ -60,18 +64,20 @@
 
 <div class="header-container">
     <div class="header-left">
-        <a
-            href="https://lokuyow.github.io/ehagaki/"
-            class="site-icon-link"
-            aria-label="ehagaki"
-        >
-            <img
-                src="./ehagaki_icon.svg"
-                alt="ehagaki icon"
-                class="site-icon"
-            />
-        </a>
-        {#if balloonMessage}
+        {#if showMascot}
+            <a
+                href="https://lokuyow.github.io/ehagaki/"
+                class="site-icon-link"
+                aria-label="ehagaki"
+            >
+                <img
+                    src="./ehagaki_icon.svg"
+                    alt="ehagaki icon"
+                    class="site-icon"
+                />
+            </a>
+        {/if}
+        {#if showBalloonMessage && balloonMessage}
             <BalloonMessage
                 type={balloonMessage.type}
                 message={balloonMessage.message}
