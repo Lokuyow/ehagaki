@@ -13,6 +13,7 @@ import {
     getSharedMediaWithFallback,
 } from "../utils/swCommunication";
 import type { RelayProfileService } from "../relayProfileService";
+import type { ReplyQuoteQueryResult } from "../types";
 
 interface SharedMediaStoreLike {
     files: File[];
@@ -132,6 +133,42 @@ async function bootstrapReplyQuote({
     if (!replyQuoteQuery) {
         return;
     }
+
+    await applyReplyQuoteQuery({
+        replyQuoteQuery,
+        relayProfileService,
+        rxNostr,
+        relayConfig,
+        setReplyQuote,
+        updateReferencedEvent,
+        updateAuthorDisplayName,
+        setReplyQuoteError,
+    });
+}
+
+export interface ApplyReplyQuoteQueryParams extends Pick<
+    RunExternalInputBootstrapParams,
+    | "relayProfileService"
+    | "rxNostr"
+    | "relayConfig"
+    | "setReplyQuote"
+    | "updateReferencedEvent"
+    | "updateAuthorDisplayName"
+    | "setReplyQuoteError"
+> {
+    replyQuoteQuery: ReplyQuoteQueryResult;
+}
+
+export async function applyReplyQuoteQuery({
+    replyQuoteQuery,
+    relayProfileService,
+    rxNostr,
+    relayConfig,
+    setReplyQuote,
+    updateReferencedEvent,
+    updateAuthorDisplayName,
+    setReplyQuoteError,
+}: ApplyReplyQuoteQueryParams): Promise<void> {
 
     setReplyQuote(replyQuoteQuery);
 

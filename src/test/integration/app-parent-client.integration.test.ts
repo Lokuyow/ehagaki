@@ -13,9 +13,18 @@ const SECOND_PARENT_CLIENT_PUBKEY = 'cd'.repeat(32);
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
     const logoutAccount = vi.fn(() => null);
+    const applyReplyQuoteQuery = vi.fn().mockResolvedValue(undefined);
     const authenticateWithParentClient = vi.fn(async () => ({
         success: true,
         pubkeyHex: PARENT_CLIENT_PUBKEY,
+    }));
+    const getReplyQuoteFromEmbedPayload = vi.fn(() => ({
+        reply: {
+            eventId: 'event-1',
+            relayHints: ['wss://hint-relay.example.com'],
+            authorPubkey: null,
+        },
+        quotes: [],
     }));
     const initializeNostrSession = vi.fn(async () => ({
         rxNostr: undefined,
@@ -55,6 +64,8 @@ const mockState = vi.hoisted(() => {
     const cleanupVisibilityHandler = vi.fn();
     const remoteLoginCleanup = vi.fn();
     const remoteLogoutCleanup = vi.fn();
+    const remoteComposerSetContextCleanup = vi.fn();
+    const remoteComposerClearContextCleanup = vi.fn();
     const syncAccountStores = vi.fn();
     const accountManager = {
         addAccount: vi.fn(),
@@ -75,10 +86,14 @@ const mockState = vi.hoisted(() => {
         authenticateWithParentClient,
         initializeNostrSession,
         completePostAuthBootstrap,
+        applyReplyQuoteQuery,
         runAppInitializationBootstrap,
         cleanupVisibilityHandler,
+        getReplyQuoteFromEmbedPayload,
         remoteLoginCleanup,
         remoteLogoutCleanup,
+        remoteComposerSetContextCleanup,
+        remoteComposerClearContextCleanup,
         syncAccountStores,
         accountManager,
         bootstrapParams: null as {
@@ -97,6 +112,8 @@ const mockState = vi.hoisted(() => {
         } | null,
         parentRemoteLoginListener: null as ((pubkeyHex: string | null) => void) | null,
         parentRemoteLogoutListener: null as ((pubkeyHex: string | null) => void) | null,
+        composerRemoteSetContextListener: null as ((payload: { reply?: string | null; quotes?: string[] }) => void) | null,
+        composerRemoteClearContextListener: null as (() => void) | null,
     };
 });
 
@@ -170,6 +187,28 @@ vi.mock('../../lib/parentClientAuthService', () => ({
     },
 }));
 
+vi.mock('../../lib/embedComposerContextService', () => ({
+    embedComposerContextService: {
+        initialize: vi.fn(() => true),
+        onRemoteSetContext: vi.fn((listener: (payload: { reply?: string | null; quotes?: string[] }) => void) => {
+            mockState.composerRemoteSetContextListener = listener;
+            return mockState.remoteComposerSetContextCleanup;
+        }),
+        onRemoteClearContext: vi.fn((listener: () => void) => {
+            mockState.composerRemoteClearContextListener = listener;
+            return mockState.remoteComposerClearContextCleanup;
+        }),
+    },
+}));
+
+vi.mock('../../lib/bootstrap/externalInputBootstrap', () => ({
+    applyReplyQuoteQuery: mockState.applyReplyQuoteQuery,
+}));
+
+vi.mock('../../lib/urlQueryHandler', () => ({
+    getReplyQuoteFromEmbedPayload: mockState.getReplyQuoteFromEmbedPayload,
+}));
+
 vi.mock('../../lib/bootstrap/appInitializationBootstrap', () => ({
     runAppInitializationBootstrap: mockState.runAppInitializationBootstrap,
     registerNip46VisibilityHandler: vi.fn(() => mockState.cleanupVisibilityHandler),
@@ -206,6 +245,8 @@ describe('App parentClient integration', () => {
         mockState.bootstrapParams = null;
         mockState.parentRemoteLoginListener = null;
         mockState.parentRemoteLogoutListener = null;
+        mockState.composerRemoteSetContextListener = null;
+        mockState.composerRemoteClearContextListener = null;
         mockState.logoutAccount.mockReturnValue(null);
         mockState.authenticateWithParentClient.mockResolvedValue({
             success: true,
@@ -226,6 +267,8 @@ describe('App parentClient integration', () => {
         mockUploadStoreModule.resetUploadDisplayState.mockClear();
         mockState.initializeNostrSession.mockClear();
         mockState.completePostAuthBootstrap.mockClear();
+        mockState.applyReplyQuoteQuery.mockClear();
+        mockState.getReplyQuoteFromEmbedPayload.mockClear();
         mockState.syncAccountStores.mockClear();
     });
 
@@ -397,5 +440,117 @@ describe('App parentClient integration', () => {
 
         expect(mockState.logoutAccount).not.toHaveBeenCalled();
         expect(mockAuthStoreModule.clearAuthState).not.toHaveBeenCalled();
+    });
+
+    it('remote composer.setContext を受け取ると最新 session で runtime 適用する', async () => {
+        const latestSession = {
+            rxNostr: { tag: 'latest-rxnostr' },
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+            },
+        };
+        const payload = {
+            reply: 'nevent1reply',
+            quotes: ['note1quote'],
+        };
+        const replyQuoteQuery = {
+            reply: {
+                eventId: 'event-1',
+                relayHints: ['wss://hint-relay.example.com'],
+                authorPubkey: null,
+            },
+            quotes: [],
+        };
+        mockState.completePostAuthBootstrap.mockResolvedValue(latestSession as any);
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue(replyQuoteQuery);
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+            expect(mockState.bootstrapParams).toBeTruthy();
+        });
+
+        await mockState.bootstrapParams?.handleAuthenticated(PARENT_CLIENT_PUBKEY);
+        mockState.composerRemoteSetContextListener?.(payload);
+
+        await waitFor(() => {
+            expect(mockState.getReplyQuoteFromEmbedPayload).toHaveBeenCalledWith(payload);
+        });
+        await waitFor(() => {
+            expect(mockState.applyReplyQuoteQuery).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    replyQuoteQuery,
+                    rxNostr: latestSession.rxNostr,
+                    relayProfileService: latestSession.relayProfileService,
+                }),
+            );
+        });
+    });
+
+    it('bootstrapping 中の remote composer.setContext は完了後に 1 回だけ適用する', async () => {
+        const latestSession = {
+            rxNostr: { tag: 'latest-rxnostr' },
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+            },
+        };
+        const payload = {
+            reply: 'nevent1queued',
+            quotes: [],
+        };
+        const replyQuoteQuery = {
+            reply: {
+                eventId: 'event-queued',
+                relayHints: ['wss://hint-relay.example.com'],
+                authorPubkey: null,
+            },
+            quotes: [],
+        };
+        let resolveBootstrap: (() => void) | undefined;
+        mockState.completePostAuthBootstrap.mockResolvedValue(latestSession as any);
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue(replyQuoteQuery);
+        mockState.runAppInitializationBootstrap.mockImplementationOnce((params: {
+            markLocaleInitialized: () => void;
+            handleAuthenticated: (pubkeyHex: string) => Promise<void>;
+            getExternalInputBootstrapParams: () => {
+                rxNostr?: unknown;
+                relayProfileService?: unknown;
+            };
+        }) => {
+            mockState.bootstrapParams = params;
+            params.markLocaleInitialized();
+            return new Promise<void>((resolve) => {
+                resolveBootstrap = resolve;
+            });
+        });
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+            expect(mockState.bootstrapParams).toBeTruthy();
+        });
+
+        await mockState.bootstrapParams?.handleAuthenticated(PARENT_CLIENT_PUBKEY);
+        mockState.composerRemoteSetContextListener?.(payload);
+        expect(mockState.applyReplyQuoteQuery).not.toHaveBeenCalled();
+
+        resolveBootstrap?.();
+
+        await waitFor(() => {
+            expect(mockState.applyReplyQuoteQuery).toHaveBeenCalledTimes(1);
+        });
+        expect(mockState.applyReplyQuoteQuery).toHaveBeenCalledWith(
+            expect.objectContaining({
+                replyQuoteQuery,
+                rxNostr: latestSession.rxNostr,
+                relayProfileService: latestSession.relayProfileService,
+            }),
+        );
     });
 });

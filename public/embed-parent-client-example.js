@@ -535,9 +535,32 @@ function mergeTimelineEvents(events) {
         .slice(0, TIMELINE_EVENT_LIMIT);
 }
 
+function buildComposerContextPayload() {
+    return {
+        ...(selectedReplyReference ? { reply: selectedReplyReference.queryValue } : {}),
+        quotes: selectedQuoteReferences.map((reference) => reference.queryValue),
+    };
+}
+
 function reloadIframeForReplyQuote(reason, detail) {
-    loadIframe();
-    appendLog("info", reason, detail);
+    updateDisplayedEmbedUrl();
+
+    if (!isIframeReady) {
+        loadIframe();
+        appendLog("info", reason, detail);
+        return;
+    }
+
+    try {
+        const payload = buildComposerContextPayload();
+        postToIframe("composer.setContext", payload);
+        updateStatus(handshakeStatus, "reply / quote コンテキストを同期しました", "ok");
+        appendLog("info", reason, detail);
+    } catch (error) {
+        appendLog("warn", "runtime context 同期に失敗したため iframe を再読み込みします", error instanceof Error ? error.message : String(error));
+        loadIframe();
+        appendLog("info", reason, detail);
+    }
 }
 
 async function selectReplyEvent(event) {
@@ -599,7 +622,23 @@ function clearReplyQuoteSelection() {
     selectedReplyReference = null;
     selectedQuoteReferences = [];
     renderTimeline();
-    reloadIframeForReplyQuote("reply / quote テスト設定を解除しました", null);
+    updateDisplayedEmbedUrl();
+
+    if (!isIframeReady) {
+        loadIframe();
+        appendLog("info", "reply / quote テスト設定を解除しました", null);
+        return;
+    }
+
+    try {
+        postToIframe("composer.clearContext");
+        updateStatus(handshakeStatus, "reply / quote コンテキストを解除しました", "ok");
+        appendLog("info", "reply / quote テスト設定を解除しました", null);
+    } catch (error) {
+        appendLog("warn", "runtime context 解除に失敗したため iframe を再読み込みします", error instanceof Error ? error.message : String(error));
+        loadIframe();
+        appendLog("info", "reply / quote テスト設定を解除しました", null);
+    }
 }
 
 function startTimelineSubscription() {
@@ -698,6 +737,10 @@ function buildEmbedUrl() {
     });
 
     return url.toString();
+}
+
+function updateDisplayedEmbedUrl() {
+    iframeSrcDisplay.textContent = buildEmbedUrl();
 }
 
 function loadIframe() {
@@ -1201,6 +1244,7 @@ if (storedParentSession) {
 }
 
 renderTimeline();
+updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
 loginNip07Button.addEventListener("click", () => {
     void handleNip07Login();

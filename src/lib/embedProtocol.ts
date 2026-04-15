@@ -8,6 +8,8 @@ export type EmbedMessageType =
     | "auth.error"
     | "auth.result"
     | "auth.logout"
+    | "composer.setContext"
+    | "composer.clearContext"
     | "rpc.request"
     | "rpc.result"
     | "rpc.error"
@@ -36,6 +38,11 @@ export interface EmbedPostSuccessPayload {
 
 export interface EmbedPostErrorPayload extends EmbedErrorPayload {
     timestamp: number;
+}
+
+export interface EmbedComposerSetContextPayload {
+    reply?: string | null;
+    quotes?: string[];
 }
 
 export function isEmbedMessageEnvelope(

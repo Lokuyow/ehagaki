@@ -4,6 +4,7 @@ import {
   getContentFromUrlQuery,
   cleanupAllQueryParams,
   hasContentQueryParam,
+  getReplyQuoteFromEmbedPayload,
   getReplyQuoteFromUrlQuery,
   hasReplyQuoteQueryParam,
 } from '../../lib/urlQueryHandler';
@@ -345,6 +346,37 @@ describe('urlQueryHandler', () => {
       } as Location;
 
       const result = getReplyQuoteFromUrlQuery();
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('getReplyQuoteFromEmbedPayload', () => {
+    const validNevent = 'nevent1qgsthwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwcpzamhxue69uhhyetvv9ujuetcv9khqmr99e3k7mgqyz424242424242424242424242424242424242424242424242425grql2v';
+    const validNote = 'note1424242424242424242424242424242424242424242424242424qv3q9y6';
+
+    it('reply と quotes を runtime payload からデコードできる', () => {
+      const result = getReplyQuoteFromEmbedPayload({
+        reply: validNevent,
+        quotes: [validNote],
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.reply?.eventId).toBe('a'.repeat(64));
+      expect(result?.quotes).toEqual([
+        {
+          eventId: 'a'.repeat(64),
+          relayHints: [],
+          authorPubkey: null,
+        },
+      ]);
+    });
+
+    it('無効な runtime payload の値だけしかない場合は null を返す', () => {
+      const result = getReplyQuoteFromEmbedPayload({
+        reply: 'invalid-value',
+        quotes: ['also-invalid'],
+      });
+
       expect(result).toBeNull();
     });
   });

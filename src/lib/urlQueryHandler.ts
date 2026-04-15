@@ -3,6 +3,7 @@
  */
 import { nip19 } from 'nostr-tools';
 import { normalizeLineBreaks } from './utils/editorUrlUtils';
+import type { EmbedComposerSetContextPayload } from './embedProtocol';
 import type { ReplyQuoteQueryResult } from './types';
 
 function decodeReplyQuoteValue(value: string): {
@@ -37,6 +38,45 @@ function decodeReplyQuoteValue(value: string): {
   }
 }
 
+function buildReplyQuoteQueryResult(
+  replyValues: string[],
+  quoteValues: string[],
+): ReplyQuoteQueryResult | null {
+  const reply = replyValues
+    .map((value) => decodeReplyQuoteValue(value))
+    .find((value) => value !== null) ?? null;
+
+  const seenQuoteIds = new Set<string>();
+  const quotes = quoteValues
+    .map((value) => decodeReplyQuoteValue(value))
+    .filter((value): value is NonNullable<typeof value> => value !== null)
+    .filter((value) => {
+      if (seenQuoteIds.has(value.eventId)) {
+        return false;
+      }
+      seenQuoteIds.add(value.eventId);
+      return true;
+    });
+
+  if (!reply && quotes.length === 0) return null;
+
+  return {
+    reply,
+    quotes,
+  };
+}
+
+export function getReplyQuoteFromEmbedPayload(
+  payload: EmbedComposerSetContextPayload,
+): ReplyQuoteQueryResult | null {
+  const replyValues = typeof payload.reply === 'string' ? [payload.reply] : [];
+  const quoteValues = Array.isArray(payload.quotes)
+    ? payload.quotes.filter((value): value is string => typeof value === 'string')
+    : [];
+
+  return buildReplyQuoteQueryResult(replyValues, quoteValues);
+}
+
 export function getContentFromUrlQuery(): string | null {
   if (typeof window === 'undefined' || !window.location) return null;
 
@@ -65,28 +105,7 @@ export function getReplyQuoteFromUrlQuery(): ReplyQuoteQueryResult | null {
   const replyValues = urlParams.getAll('reply');
   const quoteValues = urlParams.getAll('quote');
 
-  const reply = replyValues
-    .map((value) => decodeReplyQuoteValue(value))
-    .find((value) => value !== null) ?? null;
-
-  const seenQuoteIds = new Set<string>();
-  const quotes = quoteValues
-    .map((value) => decodeReplyQuoteValue(value))
-    .filter((value): value is NonNullable<typeof value> => value !== null)
-    .filter((value) => {
-      if (seenQuoteIds.has(value.eventId)) {
-        return false;
-      }
-      seenQuoteIds.add(value.eventId);
-      return true;
-    });
-
-  if (!reply && quotes.length === 0) return null;
-
-  return {
-    reply,
-    quotes,
-  };
+  return buildReplyQuoteQueryResult(replyValues, quoteValues);
 }
 
 /**

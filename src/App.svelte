@@ -16,6 +16,7 @@
   import { AccountManager } from "./lib/accountManager";
   import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
+  import { embedComposerContextService } from "./lib/embedComposerContextService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
@@ -93,11 +94,16 @@
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
-  import type { RunExternalInputBootstrapParams } from "./lib/bootstrap/externalInputBootstrap";
+  import {
+    applyReplyQuoteQuery,
+    type RunExternalInputBootstrapParams,
+  } from "./lib/bootstrap/externalInputBootstrap";
+  import type { EmbedComposerSetContextPayload } from "./lib/embedProtocol";
   import {
     applyDraftToComposer,
     createDraftSavePayload,
   } from "./lib/draftContentUtils";
+  import { getReplyQuoteFromEmbedPayload } from "./lib/urlQueryHandler";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -137,6 +143,10 @@
 
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
+  let pendingRemoteComposerAction:
+    | { type: "set"; payload: EmbedComposerSetContextPayload }
+    | { type: "clear" }
+    | undefined = undefined;
 
   const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
 
@@ -259,6 +269,7 @@
       .finally(() => {
         isLoadingParentClient = false;
         parentClientAuthPromise = null;
+        void flushPendingRemoteEmbedActions();
       });
 
     return parentClientAuthPromise;
@@ -294,6 +305,91 @@
     return undefined;
   }
 
+  function getReplyQuoteApplyParams() {
+    return {
+      relayProfileService,
+      rxNostr,
+      relayConfig: relayConfigStore.value,
+      setReplyQuote,
+      updateReferencedEvent,
+      updateAuthorDisplayName,
+      setReplyQuoteError,
+    };
+  }
+
+  async function applyRemoteComposerSetContext(
+    payload: EmbedComposerSetContextPayload,
+  ): Promise<void> {
+    const replyQuoteQuery = getReplyQuoteFromEmbedPayload(payload);
+    if (!replyQuoteQuery) {
+      console.warn("親ページから無効な composer.setContext を受信:", payload);
+      return;
+    }
+
+    await applyReplyQuoteQuery({
+      replyQuoteQuery,
+      ...getReplyQuoteApplyParams(),
+    });
+  }
+
+  async function handleRemoteComposerSetContext(
+    payload: EmbedComposerSetContextPayload,
+  ): Promise<void> {
+    if (isBootstrappingApp || parentClientAuthPromise) {
+      pendingRemoteComposerAction = {
+        type: "set",
+        payload,
+      };
+      return;
+    }
+
+    await applyRemoteComposerSetContext(payload);
+  }
+
+  async function handleRemoteComposerClearContext(): Promise<void> {
+    if (isBootstrappingApp || parentClientAuthPromise) {
+      pendingRemoteComposerAction = {
+        type: "clear",
+      };
+      return;
+    }
+
+    clearReplyQuote();
+  }
+
+  async function flushPendingRemoteComposerAction(): Promise<void> {
+    if (isBootstrappingApp || parentClientAuthPromise) {
+      return;
+    }
+
+    const pendingAction = pendingRemoteComposerAction;
+    pendingRemoteComposerAction = undefined;
+    if (!pendingAction) {
+      return;
+    }
+
+    if (pendingAction.type === "clear") {
+      clearReplyQuote();
+      return;
+    }
+
+    await applyRemoteComposerSetContext(pendingAction.payload);
+  }
+
+  async function flushPendingRemoteEmbedActions(): Promise<void> {
+    if (isBootstrappingApp || parentClientAuthPromise) {
+      return;
+    }
+
+    if (pendingRemoteParentLoginPubkey !== undefined) {
+      const queuedPubkey = pendingRemoteParentLoginPubkey;
+      pendingRemoteParentLoginPubkey = undefined;
+      await handleRemoteParentClientLogin(queuedPubkey);
+    }
+
+    await flushPendingRemoteComposerAction();
+  }
+
   async function handleRemoteParentClientLogin(
     pubkeyHex: string | null,
   ): Promise<void> {
@@ -314,6 +410,8 @@
     if (error) {
       console.error("親クライアント連携の自動同期に失敗:", error);
     }
+
+    await flushPendingRemoteEmbedActions();
   }
 
   async function handleRemoteParentClientLogout(
@@ -518,6 +616,9 @@
     parentClientAvailable = parentClientAuthService.initialize({
       locationSearch: window.location.search,
     });
+    embedComposerContextService.initialize({
+      locationSearch: window.location.search,
+    });
 
     const cleanupParentClientLoginHandler =
       parentClientAuthService.onRemoteLogin((pubkeyHex) => {
@@ -527,6 +628,16 @@
     const cleanupParentClientLogoutHandler =
       parentClientAuthService.onRemoteLogout((pubkeyHex) => {
         void handleRemoteParentClientLogout(pubkeyHex);
+      });
+
+    const cleanupRemoteComposerSetContextHandler =
+      embedComposerContextService.onRemoteSetContext((payload) => {
+        void handleRemoteComposerSetContext(payload);
+      });
+
+    const cleanupRemoteComposerClearContextHandler =
+      embedComposerContextService.onRemoteClearContext(() => {
+        void handleRemoteComposerClearContext();
       });
 
     if (parentClientAvailable) {
@@ -579,12 +690,7 @@
       console,
     }).finally(() => {
       isBootstrappingApp = false;
-
-      if (pendingRemoteParentLoginPubkey !== undefined) {
-        const queuedPubkey = pendingRemoteParentLoginPubkey;
-        pendingRemoteParentLoginPubkey = undefined;
-        void handleRemoteParentClientLogin(queuedPubkey);
-      }
+      void flushPendingRemoteEmbedActions();
     });
 
     const cleanupVisibilityHandler = registerNip46VisibilityHandler({
@@ -598,6 +704,8 @@
       cleanupVisibilityHandler();
       cleanupParentClientLoginHandler();
       cleanupParentClientLogoutHandler();
+      cleanupRemoteComposerSetContextHandler();
+      cleanupRemoteComposerClearContextHandler();
     };
   });
 
