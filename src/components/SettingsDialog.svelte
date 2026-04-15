@@ -4,6 +4,7 @@
     import { Dialog, Switch } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import { authState } from "../stores/authStore.svelte";
     import {
         swVersionStore,
@@ -353,14 +354,22 @@
         <div class="setting-section">
             <div class="setting-row setting-row-with-note">
                 <div class="setting-label-group">
-                    <span class="setting-label"
-                        >{$_("settingsDialog.hide_mascot_label") ||
-                            "左上マスコットを非表示"}</span
-                    >
-                    <span class="setting-note"
-                        >{$_("settingsDialog.hide_mascot_note") ||
-                            "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。"}</span
-                    >
+                    <div class="setting-label-row">
+                        <span class="setting-label"
+                            >{$_("settingsDialog.hide_mascot_label") ||
+                                "左上マスコットを非表示"}</span
+                        >
+                        <InfoPopoverButton
+                            side="top"
+                            sideOffset={8}
+                            ariaLabel={($_(
+                                "settingsDialog.hide_mascot_label",
+                            ) || "左上マスコットを非表示") + "の説明"}
+                        >
+                            {$_("settingsDialog.hide_mascot_note") ||
+                                "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。"}
+                        </InfoPopoverButton>
+                    </div>
                 </div>
                 <div class="setting-control">
                     <Switch.Root class="bui-switch" bind:checked={hideMascot}>
@@ -373,19 +382,27 @@
         <div class="setting-section">
             <div class="setting-row setting-row-with-note">
                 <div class="setting-label-group">
-                    <span class="setting-label"
-                        >{$_("settingsDialog.hide_flavor_text_label") ||
-                            "フレーバーテキストを非表示"}</span
-                    >
-                    <span class="setting-note"
-                        >{hideMascot
-                            ? $_(
-                                  "settingsDialog.hide_flavor_text_note_included",
-                              ) ||
-                              "マスコットを非表示にしている間は、この設定も自動でオンになります。"
-                            : $_("settingsDialog.hide_flavor_text_note") ||
-                              "オンにすると info のフレーバーテキストだけを隠します。success / error / tips は簡素な表示で残ります。"}</span
-                    >
+                    <div class="setting-label-row">
+                        <span class="setting-label"
+                            >{$_("settingsDialog.hide_flavor_text_label") ||
+                                "フレーバーテキストを非表示"}</span
+                        >
+                        <InfoPopoverButton
+                            side="top"
+                            sideOffset={8}
+                            ariaLabel={($_(
+                                "settingsDialog.hide_flavor_text_label",
+                            ) || "フレーバーテキストを非表示") + "の説明"}
+                        >
+                            {hideMascot
+                                ? $_(
+                                      "settingsDialog.hide_flavor_text_note_included",
+                                  ) ||
+                                  "マスコットを非表示にしている間は、この設定も自動でオンになります。"
+                                : $_("settingsDialog.hide_flavor_text_note") ||
+                                  "オンにすると info のフレーバーテキストだけを隠します。success / error / tips は簡素な表示で残ります。"}
+                        </InfoPopoverButton>
+                    </div>
                 </div>
                 <div class="setting-control">
                     {#if hideMascot}
@@ -589,11 +606,11 @@
         min-width: 0;
     }
 
-    .setting-note {
-        font-size: 0.875rem;
-        line-height: 1.45;
-        color: var(--text-light);
-        white-space: pre-wrap;
+    .setting-label-row {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
     }
 
     .rotate-right-icon {
