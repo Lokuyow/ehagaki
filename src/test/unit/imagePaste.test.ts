@@ -1,266 +1,251 @@
-import { describe, it, expect, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// モック設定
-vi.mock('../../lib/utils/editorUrlUtils', () => ({
-    validateAndNormalizeImageUrl: vi.fn((url: string) => {
-        try {
-            const parsed = new URL(url);
-            const pathname = parsed.pathname.toLowerCase();
-            if (parsed.href.includes('image') && (pathname.endsWith('.jpg') || pathname.endsWith('.png') || pathname.endsWith('.webp'))) {
-                return parsed.href;
-            }
-        } catch {
-            return null;
-        }
-        return null;
-    }),
-    validateAndNormalizeVideoUrl: vi.fn((url: string) => {
-        try {
-            const parsed = new URL(url);
-            const pathname = parsed.pathname.toLowerCase();
-            if (parsed.href.includes('video') && (pathname.endsWith('.mp4') || pathname.endsWith('.webm') || pathname.endsWith('.mov'))) {
-                return parsed.href;
-            }
-        } catch {
-            return null;
-        }
-        return null;
-    })
+const {
+    mockAddGalleryItem,
+    mockGenerateMediaItemId,
+} = vi.hoisted(() => ({
+    mockAddGalleryItem: vi.fn(),
+    mockGenerateMediaItemId: vi.fn(),
 }));
 
-import { validateAndNormalizeImageUrl, validateAndNormalizeVideoUrl } from '../../lib/utils/editorUrlUtils';
-import { createVideoNodeData, createImageNodeData, parseTextToNodes, createNodeFromData } from '../../lib/utils/editorDocumentUtils';
+vi.mock('../../stores/uploadStore.svelte', async () => {
+    const { createUploadStoreLocalMock } = await import('../mocks/storeModules');
+    return createUploadStoreLocalMock();
+});
 
-describe('MediaPaste Extension - Media URL Support', () => {
-    it('should load MediaPasteExtension successfully', async () => {
-        const { MediaPasteExtension } = await import('../../lib/editor/mediaPaste');
-        expect(MediaPasteExtension).toBeDefined();
+vi.mock('../../stores/mediaGalleryStore.svelte', () => ({
+    mediaGalleryStore: {
+        addItem: mockAddGalleryItem,
+    },
+}));
+
+vi.mock('../../lib/utils/appUtils', () => ({
+    generateMediaItemId: mockGenerateMediaItemId,
+}));
+
+import { mediaFreePlacementStore } from '../../stores/uploadStore.svelte';
+import { MediaPasteExtension } from '../../lib/editor/mediaPaste';
+
+function setMediaFreePlacement(value: boolean) {
+    (mediaFreePlacementStore as any).value = value;
+}
+
+function getMediaPasteProps() {
+    const extension = MediaPasteExtension as any;
+    const plugins = extension.addProseMirrorPlugins?.call(extension)
+        ?? extension.config.addProseMirrorPlugins?.call(extension);
+
+    expect(plugins).toHaveLength(1);
+    return plugins[0].props;
+}
+
+function createSchema() {
+    return {
+        nodes: {
+            image: {
+                create: (attrs: Record<string, unknown>) => ({ type: 'image', attrs, nodeSize: 1 }),
+            },
+            video: {
+                create: (attrs: Record<string, unknown>) => ({ type: 'video', attrs, nodeSize: 1 }),
+            },
+        },
+    };
+}
+
+function createTransaction(doc: any) {
+    const transaction = {
+        doc,
+        replaceWith: vi.fn(() => transaction),
+        insert: vi.fn(() => transaction),
+        delete: vi.fn(() => transaction),
+    };
+
+    return transaction;
+}
+
+function createViewState() {
+    const paragraph = {
+        type: { name: 'paragraph' },
+        textContent: '',
+        descendants: vi.fn(),
+    };
+    const doc = {
+        childCount: 1,
+        firstChild: paragraph,
+        resolve: vi.fn(() => ({
+            parent: paragraph,
+            depth: 1,
+            start: vi.fn(() => 5),
+            end: vi.fn(() => 7),
+        })),
+        descendants: vi.fn((callback: (node: unknown, pos: number) => void) => {
+            callback(paragraph, 0);
+        }),
+    };
+    const tr = createTransaction(doc);
+
+    return {
+        state: {
+            tr,
+            selection: { from: 5 },
+            schema: createSchema(),
+            doc,
+        },
+        tr,
+    };
+}
+
+function createPasteEvent(text: string): ClipboardEvent {
+    return {
+        clipboardData: {
+            getData: vi.fn((type: string) => (type === 'text/plain' ? text : '')),
+        },
+        preventDefault: vi.fn(),
+    } as unknown as ClipboardEvent;
+}
+
+describe('MediaPasteExtension', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        setMediaFreePlacement(true);
+        mockGenerateMediaItemId
+            .mockReset()
+            .mockReturnValueOnce('media-1')
+            .mockReturnValueOnce('media-2');
+    });
+
+    it('paste と text input のハンドラーを提供する', () => {
+        const props = getMediaPasteProps();
+
         expect(MediaPasteExtension.name).toBe('mediaPaste');
+        expect(typeof props.handlePaste).toBe('function');
+        expect(typeof props.handleTextInput).toBe('function');
     });
 
-    describe('Video URL validation functions', () => {
-        it('should validate video URLs with correct format', async () => {
-            const videoUrl = 'https://example.com/video.mp4';
-            const result = validateAndNormalizeVideoUrl(videoUrl);
+    it('メディア URL が含まれない paste は処理しない', () => {
+        const props = getMediaPasteProps();
+        const { state } = createViewState();
+        const dispatch = vi.fn();
+        const event = createPasteEvent('plain text only');
 
-            expect(result).toBe(videoUrl);
-        });
+        const handled = props.handlePaste({ state, dispatch }, event);
 
-        it('should validate multiple video formats', async () => {
-            const testCases = [
-                'https://example.com/video.mp4',
-                'https://example.com/video.webm',
-                'https://example.com/video.mov'
-            ];
-
-            testCases.forEach(url => {
-                const result = validateAndNormalizeVideoUrl(url);
-                expect(result).toBe(url);
-            });
-        });
-
-        it('should reject invalid video formats', async () => {
-            const invalidUrl = 'https://example.com/file.txt';
-            const result = validateAndNormalizeVideoUrl(invalidUrl);
-
-            expect(result).toBeNull();
-        });
+        expect(handled).toBe(false);
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(dispatch).not.toHaveBeenCalled();
     });
 
-    describe('Image URL validation (existing)', () => {
-        it('should validate image URLs with correct format', async () => {
-            const imageUrl = 'https://example.com/image.jpg';
-            const result = validateAndNormalizeImageUrl(imageUrl);
+    it('ギャラリーモードの paste はメディアを gallery に追加する', () => {
+        const props = getMediaPasteProps();
+        const { state } = createViewState();
+        const dispatch = vi.fn();
+        const event = createPasteEvent('https://example.com/image.jpg\nhttps://example.com/video.mp4');
+        setMediaFreePlacement(false);
 
-            expect(result).toBe(imageUrl);
+        const handled = props.handlePaste({ state, dispatch }, event);
+
+        expect(handled).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(mockAddGalleryItem).toHaveBeenNthCalledWith(1, {
+            id: 'media-1',
+            type: 'image',
+            src: 'https://example.com/image.jpg',
+            isPlaceholder: false,
         });
-
-        it('should validate multiple image formats', async () => {
-            const testCases = [
-                'https://example.com/image.jpg',
-                'https://example.com/image.png',
-                'https://example.com/image.webp'
-            ];
-
-            testCases.forEach(url => {
-                const result = validateAndNormalizeImageUrl(url);
-                expect(result).toBe(url);
-            });
+        expect(mockAddGalleryItem).toHaveBeenNthCalledWith(2, {
+            id: 'media-2',
+            type: 'video',
+            src: 'https://example.com/video.mp4',
+            isPlaceholder: false,
         });
-
-        it('should reject invalid image formats', async () => {
-            const invalidUrl = 'https://example.com/file.pdf';
-            const result = validateAndNormalizeImageUrl(invalidUrl);
-
-            expect(result).toBeNull();
-        });
+        expect(dispatch).not.toHaveBeenCalled();
     });
 
-    describe('Node creation for video support', () => {
-        it('should have createVideoNodeData function', async () => {
-            expect(createVideoNodeData).toBeDefined();
-            expect(typeof createVideoNodeData).toBe('function');
-        });
+    it('フリーモードの paste は空パラグラフを置換して残りのメディアを挿入する', () => {
+        const props = getMediaPasteProps();
+        const { state, tr } = createViewState();
+        const dispatch = vi.fn();
+        const event = createPasteEvent('https://example.com/image.jpg\nhttps://example.com/video.mp4');
 
-        it('should create video node data with correct format', async () => {
-            const videoUrl = 'https://example.com/video.mp4';
-            const nodeData = createVideoNodeData(videoUrl);
+        const handled = props.handlePaste({ state, dispatch }, event);
 
-            expect(nodeData).toBeDefined();
-            expect(nodeData?.type).toBe('video');
-            expect(nodeData?.attrs.src).toBe(videoUrl);
-        });
-
-        it('should return null for invalid video URLs', async () => {
-            const invalidUrl = 'https://example.com/file.txt';
-            const nodeData = createVideoNodeData(invalidUrl);
-
-            expect(nodeData).toBeNull();
-        });
-
-        it('should have createImageNodeData function (existing)', async () => {
-            expect(createImageNodeData).toBeDefined();
-            expect(typeof createImageNodeData).toBe('function');
-        });
-
-        it('should create image node data', async () => {
-            const imageUrl = 'https://example.com/image.jpg';
-            const nodeData = createImageNodeData(imageUrl);
-
-            expect(nodeData).toBeDefined();
-            expect(nodeData?.type).toBe('image');
-            expect(nodeData?.attrs.src).toBe(imageUrl);
-        });
+        expect(handled).toBe(true);
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(tr.replaceWith).toHaveBeenCalledWith(
+            5,
+            7,
+            expect.objectContaining({
+                attrs: {
+                    src: 'https://example.com/image.jpg',
+                    alt: 'Pasted image',
+                },
+            }),
+        );
+        expect(tr.insert).toHaveBeenCalledWith(
+            6,
+            expect.objectContaining({
+                attrs: expect.objectContaining({
+                    src: 'https://example.com/video.mp4',
+                    id: expect.stringMatching(/^pasted-video-\d+-1$/),
+                }),
+            }),
+        );
+        expect(dispatch).toHaveBeenCalledWith(tr);
     });
 
-    describe('parseTextToNodes with video support', () => {
-        it('should parse text containing image URLs', async () => {
-            const text = 'https://example.com/image.jpg';
-            const nodes = parseTextToNodes(text);
+    it('ギャラリーモードの text input は gallery へ追加して元テキストを削除する', () => {
+        const props = getMediaPasteProps();
+        const { state, tr } = createViewState();
+        const dispatch = vi.fn();
+        setMediaFreePlacement(false);
 
-            expect(nodes.length).toBeGreaterThan(0);
-            const imageNode = nodes.find((n: any) => n.type === 'image');
-            expect(imageNode).toBeDefined();
-        });
+        const handled = props.handleTextInput(
+            { state, dispatch },
+            3,
+            12,
+            'https://example.com/image.jpg\nhttps://example.com/video.mp4',
+        );
 
-        it('should parse text containing video URLs', async () => {
-            const text = 'https://example.com/video.mp4';
-            const nodes = parseTextToNodes(text);
-
-            expect(nodes.length).toBeGreaterThan(0);
-            const videoNode = nodes.find((n: any) => n.type === 'video');
-            expect(videoNode).toBeDefined();
-        });
-
-        it('should parse mixed media URLs', async () => {
-            const text = 'https://example.com/image.jpg\nhttps://example.com/video.mp4';
-            const nodes = parseTextToNodes(text);
-
-            expect(nodes.length).toBeGreaterThan(0);
-            const hasImage = nodes.some((n: any) => n.type === 'image');
-            const hasVideo = nodes.some((n: any) => n.type === 'video');
-            expect(hasImage).toBe(true);
-            expect(hasVideo).toBe(true);
-        });
-
-        it('should handle multiple media of same type', async () => {
-            const text = 'https://example.com/image1.jpg\nhttps://example.com/image2.png';
-            const nodes = parseTextToNodes(text);
-
-            const imageNodes = nodes.filter((n: any) => n.type === 'image');
-            expect(imageNodes.length).toBeGreaterThanOrEqual(2);
-        });
+        expect(handled).toBe(true);
+        expect(mockAddGalleryItem).toHaveBeenCalledTimes(2);
+        expect(tr.delete).toHaveBeenCalledWith(3, 12);
+        expect(dispatch).toHaveBeenCalledWith(tr);
     });
 
-    describe('createNodeFromData with video support', () => {
-        it('should create video nodes', async () => {
-            const mockSchema = {
-                nodes: {
-                    video: {
-                        create: (attrs: any) => ({ type: 'video', attrs })
-                    }
-                }
-            };
+    it('フリーモードの text input はメディアノードを挿入する', () => {
+        const props = getMediaPasteProps();
+        const { state, tr } = createViewState();
+        const dispatch = vi.fn();
 
-            const videoNodeData = {
-                type: 'video' as const,
-                attrs: { src: 'https://example.com/video.mp4' }
-            };
+        const handled = props.handleTextInput(
+            { state, dispatch },
+            2,
+            20,
+            'https://example.com/image.jpg\nhttps://example.com/video.mp4',
+        );
 
-            const node = createNodeFromData(mockSchema as unknown as import('@tiptap/pm/model').Schema, videoNodeData);
-
-            expect(node).toBeDefined();
-            expect(node!.type).toBe('video');
-            expect(node!.attrs.src).toBe('https://example.com/video.mp4');
-        });
-
-        it('should create image nodes (existing)', async () => {
-            const mockSchema = {
-                nodes: {
-                    image: {
-                        create: (attrs: any) => ({ type: 'image', attrs })
-                    }
-                }
-            };
-
-            const imageNodeData = {
-                type: 'image' as const,
-                attrs: { src: 'https://example.com/image.jpg', alt: 'Test' }
-            };
-
-            const node = createNodeFromData(mockSchema as unknown as import('@tiptap/pm/model').Schema, imageNodeData);
-
-            expect(node).toBeDefined();
-            expect(node!.type).toBe('image');
-        });
-    });
-
-    describe('URL validation edge cases', () => {
-        it('should handle URLs with query parameters', async () => {
-            const videoUrl = 'https://example.com/video.mp4?quality=hd';
-            const result = validateAndNormalizeVideoUrl(videoUrl);
-
-            // Should validate based on file extension
-            expect(result).toBeTruthy();
-        });
-
-        it('should handle URLs with special characters in query', async () => {
-            const imageUrl = 'https://example.com/image.jpg?token=abc123';
-            const result = validateAndNormalizeImageUrl(imageUrl);
-
-            expect(result).toBeTruthy();
-        });
-
-        it('should be case-insensitive for file extensions', async () => {
-            const videoUrl = 'https://example.com/video.MP4';
-            const result = validateAndNormalizeVideoUrl(videoUrl);
-
-            // Should handle case-insensitive extensions
-            expect(result).toBeTruthy();
-        });
-    });
-
-    describe('Media paste extension integration', () => {
-        it('should export MediaPasteExtension for use in editor', async () => {
-            const { MediaPasteExtension } = await import('../../lib/editor/mediaPaste');
-
-            expect(MediaPasteExtension).toBeDefined();
-            expect(MediaPasteExtension.name).toBe('mediaPaste');
-        });
-
-        it('should support both image and video URLs in paste handler', async () => {
-            // This is an integration test to verify the paste extension
-            // can handle both images and videos
-            const { MediaPasteExtension } = await import('../../lib/editor/mediaPaste');
-
-            // Verify utilities are available
-            expect(validateAndNormalizeImageUrl).toBeDefined();
-            expect(validateAndNormalizeVideoUrl).toBeDefined();
-            expect(createImageNodeData).toBeDefined();
-            expect(createVideoNodeData).toBeDefined();
-
-            // Verify extension is configured
-            expect(MediaPasteExtension.name).toBe('mediaPaste');
-        });
+        expect(handled).toBe(true);
+        expect(tr.delete).toHaveBeenCalledWith(2, 20);
+        expect(tr.insert).toHaveBeenNthCalledWith(
+            1,
+            2,
+            expect.objectContaining({
+                attrs: {
+                    src: 'https://example.com/image.jpg',
+                    alt: 'Pasted image',
+                },
+            }),
+        );
+        expect(tr.insert).toHaveBeenNthCalledWith(
+            2,
+            3,
+            expect.objectContaining({
+                attrs: expect.objectContaining({
+                    src: 'https://example.com/video.mp4',
+                    id: expect.stringMatching(/^pasted-video-\d+-1$/),
+                }),
+            }),
+        );
+        expect(dispatch).toHaveBeenCalledWith(tr);
     });
 });

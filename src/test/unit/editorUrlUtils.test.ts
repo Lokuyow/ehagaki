@@ -1,20 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
     cleanUrlEnd,
     extractTrailingPunctuation,
     isValidImageExtension,
     isValidProtocol,
+    isValidVideoExtension,
     isWordBoundary,
     normalizeUrl,
     validateAndNormalizeImageUrl,
     validateAndNormalizeUrl,
+    validateAndNormalizeVideoUrl,
 } from '../../lib/utils/editorUrlUtils';
-
-vi.mock('../../constants', () => ({
-    ALLOWED_PROTOCOLS: ['http:', 'https:'],
-    ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
-    ALLOWED_VIDEO_EXTENSIONS: ['.mp4', '.webm', '.mov'],
-}));
 
 describe('editorUrlUtils', () => {
     describe('URL検証・正規化', () => {
@@ -37,6 +33,12 @@ describe('editorUrlUtils', () => {
             expect(isValidImageExtension('/document.pdf')).toBe(false);
         });
 
+        it('should validate video extensions', () => {
+            expect(isValidVideoExtension('/video.mp4')).toBe(true);
+            expect(isValidVideoExtension('/video.MKV')).toBe(true);
+            expect(isValidVideoExtension('/document.pdf')).toBe(false);
+        });
+
         it('should validate and normalize valid URLs', () => {
             expect(validateAndNormalizeUrl('https://example.com')).toBe('https://example.com/');
             expect(validateAndNormalizeUrl('http://example.com/path')).toBe('http://example.com/path');
@@ -53,9 +55,31 @@ describe('editorUrlUtils', () => {
             expect(validateAndNormalizeImageUrl('https://example.com/image.PNG')).toBe('https://example.com/image.PNG');
         });
 
+        it('should preserve query strings for image URLs', () => {
+            expect(
+                validateAndNormalizeImageUrl(' https://example.com/フォルダ/image.PNG?token=abc '),
+            ).toBe('https://example.com/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80/image.PNG?token=abc');
+        });
+
+        it('should validate video URLs', () => {
+            expect(validateAndNormalizeVideoUrl('https://example.com/video.mp4')).toBe('https://example.com/video.mp4');
+            expect(validateAndNormalizeVideoUrl('https://example.com/video.MKV')).toBe('https://example.com/video.MKV');
+        });
+
+        it('should preserve query strings for video URLs', () => {
+            expect(validateAndNormalizeVideoUrl('https://example.com/video.webm?quality=hd')).toBe(
+                'https://example.com/video.webm?quality=hd',
+            );
+        });
+
         it('should return null for non-image URLs', () => {
             expect(validateAndNormalizeImageUrl('https://example.com/document.pdf')).toBe(null);
             expect(validateAndNormalizeImageUrl('https://example.com')).toBe(null);
+        });
+
+        it('should return null for non-video URLs', () => {
+            expect(validateAndNormalizeVideoUrl('https://example.com/image.jpg')).toBe(null);
+            expect(validateAndNormalizeVideoUrl('ftp://example.com/video.mp4')).toBe(null);
         });
     });
 

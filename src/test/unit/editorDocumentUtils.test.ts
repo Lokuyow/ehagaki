@@ -1,23 +1,19 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { Editor as TipTapEditor } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode, Schema } from '@tiptap/pm/model';
 import {
     calculateInsertPositions,
     createEditorAdapter,
     createImageNodeData,
+    createNodeFromData,
     createParagraphNodeData,
+    createVideoNodeData,
     extractFragmentsFromDoc,
     getDocumentFromEditor,
     isDocumentEmpty,
     isParagraphWithOnlyImageUrl,
     parseTextToNodes,
 } from '../../lib/utils/editorDocumentUtils';
-
-vi.mock('../../constants', () => ({
-    ALLOWED_PROTOCOLS: ['http:', 'https:'],
-    ALLOWED_IMAGE_EXTENSIONS: ['.jpg', '.jpeg', '.png', '.gif', '.webp'],
-    ALLOWED_VIDEO_EXTENSIONS: ['.mp4', '.webm', '.mov'],
-}));
 
 describe('editorDocumentUtils', () => {
     describe('ドキュメント状態判定', () => {
@@ -64,6 +60,18 @@ describe('editorDocumentUtils', () => {
             expect(createImageNodeData('invalid-url')).toBe(null);
         });
 
+        it('should create video node data', () => {
+            const result = createVideoNodeData('https://example.com/video.mp4');
+            expect(result).toEqual({
+                type: 'video',
+                attrs: { src: 'https://example.com/video.mp4' },
+            });
+        });
+
+        it('should return null for invalid video URLs', () => {
+            expect(createVideoNodeData('https://example.com/image.jpg')).toBe(null);
+        });
+
         it('should create paragraph node data', () => {
             expect(createParagraphNodeData('Hello world')).toEqual({
                 type: 'paragraph',
@@ -84,6 +92,49 @@ describe('editorDocumentUtils', () => {
             expect(result[0].type).toBe('paragraph');
             expect(result[1].type).toBe('image');
             expect(result[2].type).toBe('paragraph');
+        });
+
+        it('should parse mixed media URLs to image and video nodes', () => {
+            const text = 'https://example.com/image.jpg\nhttps://example.com/video.mp4';
+            const result = parseTextToNodes(text);
+
+            expect(result).toEqual([
+                {
+                    type: 'image',
+                    attrs: { src: 'https://example.com/image.jpg', alt: 'Image' },
+                },
+                {
+                    type: 'video',
+                    attrs: { src: 'https://example.com/video.mp4' },
+                },
+            ]);
+        });
+
+        it('should create video nodes from node data', () => {
+            const mockSchema = {
+                nodes: {
+                    image: {
+                        create: vi.fn(),
+                    },
+                    video: {
+                        create: (attrs: Record<string, unknown>) => ({ type: 'video', attrs }),
+                    },
+                    paragraph: {
+                        create: vi.fn(),
+                    },
+                },
+                text: vi.fn(),
+            };
+
+            const result = createNodeFromData(mockSchema as unknown as Schema, {
+                type: 'video',
+                attrs: { src: 'https://example.com/video.mp4' },
+            });
+
+            expect(result).toEqual({
+                type: 'video',
+                attrs: { src: 'https://example.com/video.mp4' },
+            });
         });
     });
 

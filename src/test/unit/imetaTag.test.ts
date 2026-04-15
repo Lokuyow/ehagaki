@@ -59,11 +59,12 @@ describe('getMimeTypeFromUrl', () => {
         });
 
         it('クエリパラメータ付きURLで拡張子が正しく取得される', () => {
-            // Note: 現在の実装はsplit('.')のため、クエリパラメータの影響を受ける
-            // この挙動を記録するテスト
             const result = getMimeTypeFromUrl('https://example.com/photo.png?size=large');
-            // split('.').pop() → 'png?size=large' → mimeMapに該当しない → デフォルトのjpeg
-            expect(result).toBe('image/jpeg');
+            expect(result).toBe('image/png');
+        });
+
+        it('ハッシュフラグメント付きURLで拡張子が正しく取得される', () => {
+            expect(getMimeTypeFromUrl('https://example.com/photo.webp#preview')).toBe('image/webp');
         });
 
         it('パス内にドットが含まれるURLを処理する', () => {

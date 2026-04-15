@@ -484,6 +484,17 @@ describe('PostEventBuilder', () => {
             expect(event.tags).toContainEqual(['client', 'test-client']);
         });
 
+        it('クライアントタグ関数がnullを返す場合は追加しない', async () => {
+            const getClientTagFn = vi.fn().mockReturnValue(null);
+
+            const event = await PostEventBuilder.buildEvent(
+                'Test post', [], [], undefined, undefined, undefined, getClientTagFn,
+            );
+
+            expect(getClientTagFn).toHaveBeenCalled();
+            expect(event.tags).toEqual([]);
+        });
+
         it('画像imetaタグを追加する', async () => {
             const content = 'Test post with image';
             const hashtags: string[] = [];
@@ -506,6 +517,114 @@ describe('PostEventBuilder', () => {
                 blurhash: 'testblurhash'
             });
             expect(event.tags).toContainEqual(['imeta', 'url https://example.com/image.jpg', 'm image/jpeg']);
+        });
+
+        it('複数画像のimetaタグを順番に追加する', async () => {
+            const createImetaTagFn = vi.fn(async (meta: { url: string; m: string }) => [
+                'imeta',
+                `url ${meta.url}`,
+                `m ${meta.m}`,
+            ]);
+
+            const event = await PostEventBuilder.buildEvent(
+                'Test post with images',
+                [],
+                [],
+                undefined,
+                {
+                    'https://example.com/a.jpg': { m: 'image/jpeg' },
+                    'https://example.com/b.png': { m: 'image/png' },
+                },
+                createImetaTagFn,
+            );
+
+            expect(createImetaTagFn).toHaveBeenCalledTimes(2);
+            expect(event.tags).toEqual([
+                ['imeta', 'url https://example.com/a.jpg', 'm image/jpeg'],
+                ['imeta', 'url https://example.com/b.png', 'm image/png'],
+            ]);
+        });
+
+        it('content warning に理由がある場合は理由付きタグとnsfwタグを追加する', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Sensitive content',
+                [],
+                [],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                true,
+                'Spoiler',
+            );
+
+            expect(event.tags).toEqual([
+                ['content-warning', 'Spoiler'],
+                ['t', 'nsfw'],
+            ]);
+        });
+
+        it('content warning の理由が空白のみの場合は理由なしタグを追加する', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Sensitive content',
+                [],
+                [],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                true,
+                '   ',
+            );
+
+            expect(event.tags).toEqual([
+                ['content-warning'],
+                ['t', 'nsfw'],
+            ]);
+        });
+
+        it('既存nsfwタグがある場合はcontent warningのみを補う', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Already tagged',
+                [],
+                [['t', 'nsfw']],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                false,
+            );
+
+            expect(event.tags).toEqual([
+                ['t', 'nsfw'],
+                ['content-warning'],
+            ]);
+        });
+
+        it('replyQuoteTags を先頭に配置する', async () => {
+            const replyQuoteTags = [
+                ['e', 'reply-event-id'],
+                ['q', 'quoted-event-id'],
+            ];
+
+            const event = await PostEventBuilder.buildEvent(
+                'Reply post',
+                [],
+                [['t', 'example']],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                undefined,
+                replyQuoteTags,
+            );
+
+            expect(event.tags).toEqual([
+                ['e', 'reply-event-id'],
+                ['q', 'quoted-event-id'],
+                ['t', 'example'],
+            ]);
         });
     });
 });
