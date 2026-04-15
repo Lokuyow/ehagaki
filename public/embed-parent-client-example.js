@@ -32,6 +32,8 @@ const appUrlInput = document.getElementById("app-url");
 const initialLocaleSelect = document.getElementById("initial-locale");
 const initialThemeSelect = document.getElementById("initial-theme");
 const initialHideMascotInput = document.getElementById("initial-hide-mascot");
+const resetInitialSettingsButton = document.getElementById("reset-initial-settings");
+const initialSettingsFeedback = document.getElementById("initial-settings-feedback");
 const parentOriginInput = document.getElementById("parent-origin");
 const iframeSrcDisplay = document.getElementById("iframe-src");
 const eventLog = document.getElementById("event-log");
@@ -60,6 +62,14 @@ const AUTH_METHOD_LABELS = {
     nip07: "NIP-07",
     nsec: "秘密鍵",
 };
+
+const INITIAL_SETTINGS_RESET_KEYS = [
+    "locale",
+    "darkMode",
+    "showMascot",
+    "showBalloonMessage",
+    "settingsPreferenceMetadata",
+];
 
 let lastPubkeyHex = null;
 let activeParentSession = null;
@@ -121,6 +131,15 @@ function setAuthFeedback(message = "", tone = "") {
         return;
     }
     delete authFeedback.dataset.tone;
+}
+
+function setInitialSettingsFeedback(message = "", tone = "") {
+    initialSettingsFeedback.textContent = message;
+    if (tone) {
+        initialSettingsFeedback.dataset.tone = tone;
+        return;
+    }
+    delete initialSettingsFeedback.dataset.tone;
 }
 
 function getNip07Signer() {
@@ -902,6 +921,10 @@ function getTargetOrigin() {
     return new URL(appUrlInput.value).origin;
 }
 
+function getConfiguredAppOrigin() {
+    return new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href).origin;
+}
+
 function buildEmbedUrl() {
     const url = new URL(appUrlInput.value, window.location.href);
     url.searchParams.set("parentOrigin", window.location.origin);
@@ -955,6 +978,42 @@ function loadIframe() {
     iframeSrcDisplay.textContent = embedUrl;
     updateStatus(handshakeStatus, "iframe 読み込み中", "warn");
     appendLog("info", "iframe を再読み込みしました", { embedUrl });
+}
+
+function resetInitialSettingsState() {
+    let appOrigin;
+    try {
+        appOrigin = getConfiguredAppOrigin();
+    } catch {
+        setInitialSettingsFeedback("Enter a valid eHagaki URL first.", "warn");
+        appendLog("warn", "初回設定状態のリセットを中止しました", "app-url が不正です");
+        return;
+    }
+
+    if (appOrigin !== window.location.origin) {
+        setInitialSettingsFeedback("This helper works only for same-origin embeds.", "warn");
+        appendLog("warn", "初回設定状態のリセットを中止しました", {
+            reason: "cross-origin embed",
+            appOrigin,
+            parentOrigin: window.location.origin,
+        });
+        return;
+    }
+
+    const clearedKeys = [];
+    INITIAL_SETTINGS_RESET_KEYS.forEach((key) => {
+        if (window.localStorage.getItem(key) !== null) {
+            clearedKeys.push(key);
+        }
+        window.localStorage.removeItem(key);
+    });
+
+    setInitialSettingsFeedback("First-run state cleared. iframe reloaded.", "ok");
+    appendLog("info", "初回設定状態をリセットしました", {
+        origin: appOrigin,
+        clearedKeys,
+    });
+    loadIframe();
 }
 
 async function resolveCurrentPubkey() {
@@ -1526,6 +1585,7 @@ appUrlInput.addEventListener("change", () => {
 initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrl);
 initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrl);
 initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrl);
+resetInitialSettingsButton.addEventListener("click", resetInitialSettingsState);
 composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
 loginNip07Button.addEventListener("click", () => {
     void handleNip07Login();

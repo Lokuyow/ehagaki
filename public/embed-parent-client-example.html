@@ -484,8 +484,15 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">ここで指定した値は iframe 再読み込み時に `embedLocale` / `embedTheme` / `embedShowMascot=false` として埋め込み
-                    URL に反映されます。初回設定の試験を手入力なしで行えます。</p>
+                <p class="small">`embedLocale` / `embedTheme` / `embedShowMascot=false` を iframe
+                    再読み込み時に自動で付与します。初回設定の試験を手入力なしで行えます。</p>
+
+                <div class="buttons">
+                    <button id="reset-initial-settings" type="button"
+                        class="secondary button-full">初期設定をリセットして再読み込み</button>
+                </div>
+
+                <p id="initial-settings-feedback" class="small feedback" role="status"></p>
             </div>
 
             <div class="field">
