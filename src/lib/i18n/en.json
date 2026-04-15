@@ -96,7 +96,7 @@
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
     "dark_mode": "Dark Mode",
-    "hide_mascot_label": "Hide top-left mascot",
+    "hide_mascot_label": "Hide Kit-ten(top-left)",
     "hide_mascot_note": "Turn this on to hide the top-left mascot. Flavor text is also hidden while this is enabled.",
     "hide_flavor_text_label": "Hide flavor text",
     "hide_flavor_text_note": "Turn this on to hide only the info flavor text. Success / error / tips still appear in a compact notice.",
