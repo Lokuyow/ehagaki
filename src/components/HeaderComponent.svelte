@@ -6,6 +6,7 @@
     import BalloonMessage from "./BalloonMessage.svelte";
     import PopupModal from "./PopupModal.svelte";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
+    import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
 
     interface Props {
         onResetPostContent: () => void;
@@ -52,6 +53,12 @@
     let postStatus = $derived(editorState.postStatus);
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
+    let compactSuccessText = $derived(
+        $_("balloonMessage.success.compact_post_success") || "投稿完了",
+    );
+    let compactMessageText = $derived(
+        resolveCompactMessageText(compactMessage, compactSuccessText),
+    );
 
     // iPhone用振動チェックボックスの参照
     let vibrateSwitchInput: HTMLInputElement | undefined = $state();
@@ -87,9 +94,7 @@
         {/if}
         {#if (!showBalloonMessage || !showMascot) && compactMessage}
             <div class="compact-message {compactMessage.type}">
-                <span class="compact-message-text"
-                    >{compactMessage.message}</span
-                >
+                <span class="compact-message-text">{compactMessageText}</span>
             </div>
         {/if}
     </div>

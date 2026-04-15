@@ -202,6 +202,7 @@
   },
   "balloonMessage": {
     "success": {
+      "compact_post_success": "Post complete",
       "post_success": "Posted",
       "sent": "Sent it.",
       "to_everyone": "Delivered to everyone."
