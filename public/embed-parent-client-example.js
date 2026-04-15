@@ -69,7 +69,11 @@ function appendLog(level, message, detail) {
 }
 
 function getDefaultAppUrl() {
-    return new URL("./", window.location.href).toString();
+    const currentUrl = new URL(window.location.href);
+    const pathSegments = currentUrl.pathname.split("/").filter(Boolean);
+    const servedFromPublicDirectory = pathSegments.at(-2) === "public";
+
+    return new URL(servedFromPublicDirectory ? "../" : "./", currentUrl).toString();
 }
 
 function getTargetOrigin() {
