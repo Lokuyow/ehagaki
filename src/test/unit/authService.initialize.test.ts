@@ -88,6 +88,41 @@ describe('AuthService.initializeAuth', () => {
         expect(result.hasAuth).toBe(false);
     });
 
+    it('マルチアカウント: parentClient は起動時自動復元せず他アカウントへフォールバックする', async () => {
+        mockAccountManager.getActiveAccountPubkey.mockReturnValue('parent-pub');
+        mockAccountManager.getAccountType.mockImplementation((pubkeyHex: string) => {
+            if (pubkeyHex === 'parent-pub') return 'parentClient';
+            if (pubkeyHex === 'fallback-pub') return 'nsec';
+            return null;
+        });
+        mockAccountManager.getAccounts.mockReturnValue([
+            { pubkeyHex: 'parent-pub', type: 'parentClient', addedAt: 1000 },
+            { pubkeyHex: 'fallback-pub', type: 'nsec', addedAt: 2000 },
+        ]);
+
+        mockKeyManager.loadFromStorage.mockImplementation((pubkey?: string) => {
+            if (pubkey === 'fallback-pub') return 'fallback-nsec';
+            return null;
+        });
+        mockKeyManager.derivePublicKey.mockReturnValue({
+            hex: 'fallback-pub',
+            npub: 'npub1fallback',
+            nprofile: 'nprofile1fallback',
+        });
+
+        const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+
+        const service = new AuthService(mockDependencies);
+        service.setAccountManager(mockAccountManager as any);
+
+        const result = await service.initializeAuth();
+
+        expect(result.hasAuth).toBe(true);
+        expect(result.pubkeyHex).toBe('fallback-pub');
+        expect(parentClientAuthService.reconnect).not.toHaveBeenCalled();
+        expect(mockAccountManager.setActiveAccount).toHaveBeenCalledWith('fallback-pub');
+    });
+
     it('アカウントなし→レガシーnsec検出', async () => {
         mockKeyManager.loadFromStorage.mockReturnValue('legacy-nsec');
         mockKeyManager.derivePublicKey.mockReturnValue({

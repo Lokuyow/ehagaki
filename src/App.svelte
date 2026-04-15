@@ -138,7 +138,6 @@
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
 
-  const PARENT_CLIENT_STARTUP_TIMEOUT_MS = 1500;
   const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
 
   // AccountManager初期化
@@ -293,36 +292,6 @@
     rxNostr = disposeNostrSession(rxNostr);
     await handlePostAuth(result.pubkeyHex);
     return undefined;
-  }
-
-  async function resolveParentClientAutoAuth(currentResult: {
-    hasAuth: boolean;
-    pubkeyHex?: string;
-  }): Promise<{
-    hasAuth: boolean;
-    pubkeyHex?: string;
-  }> {
-    if (!parentClientAvailable) {
-      return currentResult;
-    }
-
-    if (isCurrentParentClientRuntime(currentResult.pubkeyHex)) {
-      return currentResult;
-    }
-
-    const result = await synchronizeParentClientAuth({
-      silent: true,
-      timeoutMs: PARENT_CLIENT_STARTUP_TIMEOUT_MS,
-    });
-
-    if (!result.success || !result.pubkeyHex) {
-      return currentResult;
-    }
-
-    return {
-      hasAuth: true,
-      pubkeyHex: result.pubkeyHex,
-    };
   }
 
   async function handleRemoteParentClientLogin(
@@ -601,7 +570,6 @@
         localeInitialized = true;
       },
       initializeAuth: () => authService.initializeAuth(),
-      resolveAuthenticatedSession: resolveParentClientAutoAuth,
       handleAuthenticated: handlePostAuth,
       initializeGuestSession: () => initializeNostr(),
       stopProfileLoading: () => isLoadingProfileStore.set(false),

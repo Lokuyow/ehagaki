@@ -229,7 +229,7 @@ describe('App parentClient integration', () => {
         mockState.syncAccountStores.mockClear();
     });
 
-    it('起動時の自動親クライアント認証で新規アカウントを追加して切り替える', async () => {
+    it('起動時は parentClient 自動認証を開始しない', async () => {
         mockState.accountManager.hasAccount.mockReturnValue(false);
         mockAuthStoreModule.authState.value = {
             isAuthenticated: false,
@@ -242,58 +242,13 @@ describe('App parentClient integration', () => {
         render(App);
 
         await waitFor(() => {
-            expect(mockState.bootstrapParams?.resolveAuthenticatedSession).toBeTruthy();
+            expect(mockState.bootstrapParams).toBeTruthy();
         });
 
-        const resolved = await mockState.bootstrapParams?.resolveAuthenticatedSession?.({
-            hasAuth: false,
-        });
-
-        expect(mockState.authenticateWithParentClient).toHaveBeenCalledWith({
-            silent: true,
-            timeoutMs: 1500,
-        });
-        expect(mockState.accountManager.addAccount).toHaveBeenCalledWith(
-            PARENT_CLIENT_PUBKEY,
-            'parentClient',
-        );
-        expect(mockState.accountManager.setActiveAccount).not.toHaveBeenCalled();
-        expect(resolved).toEqual({
-            hasAuth: true,
-            pubkeyHex: PARENT_CLIENT_PUBKEY,
-        });
-    });
-
-    it('起動時の自動親クライアント認証で同一pubkeyの既存アカウントへ切り替える', async () => {
-        mockState.accountManager.hasAccount.mockReturnValue(true);
-        mockState.accountManager.getAccountType.mockReturnValue('nip07');
-        mockAuthStoreModule.authState.value = {
-            isAuthenticated: false,
-            isInitialized: false,
-            isValid: false,
-            type: 'none',
-            pubkey: '',
-        } as any;
-
-        render(App);
-
-        await waitFor(() => {
-            expect(mockState.bootstrapParams?.resolveAuthenticatedSession).toBeTruthy();
-        });
-
-        const resolved = await mockState.bootstrapParams?.resolveAuthenticatedSession?.({
-            hasAuth: true,
-            pubkeyHex: PARENT_CLIENT_PUBKEY,
-        });
-
-        expect(mockState.accountManager.setActiveAccount).toHaveBeenCalledWith(
-            PARENT_CLIENT_PUBKEY,
-        );
+        expect(mockState.bootstrapParams?.resolveAuthenticatedSession).toBeUndefined();
+        expect(mockState.authenticateWithParentClient).not.toHaveBeenCalled();
         expect(mockState.accountManager.addAccount).not.toHaveBeenCalled();
-        expect(resolved).toEqual({
-            hasAuth: true,
-            pubkeyHex: PARENT_CLIENT_PUBKEY,
-        });
+        expect(mockState.accountManager.setActiveAccount).not.toHaveBeenCalled();
     });
 
     it('external input bootstrap params は認証後の最新 rxNostr と relayProfileService を返す', async () => {

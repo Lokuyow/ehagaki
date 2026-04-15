@@ -298,7 +298,7 @@ export async function runManagedAuthRestore(
 
     if (activePubkey) {
         const accountType = dependencies.accountManager.getAccountType(activePubkey);
-        if (accountType) {
+        if (accountType && accountType !== 'parentClient') {
             const activeResult = await dependencies.restoreAccount(activePubkey, accountType);
             if (activeResult.hasAuth) return activeResult;
         }
@@ -307,6 +307,7 @@ export async function runManagedAuthRestore(
     const accounts = dependencies.accountManager.getAccounts();
     for (const account of accounts) {
         if (account.pubkeyHex === activePubkey) continue;
+        if (account.type === 'parentClient') continue;
 
         const result = await dependencies.restoreAccount(account.pubkeyHex, account.type);
         if (result.hasAuth) {

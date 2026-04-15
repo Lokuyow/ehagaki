@@ -340,13 +340,8 @@ function validateEnvelope(data) {
 }
 
 async function handleReady() {
-    updateStatus(handshakeStatus, "ready を受信", "ok");
-    try {
-        const pubkeyHex = await resolveCurrentPubkey();
-        postToIframe("auth.login", { pubkeyHex });
-    } catch (error) {
-        appendLog("warn", "ready を受け取ったが親 signer が利用できません", error instanceof Error ? error.message : String(error));
-    }
+    updateStatus(handshakeStatus, "ready を受信。auth.login 待機中", "ok");
+    appendLog("info", "ready を受信しました。必要になった時点で auth.login を送信してください");
 }
 
 async function handleAuthRequest(message) {
