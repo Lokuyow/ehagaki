@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { nip19 } from 'nostr-tools';
 import {
   getContentFromUrlQuery,
   cleanupAllQueryParams,
@@ -163,7 +164,7 @@ describe('urlQueryHandler', () => {
 
       cleanupAllQueryParams();
 
-      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test?other=value');
     });
 
     it('空のcontentパラメータを削除する', () => {
@@ -200,7 +201,7 @@ describe('urlQueryHandler', () => {
       expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
     });
 
-    it('想定外のパラメータを削除する', () => {
+    it('消費対象でないパラメータは保持する', () => {
       const mockReplaceState = vi.fn();
       // @ts-ignore
       window.location = {
@@ -214,7 +215,7 @@ describe('urlQueryHandler', () => {
 
       cleanupAllQueryParams();
 
-      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
+      expect(mockReplaceState).not.toHaveBeenCalled();
     });
 
     it('クエリパラメータがない場合は何もしない', () => {
@@ -234,7 +235,7 @@ describe('urlQueryHandler', () => {
       expect(mockReplaceState).not.toHaveBeenCalled();
     });
 
-    it('contentと他のパラメータが混在する場合、すべて削除する', () => {
+    it('contentと他のパラメータが混在する場合、消費対象だけ削除する', () => {
       const mockReplaceState = vi.fn();
       // @ts-ignore
       window.location = {
@@ -248,7 +249,7 @@ describe('urlQueryHandler', () => {
 
       cleanupAllQueryParams();
 
-      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test');
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test?foo=bar&baz=qux');
     });
   });
 
@@ -256,6 +257,8 @@ describe('urlQueryHandler', () => {
     const validNevent = 'nevent1qgsthwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwamhwcpzamhxue69uhhyetvv9ujuetcv9khqmr99e3k7mgqyz424242424242424242424242424242424242424242424242425grql2v';
     const validNote = 'note1424242424242424242424242424242424242424242424242424qv3q9y6';
     const expectedEventId = 'a'.repeat(64);
+    const secondEventId = 'b'.repeat(64);
+    const secondQuoteNote = nip19.noteEncode(secondEventId);
 
     it('replyパラメータからneventをデコードできる', () => {
       // @ts-ignore
@@ -265,10 +268,12 @@ describe('urlQueryHandler', () => {
 
       const result = getReplyQuoteFromUrlQuery();
       expect(result).not.toBeNull();
-      expect(result!.mode).toBe('reply');
-      expect(result!.eventId).toBe(expectedEventId);
-      expect(result!.relayHints).toContain('wss://relay.example.com');
-      expect(result!.authorPubkey).toBe('b'.repeat(64));
+      expect(result!.reply).toEqual({
+        eventId: expectedEventId,
+        relayHints: ['wss://relay.example.com'],
+        authorPubkey: 'b'.repeat(64),
+      });
+      expect(result!.quotes).toEqual([]);
     });
 
     it('quoteパラメータからneventをデコードできる', () => {
@@ -279,8 +284,14 @@ describe('urlQueryHandler', () => {
 
       const result = getReplyQuoteFromUrlQuery();
       expect(result).not.toBeNull();
-      expect(result!.mode).toBe('quote');
-      expect(result!.eventId).toBe(expectedEventId);
+      expect(result!.reply).toBeNull();
+      expect(result!.quotes).toEqual([
+        {
+          eventId: expectedEventId,
+          relayHints: ['wss://relay.example.com'],
+          authorPubkey: 'b'.repeat(64),
+        },
+      ]);
     });
 
     it('noteフォーマットをデコードできる', () => {
@@ -291,10 +302,30 @@ describe('urlQueryHandler', () => {
 
       const result = getReplyQuoteFromUrlQuery();
       expect(result).not.toBeNull();
-      expect(result!.mode).toBe('reply');
-      expect(result!.eventId).toBe(expectedEventId);
-      expect(result!.relayHints).toHaveLength(0);
-      expect(result!.authorPubkey).toBeNull();
+      expect(result!.reply).toEqual({
+        eventId: expectedEventId,
+        relayHints: [],
+        authorPubkey: null,
+      });
+      expect(result!.quotes).toEqual([]);
+    });
+
+    it('reply と複数 quote を同時にデコードできる', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?reply=${validNote}&quote=${validNevent}&quote=${secondQuoteNote}`,
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result).not.toBeNull();
+      expect(result!.reply).toEqual({
+        eventId: expectedEventId,
+        relayHints: [],
+        authorPubkey: null,
+      });
+      expect(result!.quotes).toHaveLength(2);
+      expect(result!.quotes[0].eventId).toBe(expectedEventId);
+      expect(result!.quotes[1].eventId).toBe(secondEventId);
     });
 
     it('パラメータがない場合はnullを返す', () => {

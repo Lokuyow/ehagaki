@@ -78,6 +78,8 @@
     replyQuoteState,
     restoreReplyQuote,
     clearReplyQuote,
+    clearReplyReference,
+    removeQuoteReference,
   } from "./stores/replyQuoteStore.svelte";
   import { relayConfigStore } from "./stores/relayStore.svelte";
   import {
@@ -91,6 +93,7 @@
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
+  import type { RunExternalInputBootstrapParams } from "./lib/bootstrap/externalInputBootstrap";
   import {
     applyDraftToComposer,
     createDraftSavePayload,
@@ -568,6 +571,27 @@
       });
     }
 
+    const externalInputBootstrapParams: Omit<
+      RunExternalInputBootstrapParams,
+      "sharedError"
+    > = {
+      sharedMediaStore,
+      isSharedMediaProcessed,
+      markSharedMediaProcessed,
+      setSharedMediaError,
+      consumeFirstVisitFlag,
+      showWelcomeDialog: welcomeDialog.open,
+      updateUrlQueryContentStore,
+      setReplyQuote,
+      updateReferencedEvent,
+      updateAuthorDisplayName,
+      setReplyQuoteError,
+      relayProfileService,
+      rxNostr,
+      relayConfig: relayConfigStore.value,
+      locationHref: window.location.href,
+    };
+
     void runAppInitializationBootstrap({
       reloadSettings: () => settingsStore.reload(),
       locationSearch: window.location.search,
@@ -583,23 +607,7 @@
       stopProfileLoading: () => isLoadingProfileStore.set(false),
       refreshAccountList,
       markAuthInitialized: () => authService.markAuthInitialized(),
-      getExternalInputBootstrapParams: () => ({
-        sharedMediaStore,
-        isSharedMediaProcessed,
-        markSharedMediaProcessed,
-        setSharedMediaError,
-        consumeFirstVisitFlag,
-        showWelcomeDialog: welcomeDialog.open,
-        updateUrlQueryContentStore,
-        setReplyQuote,
-        updateReferencedEvent,
-        updateAuthorDisplayName,
-        setReplyQuoteError,
-        relayProfileService,
-        rxNostr,
-        relayConfig: relayConfigStore.value,
-        locationHref: window.location.href,
-      }),
+      getExternalInputBootstrapParams: () => externalInputBootstrapParams,
       console,
     }).finally(() => {
       isBootstrappingApp = false;
@@ -748,8 +756,12 @@
           onShowDraftList={draftListDialog.open}
           balloonMessage={balloon.finalMessage}
         />
-        {#if replyQuoteState.value?.mode === "reply"}
-          <ReplyQuotePreview />
+        {#if replyQuoteState.value.reply}
+          <ReplyQuotePreview
+            reference={replyQuoteState.value.reply}
+            mode="reply"
+            onClear={clearReplyReference}
+          />
         {/if}
         <PostComponent
           bind:this={postComponentRef}
@@ -757,9 +769,13 @@
           hasStoredKey={isAuthenticated}
           onPostSuccess={handlePostSuccess}
         />
-        {#if replyQuoteState.value?.mode === "quote"}
-          <ReplyQuotePreview />
-        {/if}
+        {#each replyQuoteState.value.quotes as quote (quote.eventId)}
+          <ReplyQuotePreview
+            reference={quote}
+            mode="quote"
+            onClear={() => removeQuoteReference(quote.eventId)}
+          />
+        {/each}
       </div>
       <ReasonInput />
       <KeyboardButtonBar

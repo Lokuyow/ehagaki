@@ -1,4 +1,11 @@
-import type { Draft, DraftReplyQuoteData, MediaGalleryItem, ReplyQuoteState } from './types';
+import type {
+    Draft,
+    DraftReplyQuoteData,
+    MediaGalleryItem,
+    ReplyQuoteComposerState,
+    ReplyQuoteState,
+    DraftReplyQuoteEntryData,
+} from './types';
 
 type DraftReplyQuoteStateLike = Pick<
     ReplyQuoteState,
@@ -12,11 +19,10 @@ type DraftReplyQuoteStateLike = Pick<
     | 'rootRelayHint'
     | 'rootPubkey'
 >;
-
 interface CreateDraftSavePayloadParams {
     htmlContent: string;
     galleryItems: MediaGalleryItem[];
-    replyQuoteState: DraftReplyQuoteStateLike | null;
+    replyQuoteState: ReplyQuoteComposerState;
 }
 
 interface ExtractMediaToGalleryHtmlParams {
@@ -49,13 +55,9 @@ function removeMediaElement(element: Element, root: HTMLDivElement): void {
     element.remove();
 }
 
-export function buildDraftReplyQuoteData(
-    replyQuoteState: DraftReplyQuoteStateLike | null,
-): DraftReplyQuoteData | undefined {
-    if (!replyQuoteState) {
-        return undefined;
-    }
-
+function buildDraftReplyQuoteEntry(
+    replyQuoteState: DraftReplyQuoteStateLike,
+): DraftReplyQuoteEntryData {
     return {
         mode: replyQuoteState.mode,
         eventId: replyQuoteState.eventId,
@@ -66,6 +68,21 @@ export function buildDraftReplyQuoteData(
         rootEventId: replyQuoteState.rootEventId,
         rootRelayHint: replyQuoteState.rootRelayHint,
         rootPubkey: replyQuoteState.rootPubkey,
+    };
+}
+
+export function buildDraftReplyQuoteData(
+    replyQuoteState: ReplyQuoteComposerState,
+): DraftReplyQuoteData | undefined {
+    if (!replyQuoteState.reply && replyQuoteState.quotes.length === 0) {
+        return undefined;
+    }
+
+    return {
+        reply: replyQuoteState.reply
+            ? buildDraftReplyQuoteEntry(replyQuoteState.reply)
+            : null,
+        quotes: replyQuoteState.quotes.map((quote) => buildDraftReplyQuoteEntry(quote)),
     };
 }
 

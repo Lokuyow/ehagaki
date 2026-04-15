@@ -8,7 +8,7 @@ import {
     extractMediaToGalleryHtml,
 } from '../../lib/draftContentUtils';
 
-function createReplyQuoteState() {
+function createReplyState() {
     return {
         mode: 'reply' as const,
         eventId: 'event-1',
@@ -19,16 +19,63 @@ function createReplyQuoteState() {
         rootEventId: 'root-event',
         rootRelayHint: 'wss://root-relay',
         rootPubkey: 'root-pubkey',
+        loading: false,
+        error: null,
+    };
+}
+
+function createQuoteState() {
+    return {
+        ...createReplyState(),
+        mode: 'quote' as const,
+        eventId: 'event-2',
+    };
+}
+
+function createComposerState() {
+    return {
+        reply: createReplyState(),
+        quotes: [createQuoteState()],
+    };
+}
+
+function createEmptyComposerState() {
+    return {
+        reply: null,
+        quotes: [],
     };
 }
 
 describe('buildDraftReplyQuoteData', () => {
     it('replyQuoteState がある場合に保存用データへ変換する', () => {
-        expect(buildDraftReplyQuoteData(createReplyQuoteState())).toEqual(createReplyQuoteState());
+        expect(buildDraftReplyQuoteData(createComposerState())).toEqual({
+            reply: {
+                mode: 'reply',
+                eventId: 'event-1',
+                relayHints: ['wss://relay'],
+                authorPubkey: 'author',
+                authorDisplayName: 'author-name',
+                referencedEvent: null,
+                rootEventId: 'root-event',
+                rootRelayHint: 'wss://root-relay',
+                rootPubkey: 'root-pubkey',
+            },
+            quotes: [{
+                mode: 'quote',
+                eventId: 'event-2',
+                relayHints: ['wss://relay'],
+                authorPubkey: 'author',
+                authorDisplayName: 'author-name',
+                referencedEvent: null,
+                rootEventId: 'root-event',
+                rootRelayHint: 'wss://root-relay',
+                rootPubkey: 'root-pubkey',
+            }],
+        });
     });
 
     it('replyQuoteState がない場合は undefined を返す', () => {
-        expect(buildDraftReplyQuoteData(null)).toBeUndefined();
+        expect(buildDraftReplyQuoteData(createEmptyComposerState())).toBeUndefined();
     });
 });
 
@@ -37,7 +84,7 @@ describe('createDraftSavePayload', () => {
         expect(createDraftSavePayload({
             htmlContent: '<p></p>',
             galleryItems: [{ id: 'ph', type: 'image', src: 'placeholder', isPlaceholder: true }],
-            replyQuoteState: null,
+            replyQuoteState: createEmptyComposerState(),
         })).toBeNull();
     });
 
@@ -50,11 +97,34 @@ describe('createDraftSavePayload', () => {
         expect(createDraftSavePayload({
             htmlContent: '<p>body</p>',
             galleryItems,
-            replyQuoteState: createReplyQuoteState(),
+            replyQuoteState: createComposerState(),
         })).toEqual({
             content: '<p>body</p>',
             galleryItems: [galleryItems[0]],
-            replyQuoteData: createReplyQuoteState(),
+            replyQuoteData: {
+                reply: {
+                    mode: 'reply',
+                    eventId: 'event-1',
+                    relayHints: ['wss://relay'],
+                    authorPubkey: 'author',
+                    authorDisplayName: 'author-name',
+                    referencedEvent: null,
+                    rootEventId: 'root-event',
+                    rootRelayHint: 'wss://root-relay',
+                    rootPubkey: 'root-pubkey',
+                },
+                quotes: [{
+                    mode: 'quote',
+                    eventId: 'event-2',
+                    relayHints: ['wss://relay'],
+                    authorPubkey: 'author',
+                    authorDisplayName: 'author-name',
+                    referencedEvent: null,
+                    rootEventId: 'root-event',
+                    rootRelayHint: 'wss://root-relay',
+                    rootPubkey: 'root-pubkey',
+                }],
+            },
         });
     });
 });
@@ -102,7 +172,10 @@ describe('applyDraftToComposer', () => {
             preview: 'body',
             timestamp: 1,
             galleryItems: [{ id: 'stored', type: 'image', src: 'https://example.com/stored.jpg', isPlaceholder: false }],
-            replyQuoteData: createReplyQuoteState(),
+            replyQuoteData: {
+                reply: createReplyState(),
+                quotes: [createQuoteState()],
+            },
         };
         const clearGallery = vi.fn();
         const addGalleryItem = vi.fn();

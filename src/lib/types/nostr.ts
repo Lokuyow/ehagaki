@@ -165,12 +165,16 @@ export interface PostManagerDeps {
     resetEditorStateFn?: () => void;
     resetPostStatusFn?: () => void;
     iframeMessageService?: {
-        notifyPostSuccess: (options?: { replyTo?: string; quotedEvent?: string }) => boolean;
-        notifyPostError: (error?: string) => boolean;
+        notifyPostSuccess: (options?: {
+            eventId?: string;
+            replyToEventId?: string;
+            quotedEventIds?: string[];
+        }) => boolean;
+        notifyPostError: (error?: string | { code: string; message?: string }) => boolean;
     };
     hashtagPinStore?: { value: boolean };
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
-    replyQuoteState?: { value: ReplyQuoteState | null };
+    replyQuoteState?: { value: ReplyQuoteComposerState };
     replyQuoteService?: {
         buildReplyTags: (state: ReplyQuoteState) => string[][];
         buildQuoteTags: (state: ReplyQuoteState) => string[][];
@@ -223,6 +227,11 @@ export interface ReplyQuoteState {
     error: string | null;
 }
 
+export interface ReplyQuoteComposerState {
+    reply: ReplyQuoteState | null;
+    quotes: ReplyQuoteState[];
+}
+
 export interface NostrEvent {
     id: string;
     pubkey: string;
@@ -234,7 +243,11 @@ export interface NostrEvent {
 }
 
 export interface ReplyQuoteQueryResult {
-    mode: ReplyQuoteMode;
+    reply: ReplyQuoteQueryTarget | null;
+    quotes: ReplyQuoteQueryTarget[];
+}
+
+export interface ReplyQuoteQueryTarget {
     eventId: string;
     relayHints: string[];
     authorPubkey: string | null;

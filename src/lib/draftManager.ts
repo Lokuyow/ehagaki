@@ -78,8 +78,17 @@ export function generatePreview(htmlContent: string, galleryItems?: MediaGallery
 
     // メディアラベルを構築
     const mediaLabels: string[] = [];
-    if (replyQuoteData?.mode === 'reply') mediaLabels.push(replyLabel);
-    if (replyQuoteData?.mode === 'quote') mediaLabels.push(quoteLabel);
+    const hasReply = !!replyQuoteData
+        && ('reply' in replyQuoteData ? !!replyQuoteData.reply : replyQuoteData.mode === 'reply');
+    const quoteCount = !replyQuoteData
+        ? 0
+        : 'quotes' in replyQuoteData
+            ? replyQuoteData.quotes.length
+            : replyQuoteData.mode === 'quote'
+                ? 1
+                : 0;
+    if (hasReply) mediaLabels.push(replyLabel);
+    if (quoteCount > 0) mediaLabels.push(quoteLabel);
     if (hasImage) mediaLabels.push(imageLabel);
     if (hasVideo) mediaLabels.push(videoLabel);
     const mediaText = mediaLabels.join('');

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ParentClientAuthService } from '../../lib/parentClientAuthService';
 import type { ParentClientSessionData } from '../../lib/types';
 import { MockStorage } from '../helpers';
+import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
 
 function createMockWindow(search = '?parentOrigin=https%3A%2F%2Fparent.example.com') {
     const listeners = new Map<string, (event: MessageEvent) => void>();
@@ -57,7 +58,7 @@ describe('ParentClientAuthService', () => {
         const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'auth.result',
                 requestId: authRequest.requestId,
@@ -83,7 +84,7 @@ describe('ParentClientAuthService', () => {
         const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'auth.result',
                 requestId: authRequest.requestId,
@@ -101,7 +102,7 @@ describe('ParentClientAuthService', () => {
         const rpcRequest = vi.mocked(parent.postMessage).mock.calls[2][0] as any;
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'rpc.result',
                 requestId: rpcRequest.requestId,
@@ -147,7 +148,7 @@ describe('ParentClientAuthService', () => {
         const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'auth.error',
                 requestId: authRequest.requestId,
@@ -174,7 +175,7 @@ describe('ParentClientAuthService', () => {
         const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'auth.result',
                 requestId: authRequest.requestId,
@@ -190,7 +191,7 @@ describe('ParentClientAuthService', () => {
 
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'auth.logout',
                 payload: {
@@ -214,7 +215,7 @@ describe('ParentClientAuthService', () => {
 
         listeners.get('message')?.({
             data: {
-                namespace: 'ehagaki.parentClient',
+                namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
                 type: 'auth.login',
                 payload: {

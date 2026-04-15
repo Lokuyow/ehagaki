@@ -999,7 +999,9 @@ describe('PostManager統合テスト', () => {
             const result = await manager.submitPost('Test post content');
 
             expect(result.success).toBe(true);
-            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
+                eventId: 'test-event-id',
+            });
             expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
         });
 
@@ -1115,7 +1117,9 @@ describe('PostManager統合テスト', () => {
             const result = await manager.submitPost('Test post content');
 
             expect(result.success).toBe(true);
-            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
+                eventId: 'test-event-id',
+            });
             expect(mockIframeService.notifyPostError).not.toHaveBeenCalled();
         });
 
@@ -1162,7 +1166,9 @@ describe('PostManager統合テスト', () => {
             const result = await manager.submitPost('Test post content');
 
             expect(result.success).toBe(true);
-            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledTimes(1);
+            expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
+                eventId: 'test-event-id',
+            });
             expect(mockRxNostr.send).toHaveBeenCalledWith(
                 expect.any(Object),
                 expect.objectContaining({ signer: mockParentSigner, completeOn: 'all-ok' })
@@ -1264,17 +1270,22 @@ describe('PostManager統合テスト', () => {
             const storeQuoteEventId = eventId1;
             mockDeps.replyQuoteState = {
                 value: {
-                    mode: 'quote',
-                    eventId: storeQuoteEventId,
-                    relayHints: ["wss://relay1.example.com"],
-                    authorPubkey: authorPubkey1,
-                    authorDisplayName: null,
-                    referencedEvent: null,
-                    rootEventId: null,
-                    rootRelayHint: null,
-                    rootPubkey: null,
-                    loading: false,
-                    error: null,
+                    reply: null,
+                    quotes: [
+                        {
+                            mode: 'quote',
+                            eventId: storeQuoteEventId,
+                            relayHints: ["wss://relay1.example.com"],
+                            authorPubkey: authorPubkey1,
+                            authorDisplayName: null,
+                            referencedEvent: null,
+                            rootEventId: null,
+                            rootRelayHint: null,
+                            rootPubkey: null,
+                            loading: false,
+                            error: null,
+                        }
+                    ],
                 }
             };
             manager = new PostManager(mockRxNostr, mockDeps);

@@ -30,9 +30,9 @@ export interface RunExternalInputBootstrapParams {
     showWelcomeDialog: () => void;
     updateUrlQueryContentStore: (content: string) => void;
     setReplyQuote: (value: any) => void;
-    updateReferencedEvent: (event: any, threadInfo: any) => void;
-    updateAuthorDisplayName: (name: string) => void;
-    setReplyQuoteError: (message: string) => void;
+    updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
+    updateAuthorDisplayName: (eventId: string, name: string) => void;
+    setReplyQuoteError: (eventId: string, message: string) => void;
     relayProfileService?: RelayProfileService;
     rxNostr?: any;
     relayConfig: any;
@@ -139,36 +139,47 @@ async function bootstrapReplyQuote({
         return;
     }
 
+    const references = [
+        ...(replyQuoteQuery.reply ? [replyQuoteQuery.reply] : []),
+        ...replyQuoteQuery.quotes,
+    ];
+
+    if (references.length === 0) {
+        return;
+    }
+
     const rqService = new ReplyQuoteService();
-    rqService
-        .fetchReferencedEvent(
-            replyQuoteQuery.eventId,
-            replyQuoteQuery.relayHints,
-            rxNostr,
-            relayConfig,
-        )
-        .then((event) => {
-            if (!event) {
-                setReplyQuoteError("Event not found");
-                return;
-            }
+    references.forEach((reference) => {
+        rqService
+            .fetchReferencedEvent(
+                reference.eventId,
+                reference.relayHints,
+                rxNostr,
+                relayConfig,
+            )
+            .then((event) => {
+                if (!event) {
+                    setReplyQuoteError(reference.eventId, "Event not found");
+                    return;
+                }
 
-            const threadInfo = rqService.extractThreadInfo(event);
-            updateReferencedEvent(event, threadInfo);
+                const threadInfo = rqService.extractThreadInfo(event);
+                updateReferencedEvent(reference.eventId, event, threadInfo);
 
-            if (event.pubkey && relayProfileService) {
-                relayProfileService.fetchProfileRealtime(event.pubkey).then((profile) => {
-                    if (!profile) {
-                        return;
-                    }
+                if (event.pubkey && relayProfileService) {
+                    relayProfileService.fetchProfileRealtime(event.pubkey).then((profile) => {
+                        if (!profile) {
+                            return;
+                        }
 
-                    const displayName = profile.displayName || profile.name;
-                    if (displayName) {
-                        updateAuthorDisplayName(displayName);
-                    }
-                });
-            }
-        });
+                        const displayName = profile.displayName || profile.name;
+                        if (displayName) {
+                            updateAuthorDisplayName(reference.eventId, displayName);
+                        }
+                    });
+                }
+            });
+    });
 }
 
 export async function runExternalInputBootstrap({

@@ -1,33 +1,38 @@
-/**
- * iframeメッセージングサービス
- * 
- * このアプリがiframe内で動作している場合に、親ウィンドウへpostMessageを送信する機能を提供します。
- * - 投稿成功時: 'POST_SUCCESS'
- * - 投稿失敗時: 'POST_ERROR'
- * - 親ウィンドウのオリジンをチェックして安全に通信
- */
+import {
+    EMBED_MESSAGE_NAMESPACE,
+    EMBED_MESSAGE_VERSION,
+    getParentOriginFromSearch,
+    type EmbedMessageEnvelope,
+    type EmbedPostErrorPayload,
+    type EmbedPostSuccessPayload,
+} from './embedProtocol';
 
-export interface IframeMessagePayload {
-    type: 'POST_SUCCESS' | 'POST_ERROR';
-    timestamp: number;
-    error?: string;
-    replyTo?: string;
-    quotedEvent?: string;
+export interface IframeMessagePayload extends EmbedMessageEnvelope {
+    type: 'post.success' | 'post.error';
 }
 
 export interface IframeMessageServiceConfig {
     allowedOrigins?: string[];
+    parentOrigin?: string;
+    locationSearch?: string;
     console?: Console;
     window?: Window;
 }
 
 export class IframeMessageService {
     private allowedOrigins: string[];
+    private parentOrigin: string | null;
     private console: Console;
     private windowObj: Window | undefined;
 
     constructor(config: IframeMessageServiceConfig = {}) {
         this.allowedOrigins = config.allowedOrigins || [];
+        this.parentOrigin =
+            config.parentOrigin
+            ?? getParentOriginFromSearch(
+                config.locationSearch
+                ?? (config.window || (typeof window !== 'undefined' ? window : undefined))?.location?.search,
+            );
         // consoleが提供されていない場合はグローバルconsoleを使用、それも無ければno-opを使用
         this.console = config.console || (typeof console !== 'undefined' ? console : {
             log: () => { },
@@ -50,30 +55,15 @@ export class IframeMessageService {
         }
     }
 
-    /**
-     * 親ウィンドウのオリジンを取得
-     * 取得できない場合（クロスオリジン）は null を返す
-     */
     getParentOrigin(): string | null {
         if (!this.windowObj || !this.isInIframe()) return null;
 
-        try {
-            // 同一オリジンの場合は直接アクセス可能
-            return this.windowObj.parent.location.origin;
-        } catch (e) {
-            // クロスオリジンの場合はアクセスできない
-            // document.referrer から推測を試みる
-            if (this.windowObj.document && this.windowObj.document.referrer) {
-                try {
-                    const url = new URL(this.windowObj.document.referrer);
-                    return url.origin;
-                } catch (err) {
-                    this.console.warn('親ウィンドウのオリジンを取得できませんでした:', err);
-                    return null;
-                }
-            }
-            return null;
+        if (this.parentOrigin) {
+            return this.parentOrigin;
         }
+
+        this.parentOrigin = getParentOriginFromSearch(this.windowObj.location?.search);
+        return this.parentOrigin;
     }
 
     /**
@@ -86,9 +76,6 @@ export class IframeMessageService {
         return this.allowedOrigins.includes(origin);
     }
 
-    /**
-     * 親ウィンドウにメッセージを送信
-     */
     sendMessageToParent(payload: IframeMessagePayload): boolean {
         if (!this.windowObj || !this.isInIframe()) {
             return false;
@@ -96,9 +83,8 @@ export class IframeMessageService {
 
         const parentOrigin = this.getParentOrigin();
 
-        // 親オリジンが取得できない場合、または許可されていない場合
         if (!parentOrigin) {
-            this.console.warn('親ウィンドウのオリジンを特定できないため、postMessageを送信できません');
+            this.console.warn('parentOrigin が未指定のため、iframe postMessage を送信できません');
             return false;
         }
 
@@ -117,28 +103,43 @@ export class IframeMessageService {
         }
     }
 
-    /**
-     * 投稿成功を通知
-     */
-    notifyPostSuccess(options?: { replyTo?: string; quotedEvent?: string }): boolean {
-        const payload: IframeMessagePayload = {
-            type: 'POST_SUCCESS',
+    notifyPostSuccess(options: {
+        eventId?: string;
+        replyToEventId?: string;
+        quotedEventIds?: string[];
+    } = {}): boolean {
+        const payload: EmbedPostSuccessPayload = {
             timestamp: Date.now(),
+            ...(options.eventId ? { eventId: options.eventId } : {}),
+            ...(options.replyToEventId ? { replyToEventId: options.replyToEventId } : {}),
+            ...(options.quotedEventIds?.length ? { quotedEventIds: options.quotedEventIds } : {}),
         };
-        if (options?.replyTo) payload.replyTo = options.replyTo;
-        if (options?.quotedEvent) payload.quotedEvent = options.quotedEvent;
-        return this.sendMessageToParent(payload);
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'post.success',
+            payload,
+        });
     }
 
-    /**
-     * 投稿失敗を通知
-     */
-    notifyPostError(error?: string): boolean {
-        return this.sendMessageToParent({
-            type: 'POST_ERROR',
+    notifyPostError(error?: string | { code: string; message?: string }): boolean {
+        const payload: EmbedPostErrorPayload = {
             timestamp: Date.now(),
-            error
+            code: typeof error === 'string' ? error : error?.code ?? 'post_error',
+            ...(typeof error === 'object' && error?.message ? { message: error.message } : {}),
+        };
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'post.error',
+            payload,
         });
+    }
+
+    setParentOrigin(origin: string | null): void {
+        this.parentOrigin = origin;
     }
 
     /**

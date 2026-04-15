@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { IframeMessageService } from "../../lib/iframeMessageService";
 import type { IframeMessagePayload } from "../../lib/iframeMessageService";
+import { EMBED_MESSAGE_NAMESPACE, EMBED_MESSAGE_VERSION } from '../../lib/embedProtocol';
 
 describe("IframeMessageService", () => {
   let mockWindow: any;
@@ -90,34 +91,27 @@ describe("IframeMessageService", () => {
       expect(service.getParentOrigin()).toBe(null);
     });
 
-    it("同一オリジンの場合は親のオリジンを返す", () => {
+    it("明示的な parentOrigin を返す", () => {
       mockWindow = {
         self: {},
         top: {},
-        parent: {
-          location: {
-            origin: "https://example.com",
-          },
-        },
       };
 
       const service = new IframeMessageService({
         window: mockWindow,
+        parentOrigin: 'https://example.com',
         console: mockConsole,
       });
 
       expect(service.getParentOrigin()).toBe("https://example.com");
     });
 
-    it("クロスオリジンの場合はdocument.referrerから取得", () => {
+    it("locationSearch の parentOrigin から取得する", () => {
       mockWindow = {
         self: {},
         top: {},
-        get parent() {
-          throw new Error("SecurityError");
-        },
-        document: {
-          referrer: "https://parent.com/page",
+        location: {
+          search: '?parentOrigin=https%3A%2F%2Fparent.com%2Fembed',
         },
       };
 
@@ -129,15 +123,12 @@ describe("IframeMessageService", () => {
       expect(service.getParentOrigin()).toBe("https://parent.com");
     });
 
-    it("referrerがない場合はnullを返す", () => {
+    it("parentOrigin がない場合はnullを返す", () => {
       mockWindow = {
         self: {},
         top: {},
-        get parent() {
-          throw new Error("SecurityError");
-        },
-        document: {
-          referrer: "",
+        location: {
+          search: '',
         },
       };
 
@@ -205,8 +196,10 @@ describe("IframeMessageService", () => {
       });
 
       const payload: IframeMessagePayload = {
-        type: "POST_SUCCESS",
-        timestamp: Date.now(),
+        namespace: EMBED_MESSAGE_NAMESPACE,
+        version: EMBED_MESSAGE_VERSION,
+        type: "post.success",
+        payload: { timestamp: Date.now() },
       };
 
       expect(service.sendMessageToParent(payload)).toBe(false);
@@ -216,11 +209,8 @@ describe("IframeMessageService", () => {
       mockWindow = {
         self: {},
         top: {},
-        get parent() {
-          throw new Error("SecurityError");
-        },
-        document: {
-          referrer: "",
+        location: {
+          search: '',
         },
       };
 
@@ -230,13 +220,15 @@ describe("IframeMessageService", () => {
       });
 
       const payload: IframeMessagePayload = {
-        type: "POST_SUCCESS",
-        timestamp: Date.now(),
+        namespace: EMBED_MESSAGE_NAMESPACE,
+        version: EMBED_MESSAGE_VERSION,
+        type: "post.success",
+        payload: { timestamp: Date.now() },
       };
 
       expect(service.sendMessageToParent(payload)).toBe(false);
       expect(mockConsole.warn).toHaveBeenCalledWith(
-        expect.stringContaining("オリジンを特定できない")
+        expect.stringContaining("parentOrigin が未指定")
       );
     });
 
@@ -253,13 +245,16 @@ describe("IframeMessageService", () => {
 
       const service = new IframeMessageService({
         window: mockWindow,
+        parentOrigin: 'https://untrusted.com',
         console: mockConsole,
         allowedOrigins: ["https://trusted.com"],
       });
 
       const payload: IframeMessagePayload = {
-        type: "POST_SUCCESS",
-        timestamp: Date.now(),
+        namespace: EMBED_MESSAGE_NAMESPACE,
+        version: EMBED_MESSAGE_VERSION,
+        type: "post.success",
+        payload: { timestamp: Date.now() },
       };
 
       expect(service.sendMessageToParent(payload)).toBe(false);
@@ -275,20 +270,20 @@ describe("IframeMessageService", () => {
         top: {},
         parent: {
           postMessage: postMessageMock,
-          location: {
-            origin: "https://example.com",
-          },
         },
       };
 
       const service = new IframeMessageService({
         window: mockWindow,
+        parentOrigin: 'https://example.com',
         console: mockConsole,
       });
 
       const payload: IframeMessagePayload = {
-        type: "POST_SUCCESS",
-        timestamp: 12345,
+        namespace: EMBED_MESSAGE_NAMESPACE,
+        version: EMBED_MESSAGE_VERSION,
+        type: "post.success",
+        payload: { timestamp: 12345 },
       };
 
       expect(service.sendMessageToParent(payload)).toBe(true);
@@ -311,20 +306,20 @@ describe("IframeMessageService", () => {
         top: {},
         parent: {
           postMessage: postMessageMock,
-          location: {
-            origin: "https://example.com",
-          },
         },
       };
 
       const service = new IframeMessageService({
         window: mockWindow,
+        parentOrigin: 'https://example.com',
         console: mockConsole,
       });
 
       const payload: IframeMessagePayload = {
-        type: "POST_SUCCESS",
-        timestamp: 12345,
+        namespace: EMBED_MESSAGE_NAMESPACE,
+        version: EMBED_MESSAGE_VERSION,
+        type: "post.success",
+        payload: { timestamp: 12345 },
       };
 
       expect(service.sendMessageToParent(payload)).toBe(false);
@@ -336,31 +331,40 @@ describe("IframeMessageService", () => {
   });
 
   describe("notifyPostSuccess", () => {
-    it("POST_SUCCESSメッセージを送信する", () => {
+    it("post.success メッセージを送信する", () => {
       const postMessageMock = vi.fn();
       mockWindow = {
         self: {},
         top: {},
         parent: {
           postMessage: postMessageMock,
-          location: {
-            origin: "https://example.com",
-          },
         },
       };
 
       const service = new IframeMessageService({
         window: mockWindow,
+        parentOrigin: 'https://example.com',
         console: mockConsole,
       });
 
-      const result = service.notifyPostSuccess();
+      const result = service.notifyPostSuccess({
+        eventId: 'event-1',
+        replyToEventId: 'reply-1',
+        quotedEventIds: ['quote-1', 'quote-2'],
+      });
 
       expect(result).toBe(true);
       expect(postMessageMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "POST_SUCCESS",
-          timestamp: expect.any(Number),
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "post.success",
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+            eventId: 'event-1',
+            replyToEventId: 'reply-1',
+            quotedEventIds: ['quote-1', 'quote-2'],
+          }),
         }),
         "https://example.com"
       );
@@ -368,32 +372,35 @@ describe("IframeMessageService", () => {
   });
 
   describe("notifyPostError", () => {
-    it("POST_ERRORメッセージを送信する", () => {
+    it("post.error メッセージを送信する", () => {
       const postMessageMock = vi.fn();
       mockWindow = {
         self: {},
         top: {},
         parent: {
           postMessage: postMessageMock,
-          location: {
-            origin: "https://example.com",
-          },
         },
       };
 
       const service = new IframeMessageService({
         window: mockWindow,
+        parentOrigin: 'https://example.com',
         console: mockConsole,
       });
 
-      const result = service.notifyPostError("test_error");
+      const result = service.notifyPostError({ code: 'test_error', message: 'bad request' });
 
       expect(result).toBe(true);
       expect(postMessageMock).toHaveBeenCalledWith(
         expect.objectContaining({
-          type: "POST_ERROR",
-          timestamp: expect.any(Number),
-          error: "test_error",
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "post.error",
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+            code: 'test_error',
+            message: 'bad request',
+          }),
         }),
         "https://example.com"
       );

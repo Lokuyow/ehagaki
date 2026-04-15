@@ -1,8 +1,12 @@
 import { STORAGE_KEYS } from "./constants";
+import {
+    EMBED_MESSAGE_NAMESPACE,
+    EMBED_MESSAGE_VERSION,
+    getParentOriginFromSearch,
+    isEmbedMessageEnvelope,
+} from "./embedProtocol";
 import type { ParentClientCapability, ParentClientSessionData } from "./types";
 
-const PARENT_CLIENT_NAMESPACE = "ehagaki.parentClient";
-const PARENT_CLIENT_MESSAGE_VERSION = 1;
 const DEFAULT_TIMEOUT_MS = 10000;
 
 export const DEFAULT_PARENT_CLIENT_CAPABILITIES: ParentClientCapability[] = [
@@ -25,8 +29,8 @@ type ParentClientMessageType =
     | "rpc.error";
 
 interface ParentClientMessageEnvelope<TPayload = unknown> {
-    namespace: typeof PARENT_CLIENT_NAMESPACE;
-    version: typeof PARENT_CLIENT_MESSAGE_VERSION;
+    namespace: typeof EMBED_MESSAGE_NAMESPACE;
+    version: typeof EMBED_MESSAGE_VERSION;
     type: ParentClientMessageType;
     requestId?: string;
     payload?: TPayload;
@@ -90,16 +94,7 @@ function dedupeCapabilities(
 function isParentClientMessageEnvelope(
     value: unknown,
 ): value is ParentClientMessageEnvelope {
-    if (typeof value !== "object" || value === null) {
-        return false;
-    }
-
-    const message = value as Record<string, unknown>;
-    return (
-        message.namespace === PARENT_CLIENT_NAMESPACE
-        && message.version === PARENT_CLIENT_MESSAGE_VERSION
-        && typeof message.type === "string"
-    );
+    return isEmbedMessageEnvelope(value);
 }
 
 export class ParentClientSignerAdapter {
@@ -283,24 +278,24 @@ export class ParentClientAuthService {
         return this.requestRpc("signEvent", { event });
     }
 
-    async nip04Encrypt(peer: string, plaintext: string): Promise<string> {
+    async nip04Encrypt(pubkey: string, plaintext: string): Promise<string> {
         this.assertCapability("nip04.encrypt");
-        return this.requestRpc("nip04.encrypt", { peer, plaintext });
+        return this.requestRpc("nip04.encrypt", { pubkey, plaintext });
     }
 
-    async nip04Decrypt(peer: string, ciphertext: string): Promise<string> {
+    async nip04Decrypt(pubkey: string, ciphertext: string): Promise<string> {
         this.assertCapability("nip04.decrypt");
-        return this.requestRpc("nip04.decrypt", { peer, ciphertext });
+        return this.requestRpc("nip04.decrypt", { pubkey, ciphertext });
     }
 
-    async nip44Encrypt(peer: string, plaintext: string): Promise<string> {
+    async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {
         this.assertCapability("nip44.encrypt");
-        return this.requestRpc("nip44.encrypt", { peer, plaintext });
+        return this.requestRpc("nip44.encrypt", { pubkey, plaintext });
     }
 
-    async nip44Decrypt(peer: string, ciphertext: string): Promise<string> {
+    async nip44Decrypt(pubkey: string, ciphertext: string): Promise<string> {
         this.assertCapability("nip44.decrypt");
-        return this.requestRpc("nip44.decrypt", { peer, ciphertext });
+        return this.requestRpc("nip44.decrypt", { pubkey, ciphertext });
     }
 
     getSigner(): ParentClientSignerAdapter | null {
@@ -496,8 +491,8 @@ export class ParentClientAuthService {
         }
 
         const message: ParentClientMessageEnvelope = {
-            namespace: PARENT_CLIENT_NAMESPACE,
-            version: PARENT_CLIENT_MESSAGE_VERSION,
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
             type,
             ...(requestId ? { requestId } : {}),
             ...(payload !== undefined ? { payload } : {}),
@@ -519,32 +514,13 @@ export class ParentClientAuthService {
     }
 
     private resolveParentOrigin(locationSearch?: string): string | null {
-        const fromSearch = this.getParentOriginFromSearch(locationSearch);
-        if (fromSearch) return fromSearch;
-
-        const referrer = this.windowObj?.document?.referrer;
-        if (!referrer) return null;
-
-        try {
-            return new URL(referrer).origin;
-        } catch {
-            return null;
-        }
+        return this.getParentOriginFromSearch(locationSearch);
     }
 
     private getParentOriginFromSearch(locationSearch?: string): string | null {
-        const rawSearch = locationSearch ?? this.windowObj?.location?.search ?? "";
-        if (!rawSearch) return null;
-
-        const params = new URLSearchParams(rawSearch);
-        const parentOrigin = params.get("parentOrigin");
-        if (!parentOrigin) return null;
-
-        try {
-            return new URL(parentOrigin).origin;
-        } catch {
-            return null;
-        }
+        return getParentOriginFromSearch(
+            locationSearch ?? this.windowObj?.location?.search,
+        );
     }
 
     private createRequestId(): string {

@@ -24,6 +24,7 @@ export interface EditorState {
 export interface PostResult {
     success: boolean;
     error?: string;
+    eventId?: string;
 }
 
 // Editor and Utils types
@@ -104,7 +105,7 @@ export interface CleanupEditorParams {
 }
 
 // Draft types
-export interface DraftReplyQuoteData {
+export interface DraftReplyQuoteEntryData {
     mode: import('./nostr').ReplyQuoteMode;
     eventId: string;
     relayHints: string[];
@@ -115,6 +116,13 @@ export interface DraftReplyQuoteData {
     rootRelayHint: string | null;
     rootPubkey: string | null;
 }
+
+export interface DraftReplyQuoteSelectionData {
+    reply: DraftReplyQuoteEntryData | null;
+    quotes: DraftReplyQuoteEntryData[];
+}
+
+export type DraftReplyQuoteData = DraftReplyQuoteSelectionData | DraftReplyQuoteEntryData;
 
 export interface Draft {
     id: string;

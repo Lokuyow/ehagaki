@@ -29,7 +29,11 @@ type ImageImetaMap = Record<string, {
   [key: string]: any;
 }>;
 
-type ReplyQuoteNotifyOptions = { replyTo?: string; quotedEvent?: string };
+type ReplyQuoteNotifyOptions = {
+  eventId?: string;
+  replyToEventId?: string;
+  quotedEventIds?: string[];
+};
 
 // --- メインのPostManager（依存性を組み合わせ） ---
 export class PostManager {
@@ -70,9 +74,18 @@ export class PostManager {
 
   private getReplyQuoteNotifyOptions(): ReplyQuoteNotifyOptions | undefined {
     const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
-    if (!rqState) return undefined;
-    if (rqState.mode === 'reply') return { replyTo: rqState.eventId };
-    return { quotedEvent: rqState.eventId };
+    const quotedEventIds = Array.from(
+      new Set(rqState.quotes.map((quote) => quote.eventId)),
+    );
+
+    if (!rqState.reply && quotedEventIds.length === 0) {
+      return undefined;
+    }
+
+    return {
+      ...(rqState.reply ? { replyToEventId: rqState.reply.eventId } : {}),
+      ...(quotedEventIds.length > 0 ? { quotedEventIds } : {}),
+    };
   }
 
   private notifyPostFailure(error: string): PostResult {
@@ -117,7 +130,10 @@ export class PostManager {
     if (result.success) {
       this.deps.saveHashtagsToHistoryFn?.(hashtags);
       this.clearReplyQuoteAfterSuccess();
-      this.deps.iframeMessageService?.notifyPostSuccess(rqNotifyOptions);
+      this.deps.iframeMessageService?.notifyPostSuccess({
+        ...rqNotifyOptions,
+        ...(result.eventId ? { eventId: result.eventId } : {}),
+      });
       return result;
     }
 
@@ -170,16 +186,26 @@ export class PostManager {
     const inlineQuoteTags = this.deps.replyQuoteService?.extractInlineQuoteTags?.(processedContent)
       ?? new ReplyQuoteService().extractInlineQuoteTags(processedContent);
 
-    // 引用モードの場合、文末にnostr: URIを追加
+    // ストア由来の引用がある場合、文末にnostr: URIを追加
     const rqStateForUri = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
-    if (rqStateForUri?.mode === 'quote') {
+    if (rqStateForUri.quotes.length > 0) {
       const rqService = this.deps.replyQuoteService || new ReplyQuoteService();
-      const nostrUri = rqService.generateNostrUri(
-        rqStateForUri.eventId,
-        rqStateForUri.relayHints,
-        rqStateForUri.authorPubkey,
+      const existingInlineQuoteEventIds = new Set(
+        inlineQuoteTags.filter((tag) => tag[0] === 'q').map((tag) => tag[1]),
       );
-      processedContent = processedContent.trimEnd() + '\n' + nostrUri;
+      const quoteUris = rqStateForUri.quotes
+        .filter((quote) => !existingInlineQuoteEventIds.has(quote.eventId))
+        .map((quote) =>
+          rqService.generateNostrUri(
+            quote.eventId,
+            quote.relayHints,
+            quote.authorPubkey,
+          ),
+        );
+
+      if (quoteUris.length > 0) {
+        processedContent = `${processedContent.trimEnd()}\n${quoteUris.join('\n')}`.trim();
+      }
     }
 
     const validation = this.validatePost(processedContent);
@@ -207,11 +233,38 @@ export class PostManager {
       const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
       let replyQuoteTags: string[][] | undefined;
       const rqNotifyOptions = this.getReplyQuoteNotifyOptions();
-      if (rqState) {
+      if (rqState.reply || rqState.quotes.length > 0) {
         const rqService = this.deps.replyQuoteService || new ReplyQuoteService();
-        replyQuoteTags = rqState.mode === 'reply'
-          ? rqService.buildReplyTags(rqState)
-          : rqService.buildQuoteTags(rqState);
+        replyQuoteTags = [];
+
+        if (rqState.reply) {
+          replyQuoteTags.push(...rqService.buildReplyTags(rqState.reply));
+        }
+
+        const existingQuoteEventIds = new Set<string>();
+        const existingPPubkeys = new Set(
+          replyQuoteTags.filter((tag) => tag[0] === 'p').map((tag) => tag[1]),
+        );
+
+        rqState.quotes.forEach((quote) => {
+          rqService.buildQuoteTags(quote).forEach((tag) => {
+            if (tag[0] === 'q') {
+              if (existingQuoteEventIds.has(tag[1])) {
+                return;
+              }
+              existingQuoteEventIds.add(tag[1]);
+            }
+
+            if (tag[0] === 'p') {
+              if (existingPPubkeys.has(tag[1])) {
+                return;
+              }
+              existingPPubkeys.add(tag[1]);
+            }
+
+            replyQuoteTags!.push(tag);
+          });
+        });
       }
 
       // インライン引用タグをマージ（重複排除）

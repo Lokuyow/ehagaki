@@ -3,33 +3,34 @@
     import DOMPurify from "dompurify";
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
-    import {
-        replyQuoteState,
-        clearReplyQuote,
-    } from "../stores/replyQuoteStore.svelte";
+    import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
+
+    interface Props {
+        reference: ReplyQuoteState;
+        mode: ReplyQuoteMode;
+        onClear: () => void;
+    }
+
+    let { reference, mode, onClear }: Props = $props();
 
     let expanded = $state(false);
 
-    let rqState = $derived(replyQuoteState.value);
-    let isReply = $derived(rqState?.mode === "reply");
+    let isReply = $derived(mode === "reply");
 
     let modeLabel = $derived(
         isReply ? $_("replyQuote.reply_label") : $_("replyQuote.quote_label"),
     );
 
     let authorDisplay = $derived.by(() => {
-        if (!rqState?.authorPubkey) return "";
-        // リアクティブな表示名を優先
-        if (rqState.authorDisplayName) return rqState.authorDisplayName;
-        // npub短縮表示にフォールバック
-        const npub = nip19.npubEncode(rqState.authorPubkey);
+        if (!reference.authorPubkey) return "";
+        if (reference.authorDisplayName) return reference.authorDisplayName;
+        const npub = nip19.npubEncode(reference.authorPubkey);
         return npub.slice(0, 12) + "..." + npub.slice(-4);
     });
 
     let sanitizedContent = $derived.by(() => {
-        if (!rqState?.referencedEvent?.content) return "";
-        const raw = rqState.referencedEvent.content;
-        // DOMPurifyでHTMLタグを完全除去（kind:1はプレーンテキスト）
+        if (!reference.referencedEvent?.content) return "";
+        const raw = reference.referencedEvent.content;
         const clean = DOMPurify.sanitize(raw, {
             ALLOWED_TAGS: [],
             ALLOWED_ATTR: [],
@@ -38,7 +39,7 @@
     });
 
     function handleCancel() {
-        clearReplyQuote();
+        onClear();
         expanded = false;
     }
 
@@ -47,64 +48,62 @@
     }
 </script>
 
-{#if rqState}
-    <div
-        class="reply-quote-preview"
-        class:reply-preview={isReply}
-        class:quote-preview={!isReply}
-    >
-        <div class="preview-header">
-            <div class="preview-meta">
-                <Button
-                    className="preview-label"
-                    variant="default"
-                    shape="square"
-                    onClick={sanitizedContent ? toggleExpand : undefined}
-                    aria-expanded={expanded}
-                    ariaLabel={expanded
-                        ? $_("replyQuote.collapse")
-                        : $_("replyQuote.expand")}
-                >
-                    <div
-                        class="preview-mode-icon svg-icon"
-                        class:reply-icon={isReply}
-                        class:quote-icon={!isReply}
-                    ></div>
-                    <span class="mode-text">{modeLabel}</span>
-                </Button>
-                {#if authorDisplay}
-                    <span class="author-name">{authorDisplay}</span>
-                {/if}
-            </div>
+<div
+    class="reply-quote-preview"
+    class:reply-preview={isReply}
+    class:quote-preview={!isReply}
+>
+    <div class="preview-header">
+        <div class="preview-meta">
             <Button
-                className="cancel-button"
+                className="preview-label"
                 variant="default"
                 shape="square"
-                onClick={handleCancel}
-                title={$_("replyQuote.cancel")}
-                ariaLabel={$_("replyQuote.cancel")}
+                onClick={sanitizedContent ? toggleExpand : undefined}
+                aria-expanded={expanded}
+                ariaLabel={expanded
+                    ? $_("replyQuote.collapse")
+                    : $_("replyQuote.expand")}
             >
-                <div class="close-icon svg-icon"></div>
+                <div
+                    class="preview-mode-icon svg-icon"
+                    class:reply-icon={isReply}
+                    class:quote-icon={!isReply}
+                ></div>
+                <span class="mode-text">{modeLabel}</span>
             </Button>
-        </div>
-
-        {#if rqState.loading}
-            <div class="preview-loading">
-                <span class="loading-text">{$_("replyQuote.loading")}</span>
-            </div>
-        {:else if rqState.error}
-            <div class="preview-error">
-                <span>{$_("replyQuote.fetch_error")}</span>
-            </div>
-        {:else if sanitizedContent}
-            {#if expanded}
-                <div class="preview-content">
-                    <p class="content-text">{sanitizedContent}</p>
-                </div>
+            {#if authorDisplay}
+                <span class="author-name">{authorDisplay}</span>
             {/if}
-        {/if}
+        </div>
+        <Button
+            className="cancel-button"
+            variant="default"
+            shape="square"
+            onClick={handleCancel}
+            title={$_("replyQuote.cancel")}
+            ariaLabel={$_("replyQuote.cancel")}
+        >
+            <div class="close-icon svg-icon"></div>
+        </Button>
     </div>
-{/if}
+
+    {#if reference.loading}
+        <div class="preview-loading">
+            <span class="loading-text">{$_("replyQuote.loading")}</span>
+        </div>
+    {:else if reference.error}
+        <div class="preview-error">
+            <span>{$_("replyQuote.fetch_error")}</span>
+        </div>
+    {:else if sanitizedContent}
+        {#if expanded}
+            <div class="preview-content">
+                <p class="content-text">{sanitizedContent}</p>
+            </div>
+        {/if}
+    {/if}
+</div>
 
 <style>
     .reply-quote-preview {

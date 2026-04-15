@@ -4,6 +4,39 @@
 import { nip19 } from 'nostr-tools';
 import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { ReplyQuoteQueryResult } from './types';
+
+function decodeReplyQuoteValue(value: string): {
+  eventId: string;
+  relayHints: string[];
+  authorPubkey: string | null;
+} | null {
+  try {
+    const decoded = nip19.decode(value);
+
+    if (decoded.type === 'nevent') {
+      const data = decoded.data as nip19.EventPointer;
+      return {
+        eventId: data.id,
+        relayHints: data.relays ? [...data.relays] : [],
+        authorPubkey: data.author ?? null,
+      };
+    }
+
+    if (decoded.type === 'note') {
+      return {
+        eventId: decoded.data as string,
+        relayHints: [],
+        authorPubkey: null,
+      };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('リプライ/引用パラメータのデコードに失敗:', error);
+    return null;
+  }
+}
+
 export function getContentFromUrlQuery(): string | null {
   if (typeof window === 'undefined' || !window.location) return null;
 
@@ -13,10 +46,8 @@ export function getContentFromUrlQuery(): string | null {
   if (!content) return null;
 
   try {
-    // URLエンコードされたテキストをデコード
-    const decoded = decodeURIComponent(content);
     // 改行コードを統一
-    return normalizeLineBreaks(decoded);
+    return normalizeLineBreaks(content);
   } catch (error) {
     console.error('URLクエリパラメータのデコードに失敗:', error);
     return null;
@@ -31,41 +62,31 @@ export function getReplyQuoteFromUrlQuery(): ReplyQuoteQueryResult | null {
   if (typeof window === 'undefined' || !window.location) return null;
 
   const urlParams = new URLSearchParams(window.location.search);
-  const replyValue = urlParams.get('reply');
-  const quoteValue = urlParams.get('quote');
+  const replyValues = urlParams.getAll('reply');
+  const quoteValues = urlParams.getAll('quote');
 
-  const value = replyValue || quoteValue;
-  const mode = replyValue ? 'reply' : quoteValue ? 'quote' : null;
+  const reply = replyValues
+    .map((value) => decodeReplyQuoteValue(value))
+    .find((value) => value !== null) ?? null;
 
-  if (!value || !mode) return null;
+  const seenQuoteIds = new Set<string>();
+  const quotes = quoteValues
+    .map((value) => decodeReplyQuoteValue(value))
+    .filter((value): value is NonNullable<typeof value> => value !== null)
+    .filter((value) => {
+      if (seenQuoteIds.has(value.eventId)) {
+        return false;
+      }
+      seenQuoteIds.add(value.eventId);
+      return true;
+    });
 
-  try {
-    const decoded = nip19.decode(value);
+  if (!reply && quotes.length === 0) return null;
 
-    if (decoded.type === 'nevent') {
-      const data = decoded.data as nip19.EventPointer;
-      return {
-        mode,
-        eventId: data.id,
-        relayHints: data.relays ? [...data.relays] : [],
-        authorPubkey: data.author ?? null,
-      };
-    }
-
-    if (decoded.type === 'note') {
-      return {
-        mode,
-        eventId: decoded.data as string,
-        relayHints: [],
-        authorPubkey: null,
-      };
-    }
-
-    return null;
-  } catch (error) {
-    console.error('リプライ/引用パラメータのデコードに失敗:', error);
-    return null;
-  }
+  return {
+    reply,
+    quotes,
+  };
 }
 
 /**
@@ -79,16 +100,12 @@ export function hasReplyQuoteQueryParam(): boolean {
 }
 
 /**
- * すべての不要なクエリパラメータをクリーンアップ
- * 空のcontentパラメータや想定外のパラメータを削除してURLを整理
+ * 消費済みの外部入力クエリパラメータだけをクリーンアップ
  */
 export function cleanupAllQueryParams(): void {
   if (typeof window === 'undefined' || !window.location) return;
 
   const urlParams = new URLSearchParams(window.location.search);
-
-  // 許可されたパラメータのリスト（将来的に追加の場合はここに追加）
-  const allowedParams: string[] = [];
 
   let needsCleanup = false;
 
@@ -107,17 +124,6 @@ export function cleanupAllQueryParams(): void {
     urlParams.delete('quote');
     needsCleanup = true;
   }
-
-  // 許可されていないパラメータを削除
-  const paramsToDelete: string[] = [];
-  urlParams.forEach((_, key) => {
-    if (!allowedParams.includes(key)) {
-      paramsToDelete.push(key);
-      needsCleanup = true;
-    }
-  });
-
-  paramsToDelete.forEach(key => urlParams.delete(key));
 
   // クリーンアップが必要な場合のみURLを更新
   if (needsCleanup) {
