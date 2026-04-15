@@ -257,10 +257,10 @@
         min-width: 0;
         max-width: min(100%, 280px);
         padding: 8px 12px;
-        border-radius: 12px;
+        /* border-radius: 12px; */
         background: color-mix(in srgb, var(--dialog) 82%, var(--base) 18%);
         color: var(--text);
-        font-size: 0.875rem;
+        font-size: 1.125rem;
         line-height: 1.35;
         border: 1px solid var(--border-hr);
     }
@@ -276,33 +276,41 @@
     }
 
     .compact-message.success {
-        color: hsl(210, 60%, 34%);
+        background: var(--balloon-success-bg);
+        color: var(--balloon-success-color);
+        border-color: var(--balloon-success-border);
     }
 
     .compact-message.success::before {
-        background: hsl(210, 48%, 54%);
+        background: var(--balloon-success-color);
     }
 
     .compact-message.error,
     .compact-message.warning {
-        color: hsl(351, 70%, 34%);
+        background: var(--balloon-error-bg);
+        color: var(--balloon-error-color);
+        border-color: var(--balloon-error-border);
     }
 
     .compact-message.error::before,
     .compact-message.warning::before {
-        background: hsl(351, 75%, 52%);
+        background: var(--balloon-error-color);
     }
 
     .compact-message.tips {
-        color: hsl(270, 55%, 34%);
+        background: var(--balloon-tips-bg);
+        color: var(--balloon-tips-color);
+        border-color: var(--balloon-tips-border);
     }
 
     .compact-message.tips::before {
-        background: hsl(270, 52%, 52%);
+        background: var(--balloon-tips-color);
     }
 
     .compact-message.info {
-        color: hsl(123, 40%, 30%);
+        background: var(--balloon-info-bg);
+        color: var(--balloon-info-color);
+        border-color: var(--balloon-info-border);
     }
 
     .compact-message.info::before {
