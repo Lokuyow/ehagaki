@@ -35,6 +35,11 @@ const mockState = vi.hoisted(() => {
     }));
     const runAppInitializationBootstrap = vi.fn((params: {
         markLocaleInitialized: () => void;
+        handleAuthenticated: (pubkeyHex: string) => Promise<void>;
+        getExternalInputBootstrapParams: () => {
+            rxNostr?: unknown;
+            relayProfileService?: unknown;
+        };
         resolveAuthenticatedSession?: (currentResult: {
             hasAuth: boolean;
             pubkeyHex?: string;
@@ -77,6 +82,11 @@ const mockState = vi.hoisted(() => {
         syncAccountStores,
         accountManager,
         bootstrapParams: null as {
+            handleAuthenticated: (pubkeyHex: string) => Promise<void>;
+            getExternalInputBootstrapParams: () => {
+                rxNostr?: unknown;
+                relayProfileService?: unknown;
+            };
             resolveAuthenticatedSession?: (currentResult: {
                 hasAuth: boolean;
                 pubkeyHex?: string;
@@ -284,6 +294,30 @@ describe('App parentClient integration', () => {
             hasAuth: true,
             pubkeyHex: PARENT_CLIENT_PUBKEY,
         });
+    });
+
+    it('external input bootstrap params は認証後の最新 rxNostr と relayProfileService を返す', async () => {
+        const latestSession = {
+            rxNostr: { tag: 'latest-rxnostr' },
+            relayProfileService: {
+                getRelayManager: () => ({
+                    loadRelayConfigForUI: vi.fn(),
+                }),
+            },
+        };
+        mockState.completePostAuthBootstrap.mockResolvedValue(latestSession as any);
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.bootstrapParams).toBeTruthy();
+        });
+
+        await mockState.bootstrapParams?.handleAuthenticated(PARENT_CLIENT_PUBKEY);
+        const externalInputParams = mockState.bootstrapParams?.getExternalInputBootstrapParams();
+
+        expect(externalInputParams?.rxNostr).toEqual(latestSession.rxNostr);
+        expect(externalInputParams?.relayProfileService).toEqual(latestSession.relayProfileService);
     });
 
     it('remote login を受け取ると silent parentClient 認証を行って post-auth bootstrap する', async () => {

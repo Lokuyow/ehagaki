@@ -571,10 +571,10 @@
       });
     }
 
-    const externalInputBootstrapParams: Omit<
+    const getExternalInputBootstrapParams = (): Omit<
       RunExternalInputBootstrapParams,
       "sharedError"
-    > = {
+    > => ({
       sharedMediaStore,
       isSharedMediaProcessed,
       markSharedMediaProcessed,
@@ -590,7 +590,7 @@
       rxNostr,
       relayConfig: relayConfigStore.value,
       locationHref: window.location.href,
-    };
+    });
 
     void runAppInitializationBootstrap({
       reloadSettings: () => settingsStore.reload(),
@@ -607,7 +607,7 @@
       stopProfileLoading: () => isLoadingProfileStore.set(false),
       refreshAccountList,
       markAuthInitialized: () => authService.markAuthInitialized(),
-      getExternalInputBootstrapParams: () => externalInputBootstrapParams,
+      getExternalInputBootstrapParams,
       console,
     }).finally(() => {
       isBootstrappingApp = false;
