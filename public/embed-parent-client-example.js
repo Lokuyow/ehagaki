@@ -29,6 +29,9 @@ const KNOWN_CAPABILITIES = new Set([
 ]);
 
 const appUrlInput = document.getElementById("app-url");
+const initialLocaleSelect = document.getElementById("initial-locale");
+const initialThemeSelect = document.getElementById("initial-theme");
+const initialHideMascotInput = document.getElementById("initial-hide-mascot");
 const parentOriginInput = document.getElementById("parent-origin");
 const iframeSrcDisplay = document.getElementById("iframe-src");
 const eventLog = document.getElementById("event-log");
@@ -876,6 +879,25 @@ function getDefaultAppUrl() {
     return new URL(servedFromPublicDirectory ? "../" : "./", currentUrl).toString();
 }
 
+function normalizeInitialLocale(value) {
+    return value === "ja" || value === "en" ? value : "";
+}
+
+function normalizeInitialTheme(value) {
+    return value === "light" || value === "dark" ? value : "";
+}
+
+function syncInitialSettingsControlsFromAppUrl() {
+    try {
+        const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
+        initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("embedLocale"));
+        initialThemeSelect.value = normalizeInitialTheme(url.searchParams.get("embedTheme"));
+        initialHideMascotInput.checked = url.searchParams.get("embedShowMascot") === "false";
+    } catch {
+        // app-url の入力途中など一時的な不正値では既存 UI を維持する
+    }
+}
+
 function getTargetOrigin() {
     return new URL(appUrlInput.value).origin;
 }
@@ -886,6 +908,24 @@ function buildEmbedUrl() {
     url.searchParams.delete("content");
     url.searchParams.delete("reply");
     url.searchParams.delete("quote");
+    url.searchParams.delete("embedLocale");
+    url.searchParams.delete("embedTheme");
+    url.searchParams.delete("embedShowMascot");
+
+    const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
+    const initialTheme = normalizeInitialTheme(initialThemeSelect.value);
+
+    if (initialLocale) {
+        url.searchParams.set("embedLocale", initialLocale);
+    }
+
+    if (initialTheme) {
+        url.searchParams.set("embedTheme", initialTheme);
+    }
+
+    if (initialHideMascotInput.checked) {
+        url.searchParams.set("embedShowMascot", "false");
+    }
 
     const content = getComposerContentValue();
     if (content !== null) {
@@ -1459,6 +1499,7 @@ async function announceLogout() {
 
 appUrlInput.value = getDefaultAppUrl();
 parentOriginInput.value = window.location.origin;
+syncInitialSettingsControlsFromAppUrl();
 const storedParentSession = loadParentSession();
 if (storedParentSession) {
     setParentSession(storedParentSession);
@@ -1474,6 +1515,17 @@ if (storedParentSession) {
 renderTimeline();
 updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
+appUrlInput.addEventListener("input", () => {
+    syncInitialSettingsControlsFromAppUrl();
+    updateDisplayedEmbedUrl();
+});
+appUrlInput.addEventListener("change", () => {
+    syncInitialSettingsControlsFromAppUrl();
+    updateDisplayedEmbedUrl();
+});
+initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrl);
+initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrl);
+initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrl);
 composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
 loginNip07Button.addEventListener("click", () => {
     void handleNip07Login();

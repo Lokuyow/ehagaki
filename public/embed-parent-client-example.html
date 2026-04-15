@@ -108,6 +108,26 @@
             gap: 8px;
         }
 
+        .setting-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .checkbox-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .checkbox-field input {
+            width: auto;
+            margin: 0;
+        }
+
         .field label {
             font-size: 0.86rem;
             font-weight: 600;
@@ -115,12 +135,14 @@
         }
 
         input,
+        select,
         textarea,
         button {
             font: inherit;
         }
 
         input,
+        select,
         textarea {
             width: 100%;
             padding: 12px 14px;
@@ -363,6 +385,10 @@
                 grid-template-columns: 1fr;
             }
 
+            .setting-grid {
+                grid-template-columns: 1fr;
+            }
+
             .viewer {
                 min-height: 560px;
             }
@@ -428,6 +454,38 @@
                 <input id="app-url" type="url" spellcheck="false">
                 <p class="small">`embedLocale=en` や `embedTheme=dark` のような埋め込み初期設定クエリを付けてもそのまま保持されます。これらは embed
                     初回だけ反映されます。</p>
+            </div>
+
+            <div class="card">
+                <strong>初回設定テスト</strong>
+
+                <div class="setting-grid">
+                    <div class="field">
+                        <label for="initial-locale">locale</label>
+                        <select id="initial-locale">
+                            <option value="">未指定</option>
+                            <option value="ja">ja</option>
+                            <option value="en">en</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="initial-theme">theme</label>
+                        <select id="initial-theme">
+                            <option value="">未指定</option>
+                            <option value="light">light</option>
+                            <option value="dark">dark</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label class="checkbox-field" for="initial-hide-mascot">
+                    <input id="initial-hide-mascot" type="checkbox">
+                    <span>左上のマスコットを非表示にする</span>
+                </label>
+
+                <p class="small">ここで指定した値は iframe 再読み込み時に `embedLocale` / `embedTheme` / `embedShowMascot=false` として埋め込み
+                    URL に反映されます。初回設定の試験を手入力なしで行えます。</p>
             </div>
 
             <div class="field">
