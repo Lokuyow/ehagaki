@@ -910,6 +910,9 @@
     () => $_,
     () => localeInitialized,
   );
+  const showHeaderBalloonMessage = $derived(
+    settingsStore.showMascot && settingsStore.showBalloonMessage,
+  );
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
   async function handleRefreshRelaysAndProfile() {
@@ -940,11 +943,14 @@
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
           onShowDraftList={draftListDialog.open}
-          balloonMessage={settingsStore.showBalloonMessage
+          balloonMessage={showHeaderBalloonMessage
             ? balloon.finalMessage
             : null}
+          compactMessage={showHeaderBalloonMessage
+            ? null
+            : balloon.compactMessage}
           showMascot={settingsStore.showMascot}
-          showBalloonMessage={settingsStore.showBalloonMessage}
+          showBalloonMessage={showHeaderBalloonMessage}
         />
         {#if replyQuoteState.value.reply}
           <ReplyQuotePreview

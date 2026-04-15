@@ -33,8 +33,35 @@ interface UseBalloonMessageOptions {
 interface UseBalloonMessageReturn {
     /** 優先度を適用した最終バルーンメッセージ（null = 非表示） */
     readonly finalMessage: BalloonMessage | null;
+    /** フレーバーテキストを除いた簡素表示用メッセージ */
+    readonly compactMessage: BalloonMessage | null;
     /** Tipsメッセージを表示 */
     showTips: () => void;
+}
+
+interface CompactMessageParams {
+    serviceWorkerErrorMessage: BalloonMessage | null;
+    debugMessage: BalloonMessage | null;
+    infoMessage: BalloonMessage | null;
+    errorMessage: BalloonMessage | null;
+    successMessage: BalloonMessage | null;
+}
+
+export function selectCompactBalloonMessage({
+    serviceWorkerErrorMessage,
+    debugMessage,
+    infoMessage,
+    errorMessage,
+    successMessage,
+}: CompactMessageParams): BalloonMessage | null {
+    return (
+        serviceWorkerErrorMessage ||
+        debugMessage ||
+        (infoMessage?.type === "info" ? null : infoMessage) ||
+        errorMessage ||
+        successMessage ||
+        null
+    );
 }
 
 /**
@@ -85,6 +112,16 @@ export function useBalloonMessage(
         errorMessage ||
         successMessage ||
         null
+    );
+
+    const compactMessage = $derived(
+        selectCompactBalloonMessage({
+            serviceWorkerErrorMessage,
+            debugMessage,
+            infoMessage,
+            errorMessage,
+            successMessage,
+        })
     );
 
     function scheduleInfoHide() {
@@ -266,6 +303,7 @@ export function useBalloonMessage(
 
     return {
         get finalMessage() { return finalMessage; },
+        get compactMessage() { return compactMessage; },
         showTips,
     };
 }

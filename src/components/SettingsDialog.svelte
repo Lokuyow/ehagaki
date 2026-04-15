@@ -65,6 +65,9 @@
 
     let clientTagEnabled = $state(settingsStore.clientTagEnabled);
     let darkMode = $state(darkModeStore.value);
+    let hideMascot = $state(!settingsStore.showMascot);
+    let hideFlavorText = $state(!settingsStore.showBalloonMessage);
+    let effectiveHideFlavorText = $derived(hideMascot || hideFlavorText);
 
     // Store派生値
     let swVersion = $derived(swVersionStore.value);
@@ -92,6 +95,8 @@
         settingsStore.reload();
         clientTagEnabled = settingsStore.clientTagEnabled;
         darkMode = darkModeStore.value;
+        hideMascot = !settingsStore.showMascot;
+        hideFlavorText = !settingsStore.showBalloonMessage;
         fetchSwVersion();
         if (authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
@@ -105,6 +110,18 @@
     $effect(() => {
         if (clientTagEnabled !== settingsStore.clientTagEnabled) {
             settingsStore.clientTagEnabled = clientTagEnabled;
+        }
+    });
+
+    $effect(() => {
+        if (!hideMascot !== settingsStore.showMascot) {
+            settingsStore.showMascot = !hideMascot;
+        }
+    });
+
+    $effect(() => {
+        if (!hideFlavorText !== settingsStore.showBalloonMessage) {
+            settingsStore.showBalloonMessage = !hideFlavorText;
         }
     });
 
@@ -333,6 +350,64 @@
             </div>
         </div>
 
+        <div class="setting-section">
+            <div class="setting-row setting-row-with-note">
+                <div class="setting-label-group">
+                    <span class="setting-label"
+                        >{$_("settingsDialog.hide_mascot_label") ||
+                            "左上マスコットを非表示"}</span
+                    >
+                    <span class="setting-note"
+                        >{$_("settingsDialog.hide_mascot_note") ||
+                            "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。"}</span
+                    >
+                </div>
+                <div class="setting-control">
+                    <Switch.Root class="bui-switch" bind:checked={hideMascot}>
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
+                </div>
+            </div>
+        </div>
+
+        <div class="setting-section">
+            <div class="setting-row setting-row-with-note">
+                <div class="setting-label-group">
+                    <span class="setting-label"
+                        >{$_("settingsDialog.hide_flavor_text_label") ||
+                            "フレーバーテキストを非表示"}</span
+                    >
+                    <span class="setting-note"
+                        >{hideMascot
+                            ? $_(
+                                  "settingsDialog.hide_flavor_text_note_included",
+                              ) ||
+                              "マスコットを非表示にしている間は、この設定も自動でオンになります。"
+                            : $_("settingsDialog.hide_flavor_text_note") ||
+                              "オンにすると info のフレーバーテキストだけを隠します。success / error / tips は簡素な表示で残ります。"}</span
+                    >
+                </div>
+                <div class="setting-control">
+                    {#if hideMascot}
+                        <Switch.Root
+                            class="bui-switch"
+                            checked={effectiveHideFlavorText}
+                            disabled
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    {:else}
+                        <Switch.Root
+                            class="bui-switch"
+                            bind:checked={hideFlavorText}
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    {/if}
+                </div>
+            </div>
+        </div>
+
         <!-- client tag オプトアウト設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
@@ -503,6 +578,24 @@
         font-size: 1rem;
     }
 
+    .setting-row-with-note {
+        align-items: flex-start;
+    }
+
+    .setting-label-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .setting-note {
+        font-size: 0.875rem;
+        line-height: 1.45;
+        color: var(--text-light);
+        white-space: pre-wrap;
+    }
+
     .rotate-right-icon {
         mask-image: url("/icons/rotate-right-solid-full.svg");
     }
@@ -523,6 +616,10 @@
     }
     :global(.bui-switch[data-state="checked"]) {
         opacity: 1;
+    }
+    :global(.bui-switch[data-disabled]) {
+        cursor: not-allowed;
+        opacity: 0.5;
     }
     :global(.bui-switch-thumb) {
         position: absolute;

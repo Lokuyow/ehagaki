@@ -12,6 +12,7 @@
         onSaveDraft: () => boolean;
         onShowDraftList: () => void;
         balloonMessage?: BalloonMessageType | null;
+        compactMessage?: BalloonMessageType | null;
         showMascot?: boolean;
         showBalloonMessage?: boolean;
     }
@@ -21,6 +22,7 @@
         onSaveDraft,
         onShowDraftList,
         balloonMessage = null,
+        compactMessage = null,
         showMascot = true,
         showBalloonMessage = true,
     }: Props = $props();
@@ -82,6 +84,13 @@
                 type={balloonMessage.type}
                 message={balloonMessage.message}
             />
+        {/if}
+        {#if (!showBalloonMessage || !showMascot) && compactMessage}
+            <div class="compact-message {compactMessage.type}">
+                <span class="compact-message-text"
+                    >{compactMessage.message}</span
+                >
+            </div>
         {/if}
     </div>
     <div class="post-actions">
@@ -218,6 +227,8 @@
         align-items: center;
         height: 66px;
         width: 100%;
+        min-width: 0;
+        gap: 8px;
     }
 
     a.site-icon-link {
@@ -233,6 +244,69 @@
         width: 60px;
         height: 60px;
         margin-top: auto;
+    }
+
+    .compact-message {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        max-width: min(100%, 280px);
+        padding: 8px 12px;
+        border-radius: 12px;
+        background: color-mix(in srgb, var(--dialog) 82%, var(--base) 18%);
+        color: var(--text);
+        font-size: 0.875rem;
+        line-height: 1.35;
+        border: 1px solid var(--border-hr);
+    }
+
+    .compact-message::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--theme);
+        flex-shrink: 0;
+        margin-right: 8px;
+    }
+
+    .compact-message.success {
+        color: hsl(210, 60%, 34%);
+    }
+
+    .compact-message.success::before {
+        background: hsl(210, 48%, 54%);
+    }
+
+    .compact-message.error,
+    .compact-message.warning {
+        color: hsl(351, 70%, 34%);
+    }
+
+    .compact-message.error::before,
+    .compact-message.warning::before {
+        background: hsl(351, 75%, 52%);
+    }
+
+    .compact-message.tips {
+        color: hsl(270, 55%, 34%);
+    }
+
+    .compact-message.tips::before {
+        background: hsl(270, 52%, 52%);
+    }
+
+    .compact-message.info {
+        color: hsl(123, 40%, 30%);
+    }
+
+    .compact-message.info::before {
+        background: hsl(123, 40%, 44%);
+    }
+
+    .compact-message-text {
+        min-width: 0;
+        overflow-wrap: anywhere;
     }
 
     .post-actions {

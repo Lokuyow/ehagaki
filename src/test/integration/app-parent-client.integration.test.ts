@@ -244,6 +244,7 @@ vi.mock('../../lib/nip46Service', () => ({
 vi.mock('../../lib/hooks/useBalloonMessage.svelte', () => ({
     useBalloonMessage: vi.fn(() => ({
         finalMessage: null,
+        compactMessage: null,
         showTips: vi.fn(),
     })),
 }));

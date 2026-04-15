@@ -72,7 +72,9 @@
 - これらの値は embed 初回だけ適用されます
 - ユーザーがすでに自分で変更した設定は、初回埋め込み時でも親ページから上書きされません
 - ユーザーが設定変更した後の再訪問では、親ページの埋め込み設定で再上書きされません
-- `embedShowMascot` と `embedShowBalloonMessage` は現在も埋め込み初期値として使えますが、ユーザーが変更する UI は今後設定ダイアログに追加予定です
+- `embedShowMascot=false` のときは、フレーバーテキストもあわせて非表示になります
+- `embedShowBalloonMessage=false` のときは info のフレーバーテキストだけを隠します。success / error / tips は簡素な表示で残ります
+- `embedShowMascot` と `embedShowBalloonMessage` は設定ダイアログからユーザーが後で変更できます
 - 起動後の live 同期は行いません。初期値だけを渡したいときに使ってください
 
 ## 2. リプライ / 複数引用状態で起動する
