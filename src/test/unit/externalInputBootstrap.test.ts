@@ -1,0 +1,212 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const mockState = vi.hoisted(() => {
+    const state = {
+        resolveReferencedEvent: null as ((value: any) => void) | null,
+        resolveProfile: null as ((value: any) => void) | null,
+        hasReplyQuoteQueryParam: vi.fn(() => true),
+        getReplyQuoteFromUrlQuery: vi.fn(() => ({
+            reply: {
+                eventId: 'event-1',
+                relayHints: ['wss://hint-relay.example.com'],
+            },
+            quotes: [],
+        })),
+        hasContentQueryParam: vi.fn(() => false),
+        getContentFromUrlQuery: vi.fn(() => null),
+        cleanupAllQueryParams: vi.fn(),
+        fetchReferencedEvent: vi.fn(() => new Promise((resolve) => {
+            state.resolveReferencedEvent = resolve;
+        })),
+        extractThreadInfo: vi.fn(() => ({
+            rootEventId: null,
+            rootRelayHint: null,
+            rootPubkey: null,
+        })),
+        checkIfOpenedFromShare: vi.fn(() => false),
+        checkServiceWorkerStatus: vi.fn().mockResolvedValue({
+            isReady: true,
+            hasController: true,
+        }),
+        testServiceWorkerCommunication: vi.fn().mockResolvedValue(true),
+        getSharedMediaWithFallback: vi.fn().mockResolvedValue(null),
+        fetchProfileRealtime: vi.fn().mockResolvedValue(null),
+    };
+
+    return state;
+});
+
+vi.mock('../../lib/urlQueryHandler', () => ({
+    getContentFromUrlQuery: mockState.getContentFromUrlQuery,
+    hasContentQueryParam: mockState.hasContentQueryParam,
+    cleanupAllQueryParams: mockState.cleanupAllQueryParams,
+    getReplyQuoteFromUrlQuery: mockState.getReplyQuoteFromUrlQuery,
+    hasReplyQuoteQueryParam: mockState.hasReplyQuoteQueryParam,
+}));
+
+vi.mock('../../lib/replyQuoteService', () => ({
+    ReplyQuoteService: vi.fn(() => ({
+        fetchReferencedEvent: mockState.fetchReferencedEvent,
+        extractThreadInfo: mockState.extractThreadInfo,
+    })),
+}));
+
+vi.mock('../../lib/shareHandler', () => ({
+    checkIfOpenedFromShare: mockState.checkIfOpenedFromShare,
+}));
+
+vi.mock('../../lib/utils/swCommunication', () => ({
+    checkServiceWorkerStatus: mockState.checkServiceWorkerStatus,
+    testServiceWorkerCommunication: mockState.testServiceWorkerCommunication,
+    getSharedMediaWithFallback: mockState.getSharedMediaWithFallback,
+}));
+
+import { runExternalInputBootstrap } from '../../lib/bootstrap/externalInputBootstrap';
+
+function createParams() {
+    return {
+        sharedError: null,
+        sharedMediaStore: {
+            files: [],
+            metadata: undefined,
+            received: false,
+        },
+        isSharedMediaProcessed: vi.fn(() => false),
+        markSharedMediaProcessed: vi.fn(),
+        setSharedMediaError: vi.fn(),
+        consumeFirstVisitFlag: vi.fn(() => false),
+        showWelcomeDialog: vi.fn(),
+        updateUrlQueryContentStore: vi.fn(),
+        setReplyQuote: vi.fn(),
+        updateReferencedEvent: vi.fn(),
+        updateAuthorDisplayName: vi.fn(),
+        setReplyQuoteError: vi.fn(),
+        relayProfileService: {
+            fetchProfileRealtime: mockState.fetchProfileRealtime,
+        },
+        rxNostr: { tag: 'rxnostr' },
+        relayConfig: null,
+        locationHref: 'http://localhost/?reply=test',
+    };
+}
+
+describe('runExternalInputBootstrap', () => {
+    beforeEach(() => {
+        vi.clearAllMocks();
+        mockState.resolveReferencedEvent = null;
+        mockState.resolveProfile = null;
+        mockState.hasReplyQuoteQueryParam.mockReturnValue(true);
+        mockState.getReplyQuoteFromUrlQuery.mockReturnValue({
+            reply: {
+                eventId: 'event-1',
+                relayHints: ['wss://hint-relay.example.com'],
+            },
+            quotes: [],
+        });
+        mockState.hasContentQueryParam.mockReturnValue(false);
+        mockState.getContentFromUrlQuery.mockReturnValue(null);
+        mockState.checkIfOpenedFromShare.mockReturnValue(false);
+        mockState.fetchProfileRealtime.mockResolvedValue(null);
+    });
+
+    it('reply/quote の参照イベント取得が完了するまで完了しない', async () => {
+        const params = createParams();
+        let resolved = false;
+
+        const bootstrapPromise = runExternalInputBootstrap(params as never).then(() => {
+            resolved = true;
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(params.setReplyQuote).toHaveBeenCalledWith({
+            reply: {
+                eventId: 'event-1',
+                relayHints: ['wss://hint-relay.example.com'],
+            },
+            quotes: [],
+        });
+        expect(mockState.fetchReferencedEvent).toHaveBeenCalledWith(
+            'event-1',
+            ['wss://hint-relay.example.com'],
+            params.rxNostr,
+            null,
+        );
+        expect(resolved).toBe(false);
+        expect(mockState.cleanupAllQueryParams).not.toHaveBeenCalled();
+
+        const event = {
+            id: 'event-1',
+            pubkey: 'author-pubkey',
+            created_at: 1,
+            kind: 1,
+            tags: [],
+            content: 'hello',
+            sig: 'sig',
+        };
+        mockState.resolveReferencedEvent?.(event);
+
+        await bootstrapPromise;
+
+        expect(params.updateReferencedEvent).toHaveBeenCalledWith(
+            'event-1',
+            event,
+            {
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+            },
+        );
+        expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
+        expect(resolved).toBe(true);
+    });
+
+    it('プロフィール取得に relay hint を渡し、displayName 更新まで待つ', async () => {
+        const params = createParams();
+        let resolved = false;
+        mockState.fetchProfileRealtime.mockImplementationOnce(() => new Promise((resolve) => {
+            mockState.resolveProfile = resolve;
+        }));
+
+        const bootstrapPromise = runExternalInputBootstrap(params as never).then(() => {
+            resolved = true;
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        const event = {
+            id: 'event-1',
+            pubkey: 'author-pubkey',
+            created_at: 1,
+            kind: 1,
+            tags: [],
+            content: 'hello',
+            sig: 'sig',
+        };
+        mockState.resolveReferencedEvent?.(event);
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mockState.fetchProfileRealtime).toHaveBeenCalledWith('author-pubkey', {
+            additionalRelays: ['wss://hint-relay.example.com'],
+        });
+        expect(params.updateAuthorDisplayName).not.toHaveBeenCalled();
+        expect(resolved).toBe(false);
+
+        mockState.resolveProfile?.({
+            name: 'Author Name',
+            displayName: '',
+            picture: '',
+            npub: 'npub1author',
+            nprofile: 'nprofile1author',
+        });
+
+        await bootstrapPromise;
+
+        expect(params.updateAuthorDisplayName).toHaveBeenCalledWith('event-1', 'Author Name');
+        expect(resolved).toBe(true);
+    });
+});

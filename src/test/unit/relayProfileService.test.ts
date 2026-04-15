@@ -38,6 +38,12 @@ function createMockProfileManager(): ProfileManager {
             npub: 'npub1test',
             nprofile: 'nprofile1test'
         }),
+        fetchProfileDataNetworkOnly: vi.fn().mockResolvedValue({
+            name: 'Realtime User',
+            picture: 'https://example.com/pic.jpg',
+            npub: 'npub1realtime',
+            nprofile: 'nprofile1realtime'
+        }),
         getFromLocalStorage: vi.fn().mockReturnValue(null),
     } as unknown as ProfileManager;
 }
@@ -178,6 +184,30 @@ describe('RelayProfileService', () => {
                 forceRemote: false,
                 writeRelays: ['wss://write.relay.com/'],
                 additionalRelays: ['wss://write.relay.com/', 'wss://read.relay.com/']
+            });
+        });
+    });
+
+    describe('fetchProfileRealtime', () => {
+        it('relay hint を既存のプロフィール取得リレーにマージして network-only 取得する', async () => {
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockReturnValue({
+                writeRelays: ['wss://write.relay.com/'],
+                additionalRelays: ['wss://bootstrap.example.com/']
+            });
+
+            const result = await service.fetchProfileRealtime('pubkey123', {
+                additionalRelays: ['wss://hint-relay.example.com']
+            });
+
+            expect(mockProfileManager.fetchProfileDataNetworkOnly).toHaveBeenCalledWith('pubkey123', {
+                writeRelays: ['wss://write.relay.com/'],
+                additionalRelays: ['wss://bootstrap.example.com/', 'wss://hint-relay.example.com/']
+            });
+            expect(result).toEqual({
+                name: 'Realtime User',
+                picture: 'https://example.com/pic.jpg',
+                npub: 'npub1realtime',
+                nprofile: 'nprofile1realtime'
             });
         });
     });

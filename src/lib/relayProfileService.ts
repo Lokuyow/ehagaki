@@ -2,6 +2,7 @@ import type { createRxNostr } from 'rx-nostr';
 import { RelayManager } from './relayManager';
 import { ProfileManager } from './profileManager';
 import type { RelayConfig, ProfileData } from './types';
+import { RelayConfigUtils } from './relayConfigUtils';
 
 /**
  * リレー取得とプロフィール取得を統合管理するサービスクラス
@@ -99,14 +100,22 @@ export class RelayProfileService {
      * プロフィールを逐次取得（キャッシュ参照・保存なし）
      * リプライ/引用プレビュー用
      */
-    async fetchProfileRealtime(pubkeyHex: string): Promise<ProfileData | null> {
+    async fetchProfileRealtime(
+        pubkeyHex: string,
+        options: {
+            additionalRelays?: string[];
+        } = {},
+    ): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
         const { writeRelays, additionalRelays } = this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const mergedAdditionalRelays = options.additionalRelays?.length
+            ? RelayConfigUtils.mergeRelayConfigs(additionalRelays, options.additionalRelays)
+            : additionalRelays;
 
         return this.profileManager.fetchProfileDataNetworkOnly(pubkeyHex, {
             writeRelays,
-            additionalRelays
+            additionalRelays: mergedAdditionalRelays,
         });
     }
 

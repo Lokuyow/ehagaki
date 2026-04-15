@@ -43,6 +43,12 @@
             gap: 20px;
         }
 
+        .content-column {
+            display: grid;
+            gap: 20px;
+            min-width: 0;
+        }
+
         .panel {
             background: color-mix(in srgb, var(--panel) 92%, white 8%);
             border: 1px solid var(--line);
@@ -208,6 +214,100 @@
             min-height: 720px;
         }
 
+        .timeline-panel {
+            padding: 20px 22px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .timeline-header {
+            display: grid;
+            gap: 8px;
+        }
+
+        .timeline-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            justify-content: space-between;
+        }
+
+        .timeline-toolbar .buttons {
+            width: auto;
+            grid-template-columns: repeat(2, auto);
+        }
+
+        .timeline-selection {
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #f5f1e8;
+            color: #5b4225;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .timeline-list {
+            display: grid;
+            gap: 12px;
+            max-height: 560px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .timeline-item {
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+            display: grid;
+            gap: 10px;
+        }
+
+        .timeline-item-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            align-items: center;
+            font-size: 0.84rem;
+            color: var(--muted);
+        }
+
+        .timeline-event-id {
+            font-family: Consolas, "Courier New", monospace;
+        }
+
+        .timeline-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.55;
+        }
+
+        .timeline-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .timeline-actions button {
+            min-height: 36px;
+            padding: 8px 12px;
+            font-size: 0.92rem;
+        }
+
+        .timeline-actions button.secondary.is-active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .timeline-empty {
+            padding: 18px;
+            border: 1px dashed var(--line);
+            border-radius: 16px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.48);
+        }
+
         .viewer-header {
             padding: 20px 22px 10px;
             border-bottom: 1px solid var(--line);
@@ -261,6 +361,15 @@
 
             .viewer {
                 min-height: 560px;
+            }
+
+            .timeline-toolbar {
+                align-items: stretch;
+            }
+
+            .timeline-toolbar .buttons {
+                width: 100%;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
         }
     </style>
@@ -331,13 +440,34 @@
                 ログインと秘密鍵ログインは排他的で、切り替えるにはいったんログアウトが必要です。</p>
         </section>
 
-        <section class="panel viewer">
-            <div class="viewer-header">
-                <h2>埋め込み iframe</h2>
-                <code id="iframe-src"></code>
-            </div>
-            <iframe id="ehagaki-iframe" title="eHagaki embed sample"></iframe>
-        </section>
+        <div class="content-column">
+            <section class="panel viewer">
+                <div class="viewer-header">
+                    <h2>埋め込み iframe</h2>
+                    <code id="iframe-src"></code>
+                </div>
+                <iframe id="ehagaki-iframe" title="eHagaki embed sample"></iframe>
+            </section>
+
+            <section class="panel timeline-panel">
+                <div class="timeline-header">
+                    <h2>簡易タイムライン</h2>
+                    <p class="small">wss://nos.lol の最新 kind 1 を表示します。各イベントの reply / quote ボタンで iframe を再読み込みし、reply と
+                        quote の動作確認に使えます。</p>
+                </div>
+
+                <div class="timeline-toolbar">
+                    <div id="timeline-status" class="status-pill warn">タイムライン未接続</div>
+                    <div class="buttons">
+                        <button id="refresh-timeline" type="button">タイムライン更新</button>
+                        <button id="clear-reply-quote" type="button" class="ghost">reply / quote 解除</button>
+                    </div>
+                </div>
+
+                <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件</div>
+                <div id="timeline-list" class="timeline-list"></div>
+            </section>
+        </div>
     </main>
 
     <script type="module" src="./embed-parent-client-example.js"></script>

@@ -149,37 +149,38 @@ async function bootstrapReplyQuote({
     }
 
     const rqService = new ReplyQuoteService();
-    references.forEach((reference) => {
-        rqService
-            .fetchReferencedEvent(
+    await Promise.allSettled(
+        references.map(async (reference) => {
+            const event = await rqService.fetchReferencedEvent(
                 reference.eventId,
                 reference.relayHints,
                 rxNostr,
                 relayConfig,
-            )
-            .then((event) => {
-                if (!event) {
-                    setReplyQuoteError(reference.eventId, "Event not found");
+            );
+
+            if (!event) {
+                setReplyQuoteError(reference.eventId, "Event not found");
+                return;
+            }
+
+            const threadInfo = rqService.extractThreadInfo(event);
+            updateReferencedEvent(reference.eventId, event, threadInfo);
+
+            if (event.pubkey && relayProfileService) {
+                const profile = await relayProfileService.fetchProfileRealtime(event.pubkey, {
+                    additionalRelays: reference.relayHints,
+                });
+                if (!profile) {
                     return;
                 }
 
-                const threadInfo = rqService.extractThreadInfo(event);
-                updateReferencedEvent(reference.eventId, event, threadInfo);
-
-                if (event.pubkey && relayProfileService) {
-                    relayProfileService.fetchProfileRealtime(event.pubkey).then((profile) => {
-                        if (!profile) {
-                            return;
-                        }
-
-                        const displayName = profile.displayName || profile.name;
-                        if (displayName) {
-                            updateAuthorDisplayName(reference.eventId, displayName);
-                        }
-                    });
+                const displayName = profile.displayName || profile.name;
+                if (displayName) {
+                    updateAuthorDisplayName(reference.eventId, displayName);
                 }
-            });
-    });
+            }
+        }),
+    );
 }
 
 export async function runExternalInputBootstrap({

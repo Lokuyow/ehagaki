@@ -1,9 +1,13 @@
 import { finalizeEvent, getPublicKey as getPublicKeyFromSecret } from "https://esm.sh/nostr-tools@2.23.3/pure";
-import { decode as decodeNip19 } from "https://esm.sh/nostr-tools@2.23.3/nip19";
+import { decode as decodeNip19, neventEncode } from "https://esm.sh/nostr-tools@2.23.3/nip19";
+import { SimplePool } from "https://esm.sh/nostr-tools@2.23.3/pool";
 
 const EMBED_NAMESPACE = "ehagaki.embed";
 const EMBED_VERSION = 1;
 const PARENT_SESSION_STORAGE_KEY = "ehagaki.parent-client-sample.session";
+const TIMELINE_RELAYS = ["wss://nos.lol"];
+const TIMELINE_EVENT_LIMIT = 24;
+const TIMELINE_QUERY_MAX_WAIT_MS = 4000;
 
 const INBOUND_TYPES = new Set([
     "ready",
@@ -29,11 +33,16 @@ const signerStatus = document.getElementById("signer-status");
 const parentAuthStatus = document.getElementById("parent-auth-status");
 const authFeedback = document.getElementById("auth-feedback");
 const handshakeStatus = document.getElementById("handshake-status");
+const timelineStatus = document.getElementById("timeline-status");
+const timelineSelection = document.getElementById("timeline-selection");
+const timelineList = document.getElementById("timeline-list");
 const loginNip07Button = document.getElementById("login-nip07");
 const secretKeyInput = document.getElementById("secret-key");
 const loginSecretKeyButton = document.getElementById("login-secret-key");
 const reloadIframeButton = document.getElementById("reload-iframe");
 const announceLogoutButton = document.getElementById("announce-logout");
+const refreshTimelineButton = document.getElementById("refresh-timeline");
+const clearReplyQuoteButton = document.getElementById("clear-reply-quote");
 const clearLogButton = document.getElementById("clear-log");
 const iframe = document.getElementById("ehagaki-iframe");
 
@@ -45,6 +54,15 @@ const AUTH_METHOD_LABELS = {
 let lastPubkeyHex = null;
 let activeParentSession = null;
 let isIframeReady = false;
+let timelineEvents = [];
+let selectedReplyReference = null;
+let selectedQuoteReferences = [];
+let timelineSubscription = null;
+
+const timelinePool = new SimplePool({
+    enablePing: true,
+    enableReconnect: true,
+});
 
 function isRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -358,6 +376,301 @@ function getActiveSigner() {
         : buildSecretKeySigner(activeParentSession);
 }
 
+function truncateMiddle(value, head = 8, tail = 8) {
+    if (!isNonEmptyString(value) || value.length <= head + tail + 3) {
+        return value;
+    }
+
+    return `${value.slice(0, head)}...${value.slice(-tail)}`;
+}
+
+function normalizeTimelineContent(content) {
+    if (typeof content !== "string") {
+        return "(本文なし)";
+    }
+
+    const normalized = content.replace(/\r\n/g, "\n").trim();
+    if (!normalized) {
+        return "(本文なし)";
+    }
+
+    return normalized.length > 280 ? `${normalized.slice(0, 280)}…` : normalized;
+}
+
+function formatTimelineTimestamp(createdAt) {
+    if (!Number.isInteger(createdAt)) {
+        return "時刻不明";
+    }
+
+    return new Date(createdAt * 1000).toLocaleString();
+}
+
+function isTimelineEvent(event) {
+    return isRecord(event)
+        && event.kind === 1
+        && isHex64(event.id)
+        && isHex64(event.pubkey)
+        && Number.isInteger(event.created_at)
+        && typeof event.content === "string"
+        && Array.isArray(event.tags);
+}
+
+function createTimelineReference(event) {
+    return {
+        eventId: event.id,
+        queryValue: neventEncode({
+            id: event.id,
+            relays: TIMELINE_RELAYS,
+            author: event.pubkey,
+            kind: event.kind,
+        }),
+        pubkey: event.pubkey,
+        createdAt: event.created_at,
+        preview: normalizeTimelineContent(event.content),
+    };
+}
+
+function isReplySelected(eventId) {
+    return selectedReplyReference?.eventId === eventId;
+}
+
+function isQuoteSelected(eventId) {
+    return selectedQuoteReferences.some((reference) => reference.eventId === eventId);
+}
+
+function updateTimelineSelection() {
+    const replyLabel = selectedReplyReference
+        ? `${truncateMiddle(selectedReplyReference.eventId)} / ${truncateMiddle(selectedReplyReference.pubkey, 8, 6)}`
+        : "なし";
+    const quoteLabel = selectedQuoteReferences.length === 0
+        ? "0 件"
+        : `${selectedQuoteReferences.length} 件 (${selectedQuoteReferences
+            .slice(0, 2)
+            .map((reference) => truncateMiddle(reference.eventId))
+            .join(", ")}${selectedQuoteReferences.length > 2 ? ", ..." : ""})`;
+
+    timelineSelection.textContent = `reply: ${replyLabel} / quote: ${quoteLabel}`;
+    clearReplyQuoteButton.disabled = !selectedReplyReference && selectedQuoteReferences.length === 0;
+}
+
+function createTimelineItem(event) {
+    const article = document.createElement("article");
+    article.className = "timeline-item";
+
+    const header = document.createElement("div");
+    header.className = "timeline-item-header";
+
+    const author = document.createElement("span");
+    author.textContent = `pubkey ${truncateMiddle(event.pubkey, 10, 8)}`;
+
+    const timestamp = document.createElement("span");
+    timestamp.textContent = formatTimelineTimestamp(event.created_at);
+
+    const eventId = document.createElement("span");
+    eventId.className = "timeline-event-id";
+    eventId.textContent = truncateMiddle(event.id, 12, 10);
+
+    header.append(author, timestamp, eventId);
+
+    const content = document.createElement("div");
+    content.className = "timeline-content";
+    content.textContent = normalizeTimelineContent(event.content);
+
+    const actions = document.createElement("div");
+    actions.className = "timeline-actions";
+
+    const replyButton = document.createElement("button");
+    replyButton.type = "button";
+    replyButton.className = `secondary${isReplySelected(event.id) ? " is-active" : ""}`;
+    replyButton.textContent = isReplySelected(event.id) ? "reply 解除" : "reply テスト";
+    replyButton.addEventListener("click", () => {
+        void selectReplyEvent(event);
+    });
+
+    const quoteButton = document.createElement("button");
+    quoteButton.type = "button";
+    quoteButton.className = `secondary${isQuoteSelected(event.id) ? " is-active" : ""}`;
+    quoteButton.textContent = isQuoteSelected(event.id) ? "quote 解除" : "quote 追加";
+    quoteButton.addEventListener("click", () => {
+        void toggleQuoteEvent(event);
+    });
+
+    actions.append(replyButton, quoteButton);
+    article.append(header, content, actions);
+
+    return article;
+}
+
+function renderTimeline() {
+    timelineList.textContent = "";
+
+    if (timelineEvents.length === 0) {
+        const emptyState = document.createElement("div");
+        emptyState.className = "timeline-empty";
+        emptyState.textContent = "タイムラインをまだ取得していません。";
+        timelineList.append(emptyState);
+        updateTimelineSelection();
+        return;
+    }
+
+    timelineEvents.forEach((event) => {
+        timelineList.append(createTimelineItem(event));
+    });
+
+    updateTimelineSelection();
+}
+
+function mergeTimelineEvents(events) {
+    const merged = new Map(timelineEvents.map((event) => [event.id, event]));
+
+    events.forEach((event) => {
+        if (!isTimelineEvent(event)) {
+            return;
+        }
+        merged.set(event.id, event);
+    });
+
+    timelineEvents = [...merged.values()]
+        .sort((left, right) => right.created_at - left.created_at || left.id.localeCompare(right.id))
+        .slice(0, TIMELINE_EVENT_LIMIT);
+}
+
+function reloadIframeForReplyQuote(reason, detail) {
+    loadIframe();
+    appendLog("info", reason, detail);
+}
+
+async function selectReplyEvent(event) {
+    const reference = createTimelineReference(event);
+
+    if (isReplySelected(reference.eventId)) {
+        selectedReplyReference = null;
+        renderTimeline();
+        reloadIframeForReplyQuote("reply テスト設定を解除しました", {
+            quoteCount: selectedQuoteReferences.length,
+        });
+        return;
+    }
+
+    selectedReplyReference = reference;
+    selectedQuoteReferences = selectedQuoteReferences.filter(
+        (quoteReference) => quoteReference.eventId !== reference.eventId,
+    );
+
+    renderTimeline();
+    reloadIframeForReplyQuote("reply テスト設定を更新しました", {
+        reply: reference.queryValue,
+        quoteCount: selectedQuoteReferences.length,
+    });
+}
+
+async function toggleQuoteEvent(event) {
+    const reference = createTimelineReference(event);
+
+    if (isQuoteSelected(reference.eventId)) {
+        selectedQuoteReferences = selectedQuoteReferences.filter(
+            (quoteReference) => quoteReference.eventId !== reference.eventId,
+        );
+        renderTimeline();
+        reloadIframeForReplyQuote("quote テスト設定を更新しました", {
+            reply: selectedReplyReference?.queryValue,
+            quoteCount: selectedQuoteReferences.length,
+        });
+        return;
+    }
+
+    if (isReplySelected(reference.eventId)) {
+        selectedReplyReference = null;
+    }
+
+    selectedQuoteReferences = [...selectedQuoteReferences, reference];
+    renderTimeline();
+    reloadIframeForReplyQuote("quote テスト設定を更新しました", {
+        reply: selectedReplyReference?.queryValue,
+        quoteCount: selectedQuoteReferences.length,
+    });
+}
+
+function clearReplyQuoteSelection() {
+    if (!selectedReplyReference && selectedQuoteReferences.length === 0) {
+        return;
+    }
+
+    selectedReplyReference = null;
+    selectedQuoteReferences = [];
+    renderTimeline();
+    reloadIframeForReplyQuote("reply / quote テスト設定を解除しました", null);
+}
+
+function startTimelineSubscription() {
+    const since = timelineEvents[0]?.created_at
+        ? timelineEvents[0].created_at + 1
+        : Math.floor(Date.now() / 1000) - 300;
+
+    timelineSubscription = timelinePool.subscribeMany(
+        TIMELINE_RELAYS,
+        {
+            kinds: [1],
+            since,
+        },
+        {
+            label: "embed sample timeline",
+            onevent(event) {
+                mergeTimelineEvents([event]);
+                renderTimeline();
+                updateStatus(
+                    timelineStatus,
+                    `${TIMELINE_RELAYS[0]} 接続中 (${timelineEvents.length} 件)`,
+                    "ok",
+                );
+            },
+        },
+    );
+}
+
+async function loadTimeline() {
+    refreshTimelineButton.disabled = true;
+    updateStatus(timelineStatus, "タイムライン読み込み中", "warn");
+
+    if (timelineSubscription) {
+        timelineSubscription.close("timeline-refresh");
+        timelineSubscription = null;
+    }
+
+    try {
+        const events = await timelinePool.querySync(
+            TIMELINE_RELAYS,
+            {
+                kinds: [1],
+                limit: TIMELINE_EVENT_LIMIT,
+            },
+            {
+                label: "embed sample timeline sync",
+                maxWait: TIMELINE_QUERY_MAX_WAIT_MS,
+            },
+        );
+
+        mergeTimelineEvents(events);
+        renderTimeline();
+        startTimelineSubscription();
+        updateStatus(
+            timelineStatus,
+            `${TIMELINE_RELAYS[0]} 接続中 (${timelineEvents.length} 件)`,
+            "ok",
+        );
+        appendLog("info", "簡易タイムラインを更新しました", {
+            relay: TIMELINE_RELAYS[0],
+            count: timelineEvents.length,
+        });
+    } catch (error) {
+        updateStatus(timelineStatus, "タイムライン取得失敗", "error");
+        renderTimeline();
+        appendLog("error", "簡易タイムラインの取得に失敗しました", error instanceof Error ? error.message : String(error));
+    } finally {
+        refreshTimelineButton.disabled = false;
+    }
+}
+
 function getDefaultAppUrl() {
     const currentUrl = new URL(window.location.href);
     const pathSegments = currentUrl.pathname.split("/").filter(Boolean);
@@ -373,6 +686,17 @@ function getTargetOrigin() {
 function buildEmbedUrl() {
     const url = new URL(appUrlInput.value, window.location.href);
     url.searchParams.set("parentOrigin", window.location.origin);
+    url.searchParams.delete("reply");
+    url.searchParams.delete("quote");
+
+    if (selectedReplyReference) {
+        url.searchParams.set("reply", selectedReplyReference.queryValue);
+    }
+
+    selectedQuoteReferences.forEach((reference) => {
+        url.searchParams.append("quote", reference.queryValue);
+    });
+
     return url.toString();
 }
 
@@ -876,6 +1200,7 @@ if (storedParentSession) {
     refreshAuthControls();
 }
 
+renderTimeline();
 reloadIframeButton.addEventListener("click", loadIframe);
 loginNip07Button.addEventListener("click", () => {
     void handleNip07Login();
@@ -890,6 +1215,10 @@ loginSecretKeyButton.addEventListener("click", () => {
 announceLogoutButton.addEventListener("click", () => {
     void announceLogout();
 });
+refreshTimelineButton.addEventListener("click", () => {
+    void loadTimeline();
+});
+clearReplyQuoteButton.addEventListener("click", clearReplyQuoteSelection);
 clearLogButton.addEventListener("click", () => {
     eventLog.value = "";
 });
@@ -898,5 +1227,11 @@ window.addEventListener("message", (event) => {
     void handleEmbedMessage(event);
 });
 window.addEventListener("focus", refreshSignerStatus);
+window.addEventListener("beforeunload", () => {
+    timelineSubscription?.close("page-unload");
+    timelinePool.close(TIMELINE_RELAYS);
+    timelinePool.destroy();
+});
 
 loadIframe();
+void loadTimeline();
