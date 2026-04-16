@@ -3,6 +3,7 @@ import {
     DEFAULT_PARENT_CLIENT_CAPABILITIES,
     ParentClientAuthService,
 } from '../../lib/parentClientAuthService';
+import { STORAGE_KEYS } from '../../lib/constants';
 import type { ParentClientSessionData } from '../../lib/types';
 import { MockStorage } from '../helpers';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
@@ -157,6 +158,30 @@ describe('ParentClientAuthService', () => {
         ).toEqual(session);
     });
 
+    it('旧 session に残る nip04 capability は読み飛ばして復元する', () => {
+        const storage = new MockStorage();
+        const pubkeyHex = '12'.repeat(32);
+
+        storage.setItem(
+            STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex,
+            JSON.stringify({
+                version: 1,
+                pubkeyHex,
+                parentOrigin: 'https://parent.example.com',
+                capabilities: ['signEvent', 'nip04.encrypt', 'nip44.encrypt'],
+                connectedAt: 123,
+            }),
+        );
+
+        expect(ParentClientAuthService.loadSession(storage, pubkeyHex)).toEqual({
+            version: 1,
+            pubkeyHex,
+            parentOrigin: 'https://parent.example.com',
+            capabilities: ['signEvent', 'nip44.encrypt'],
+            connectedAt: 123,
+        });
+    });
+
     it('auth.error を受け取ると接続要求を明示的な認証エラーとして reject する', async () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new ParentClientAuthService(windowObj, mockConsole);
@@ -196,7 +221,7 @@ describe('ParentClientAuthService', () => {
                 requestId: authRequest.requestId,
                 payload: {
                     pubkeyHex: 'ab'.repeat(32),
-                    capabilities: ['signEvent', 'nip04.encrypt'],
+                    capabilities: ['signEvent', 'nip44.encrypt'],
                 },
             },
             origin: 'https://parent.example.com',

@@ -200,7 +200,7 @@ window.addEventListener('message', (event) => {
 - [public/embed-parent-client-example.html](public/embed-parent-client-example.html)
 - [public/embed-parent-client-example.js](public/embed-parent-client-example.js)
 
-このサンプルは NIP-07 ログインと秘密鍵ログインの両方に対応しています。現在の eHagaki は親クライアントへ既定で `signEvent` だけを要求し、`nip04.*` / `nip44.*` は将来機能向けの optional capability としてのみ扱います。NIP-07 ログイン時は親ページの `window.nostr` を使って要求された capability だけを委譲し、秘密鍵ログイン時は sample に保存した nsec で `signEvent` を処理します。受信時には namespace、version、type、requestId、payload shape を検証します。親クライアントのログインボタンを押すと sample 側にログイン状態を保存し、その時点で `auth.login` を iframe に送ります。ページを再読み込みした場合も、親がログイン済みなら `ready` 受信後に `auth.login` を再送して eHagaki を再同期します。さらに sample 内には `wss://nos.lol` を読む簡易タイムラインと本文同期 UI を追加してあり、各イベントの `reply` / `quote` ボタンと本文入力から iframe の runtime composer 更新を直接試せます。iframe が mounted 済みなら runtime の `composer.setContext` / `composer.clearContext` を使い、未接続時だけ URL 付きで再読み込みします。runtime 更新には `requestId` を付け、結果は `composer.contextApplied` / `composer.contextError` で確認できます。iframe 内で reply / quote を解除した場合は `composer.contextUpdated` が返り、sample 側の selection UI も自動で追従します。
+このサンプルは NIP-07 ログインと秘密鍵ログインの両方に対応しています。現在の eHagaki は親クライアントへ既定で `signEvent` だけを要求し、将来の NIP-17 系フロー向け optional capability として `nip44.*` だけを扱います。NIP-04 はサポートしません。NIP-07 ログイン時は親ページの `window.nostr` を使って要求された capability だけを委譲し、秘密鍵ログイン時は sample に保存した nsec で `signEvent` を処理します。受信時には namespace、version、type、requestId、payload shape を検証します。親クライアントのログインボタンを押すと sample 側にログイン状態を保存し、その時点で `auth.login` を iframe に送ります。ページを再読み込みした場合も、親がログイン済みなら `ready` 受信後に `auth.login` を再送して eHagaki を再同期します。さらに sample 内には `wss://nos.lol` を読む簡易タイムラインと本文同期 UI を追加してあり、各イベントの `reply` / `quote` ボタンと本文入力から iframe の runtime composer 更新を直接試せます。iframe が mounted 済みなら runtime の `composer.setContext` / `composer.clearContext` を使い、未接続時だけ URL 付きで再読み込みします。runtime 更新には `requestId` を付け、結果は `composer.contextApplied` / `composer.contextError` で確認できます。iframe 内で reply / quote を解除した場合は `composer.contextUpdated` が返り、sample 側の selection UI も自動で追従します。
 
 ### 必須条件
 
@@ -222,7 +222,7 @@ https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com
 2. 親がログイン済みなら、`ready` を受け取った時点で `auth.login` を送って iframe を再同期する
 3. iframe が `auth.request` を送る
 4. 親が `auth.result` または `auth.error` を返す
-5. ログイン後は `rpc.request` で既定では `signEvent` を要求される。`nip04.*` / `nip44.*` は将来必要になった場合だけ opt-in で要求される
+5. ログイン後は `rpc.request` で既定では `signEvent` を要求される。`nip44.*` は将来必要になった場合だけ opt-in で要求される
 
 ### 最小実装例
 
@@ -424,5 +424,5 @@ https://lokuyow.github.io/ehagaki/?parentOrigin=https%3A%2F%2Fexample.com
 - `type` は allowlist で検証してください。親ページが受ける想定は `ready`, `auth.request`, `rpc.request`, `post.success`, `post.error` です
 - `requestId` は空文字を許可せず、応答系メッセージではそのままエコーしてください
 - `auth.request.payload.capabilities` は string 配列で、許可した capability 名だけを受け付けてください
-- `rpc.request.payload.method` は allowlist で検証し、`signEvent` は event shape を確認してください。`nip04.*` / `nip44.*` を許可する場合だけ追加で `pubkey` と text payload の型まで確認してください
+- `rpc.request.payload.method` は allowlist で検証し、`signEvent` は event shape を確認してください。`nip44.*` を許可する場合だけ追加で `pubkey` と text payload の型まで確認してください
 - `post.success` / `post.error` も payload shape を検証し、不正メッセージは処理せずログだけ残すのが安全です

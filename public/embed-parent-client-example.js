@@ -22,8 +22,6 @@ const INBOUND_TYPES = new Set([
 
 const KNOWN_CAPABILITIES = new Set([
     "signEvent",
-    "nip04.encrypt",
-    "nip04.decrypt",
     "nip44.encrypt",
     "nip44.decrypt",
 ]);
@@ -270,12 +268,6 @@ function getNip07Capabilities() {
     const capabilities = [];
     if (typeof signer.signEvent === "function" && typeof signer.getPublicKey === "function") {
         capabilities.push("signEvent");
-    }
-    if (typeof signer.nip04?.encrypt === "function") {
-        capabilities.push("nip04.encrypt");
-    }
-    if (typeof signer.nip04?.decrypt === "function") {
-        capabilities.push("nip04.decrypt");
     }
     if (typeof signer.nip44?.encrypt === "function") {
         capabilities.push("nip44.encrypt");
@@ -1155,10 +1147,8 @@ function validateRpcRequestPayload(payload) {
                 return "signEvent params must be an object";
             }
             return validateEventForSigning(params.event);
-        case "nip04.encrypt":
         case "nip44.encrypt":
             return validateCipherParams(params, "plaintext");
-        case "nip04.decrypt":
         case "nip44.decrypt":
             return validateCipherParams(params, "ciphertext");
         default:
@@ -1407,18 +1397,6 @@ async function handleRpcRequest(message) {
         switch (method) {
             case "signEvent":
                 result = await signer.signEvent(params.event);
-                break;
-            case "nip04.encrypt":
-                if (typeof signer.nip04?.encrypt !== "function") {
-                    throw new Error("nip04.encrypt unsupported");
-                }
-                result = await signer.nip04.encrypt(params.pubkey, params.plaintext);
-                break;
-            case "nip04.decrypt":
-                if (typeof signer.nip04?.decrypt !== "function") {
-                    throw new Error("nip04.decrypt unsupported");
-                }
-                result = await signer.nip04.decrypt(params.pubkey, params.ciphertext);
                 break;
             case "nip44.encrypt":
                 if (typeof signer.nip44?.encrypt !== "function") {

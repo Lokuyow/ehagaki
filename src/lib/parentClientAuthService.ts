@@ -11,8 +11,6 @@ const DEFAULT_TIMEOUT_MS = 10000;
 const PUBKEY_HEX_PATTERN = /^[0-9a-f]{64}$/i;
 const VALID_PARENT_CLIENT_CAPABILITIES = new Set<ParentClientCapability>([
     'signEvent',
-    'nip04.encrypt',
-    'nip04.decrypt',
     'nip44.encrypt',
     'nip44.decrypt',
 ]);
@@ -89,19 +87,25 @@ type PendingRequest = {
 type RemoteLoginListener = (pubkeyHex: string | null) => void;
 type RemoteLogoutListener = (pubkeyHex: string | null) => void;
 
+function isParentClientCapability(value: string): value is ParentClientCapability {
+    return VALID_PARENT_CLIENT_CAPABILITIES.has(value as ParentClientCapability);
+}
+
 function dedupeCapabilities(
-    capabilities: ParentClientCapability[] | undefined,
+    capabilities: readonly string[] | undefined,
 ): ParentClientCapability[] {
     const source = capabilities?.length
         ? capabilities
         : DEFAULT_PARENT_CLIENT_CAPABILITIES;
-    return [...new Set(source)].filter((capability): capability is ParentClientCapability =>
-        VALID_PARENT_CLIENT_CAPABILITIES.has(capability),
-    );
+    return [...new Set(source)].filter(isParentClientCapability);
 }
 
 function isHex64(value: unknown): value is string {
     return typeof value === 'string' && PUBKEY_HEX_PATTERN.test(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
 function isCapabilityArray(value: unknown): value is ParentClientCapability[] {
@@ -189,9 +193,7 @@ function validateRpcResult(
     }
 
     if (
-        method === 'nip04.encrypt'
-        || method === 'nip04.decrypt'
-        || method === 'nip44.encrypt'
+        method === 'nip44.encrypt'
         || method === 'nip44.decrypt'
     ) {
         return typeof result === 'string' ? result : undefined;
@@ -257,18 +259,22 @@ export class ParentClientAuthService {
             if (!stored) return null;
 
             const parsed = JSON.parse(stored) as ParentClientSessionData;
+            const capabilities = isStringArray(parsed?.capabilities)
+                ? dedupeCapabilities(parsed.capabilities)
+                : [];
             if (
                 parsed?.version !== 1
                 || !isHex64(parsed.pubkeyHex)
                 || !isValidParentOrigin(parsed.parentOrigin)
-                || !isCapabilityArray(parsed.capabilities)
+                || capabilities.length === 0
+                || !capabilities.includes('signEvent')
             ) {
                 return null;
             }
 
             return {
                 ...parsed,
-                capabilities: dedupeCapabilities(parsed.capabilities),
+                capabilities,
             };
         } catch {
             return null;
@@ -385,16 +391,6 @@ export class ParentClientAuthService {
     async signEvent(event: any): Promise<any> {
         this.assertCapability("signEvent");
         return this.requestRpc("signEvent", { event });
-    }
-
-    async nip04Encrypt(pubkey: string, plaintext: string): Promise<string> {
-        this.assertCapability("nip04.encrypt");
-        return this.requestRpc("nip04.encrypt", { pubkey, plaintext });
-    }
-
-    async nip04Decrypt(pubkey: string, ciphertext: string): Promise<string> {
-        this.assertCapability("nip04.decrypt");
-        return this.requestRpc("nip04.decrypt", { pubkey, ciphertext });
     }
 
     async nip44Encrypt(pubkey: string, plaintext: string): Promise<string> {

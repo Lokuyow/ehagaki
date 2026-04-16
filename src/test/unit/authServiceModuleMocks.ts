@@ -44,9 +44,5 @@ vi.mock('../../lib/parentClientAuthService', () => ({
     },
     DEFAULT_PARENT_CLIENT_CAPABILITIES: [
         'signEvent',
-        'nip04.encrypt',
-        'nip04.decrypt',
-        'nip44.encrypt',
-        'nip44.decrypt',
     ],
 }));

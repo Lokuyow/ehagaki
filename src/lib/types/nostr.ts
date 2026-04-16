@@ -32,8 +32,6 @@ export interface Nip46SessionData {
 
 export type ParentClientCapability =
     | 'signEvent'
-    | 'nip04.encrypt'
-    | 'nip04.decrypt'
     | 'nip44.encrypt'
     | 'nip44.decrypt';
 
