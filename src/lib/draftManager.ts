@@ -1,6 +1,7 @@
 import type { Draft, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
+import { createSanitizedDraftContainer } from './draftHtmlSanitizer';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
 
@@ -33,8 +34,7 @@ function saveDraftsToStorage(drafts: Draft[]): void {
  */
 export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): string {
     // HTMLタグを除去してテキストのみを抽出
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = htmlContent;
+    const tempDiv = createSanitizedDraftContainer(htmlContent, document);
 
     // 画像と動画の有無をチェック（エディタ内 + ギャラリーアイテム）
     const hasEditorImage = tempDiv.querySelector('img') !== null;

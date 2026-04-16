@@ -210,6 +210,26 @@ describe('RelayProfileService', () => {
                 nprofile: 'nprofile1realtime'
             });
         });
+
+        it('無効な external relay hint を除外して network-only 取得する', async () => {
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockReturnValue({
+                writeRelays: ['wss://write.relay.com/'],
+                additionalRelays: ['wss://bootstrap.example.com/']
+            });
+
+            await service.fetchProfileRealtime('pubkey123', {
+                additionalRelays: [
+                    'https://invalid.example.com',
+                    'wss://hint-relay.example.com',
+                    'wss://hint-relay.example.com/',
+                ]
+            });
+
+            expect(mockProfileManager.fetchProfileDataNetworkOnly).toHaveBeenCalledWith('pubkey123', {
+                writeRelays: ['wss://write.relay.com/'],
+                additionalRelays: ['wss://bootstrap.example.com/', 'wss://hint-relay.example.com/']
+            });
+        });
     });
 
     describe('initializeForLogin', () => {

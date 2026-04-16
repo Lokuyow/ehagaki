@@ -123,13 +123,13 @@ describe('runExternalInputBootstrap', () => {
         expect(params.setReplyQuote).toHaveBeenCalledWith({
             reply: {
                 eventId: 'event-1',
-                relayHints: ['wss://hint-relay.example.com'],
+                relayHints: ['wss://hint-relay.example.com/'],
             },
             quotes: [],
         });
         expect(mockState.fetchReferencedEvent).toHaveBeenCalledWith(
             'event-1',
-            ['wss://hint-relay.example.com'],
+            ['wss://hint-relay.example.com/'],
             params.rxNostr,
             null,
         );
@@ -191,7 +191,7 @@ describe('runExternalInputBootstrap', () => {
         await Promise.resolve();
 
         expect(mockState.fetchProfileRealtime).toHaveBeenCalledWith('author-pubkey', {
-            additionalRelays: ['wss://hint-relay.example.com'],
+            additionalRelays: ['wss://hint-relay.example.com/'],
         });
         expect(params.updateAuthorDisplayName).not.toHaveBeenCalled();
         expect(resolved).toBe(false);
@@ -208,5 +208,44 @@ describe('runExternalInputBootstrap', () => {
 
         expect(params.updateAuthorDisplayName).toHaveBeenCalledWith('event-1', 'Author Name');
         expect(resolved).toBe(true);
+    });
+
+    it('無効な relay hint は参照イベント取得とプロフィール取得へ渡さない', async () => {
+        mockState.getReplyQuoteFromUrlQuery.mockReturnValue({
+            reply: {
+                eventId: 'event-1',
+                relayHints: [
+                    'https://invalid.example.com',
+                    'wss://hint-relay.example.com',
+                    'wss://hint-relay.example.com/',
+                ],
+            },
+            quotes: [],
+        });
+
+        const params = createParams();
+        const bootstrapPromise = runExternalInputBootstrap(params as never);
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(mockState.fetchReferencedEvent).toHaveBeenCalledWith(
+            'event-1',
+            ['wss://hint-relay.example.com/'],
+            params.rxNostr,
+            null,
+        );
+
+        mockState.resolveReferencedEvent?.({
+            id: 'event-1',
+            pubkey: 'author-pubkey',
+            created_at: 1,
+            kind: 1,
+            tags: [],
+            content: 'hello',
+            sig: 'sig',
+        });
+
+        await bootstrapPromise;
     });
 });

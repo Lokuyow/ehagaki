@@ -58,14 +58,13 @@ export class ReplyQuoteService {
             };
 
             // readリレーが0件の場合はFALLBACK_RELAYSを使用
-            const normalizedHints = relayHints
-                .map(r => RelayConfigUtils.normalizeRelayUrl(r))
-                .filter(r => r.length > 0);
+            const normalizedHints = RelayConfigUtils.sanitizeExternalRelayUrls(relayHints, {
+                limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+            });
             const hasReadRelays = !!relayConfig && RelayConfigUtils.extractReadRelays(relayConfig).length > 0;
             const temporaryRelays = new Set<string>(normalizedHints);
             if (!hasReadRelays) {
-                FALLBACK_RELAYS
-                    .map(r => RelayConfigUtils.normalizeRelayUrl(r))
+                RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS)
                     .forEach(r => temporaryRelays.add(r));
             }
 

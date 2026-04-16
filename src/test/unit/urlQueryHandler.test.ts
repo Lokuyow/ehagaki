@@ -271,7 +271,7 @@ describe('urlQueryHandler', () => {
       expect(result).not.toBeNull();
       expect(result!.reply).toEqual({
         eventId: expectedEventId,
-        relayHints: ['wss://relay.example.com'],
+        relayHints: ['wss://relay.example.com/'],
         authorPubkey: 'b'.repeat(64),
       });
       expect(result!.quotes).toEqual([]);
@@ -289,7 +289,7 @@ describe('urlQueryHandler', () => {
       expect(result!.quotes).toEqual([
         {
           eventId: expectedEventId,
-          relayHints: ['wss://relay.example.com'],
+          relayHints: ['wss://relay.example.com/'],
           authorPubkey: 'b'.repeat(64),
         },
       ]);
@@ -327,6 +327,34 @@ describe('urlQueryHandler', () => {
       expect(result!.quotes).toHaveLength(2);
       expect(result!.quotes[0].eventId).toBe(expectedEventId);
       expect(result!.quotes[1].eventId).toBe(secondEventId);
+    });
+
+    it('relay hints を ws/wss のみへ正規化し件数上限と重複排除を行う', () => {
+      const eventId = 'c'.repeat(64);
+      const encoded = nip19.neventEncode({
+        id: eventId,
+        relays: [
+          'wss://relay.example.com',
+          'wss://relay.example.com/',
+          'https://invalid.example.com',
+          'wss://relay-2.example.com',
+          'wss://relay-3.example.com',
+          'wss://relay-4.example.com',
+          'wss://user:pass@secret.example.com',
+        ],
+      });
+
+      // @ts-ignore
+      window.location = {
+        search: `?reply=${encoded}`,
+      } as Location;
+
+      const result = getReplyQuoteFromUrlQuery();
+      expect(result?.reply?.relayHints).toEqual([
+        'wss://relay.example.com/',
+        'wss://relay-2.example.com/',
+        'wss://relay-3.example.com/',
+      ]);
     });
 
     it('パラメータがない場合はnullを返す', () => {

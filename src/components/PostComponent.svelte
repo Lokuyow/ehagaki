@@ -11,6 +11,7 @@
   import { PostManager } from "../lib/postManager";
   import { nip46Service } from "../lib/nip46Service";
   import { parentClientAuthService } from "../lib/parentClientAuthService";
+  import { sanitizeDraftHtml } from "../lib/draftHtmlSanitizer";
   import {
     createPostUploadHandlers,
     updateEditorUploadState,
@@ -214,8 +215,10 @@
   export function loadDraftContent(htmlContent: string): void {
     if (!currentEditor || !htmlContent) return;
 
+    const sanitizedHtmlContent = sanitizeDraftHtml(htmlContent);
+
     // HTMLコンテンツをそのまま設定（下書き保存時のHTML構造を復元）
-    currentEditor.commands.setContent(htmlContent);
+    currentEditor.commands.setContent(sanitizedHtmlContent || "<p></p>");
 
     // カーソルを末尾に移動
     currentEditor.commands.focus("end");

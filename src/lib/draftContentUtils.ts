@@ -6,6 +6,7 @@ import type {
     ReplyQuoteState,
     DraftReplyQuoteEntryData,
 } from './types';
+import { createSanitizedDraftContainer, sanitizeDraftHtml } from './draftHtmlSanitizer';
 
 type DraftReplyQuoteStateLike = Pick<
     ReplyQuoteState,
@@ -95,14 +96,15 @@ export function createDraftSavePayload({
     galleryItems: MediaGalleryItem[];
     replyQuoteData?: DraftReplyQuoteData;
 } | null {
+    const sanitizedHtmlContent = sanitizeDraftHtml(htmlContent);
     const persistedGalleryItems = galleryItems.filter((item) => !item.isPlaceholder);
 
-    if ((!htmlContent || htmlContent === '<p></p>') && persistedGalleryItems.length === 0) {
+    if ((!sanitizedHtmlContent || sanitizedHtmlContent === '<p></p>') && persistedGalleryItems.length === 0) {
         return null;
     }
 
     return {
-        content: htmlContent,
+        content: sanitizedHtmlContent,
         galleryItems: persistedGalleryItems,
         replyQuoteData: buildDraftReplyQuoteData(replyQuoteState),
     };
@@ -118,8 +120,7 @@ export function extractMediaToGalleryHtml({
         return htmlContent;
     }
 
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = htmlContent;
+    const tempDiv = createSanitizedDraftContainer(htmlContent, document);
 
     tempDiv.querySelectorAll('img').forEach((img) => {
         const src = img.getAttribute('src');

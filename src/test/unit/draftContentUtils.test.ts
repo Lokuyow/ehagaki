@@ -127,6 +127,21 @@ describe('createDraftSavePayload', () => {
             },
         });
     });
+
+    it('危険な HTML を保存前に sanitize する', () => {
+        const payload = createDraftSavePayload({
+            htmlContent: '<p>body</p><script>alert(1)</script><a href="javascript:alert(1)">danger</a><img src="javascript:alert(2)">',
+            galleryItems: [],
+            replyQuoteState: createEmptyComposerState(),
+        });
+
+        expect(payload).not.toBeNull();
+        expect(payload?.content).toContain('<p>body</p>');
+        expect(payload?.content).toContain('danger');
+        expect(payload?.content).not.toContain('<script');
+        expect(payload?.content).not.toContain('javascript:');
+        expect(payload?.content).not.toContain('<img');
+    });
 });
 
 describe('extractMediaToGalleryHtml', () => {
@@ -161,6 +176,30 @@ describe('extractMediaToGalleryHtml', () => {
         expect(stripped).toContain('<p>text</p>');
         expect(stripped).not.toContain('<img');
         expect(stripped).not.toContain('<video');
+    });
+
+    it('危険な media src はギャラリーへ追加しない', () => {
+        const addGalleryItem = vi.fn();
+
+        const stripped = extractMediaToGalleryHtml({
+            htmlContent: '<img src="javascript:alert(1)"><img src="https://example.com/a.jpg"><video src="data:text/html,<svg></svg>"></video>',
+            document,
+            addGalleryItem,
+            generateMediaItemId: () => 'media-1',
+        });
+
+        expect(addGalleryItem).toHaveBeenCalledOnce();
+        expect(addGalleryItem).toHaveBeenCalledWith({
+            id: 'media-1',
+            type: 'image',
+            src: 'https://example.com/a.jpg',
+            isPlaceholder: false,
+            blurhash: undefined,
+            alt: undefined,
+            dim: undefined,
+        });
+        expect(stripped).not.toContain('javascript:');
+        expect(stripped).not.toContain('data:text/html');
     });
 });
 

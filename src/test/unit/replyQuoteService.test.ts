@@ -404,6 +404,36 @@ describe("ReplyQuoteService", () => {
             expect(capturedOnParams.relays).toContain("wss://hint-relay.example.com/");
         });
 
+        it("無効なリレーヒントはテンポラリリレーへ追加しない", async () => {
+            let capturedOnParams: any = {};
+            const mockRxNostr: RxNostr = {
+                use: vi.fn().mockImplementation((_req: any, opts: any) => {
+                    capturedOnParams = opts?.on || {};
+                    return {
+                        subscribe: vi.fn((observer: any) => {
+                            observer.complete?.();
+                            return { unsubscribe: vi.fn() };
+                        }),
+                    };
+                }),
+            } as any;
+
+            await service.fetchReferencedEvent(
+                "target-id",
+                [
+                    "https://invalid.example.com",
+                    "wss://hint-relay.example.com",
+                    "wss://hint-relay.example.com/",
+                    "wss://user:pass@secret.example.com",
+                ],
+                mockRxNostr,
+                { "wss://user-relay.example.com/": { read: true, write: true } },
+            );
+
+            expect(capturedOnParams.defaultReadRelays).toBe(true);
+            expect(capturedOnParams.relays).toEqual(["wss://hint-relay.example.com/"]);
+        });
+
         it("リレーヒントが空かつreadリレーがある場合はdefaultReadRelaysのみ使用する", async () => {
             let capturedOnParams: any = {};
             const mockRxNostr: RxNostr = {

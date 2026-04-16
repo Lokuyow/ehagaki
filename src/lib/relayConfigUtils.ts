@@ -1,4 +1,7 @@
+import { utils as nostrToolsUtils } from 'nostr-tools';
 import type { RelayConfig } from "./types";
+
+const ALLOWED_EXTERNAL_RELAY_PROTOCOLS = new Set(['ws:', 'wss:']);
 
 // --- 純粋関数（依存性なし） ---
 export class RelayConfigParser {
@@ -66,11 +69,83 @@ export class RelayConfigParser {
 
 // --- リレー設定操作ユーティリティ（純粋関数） ---
 export class RelayConfigUtils {
+    static readonly EXTERNAL_INPUT_RELAY_LIMIT = 3;
+
     /**
      * リレーURLに末尾スラッシュを追加
      */
     static normalizeRelayUrl(url: string): string {
         return url.endsWith('/') ? url : url + '/';
+    }
+
+    static normalizeExternalRelayUrl(url: string): string | null {
+        if (typeof url !== 'string') {
+            return null;
+        }
+
+        const trimmed = url.trim();
+        if (!trimmed) {
+            return null;
+        }
+
+        try {
+            if (trimmed.includes('://')) {
+                const explicitUrl = new URL(trimmed);
+                if (!ALLOWED_EXTERNAL_RELAY_PROTOCOLS.has(explicitUrl.protocol)) {
+                    return null;
+                }
+                if (explicitUrl.username || explicitUrl.password) {
+                    return null;
+                }
+            }
+
+            const normalized = nostrToolsUtils.normalizeURL(trimmed);
+            const normalizedUrl = new URL(normalized);
+            if (!ALLOWED_EXTERNAL_RELAY_PROTOCOLS.has(normalizedUrl.protocol)) {
+                return null;
+            }
+            if (!normalizedUrl.hostname) {
+                return null;
+            }
+            if (normalizedUrl.username || normalizedUrl.password) {
+                return null;
+            }
+
+            return normalized;
+        } catch {
+            return null;
+        }
+    }
+
+    static sanitizeExternalRelayUrls(
+        urls: string[] | undefined,
+        options: { limit?: number } = {},
+    ): string[] {
+        if (!urls?.length) {
+            return [];
+        }
+
+        const sanitized: string[] = [];
+        const seen = new Set<string>();
+
+        for (const url of urls) {
+            const normalized = this.normalizeExternalRelayUrl(url);
+            if (!normalized || seen.has(normalized)) {
+                continue;
+            }
+
+            seen.add(normalized);
+            sanitized.push(normalized);
+
+            if (
+                typeof options.limit === 'number'
+                && sanitized.length >= options.limit
+            ) {
+                break;
+            }
+        }
+
+        return sanitized;
     }
 
     /**

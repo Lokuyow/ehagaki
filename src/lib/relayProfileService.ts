@@ -109,13 +109,16 @@ export class RelayProfileService {
         if (!pubkeyHex) return null;
 
         const { writeRelays, additionalRelays } = this.relayManager.getRelayListsForProfile(pubkeyHex);
-        const mergedAdditionalRelays = options.additionalRelays?.length
-            ? RelayConfigUtils.mergeRelayConfigs(additionalRelays, options.additionalRelays)
+        const sanitizedOptionRelays = RelayConfigUtils.sanitizeExternalRelayUrls(options.additionalRelays, {
+            limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+        });
+        const mergedAdditionalRelays = sanitizedOptionRelays.length
+            ? RelayConfigUtils.mergeRelayConfigs(additionalRelays, sanitizedOptionRelays)
             : additionalRelays;
 
         return this.profileManager.fetchProfileDataNetworkOnly(pubkeyHex, {
             writeRelays,
-            additionalRelays: mergedAdditionalRelays,
+            additionalRelays: RelayConfigUtils.sanitizeExternalRelayUrls(mergedAdditionalRelays),
         });
     }
 

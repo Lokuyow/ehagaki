@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { ParentClientAuthService } from '../../lib/parentClientAuthService';
+import {
+    DEFAULT_PARENT_CLIENT_CAPABILITIES,
+    ParentClientAuthService,
+} from '../../lib/parentClientAuthService';
 import type { ParentClientSessionData } from '../../lib/types';
 import { MockStorage } from '../helpers';
 import { EMBED_MESSAGE_NAMESPACE } from '../../lib/embedProtocol';
@@ -123,6 +126,20 @@ describe('ParentClientAuthService', () => {
         });
     });
 
+    it('capabilities 未指定時は signEvent のみを既定要求する', () => {
+        const { windowObj, parent } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        void service.connect({ timeoutMs: 1 }).catch(() => undefined);
+
+        const readyMessage = vi.mocked(parent.postMessage).mock.calls[0][0] as any;
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+
+        expect(DEFAULT_PARENT_CLIENT_CAPABILITIES).toEqual(['signEvent']);
+        expect(readyMessage.payload.capabilities).toEqual(['signEvent']);
+        expect(authRequest.payload.capabilities).toEqual(['signEvent']);
+    });
+
     it('session を保存・復元できる', () => {
         const storage = new MockStorage();
         const session: ParentClientSessionData = {
@@ -163,6 +180,73 @@ describe('ParentClientAuthService', () => {
 
         await expect(promise).rejects.toThrow('parent_client_not_logged_in');
         expect(service.isConnected()).toBe(false);
+    });
+
+    it('要求していない capability を含む auth.result を reject する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const promise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'auth.result',
+                requestId: authRequest.requestId,
+                payload: {
+                    pubkeyHex: 'ab'.repeat(32),
+                    capabilities: ['signEvent', 'nip04.encrypt'],
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(promise).rejects.toThrow('parent_client_invalid_response');
+    });
+
+    it('malformed な rpc.result を reject する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const connectPromise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'auth.result',
+                requestId: authRequest.requestId,
+                payload: {
+                    pubkeyHex: 'cd'.repeat(32),
+                    capabilities: ['signEvent'],
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+        await connectPromise;
+
+        const signPromise = service.signEvent({ kind: 1, content: 'hello', tags: [] });
+        const rpcRequest = vi.mocked(parent.postMessage).mock.calls[2][0] as any;
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'rpc.result',
+                requestId: rpcRequest.requestId,
+                payload: {
+                    result: {
+                        id: 'signed-event',
+                    },
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(signPromise).rejects.toThrow('parent_client_invalid_response');
     });
 
     it('auth.logout を受け取ると remote logout listener が呼ばれる', async () => {

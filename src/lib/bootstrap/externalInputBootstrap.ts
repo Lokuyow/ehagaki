@@ -7,6 +7,7 @@ import {
     getReplyQuoteFromUrlQuery,
     hasReplyQuoteQueryParam,
 } from "../urlQueryHandler";
+import { RelayConfigUtils } from '../relayConfigUtils';
 import {
     checkServiceWorkerStatus,
     testServiceWorkerCommunication,
@@ -159,6 +160,30 @@ export interface ApplyReplyQuoteQueryParams extends Pick<
     replyQuoteQuery: ReplyQuoteQueryResult;
 }
 
+function sanitizeReplyQuoteQuery(
+    replyQuoteQuery: ReplyQuoteQueryResult,
+): ReplyQuoteQueryResult {
+    const sanitizeEntry = <T extends { relayHints: string[] }>(entry: T | null): T | null => {
+        if (!entry) {
+            return null;
+        }
+
+        return {
+            ...entry,
+            relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(entry.relayHints, {
+                limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+            }),
+        };
+    };
+
+    return {
+        reply: sanitizeEntry(replyQuoteQuery.reply),
+        quotes: replyQuoteQuery.quotes
+            .map((quote) => sanitizeEntry(quote))
+            .filter((quote): quote is NonNullable<typeof quote> => quote !== null),
+    };
+}
+
 export async function applyReplyQuoteQuery({
     replyQuoteQuery,
     relayProfileService,
@@ -169,16 +194,17 @@ export async function applyReplyQuoteQuery({
     updateAuthorDisplayName,
     setReplyQuoteError,
 }: ApplyReplyQuoteQueryParams): Promise<void> {
+    const sanitizedReplyQuoteQuery = sanitizeReplyQuoteQuery(replyQuoteQuery);
 
-    setReplyQuote(replyQuoteQuery);
+    setReplyQuote(sanitizedReplyQuoteQuery);
 
     if (!rxNostr) {
         return;
     }
 
     const references = [
-        ...(replyQuoteQuery.reply ? [replyQuoteQuery.reply] : []),
-        ...replyQuoteQuery.quotes,
+        ...(sanitizedReplyQuoteQuery.reply ? [sanitizedReplyQuoteQuery.reply] : []),
+        ...sanitizedReplyQuoteQuery.quotes,
     ];
 
     if (references.length === 0) {

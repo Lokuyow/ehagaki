@@ -2,6 +2,7 @@ import type { createRxNostr } from 'rx-nostr';
 import { createRxBackwardReq } from 'rx-nostr';
 import { toNpub, toNprofile } from "./utils/nostrUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
+import { RelayConfigUtils } from './relayConfigUtils';
 
 // --- URL処理の純粋関数（依存性なし） ---
 export class ProfileUrlUtils {
@@ -153,7 +154,7 @@ export class ProfileNetworkFetcher {
     opts?: { writeRelays?: string[]; forceRemote?: boolean; timeoutMs?: number; additionalRelays?: string[] }
   ): Promise<ProfileData | null> {
     const timeoutMs = opts?.timeoutMs ?? 3000;
-    const additionalRelays = opts?.additionalRelays ?? [];
+    const additionalRelays = RelayConfigUtils.sanitizeExternalRelayUrls(opts?.additionalRelays);
 
     return new Promise<ProfileData | null>((resolve) => {
       const rxReq = createRxBackwardReq();

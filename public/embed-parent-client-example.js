@@ -1289,7 +1289,7 @@ async function handleReady() {
 
     if (!activeParentSession) {
         updateStatus(handshakeStatus, "ready を受信。未ログイン待機中", "ok");
-        appendLog("info", "ready を受信しました。親クライアントがログインした時点で auth.login を送信します");
+        appendLog("info", "ready を受信しました。eHagaki は既定で signEvent を要求し、親クライアントがログインした時点で auth.login を送信します");
         return;
     }
 

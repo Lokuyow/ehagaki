@@ -8,13 +8,17 @@ import {
 import type { ParentClientCapability, ParentClientSessionData } from "./types";
 
 const DEFAULT_TIMEOUT_MS = 10000;
+const PUBKEY_HEX_PATTERN = /^[0-9a-f]{64}$/i;
+const VALID_PARENT_CLIENT_CAPABILITIES = new Set<ParentClientCapability>([
+    'signEvent',
+    'nip04.encrypt',
+    'nip04.decrypt',
+    'nip44.encrypt',
+    'nip44.decrypt',
+]);
 
 export const DEFAULT_PARENT_CLIENT_CAPABILITIES: ParentClientCapability[] = [
     "signEvent",
-    "nip04.encrypt",
-    "nip04.decrypt",
-    "nip44.encrypt",
-    "nip44.decrypt",
 ];
 
 type ParentClientMessageType =
@@ -74,6 +78,9 @@ export interface ParentClientConnectOptions {
 }
 
 type PendingRequest = {
+    kind: 'auth' | 'rpc';
+    requestedCapabilities?: ParentClientCapability[];
+    rpcMethod?: ParentClientCapability;
     resolve: (value: any) => void;
     reject: (reason?: unknown) => void;
     timeoutId: ReturnType<typeof setTimeout>;
@@ -88,7 +95,109 @@ function dedupeCapabilities(
     const source = capabilities?.length
         ? capabilities
         : DEFAULT_PARENT_CLIENT_CAPABILITIES;
-    return [...new Set(source)];
+    return [...new Set(source)].filter((capability): capability is ParentClientCapability =>
+        VALID_PARENT_CLIENT_CAPABILITIES.has(capability),
+    );
+}
+
+function isHex64(value: unknown): value is string {
+    return typeof value === 'string' && PUBKEY_HEX_PATTERN.test(value);
+}
+
+function isCapabilityArray(value: unknown): value is ParentClientCapability[] {
+    return Array.isArray(value)
+        && value.every((item): item is ParentClientCapability =>
+            VALID_PARENT_CLIENT_CAPABILITIES.has(item as ParentClientCapability),
+        );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isValidParentOrigin(value: unknown): value is string {
+    if (typeof value !== 'string' || !value) {
+        return false;
+    }
+
+    try {
+        return new URL(value).origin === value;
+    } catch {
+        return false;
+    }
+}
+
+function parseOptionalPubkeyHex(payload: unknown): string | null | undefined {
+    if (payload === undefined) {
+        return undefined;
+    }
+    if (!isRecord(payload)) {
+        return undefined;
+    }
+    if (payload.pubkeyHex == null) {
+        return null;
+    }
+
+    return isHex64(payload.pubkeyHex) ? payload.pubkeyHex : undefined;
+}
+
+function validateAuthResultPayload(
+    payload: unknown,
+    requestedCapabilities: ParentClientCapability[] | undefined,
+): ParentClientAuthResultPayload | null {
+    if (!isRecord(payload) || !isHex64(payload.pubkeyHex)) {
+        return null;
+    }
+    if (payload.capabilities !== undefined && !isCapabilityArray(payload.capabilities)) {
+        return null;
+    }
+
+    const returnedCapabilities = dedupeCapabilities(
+        payload.capabilities as ParentClientCapability[] | undefined,
+    );
+    if (
+        requestedCapabilities?.length
+        && returnedCapabilities.some((capability) => !requestedCapabilities.includes(capability))
+    ) {
+        return null;
+    }
+
+    return {
+        pubkeyHex: payload.pubkeyHex,
+        ...(payload.capabilities !== undefined
+            ? { capabilities: returnedCapabilities }
+            : {}),
+    };
+}
+
+function validateRpcResult(
+    method: ParentClientCapability | undefined,
+    payload: unknown,
+): unknown {
+    if (!isRecord(payload) || !('result' in payload)) {
+        return undefined;
+    }
+
+    const result = payload.result;
+
+    if (method === 'signEvent') {
+        return isRecord(result)
+            && typeof result.id === 'string'
+            && typeof result.sig === 'string'
+            ? result
+            : undefined;
+    }
+
+    if (
+        method === 'nip04.encrypt'
+        || method === 'nip04.decrypt'
+        || method === 'nip44.encrypt'
+        || method === 'nip44.decrypt'
+    ) {
+        return typeof result === 'string' ? result : undefined;
+    }
+
+    return undefined;
 }
 
 function isParentClientMessageEnvelope(
@@ -150,9 +259,9 @@ export class ParentClientAuthService {
             const parsed = JSON.parse(stored) as ParentClientSessionData;
             if (
                 parsed?.version !== 1
-                || typeof parsed.pubkeyHex !== "string"
-                || typeof parsed.parentOrigin !== "string"
-                || !Array.isArray(parsed.capabilities)
+                || !isHex64(parsed.pubkeyHex)
+                || !isValidParentOrigin(parsed.parentOrigin)
+                || !isCapabilityArray(parsed.capabilities)
             ) {
                 return null;
             }
@@ -394,6 +503,10 @@ export class ParentClientAuthService {
             }, timeoutMs);
 
             this.pendingRequests.set(requestId, {
+                kind: type === 'auth.request' ? 'auth' : 'rpc',
+                ...(type === 'auth.request'
+                    ? { requestedCapabilities: (payload as ParentClientAuthRequestPayload).capabilities }
+                    : { rpcMethod: (payload as ParentClientRpcRequestPayload).method }),
                 resolve,
                 reject,
                 timeoutId,
@@ -420,16 +533,24 @@ export class ParentClientAuthService {
         const requestId = message.requestId;
 
         if (message.type === "auth.login") {
-            const payload = message.payload as { pubkeyHex?: string } | undefined;
-            this.notifyRemoteLogin(payload?.pubkeyHex ?? null);
+            const pubkeyHex = parseOptionalPubkeyHex(message.payload);
+            if (pubkeyHex === undefined) {
+                return;
+            }
+
+            this.notifyRemoteLogin(pubkeyHex);
             return;
         }
 
         if (message.type === "auth.logout") {
-            const payload = message.payload as { pubkeyHex?: string } | undefined;
-            const pubkeyHex = payload?.pubkeyHex ?? this.activeSession?.pubkeyHex ?? null;
+            const pubkeyHex = parseOptionalPubkeyHex(message.payload);
+            if (message.payload !== undefined && pubkeyHex === undefined) {
+                return;
+            }
+
+            const targetPubkeyHex = pubkeyHex ?? this.activeSession?.pubkeyHex ?? null;
             this.disconnect(false);
-            this.notifyRemoteLogout(pubkeyHex);
+            this.notifyRemoteLogout(targetPubkeyHex);
             return;
         }
 
@@ -442,9 +563,12 @@ export class ParentClientAuthService {
         this.pendingRequests.delete(requestId);
 
         if (message.type === "auth.result") {
-            const payload = message.payload as ParentClientAuthResultPayload;
-            if (!payload?.pubkeyHex) {
-                pending.reject(new Error("parent_client_auth_rejected"));
+            const payload = validateAuthResultPayload(
+                message.payload,
+                pending.requestedCapabilities,
+            );
+            if (!payload) {
+                pending.reject(new Error("parent_client_invalid_response"));
                 return;
             }
 
@@ -456,8 +580,8 @@ export class ParentClientAuthService {
             const payload = message.payload as ParentClientAuthErrorPayload;
             pending.reject(
                 new Error(
-                    payload?.code
-                    || payload?.message
+                    (typeof payload?.code === 'string' && payload.code)
+                    || (typeof payload?.message === 'string' && payload.message)
                     || "parent_client_auth_error",
                 ),
             );
@@ -465,15 +589,24 @@ export class ParentClientAuthService {
         }
 
         if (message.type === "rpc.result") {
-            const payload = message.payload as ParentClientRpcResultPayload;
-            pending.resolve(payload?.result);
+            const result = validateRpcResult(pending.rpcMethod, message.payload);
+            if (result === undefined) {
+                pending.reject(new Error("parent_client_invalid_response"));
+                return;
+            }
+
+            pending.resolve(result);
             return;
         }
 
         if (message.type === "rpc.error") {
             const payload = message.payload as ParentClientRpcErrorPayload;
             pending.reject(
-                new Error(payload?.message || "parent_client_rpc_error"),
+                new Error(
+                    (typeof payload?.message === 'string' && payload.message)
+                    || (typeof payload?.code === 'string' && payload.code)
+                    || "parent_client_rpc_error",
+                ),
             );
             return;
         }

@@ -2,6 +2,7 @@
  * URLクエリパラメータからコンテンツを取得する
  */
 import { nip19 } from 'nostr-tools';
+import { RelayConfigUtils } from './relayConfigUtils';
 import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { EmbedComposerSetContextPayload } from './embedProtocol';
 import type { ReplyQuoteQueryResult } from './types';
@@ -18,7 +19,9 @@ function decodeReplyQuoteValue(value: string): {
       const data = decoded.data as nip19.EventPointer;
       return {
         eventId: data.id,
-        relayHints: data.relays ? [...data.relays] : [],
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(data.relays ? [...data.relays] : [], {
+          limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+        }),
         authorPubkey: data.author ?? null,
       };
     }
