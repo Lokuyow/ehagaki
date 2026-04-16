@@ -903,14 +903,26 @@ function normalizeInitialLocale(value) {
 }
 
 function normalizeInitialTheme(value) {
-    return value === "light" || value === "dark" ? value : "";
+    return value === "system" || value === "light" || value === "dark" ? value : "";
+}
+
+function resolveInitialTheme(value) {
+    const normalizedValue = normalizeInitialTheme(value);
+    if (normalizedValue === "system") {
+        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+
+    return normalizedValue;
 }
 
 function syncInitialSettingsControlsFromAppUrl() {
     try {
         const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
         initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("embedLocale"));
-        initialThemeSelect.value = normalizeInitialTheme(url.searchParams.get("embedTheme"));
+        const initialTheme = url.searchParams.get("embedTheme");
+        if (initialTheme !== null) {
+            initialThemeSelect.value = normalizeInitialTheme(initialTheme);
+        }
         initialHideMascotInput.checked = url.searchParams.get("embedShowMascot") === "false";
     } catch {
         // app-url の入力途中など一時的な不正値では既存 UI を維持する
@@ -936,7 +948,7 @@ function buildEmbedUrl() {
     url.searchParams.delete("embedShowMascot");
 
     const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
-    const initialTheme = normalizeInitialTheme(initialThemeSelect.value);
+    const initialTheme = resolveInitialTheme(initialThemeSelect.value);
 
     if (initialLocale) {
         url.searchParams.set("embedLocale", initialLocale);
@@ -1613,6 +1625,11 @@ clearLogButton.addEventListener("click", () => {
 
 window.addEventListener("message", (event) => {
     void handleEmbedMessage(event);
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    if (initialThemeSelect.value === "system") {
+        updateDisplayedEmbedUrl();
+    }
 });
 window.addEventListener("focus", refreshSignerStatus);
 window.addEventListener("beforeunload", () => {

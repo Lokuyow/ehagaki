@@ -472,6 +472,7 @@
                     <div class="field">
                         <label for="initial-theme">theme</label>
                         <select id="initial-theme">
+                            <option value="system" selected>system (親の prefers-color-scheme を使う)</option>
                             <option value="">未指定</option>
                             <option value="light">light</option>
                             <option value="dark">dark</option>
@@ -484,8 +485,9 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">`embedLocale` / `embedTheme` / `embedShowMascot=false` を iframe
-                    再読み込み時に自動で付与します。初回設定の試験を手入力なしで行えます。</p>
+                <p class="small">locale はそのまま、theme は既定で親ページの `window.matchMedia('(prefers-color-scheme: dark)')`
+                    から `embedTheme=light|dark` に展開して iframe 再読み込み時に自動付与します。未指定を選ぶと iframe
+                    側の生の判定を試せます。</p>
 
                 <div class="buttons">
                     <button id="reset-initial-settings" type="button"

@@ -77,6 +77,31 @@
 - `embedShowMascot` と `embedShowBalloonMessage` は設定ダイアログからユーザーが後で変更できます
 - 起動後の live 同期は行いません。初期値だけを渡したいときに使ってください
 
+### 初回から OS のダークモードに合わせたい場合
+
+iframe 内では `prefers-color-scheme` が親ページ側の `color-scheme` の影響を受けることがあります。そのため、子 iframe 側だけで「ユーザーの OS 設定そのもの」を初回起動時に確実に復元することはできません。
+
+初回表示から OS に合わせたい場合は、親ページ側で `window.matchMedia('(prefers-color-scheme: dark)')` を評価し、その結果を `embedTheme=dark|light` として iframe URL に付けてください。
+
+```html
+<iframe id="ehagaki-iframe" width="600" height="400"></iframe>
+
+<script>
+  const iframe = document.getElementById('ehagaki-iframe');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const src = new URL('https://lokuyow.github.io/ehagaki/');
+
+  src.searchParams.set('parentOrigin', window.location.origin);
+  src.searchParams.set('embedTheme', prefersDark ? 'dark' : 'light');
+
+  iframe.src = src.toString();
+</script>
+```
+
+- `embedTheme` 自体は `light|dark` だけを受け取ります
+- 「OS に追従するかどうか」の判定は親ページ側で行い、その結果を child iframe に渡してください
+- 既存の [public/embed-parent-client-example.html](public/embed-parent-client-example.html) もこの方式に合わせて、既定で親ページの `matchMedia` から初回テーマを注入するようになっています
+
 ## 2. リプライ / 複数引用状態で起動する
 
 iframe の `src` に URL クエリを付けることで、埋め込み時点でリプライまたは引用を開始できます。
