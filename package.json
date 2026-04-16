@@ -46,6 +46,7 @@
     "blurhash": "^2.0.5",
     "browser-image-compression": "^2.0.2",
     "dompurify": "^3.3.3",
+    "ipaddr.js": "^2.3.0",
     "mediabunny": "^1.24.2",
     "nip07-awaiter": "^1.1.0",
     "nostr-tools": "^2.23.3",

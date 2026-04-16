@@ -9,6 +9,7 @@
         isLoadingProfileStore,
         profileLoadedStore,
     } from "../stores/profileStore.svelte";
+    import { isSameOriginProfilePictureUrl } from "../lib/profilePictureUrlUtils";
 
     interface Props {
         isAuthenticated: boolean;
@@ -60,39 +61,8 @@
     export function isSameOriginPictureUrl(
         pictureUrl: string | undefined | null,
     ): boolean {
-        if (!pictureUrl) return false;
-        try {
-            const picUrl = new URL(pictureUrl, location.href);
-            return picUrl.origin === location.origin;
-        } catch (e) {
-            return false;
-        }
+        return isSameOriginProfilePictureUrl(pictureUrl);
     }
-
-    // プロフィール画像が同一オリジンかどうか（クロスオリジンなら SW の no-cors キャッシュと整合するため crossorigin を付けない）
-    let isSameOriginPicture = $state(false);
-
-    // プロフィールデータが変更されたら画像エラー状態をリセット
-    $effect(() => {
-        if (profileData?.picture) {
-            // Service Workerでのキャッシュ処理をログ出力
-            if (
-                "serviceWorker" in navigator &&
-                navigator.serviceWorker.controller &&
-                profileData.picture.includes("profile=true")
-            ) {
-                console.log(
-                    "Service Workerでプロフィール画像をキャッシュ処理予定:",
-                    profileData.picture,
-                );
-            }
-
-            // 同一オリジン判定（失敗時は外部オリジン扱い）
-            isSameOriginPicture = isSameOriginPictureUrl(profileData.picture);
-        } else {
-            isSameOriginPicture = false;
-        }
-    });
 </script>
 
 <div class="footer-bar">
@@ -133,10 +103,6 @@
                     fallbackClassName="profile-picture-fallback"
                     fallbackAriaLabel="User"
                     onLoadingStatusChange={handleAvatarLoadingStatusChange}
-                    crossorigin={isSameOriginPicture ? "anonymous" : undefined}
-                    referrerpolicy={isSameOriginPicture
-                        ? "no-referrer"
-                        : undefined}
                 />
             {/if}
         </Button>

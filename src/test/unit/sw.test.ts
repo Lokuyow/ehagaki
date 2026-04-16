@@ -1,4 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import {
+    getProfilePictureCacheKeyUrl,
+    normalizeProfilePictureUrl,
+} from '../../lib/profilePictureUrlUtils';
 
 // Service Workerのモジュール型定義
 interface ServiceWorkerModule {
@@ -111,8 +115,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         },
 
         getBaseUrl(url: string) {
-            const urlObj = new URL(url);
-            return `${urlObj.origin}${urlObj.pathname}`;
+            return getProfilePictureCacheKeyUrl(url, {
+                currentOrigin: ServiceWorkerDependencies.location.origin
+            });
         },
 
         createRedirectResponse(path: string, error: string | null = null, location = ServiceWorkerDependencies.location) {
@@ -133,6 +138,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             if (request.method !== 'GET') return false;
             const url = new URL(request.url);
             return url.searchParams.get('profile') === 'true';
+        },
+
+        normalizeProfileImageUrl(url: string) {
+            return normalizeProfilePictureUrl(url, {
+                currentOrigin: ServiceWorkerDependencies.location.origin
+            });
         },
 
         async extractMediaFromFormData(formData: FormData) {
@@ -291,12 +302,32 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             }
         }
 
-        async fetchAndCacheProfileImage(request: Request) {
-            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
+        async handleProfileImageCache(request: Request) {
+            const baseUrl = Utilities.getBaseUrl(request.url);
+            if (!baseUrl) {
+                return null;
+            }
 
-            // ベースURL（クエリなし）をキャッシュキーとして使用
-            const urlObj = new URL(request.url);
-            const baseUrl = `${urlObj.origin}${urlObj.pathname}`;
+            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
+            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
+
+            const cachedBase = await cache.match(baseRequest);
+            if (cachedBase) {
+                return cachedBase;
+            }
+
+            const cached = await cache.match(request);
+            return cached || null;
+        }
+
+        async fetchAndCacheProfileImage(request: Request) {
+            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
+            const baseUrl = Utilities.getBaseUrl(request.url);
+            if (!normalizedUrl || !baseUrl) {
+                return null;
+            }
+
+            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
             const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
 
             const cachedResponse = await cache.match(baseRequest);
@@ -304,7 +335,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 return cachedResponse;
             }
 
-            const networkResponse = await this.dependencies.fetch(request);
+            const networkResponse = await this.dependencies.fetch(baseRequest);
 
             // ok または opaque を許容してキャッシュする
             if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
@@ -420,8 +451,18 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         }
 
         async handleProfileImageRequest(request: Request) {
-            // キャッシュから検索のシミュレート
-            return Utilities.createTransparentImageResponse();
+            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
+            if (!normalizedUrl) {
+                return Utilities.createTransparentImageResponse();
+            }
+
+            const cached = await this.cacheManager.handleProfileImageCache(request);
+            if (cached) {
+                return cached;
+            }
+
+            const networkResponse = await this.cacheManager.fetchAndCacheProfileImage(request);
+            return networkResponse || Utilities.createTransparentImageResponse();
         }
     }
 
@@ -502,6 +543,12 @@ describe('Service Worker Tests', () => {
         vi.clearAllMocks();
         swModule = createServiceWorkerMocks();
 
+        swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue({
+            match: vi.fn().mockResolvedValue(null),
+            put: vi.fn().mockResolvedValue(undefined),
+            keys: vi.fn().mockResolvedValue([])
+        });
+
         // ClientManagerテスト用のモック設定
         swModule.ServiceWorkerDependencies.clients.matchAll.mockResolvedValue([
             { focus: vi.fn(), postMessage: vi.fn() }
@@ -524,6 +571,11 @@ describe('Service Worker Tests', () => {
         it('should get base URL', () => {
             const baseUrl = swModule.Utilities.getBaseUrl('https://example.com/path?param=value');
             expect(baseUrl).toBe('https://example.com/path');
+        });
+
+        it('should reject private profile image URL when building base URL', () => {
+            const baseUrl = swModule.Utilities.getBaseUrl('https://127.0.0.1/path?profile=true');
+            expect(baseUrl).toBeNull();
         });
 
         it('should identify upload requests', () => {
@@ -658,6 +710,16 @@ describe('Service Worker Tests', () => {
             const putKeyUrl = putCallFirstArg && (putCallFirstArg.url || putCallFirstArg);
             expect(putKeyUrl).toBe('https://example.com/profile.jpg');
         });
+
+        it('should reject private profile image fetches', async () => {
+            const manager = new swModule.CacheManager();
+            const request = new Request('https://127.0.0.1/profile.jpg?profile=true');
+
+            const response = await manager.fetchAndCacheProfileImage(request);
+
+            expect(response).toBeNull();
+            expect(swModule.ServiceWorkerDependencies.fetch).not.toHaveBeenCalled();
+        });
     });
 
     describe('ClientManager', () => {
@@ -747,10 +809,31 @@ describe('Service Worker Tests', () => {
             const request = new Request('https://example.com/image.jpg?profile=true');
             const handler = new swModule.RequestHandler();
 
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(new Response('image', {
+                status: 200,
+                headers: { 'Content-Type': 'image/jpeg' }
+            }));
+
+            const response = await handler.handleProfileImageRequest(request);
+
+            expect(response.status).toBe(200);
+            expect(response.headers.get('Content-Type')).toBe('image/jpeg');
+        });
+
+        it('should return transparent image for policy-blocked profile image request', async () => {
+            const request = new Request('https://192.168.0.20/image.jpg?profile=true');
+            const handler = new swModule.RequestHandler();
+
             const response = await handler.handleProfileImageRequest(request);
 
             expect(response.status).toBe(200);
             expect(response.headers.get('Content-Type')).toBe('image/png');
+            expect(swModule.ServiceWorkerDependencies.fetch).not.toHaveBeenCalled();
         });
     });
 

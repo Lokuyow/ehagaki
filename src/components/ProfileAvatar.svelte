@@ -1,6 +1,10 @@
 <script lang="ts">
     import { Avatar } from "bits-ui";
     import type { HTMLImgAttributes } from "svelte/elements";
+    import {
+        ensureProfilePictureMarker,
+        isSameOriginProfilePictureUrl,
+    } from "../lib/profilePictureUrlUtils";
 
     type AvatarImageStatus = "loading" | "loaded" | "error";
 
@@ -36,9 +40,20 @@
         delayMs = 0,
     }: Props = $props();
 
+    let safeSrc = $derived(ensureProfilePictureMarker(src));
+    let effectiveCrossorigin = $derived(
+        crossorigin ??
+            (safeSrc && isSameOriginProfilePictureUrl(safeSrc)
+                ? "anonymous"
+                : undefined),
+    );
+    let effectiveReferrerPolicy = $derived(
+        referrerpolicy ?? (safeSrc ? "no-referrer" : undefined),
+    );
+
     const getInitialAvatarStatus = (): AvatarImageStatus => {
         if (loadingStatus !== undefined) return loadingStatus;
-        if (!src) return "error";
+        if (!safeSrc) return "error";
         return preferInstantDisplay ? "loaded" : "loading";
     };
 
@@ -73,7 +88,7 @@
     }
 
     $effect(() => {
-        if (!src) {
+        if (!safeSrc) {
             setAvatarLoadingStatus("error");
             return;
         }
@@ -93,14 +108,14 @@
     onLoadingStatusChange={handleRootLoadingStatusChange}
     {delayMs}
 >
-    {#if src}
+    {#if safeSrc}
         <Avatar.Image
-            {src}
+            src={safeSrc}
             {alt}
             class={imageClassName}
             loading="lazy"
-            {crossorigin}
-            {referrerpolicy}
+            crossorigin={effectiveCrossorigin}
+            referrerpolicy={effectiveReferrerPolicy}
             onload={handleImageLoad}
             onerror={handleImageError}
         />

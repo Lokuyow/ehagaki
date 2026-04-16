@@ -6,6 +6,10 @@ import {
     ProfileDataFactory,
     ProfileUrlUtils
 } from '../../lib/profileManager';
+import {
+    getProfilePictureCacheKeyUrl,
+    normalizeProfilePictureUrl,
+} from '../../lib/profilePictureUrlUtils';
 import type { ProfileManagerDeps } from '../../lib/types';
 import { MockStorage, createMockRxNostr } from '../helpers';
 
@@ -23,7 +27,7 @@ describe('ProfileUrlUtils', () => {
 
         it('無効なURLをそのまま返す', () => {
             const invalidUrl = 'invalid-url';
-            expect(ProfileUrlUtils.addCacheBuster(invalidUrl)).toBe(invalidUrl);
+            expect(ProfileUrlUtils.addCacheBuster(invalidUrl)).toBe('');
         });
     });
 
@@ -58,6 +62,38 @@ describe('ProfileUrlUtils', () => {
             const url = 'https://example.com/image.jpg?cb=123&profile=true';
             const result = ProfileUrlUtils.ensureProfileMarker(url);
             expect(result).toBe(url);
+        });
+
+        it('private IP の URL を拒否する', () => {
+            const url = 'https://127.0.0.1/image.jpg?profile=true';
+            const result = ProfileUrlUtils.ensureProfileMarker(url);
+            expect(result).toBe('');
+        });
+    });
+
+    describe('normalizeProfilePictureUrl', () => {
+        it('fragment を落として https の public URL を正規化する', () => {
+            const result = normalizeProfilePictureUrl('https://example.com/avatar.png#profile');
+            expect(result).toBe('https://example.com/avatar.png');
+        });
+
+        it('credential 付き URL を拒否する', () => {
+            const result = normalizeProfilePictureUrl('https://user:pass@example.com/avatar.png');
+            expect(result).toBeNull();
+        });
+
+        it('same-origin localhost の http URL は例外許可する', () => {
+            const result = normalizeProfilePictureUrl('http://localhost:4173/avatar.png', {
+                currentOrigin: 'http://localhost:4173'
+            });
+            expect(result).toBe('http://localhost:4173/avatar.png');
+        });
+    });
+
+    describe('getProfilePictureCacheKeyUrl', () => {
+        it('query と fragment を除いた cache key を返す', () => {
+            const result = getProfilePictureCacheKeyUrl('https://example.com/avatar.png?profile=true&cb=123#frag');
+            expect(result).toBe('https://example.com/avatar.png');
         });
     });
 });
@@ -101,6 +137,14 @@ describe('ProfileDataFactory', () => {
 
         expect(result.picture).toMatch(/https:\/\/example\.com\/pic\.jpg\?cb=\d+&profile=true/);
     });
+
+    it('ポリシー外の画像URLは保存しない', () => {
+        const content = { picture: 'http://example.com/pic.jpg' };
+
+        const result = factory.createProfileData(content, 'pubkey123');
+
+        expect(result.picture).toBe('');
+    });
 });
 
 describe('ProfileStorage', () => {
@@ -128,6 +172,21 @@ describe('ProfileStorage', () => {
         expect(mockConsole.log).toHaveBeenCalled();
     });
 
+    it('保存前にポリシー外の画像URLを除去する', () => {
+        const profile = {
+            name: 'Test',
+            displayName: '',
+            picture: 'https://127.0.0.1/pic.jpg?profile=true',
+            npub: 'npub123',
+            nprofile: ''
+        };
+
+        storage.save('pubkey123', profile);
+
+        const stored = JSON.parse(mockLocalStorage.getItem('nostr-profile-pubkey123') || '{}');
+        expect(stored.picture).toBe('');
+    });
+
     it('プロフィールを取得する', () => {
         const profile = { name: 'Test', picture: 'https://example.com/pic.jpg' };
         mockLocalStorage.setItem('nostr-profile-pubkey123', JSON.stringify(profile));
@@ -151,6 +210,20 @@ describe('ProfileStorage', () => {
         const result = storage.get('pubkey123');
 
         expect(result?.picture).toBe('https://example.com/pic.jpg?cb=123&profile=true');
+    });
+
+    it('新形式でもポリシー外 URL を復元しない', () => {
+        const profile = {
+            name: 'Stored User',
+            picture: 'https://192.168.0.10/pic.jpg?profile=true',
+            npub: 'npub123',
+            nprofile: 'nprofile123'
+        };
+        mockLocalStorage.setItem('nostr-profile-pubkey123', JSON.stringify(profile));
+
+        const result = storage.get('pubkey123');
+
+        expect(result?.picture).toBe('');
     });
 
     it('存在しないプロフィールに対してnullを返す', () => {

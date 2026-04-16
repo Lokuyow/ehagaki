@@ -3,49 +3,34 @@ import { createRxBackwardReq } from 'rx-nostr';
 import { toNpub, toNprofile } from "./utils/nostrUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
+import {
+  addProfilePictureCacheBuster,
+  addProfilePictureMarker,
+  ensureProfilePictureMarker,
+  isSameOriginProfilePictureUrl,
+  normalizeProfilePictureUrl,
+} from './profilePictureUrlUtils';
 
 // --- URL処理の純粋関数（依存性なし） ---
 export class ProfileUrlUtils {
   static addCacheBuster(imageUrl: string): string {
-    if (!imageUrl) return imageUrl;
-    try {
-      const url = new URL(imageUrl);
-      url.searchParams.set('cb', Date.now().toString());
-      return url.toString();
-    } catch {
-      return imageUrl;
-    }
+    return addProfilePictureCacheBuster(imageUrl);
   }
 
   static addProfileMarker(imageUrl: string, forceRemote = false, navigatorOnline = true): string {
-    if (!imageUrl) return imageUrl;
-    try {
-      const url = new URL(imageUrl);
-      url.searchParams.set('profile', 'true');
-      if (forceRemote && navigatorOnline) {
-        if (url.searchParams.has('cb')) {
-          url.searchParams.set('cb', Date.now().toString());
-        }
-      } else {
-        url.searchParams.delete('cb');
-      }
-      return url.toString();
-    } catch {
-      return imageUrl;
-    }
+    return addProfilePictureMarker(imageUrl, { forceRemote, navigatorOnline });
   }
 
   static ensureProfileMarker(imageUrl: string): string {
-    if (!imageUrl) return imageUrl;
-    try {
-      const url = new URL(imageUrl);
-      if (!url.searchParams.has('profile')) {
-        url.searchParams.set('profile', 'true');
-      }
-      return url.toString();
-    } catch {
-      return imageUrl;
-    }
+    return ensureProfilePictureMarker(imageUrl);
+  }
+
+  static normalizeProfilePictureUrl(imageUrl: string): string {
+    return normalizeProfilePictureUrl(imageUrl) ?? '';
+  }
+
+  static isSameOriginPictureUrl(imageUrl: string | undefined | null): boolean {
+    return isSameOriginProfilePictureUrl(imageUrl);
   }
 }
 
@@ -97,7 +82,13 @@ export class ProfileStorage {
         this.localStorage.removeItem(`nostr-profile-${pubkeyHex}`);
         return;
       }
-      this.localStorage.setItem(`nostr-profile-${pubkeyHex}`, JSON.stringify(profile));
+      const sanitizedProfile = {
+        ...profile,
+        picture: typeof profile.picture === 'string'
+          ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
+          : ""
+      };
+      this.localStorage.setItem(`nostr-profile-${pubkeyHex}`, JSON.stringify(sanitizedProfile));
       this.console.log("プロフィール情報をローカルストレージに保存:", pubkeyHex);
     } catch (e) {
       this.console.error("プロフィール情報の保存に失敗:", e);

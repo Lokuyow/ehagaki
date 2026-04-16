@@ -1,3 +1,8 @@
+import {
+    getProfilePictureCacheKeyUrl,
+    normalizeProfilePictureUrl,
+} from "../src/lib/profilePictureUrlUtils";
+
 // 定数定義
 const PRECACHE_VERSION = '1.14.3test5';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
@@ -125,8 +130,9 @@ const Utilities = {
 
     // URLからベースURL（クエリパラメータなし）を取得
     getBaseUrl(url) {
-        const urlObj = new URL(url);
-        return `${urlObj.origin}${urlObj.pathname}`;
+        return getProfilePictureCacheKeyUrl(url, {
+            currentOrigin: ServiceWorkerDependencies.location.origin
+        });
     },
 
     // リダイレクトレスポンス
@@ -153,6 +159,12 @@ const Utilities = {
         const url = new URL(request.url);
         // profile=true クエリパラメータがある場合のみプロフィール画像として扱う
         return url.searchParams.get('profile') === 'true';
+    },
+
+    normalizeProfileImageUrl(url) {
+        return normalizeProfilePictureUrl(url, {
+            currentOrigin: ServiceWorkerDependencies.location.origin
+        });
     },
 
     // 共有メディアデータから FormData を抽出（複数メディア対応）
@@ -361,6 +373,9 @@ class CacheManager {
         try {
             const cache = await this.caches.open(PROFILE_CACHE_NAME);
             const baseUrl = Utilities.getBaseUrl(request.url);
+            if (!baseUrl) {
+                return null;
+            }
 
             // キャッシュキーは fetch時と同じ生成方法（no-cors モードのベースRequest）で検索する
             const baseRequest = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
@@ -392,7 +407,12 @@ class CacheManager {
         if (ServiceWorkerDependencies.navigator && ServiceWorkerDependencies.navigator.onLine === false) return null;
 
         try {
+            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
             const baseUrl = Utilities.getBaseUrl(request.url);
+            if (!normalizedUrl || !baseUrl) {
+                this.console.warn('プロフィール画像 URL を拒否:', request.url);
+                return null;
+            }
 
             // クロスオリジン画像は no-cors リクエストで取得（サーバの CORS 設定に依存せず取得可能）
             const profileFetchRequest = Utilities.createCorsRequest(baseUrl, {
@@ -457,6 +477,9 @@ class CacheManager {
             keys.forEach(request => {
                 const url = new URL(request.url);
                 const baseUrl = Utilities.getBaseUrl(request.url);
+                if (!baseUrl) {
+                    return;
+                }
 
                 if (url.search) {
                     // クエリパラメータ付きのURLは重複候補
@@ -471,6 +494,9 @@ class CacheManager {
             let deletedCount = 0;
             for (const duplicateKey of duplicateKeys) {
                 const baseUrl = Utilities.getBaseUrl(duplicateKey.url);
+                if (!baseUrl) {
+                    continue;
+                }
 
                 // ベースURLが既にキャッシュされている場合、クエリ付きを削除
                 if (baseUrls.has(baseUrl)) {
@@ -779,6 +805,12 @@ class RequestHandler {
     async handleProfileImageRequest(request) {
         try {
             this.console.log('プロフィール画像リクエスト処理開始:', request.url);
+
+            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
+            if (!normalizedUrl) {
+                this.console.warn('プロフィール画像 URL がポリシー外のため transparent image を返却:', request.url);
+                return Utilities.createTransparentImageResponse();
+            }
 
             // まずキャッシュから検索
             const cached = await this.cacheManager.handleProfileImageCache(request);
