@@ -1,10 +1,10 @@
 /**
  * useBalloonMessage - バルーンメッセージ一元管理フック
  *
- * すべてのバルーンメッセージ（info/tips/success/error/serviceWorkerError/debug）を一元管理し、
+ * すべてのバルーンメッセージ（flavor/tips/success/error/serviceWorkerError/debug）を一元管理し、
  * 優先度に基づいて最終的なメッセージを提供します。
  *
- * 優先度: serviceWorkerError > debug > info/tips > error > success
+ * 優先度: serviceWorkerError > debug > flavor/tips > error > success
  *
  * @example
  * ```svelte
@@ -42,7 +42,7 @@ interface UseBalloonMessageReturn {
 interface CompactMessageParams {
     serviceWorkerErrorMessage: BalloonMessage | null;
     debugMessage: BalloonMessage | null;
-    infoMessage: BalloonMessage | null;
+    currentMessage: BalloonMessage | null;
     errorMessage: BalloonMessage | null;
     successMessage: BalloonMessage | null;
 }
@@ -50,14 +50,14 @@ interface CompactMessageParams {
 export function selectCompactBalloonMessage({
     serviceWorkerErrorMessage,
     debugMessage,
-    infoMessage,
+    currentMessage,
     errorMessage,
     successMessage,
 }: CompactMessageParams): BalloonMessage | null {
     return (
         serviceWorkerErrorMessage ||
         debugMessage ||
-        (infoMessage?.type === "info" ? null : infoMessage) ||
+        (currentMessage?.type === "flavor" ? null : currentMessage) ||
         errorMessage ||
         successMessage ||
         null
@@ -81,15 +81,15 @@ export function useBalloonMessage(
     // $stateにすることで、設定後に依存エフェクトが再実行される
     let balloonManager = $state<BalloonMessageManager | null>(null);
 
-    // 各メッセージ種別の状態（優先度: serviceWorkerError > debug > info/tips > error > success）
-    let infoMessage = $state<BalloonMessage | null>(null);
+    // 各メッセージ種別の状態（優先度: serviceWorkerError > debug > flavor/tips > error > success）
+    let currentMessage = $state<BalloonMessage | null>(null);
     let successMessage = $state<BalloonMessage | null>(null);
     let serviceWorkerErrorMessage = $state<BalloonMessage | null>(null);
     let debugMessage = $state<BalloonMessage | null>(null);
     let hasProcessedSuccess = $state(false);
 
     // タイムアウト管理（直接管理）
-    let infoHideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let messageHideTimeout: ReturnType<typeof setTimeout> | null = null;
     let successHideTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // visibilitychange状態
@@ -108,7 +108,7 @@ export function useBalloonMessage(
     const finalMessage = $derived(
         serviceWorkerErrorMessage ||
         debugMessage ||
-        infoMessage ||
+        currentMessage ||
         errorMessage ||
         successMessage ||
         null
@@ -118,32 +118,32 @@ export function useBalloonMessage(
         selectCompactBalloonMessage({
             serviceWorkerErrorMessage,
             debugMessage,
-            infoMessage,
+            currentMessage,
             errorMessage,
             successMessage,
         })
     );
 
-    function scheduleInfoHide() {
-        if (infoHideTimeout) clearTimeout(infoHideTimeout);
-        infoHideTimeout = setTimeout(() => {
-            infoMessage = null;
-            infoHideTimeout = null;
+    function scheduleMessageHide() {
+        if (messageHideTimeout) clearTimeout(messageHideTimeout);
+        messageHideTimeout = setTimeout(() => {
+            currentMessage = null;
+            messageHideTimeout = null;
         }, hideDelay);
     }
 
-    function showInfoMessage() {
-        if (!balloonManager || infoMessage) return;
-        infoMessage = balloonManager.createMessage("info");
-        scheduleInfoHide();
+    function showFlavorMessage() {
+        if (!balloonManager || currentMessage) return;
+        currentMessage = balloonManager.createMessage("flavor");
+        scheduleMessageHide();
     }
 
     function showTips() {
-        if (!balloonManager || infoMessage) return;
+        if (!balloonManager || currentMessage) return;
         const msg = balloonManager.createMessage("tips");
         if (!msg.message) return;
-        infoMessage = msg;
-        scheduleInfoHide();
+        currentMessage = msg;
+        scheduleMessageHide();
     }
 
     function showSuccess() {
@@ -186,9 +186,9 @@ export function useBalloonMessage(
             wasHidden &&
             getLocaleReady() &&
             balloonManager &&
-            !infoMessage
+            !currentMessage
         ) {
-            showInfoMessage();
+            showFlavorMessage();
             lastVisibilityChange = now;
         }
         wasHidden = document.visibilityState === "hidden";
@@ -252,8 +252,8 @@ export function useBalloonMessage(
 
     // 初回バルーン表示
     $effect(() => {
-        if (getLocaleReady() && balloonManager && !infoMessage && !hasShownInitial) {
-            showInfoMessage();
+        if (getLocaleReady() && balloonManager && !currentMessage && !hasShownInitial) {
+            showFlavorMessage();
             hasShownInitial = true;
         }
     });
@@ -286,17 +286,17 @@ export function useBalloonMessage(
         document.addEventListener("visibilitychange", handleVisibilityChange);
         handleSharedError();
         if (shouldShowDevLog()) {
-            (window as any).showInfoBalloonDebug = (msg: string) => {
-                debugMessage = { type: "info", message: msg };
+            (window as any).showBalloonDebug = (msg: string) => {
+                debugMessage = { type: "flavor", message: msg };
             };
-            (window as any).hideInfoBalloonDebug = () => {
+            (window as any).hideBalloonDebug = () => {
                 debugMessage = null;
             };
         }
         return () => {
             document.removeEventListener("visibilitychange", handleVisibilityChange);
             balloonManager?.dispose();
-            if (infoHideTimeout) clearTimeout(infoHideTimeout);
+            if (messageHideTimeout) clearTimeout(messageHideTimeout);
             if (successHideTimeout) clearTimeout(successHideTimeout);
         };
     });

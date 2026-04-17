@@ -7,7 +7,7 @@ export class BalloonMessageManager {
     private showTimeout: ReturnType<typeof setTimeout> | null = null;
     private lastMessageTime = 0; // デバウンス用タイムスタンプ
     private readonly debounceDelay = 500; // デバウンス間隔（ミリ秒）
-    private lastInfoMessage: string | null = null;
+    private lastFlavorMessage: string | null = null;
     /** 時間帯メッセージが選ばれる確率（0〜1） */
     private readonly timeBasedMessageProbability = 0.3;
 
@@ -32,29 +32,29 @@ export class BalloonMessageManager {
     }
 
     /**
-     * ランダムなinfoメッセージを取得
-     * 30%の確率で現在の時間帯メッセージプールから、70%の確率で通常infoから選択。
-     * 時間帯メッセージが空の場合は通常infoにフォールバック。
+     * ランダムなフレーバーテキストを取得
+     * 30%の確率で現在の時間帯メッセージプールから、70%の確率で通常フレーバーから選択。
+     * 時間帯メッセージが空の場合は通常フレーバーにフォールバック。
      * 直前のメッセージと重複しないよう選択。
      */
-    getRandomInfoMessage(): string {
-        const infoMessages = get(json)("balloonMessage.info") as string[];
+    getRandomFlavorMessage(): string {
+        const flavorMessages = get(json)("balloonMessage.flavor") as string[];
         const timePeriod = this.getTimePeriod();
-        const timeMessages = (get(json)(`balloonMessage.infoByTime.${timePeriod}`) ?? []) as string[];
+        const timeMessages = (get(json)(`balloonMessage.flavorByTime.${timePeriod}`) ?? []) as string[];
 
         const useTimeBased = timeMessages.length > 0 && Math.random() < this.timeBasedMessageProbability;
-        const pool = useTimeBased ? timeMessages : infoMessages;
+        const pool = useTimeBased ? timeMessages : flavorMessages;
 
         if (pool.length === 0) return "";
         if (pool.length === 1) {
-            this.lastInfoMessage = pool[0] ?? null;
+            this.lastFlavorMessage = pool[0] ?? null;
             return pool[0] ?? "";
         }
 
-        const filtered = pool.filter((message) => message !== this.lastInfoMessage);
+        const filtered = pool.filter((message) => message !== this.lastFlavorMessage);
         const candidates = filtered.length > 0 ? filtered : pool;
         const selectedMessage = candidates[Math.floor(Math.random() * candidates.length)] ?? "";
-        this.lastInfoMessage = selectedMessage;
+        this.lastFlavorMessage = selectedMessage;
         return selectedMessage;
     }
 
@@ -99,8 +99,8 @@ export class BalloonMessageManager {
 
         if (!finalMessage) {
             switch (type) {
-                case "info":
-                    finalMessage = this.getRandomInfoMessage();
+                case "flavor":
+                    finalMessage = this.getRandomFlavorMessage();
                     break;
                 case "success":
                     finalMessage = this.getRandomSuccessMessage();
@@ -169,6 +169,6 @@ export class BalloonMessageManager {
     dispose(): void {
         this.cancelScheduledHide();
         this.lastMessageTime = 0;
-        this.lastInfoMessage = null;
+        this.lastFlavorMessage = null;
     }
 }

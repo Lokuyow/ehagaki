@@ -283,10 +283,10 @@
         border-color: var(--balloon-tips-border);
     }
 
-    .compact-message.info {
-        background: var(--balloon-info-bg);
-        color: var(--balloon-info-color);
-        border-color: var(--balloon-info-border);
+    .compact-message.flavor {
+        background: var(--balloon-flavor-bg);
+        color: var(--balloon-flavor-color);
+        border-color: var(--balloon-flavor-border);
     }
 
     .compact-message-text {

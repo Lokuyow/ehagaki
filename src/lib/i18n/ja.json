@@ -213,7 +213,7 @@
       "post_timeout": "時間切れにより送信未確定",
       "post_network_error": "ネットワークエラー"
     },
-    "info": [
+    "flavor": [
       "ハロー",
       "なんや？",
       "いらっ<wbr>しゃい",
@@ -247,7 +247,7 @@
     "tips": {
       "long_press_to_post": "長押しで投稿"
     },
-    "infoByTime": {
+    "flavorByTime": {
       "morning": [
         "おはよう<wbr>さん",
         "朝から<wbr>来て<wbr>くれたんか",

@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { selectCompactBalloonMessage } from '../../lib/hooks/useBalloonMessage.svelte';
 
 describe('selectCompactBalloonMessage', () => {
-    it('info のフレーバーテキストは compact 表示から除外する', () => {
+    it('flavor のフレーバーテキストは compact 表示から除外する', () => {
         const result = selectCompactBalloonMessage({
             serviceWorkerErrorMessage: null,
             debugMessage: null,
-            infoMessage: {
-                type: 'info',
+            currentMessage: {
+                type: 'flavor',
                 message: 'hello',
             },
             errorMessage: null,
@@ -21,7 +21,7 @@ describe('selectCompactBalloonMessage', () => {
         const result = selectCompactBalloonMessage({
             serviceWorkerErrorMessage: null,
             debugMessage: null,
-            infoMessage: {
+            currentMessage: {
                 type: 'tips',
                 message: 'tip',
             },
@@ -35,12 +35,12 @@ describe('selectCompactBalloonMessage', () => {
         });
     });
 
-    it('隠れた info より error を優先して compact 表示する', () => {
+    it('隠れた flavor より error を優先して compact 表示する', () => {
         const result = selectCompactBalloonMessage({
             serviceWorkerErrorMessage: null,
             debugMessage: null,
-            infoMessage: {
-                type: 'info',
+            currentMessage: {
+                type: 'flavor',
                 message: 'hello',
             },
             errorMessage: {

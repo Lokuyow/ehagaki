@@ -20,12 +20,12 @@ export interface UploadEndpoint {
 
 // BalloonMessage関連型定義
 // success/error/warning: システムメッセージ（投稿成功・失敗・エラーなど）
-// info: コメント（挨拶など特別な意味を持たないメッセージ）
+// flavor: コメント/フレーバーテキスト（挨拶など特別な意味を持たないメッセージ）
 // tips: アプリの使い方を助けるTips
-export type BalloonMessageType = "success" | "error" | "warning" | "info" | "tips";
+export type BalloonMessageType = "success" | "error" | "warning" | "flavor" | "tips";
 
 export interface BalloonMessage {
-    type: "success" | "error" | "warning" | "info" | "tips";
+    type: BalloonMessageType;
     message: string;
 }
 

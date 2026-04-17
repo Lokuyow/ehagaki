@@ -1,6 +1,8 @@
 <script lang="ts">
+    import type { BalloonMessageType } from "../lib/types";
+
     interface Props {
-        type?: "success" | "error" | "warning" | "info" | "tips";
+        type?: BalloonMessageType;
         message?: string;
     }
 
@@ -42,10 +44,10 @@
         --balloon-warning-bg: hsl(38, 100%, 95%);
         --balloon-warning-color: hsl(30, 90%, 35%);
         --balloon-warning-border: hsl(38, 90%, 65%);
-        /* info */
-        --balloon-info-bg: hsl(125, 39%, 94%);
-        --balloon-info-color: hsl(123, 46%, 32%);
-        --balloon-info-border: hsl(125, 39%, 70%);
+        /* flavor */
+        --balloon-flavor-bg: hsl(125, 39%, 94%);
+        --balloon-flavor-color: hsl(123, 46%, 32%);
+        --balloon-flavor-border: hsl(125, 39%, 70%);
         /* tips */
         --balloon-tips-bg: hsl(270, 50%, 96%);
         --balloon-tips-color: hsl(270, 55%, 38%);
@@ -74,7 +76,7 @@
         color: #333;
         margin: auto 0 auto 8px;
     }
-    .balloon-message-wrapper.info .balloon-message {
+    .balloon-message-wrapper.flavor .balloon-message {
         font-size: 0.875rem;
     }
     /* --- ここから二重線しっぽ --- */
@@ -117,11 +119,12 @@
         border-color: transparent var(--balloon-success-border) transparent
             transparent;
     }
-    .balloon-message-wrapper.info .balloon-message::after {
-        border-color: transparent var(--balloon-info-bg) transparent transparent;
+    .balloon-message-wrapper.flavor .balloon-message::after {
+        border-color: transparent var(--balloon-flavor-bg) transparent
+            transparent;
     }
-    .balloon-message-wrapper.info .balloon-message::before {
-        border-color: transparent var(--balloon-info-border) transparent
+    .balloon-message-wrapper.flavor .balloon-message::before {
+        border-color: transparent var(--balloon-flavor-border) transparent
             transparent;
     }
     /* 外側三角形（before）は黒で共通 */
@@ -135,10 +138,10 @@
         color: var(--balloon-success-color);
         border-color: var(--balloon-success-border);
     }
-    .balloon-message-wrapper.info .balloon-message {
-        background: var(--balloon-info-bg);
-        color: var(--balloon-info-color);
-        border-color: var(--balloon-info-border);
+    .balloon-message-wrapper.flavor .balloon-message {
+        background: var(--balloon-flavor-bg);
+        color: var(--balloon-flavor-color);
+        border-color: var(--balloon-flavor-border);
     }
     .balloon-message-wrapper.warning .balloon-message::after {
         border-color: transparent var(--balloon-warning-bg) transparent

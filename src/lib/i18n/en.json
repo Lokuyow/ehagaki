@@ -213,7 +213,7 @@
       "post_timeout": "Timed out before submit",
       "post_network_error": "Network error"
     },
-    "info": [
+    "flavor": [
       "Yo.",
       "What now?",
       "Yeah, come in.",
@@ -247,7 +247,7 @@
     "tips": {
       "long_press_to_post": "Hold to post."
     },
-    "infoByTime": {
+    "flavorByTime": {
       "morning": [
         "Mornin'.",
         "Here already?",

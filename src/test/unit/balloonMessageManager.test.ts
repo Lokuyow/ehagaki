@@ -23,25 +23,25 @@ vi.mock('svelte/store', () => ({
 describe('BalloonMessageManager', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        // デフォルト: infoメッセージ配列を返す
+        // デフォルト: flavorメッセージ配列を返す
         mockGet.mockReturnValue((key: string) => {
-            if (key === 'balloonMessage.info') return ['Info A', 'Info B'];
+            if (key === 'balloonMessage.flavor') return ['Flavor A', 'Flavor B'];
             return null;
         });
     });
 
-    describe('getRandomInfoMessage', () => {
+    describe('getRandomFlavorMessage', () => {
         it('候補が2件以上ある場合は同じ文言が連続しない', () => {
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['A', 'B', 'C'];
+                if (key === 'balloonMessage.flavor') return ['A', 'B', 'C'];
                 return null;
             });
             vi.spyOn(Math, 'random').mockReturnValue(0);
 
             const manager = new BalloonMessageManager((key: string) => key);
 
-            const first = manager.getRandomInfoMessage();
-            const second = manager.getRandomInfoMessage();
+            const first = manager.getRandomFlavorMessage();
+            const second = manager.getRandomFlavorMessage();
 
             expect(first).toBe('A');
             expect(second).toBe('B');
@@ -49,26 +49,26 @@ describe('BalloonMessageManager', () => {
 
         it('候補が1件のみの場合はその文言を返す', () => {
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['A'];
+                if (key === 'balloonMessage.flavor') return ['A'];
                 return null;
             });
             vi.spyOn(Math, 'random').mockReturnValue(0);
 
             const manager = new BalloonMessageManager((key: string) => key);
 
-            expect(manager.getRandomInfoMessage()).toBe('A');
-            expect(manager.getRandomInfoMessage()).toBe('A');
+            expect(manager.getRandomFlavorMessage()).toBe('A');
+            expect(manager.getRandomFlavorMessage()).toBe('A');
         });
 
         it('候補が空の場合は空文字を返す', () => {
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return [];
+                if (key === 'balloonMessage.flavor') return [];
                 return null;
             });
 
             const manager = new BalloonMessageManager((key: string) => key);
 
-            expect(manager.getRandomInfoMessage()).toBe('');
+            expect(manager.getRandomFlavorMessage()).toBe('');
         });
     });
 
@@ -329,80 +329,80 @@ describe('BalloonMessageManager', () => {
         });
     });
 
-    describe('getRandomInfoMessage (時間帯メッセージ対応)', () => {
+    describe('getRandomFlavorMessage (時間帯メッセージ対応)', () => {
         beforeEach(() => vi.useFakeTimers());
         afterEach(() => vi.useRealTimers());
 
         it('Math.random < 0.3 かつ時間帯メッセージがある場合は時間帯メッセージプールから選択', () => {
             vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
-                if (key === 'balloonMessage.infoByTime.morning') return ['Morning1', 'Morning2'];
+                if (key === 'balloonMessage.flavor') return ['FlavorA', 'FlavorB'];
+                if (key === 'balloonMessage.flavorByTime.morning') return ['Morning1', 'Morning2'];
                 return null;
             });
             vi.spyOn(Math, 'random').mockReturnValue(0.1); // < 0.3 → 時間帯を使う
 
             const manager = new BalloonMessageManager((key: string) => key);
-            const result = manager.getRandomInfoMessage();
+            const result = manager.getRandomFlavorMessage();
             expect(['Morning1', 'Morning2']).toContain(result);
         });
 
-        it('Math.random >= 0.3 の場合は通常infoプールから選択', () => {
+        it('Math.random >= 0.3 の場合は通常flavorプールから選択', () => {
             vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
-                if (key === 'balloonMessage.infoByTime.morning') return ['Morning1'];
+                if (key === 'balloonMessage.flavor') return ['FlavorA', 'FlavorB'];
+                if (key === 'balloonMessage.flavorByTime.morning') return ['Morning1'];
                 return null;
             });
-            vi.spyOn(Math, 'random').mockReturnValue(0.8); // >= 0.3 → 通常infoを使う
+            vi.spyOn(Math, 'random').mockReturnValue(0.8); // >= 0.3 → 通常flavorを使う
 
             const manager = new BalloonMessageManager((key: string) => key);
-            const result = manager.getRandomInfoMessage();
-            expect(['InfoA', 'InfoB']).toContain(result);
+            const result = manager.getRandomFlavorMessage();
+            expect(['FlavorA', 'FlavorB']).toContain(result);
         });
 
-        it('時間帯メッセージが空の場合は通常infoにフォールバック', () => {
+        it('時間帯メッセージが空の場合は通常flavorにフォールバック', () => {
             vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
-                if (key === 'balloonMessage.infoByTime.morning') return [];
+                if (key === 'balloonMessage.flavor') return ['FlavorA', 'FlavorB'];
+                if (key === 'balloonMessage.flavorByTime.morning') return [];
                 return null;
             });
             vi.spyOn(Math, 'random').mockReturnValue(0.1); // < 0.3 だが時間帯が空 → フォールバック
 
             const manager = new BalloonMessageManager((key: string) => key);
-            const result = manager.getRandomInfoMessage();
-            expect(['InfoA', 'InfoB']).toContain(result);
+            const result = manager.getRandomFlavorMessage();
+            expect(['FlavorA', 'FlavorB']).toContain(result);
         });
 
-        it('時間帯メッセージがnull/undefinedの場合は通常infoにフォールバック', () => {
+        it('時間帯メッセージがnull/undefinedの場合は通常flavorにフォールバック', () => {
             vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['InfoA'];
-                return null; // infoByTime.morning → null
+                if (key === 'balloonMessage.flavor') return ['FlavorA'];
+                return null; // flavorByTime.morning → null
             });
             vi.spyOn(Math, 'random').mockReturnValue(0.1);
 
             const manager = new BalloonMessageManager((key: string) => key);
-            const result = manager.getRandomInfoMessage();
-            expect(result).toBe('InfoA');
+            const result = manager.getRandomFlavorMessage();
+            expect(result).toBe('FlavorA');
         });
 
         it('時間帯メッセージプール内でも直前と同じメッセージは連続しない', () => {
             vi.setSystemTime(new Date(2024, 0, 1, 8, 0, 0)); // morning
             mockGet.mockReturnValue((key: string) => {
-                if (key === 'balloonMessage.info') return ['InfoA', 'InfoB'];
-                if (key === 'balloonMessage.infoByTime.morning') return ['M1', 'M2', 'M3'];
+                if (key === 'balloonMessage.flavor') return ['FlavorA', 'FlavorB'];
+                if (key === 'balloonMessage.flavorByTime.morning') return ['M1', 'M2', 'M3'];
                 return null;
             });
             // 常に時間帯プールを使う
             vi.spyOn(Math, 'random').mockReturnValue(0.1);
 
             const manager = new BalloonMessageManager((key: string) => key);
-            const first = manager.getRandomInfoMessage();
+            const first = manager.getRandomFlavorMessage();
             // Math.random=0.1: pool=['M1','M2','M3'], index=0 → 'M1'
-            // 2回目: lastInfoMessage='M1', filtered=['M2','M3'], index=0 → 'M2'
-            const second = manager.getRandomInfoMessage();
+            // 2回目: lastFlavorMessage='M1', filtered=['M2','M3'], index=0 → 'M2'
+            const second = manager.getRandomFlavorMessage();
             expect(first).not.toBe(second);
         });
     });
