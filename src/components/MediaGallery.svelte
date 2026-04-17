@@ -374,9 +374,8 @@
         display: flex;
         align-items: center;
         flex-direction: row;
-        padding: 4px;
         width: 100%;
-        min-height: 240px;
+        min-height: 180px;
         overflow-x: auto;
         overflow-y: visible;
         scrollbar-width: thin;

@@ -50,10 +50,10 @@
     );
 
     // プレースホルダーの表示サイズをアップロード後のメディア表示サイズに合わせる
-    // ギャラリーの実メディアはheight:220px, min-width:100px, max-width:220px, object-fit:cover
-    const GALLERY_HEIGHT = 220;
+    // ギャラリーの実メディアはheight:180px, min-width:100px, max-width:180px, object-fit:cover
+    const GALLERY_HEIGHT = 180;
     const GALLERY_MIN_WIDTH = 100;
-    const GALLERY_MAX_WIDTH = 220;
+    const GALLERY_MAX_WIDTH = 180;
 
     let placeholderStyle = $derived.by(() => {
         if (!item.isPlaceholder) return undefined;
@@ -237,8 +237,7 @@
     .gallery-item-media {
         border-radius: 6px;
         overflow: hidden;
-        background: var(--bg-input);
-        border: 1px solid var(--border);
+        background-color: transparent;
         position: relative;
         display: flex;
         align-items: center;
@@ -252,8 +251,8 @@
 
     .gallery-image {
         min-width: 100px;
-        max-width: 220px;
-        height: 220px;
+        max-width: 180px;
+        height: 180px;
         object-fit: cover;
         display: block;
         -webkit-touch-callout: none;
@@ -268,13 +267,13 @@
 
     .video-wrapper {
         position: relative;
-        width: 220px;
-        height: 220px;
+        width: 180px;
+        height: 180px;
     }
 
     .gallery-video {
-        width: 220px;
-        height: 220px;
+        width: 180px;
+        height: 180px;
         object-fit: cover;
         display: block;
         -webkit-touch-callout: none;
