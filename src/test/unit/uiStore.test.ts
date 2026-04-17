@@ -107,7 +107,7 @@ describe('uiStore', () => {
         });
     });
 
-    it('iPhone Safari 以外では 100svh ベースのレイアウト変数を維持する', async () => {
+    it('iPhone Safari 以外でもキーボード表示中は visual viewport レイアウトへ切り替える', async () => {
         const requestAnimationFrameSpy = vi
             .spyOn(window, 'requestAnimationFrame')
             .mockImplementation((callback: FrameRequestCallback) => {
@@ -128,8 +128,36 @@ describe('uiStore', () => {
 
         const cleanup = setupViewportListener();
 
-        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('0');
+        expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('none');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(keyboardHeightStore.value).toBe(300);
+        expect(bottomPositionStore.value).toBe(300);
+
+        setWindowScroll(220);
+        window.dispatchEvent(new Event('scroll'));
+
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
+        expect(keyboardHeightStore.value).toBe(300);
+        expect(bottomPositionStore.value).toBe(300);
+
+        viewport.visualViewport.height = 760;
+        viewport.emit('resize');
+
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
         expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
@@ -138,25 +166,9 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
         expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
-        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('350px');
-        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('300px');
-        expect(keyboardHeightStore.value).toBe(300);
-        expect(bottomPositionStore.value).toBe(300);
-
-        setWindowScroll(220);
-        window.dispatchEvent(new Event('scroll'));
-
-        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
-        expect(keyboardHeightStore.value).toBe(300);
-        expect(bottomPositionStore.value).toBe(300);
-
-        viewport.visualViewport.height = 760;
-        viewport.emit('resize');
-
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe(`${FOOTER_HEIGHT + 50}px`);
         expect(keyboardHeightStore.value).toBe(0);
         expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
 

@@ -175,6 +175,10 @@ function getFooterReservedHeight(isKeyboardOpen: boolean): number {
     return isKeyboardOpen ? 0 : FOOTER_HEIGHT;
 }
 
+function shouldLockAppRootForKeyboard(isKeyboardVisible: boolean): boolean {
+    return isKeyboardVisible && lastViewportHeight !== undefined;
+}
+
 function syncLayoutCssVariables(
     isKeyboardVisible: boolean,
     viewportMetrics: {
@@ -196,22 +200,18 @@ function syncLayoutCssVariables(
     }
 
     const footerReservedHeight = getFooterReservedHeight(isKeyboardVisible);
-    const useVisibleViewportRoot =
-        lastViewportHeight !== undefined && isNonPwaIPhoneSafari();
-    const shouldLockAppRoot = useVisibleViewportRoot && isKeyboardVisible;
+    const isSafariViewportMode = isNonPwaIPhoneSafari();
+    const shouldLockAppRoot = shouldLockAppRootForKeyboard(isKeyboardVisible);
 
-    syncSafariKeyboardTouchScrollLock(shouldLockAppRoot);
+    syncSafariKeyboardTouchScrollLock(shouldLockAppRoot && isSafariViewportMode);
     const keyboardButtonBarBottom = shouldLockAppRoot
-        ? `${isKeyboardVisible ? 0 : FOOTER_HEIGHT}px`
+        ? "0px"
         : `${bottomPosition}px`;
     const reasonInputBottom = shouldLockAppRoot
-        ? `${isKeyboardVisible
-            ? KEYBOARD_BUTTON_BAR_HEIGHT
-            : FOOTER_HEIGHT + KEYBOARD_BUTTON_BAR_HEIGHT
-        }px`
+        ? `${KEYBOARD_BUTTON_BAR_HEIGHT}px`
         : `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
     const footerBottom = shouldLockAppRoot
-        ? `${isKeyboardVisible ? -FOOTER_HEIGHT : 0}px`
+        ? `${-FOOTER_HEIGHT}px`
         : "0px";
 
     setRootStyleProperty(
@@ -269,7 +269,7 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--main-content-keyboard-adjustment",
-        useVisibleViewportRoot ? "0px" : `${keyboardHeight}px`,
+        shouldLockAppRoot ? "0px" : `${keyboardHeight}px`,
     );
     setRootStyleProperty("--footer-bottom", footerBottom);
     setRootStyleProperty(
@@ -301,11 +301,14 @@ export const reasonInputVisibleStore = {
     },
     set: (v: boolean) => {
         reasonInputVisible = v;
+        const isSafariViewportMode = isNonPwaIPhoneSafari();
+        const isSafariKeyboardViewportReduced =
+            (lastLayoutViewportHeight ?? 0) - (lastViewportHeight ?? 0) >
+            KEYBOARD_THRESHOLD;
+
         syncLayoutCssVariables(
             keyboardHeight > 0 ||
-            isNonPwaIPhoneSafari() &&
-            (lastLayoutViewportHeight ?? 0) - (lastViewportHeight ?? 0) >
-            KEYBOARD_THRESHOLD,
+            (isSafariViewportMode && isSafariKeyboardViewportReduced),
         );
     },
 };
