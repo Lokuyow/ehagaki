@@ -533,7 +533,7 @@
     min-height: 200px;
     padding: 16px 10px 0 10px;
     font-family: inherit;
-    font-size: 1.375rem;
+    font-size: 1.25rem;
     line-height: 1.5;
     outline: none;
     overflow-y: auto;
@@ -547,9 +547,12 @@
       margin: 0;
       padding: 0;
       color: var(--text);
-      white-space: break-spaces;
       position: relative;
       z-index: 2;
+      word-break: normal;
+      overflow-wrap: anywhere;
+      line-break: loose;
+      white-space: break-spaces;
     }
 
     :global(.hashtag) {
