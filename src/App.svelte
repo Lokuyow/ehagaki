@@ -68,7 +68,13 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type { AuthResult, Draft, MediaGalleryItem } from "./lib/types";
+  import type {
+    AuthResult,
+    Draft,
+    MediaGalleryItem,
+    ReplyQuoteQueryResult,
+    ReplyQuoteState,
+  } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -154,9 +160,8 @@
     | {
         type: "set";
         payload: EmbedComposerSetContextPayload;
-        requestId?: string;
+        requestId: string;
       }
-    | { type: "clear"; requestId?: string }
     | undefined = undefined;
 
   const PARENT_CLIENT_REMOTE_SYNC_TIMEOUT_MS = 5000;
@@ -328,13 +333,13 @@
     };
   }
 
-  function notifyRemoteComposerApplied(requestId?: string): void {
+  function notifyRemoteComposerApplied(requestId: string): void {
     iframeMessageService.notifyComposerContextApplied(requestId);
   }
 
   function notifyRemoteComposerError(
     error: string | { code: string; message?: string },
-    requestId?: string,
+    requestId: string,
   ): void {
     iframeMessageService.notifyComposerContextError(error, requestId);
   }
@@ -376,22 +381,93 @@
     updateUrlQueryContentStore(content);
   }
 
+  function createReplyQuoteQueryTarget(reference: ReplyQuoteState) {
+    return {
+      eventId: reference.eventId,
+      relayHints: [...reference.relayHints],
+      authorPubkey: reference.authorPubkey,
+    };
+  }
+
+  function getCurrentReplyQuoteQuery(): ReplyQuoteQueryResult | null {
+    const current = replyQuoteState.value;
+
+    if (!current.reply && current.quotes.length === 0) {
+      return null;
+    }
+
+    return {
+      reply: current.reply ? createReplyQuoteQueryTarget(current.reply) : null,
+      quotes: current.quotes.map((quote) => createReplyQuoteQueryTarget(quote)),
+    };
+  }
+
+  function buildPatchedReplyQuoteQuery(
+    payload: EmbedComposerSetContextPayload,
+  ): ReplyQuoteQueryResult | null | undefined {
+    const touchesReply = payload.reply !== undefined;
+    const touchesQuotes = payload.quotes !== undefined;
+
+    if (!touchesReply && !touchesQuotes) {
+      return undefined;
+    }
+
+    const decodedPatch = getReplyQuoteFromEmbedPayload(payload);
+    const current = getCurrentReplyQuoteQuery();
+
+    let nextReply = current?.reply ?? null;
+    let nextQuotes = current?.quotes ?? [];
+
+    if (touchesReply) {
+      if (payload.reply === null) {
+        nextReply = null;
+      } else {
+        if (!decodedPatch?.reply) {
+          throw new Error("invalid_composer_context");
+        }
+        nextReply = decodedPatch.reply;
+      }
+    }
+
+    if (touchesQuotes) {
+      if (payload.quotes === null) {
+        nextQuotes = [];
+      } else {
+        if (
+          (payload.quotes?.length ?? 0) > 0
+          && (!decodedPatch || decodedPatch.quotes.length === 0)
+        ) {
+          throw new Error("invalid_composer_context");
+        }
+
+        nextQuotes = decodedPatch?.quotes ?? [];
+      }
+    }
+
+    if (!nextReply && nextQuotes.length === 0) {
+      return null;
+    }
+
+    return {
+      reply: nextReply,
+      quotes: nextQuotes,
+    };
+  }
+
   async function applyRemoteComposerSetContext(
     payload: EmbedComposerSetContextPayload,
   ): Promise<void> {
     applyRemoteComposerContent(payload.content);
 
-    const replyQuoteQuery = getReplyQuoteFromEmbedPayload(payload);
-    const hasReplyQuoteContext =
-      payload.reply !== undefined ||
-      (Array.isArray(payload.quotes) && payload.quotes.length > 0);
+    const replyQuoteQuery = buildPatchedReplyQuoteQuery(payload);
 
-    if (!replyQuoteQuery) {
-      if (!hasReplyQuoteContext) {
-        return;
-      }
-      console.warn("親ページから無効な composer.setContext を受信:", payload);
-      throw new Error("invalid_composer_context");
+    if (replyQuoteQuery === undefined) {
+      return;
+    }
+
+    if (replyQuoteQuery === null) {
+      clearReplyQuote();
+      return;
     }
 
     await applyReplyQuoteQuery({
@@ -402,7 +478,7 @@
 
   async function handleRemoteComposerSetContext(
     payload: EmbedComposerSetContextPayload,
-    requestId?: string,
+    requestId: string,
   ): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       pendingRemoteComposerAction = {
@@ -428,21 +504,6 @@
     }
   }
 
-  async function handleRemoteComposerClearContext(
-    requestId?: string,
-  ): Promise<void> {
-    if (isBootstrappingApp || parentClientAuthPromise) {
-      pendingRemoteComposerAction = {
-        type: "clear",
-        requestId,
-      };
-      return;
-    }
-
-    clearReplyQuote();
-    notifyRemoteComposerApplied(requestId);
-  }
-
   async function flushPendingRemoteComposerAction(): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       return;
@@ -451,12 +512,6 @@
     const pendingAction = pendingRemoteComposerAction;
     pendingRemoteComposerAction = undefined;
     if (!pendingAction) {
-      return;
-    }
-
-    if (pendingAction.type === "clear") {
-      clearReplyQuote();
-      notifyRemoteComposerApplied(pendingAction.requestId);
       return;
     }
 
@@ -734,11 +789,6 @@
         void handleRemoteComposerSetContext(payload, requestId);
       });
 
-    const cleanupRemoteComposerClearContextHandler =
-      embedComposerContextService.onRemoteClearContext((requestId) => {
-        void handleRemoteComposerClearContext(requestId);
-      });
-
     const cleanupReplyQuoteChangeHandler = onReplyQuoteChanged(() => {
       if (isBootstrappingApp) {
         return;
@@ -814,7 +864,6 @@
       cleanupParentClientLoginHandler();
       cleanupParentClientLogoutHandler();
       cleanupRemoteComposerSetContextHandler();
-      cleanupRemoteComposerClearContextHandler();
       cleanupReplyQuoteChangeHandler();
     };
   });

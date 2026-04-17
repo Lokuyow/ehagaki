@@ -26,7 +26,7 @@ const mockState = vi.hoisted(() => {
             authorPubkey: null,
         },
         quotes: [],
-    }));
+    }) as any);
     const initializeNostrSession = vi.fn(async () => ({
         rxNostr: undefined,
         relayProfileService: {
@@ -66,7 +66,6 @@ const mockState = vi.hoisted(() => {
     const remoteLoginCleanup = vi.fn();
     const remoteLogoutCleanup = vi.fn();
     const remoteComposerSetContextCleanup = vi.fn();
-    const remoteComposerClearContextCleanup = vi.fn();
     const notifyComposerContextApplied = vi.fn();
     const notifyComposerContextError = vi.fn();
     const notifyComposerContextUpdated = vi.fn();
@@ -97,7 +96,6 @@ const mockState = vi.hoisted(() => {
         remoteLoginCleanup,
         remoteLogoutCleanup,
         remoteComposerSetContextCleanup,
-        remoteComposerClearContextCleanup,
         notifyComposerContextApplied,
         notifyComposerContextError,
         notifyComposerContextUpdated,
@@ -119,8 +117,7 @@ const mockState = vi.hoisted(() => {
         } | null,
         parentRemoteLoginListener: null as ((pubkeyHex: string | null) => void) | null,
         parentRemoteLogoutListener: null as ((pubkeyHex: string | null) => void) | null,
-        composerRemoteSetContextListener: null as ((payload: { reply?: string | null; quotes?: string[]; content?: string | null }, requestId?: string) => void) | null,
-        composerRemoteClearContextListener: null as ((requestId?: string) => void) | null,
+        composerRemoteSetContextListener: null as ((payload: { reply?: string | null; quotes?: string[] | null; content?: string | null }, requestId: string) => void) | null,
     };
 });
 
@@ -197,13 +194,9 @@ vi.mock('../../lib/parentClientAuthService', () => ({
 vi.mock('../../lib/embedComposerContextService', () => ({
     embedComposerContextService: {
         initialize: vi.fn(() => true),
-        onRemoteSetContext: vi.fn((listener: (payload: { reply?: string | null; quotes?: string[]; content?: string | null }, requestId?: string) => void) => {
+        onRemoteSetContext: vi.fn((listener: (payload: { reply?: string | null; quotes?: string[] | null; content?: string | null }, requestId: string) => void) => {
             mockState.composerRemoteSetContextListener = listener;
             return mockState.remoteComposerSetContextCleanup;
-        }),
-        onRemoteClearContext: vi.fn((listener: (requestId?: string) => void) => {
-            mockState.composerRemoteClearContextListener = listener;
-            return mockState.remoteComposerClearContextCleanup;
         }),
     },
 }));
@@ -265,7 +258,6 @@ describe('App parentClient integration', () => {
         mockState.parentRemoteLoginListener = null;
         mockState.parentRemoteLogoutListener = null;
         mockState.composerRemoteSetContextListener = null;
-        mockState.composerRemoteClearContextListener = null;
         mockState.logoutAccount.mockReturnValue(null);
         mockState.authenticateWithParentClient.mockResolvedValue({
             success: true,
@@ -487,7 +479,13 @@ describe('App parentClient integration', () => {
                 relayHints: ['wss://hint-relay.example.com'],
                 authorPubkey: null,
             },
-            quotes: [],
+            quotes: [
+                {
+                    eventId: 'quote-1',
+                    relayHints: [],
+                    authorPubkey: null,
+                },
+            ],
         };
         mockState.completePostAuthBootstrap.mockResolvedValue(latestSession as any);
         mockState.getReplyQuoteFromEmbedPayload.mockReturnValue(replyQuoteQuery);
@@ -617,7 +615,6 @@ describe('App parentClient integration', () => {
 
     it('content のみの remote composer.setContext は ack を返し、reply/quote 適用を走らせない', async () => {
         const payload = {
-            quotes: [],
             content: 'content only update',
         };
         const requestId = 'composer-request-content-only';
@@ -639,18 +636,43 @@ describe('App parentClient integration', () => {
         expect(mockState.notifyComposerContextError).not.toHaveBeenCalled();
     });
 
-    it('remote composer.clearContext は ack を返し、content は変更しない', async () => {
+    it('reply / quote を null と空配列で clear する remote composer.setContext は ack を返し、content は変更しない', async () => {
+        const { replyQuoteState, setReplyQuote } = await import('../../stores/replyQuoteStore.svelte');
+        setReplyQuote({
+            reply: {
+                eventId: 'event-to-clear',
+                relayHints: ['wss://hint-relay.example.com'],
+                authorPubkey: null,
+            },
+            quotes: [
+                {
+                    eventId: 'quote-to-clear',
+                    relayHints: [],
+                    authorPubkey: null,
+                },
+            ],
+        });
+
         render(App);
 
         await waitFor(() => {
-            expect(mockState.composerRemoteClearContextListener).toBeTruthy();
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
         });
 
-        mockState.composerRemoteClearContextListener?.('composer-request-clear');
+        mockState.composerRemoteSetContextListener?.(
+            {
+                reply: null,
+                quotes: [],
+            },
+            'composer-request-clear',
+        );
 
         await waitFor(() => {
             expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith('composer-request-clear');
         });
+        expect(replyQuoteState.value.reply).toBeNull();
+        expect(replyQuoteState.value.quotes).toHaveLength(0);
+        expect(mockState.applyReplyQuoteQuery).not.toHaveBeenCalled();
         expect(mockSharedContentStoreModule.clearUrlQueryContentStore).not.toHaveBeenCalled();
     });
 

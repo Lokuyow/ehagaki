@@ -9,7 +9,6 @@ export type EmbedMessageType =
     | "auth.result"
     | "auth.logout"
     | "composer.setContext"
-    | "composer.clearContext"
     | "composer.contextApplied"
     | "composer.contextError"
     | "composer.contextUpdated"
@@ -45,7 +44,7 @@ export interface EmbedPostErrorPayload extends EmbedErrorPayload {
 
 export interface EmbedComposerSetContextPayload {
     reply?: string | null;
-    quotes?: string[];
+    quotes?: string[] | null;
     content?: string | null;
 }
 
@@ -76,6 +75,26 @@ export function isEmbedMessageEnvelope(
         && message.version === EMBED_MESSAGE_VERSION
         && typeof message.type === "string"
     );
+}
+
+const EMBED_REQUEST_ID_REQUIRED_TYPES = new Set<EmbedMessageType>([
+    "auth.request",
+    "auth.error",
+    "auth.result",
+    "composer.setContext",
+    "composer.contextApplied",
+    "composer.contextError",
+    "rpc.request",
+    "rpc.result",
+    "rpc.error",
+]);
+
+export function embedMessageRequiresRequestId(type: EmbedMessageType): boolean {
+    return EMBED_REQUEST_ID_REQUIRED_TYPES.has(type);
+}
+
+export function isValidEmbedRequestId(value: unknown): value is string {
+    return typeof value === "string" && value.trim().length > 0;
 }
 
 export function getParentOriginFromSearch(

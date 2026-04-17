@@ -1,14 +1,15 @@
 import {
+    embedMessageRequiresRequestId,
     getParentOriginFromSearch,
+    isValidEmbedRequestId,
     isEmbedMessageEnvelope,
     type EmbedComposerSetContextPayload,
 } from "./embedProtocol";
 
 type RemoteComposerSetContextListener = (
     payload: EmbedComposerSetContextPayload,
-    requestId?: string,
+    requestId: string,
 ) => void;
-type RemoteComposerClearContextListener = (requestId?: string) => void;
 
 function isComposerSetContextPayload(
     value: unknown,
@@ -28,6 +29,7 @@ function isComposerSetContextPayload(
 
     if (
         payload.quotes !== undefined
+        && payload.quotes !== null
         && (!Array.isArray(payload.quotes)
             || payload.quotes.some((quote) => typeof quote !== "string"))
     ) {
@@ -49,7 +51,6 @@ export class EmbedComposerContextService {
     private trustedParentOrigin: string | null = null;
     private isListening = false;
     private remoteSetContextListeners = new Set<RemoteComposerSetContextListener>();
-    private remoteClearContextListeners = new Set<RemoteComposerClearContextListener>();
 
     constructor(
         private windowObj: Window = typeof window !== "undefined" ? window : ({} as Window),
@@ -79,13 +80,6 @@ export class EmbedComposerContextService {
         };
     }
 
-    onRemoteClearContext(listener: RemoteComposerClearContextListener): () => void {
-        this.remoteClearContextListeners.add(listener);
-        return () => {
-            this.remoteClearContextListeners.delete(listener);
-        };
-    }
-
     private handleMessage = (event: MessageEvent): void => {
         if (!this.windowObj) return;
         if (!isEmbedMessageEnvelope(event.data)) return;
@@ -97,6 +91,17 @@ export class EmbedComposerContextService {
         const message = event.data;
 
         if (message.type === "composer.setContext") {
+            if (
+                embedMessageRequiresRequestId(message.type)
+                && !isValidEmbedRequestId(message.requestId)
+            ) {
+                this.console.warn(
+                    "requestId がない composer.setContext を無視:",
+                    message,
+                );
+                return;
+            }
+
             if (!isComposerSetContextPayload(message.payload)) {
                 this.console.warn(
                     "不正な composer.setContext payload を無視:",
@@ -105,15 +110,12 @@ export class EmbedComposerContextService {
                 return;
             }
 
+            if (!message.requestId) {
+                return;
+            }
+
             for (const listener of this.remoteSetContextListeners) {
                 listener(message.payload, message.requestId);
-            }
-            return;
-        }
-
-        if (message.type === "composer.clearContext") {
-            for (const listener of this.remoteClearContextListeners) {
-                listener(message.requestId);
             }
         }
     };

@@ -68,25 +68,35 @@ describe('EmbedComposerContextService', () => {
         );
     });
 
-    it('composer.clearContext を受け取ると clear listener を呼ぶ', () => {
+    it('quotes が null の composer.setContext を受け取ると listener を呼ぶ', () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new EmbedComposerContextService(windowObj, mockConsole);
-        const onRemoteClearContext = vi.fn();
-        service.onRemoteClearContext(onRemoteClearContext);
+        const onRemoteSetContext = vi.fn();
+        service.onRemoteSetContext(onRemoteSetContext);
         service.initialize();
 
         listeners.get('message')?.({
             data: {
                 namespace: EMBED_MESSAGE_NAMESPACE,
                 version: 1,
-                type: 'composer.clearContext',
+                type: 'composer.setContext',
                 requestId: 'composer-request-2',
+                payload: {
+                    reply: null,
+                    quotes: null,
+                },
             },
             origin: 'https://parent.example.com',
             source: parent,
         } as unknown as MessageEvent);
 
-        expect(onRemoteClearContext).toHaveBeenCalledWith('composer-request-2');
+        expect(onRemoteSetContext).toHaveBeenCalledWith(
+            {
+                reply: null,
+                quotes: null,
+            },
+            'composer-request-2',
+        );
     });
 
     it('origin が一致しないメッセージは無視する', () => {
@@ -133,5 +143,30 @@ describe('EmbedComposerContextService', () => {
         } as unknown as MessageEvent);
 
         expect(onRemoteSetContext).not.toHaveBeenCalled();
+    });
+
+    it('requestId がない composer.setContext は無視する', () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new EmbedComposerContextService(windowObj, mockConsole);
+        const onRemoteSetContext = vi.fn();
+        service.onRemoteSetContext(onRemoteSetContext);
+        service.initialize();
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'composer.setContext',
+                payload: {
+                    reply: null,
+                    quotes: [],
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(onRemoteSetContext).not.toHaveBeenCalled();
+        expect(mockConsole.warn).toHaveBeenCalled();
     });
 });

@@ -274,6 +274,48 @@ describe('ParentClientAuthService', () => {
         await expect(signPromise).rejects.toThrow('parent_client_invalid_response');
     });
 
+    it('requestId がない auth.result は warn して無視する', async () => {
+        const { windowObj, parent, listeners } = createMockWindow();
+        const service = new ParentClientAuthService(windowObj, mockConsole);
+
+        const promise = service.connect({ capabilities: ['signEvent'] });
+        const authRequest = vi.mocked(parent.postMessage).mock.calls[1][0] as any;
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'auth.result',
+                payload: {
+                    pubkeyHex: 'ab'.repeat(32),
+                    capabilities: ['signEvent'],
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        expect(mockConsole.warn).toHaveBeenCalled();
+        expect(service.isConnected()).toBe(false);
+
+        listeners.get('message')?.({
+            data: {
+                namespace: EMBED_MESSAGE_NAMESPACE,
+                version: 1,
+                type: 'auth.result',
+                requestId: authRequest.requestId,
+                payload: {
+                    pubkeyHex: 'ab'.repeat(32),
+                    capabilities: ['signEvent'],
+                },
+            },
+            origin: 'https://parent.example.com',
+            source: parent,
+        } as unknown as MessageEvent);
+
+        await expect(promise).resolves.toBe('ab'.repeat(32));
+    });
+
     it('auth.logout を受け取ると remote logout listener が呼ばれる', async () => {
         const { windowObj, parent, listeners } = createMockWindow();
         const service = new ParentClientAuthService(windowObj, mockConsole);

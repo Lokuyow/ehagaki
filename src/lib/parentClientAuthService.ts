@@ -2,7 +2,9 @@ import { STORAGE_KEYS } from "./constants";
 import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
+    embedMessageRequiresRequestId,
     getParentOriginFromSearch,
+    isValidEmbedRequestId,
     isEmbedMessageEnvelope,
 } from "./embedProtocol";
 import type { ParentClientCapability, ParentClientSessionData } from "./types";
@@ -550,7 +552,20 @@ export class ParentClientAuthService {
             return;
         }
 
-        if (!requestId) return;
+        if (
+            embedMessageRequiresRequestId(message.type)
+            && !isValidEmbedRequestId(requestId)
+        ) {
+            this.console.warn(
+                "requestId がない親クライアント応答を無視:",
+                message,
+            );
+            return;
+        }
+
+        if (!requestId) {
+            return;
+        }
 
         const pending = this.pendingRequests.get(requestId);
         if (!pending) return;

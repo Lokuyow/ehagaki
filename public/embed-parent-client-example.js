@@ -656,12 +656,20 @@ function mergeTimelineEvents(events) {
 }
 
 function buildComposerContextPayload(options = {}) {
-    const { includeContent = false, clearContent = false } = options;
+    const {
+        includeContent = false,
+        clearContent = false,
+        includeReplyQuote = false,
+    } = options;
     const content = clearContent ? null : getComposerContentValue();
     const quoteValues = selectedQuoteReferences.map((reference) => reference.queryValue);
     const payload = {
-        ...(selectedReplyReference ? { reply: selectedReplyReference.queryValue } : {}),
-        ...(quoteValues.length > 0 ? { quotes: quoteValues } : {}),
+        ...(includeReplyQuote || selectedReplyReference
+            ? { reply: selectedReplyReference?.queryValue ?? null }
+            : {}),
+        ...(includeReplyQuote || quoteValues.length > 0
+            ? { quotes: quoteValues }
+            : {}),
     };
 
     if (clearContent || includeContent || content !== null) {
@@ -705,7 +713,7 @@ function sendRuntimeComposerMessage(type, payload, options) {
 }
 
 function reloadIframeForReplyQuote(reason, detail) {
-    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload(), {
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeReplyQuote: true }), {
         actionLabel: "reply / quote コンテキスト更新",
         infoMessage: reason,
         detail,
@@ -772,7 +780,7 @@ function clearReplyQuoteSelection() {
     selectedReplyReference = null;
     selectedQuoteReferences = [];
     renderTimeline();
-    sendRuntimeComposerMessage("composer.clearContext", undefined, {
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeReplyQuote: true }), {
         actionLabel: "reply / quote コンテキスト解除",
         infoMessage: "reply / quote テスト設定を解除しました",
         detail: null,
@@ -1059,7 +1067,20 @@ function postToIframe(type, payload, requestId) {
     appendLog("send", `${type} を送信`, message);
 }
 
-function validateRequestId(requestId) {
+function requiresRequestId(type) {
+    return [
+        "auth.request",
+        "rpc.request",
+        "composer.contextApplied",
+        "composer.contextError",
+    ].includes(type);
+}
+
+function validateRequestId(type, requestId) {
+    if (requiresRequestId(type)) {
+        return isNonEmptyString(requestId);
+    }
+
     return requestId === undefined || isNonEmptyString(requestId);
 }
 
@@ -1245,11 +1266,15 @@ function validateEnvelope(data) {
     if (data.version !== EMBED_VERSION) {
         return `unexpected version: ${String(data.version)}`;
     }
-    if (!isNonEmptyString(data.type) || !INBOUND_TYPES.has(data.type)) {
-        return `unsupported inbound type: ${String(data.type)}`;
+    if (!isNonEmptyString(data.type)) {
+        return `unexpected type: ${String(data.type)}`;
     }
-    if (!validateRequestId(data.requestId)) {
-        return "requestId must be a non-empty string when provided";
+    if (!validateRequestId(data.type, data.requestId)) {
+        return "requestId must be a non-empty string for request-response messages";
+    }
+
+    if (!INBOUND_TYPES.has(data.type)) {
+        return null;
     }
 
     switch (data.type) {
@@ -1270,7 +1295,7 @@ function validateEnvelope(data) {
         case "post.error":
             return validatePostErrorPayload(data.payload);
         default:
-            return "unsupported inbound type";
+            return null;
     }
 }
 
