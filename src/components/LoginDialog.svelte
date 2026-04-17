@@ -284,7 +284,7 @@
         <div class="parent-client-section">
             <Button
                 variant="primary"
-                shape="rounded"
+                shape="square"
                 className="parent-client-login-button u-control {isLoadingParentClient
                     ? 'loading'
                     : ''}"
@@ -325,7 +325,7 @@
     <div class="nip07-login-section">
         <Button
             variant="primary"
-            shape="rounded"
+            shape="square"
             className="nip07-login-button u-control {isLoadingNip07
                 ? 'loading'
                 : ''}"
@@ -538,16 +538,7 @@
         }
     }
 
-    .parent-client-section {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: stretch;
-        width: 100%;
-        min-height: 136px;
-        gap: 10px;
-    }
-
+    .parent-client-section,
     .nip07-login-section {
         display: flex;
         flex-direction: column;
@@ -555,13 +546,12 @@
         align-items: stretch;
         width: 100%;
         min-height: 120px;
-        gap: 10px;
+        gap: 6px;
     }
 
     .parent-client-feedback,
     .section-feedback {
-        border-radius: 10px;
-        padding: 10px 12px;
+        padding: 8px 10px;
         font-size: 0.95rem;
         line-height: 1.4;
         text-align: center;
@@ -584,11 +574,10 @@
     :global(.parent-client-login-button.primary),
     :global(.nip07-login-button.primary) {
         width: 100%;
-        height: 70px;
+        height: 60px;
         flex-shrink: 0;
         position: relative;
         overflow: hidden;
-        border-radius: 8px;
 
         .btn-text {
             font-size: 1.125rem;
@@ -614,8 +603,10 @@
 
     .bunker-section,
     .secret-key-section {
+        display: flex;
+        flex-direction: column;
         width: 100%;
-        min-height: 100px;
+        height: 100px;
     }
 
     .secret-heading-row,
@@ -625,7 +616,7 @@
         justify-content: center;
         align-items: center;
         width: 100%;
-        margin: 0 0 10px 0;
+        flex: 1;
     }
 
     .secret-input-row,
@@ -633,6 +624,7 @@
         display: flex;
         gap: 6px;
         width: 100%;
+        flex: none;
     }
 
     .secret-input,
