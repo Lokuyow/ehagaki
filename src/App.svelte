@@ -434,8 +434,8 @@
         nextQuotes = [];
       } else {
         if (
-          (payload.quotes?.length ?? 0) > 0
-          && (!decodedPatch || decodedPatch.quotes.length === 0)
+          (payload.quotes?.length ?? 0) > 0 &&
+          (!decodedPatch || decodedPatch.quotes.length === 0)
         ) {
           throw new Error("invalid_composer_context");
         }
