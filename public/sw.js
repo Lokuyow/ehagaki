@@ -4,7 +4,7 @@ import {
 } from "../src/lib/profilePictureUrlUtils";
 
 // 定数定義
-const PRECACHE_VERSION = '1.15.1test';
+const PRECACHE_VERSION = '1.15.2';
 const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
