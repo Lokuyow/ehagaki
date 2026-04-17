@@ -2,6 +2,7 @@
   /* キーボード表示対応用 CSS 変数（setupViewportListener で動的に更新） */
   --app-root-height: 100%;
   --app-root-top: 0px;
+  --app-root-overflow-y: visible;
   --app-main-height: 100svh;
   --app-body-position: static;
   --app-body-inset: auto;
@@ -86,8 +87,9 @@ html,
 body,
 #app {
   height: var(--app-root-height);
-  overflow: hidden;
-  overscroll-behavior: var(--app-overscroll-behavior);
+  overflow-x: hidden;
+  overflow-y: var(--app-root-overflow-y);
+  overscroll-behavior-y: var(--app-overscroll-behavior);
 }
 
 #app {

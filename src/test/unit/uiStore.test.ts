@@ -130,11 +130,13 @@ describe('uiStore', () => {
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
         expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
@@ -179,8 +181,9 @@ describe('uiStore', () => {
             .spyOn(window, 'cancelAnimationFrame')
             .mockImplementation(() => { });
 
-        createVisualViewportMock(500, 72);
+        const viewport = createVisualViewportMock(500, 72);
         const {
+            FOOTER_HEIGHT,
             bottomPositionStore,
             keyboardHeightStore,
             reasonInputVisibleStore,
@@ -191,11 +194,13 @@ describe('uiStore', () => {
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('72px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
         expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('0');
         expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('100%');
         expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('none');
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
@@ -208,10 +213,31 @@ describe('uiStore', () => {
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('72px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
+
+        viewport.visualViewport.height = 800;
+        viewport.visualViewport.offsetTop = 0;
+        viewport.emit('resize');
+
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
+        expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe(`${FOOTER_HEIGHT}px`);
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe(`${FOOTER_HEIGHT + 50}px`);
+        expect(keyboardHeightStore.value).toBe(0);
+        expect(bottomPositionStore.value).toBe(FOOTER_HEIGHT);
 
         cleanup?.();
 

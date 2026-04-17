@@ -198,51 +198,57 @@ function syncLayoutCssVariables(
     const footerReservedHeight = getFooterReservedHeight(isKeyboardVisible);
     const useVisibleViewportRoot =
         lastViewportHeight !== undefined && isNonPwaIPhoneSafari();
-    syncSafariKeyboardTouchScrollLock(useVisibleViewportRoot && isKeyboardVisible);
-    const keyboardButtonBarBottom = useVisibleViewportRoot
+    const shouldLockAppRoot = useVisibleViewportRoot && isKeyboardVisible;
+
+    syncSafariKeyboardTouchScrollLock(shouldLockAppRoot);
+    const keyboardButtonBarBottom = shouldLockAppRoot
         ? `${isKeyboardVisible ? 0 : FOOTER_HEIGHT}px`
         : `${bottomPosition}px`;
-    const reasonInputBottom = useVisibleViewportRoot
+    const reasonInputBottom = shouldLockAppRoot
         ? `${isKeyboardVisible
             ? KEYBOARD_BUTTON_BAR_HEIGHT
             : FOOTER_HEIGHT + KEYBOARD_BUTTON_BAR_HEIGHT
         }px`
         : `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
-    const footerBottom = useVisibleViewportRoot
+    const footerBottom = shouldLockAppRoot
         ? `${isKeyboardVisible ? -FOOTER_HEIGHT : 0}px`
         : "0px";
 
     setRootStyleProperty(
         "--app-root-height",
-        useVisibleViewportRoot ? `${lastViewportHeight}px` : "100%",
+        shouldLockAppRoot ? `${lastViewportHeight}px` : "100%",
     );
     setRootStyleProperty(
         "--app-root-top",
-        useVisibleViewportRoot ? `${lastViewportOffsetTop}px` : "0px",
+        shouldLockAppRoot ? `${lastViewportOffsetTop}px` : "0px",
+    );
+    setRootStyleProperty(
+        "--app-root-overflow-y",
+        shouldLockAppRoot ? "hidden" : "visible",
     );
     setRootStyleProperty(
         "--app-main-height",
-        useVisibleViewportRoot ? `${lastViewportHeight}px` : "100svh",
+        shouldLockAppRoot ? `${lastViewportHeight}px` : "100svh",
     );
     setRootStyleProperty(
         "--app-body-position",
-        useVisibleViewportRoot ? "fixed" : "static",
+        shouldLockAppRoot ? "fixed" : "static",
     );
     setRootStyleProperty(
         "--app-body-inset",
-        useVisibleViewportRoot ? "0" : "auto",
+        shouldLockAppRoot ? "0" : "auto",
     );
     setRootStyleProperty(
         "--app-body-width",
-        useVisibleViewportRoot ? "100%" : "auto",
+        shouldLockAppRoot ? "100%" : "auto",
     );
     setRootStyleProperty(
         "--app-overlay-position",
-        useVisibleViewportRoot ? "absolute" : "fixed",
+        shouldLockAppRoot ? "absolute" : "fixed",
     );
     setRootStyleProperty(
         "--app-overscroll-behavior",
-        useVisibleViewportRoot ? "none" : "auto",
+        shouldLockAppRoot ? "none" : "auto",
     );
     setRootStyleProperty("--footer-height", `${FOOTER_HEIGHT}px`);
     setRootStyleProperty(
