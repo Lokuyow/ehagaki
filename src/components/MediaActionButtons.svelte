@@ -80,4 +80,24 @@
         width: 50px;
         height: 50px;
     }
+
+    :global(button.media-delete-btn--gallery.circle.close),
+    :global(button.media-copy-btn--gallery.circle.copy) {
+        width: var(--gallery-action-button-size, 50px);
+        height: var(--gallery-action-button-size, 50px);
+    }
+
+    :global(button.media-copy-btn--gallery.circle.copy) {
+        top: var(--gallery-copy-button-top, 62px);
+    }
+
+    :global(button.media-delete-btn--gallery.circle.close .svg-icon) {
+        width: calc(var(--gallery-action-button-size, 50px) - 14px);
+        height: calc(var(--gallery-action-button-size, 50px) - 14px);
+    }
+
+    :global(button.media-copy-btn--gallery.circle.copy .svg-icon) {
+        width: calc(var(--gallery-action-button-size, 50px) - 16px);
+        height: calc(var(--gallery-action-button-size, 50px) - 16px);
+    }
 </style>

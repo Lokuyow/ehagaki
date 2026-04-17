@@ -54,6 +54,11 @@
     initializeEditor,
     cleanupEditor,
   } from "../lib/editor/editorLifecycle";
+  import { keyboardHeightStore } from "../stores/uiStore.svelte";
+  import {
+    MIN_EDITOR_HEIGHT_WHEN_KEYBOARD_OPEN,
+    resolveMediaGalleryLayout,
+  } from "../lib/mediaGalleryLayoutUtils";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
 
@@ -74,8 +79,24 @@
   let mediaFreePlacement = $derived(mediaFreePlacementStore.value);
   let postStatus = $derived(editorState.postStatus);
   let uploadErrorMessage = $derived(editorState.uploadErrorMessage);
+  let isKeyboardOpen = $derived(keyboardHeightStore.value > 0);
   let editorContainerEl: HTMLElement | null = null;
   let editorResources: InitializeEditorResult | null = null;
+  let postContainerEl: HTMLDivElement | null = $state(null);
+  let postContainerHeight: number | null = $state(null);
+  let mediaGalleryLayout = $derived(
+    resolveMediaGalleryLayout({
+      keyboardOpen: !mediaFreePlacement && isKeyboardOpen,
+      containerHeight: postContainerHeight,
+    }),
+  );
+  let editorContainerStyle = $derived(
+    `--post-editor-min-height: ${
+      !mediaFreePlacement && isKeyboardOpen
+        ? MIN_EDITOR_HEIGHT_WHEN_KEYBOARD_OPEN
+        : 0
+    }px;`,
+  );
 
   // UI状態をストアから取得
   let postComponentUI = $derived(postComponentUIStore.value);
@@ -183,6 +204,28 @@
   });
 
   const handleFileSelect = uploadHandlers.handleFileSelect;
+
+  $effect(() => {
+    if (!postContainerEl || typeof ResizeObserver === "undefined") return;
+
+    const syncPostContainerHeight = () => {
+      postContainerHeight = Math.round(
+        postContainerEl?.getBoundingClientRect().height ?? 0,
+      );
+    };
+
+    syncPostContainerHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncPostContainerHeight();
+    });
+
+    resizeObserver.observe(postContainerEl);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  });
 
   export async function uploadFiles(files: File[] | FileList): Promise<void> {
     await uploadHandlers.performUpload(files);
@@ -402,11 +445,12 @@
   });
 </script>
 
-<div class="post-container">
+<div class="post-container" bind:this={postContainerEl}>
   <div
     class="editor-container"
     class:drag-over={dragOver}
     class:gallery-mode={!mediaFreePlacement}
+    style={editorContainerStyle}
     use:fileDropActionWithDragState={{
       dragOver: (v: boolean) => (dragOver = v),
     }}
@@ -425,7 +469,7 @@
   </div>
 
   {#if !mediaFreePlacement}
-    <MediaGallery />
+    <MediaGallery layout={mediaGalleryLayout} />
   {/if}
 
   <input
@@ -500,6 +544,7 @@
     width: 100%;
     flex: 1 1 auto;
     min-height: 0;
+    min-height: var(--post-editor-min-height, 0px);
     position: relative;
     cursor: text;
     outline: none;

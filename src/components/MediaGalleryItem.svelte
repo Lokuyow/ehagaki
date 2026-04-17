@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { MediaGalleryItem } from "../lib/types";
+    import type { MediaGalleryLayout } from "../lib/mediaGalleryLayoutUtils";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import MediaActionButtons from "./MediaActionButtons.svelte";
     import { postComponentUIStore } from "../stores/postUIStore.svelte";
@@ -9,6 +10,7 @@
 
     interface Props {
         item: MediaGalleryItem;
+        layout: MediaGalleryLayout;
         index: number;
         onDelete: (id: string) => void;
         onDragStart: (index: number, event: DragEvent) => void;
@@ -20,6 +22,7 @@
 
     let {
         item,
+        layout,
         index,
         onDelete,
         onDragStart,
@@ -49,11 +52,9 @@
         !item.isPlaceholder && item.type === "video" && !!item.src,
     );
 
-    // プレースホルダーの表示サイズをアップロード後のメディア表示サイズに合わせる
-    // ギャラリーの実メディアはheight:180px, min-width:100px, max-width:180px, object-fit:cover
-    const GALLERY_HEIGHT = 180;
-    const GALLERY_MIN_WIDTH = 100;
-    const GALLERY_MAX_WIDTH = 180;
+    let galleryLayoutStyle = $derived(
+        `--gallery-media-height: ${layout.height}px; --gallery-media-min-width: ${layout.minWidth}px; --gallery-media-max-width: ${layout.maxWidth}px; --gallery-action-button-size: ${layout.actionButtonSize}px; --gallery-copy-button-top: ${layout.copyButtonTop}px;`,
+    );
 
     let placeholderStyle = $derived.by(() => {
         if (!item.isPlaceholder) return undefined;
@@ -61,15 +62,15 @@
         if (dims && dims.width > 0 && dims.height > 0) {
             // アスペクト比から幅を計算し、ギャラリー制約に収める
             const aspectRatio = dims.width / dims.height;
-            const w = Math.round(GALLERY_HEIGHT * aspectRatio);
+            const w = Math.round(layout.height * aspectRatio);
             const clampedWidth = Math.max(
-                GALLERY_MIN_WIDTH,
-                Math.min(GALLERY_MAX_WIDTH, w),
+                layout.minWidth,
+                Math.min(layout.maxWidth, w),
             );
-            return `width: ${clampedWidth}px; height: ${GALLERY_HEIGHT}px;`;
+            return `width: ${clampedWidth}px; height: ${layout.height}px;`;
         }
         // 寸法情報がない場合はデフォルト
-        return `width: ${GALLERY_MAX_WIDTH}px; height: ${GALLERY_HEIGHT}px;`;
+        return `width: ${layout.maxWidth}px; height: ${layout.height}px;`;
     });
 
     function handleImageClick() {
@@ -115,6 +116,7 @@
     bind:this={cardEl}
     class="gallery-item"
     class:is-placeholder={item.isPlaceholder}
+    style={galleryLayoutStyle}
     draggable={item.type !== "video" || item.isPlaceholder}
     ondragstart={handleDragStartEvent}
     ondragover={handleDragOverEvent}
@@ -250,9 +252,9 @@
     }
 
     .gallery-image {
-        min-width: 100px;
-        max-width: 180px;
-        height: 180px;
+        min-width: var(--gallery-media-min-width);
+        max-width: var(--gallery-media-max-width);
+        height: var(--gallery-media-height);
         object-fit: cover;
         display: block;
         -webkit-touch-callout: none;
@@ -267,13 +269,13 @@
 
     .video-wrapper {
         position: relative;
-        width: 180px;
-        height: 180px;
+        width: var(--gallery-media-max-width);
+        height: var(--gallery-media-height);
     }
 
     .gallery-video {
-        width: 180px;
-        height: 180px;
+        width: var(--gallery-media-max-width);
+        height: var(--gallery-media-height);
         object-fit: cover;
         display: block;
         -webkit-touch-callout: none;

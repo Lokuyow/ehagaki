@@ -1,5 +1,6 @@
 <script lang="ts">
     import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
+    import type { MediaGalleryLayout } from "../lib/mediaGalleryLayoutUtils";
     import MediaGalleryItem from "./MediaGalleryItem.svelte";
     import { _ } from "svelte-i18n";
     import {
@@ -7,6 +8,12 @@
         SCROLL_BASE_SPEED,
         SCROLL_MAX_SPEED,
     } from "../lib/constants";
+
+    interface Props {
+        layout: MediaGalleryLayout;
+    }
+
+    let { layout }: Props = $props();
 
     // PC ドラッグ＆ドロップ状態
     let dragFromIndex = $state(-1);
@@ -25,6 +32,9 @@
     let autoScrollFrame: number | null = null;
 
     let items = $derived(mediaGalleryStore.items);
+    let galleryLayoutStyle = $derived(
+        `--gallery-media-height: ${layout.height}px; --gallery-media-min-width: ${layout.minWidth}px; --gallery-media-max-width: ${layout.maxWidth}px; --gallery-action-button-size: ${layout.actionButtonSize}px; --gallery-copy-button-top: ${layout.copyButtonTop}px;`,
+    );
 
     // 現在有効な挿入位置（移動なしの場合は -1）
     let effectiveInsertIndex = $derived.by(() => {
@@ -342,6 +352,7 @@
     <div
         class="media-gallery"
         bind:this={galleryEl}
+        style={galleryLayoutStyle}
         ondragover={handleGalleryDragOver}
         ondrop={handleGalleryDrop}
         role="list"
@@ -357,6 +368,7 @@
                 <MediaGalleryItem
                     {item}
                     {index}
+                    {layout}
                     onDelete={handleDelete}
                     onDragStart={handleDragStart}
                     onDragOver={handleDragOver}
@@ -375,7 +387,7 @@
         align-items: center;
         flex-direction: row;
         width: 100%;
-        min-height: 180px;
+        min-height: var(--gallery-media-height);
         overflow-x: auto;
         overflow-y: visible;
         scrollbar-width: thin;
