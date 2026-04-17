@@ -9,6 +9,36 @@ export { BUNKER_REGEX };
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
 
+function isLoopbackRelayHostname(hostname: string): boolean {
+    const normalized = hostname.trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+
+    return normalized === 'localhost'
+        || normalized.endsWith('.localhost')
+        || normalized === '::1'
+        || /^127(?:\.\d{1,3}){3}$/.test(normalized);
+}
+
+function getRelayConnectionFailureHint(relays: string[]): string | null {
+    for (const relay of relays) {
+        try {
+            const relayUrl = new URL(relay);
+            if (
+                relayUrl.protocol === 'ws:'
+                && isLoopbackRelayHostname(relayUrl.hostname)
+            ) {
+                return 'The browser is attempting the local ws:// relay, but the connection is being refused. 127.0.0.1/localhost points to the browser device itself, so confirm the local relay app is running and listening on that device.';
+            }
+        } catch {
+            continue;
+        }
+    }
+
+    return null;
+}
+
 /**
  * NIP-46 connect時にリモートサイナーへ要求するパーミッション。
  * Amberなどのリモートサイナーで「アプリが要求するkindのみ許可」を選択した場合に使われる。
@@ -127,10 +157,15 @@ async function createConnectedPool(
 
     if (connectedRelays.length === 0) {
         pool.destroy();
+        const hint = getRelayConnectionFailureHint(relays);
         const message = connectionErrors.length > 0
             ? connectionErrors.join('; ')
             : 'no reachable relays';
-        throw new Error(`Relay connection failed: ${message}`);
+        throw new Error(
+            hint
+                ? `Relay connection failed: ${message}. ${hint}`
+                : `Relay connection failed: ${message}`,
+        );
     }
 
     if (connectionErrors.length > 0) {

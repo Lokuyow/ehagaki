@@ -183,6 +183,23 @@ describe('Nip46Service', () => {
             expect(mockPool.destroy).toHaveBeenCalled();
         });
 
+        it('loopback ws relay失敗時にローカル relay 向けヒントを含める', async () => {
+            const { parseBunkerInput } = await import('nostr-tools/nip46');
+
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['ws://127.0.0.1:4869/'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            mockPool.ensureRelay.mockRejectedValue(new Error('connection failed'));
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow(
+                '127.0.0.1/localhost points to the browser device itself',
+            );
+        });
+
         it('一部のrelayが失敗しても到達可能relayで接続を継続する', async () => {
             const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
 
