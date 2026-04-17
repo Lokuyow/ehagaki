@@ -559,7 +559,7 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 40px;
+            width: 50px;
             height: 50px;
             border: solid 1px var(--btn-bg);
             border-left: none;
@@ -584,8 +584,8 @@
 
         .xmark-small-icon {
             mask-image: url("/icons/xmark-solid-full.svg");
-            width: 24px;
-            height: 24px;
+            width: 26px;
+            height: 26px;
         }
 
         :global(button.add-account-btn) {
@@ -607,8 +607,8 @@
 
     .plus-icon.svg-icon {
         mask-image: url("/icons/plus-solid-full.svg");
-        width: 22px;
-        height: 22px;
+        width: 26px;
+        height: 26px;
         flex-shrink: 0;
     }
 </style>
