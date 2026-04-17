@@ -215,9 +215,9 @@
     .header-container {
         max-width: 800px;
         width: 100%;
-        height: 66px;
+        height: 62px;
         margin-bottom: 8px;
-        padding: 0 10px;
+        padding: 0 8px;
         display: flex;
         flex-direction: row;
         align-items: center;
@@ -233,7 +233,6 @@
         height: 66px;
         width: 100%;
         min-width: 0;
-        gap: 8px;
     }
 
     a.site-icon-link {
@@ -246,8 +245,8 @@
     }
 
     .site-icon {
-        width: 60px;
-        height: 60px;
+        width: 56px;
+        height: 56px;
         margin-top: auto;
     }
 
@@ -306,7 +305,7 @@
 
     .buttons-container {
         display: flex;
-        gap: 6px;
+        gap: 4px;
         align-items: center;
         height: 100%;
     }
@@ -314,7 +313,7 @@
     :global(.header.clear-button),
     :global(.header.draft-save-button),
     :global(.header.draft-list-button) {
-        width: 58px;
+        width: 54px;
     }
 
     .trash-icon {

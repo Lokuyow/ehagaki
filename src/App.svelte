@@ -1095,9 +1095,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 12px;
+    margin-top: 8px;
     width: 100%;
-    height: calc(100% - 128px);
+    height: calc(100% - 124px);
     overflow: hidden;
   }
 </style>

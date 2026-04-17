@@ -56,8 +56,8 @@
         align-items: center;
         width: 100%;
         height: 100%;
-        margin-left: 2px;
-        margin-right: 6px;
+        margin-left: 6px;
+        margin-right: 4px;
         z-index: 2;
         pointer-events: none;
     }
@@ -69,16 +69,13 @@
         max-width: 150px;
         height: fit-content;
         padding: 6px 8px;
-        font-size: 1.125rem;
+        font-size: 1rem;
         line-height: 1.2;
         color: #333;
         margin: auto 0 auto 8px;
     }
     .balloon-message-wrapper.info .balloon-message {
         font-size: 0.875rem;
-    }
-    .balloon-message-wrapper.tips .balloon-message {
-        font-size: 1rem;
     }
     /* --- ここから二重線しっぽ --- */
     .balloon-message::after {
