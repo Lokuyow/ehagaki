@@ -1,9 +1,25 @@
 :root {
   /* キーボード表示対応用 CSS 変数（setupViewportListener で動的に更新） */
+  --app-root-height: 100%;
+  --app-root-top: 0px;
+  --app-main-height: 100svh;
+  --app-body-position: static;
+  --app-body-inset: auto;
+  --app-body-width: auto;
+  --app-overlay-position: fixed;
+  --app-overscroll-behavior: auto;
+  --footer-height: 66px;
+  --footer-bottom: 0px;
   --keyboard-height: 0px;
-  --visible-viewport-height: 100svh;
+  --keyboard-button-bar-height: 50px;
+  --keyboard-button-bar-bottom: 66px;
+  --main-content-keyboard-adjustment: var(--keyboard-height);
   /* ReasonInput（Content Warning理由入力）の高さ（reasonInputVisibleStore で更新） */
+  --reason-input-base-height: 50px;
   --reason-input-height: 0px;
+  --reason-input-bottom: 116px;
+  --main-content-top-spacing: 8px;
+  --composer-bottom-reserved-height: 116px;
 
   --theme: hsl(152, 74%, 43%);
   --text-black: hsl(0, 0%, 22%);
@@ -66,8 +82,27 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#app {
+  height: var(--app-root-height);
+  overflow: hidden;
+  overscroll-behavior: var(--app-overscroll-behavior);
+}
+
+#app {
+  position: var(--app-body-position);
+  top: var(--app-root-top);
+  left: 0;
+  right: 0;
+  width: var(--app-body-width);
+}
+
 body {
   margin: 0;
+  position: var(--app-body-position);
+  inset: var(--app-body-inset);
+  width: var(--app-body-width);
   color: var(--text);
   background-color: var(--bg);
   overflow-wrap: anywhere;

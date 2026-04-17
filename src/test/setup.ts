@@ -29,7 +29,8 @@ vi.mock('../stores/postUIStore.svelte', () => mockPostUIStoreModule);
 vi.mock('../stores/themeStore.svelte', () => mockThemeStoreModule);
 vi.mock('../lib/keyManager.svelte.ts', () => mockKeyManager);
 vi.mock('../lib/debug', () => ({
-    debugLog: vi.fn()
+    debugLog: vi.fn(),
+    shouldShowDevLog: vi.fn(() => false),
 }));
 
 // テスト環境の識別子を設定

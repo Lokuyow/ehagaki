@@ -145,11 +145,12 @@
         margin: auto;
         padding: 8px;
         background: var(--bg-footer);
-        position: fixed;
+        position: var(--app-overlay-position);
         left: 0;
         right: 0;
-        bottom: 0;
+        bottom: var(--footer-bottom);
         z-index: 99;
+        transition: bottom 0.2s ease;
     }
     :global(.login-btn) {
         width: 140px;

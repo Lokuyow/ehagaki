@@ -4,11 +4,7 @@
         contentWarningStore,
         contentWarningReasonStore,
     } from "../stores/tagsStore.svelte";
-    import {
-        bottomPositionStore,
-        KEYBOARD_BUTTON_BAR_HEIGHT,
-        reasonInputVisibleStore,
-    } from "../stores/uiStore.svelte";
+    import { reasonInputVisibleStore } from "../stores/uiStore.svelte";
 
     // Content Warning状態を取得
     let contentWarningEnabled = $derived(contentWarningStore.value);
@@ -22,11 +18,6 @@
         reasonInputVisibleStore.set(showReasonInput);
     });
 
-    // バーの直上に配置するための位置計算
-    let inputBottomPosition = $derived(
-        bottomPositionStore.value + KEYBOARD_BUTTON_BAR_HEIGHT,
-    );
-
     // Reasonテキスト変更時
     function handleReasonInput(event: Event) {
         const target = event.target as HTMLInputElement;
@@ -35,10 +26,7 @@
 </script>
 
 {#if showReasonInput}
-    <div
-        class="reason-input-container"
-        style="bottom: {inputBottomPosition}px;"
-    >
+    <div class="reason-input-container">
         <input
             id="content-warning-reason-input"
             type="text"
@@ -62,9 +50,10 @@
         padding: 0 8px;
         margin: auto;
         background: var(--bg-buttonbar);
-        position: fixed;
+        position: var(--app-overlay-position);
         left: 0;
         right: 0;
+        bottom: var(--reason-input-bottom);
         z-index: 97;
         transition: bottom 0.2s ease;
     }

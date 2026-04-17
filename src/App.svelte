@@ -1125,7 +1125,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    height: 100svh;
+    height: var(--app-main-height);
     overflow: hidden;
   }
 
@@ -1148,8 +1148,8 @@
     padding-top: var(--main-content-top-spacing);
     width: 100%;
     height: calc(
-      100% - var(--composer-bottom-reserved-height) - var(--keyboard-height) -
-        var(--reason-input-height)
+      100% - var(--composer-bottom-reserved-height) -
+        var(--main-content-keyboard-adjustment) - var(--reason-input-height)
     );
     min-height: 0;
     overflow: hidden;

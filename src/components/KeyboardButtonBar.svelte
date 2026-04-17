@@ -9,7 +9,6 @@
         hashtagPinStore,
     } from "../stores/tagsStore.svelte";
     import {
-        bottomPositionStore,
         keyboardHeightStore,
         setupViewportListener,
     } from "../stores/uiStore.svelte";
@@ -70,9 +69,6 @@
     function toggleHashtagPin() {
         hashtagPinStore.toggle();
     }
-
-    // キーボード追従のための位置調整（共有ストアから取得）
-    let bottomPosition = $derived(bottomPositionStore.value);
 
     // ボタン押下時にキーボードの状態を維持する
     // キーボードが開いている場合: preventDefaultでフォーカスを維持しキーボードを閉じさせない
@@ -214,7 +210,7 @@
     }
 </script>
 
-<div class="footer-button-bar" style="bottom: {bottomPosition}px;">
+<div class="footer-button-bar">
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
@@ -433,9 +429,10 @@
         padding: 0 8px;
         margin: auto;
         background: var(--bg-buttonbar);
-        position: fixed;
+        position: var(--app-overlay-position);
         left: 0;
         right: 0;
+        bottom: var(--keyboard-button-bar-bottom);
         z-index: 98;
         transition: bottom 0.2s ease;
 
