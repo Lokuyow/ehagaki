@@ -8,6 +8,68 @@ import { STORAGE_KEYS } from './constants';
 export { BUNKER_REGEX };
 
 const RELAY_CONNECT_TIMEOUT_MS = 5000;
+const LOCAL_NETWORK_IFRAME_ALLOW_VALUE = 'local-network-access; local-network; loopback-network';
+const LOCAL_NETWORK_PERMISSION_FEATURES = [
+    'loopback-network',
+    'local-network',
+    'local-network-access',
+] as const;
+
+type PermissionsPolicyLike = {
+    allowedFeatures?: () => string[];
+    allowsFeature?: (feature: string) => boolean;
+};
+
+function isRunningInIframe(): boolean {
+    const windowObj = (globalThis as typeof globalThis & { window?: Window }).window;
+    if (!windowObj) {
+        return false;
+    }
+
+    try {
+        return windowObj.self !== windowObj.top;
+    } catch {
+        return true;
+    }
+}
+
+function getPermissionsPolicy(): PermissionsPolicyLike | null {
+    const documentObj = (globalThis as typeof globalThis & { document?: Document }).document as
+        | (Document & {
+            permissionsPolicy?: PermissionsPolicyLike;
+            featurePolicy?: PermissionsPolicyLike;
+        })
+        | undefined;
+
+    return documentObj?.permissionsPolicy ?? documentObj?.featurePolicy ?? null;
+}
+
+function getBlockedLocalNetworkPermissionFeatures(): string[] {
+    const policy = getPermissionsPolicy();
+    if (!policy?.allowedFeatures || !policy.allowsFeature) {
+        return [];
+    }
+
+    const availableFeatures = new Set(policy.allowedFeatures());
+    const recognizedFeatures = LOCAL_NETWORK_PERMISSION_FEATURES.filter((feature) =>
+        availableFeatures.has(feature),
+    );
+
+    return recognizedFeatures.filter((feature) => !policy.allowsFeature?.(feature));
+}
+
+function getIframeLoopbackPermissionHint(): string | null {
+    if (!isRunningInIframe()) {
+        return null;
+    }
+
+    const blockedFeatures = getBlockedLocalNetworkPermissionFeatures();
+    if (blockedFeatures.length > 0) {
+        return `This page is running inside an iframe and the browser reports that ${blockedFeatures.join(', ')} is not delegated to that frame. Add allow="${LOCAL_NETWORK_IFRAME_ALLOW_VALUE}" to the parent iframe and reload.`;
+    }
+
+    return `This page is running inside an iframe. On Chrome-based browsers, local ws://127.0.0.1 relays may require the parent iframe to delegate local/loopback network access. Add allow="${LOCAL_NETWORK_IFRAME_ALLOW_VALUE}" to the parent iframe and reload.`;
+}
 
 function isLoopbackRelayHostname(hostname: string): boolean {
     const normalized = hostname.trim().toLowerCase();
@@ -29,7 +91,14 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
                 relayUrl.protocol === 'ws:'
                 && isLoopbackRelayHostname(relayUrl.hostname)
             ) {
-                return 'The browser is attempting the local ws:// relay, but the connection is being refused. 127.0.0.1/localhost points to the browser device itself, so confirm the local relay app is running and listening on that device.';
+                const iframeHint = getIframeLoopbackPermissionHint();
+                const localRelayHint = '127.0.0.1/localhost points to the browser device itself, so confirm the local relay app is running and listening on that device.';
+
+                if (iframeHint) {
+                    return `${iframeHint} ${localRelayHint}`;
+                }
+
+                return `The browser is attempting the local ws:// relay, but the connection is being refused. ${localRelayHint}`;
             }
         } catch {
             continue;

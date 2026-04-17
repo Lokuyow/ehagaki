@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Nip46SignerAdapter, Nip46Service } from '../../lib/nip46Service';
 import { MockStorage } from '../helpers';
 
@@ -99,6 +99,10 @@ describe('Nip46Service', () => {
     let service: Nip46Service;
     let mockStorage: MockStorage;
 
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
     beforeEach(() => {
         service = new Nip46Service();
         mockStorage = new MockStorage();
@@ -197,6 +201,38 @@ describe('Nip46Service', () => {
 
             await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow(
                 '127.0.0.1/localhost points to the browser device itself',
+            );
+        });
+
+        it('iframe内でloopback ws relayが失敗した場合に埋め込み権限ヒントを含める', async () => {
+            const { parseBunkerInput } = await import('nostr-tools/nip46');
+
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: ['ws://127.0.0.1:4869/'],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            const mockPolicy = {
+                allowedFeatures: vi.fn(() => ['loopback-network']),
+                allowsFeature: vi.fn(() => false),
+            };
+            const mockDocument = {
+                permissionsPolicy: mockPolicy,
+            };
+
+            vi.stubGlobal('document', mockDocument as any);
+            vi.stubGlobal('window', {
+                self: {},
+                top: {},
+                document: mockDocument,
+            } as any);
+
+            mockPool.ensureRelay.mockRejectedValue(new Error('connection failed'));
+
+            await expect(service.connect(`bunker://${'a'.repeat(64)}`)).rejects.toThrow(
+                'allow="local-network-access; local-network; loopback-network"',
             );
         });
 
