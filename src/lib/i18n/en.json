@@ -99,7 +99,7 @@
     "hide_mascot_label": "Hide Kit-ten(top-left)",
     "hide_mascot_note": "Turn this on to hide the top-left mascot. Flavor text is also hidden while this is enabled.",
     "hide_flavor_text_label": "Hide flavor text",
-    "hide_flavor_text_note": "Turn this on to hide only the info flavor text. Success / error / tips still appear in a compact notice.",
+    "hide_flavor_text_note": "Turn this on to hide only the mascot's flavor text. Success, error, and tips will still appear in a compact format.",
     "hide_flavor_text_note_included": "While the mascot is hidden, this setting is forced on automatically.",
     "media_bottom_mode": "Free media placement",
     "refresh_relays_and_profile": "Refresh\nrelay list & profile",

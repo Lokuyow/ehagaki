@@ -351,76 +351,83 @@
             </div>
         </div>
 
-        <div class="setting-section">
-            <div class="setting-row setting-row-with-note">
-                <div class="setting-label-group">
-                    <div class="setting-label-row">
-                        <span class="setting-label"
-                            >{$_("settingsDialog.hide_mascot_label") ||
-                                "左上マスコットを非表示"}</span
-                        >
-                        <InfoPopoverButton
-                            side="top"
-                            sideOffset={8}
-                            ariaLabel={($_(
-                                "settingsDialog.hide_mascot_label",
-                            ) || "左上マスコットを非表示") + "の説明"}
-                        >
-                            {$_("settingsDialog.hide_mascot_note") ||
-                                "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。"}
-                        </InfoPopoverButton>
+        <div class="hide-mascot-flavor-group">
+            <div class="setting-section">
+                <div class="setting-row setting-row-with-note">
+                    <div class="setting-label-group">
+                        <div class="setting-label-row">
+                            <span class="setting-label"
+                                >{$_("settingsDialog.hide_mascot_label") ||
+                                    "左上マスコットを非表示"}</span
+                            >
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={8}
+                                ariaLabel={($_(
+                                    "settingsDialog.hide_mascot_label",
+                                ) || "左上マスコットを非表示") + "の説明"}
+                            >
+                                {$_("settingsDialog.hide_mascot_note") ||
+                                    "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。"}
+                            </InfoPopoverButton>
+                        </div>
                     </div>
-                </div>
-                <div class="setting-control">
-                    <Switch.Root class="bui-switch" bind:checked={hideMascot}>
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
+                    <div class="setting-control">
+                        <Switch.Root
+                            class="bui-switch"
+                            bind:checked={hideMascot}
+                        >
+                            <Switch.Thumb class="bui-switch-thumb" />
+                        </Switch.Root>
+                    </div>
                 </div>
             </div>
-        </div>
 
-        <div class="setting-section">
-            <div class="setting-row setting-row-with-note">
-                <div class="setting-label-group">
-                    <div class="setting-label-row">
-                        <span class="setting-label"
-                            >{$_("settingsDialog.hide_flavor_text_label") ||
-                                "フレーバーテキストを非表示"}</span
-                        >
-                        <InfoPopoverButton
-                            side="top"
-                            sideOffset={8}
-                            ariaLabel={($_(
-                                "settingsDialog.hide_flavor_text_label",
-                            ) || "フレーバーテキストを非表示") + "の説明"}
-                        >
-                            {hideMascot
-                                ? $_(
-                                      "settingsDialog.hide_flavor_text_note_included",
-                                  ) ||
-                                  "マスコットを非表示にしている間は、この設定も自動でオンになります。"
-                                : $_("settingsDialog.hide_flavor_text_note") ||
-                                  "オンにすると info のフレーバーテキストだけを隠します。success / error / tips は簡素な表示で残ります。"}
-                        </InfoPopoverButton>
+            <div class="setting-section">
+                <div class="setting-row setting-row-with-note">
+                    <div class="setting-label-group">
+                        <div class="setting-label-row">
+                            <span class="setting-label"
+                                >{$_("settingsDialog.hide_flavor_text_label") ||
+                                    "フレーバーテキストを非表示"}</span
+                            >
+                            <InfoPopoverButton
+                                side="top"
+                                sideOffset={8}
+                                ariaLabel={($_(
+                                    "settingsDialog.hide_flavor_text_label",
+                                ) || "フレーバーテキストを非表示") + "の説明"}
+                            >
+                                {hideMascot
+                                    ? $_(
+                                          "settingsDialog.hide_flavor_text_note_included",
+                                      ) ||
+                                      "マスコットを非表示にしている間は、この設定も自動でオンになります。"
+                                    : $_(
+                                          "settingsDialog.hide_flavor_text_note",
+                                      ) ||
+                                      "オンにすると info のフレーバーテキストだけを隠します。success / error / tips は簡素な表示で残ります。"}
+                            </InfoPopoverButton>
+                        </div>
                     </div>
-                </div>
-                <div class="setting-control">
-                    {#if hideMascot}
-                        <Switch.Root
-                            class="bui-switch"
-                            checked={effectiveHideFlavorText}
-                            disabled
-                        >
-                            <Switch.Thumb class="bui-switch-thumb" />
-                        </Switch.Root>
-                    {:else}
-                        <Switch.Root
-                            class="bui-switch"
-                            bind:checked={hideFlavorText}
-                        >
-                            <Switch.Thumb class="bui-switch-thumb" />
-                        </Switch.Root>
-                    {/if}
+                    <div class="setting-control">
+                        {#if hideMascot}
+                            <Switch.Root
+                                class="bui-switch"
+                                checked={effectiveHideFlavorText}
+                                disabled
+                            >
+                                <Switch.Thumb class="bui-switch-thumb" />
+                            </Switch.Root>
+                        {:else}
+                            <Switch.Root
+                                class="bui-switch"
+                                bind:checked={hideFlavorText}
+                            >
+                                <Switch.Thumb class="bui-switch-thumb" />
+                            </Switch.Root>
+                        {/if}
+                    </div>
                 </div>
             </div>
         </div>
@@ -579,10 +586,9 @@
 
     .modal-body {
         padding: 16px;
-        font-size: 1rem;
         display: flex;
         flex-direction: column;
-        gap: 30px;
+        gap: 26px;
         width: 100%;
         overflow-y: auto;
     }
@@ -651,6 +657,12 @@
     }
     :global(.bui-switch[data-state="checked"] .bui-switch-thumb) {
         transform: translateX(46px);
+    }
+
+    .hide-mascot-flavor-group {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
     }
 
     .sw-update-section {

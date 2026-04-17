@@ -207,7 +207,7 @@
     }
     .radio-group {
         display: flex;
-        gap: 6px;
+        gap: 4px;
         flex-wrap: wrap;
 
         :global(button) {
@@ -220,6 +220,6 @@
     }
     .radio-pair {
         display: flex;
-        gap: 6px;
+        gap: 4px;
     }
 </style>
