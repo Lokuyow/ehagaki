@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHagaki Parent Client Sample</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --bg: #f3efe5;
+            --panel: #fffdf8;
+            --line: #d8cfbf;
+            --text: #261f12;
+            --muted: #6a5e49;
+            --accent: #c74d2f;
+            --accent-soft: #f7d9ce;
+            --ok: #2f7d4a;
+            --warn: #8a5b12;
+            --error: #9f2d2d;
+            --shadow: 0 18px 40px rgba(63, 43, 18, 0.12);
+            font-family: "Segoe UI", "Hiragino Sans", sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            background:
+                radial-gradient(circle at top left, rgba(199, 77, 47, 0.12), transparent 28%),
+                radial-gradient(circle at bottom right, rgba(116, 141, 93, 0.16), transparent 32%),
+                var(--bg);
+            color: var(--text);
+        }
+
+        .page {
+            width: min(1200px, calc(100vw - 32px));
+            margin: 24px auto 40px;
+            display: grid;
+            grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+            gap: 20px;
+        }
+
+        .content-column {
+            display: grid;
+            gap: 20px;
+            min-width: 0;
+        }
+
+        .panel {
+            background: color-mix(in srgb, var(--panel) 92%, white 8%);
+            border: 1px solid var(--line);
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .sidebar {
+            padding: 22px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        h1,
+        h2 {
+            margin: 0;
+            font-family: Georgia, "Yu Mincho", serif;
+            letter-spacing: 0.02em;
+        }
+
+        h1 {
+            font-size: 1.8rem;
+            line-height: 1.2;
+        }
+
+        h2 {
+            font-size: 1rem;
+            color: var(--muted);
+        }
+
+        p {
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .lead {
+            color: var(--muted);
+        }
+
+        .card {
+            padding: 16px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.68);
+        }
+
+        .card strong {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 0.92rem;
+        }
+
+        .field {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .setting-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .checkbox-field {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.92rem;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .checkbox-field input {
+            width: auto;
+            margin: 0;
+        }
+
+        .field label {
+            font-size: 0.86rem;
+            font-weight: 600;
+            color: var(--muted);
+        }
+
+        input,
+        select,
+        textarea,
+        button {
+            font: inherit;
+        }
+
+        input,
+        select,
+        textarea {
+            width: 100%;
+            padding: 12px 14px;
+            border-radius: 12px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.96);
+            color: var(--text);
+        }
+
+        textarea {
+            min-height: 220px;
+            resize: vertical;
+        }
+
+        .composer-field textarea {
+            min-height: 132px;
+        }
+
+        .buttons {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        button {
+            min-height: 44px;
+            padding: 10px 14px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            transition: transform 120ms ease, opacity 120ms ease;
+        }
+
+        button.secondary {
+            background: #746b5d;
+        }
+
+        button.ghost {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--line);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+            transform: none;
+        }
+
+        .button-full {
+            grid-column: 1 / -1;
+        }
+
+        .status-row {
+            display: grid;
+            gap: 10px;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border-radius: 999px;
+            font-size: 0.86rem;
+            font-weight: 600;
+            background: var(--accent-soft);
+            color: var(--text);
+        }
+
+        .status-pill.ok {
+            background: rgba(47, 125, 74, 0.12);
+            color: var(--ok);
+        }
+
+        .status-pill.warn {
+            background: rgba(138, 91, 18, 0.14);
+            color: var(--warn);
+        }
+
+        .status-pill.error {
+            background: rgba(159, 45, 45, 0.12);
+            color: var(--error);
+        }
+
+        .viewer {
+            display: grid;
+            grid-template-rows: auto minmax(540px, 1fr);
+            min-height: 720px;
+        }
+
+        .timeline-panel {
+            padding: 20px 22px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .timeline-header {
+            display: grid;
+            gap: 8px;
+        }
+
+        .timeline-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 10px;
+            justify-content: space-between;
+        }
+
+        .timeline-toolbar .buttons {
+            width: auto;
+            grid-template-columns: repeat(2, auto);
+        }
+
+        .timeline-selection {
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #f5f1e8;
+            color: #5b4225;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        .timeline-list {
+            display: grid;
+            gap: 12px;
+            max-height: 560px;
+            overflow: auto;
+            padding-right: 4px;
+        }
+
+        .timeline-item {
+            padding: 14px;
+            border-radius: 16px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.72);
+            display: grid;
+            gap: 10px;
+        }
+
+        .timeline-item-header {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            align-items: center;
+            font-size: 0.84rem;
+            color: var(--muted);
+        }
+
+        .timeline-event-id {
+            font-family: Consolas, "Courier New", monospace;
+        }
+
+        .timeline-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.55;
+        }
+
+        .timeline-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .timeline-actions button {
+            min-height: 36px;
+            padding: 8px 12px;
+            font-size: 0.92rem;
+        }
+
+        .timeline-actions button.secondary.is-active {
+            background: var(--accent);
+            color: white;
+        }
+
+        .timeline-empty {
+            padding: 18px;
+            border: 1px dashed var(--line);
+            border-radius: 16px;
+            color: var(--muted);
+            background: rgba(255, 255, 255, 0.48);
+        }
+
+        .viewer-header {
+            padding: 20px 22px 10px;
+            border-bottom: 1px solid var(--line);
+            display: grid;
+            gap: 8px;
+        }
+
+        .viewer-header code {
+            display: block;
+            padding: 10px 12px;
+            border-radius: 12px;
+            background: #f5f1e8;
+            color: #5b4225;
+            overflow-wrap: anywhere;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            min-height: 540px;
+            border: 0;
+            border-radius: 0 0 20px 20px;
+            background: white;
+        }
+
+        .small {
+            font-size: 0.84rem;
+            color: var(--muted);
+        }
+
+        .feedback {
+            min-height: 1.3em;
+        }
+
+        .feedback[data-tone="ok"] {
+            color: var(--ok);
+        }
+
+        .feedback[data-tone="warn"] {
+            color: var(--warn);
+        }
+
+        .feedback[data-tone="error"] {
+            color: var(--error);
+        }
+
+        .help-link {
+            display: block;
+            margin-top: 8px;
+            font-size: 0.88rem;
+            color: var(--muted);
+        }
+
+        .help-link a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .help-link a:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 960px) {
+            .page {
+                grid-template-columns: 1fr;
+            }
+
+            .setting-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .viewer {
+                min-height: 560px;
+            }
+
+            .timeline-toolbar {
+                align-items: stretch;
+            }
+
+            .timeline-toolbar .buttons {
+                width: 100%;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <main class="page">
+        <section class="panel sidebar">
+            <header>
+                <h1>Parent Client Sample</h1>
+                <p class="lead">親ページ側で NIP-07 または秘密鍵を使ってログインし、eHagaki の embed protocol v1 を中継する実動サンプルです。</p>
+                <p class="help-link"><a href="https://github.com/Lokuyow/ehagaki/blob/main/IFRAME_EMBEDDING.md"
+                        target="_blank" rel="noreferrer noopener">埋め込みガイドを開く</a>（iframe 埋め込みの仕様と親ページ向けメッセージ形式を確認できます）
+                </p>
+            </header>
+
+            <div class="card">
+                <strong>このサンプルが行うこと</strong>
+                <p>受信時に namespace、version、type、requestId、payload shape を検証し、許可した型だけを処理します。NIP-07 ログイン時は親ページの
+                    <code>window.nostr</code> を使い、秘密鍵ログイン時は sample に保存した秘密鍵で署名します。
+                </p>
+            </div>
+
+            <div class="status-row">
+                <div id="signer-status" class="status-pill warn">NIP-07 signer 未検出</div>
+                <div id="parent-auth-status" class="status-pill warn">親クライアント未ログイン</div>
+                <div id="handshake-status" class="status-pill">iframe 未接続</div>
+            </div>
+
+            <div class="card">
+                <strong>親クライアント認証</strong>
+
+                <div class="buttons">
+                    <button id="login-nip07" type="button">NIP-07でログイン</button>
+                    <button id="announce-logout" type="button" class="secondary">ログアウト</button>
+                </div>
+
+                <form id="secret-key-login-form">
+                    <div class="field">
+                        <label for="secret-key">秘密鍵ログイン (nsec)</label>
+                        <input id="secret-key" type="password" spellcheck="false" placeholder="nsec1..."
+                            autocomplete="off">
+                    </div>
+
+                    <div class="buttons">
+                        <button id="login-secret-key" type="submit" class="secondary button-full">秘密鍵でログイン</button>
+                    </div>
+                </form>
+
+                <p id="auth-feedback" class="small feedback" role="status"></p>
+            </div>
+
+            <div class="field">
+                <label for="app-url">eHagaki URL</label>
+                <input id="app-url" type="url" spellcheck="false">
+                <p class="small">`embedLocale=en` や `embedTheme=dark` のような埋め込み初期設定クエリを付けてもそのまま保持されます。これらは embed
+                    初回だけ反映されます。</p>
+            </div>
+
+            <div class="card">
+                <strong>初回設定テスト</strong>
+
+                <div class="setting-grid">
+                    <div class="field">
+                        <label for="initial-locale">locale</label>
+                        <select id="initial-locale">
+                            <option value="">未指定</option>
+                            <option value="ja">ja</option>
+                            <option value="en">en</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="initial-theme">theme</label>
+                        <select id="initial-theme">
+                            <option value="system" selected>system (親の prefers-color-scheme を使う)</option>
+                            <option value="">未指定</option>
+                            <option value="light">light</option>
+                            <option value="dark">dark</option>
+                        </select>
+                    </div>
+                </div>
+
+                <label class="checkbox-field" for="initial-hide-mascot">
+                    <input id="initial-hide-mascot" type="checkbox">
+                    <span>左上のマスコットを非表示にする</span>
+                </label>
+
+                <p class="small">locale はそのまま、theme は既定で親ページの `window.matchMedia('(prefers-color-scheme: dark)')`
+                    から `embedTheme=light|dark` に展開して iframe 再読み込み時に自動付与します。未指定を選ぶと iframe
+                    側の生の判定を試せます。</p>
+
+                <div class="buttons">
+                    <button id="reset-initial-settings" type="button"
+                        class="secondary button-full">初期設定をリセットして再読み込み</button>
+                </div>
+
+                <p id="initial-settings-feedback" class="small feedback" role="status"></p>
+            </div>
+
+            <div class="field">
+                <label for="parent-origin">親ページ origin</label>
+                <input id="parent-origin" type="text" readonly>
+            </div>
+
+            <div class="buttons">
+                <button id="reload-iframe" type="button">iframe を再読み込み</button>
+                <button id="clear-log" type="button" class="ghost">ログを消す</button>
+            </div>
+
+            <div class="field">
+                <label for="event-log">イベントログ</label>
+                <textarea id="event-log" readonly></textarea>
+            </div>
+
+            <p class="small">秘密鍵ログイン時は nsec を親側 sample の localStorage に平文で保存します。ログアウトするとその秘密鍵は削除されます。NIP-07
+                ログインと秘密鍵ログインは排他的で、切り替えるにはいったんログアウトが必要です。</p>
+        </section>
+
+        <div class="content-column">
+            <section class="panel viewer">
+                <div class="viewer-header">
+                    <h2>埋め込み iframe</h2>
+                    <code id="iframe-src"></code>
+                </div>
+                <iframe id="ehagaki-iframe" title="eHagaki embed sample"></iframe>
+            </section>
+
+            <section class="panel timeline-panel">
+                <div class="timeline-header">
+                    <h2>簡易タイムライン</h2>
+                    <p class="small">wss://nos.lol の最新 kind 1 を表示します。reply / quote と本文は iframe ready 後に postMessage
+                        で同期し、未接続時だけ URL
+                        クエリ付きで再読み込みします。</p>
+                </div>
+
+                <div class="timeline-toolbar">
+                    <div id="timeline-status" class="status-pill warn">タイムライン未接続</div>
+                    <div class="buttons">
+                        <button id="refresh-timeline" type="button">タイムライン更新</button>
+                        <button id="clear-reply-quote" type="button" class="ghost">reply / quote 解除</button>
+                    </div>
+                </div>
+
+                <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件</div>
+
+                <div class="field composer-field">
+                    <label for="composer-content">本文同期テスト</label>
+                    <textarea id="composer-content" spellcheck="true"
+                        placeholder="composer.setContext で同期する本文を入力"></textarea>
+                </div>
+
+                <div class="buttons">
+                    <button id="sync-composer-content" type="button" class="secondary">本文を同期</button>
+                    <button id="clear-composer-content" type="button" class="ghost">本文をクリア</button>
+                </div>
+
+                <p class="small">reply / quote を付けたまま本文だけ差し替えることもできます。iframe からは requestId 付きで composer.contextApplied /
+                    composer.contextError が返ります。</p>
+
+                <div id="timeline-list" class="timeline-list"></div>
+            </section>
+        </div>
+    </main>
+
+    <script type="module" src="./embed-parent-client-example.js"></script>
+</body>
+
+</html>
