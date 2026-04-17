@@ -479,18 +479,13 @@
   .post-container {
     max-width: 800px;
     width: 100%;
-    height: 100%;
-    /* キーボード表示時に高さを動的に調整 */
-    /* --keyboard-height: キーボードの高さ（閉じている時は0px） */
-    /* --reason-input-height: Content Warning理由入力欄の高さ（非表示時は0px） */
-    max-height: calc(
-      100% - var(--keyboard-height, 0px) - var(--reason-input-height, 0px) - 8px
-    );
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     overflow: hidden;
-    transition: max-height 0.25s ease-out;
+    transition: flex-basis 0.25s ease-out;
   }
 
   .upload-error {
@@ -503,8 +498,8 @@
 
   .editor-container {
     width: 100%;
-    height: 100%;
-    min-height: 200px;
+    flex: 1 1 auto;
+    min-height: 0;
     position: relative;
     cursor: text;
     outline: none;
@@ -530,14 +525,15 @@
   :global(.tiptap-editor) {
     width: 100%;
     height: 100%;
-    min-height: 200px;
-    padding: 16px 10px 0 10px;
+    min-height: 0;
+    padding: 16px 10px 16px 10px;
     font-family: inherit;
     font-size: 1.25rem;
     line-height: 1.5;
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;
+    scroll-padding-bottom: 16px;
     scroll-behavior: auto;
     will-change: scroll-position;
     transform: translateZ(0);

@@ -429,7 +429,7 @@
         align-items: center;
         width: 100%;
         max-width: 800px;
-        height: 50px;
+        height: var(--keyboard-button-bar-height);
         padding: 0 8px;
         margin: auto;
         background: var(--bg-buttonbar);
@@ -447,7 +447,7 @@
 
         :global(.post-button) {
             width: 71px;
-            height: 50px;
+            height: var(--keyboard-button-bar-height);
             padding: 0;
             border-radius: 4px;
 
@@ -569,7 +569,7 @@
 
     :global(.footer-button-bar .footer) {
         width: 50px;
-        height: 50px;
+        height: var(--keyboard-button-bar-height);
     }
 
     :global(.tooltip-content) {

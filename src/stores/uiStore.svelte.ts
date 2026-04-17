@@ -13,8 +13,61 @@ export const KEYBOARD_BUTTON_BAR_HEIGHT = 50;
 /** ReasonInput（Content Warning理由入力）の高さ（px） */
 export const REASON_INPUT_HEIGHT = 50;
 
+/** メインコンテンツ上部の余白（px） */
+export const MAIN_CONTENT_TOP_SPACING = 8;
+
 /** キーボードが開いていると判定する最小の高さ（px） */
 const KEYBOARD_THRESHOLD = 100;
+
+function setRootStyleProperty(name: string, value: string): void {
+    if (typeof document === "undefined") {
+        return;
+    }
+
+    document.documentElement.style.setProperty(name, value);
+}
+
+function getFooterReservedHeight(isKeyboardOpen: boolean): number {
+    return isKeyboardOpen ? 0 : FOOTER_HEIGHT;
+}
+
+function syncLayoutCssVariables(
+    isKeyboardOpen: boolean,
+    viewportHeight?: number,
+): void {
+    const footerReservedHeight = getFooterReservedHeight(isKeyboardOpen);
+
+    setRootStyleProperty("--footer-height", `${FOOTER_HEIGHT}px`);
+    setRootStyleProperty(
+        "--keyboard-button-bar-height",
+        `${KEYBOARD_BUTTON_BAR_HEIGHT}px`,
+    );
+    setRootStyleProperty(
+        "--reason-input-base-height",
+        `${REASON_INPUT_HEIGHT}px`,
+    );
+    setRootStyleProperty(
+        "--main-content-top-spacing",
+        `${MAIN_CONTENT_TOP_SPACING}px`,
+    );
+    setRootStyleProperty(
+        "--footer-reserved-height",
+        `${footerReservedHeight}px`,
+    );
+    setRootStyleProperty(
+        "--composer-bottom-reserved-height",
+        `${footerReservedHeight + KEYBOARD_BUTTON_BAR_HEIGHT}px`,
+    );
+    setRootStyleProperty(
+        "--reason-input-height",
+        reasonInputVisible ? `${REASON_INPUT_HEIGHT}px` : "0px",
+    );
+    setRootStyleProperty("--keyboard-height", `${keyboardHeight}px`);
+
+    if (viewportHeight !== undefined) {
+        setRootStyleProperty("--visible-viewport-height", `${viewportHeight}px`);
+    }
+}
 
 // --- reasonInputVisible ストア ---
 /** ReasonInputが表示されているかどうか */
@@ -30,13 +83,7 @@ export const reasonInputVisibleStore = {
     },
     set: (v: boolean) => {
         reasonInputVisible = v;
-        // CSS変数を更新
-        if (typeof document !== 'undefined') {
-            document.documentElement.style.setProperty(
-                '--reason-input-height',
-                v ? `${REASON_INPUT_HEIGHT}px` : '0px'
-            );
-        }
+        syncLayoutCssVariables(keyboardHeight > 0);
     },
 };
 
@@ -46,6 +93,8 @@ let bottomPosition = $state(FOOTER_HEIGHT);
 // --- keyboardHeight ストア ---
 /** キーボードの高さ（px）。キーボードが閉じている時は 0 */
 let keyboardHeight = $state(0);
+
+syncLayoutCssVariables(false);
 
 /**
  * キーボード高さストア
@@ -109,10 +158,7 @@ export function setupViewportListener(): (() => void) | undefined {
             // キーボード高さストアを更新（閾値以下は 0 として扱う）
             keyboardHeight = isKeyboardOpen ? calculatedKeyboardHeight : 0;
 
-            // CSS 変数を更新（エディターの高さ調整に使用）
-            const root = document.documentElement;
-            root.style.setProperty('--keyboard-height', `${keyboardHeight}px`);
-            root.style.setProperty('--visible-viewport-height', `${viewport.height}px`);
+            syncLayoutCssVariables(isKeyboardOpen, viewport.height);
         });
     }
 

@@ -58,7 +58,7 @@
         align-items: center;
         width: 100%;
         max-width: 800px;
-        height: 50px;
+        height: var(--reason-input-base-height);
         padding: 0 8px;
         margin: auto;
         background: var(--bg-buttonbar);

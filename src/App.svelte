@@ -1144,9 +1144,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    margin-top: 8px;
+    box-sizing: border-box;
+    padding-top: var(--main-content-top-spacing);
     width: 100%;
-    height: calc(100% - 124px);
+    height: calc(
+      100% - var(--composer-bottom-reserved-height) - var(--keyboard-height) -
+        var(--reason-input-height)
+    );
+    min-height: 0;
     overflow: hidden;
   }
 </style>

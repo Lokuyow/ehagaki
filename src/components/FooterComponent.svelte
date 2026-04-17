@@ -140,7 +140,7 @@
         justify-content: space-between;
         width: 100%;
         max-width: 800px;
-        height: 66px;
+        height: var(--footer-height);
         gap: 12px;
         margin: auto;
         padding: 8px;
