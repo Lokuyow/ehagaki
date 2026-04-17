@@ -201,7 +201,7 @@
     }
 
     /* プロフィール表示のスタイル */
-    :global(.profile-display.default) {
+    :global(button.profile-display.default) {
         width: 50px;
         height: 50px;
         z-index: 10;
