@@ -380,6 +380,22 @@
             color: var(--error);
         }
 
+        .help-link {
+            display: block;
+            margin-top: 8px;
+            font-size: 0.88rem;
+            color: var(--muted);
+        }
+
+        .help-link a {
+            color: var(--accent);
+            text-decoration: none;
+        }
+
+        .help-link a:hover {
+            text-decoration: underline;
+        }
+
         @media (max-width: 960px) {
             .page {
                 grid-template-columns: 1fr;
@@ -411,6 +427,9 @@
             <header>
                 <h1>Parent Client Sample</h1>
                 <p class="lead">親ページ側で NIP-07 または秘密鍵を使ってログインし、eHagaki の embed protocol v1 を中継する実動サンプルです。</p>
+                <p class="help-link"><a href="https://github.com/Lokuyow/ehagaki/blob/main/IFRAME_EMBEDDING.md"
+                        target="_blank" rel="noreferrer noopener">埋め込みガイドを開く</a>（iframe 埋め込みの仕様と親ページ向けメッセージ形式を確認できます）
+                </p>
             </header>
 
             <div class="card">
