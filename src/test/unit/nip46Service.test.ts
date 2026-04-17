@@ -183,6 +183,52 @@ describe('Nip46Service', () => {
             expect(mockPool.destroy).toHaveBeenCalled();
         });
 
+        it('一部のrelayが失敗しても到達可能relayで接続を継続する', async () => {
+            const { parseBunkerInput, BunkerSigner } = await import('nostr-tools/nip46');
+
+            const mockBp = {
+                pubkey: 'a'.repeat(64),
+                relays: [
+                    'wss://blocked.relay.example.com',
+                    'wss://relay.example.com',
+                ],
+                secret: null,
+            };
+            (parseBunkerInput as any).mockResolvedValue(mockBp);
+
+            mockPool.ensureRelay
+                .mockRejectedValueOnce(new Error('connection failed'))
+                .mockResolvedValueOnce({});
+
+            const mockSigner = {
+                sendRequest: vi.fn().mockResolvedValue('ack'),
+                getPublicKey: vi.fn().mockResolvedValue('user-pubkey-hex'),
+                bp: {
+                    pubkey: mockBp.pubkey,
+                    relays: ['wss://relay.example.com'],
+                    secret: null,
+                },
+                close: vi.fn(),
+            };
+            (BunkerSigner.fromBunker as any).mockReturnValue(mockSigner);
+
+            const pubkey = await service.connect(`bunker://${'a'.repeat(64)}`);
+
+            expect(pubkey).toBe('user-pubkey-hex');
+            expect(BunkerSigner.fromBunker).toHaveBeenCalledWith(
+                expect.any(Uint8Array),
+                {
+                    pubkey: mockBp.pubkey,
+                    relays: ['wss://relay.example.com'],
+                    secret: null,
+                },
+                expect.objectContaining({
+                    pool: mockPool,
+                }),
+            );
+            expect(mockPool.destroy).not.toHaveBeenCalled();
+        });
+
         it('relaysが空の場合エラー', async () => {
             const { parseBunkerInput } = await import('nostr-tools/nip46');
 

@@ -95,28 +95,52 @@ class Nip46WebSocket extends WebSocket {
 }
 
 /**
- * リレーへのWebSocket接続を事前確認し、接続済みのSimplePoolを返す。
- * BunkerSigner内部でSimplePoolが新規生成されるとリレー接続の成否が不透明になるため、
- * 事前接続済みのpoolを渡す。
+ * リレーへのWebSocket接続を事前確認し、到達可能な relay だけを保持した SimplePool を返す。
+ * nostr-tools の BunkerSigner は publish 時に Promise.any() を使うため、
+ * relay が複数ある場合は 1 つでも到達できれば接続を継続できる。
  */
-async function createConnectedPool(relays: string[]): Promise<SimplePool> {
+async function createConnectedPool(
+    relays: string[],
+): Promise<{ pool: SimplePool; connectedRelays: string[] }> {
     // NIP-46用WebSocket(デバッグログ + limit:0パッチ)を設定
     const origWs = globalThis.WebSocket;
     useWebSocketImplementation(Nip46WebSocket);
     const pool = new SimplePool();
     useWebSocketImplementation(origWs);
-    try {
-        for (const relay of relays) {
+    const connectedRelays: string[] = [];
+    const connectionErrors: string[] = [];
+
+    for (const relay of [...new Set(relays)]) {
+        try {
             console.debug('[NIP-46] connecting to relay:', relay);
-            await pool.ensureRelay(relay, { connectionTimeout: RELAY_CONNECT_TIMEOUT_MS });
+            await pool.ensureRelay(relay, {
+                connectionTimeout: RELAY_CONNECT_TIMEOUT_MS,
+            });
             console.debug('[NIP-46] relay connected:', relay);
+            connectedRelays.push(relay);
+        } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            console.warn('[NIP-46] relay connection failed:', relay, msg);
+            connectionErrors.push(`${relay}: ${msg}`);
         }
-    } catch (err) {
-        pool.destroy();
-        const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`Relay connection failed: ${msg}`);
     }
-    return pool;
+
+    if (connectedRelays.length === 0) {
+        pool.destroy();
+        const message = connectionErrors.length > 0
+            ? connectionErrors.join('; ')
+            : 'no reachable relays';
+        throw new Error(`Relay connection failed: ${message}`);
+    }
+
+    if (connectionErrors.length > 0) {
+        console.warn(
+            '[NIP-46] continuing with reachable relays only:',
+            connectedRelays,
+        );
+    }
+
+    return { pool, connectedRelays };
 }
 
 // --- NIP-46サービス ---
@@ -140,14 +164,19 @@ export class Nip46Service {
         }
 
         // リレーへの接続を事前に確認
-        const pool = await createConnectedPool(bp.relays);
+        const { pool, connectedRelays } = await createConnectedPool(bp.relays);
         this.pool = pool;
+
+        const bunkerPointer = {
+            ...bp,
+            relays: connectedRelays,
+        };
 
         const clientSecretKey = generateSecretKey();
         this.clientSecretKeyHex = bytesToHex(clientSecretKey);
         console.debug('[NIP-46] connect: clientSecretKeyHex =', this.clientSecretKeyHex.substring(0, 8) + '…');
 
-        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
             pool,
             onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
         });
@@ -155,7 +184,7 @@ export class Nip46Service {
 
         console.debug('[NIP-46] connect: calling bunkerSigner.connect() with perms...');
         await Promise.race([
-            this.bunkerSigner.sendRequest('connect', [bp.pubkey, bp.secret || '', NIP46_REQUESTED_PERMS]),
+            this.bunkerSigner.sendRequest('connect', [bunkerPointer.pubkey, bunkerPointer.secret || '', NIP46_REQUESTED_PERMS]),
             new Promise<never>((_, reject) =>
                 setTimeout(() => reject(new Error('Bunker did not respond. The relay is connected but the remote signer may be offline or the secret may have expired.')), timeoutMs)
             ),
@@ -177,11 +206,16 @@ export class Nip46Service {
         };
 
         // リレーへの接続を事前に確認
-        const pool = await createConnectedPool(bp.relays);
+        const { pool, connectedRelays } = await createConnectedPool(bp.relays);
         this.pool = pool;
 
+        const bunkerPointer = {
+            ...bp,
+            relays: connectedRelays,
+        };
+
         this.clientSecretKeyHex = session.clientSecretKeyHex;
-        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+        this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bunkerPointer, {
             pool,
             onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
         });
@@ -251,9 +285,12 @@ export class Nip46Service {
                 relays,
                 secret: null,
             };
-            const pool = await createConnectedPool(relays);
+            const { pool, connectedRelays } = await createConnectedPool(relays);
             this.pool = pool;
-            this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, bp, {
+            this.bunkerSigner = BunkerSigner.fromBunker(clientSecretKey, {
+                ...bp,
+                relays: connectedRelays,
+            }, {
                 pool,
                 onauth: (url: string) => { console.debug('[NIP-46] onauth URL:', url); },
             });
