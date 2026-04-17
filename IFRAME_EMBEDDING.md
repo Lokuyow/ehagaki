@@ -2,6 +2,10 @@
 
 このドキュメントは、eHagaki を自分の Web サイトや Web アプリに iframe で埋め込みたい開発者向けの公開ガイドです。
 
+> まずは動作確認用サンプルを直接開くには、以下の URL をブラウザで開いてください。
+>
+> https://lokuyow.github.io/ehagaki/embed-parent-client-example.html
+>
 できることは主に次の 3 つです。
 
 - iframe として埋め込む
@@ -202,6 +206,8 @@ window.addEventListener('message', (event) => {
 
 - [public/embed-parent-client-example.html](public/embed-parent-client-example.html)
 - [public/embed-parent-client-example.js](public/embed-parent-client-example.js)
+
+オンラインで直接確認するには [https://lokuyow.github.io/ehagaki/embed-parent-client-example.html](https://lokuyow.github.io/ehagaki/embed-parent-client-example.html) を開いてください。
 
 このサンプルは NIP-07 ログインと秘密鍵ログインの両方に対応しています。現在の eHagaki は親クライアントへ既定で `signEvent` だけを要求し、将来の NIP-17 系フロー向け optional capability として `nip44.*` だけを扱います。NIP-04 はサポートしません。NIP-07 ログイン時は親ページの `window.nostr` を使って要求された capability だけを委譲し、秘密鍵ログイン時は sample に保存した nsec で `signEvent` を処理します。受信時には namespace、version、type、requestId、payload shape を検証します。親クライアントのログインボタンを押すと sample 側にログイン状態を保存し、その時点で `auth.login` を iframe に送ります。ページを再読み込みした場合も、親がログイン済みなら `ready` 受信後に `auth.login` を再送して eHagaki を再同期します。さらに sample 内には `wss://nos.lol` を読む簡易タイムラインと本文同期 UI を追加してあり、各イベントの `reply` / `quote` ボタンと本文入力から iframe の runtime composer 更新を直接試せます。iframe が mounted 済みなら runtime の `composer.setContext` を使い、未接続時だけ URL 付きで再読み込みします。runtime 更新では `requestId` が必須で、結果は `composer.contextApplied` / `composer.contextError` で確認できます。iframe 内で reply / quote を解除した場合は `composer.contextUpdated` が返り、sample 側の selection UI も自動で追従します。
 
