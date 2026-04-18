@@ -3,6 +3,8 @@
  * キーボード追従などのレイアウト状態を管理
  */
 
+import { createSafariKeyboardTouchScrollLock } from "../lib/utils/safariTouchScrollLock";
+
 // --- 定数 ---
 /** フッターの高さ（px） */
 export const FOOTER_HEIGHT = 66;
@@ -22,9 +24,10 @@ const KEYBOARD_THRESHOLD = 100;
 let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
 let lastLayoutViewportHeight: number | undefined;
-let safariKeyboardTouchScrollLocked = false;
-let safariTouchTarget: EventTarget | null = null;
-let safariTouchLastClientY: number | null = null;
+const safariKeyboardTouchScrollLock =
+    typeof document === "undefined"
+        ? null
+        : createSafariKeyboardTouchScrollLock(document);
 
 function getLayoutViewportHeight(): number {
     if (typeof window === "undefined") {
@@ -38,135 +41,8 @@ function getLayoutViewportHeight(): number {
     );
 }
 
-function getTouchClientY(event: TouchEvent): number | null {
-    const touch = event.touches?.[0] ?? event.changedTouches?.[0];
-    return typeof touch?.clientY === "number" ? touch.clientY : null;
-}
-
-function resolveTouchScrollElements(target: EventTarget | null): HTMLElement[] {
-    if (!(target instanceof Element)) {
-        return [];
-    }
-
-    const elements: HTMLElement[] = [];
-    const editorElement = target.closest(".tiptap-editor") as HTMLElement | null;
-    if (editorElement) {
-        elements.push(editorElement);
-    }
-
-    const composerScrollElement = target.closest(
-        ".composer-scroll-region",
-    ) as HTMLElement | null;
-    if (composerScrollElement && composerScrollElement !== editorElement) {
-        elements.push(composerScrollElement);
-    }
-
-    return elements;
-}
-
-function canScrollElement(element: HTMLElement): boolean {
-    return element.scrollHeight > element.clientHeight + 1;
-}
-
-function canScrollElementInDirection(
-    element: HTMLElement,
-    deltaY: number,
-): boolean {
-    if (!canScrollElement(element)) {
-        return false;
-    }
-
-    const maxScrollTop = element.scrollHeight - element.clientHeight;
-    const isAtTop = element.scrollTop <= 0;
-    const isAtBottom = element.scrollTop >= maxScrollTop - 1;
-
-    if (deltaY > 0) {
-        return !isAtTop;
-    }
-
-    if (deltaY < 0) {
-        return !isAtBottom;
-    }
-
-    return true;
-}
-
-function handleSafariTouchStart(event: TouchEvent): void {
-    if (!safariKeyboardTouchScrollLocked) {
-        return;
-    }
-
-    safariTouchTarget = event.target;
-    safariTouchLastClientY = getTouchClientY(event);
-}
-
-function handleSafariTouchMove(event: TouchEvent): void {
-    if (!safariKeyboardTouchScrollLocked) {
-        return;
-    }
-
-    const currentClientY = getTouchClientY(event);
-    const scrollElements = resolveTouchScrollElements(
-        safariTouchTarget ?? event.target,
-    );
-
-    if (scrollElements.length === 0) {
-        event.preventDefault();
-        return;
-    }
-
-    if (currentClientY === null || safariTouchLastClientY === null) {
-        safariTouchLastClientY = currentClientY;
-        return;
-    }
-
-    const deltaY = currentClientY - safariTouchLastClientY;
-    safariTouchLastClientY = currentClientY;
-
-    const activeScrollElement =
-        scrollElements.find((element) =>
-            canScrollElementInDirection(element, deltaY),
-        ) ?? scrollElements.find((element) => canScrollElement(element));
-
-    if (!activeScrollElement) {
-        event.preventDefault();
-    }
-}
-
-function handleSafariTouchEnd(): void {
-    safariTouchTarget = null;
-    safariTouchLastClientY = null;
-}
-
 function syncSafariKeyboardTouchScrollLock(shouldLock: boolean): void {
-    if (typeof document === "undefined") {
-        return;
-    }
-
-    if (shouldLock === safariKeyboardTouchScrollLocked) {
-        return;
-    }
-
-    safariKeyboardTouchScrollLocked = shouldLock;
-
-    if (shouldLock) {
-        document.addEventListener("touchstart", handleSafariTouchStart, {
-            passive: false,
-        });
-        document.addEventListener("touchmove", handleSafariTouchMove, {
-            passive: false,
-        });
-        document.addEventListener("touchend", handleSafariTouchEnd);
-        document.addEventListener("touchcancel", handleSafariTouchEnd);
-        return;
-    }
-
-    document.removeEventListener("touchstart", handleSafariTouchStart);
-    document.removeEventListener("touchmove", handleSafariTouchMove);
-    document.removeEventListener("touchend", handleSafariTouchEnd);
-    document.removeEventListener("touchcancel", handleSafariTouchEnd);
-    safariTouchTarget = null;
-    safariTouchLastClientY = null;
+    safariKeyboardTouchScrollLock?.sync(shouldLock);
 }
 
 function getEffectiveViewportOffsetTop(viewport?: VisualViewport | null): number {
@@ -472,7 +348,7 @@ export function setupViewportListener(): (() => void) | undefined {
     }
 
     return () => {
-        syncSafariKeyboardTouchScrollLock(false);
+        safariKeyboardTouchScrollLock?.dispose();
         window.visualViewport?.removeEventListener("resize", handleViewportResize);
         window.visualViewport?.removeEventListener("scroll", handleViewportScroll);
 

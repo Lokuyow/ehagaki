@@ -8,10 +8,7 @@
         contentWarningReasonStore,
         hashtagPinStore,
     } from "../stores/tagsStore.svelte";
-    import {
-        keyboardHeightStore,
-        setupViewportListener,
-    } from "../stores/uiStore.svelte";
+    import { keyboardHeightStore } from "../stores/uiStore.svelte";
     import { authState } from "../stores/authStore.svelte";
     import { editorState, submitPost } from "../stores/editorStore.svelte";
     import {
@@ -79,11 +76,6 @@
             (document.activeElement as HTMLElement)?.blur();
         }
     }
-
-    // visualViewportの監視を開始
-    $effect(() => {
-        return setupViewportListener();
-    });
 
     // 長押し投稿の設定
     const LONG_PRESS_DURATION = 250; // 長押し必要時間 (ms)

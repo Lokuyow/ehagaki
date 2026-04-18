@@ -98,6 +98,7 @@
     syncAccountStores,
     type NostrSessionBootstrap,
   } from "./lib/bootstrap/authBootstrap";
+  import { setupViewportListener } from "./stores/uiStore.svelte";
   import {
     runAppInitializationBootstrap,
     registerNip46VisibilityHandler,
@@ -762,6 +763,10 @@
         // TODO: 必要に応じてストアを更新
       }
     }
+  });
+
+  $effect(() => {
+    return setupViewportListener();
   });
 
   let localeInitialized = $state(false);
