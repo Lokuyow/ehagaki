@@ -1,5 +1,6 @@
 import { mount } from 'svelte'
 import './app.css'
+import 'photoswipe/style.css'
 import { applyEmbedSettingsBootstrap } from './lib/bootstrap/embedSettingsBootstrap'
 
 applyEmbedSettingsBootstrap()

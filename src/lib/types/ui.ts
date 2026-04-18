@@ -41,6 +41,7 @@ export interface PostComponentUIState {
     showSecretKeyDialog: boolean;
     pendingPost: string;
     showImageFullscreen: boolean;
+    fullscreenMediaId: string;
     fullscreenImageSrc: string;
     fullscreenImageAlt: string;
     showPopupModal: boolean;

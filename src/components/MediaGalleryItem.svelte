@@ -74,7 +74,11 @@
 
     function handleImageClick() {
         if (item.isPlaceholder || item.type !== "image") return;
-        postComponentUIStore.showImageFullscreen(item.src, item.alt || "");
+        postComponentUIStore.showImageFullscreen(
+            item.src,
+            item.alt || "",
+            item.id,
+        );
     }
 
     // PC ドラッグ＆ドロップ

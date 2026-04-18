@@ -9,9 +9,13 @@ export interface ImageDimensions {
 
 // Fullscreen media navigation
 export interface FullscreenMediaItem {
+    id?: string;
     src: string;
     alt?: string;
     type: 'image' | 'video';
+    width?: number;
+    height?: number;
+    dim?: string;
 }
 
 // Media Gallery types

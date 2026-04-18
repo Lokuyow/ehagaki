@@ -138,6 +138,11 @@
     "copySuccess": "URLをコピーしました",
     "copyFailed": "コピーに失敗しました"
   },
+  "fullscreenViewer": {
+    "previous": "前のメディア",
+    "next": "次のメディア",
+    "error": "メディアを読み込めませんでした"
+  },
   "imageCompression": {
     "compressing": "画像圧縮中"
   },

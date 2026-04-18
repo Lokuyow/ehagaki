@@ -103,6 +103,7 @@
             selectionState.justSelected,
             node.attrs.src,
             node.attrs.alt || "Image",
+            node.attrs.id,
             getPos,
         );
 

@@ -195,6 +195,7 @@ export const mockPostUIStoreModule = {
             showSecretKeyDialog: false,
             pendingPost: '',
             showImageFullscreen: false,
+            fullscreenMediaId: '',
             fullscreenImageSrc: '',
             fullscreenImageAlt: '',
             showPopupModal: false,

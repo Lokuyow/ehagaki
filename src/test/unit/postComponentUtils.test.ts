@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     collectFullscreenMediaItems,
     createPostStatusHandlers,
+    findFullscreenMediaIndex,
     getFullscreenMediaItemAt,
     moveEditorMediaToGallery,
     moveGalleryMediaToEditor,
@@ -136,12 +137,20 @@ describe('collectFullscreenMediaItems', () => {
         expect(collectFullscreenMediaItems({
             mediaFreePlacement: false,
             galleryItems: [
-                { id: '1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false, alt: 'a' },
+                { id: '1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false, alt: 'a', dim: '800x600' },
                 { id: '2', type: 'video', src: 'https://example.com/b.mp4', isPlaceholder: true },
             ],
             currentEditor: null,
         })).toEqual([
-            { src: 'https://example.com/a.jpg', alt: 'a', type: 'image' },
+            {
+                id: '1',
+                src: 'https://example.com/a.jpg',
+                alt: 'a',
+                type: 'image',
+                dim: '800x600',
+                width: 800,
+                height: 600,
+            },
         ]);
     });
 
@@ -152,11 +161,21 @@ describe('collectFullscreenMediaItems', () => {
                     descendants: (callback: (node: any) => void) => {
                         callback({
                             type: { name: 'image' },
-                            attrs: { src: 'https://example.com/a.jpg', alt: 'a', isPlaceholder: false },
+                            attrs: {
+                                id: 'img-1',
+                                src: 'https://example.com/a.jpg',
+                                alt: 'a',
+                                dim: '640x480',
+                                isPlaceholder: false,
+                            },
                         });
                         callback({
                             type: { name: 'video' },
-                            attrs: { src: 'https://example.com/b.mp4', isPlaceholder: false },
+                            attrs: {
+                                id: 'video-1',
+                                src: 'https://example.com/b.mp4',
+                                isPlaceholder: false,
+                            },
                         });
                         callback({
                             type: { name: 'image' },
@@ -172,9 +191,39 @@ describe('collectFullscreenMediaItems', () => {
             galleryItems: [],
             currentEditor,
         })).toEqual([
-            { src: 'https://example.com/a.jpg', alt: 'a', type: 'image' },
-            { src: 'https://example.com/b.mp4', alt: undefined, type: 'video' },
+            {
+                id: 'img-1',
+                src: 'https://example.com/a.jpg',
+                alt: 'a',
+                type: 'image',
+                dim: '640x480',
+                width: 640,
+                height: 480,
+            },
+            {
+                id: 'video-1',
+                src: 'https://example.com/b.mp4',
+                alt: undefined,
+                type: 'video',
+                dim: undefined,
+                width: undefined,
+                height: undefined,
+            },
         ]);
+    });
+});
+
+describe('findFullscreenMediaIndex', () => {
+    it('mediaId を優先し、見つからない場合は src にフォールバックする', () => {
+        const items = [
+            { id: 'media-1', src: 'https://example.com/a.jpg', type: 'image' as const },
+            { id: 'media-2', src: 'https://example.com/a.jpg', type: 'image' as const },
+            { id: 'media-3', src: 'https://example.com/b.mp4', type: 'video' as const },
+        ];
+
+        expect(findFullscreenMediaIndex(items, 'media-2', 'https://example.com/a.jpg')).toBe(1);
+        expect(findFullscreenMediaIndex(items, 'missing', 'https://example.com/b.mp4')).toBe(2);
+        expect(findFullscreenMediaIndex(items, '', '')).toBe(-1);
     });
 });
 

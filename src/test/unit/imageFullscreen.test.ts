@@ -1,57 +1,115 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { describe, expect, it, vi } from 'vitest';
 
-import ImageFullscreen from '../../components/ImageFullscreen.svelte';
+import {
+    buildFullscreenViewerDataSource,
+    createFullscreenVideoSlideElement,
+    pauseFullscreenVideoContent,
+} from '../../lib/utils/fullscreenViewerUtils';
 
-describe('ImageFullscreen', () => {
-    afterEach(() => {
-        cleanup();
-        document.body.innerHTML = '';
-        document.body.style.overflow = '';
-    });
-
-    it('show=true のとき fullscreen overlay を document.body へ移動する', async () => {
-        const { container } = render(ImageFullscreen, {
-            props: {
-                show: true,
+describe('fullscreenViewerUtils', () => {
+    it('既存寸法がある画像はそのまま dataSource へ変換する', async () => {
+        await expect(buildFullscreenViewerDataSource([
+            {
+                id: 'image-1',
                 src: 'https://example.com/test.jpg',
                 alt: 'test image',
+                type: 'image',
+                width: 1200,
+                height: 800,
             },
-        });
-
-        await waitFor(() => {
-            const overlay = document.body.querySelector('.fullscreen-overlay');
-            expect(overlay).toBeTruthy();
-            expect(overlay?.parentElement).toBe(document.body);
-        });
-
-        expect(document.body.style.overflow).toBe('hidden');
-        expect(container.querySelector('.fullscreen-overlay')).toBeNull();
-    });
-
-    it('show=false に切り替えると fullscreen overlay を body から除去する', async () => {
-        const { rerender } = render(ImageFullscreen, {
-            props: {
-                show: true,
+        ])).resolves.toEqual([
+            {
+                id: 'image-1',
                 src: 'https://example.com/test.jpg',
                 alt: 'test image',
+                type: 'image',
+                width: 1200,
+                height: 800,
             },
+        ]);
+    });
+
+    it('動画は fallback size を付けて dataSource へ変換する', async () => {
+        await expect(buildFullscreenViewerDataSource([
+            {
+                id: 'video-1',
+                src: 'https://example.com/test.mp4',
+                alt: 'test video',
+                type: 'video',
+            },
+        ])).resolves.toEqual([
+            {
+                id: 'video-1',
+                src: 'https://example.com/test.mp4',
+                alt: 'test video',
+                type: 'video',
+                width: 1280,
+                height: 720,
+            },
+        ]);
+    });
+
+    it('寸法がない画像は Image factory から natural size を解決する', async () => {
+        const createImage = () => {
+            const image = {
+                naturalWidth: 640,
+                naturalHeight: 480,
+                decoding: '',
+                onload: null,
+                onerror: null,
+                set src(_value: string) {
+                    queueMicrotask(() => {
+                        image.onload?.(new Event('load'));
+                    });
+                },
+            } as unknown as HTMLImageElement;
+
+            return image;
+        };
+
+        await expect(buildFullscreenViewerDataSource([
+            {
+                id: 'image-2',
+                src: 'https://example.com/test-2.jpg',
+                alt: 'resolved image',
+                type: 'image',
+            },
+        ], createImage)).resolves.toEqual([
+            {
+                id: 'image-2',
+                src: 'https://example.com/test-2.jpg',
+                alt: 'resolved image',
+                type: 'image',
+                width: 640,
+                height: 480,
+            },
+        ]);
+    });
+
+    it('動画スライド要素を controls 付きで生成する', () => {
+        const element = createFullscreenVideoSlideElement({
+            id: 'video-1',
+            src: 'https://example.com/test.mp4',
+            alt: 'test video',
+            type: 'video',
         });
 
-        await waitFor(() => {
-            expect(document.body.querySelector('.fullscreen-overlay')).toBeTruthy();
-        });
+        const videoElement = element.querySelector('video');
+        expect(element.className).toBe('ehagaki-pswp-video-container');
+        expect(videoElement).toBeTruthy();
+        expect(videoElement?.getAttribute('src')).toBe('https://example.com/test.mp4');
+        expect(videoElement?.hasAttribute('controls')).toBe(true);
+        expect(videoElement?.hasAttribute('playsinline')).toBe(true);
+    });
 
-        await rerender({
-            show: false,
-            src: 'https://example.com/test.jpg',
-            alt: 'test image',
-        });
+    it('active な動画 content を停止する', () => {
+        const element = document.createElement('div');
+        const videoElement = document.createElement('video');
+        const pauseSpy = vi.spyOn(videoElement, 'pause');
+        element.appendChild(videoElement);
 
-        await waitFor(() => {
-            expect(document.body.querySelector('.fullscreen-overlay')).toBeNull();
-        });
+        pauseFullscreenVideoContent({ element });
 
-        expect(document.body.style.overflow).toBe('');
+        expect(pauseSpy).toHaveBeenCalledOnce();
     });
 });

@@ -6,6 +6,7 @@ import type {
     PostResult,
     PostStatus,
 } from './types';
+import { parseDimString } from './utils/mediaNodeUtils';
 
 interface PostStatusHandlersParams {
     updatePostStatus: (postStatus: PostStatus) => void;
@@ -110,6 +111,29 @@ export async function submitPendingPostWithSecretKey(params: {
     }
 }
 
+function resolveMediaDimensions(params: {
+    dim?: string;
+    dimensions?: { width: number; height: number } | null;
+}): { width?: number; height?: number } {
+    if (
+        params.dimensions &&
+        params.dimensions.width > 0 &&
+        params.dimensions.height > 0
+    ) {
+        return {
+            width: params.dimensions.width,
+            height: params.dimensions.height,
+        };
+    }
+
+    const parsed = parseDimString(params.dim);
+    if (!parsed) {
+        return {};
+    }
+
+    return parsed;
+}
+
 export function collectFullscreenMediaItems(params: {
     mediaFreePlacement: boolean;
     galleryItems: MediaGalleryItem[];
@@ -118,7 +142,22 @@ export function collectFullscreenMediaItems(params: {
     if (!params.mediaFreePlacement) {
         return params.galleryItems
             .filter((item) => !item.isPlaceholder)
-            .map((item) => ({ src: item.src, alt: item.alt, type: item.type }));
+            .map((item) => {
+                const dimensions = resolveMediaDimensions({
+                    dim: item.dim,
+                    dimensions: item.dimensions,
+                });
+
+                return {
+                    id: item.id,
+                    src: item.src,
+                    alt: item.alt,
+                    type: item.type,
+                    dim: item.dim,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                };
+            });
     }
 
     if (!params.currentEditor) {
@@ -132,15 +171,42 @@ export function collectFullscreenMediaItems(params: {
             (node.type.name === 'image' || node.type.name === 'video') &&
             !node.attrs.isPlaceholder
         ) {
+            const dimensions = resolveMediaDimensions({
+                dim: node.attrs.dim as string | undefined,
+            });
+
             items.push({
+                id: node.attrs.id as string | undefined,
                 src: node.attrs.src as string,
                 alt: node.attrs.alt as string | undefined,
                 type: node.type.name as 'image' | 'video',
+                dim: node.attrs.dim as string | undefined,
+                width: dimensions.width,
+                height: dimensions.height,
             });
         }
     });
 
     return items;
+}
+
+export function findFullscreenMediaIndex(
+    items: FullscreenMediaItem[],
+    activeMediaId?: string,
+    activeSrc?: string,
+): number {
+    if (activeMediaId) {
+        const indexById = items.findIndex((item) => item.id === activeMediaId);
+        if (indexById >= 0) {
+            return indexById;
+        }
+    }
+
+    if (!activeSrc) {
+        return -1;
+    }
+
+    return items.findIndex((item) => item.src === activeSrc);
 }
 
 export function getFullscreenMediaItemAt(

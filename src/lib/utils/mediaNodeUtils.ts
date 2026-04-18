@@ -282,9 +282,15 @@ export function requestNodeSelection(getPos: () => number | undefined) {
     window.dispatchEvent(event);
 }
 
-export function requestImageFullscreen(src: string, alt: string) {
+export function requestImageFullscreen(
+    src: string,
+    alt: string,
+    mediaId?: string,
+) {
     blurEditorAndBody();
-    const event = new CustomEvent("image-fullscreen-request", { detail: { src, alt } });
+    const event = new CustomEvent("image-fullscreen-request", {
+        detail: { src, alt, mediaId },
+    });
     window.dispatchEvent(event);
 }
 
@@ -297,6 +303,7 @@ export function handleImageInteraction(
     justSelected: boolean,
     imageSrc: string,
     imageAlt: string,
+    imageId: string | undefined,
     getPos: () => number | undefined
 ): boolean {
     if (shouldPreventInteraction(isDragging, isPlaceholder, justSelected, isTouch)) {
@@ -307,7 +314,7 @@ export function handleImageInteraction(
     if (selected) {
         event.preventDefault();
         if (!isTouch) event.stopPropagation();
-        requestImageFullscreen(imageSrc, imageAlt);
+        requestImageFullscreen(imageSrc, imageAlt, imageId);
         return true;
     }
 

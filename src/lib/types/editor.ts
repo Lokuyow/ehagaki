@@ -65,7 +65,11 @@ export interface MenuItem {
 // Editor Event Listener types
 export interface EditorEventCallbacks {
     onContentUpdate?: (plainText: string, hasMedia: boolean) => void;
-    onImageFullscreenRequest?: (src: string, alt: string) => void;
+    onImageFullscreenRequest?: (
+        src: string,
+        alt: string,
+        mediaId?: string,
+    ) => void;
     onSelectImageNode?: (pos: number) => void;
 }
 

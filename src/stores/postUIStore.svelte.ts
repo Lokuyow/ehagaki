@@ -3,6 +3,7 @@ let postComponentUI = $state<{
     showSecretKeyDialog: boolean;
     pendingPost: string;
     showImageFullscreen: boolean;
+    fullscreenMediaId: string;
     fullscreenImageSrc: string;
     fullscreenImageAlt: string;
     showPopupModal: boolean;
@@ -13,6 +14,7 @@ let postComponentUI = $state<{
     showSecretKeyDialog: false,
     pendingPost: '',
     showImageFullscreen: false,
+    fullscreenMediaId: '',
     fullscreenImageSrc: '',
     fullscreenImageAlt: '',
     showPopupModal: false,
@@ -34,13 +36,15 @@ export const postComponentUIStore = {
     },
     getPendingPost: () => postComponentUI.pendingPost,
     // 画像フルスクリーン
-    showImageFullscreen: (src: string, alt: string = '') => {
+    showImageFullscreen: (src: string, alt: string = '', mediaId: string = '') => {
+        postComponentUI.fullscreenMediaId = mediaId;
         postComponentUI.fullscreenImageSrc = src;
         postComponentUI.fullscreenImageAlt = alt;
         postComponentUI.showImageFullscreen = true;
     },
     hideImageFullscreen: () => {
         postComponentUI.showImageFullscreen = false;
+        postComponentUI.fullscreenMediaId = '';
         postComponentUI.fullscreenImageSrc = '';
         postComponentUI.fullscreenImageAlt = '';
     },

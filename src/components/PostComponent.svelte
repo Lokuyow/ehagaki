@@ -32,6 +32,7 @@
   import {
     collectFullscreenMediaItems,
     createPostStatusHandlers,
+    findFullscreenMediaIndex,
     getFullscreenMediaItemAt,
     moveEditorMediaToGallery,
     moveGalleryMediaToEditor,
@@ -149,6 +150,7 @@
   let postComponentUI = $derived(postComponentUIStore.value);
   let showSecretKeyDialog = $derived(postComponentUI.showSecretKeyDialog);
   let showImageFullscreen = $derived(postComponentUI.showImageFullscreen);
+  let fullscreenMediaId = $derived(postComponentUI.fullscreenMediaId);
   let fullscreenImageSrc = $derived(postComponentUI.fullscreenImageSrc);
   let fullscreenImageAlt = $derived(postComponentUI.fullscreenImageAlt);
   let showPopupModal = $derived(postComponentUI.showPopupModal);
@@ -252,8 +254,12 @@
       },
       eventCallbacks: {
         onContentUpdate: updateEditorContent,
-        onImageFullscreenRequest: (src: string, alt: string) => {
-          postComponentUIStore.showImageFullscreen(src, alt);
+        onImageFullscreenRequest: (
+          src: string,
+          alt: string,
+          mediaId?: string,
+        ) => {
+          postComponentUIStore.showImageFullscreen(src, alt, mediaId || "");
         },
         onSelectImageNode: (pos: number) => {
           // 既に handleSelectImageNode 内で処理済み
@@ -274,9 +280,13 @@
 
     // 画像フルスクリーン表示イベントのリスナー
     const handleImageFullscreenRequest = (event: Event) => {
-      const customEvent = event as CustomEvent<{ src: string; alt: string }>;
-      const { src, alt } = customEvent.detail;
-      postComponentUIStore.showImageFullscreen(src, alt);
+      const customEvent = event as CustomEvent<{
+        src: string;
+        alt: string;
+        mediaId?: string;
+      }>;
+      const { src, alt, mediaId } = customEvent.detail;
+      postComponentUIStore.showImageFullscreen(src, alt, mediaId || "");
     };
     window.addEventListener(
       "image-fullscreen-request",
@@ -435,13 +445,21 @@
   });
 
   let fullscreenMediaIndex = $derived(
-    fullscreenMediaList.findIndex((item) => item.src === fullscreenImageSrc),
+    findFullscreenMediaIndex(
+      fullscreenMediaList,
+      fullscreenMediaId,
+      fullscreenImageSrc,
+    ),
   );
 
   function handleFullscreenNavigate(index: number): void {
     const item = getFullscreenMediaItemAt(fullscreenMediaList, index);
     if (!item) return;
-    postComponentUIStore.showImageFullscreen(item.src, item.alt ?? "");
+    postComponentUIStore.showImageFullscreen(
+      item.src,
+      item.alt ?? "",
+      item.id ?? "",
+    );
   }
 
   $effect(() => {

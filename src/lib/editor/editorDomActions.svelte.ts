@@ -291,10 +291,15 @@ export function setupEventListeners(params: SetupEventListenersParams): EditorEv
     };
 
     const handleImageFullscreenRequest = (event: Event) => {
-        const customEvent = event as CustomEvent<{ src: string; alt?: string }>;
+        const customEvent = event as CustomEvent<{
+            src: string;
+            alt?: string;
+            mediaId?: string;
+        }>;
         callbacks.onImageFullscreenRequest?.(
             customEvent.detail.src,
-            customEvent.detail.alt || ""
+            customEvent.detail.alt || "",
+            customEvent.detail.mediaId,
         );
     };
 

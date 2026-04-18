@@ -138,6 +138,11 @@
     "copySuccess": "URL copied",
     "copyFailed": "Copy failed"
   },
+  "fullscreenViewer": {
+    "previous": "Previous media",
+    "next": "Next media",
+    "error": "The media cannot be loaded"
+  },
   "imageCompression": {
     "compressing": "Compressing image"
   },

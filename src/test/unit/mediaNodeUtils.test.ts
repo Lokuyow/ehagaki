@@ -22,12 +22,12 @@ describe('mediaNodeUtils', () => {
     });
 
     it('should dispatch fullscreen event', () => {
-        requestImageFullscreen('test.jpg', 'Test image');
+        requestImageFullscreen('test.jpg', 'Test image', 'node-1');
 
         expect(dispatchEventSpy).toHaveBeenCalledWith(
             expect.objectContaining({
                 type: 'image-fullscreen-request',
-                detail: { src: 'test.jpg', alt: 'Test image' },
+                detail: { src: 'test.jpg', alt: 'Test image', mediaId: 'node-1' },
             }),
         );
     });
