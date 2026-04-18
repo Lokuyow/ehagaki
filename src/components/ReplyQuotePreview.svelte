@@ -213,8 +213,6 @@
         text-align: left;
         color: var(--text);
         font: inherit;
-        max-height: 200px;
-        overflow-y: auto;
     }
 
     .content-text {

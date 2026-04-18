@@ -1001,26 +1001,30 @@
           showMascot={settingsStore.showMascot}
           showBalloonMessage={showHeaderBalloonMessage}
         />
-        {#if replyQuoteState.value.reply}
-          <ReplyQuotePreview
-            reference={replyQuoteState.value.reply}
-            mode="reply"
-            onClear={clearReplyReference}
-          />
-        {/if}
-        <PostComponent
-          bind:this={postComponentRef}
-          {rxNostr}
-          hasStoredKey={isAuthenticated}
-          onPostSuccess={handlePostSuccess}
-        />
-        {#each replyQuoteState.value.quotes as quote (quote.eventId)}
-          <ReplyQuotePreview
-            reference={quote}
-            mode="quote"
-            onClear={() => removeQuoteReference(quote.eventId)}
-          />
-        {/each}
+        <div class="composer-scroll-region">
+          <div class="composer-scroll-content">
+            {#if replyQuoteState.value.reply}
+              <ReplyQuotePreview
+                reference={replyQuoteState.value.reply}
+                mode="reply"
+                onClear={clearReplyReference}
+              />
+            {/if}
+            <PostComponent
+              bind:this={postComponentRef}
+              {rxNostr}
+              hasStoredKey={isAuthenticated}
+              onPostSuccess={handlePostSuccess}
+            />
+            {#each replyQuoteState.value.quotes as quote (quote.eventId)}
+              <ReplyQuotePreview
+                reference={quote}
+                mode="quote"
+                onClear={() => removeQuoteReference(quote.eventId)}
+              />
+            {/each}
+          </div>
+        </div>
       </div>
       <ReasonInput />
       <KeyboardButtonBar
@@ -1153,5 +1157,23 @@
     );
     min-height: 0;
     overflow: hidden;
+  }
+
+  .composer-scroll-region {
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .composer-scroll-content {
+    width: 100%;
+    min-height: 100%;
+    display: flex;
+    flex: 1 0 auto;
+    flex-direction: column;
+    align-items: center;
   }
 </style>

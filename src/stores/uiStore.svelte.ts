@@ -23,7 +23,7 @@ let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
 let lastLayoutViewportHeight: number | undefined;
 let safariKeyboardTouchScrollLocked = false;
-let safariTouchScrollElement: HTMLElement | null = null;
+let safariTouchTarget: EventTarget | null = null;
 let safariTouchLastClientY: number | null = null;
 
 function getLayoutViewportHeight(): number {
@@ -43,16 +43,52 @@ function getTouchClientY(event: TouchEvent): number | null {
     return typeof touch?.clientY === "number" ? touch.clientY : null;
 }
 
-function resolveTouchScrollElement(target: EventTarget | null): HTMLElement | null {
+function resolveTouchScrollElements(target: EventTarget | null): HTMLElement[] {
     if (!(target instanceof Element)) {
-        return null;
+        return [];
     }
 
-    return target.closest(".tiptap-editor") as HTMLElement | null;
+    const elements: HTMLElement[] = [];
+    const editorElement = target.closest(".tiptap-editor") as HTMLElement | null;
+    if (editorElement) {
+        elements.push(editorElement);
+    }
+
+    const composerScrollElement = target.closest(
+        ".composer-scroll-region",
+    ) as HTMLElement | null;
+    if (composerScrollElement && composerScrollElement !== editorElement) {
+        elements.push(composerScrollElement);
+    }
+
+    return elements;
 }
 
 function canScrollElement(element: HTMLElement): boolean {
     return element.scrollHeight > element.clientHeight + 1;
+}
+
+function canScrollElementInDirection(
+    element: HTMLElement,
+    deltaY: number,
+): boolean {
+    if (!canScrollElement(element)) {
+        return false;
+    }
+
+    const maxScrollTop = element.scrollHeight - element.clientHeight;
+    const isAtTop = element.scrollTop <= 0;
+    const isAtBottom = element.scrollTop >= maxScrollTop - 1;
+
+    if (deltaY > 0) {
+        return !isAtTop;
+    }
+
+    if (deltaY < 0) {
+        return !isAtBottom;
+    }
+
+    return true;
 }
 
 function handleSafariTouchStart(event: TouchEvent): void {
@@ -60,7 +96,7 @@ function handleSafariTouchStart(event: TouchEvent): void {
         return;
     }
 
-    safariTouchScrollElement = resolveTouchScrollElement(event.target);
+    safariTouchTarget = event.target;
     safariTouchLastClientY = getTouchClientY(event);
 }
 
@@ -70,10 +106,11 @@ function handleSafariTouchMove(event: TouchEvent): void {
     }
 
     const currentClientY = getTouchClientY(event);
-    const scrollElement =
-        safariTouchScrollElement ?? resolveTouchScrollElement(event.target);
+    const scrollElements = resolveTouchScrollElements(
+        safariTouchTarget ?? event.target,
+    );
 
-    if (!scrollElement || !canScrollElement(scrollElement)) {
+    if (scrollElements.length === 0) {
         event.preventDefault();
         return;
     }
@@ -86,17 +123,18 @@ function handleSafariTouchMove(event: TouchEvent): void {
     const deltaY = currentClientY - safariTouchLastClientY;
     safariTouchLastClientY = currentClientY;
 
-    const maxScrollTop = scrollElement.scrollHeight - scrollElement.clientHeight;
-    const isAtTop = scrollElement.scrollTop <= 0;
-    const isAtBottom = scrollElement.scrollTop >= maxScrollTop - 1;
+    const activeScrollElement =
+        scrollElements.find((element) =>
+            canScrollElementInDirection(element, deltaY),
+        ) ?? scrollElements.find((element) => canScrollElement(element));
 
-    if ((isAtTop && deltaY > 0) || (isAtBottom && deltaY < 0)) {
+    if (!activeScrollElement) {
         event.preventDefault();
     }
 }
 
 function handleSafariTouchEnd(): void {
-    safariTouchScrollElement = null;
+    safariTouchTarget = null;
     safariTouchLastClientY = null;
 }
 
@@ -127,7 +165,7 @@ function syncSafariKeyboardTouchScrollLock(shouldLock: boolean): void {
     document.removeEventListener("touchmove", handleSafariTouchMove);
     document.removeEventListener("touchend", handleSafariTouchEnd);
     document.removeEventListener("touchcancel", handleSafariTouchEnd);
-    safariTouchScrollElement = null;
+    safariTouchTarget = null;
     safariTouchLastClientY = null;
 }
 

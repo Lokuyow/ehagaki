@@ -396,6 +396,40 @@ describe('uiStore', () => {
 
         expect(outsidePreventDefault).toHaveBeenCalledTimes(1);
 
+        const composerScrollRegion = document.createElement('div');
+        composerScrollRegion.className = 'composer-scroll-region';
+        Object.defineProperty(composerScrollRegion, 'scrollHeight', {
+            configurable: true,
+            value: 600,
+        });
+        Object.defineProperty(composerScrollRegion, 'clientHeight', {
+            configurable: true,
+            value: 200,
+        });
+        Object.defineProperty(composerScrollRegion, 'scrollTop', {
+            configurable: true,
+            value: 120,
+            writable: true,
+        });
+        const composerInner = document.createElement('div');
+        composerScrollRegion.append(composerInner);
+        document.body.append(composerScrollRegion);
+        const composerPreventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: composerInner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: composerInner,
+            touches: [{ clientY: 80 }],
+            changedTouches: [{ clientY: 80 }],
+            preventDefault: composerPreventDefault,
+        } as unknown as TouchEvent);
+
+        expect(composerPreventDefault).not.toHaveBeenCalled();
+
         const editor = document.createElement('div');
         editor.className = 'tiptap-editor';
         Object.defineProperty(editor, 'scrollHeight', {
@@ -429,6 +463,61 @@ describe('uiStore', () => {
         } as unknown as TouchEvent);
 
         expect(editorPreventDefault).not.toHaveBeenCalled();
+
+        Object.defineProperty(editor, 'scrollTop', {
+            configurable: true,
+            value: 0,
+            writable: true,
+        });
+        const editorWithComposer = document.createElement('div');
+        editorWithComposer.className = 'composer-scroll-region';
+        Object.defineProperty(editorWithComposer, 'scrollHeight', {
+            configurable: true,
+            value: 900,
+        });
+        Object.defineProperty(editorWithComposer, 'clientHeight', {
+            configurable: true,
+            value: 220,
+        });
+        Object.defineProperty(editorWithComposer, 'scrollTop', {
+            configurable: true,
+            value: 140,
+            writable: true,
+        });
+        const nestedEditor = document.createElement('div');
+        nestedEditor.className = 'tiptap-editor';
+        Object.defineProperty(nestedEditor, 'scrollHeight', {
+            configurable: true,
+            value: 600,
+        });
+        Object.defineProperty(nestedEditor, 'clientHeight', {
+            configurable: true,
+            value: 200,
+        });
+        Object.defineProperty(nestedEditor, 'scrollTop', {
+            configurable: true,
+            value: 0,
+            writable: true,
+        });
+        const nestedInner = document.createElement('span');
+        nestedEditor.append(nestedInner);
+        editorWithComposer.append(nestedEditor);
+        document.body.append(editorWithComposer);
+        const nestedPreventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: nestedInner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: nestedInner,
+            touches: [{ clientY: 130 }],
+            changedTouches: [{ clientY: 130 }],
+            preventDefault: nestedPreventDefault,
+        } as unknown as TouchEvent);
+
+        expect(nestedPreventDefault).not.toHaveBeenCalled();
 
         cleanup?.();
 
