@@ -10,6 +10,11 @@ import {
 
 const PARENT_CLIENT_PUBKEY = 'ab'.repeat(32);
 const SECOND_PARENT_CLIENT_PUBKEY = 'cd'.repeat(32);
+const DEFAULT_REPLY_EVENT_ID = '11'.repeat(32);
+const DEFAULT_QUOTE_EVENT_ID = '22'.repeat(32);
+const QUEUED_REPLY_EVENT_ID = '33'.repeat(32);
+const CLEAR_REPLY_EVENT_ID = '44'.repeat(32);
+const CLEAR_QUOTE_EVENT_ID = '55'.repeat(32);
 
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
@@ -21,7 +26,7 @@ const mockState = vi.hoisted(() => {
     }));
     const getReplyQuoteFromEmbedPayload = vi.fn(() => ({
         reply: {
-            eventId: 'event-1',
+            eventId: DEFAULT_REPLY_EVENT_ID,
             relayHints: ['wss://hint-relay.example.com'],
             authorPubkey: null,
         },
@@ -475,13 +480,13 @@ describe('App parentClient integration', () => {
         const requestId = 'composer-request-1';
         const replyQuoteQuery = {
             reply: {
-                eventId: 'event-1',
+                eventId: DEFAULT_REPLY_EVENT_ID,
                 relayHints: ['wss://hint-relay.example.com'],
                 authorPubkey: null,
             },
             quotes: [
                 {
-                    eventId: 'quote-1',
+                    eventId: DEFAULT_QUOTE_EVENT_ID,
                     relayHints: [],
                     authorPubkey: null,
                 },
@@ -534,7 +539,7 @@ describe('App parentClient integration', () => {
         const requestId = 'composer-request-queued';
         const replyQuoteQuery = {
             reply: {
-                eventId: 'event-queued',
+                eventId: QUEUED_REPLY_EVENT_ID,
                 relayHints: ['wss://hint-relay.example.com'],
                 authorPubkey: null,
             },
@@ -640,13 +645,13 @@ describe('App parentClient integration', () => {
         const { replyQuoteState, setReplyQuote } = await import('../../stores/replyQuoteStore.svelte');
         setReplyQuote({
             reply: {
-                eventId: 'event-to-clear',
+                eventId: CLEAR_REPLY_EVENT_ID,
                 relayHints: ['wss://hint-relay.example.com'],
                 authorPubkey: null,
             },
             quotes: [
                 {
-                    eventId: 'quote-to-clear',
+                    eventId: CLEAR_QUOTE_EVENT_ID,
                     relayHints: [],
                     authorPubkey: null,
                 },
