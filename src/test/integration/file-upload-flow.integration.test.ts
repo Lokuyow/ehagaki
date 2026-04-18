@@ -38,7 +38,8 @@ vi.mock("browser-image-compression", () => ({
     default: vi.fn(async (file: File, options: any) => {
         // 圧縮シミュレーション
         const compressedSize = Math.floor(file.size * 0.7);
-        const compressedBlob = new Blob([new ArrayBuffer(compressedSize)], { type: file.type });
+        const compressedType = options?.fileType ?? file.type;
+        const compressedBlob = new Blob([new ArrayBuffer(compressedSize)], { type: compressedType });
 
         // 進捗コールバックをシミュレート
         if (options?.onProgress) {
@@ -47,7 +48,7 @@ vi.mock("browser-image-compression", () => ({
             setTimeout(() => options.onProgress(1.0), 20);
         }
 
-        return new File([compressedBlob], file.name, { type: file.type });
+        return new File([compressedBlob], file.name, { type: compressedType });
     })
 }));
 
