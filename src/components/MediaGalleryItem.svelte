@@ -94,7 +94,8 @@
     }
 
     // オーバーレイクリック時にビデオの再生/停止をトグル
-    function handleOverlayClick() {
+    function handleOverlayClick(event: MouseEvent) {
+        event.stopPropagation();
         if (!videoEl) return;
         if (videoEl.paused) {
             videoEl.play();
@@ -297,5 +298,11 @@
 
     .video-drag-overlay:active {
         cursor: grabbing;
+    }
+
+    @media (hover: none) and (pointer: coarse) {
+        .video-drag-overlay {
+            display: none;
+        }
     }
 </style>
