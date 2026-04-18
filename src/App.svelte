@@ -98,6 +98,11 @@
     syncAccountStores,
     type NostrSessionBootstrap,
   } from "./lib/bootstrap/authBootstrap";
+  import { POST_EDITOR_MIN_HEIGHT } from "./lib/postLayoutUtils";
+  import {
+    resolveComposerAvailableHeight,
+    resolveComposerSiblingHeight,
+  } from "./lib/utils/composerLayoutUtils";
   import { setupViewportListener } from "./stores/uiStore.svelte";
   import {
     runAppInitializationBootstrap,
@@ -153,6 +158,9 @@
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
+  let composerScrollRegionEl: HTMLDivElement | null = $state(null);
+  let composerScrollContentEl: HTMLDivElement | null = $state(null);
+  let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
 
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
@@ -188,6 +196,36 @@
     showDraftLimitConfirmStore,
     saveDraftWithReplaceOldest,
   });
+
+  function syncComposerAvailableHeight(): void {
+    if (!composerScrollRegionEl || !composerScrollContentEl) {
+      composerAvailableHeight = POST_EDITOR_MIN_HEIGHT;
+      return;
+    }
+
+    const postBlock = composerScrollContentEl.querySelector(
+      '[data-composer-block="post"]',
+    );
+
+    if (!(postBlock instanceof HTMLElement)) {
+      composerAvailableHeight = POST_EDITOR_MIN_HEIGHT;
+      return;
+    }
+
+    const siblingHeight = resolveComposerSiblingHeight(
+      composerScrollContentEl,
+      postBlock,
+    );
+    const nextHeight = resolveComposerAvailableHeight({
+      composerViewportHeight: composerScrollRegionEl.clientHeight,
+      siblingHeight,
+      minHeight: POST_EDITOR_MIN_HEIGHT,
+    });
+
+    if (composerAvailableHeight !== nextHeight) {
+      composerAvailableHeight = nextHeight;
+    }
+  }
 
   async function initializeNostr(pubkeyHex?: string): Promise<void> {
     const session = await initializeNostrSession({
@@ -769,6 +807,58 @@
     return setupViewportListener();
   });
 
+  $effect(() => {
+    replyQuoteState.value.reply;
+    replyQuoteState.value.quotes.length;
+    composerScrollRegionEl;
+    composerScrollContentEl;
+
+    if (typeof window === "undefined") {
+      composerAvailableHeight = POST_EDITOR_MIN_HEIGHT;
+      return;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      syncComposerAvailableHeight();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+    };
+  });
+
+  $effect(() => {
+    replyQuoteState.value.reply;
+    replyQuoteState.value.quotes.length;
+    composerScrollRegionEl;
+    composerScrollContentEl;
+
+    if (
+      !composerScrollRegionEl ||
+      !composerScrollContentEl ||
+      typeof ResizeObserver === "undefined"
+    ) {
+      return;
+    }
+
+    syncComposerAvailableHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncComposerAvailableHeight();
+    });
+
+    resizeObserver.observe(composerScrollRegionEl);
+    resizeObserver.observe(composerScrollContentEl);
+
+    for (const child of Array.from(composerScrollContentEl.children)) {
+      resizeObserver.observe(child);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  });
+
   let localeInitialized = $state(false);
 
   onMount(() => {
@@ -1006,27 +1096,40 @@
           showMascot={settingsStore.showMascot}
           showBalloonMessage={showHeaderBalloonMessage}
         />
-        <div class="composer-scroll-region">
-          <div class="composer-scroll-content">
+        <div class="composer-scroll-region" bind:this={composerScrollRegionEl}>
+          <div
+            class="composer-scroll-content"
+            bind:this={composerScrollContentEl}
+          >
             {#if replyQuoteState.value.reply}
-              <ReplyQuotePreview
-                reference={replyQuoteState.value.reply}
-                mode="reply"
-                onClear={clearReplyReference}
-              />
+              <div class="composer-block composer-reference-block">
+                <ReplyQuotePreview
+                  reference={replyQuoteState.value.reply}
+                  mode="reply"
+                  onClear={clearReplyReference}
+                />
+              </div>
             {/if}
-            <PostComponent
-              bind:this={postComponentRef}
-              {rxNostr}
-              hasStoredKey={isAuthenticated}
-              onPostSuccess={handlePostSuccess}
-            />
-            {#each replyQuoteState.value.quotes as quote (quote.eventId)}
-              <ReplyQuotePreview
-                reference={quote}
-                mode="quote"
-                onClear={() => removeQuoteReference(quote.eventId)}
+            <div
+              class="composer-block composer-post-block"
+              data-composer-block="post"
+            >
+              <PostComponent
+                bind:this={postComponentRef}
+                {rxNostr}
+                hasStoredKey={isAuthenticated}
+                availableComposerHeight={composerAvailableHeight}
+                onPostSuccess={handlePostSuccess}
               />
+            </div>
+            {#each replyQuoteState.value.quotes as quote (quote.eventId)}
+              <div class="composer-block composer-reference-block">
+                <ReplyQuotePreview
+                  reference={quote}
+                  mode="quote"
+                  onClear={() => removeQuoteReference(quote.eventId)}
+                />
+              </div>
             {/each}
           </div>
         </div>
@@ -1179,6 +1282,19 @@
     display: flex;
     flex: 1 0 auto;
     flex-direction: column;
+    gap: 4px;
+  }
+
+  .composer-block {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
     align-items: center;
+    min-width: 0;
+  }
+
+  .composer-post-block {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 </style>

@@ -3,7 +3,12 @@
  * キーボード追従などのレイアウト状態を管理
  */
 
-import { createSafariKeyboardTouchScrollLock } from "../lib/utils/safariTouchScrollLock";
+import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
+import {
+    getEffectiveViewportOffsetTop,
+    getLayoutViewportHeight,
+    isNonPwaIPhoneSafari,
+} from "../lib/utils/viewportLayout";
 
 // --- 定数 ---
 /** フッターの高さ（px） */
@@ -24,57 +29,13 @@ const KEYBOARD_THRESHOLD = 100;
 let lastViewportHeight: number | undefined;
 let lastViewportOffsetTop = 0;
 let lastLayoutViewportHeight: number | undefined;
-const safariKeyboardTouchScrollLock =
+const keyboardTouchScrollLock =
     typeof document === "undefined"
         ? null
-        : createSafariKeyboardTouchScrollLock(document);
+        : createKeyboardTouchScrollLock(document);
 
-function getLayoutViewportHeight(): number {
-    if (typeof window === "undefined") {
-        return 0;
-    }
-
-    return Math.max(
-        document.documentElement?.clientHeight ?? 0,
-        window.innerHeight,
-        window.visualViewport?.height ?? 0,
-    );
-}
-
-function syncSafariKeyboardTouchScrollLock(shouldLock: boolean): void {
-    safariKeyboardTouchScrollLock?.sync(shouldLock);
-}
-
-function getEffectiveViewportOffsetTop(viewport?: VisualViewport | null): number {
-    if (typeof window === "undefined") {
-        return 0;
-    }
-
-    return Math.max(
-        viewport?.offsetTop ?? 0,
-        viewport?.pageTop ?? 0,
-        window.scrollY,
-        document.documentElement?.scrollTop ?? 0,
-        document.scrollingElement?.scrollTop ?? 0,
-    );
-}
-
-function isNonPwaIPhoneSafari(): boolean {
-    if (typeof window === "undefined" || typeof navigator === "undefined") {
-        return false;
-    }
-
-    const userAgent = navigator.userAgent;
-    const isIPhone = /iPhone/i.test(userAgent);
-    const isWebKit = /WebKit/i.test(userAgent);
-    const isCriOS = /CriOS/i.test(userAgent);
-    const isFxiOS = /FxiOS/i.test(userAgent);
-    const isEdgiOS = /EdgiOS/i.test(userAgent);
-    const isStandalone =
-        window.matchMedia?.("(display-mode: standalone)")?.matches === true ||
-        (navigator as Navigator & { standalone?: boolean }).standalone === true;
-
-    return isIPhone && isWebKit && !isCriOS && !isFxiOS && !isEdgiOS && !isStandalone;
+function syncKeyboardTouchScrollLock(shouldLock: boolean): void {
+    keyboardTouchScrollLock?.sync(shouldLock);
 }
 
 function setRootStyleProperty(name: string, value: string): void {
@@ -117,7 +78,7 @@ function syncLayoutCssVariables(
     const isSafariViewportMode = isNonPwaIPhoneSafari();
     const shouldLockAppRoot = shouldLockAppRootForKeyboard(isKeyboardVisible);
 
-    syncSafariKeyboardTouchScrollLock(shouldLockAppRoot && isSafariViewportMode);
+    syncKeyboardTouchScrollLock(shouldLockAppRoot && isSafariViewportMode);
     const keyboardButtonBarBottom = shouldLockAppRoot
         ? "0px"
         : `${bottomPosition}px`;
@@ -348,7 +309,7 @@ export function setupViewportListener(): (() => void) | undefined {
     }
 
     return () => {
-        safariKeyboardTouchScrollLock?.dispose();
+        keyboardTouchScrollLock?.dispose();
         window.visualViewport?.removeEventListener("resize", handleViewportResize);
         window.visualViewport?.removeEventListener("scroll", handleViewportScroll);
 

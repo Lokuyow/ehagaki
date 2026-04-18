@@ -53,7 +53,7 @@ export function canScrollElementInDirection(
     return true;
 }
 
-export function createSafariKeyboardTouchScrollLock(
+export function createKeyboardTouchScrollLock(
     targetDocument: Document = document,
 ) {
     let locked = false;

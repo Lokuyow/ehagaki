@@ -56,6 +56,10 @@
   } from "../lib/editor/editorLifecycle";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import { POST_EDITOR_MIN_HEIGHT } from "../lib/postLayoutUtils";
+  import {
+    measureElementOuterHeight,
+    resolvePostEditorTargetHeight,
+  } from "../lib/utils/composerLayoutUtils";
   import ImageFullscreen from "./ImageFullscreen.svelte";
   import type { InitializeEditorResult, MenuItem } from "../lib/types";
 
@@ -63,9 +67,15 @@
     rxNostr?: RxNostr;
     hasStoredKey: boolean;
     onPostSuccess?: () => void;
+    availableComposerHeight?: number;
   }
 
-  let { rxNostr, hasStoredKey, onPostSuccess }: Props = $props();
+  let {
+    rxNostr,
+    hasStoredKey,
+    onPostSuccess,
+    availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
+  }: Props = $props();
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
   let dragOver = $state(false);
@@ -84,51 +94,14 @@
     `--post-editor-min-height: ${POST_EDITOR_MIN_HEIGHT}px; --post-editor-target-height: ${editorTargetHeight}px;`,
   );
 
-  function measureElementOuterHeight(element: Element): number {
-    if (!(element instanceof HTMLElement)) {
-      return 0;
-    }
-
-    const rectHeight = element.getBoundingClientRect().height;
-    const computedStyle = window.getComputedStyle(element);
-    const marginTop = Number.parseFloat(computedStyle.marginTop) || 0;
-    const marginBottom = Number.parseFloat(computedStyle.marginBottom) || 0;
-
-    return rectHeight + marginTop + marginBottom;
-  }
-
   function syncEditorTargetHeight() {
     const minHeight = POST_EDITOR_MIN_HEIGHT;
 
-    if (
-      !postContainerEl ||
-      !editorContainerEl ||
-      typeof window === "undefined"
-    ) {
+    if (!postContainerEl || !editorContainerEl) {
       editorTargetHeight = minHeight;
       return;
     }
 
-    const composerScrollRegion = postContainerEl.closest(
-      ".composer-scroll-region",
-    );
-    const composerScrollContent = postContainerEl.parentElement;
-
-    if (
-      !(composerScrollRegion instanceof HTMLElement) ||
-      !(composerScrollContent instanceof HTMLElement)
-    ) {
-      editorTargetHeight = minHeight;
-      return;
-    }
-
-    const siblingHeight = Array.from(composerScrollContent.children).reduce(
-      (totalHeight, child) =>
-        child === postContainerEl
-          ? totalHeight
-          : totalHeight + measureElementOuterHeight(child),
-      0,
-    );
     const nonEditorHeight = Array.from(postContainerEl.children).reduce(
       (totalHeight, child) =>
         child === editorContainerEl
@@ -136,14 +109,11 @@
           : totalHeight + measureElementOuterHeight(child),
       0,
     );
-    const availableComposerHeight = Math.max(
-      0,
-      composerScrollRegion.clientHeight - siblingHeight,
-    );
-    const nextTargetHeight = Math.max(
+    const nextTargetHeight = resolvePostEditorTargetHeight({
+      availableComposerHeight,
+      nonEditorHeight,
       minHeight,
-      Math.floor(availableComposerHeight - nonEditorHeight),
-    );
+    });
 
     if (editorTargetHeight !== nextTargetHeight) {
       editorTargetHeight = nextTargetHeight;
@@ -218,6 +188,7 @@
   });
 
   $effect(() => {
+    availableComposerHeight;
     mediaFreePlacement;
     uploadErrorMessage;
     currentEditor;
@@ -237,27 +208,12 @@
   });
 
   $effect(() => {
+    availableComposerHeight;
     currentEditor;
     mediaFreePlacement;
     uploadErrorMessage;
 
-    if (
-      !postContainerEl ||
-      !editorContainerEl ||
-      typeof ResizeObserver === "undefined"
-    ) {
-      return;
-    }
-
-    const composerScrollRegion = postContainerEl.closest(
-      ".composer-scroll-region",
-    );
-    const composerScrollContent = postContainerEl.parentElement;
-
-    if (
-      !(composerScrollRegion instanceof HTMLElement) ||
-      !(composerScrollContent instanceof HTMLElement)
-    ) {
+    if (!postContainerEl || typeof ResizeObserver === "undefined") {
       return;
     }
 
@@ -267,10 +223,7 @@
       syncEditorTargetHeight();
     });
 
-    resizeObserver.observe(composerScrollRegion);
-    resizeObserver.observe(composerScrollContent);
     resizeObserver.observe(postContainerEl);
-    resizeObserver.observe(editorContainerEl);
 
     for (const child of Array.from(postContainerEl.children)) {
       if (child !== editorContainerEl) {

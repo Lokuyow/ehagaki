@@ -48,11 +48,7 @@
     }
 </script>
 
-<div
-    class="reply-quote-preview"
-    class:reply-preview={isReply}
-    class:quote-preview={!isReply}
->
+<div class="reply-quote-preview">
     <div class="preview-header">
         <div class="preview-meta">
             <Button
@@ -115,14 +111,6 @@
         width: 100%;
         font-size: 1rem;
         flex-shrink: 0;
-    }
-
-    .reply-preview {
-        margin-bottom: 4px;
-    }
-
-    .quote-preview {
-        margin-top: 4px;
     }
 
     .preview-header {

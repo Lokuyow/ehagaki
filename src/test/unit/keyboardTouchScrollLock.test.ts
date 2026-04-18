@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     canScrollElement,
     canScrollElementInDirection,
-    createSafariKeyboardTouchScrollLock,
+    createKeyboardTouchScrollLock,
     resolveTouchScrollElements,
-} from '../../lib/utils/safariTouchScrollLock';
+} from '../../lib/utils/keyboardTouchScrollLock';
 
 function defineScrollMetrics(
     element: HTMLElement,
@@ -26,7 +26,7 @@ function defineScrollMetrics(
     });
 }
 
-describe('safariTouchScrollLock', () => {
+describe('keyboardTouchScrollLock', () => {
     beforeEach(() => {
         document.body.innerHTML = '';
         vi.restoreAllMocks();
@@ -74,7 +74,7 @@ describe('safariTouchScrollLock', () => {
     it('lock 中は許可されていない touchmove を抑止する', () => {
         const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
         const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
-        const lock = createSafariKeyboardTouchScrollLock(document);
+        const lock = createKeyboardTouchScrollLock(document);
 
         lock.sync(true);
 
@@ -110,7 +110,7 @@ describe('safariTouchScrollLock', () => {
 
     it('composer scroll region がスクロールできる場合は touchmove を許可する', () => {
         const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
-        const lock = createSafariKeyboardTouchScrollLock(document);
+        const lock = createKeyboardTouchScrollLock(document);
 
         lock.sync(true);
 
