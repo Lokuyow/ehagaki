@@ -168,6 +168,7 @@ export class ImageCompressionService implements CompressionService {
         let usedOptions: Record<string, unknown> = {
             ...options,
             ...(maxSizeMB ? { maxSizeMB } : {}),
+            alwaysKeepResolution: true,
             onProgress: (progress: number) => {
                 if (this.onProgress) {
                     this.onProgress(Math.round(progress * 100));

@@ -260,6 +260,7 @@ describe('ImageCompressionService', () => {
 
                 const callArgs = imageCompressionMock.mock.calls[0];
                 expect(callArgs[1].maxSizeMB).toBeCloseTo((500000 * 0.75) / (1024 * 1024));
+                expect(callArgs[1].alwaysKeepResolution).toBe(true);
                 expect(result.wasCompressed).toBe(true);
                 expect(result.file.size).toBeLessThan(file.size);
             });
