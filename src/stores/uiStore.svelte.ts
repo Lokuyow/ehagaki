@@ -21,7 +21,7 @@ export const KEYBOARD_BUTTON_BAR_HEIGHT = 50;
 export const REASON_INPUT_HEIGHT = 50;
 
 /** メインコンテンツ上部の余白（px） */
-export const MAIN_CONTENT_TOP_SPACING = 8;
+export const MAIN_CONTENT_TOP_SPACING = 6;
 
 /** キーボードが開いていると判定する最小の高さ（px） */
 const KEYBOARD_THRESHOLD = 100;

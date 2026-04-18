@@ -660,7 +660,7 @@
     min-height: 0;
     height: 100%;
     flex: 1 1 auto;
-    padding: 16px 10px 16px 10px;
+    padding: 10px;
     font-family: inherit;
     font-size: 1.25rem;
     line-height: 1.5;
