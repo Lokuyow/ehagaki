@@ -210,6 +210,44 @@ describe('エディター・リンク判定統合テスト', () => {
         });
     });
 
+    describe('改行時のリンク再判定', () => {
+        it('URLの途中で段落を分割した場合、リンク判定が解除されること', async () => {
+            editor.commands.setContent('<p>https://example.com/path</p>');
+            await waitForContentTracking();
+
+            let html = editor.getHTML();
+            expectLinkExists(html, 'https://example.com/path');
+
+            editor.commands.setTextSelection(10);
+            editor.view.dispatch(
+                editor.state.tr.split(editor.state.selection.from)
+            );
+            await waitForContentTracking();
+
+            html = editor.getHTML();
+            expectLinkNotExists(html);
+            expect(html).toContain('<p>https://e</p><p>xample.com/path</p>');
+        });
+
+        it('別段落で改行しても未編集のURLリンクは維持されること', async () => {
+            editor.commands.setContent('<p>hello world</p><p>https://example.com/</p>');
+            await waitForContentTracking();
+
+            let html = editor.getHTML();
+            expectLinkExists(html, 'https://example.com/');
+
+            editor.commands.setTextSelection(7);
+            editor.view.dispatch(
+                editor.state.tr.split(editor.state.selection.from)
+            );
+            await waitForContentTracking();
+
+            html = editor.getHTML();
+            expect((html.match(/<a /g) || []).length).toBe(1);
+            expect(html).toContain('href="https://example.com/"');
+        });
+    });
+
     describe('ProseMirrorマーク分割への対応', () => {
         it('マークによって分割されたテキストノードでも正しく単語境界チェックが機能すること', async () => {
             // この テストは、ProseMirrorがマークによってテキストノードを分割する仕様に
