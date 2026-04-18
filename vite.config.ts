@@ -16,7 +16,7 @@ const baseUrl = process.env.VERCEL ? '/' : '/ehagaki/';
 export default defineConfig({
   base: baseUrl,
   optimizeDeps: {
-    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util']
+    exclude: ['@ffmpeg/ffmpeg', '@ffmpeg/util', '@jsquash/webp']
   },
   worker: {
     format: 'es'
