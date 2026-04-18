@@ -4,6 +4,7 @@ import {
     buildFullscreenViewerDataSource,
     createFullscreenVideoSlideElement,
     pauseFullscreenVideoContent,
+    resolveFullscreenVideoSize,
 } from '../../lib/utils/fullscreenViewerUtils';
 
 describe('fullscreenViewerUtils', () => {
@@ -29,13 +30,14 @@ describe('fullscreenViewerUtils', () => {
         ]);
     });
 
-    it('動画は fallback size を付けて dataSource へ変換する', async () => {
+    it('動画は dim があればその寸法を dataSource に使う', async () => {
         await expect(buildFullscreenViewerDataSource([
             {
                 id: 'video-1',
                 src: 'https://example.com/test.mp4',
                 alt: 'test video',
                 type: 'video',
+                dim: '720x1280',
             },
         ])).resolves.toEqual([
             {
@@ -43,10 +45,43 @@ describe('fullscreenViewerUtils', () => {
                 src: 'https://example.com/test.mp4',
                 alt: 'test video',
                 type: 'video',
-                width: 1280,
-                height: 720,
+                dim: '720x1280',
+                width: 720,
+                height: 1280,
             },
         ]);
+    });
+
+    it('動画 metadata から実寸を解決できる', async () => {
+        const createVideo = () => {
+            const video = {
+                preload: '',
+                muted: false,
+                playsInline: false,
+                videoWidth: 720,
+                videoHeight: 1280,
+                onloadedmetadata: null,
+                onerror: null,
+                load: vi.fn(),
+                set src(_value: string) {
+                    queueMicrotask(() => {
+                        video.onloadedmetadata?.(new Event('loadedmetadata'));
+                    });
+                },
+            } as unknown as HTMLVideoElement;
+
+            return video;
+        };
+
+        await expect(resolveFullscreenVideoSize({
+            id: 'video-2',
+            src: 'https://example.com/vertical.mp4',
+            alt: 'vertical video',
+            type: 'video',
+        }, createVideo)).resolves.toEqual({
+            width: 720,
+            height: 1280,
+        });
     });
 
     it('寸法がない画像は Image factory から natural size を解決する', async () => {

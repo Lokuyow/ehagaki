@@ -159,33 +159,6 @@ export function getCompressionLevels($_: (key: string) => string | undefined) {
     ];
 }
 
-export const ZOOM_CONFIG = {
-    MIN_SCALE: 1,
-    MAX_SCALE: 100,
-    DEFAULT_SCALE: 1,
-    DOUBLE_CLICK_SCALE: 2.5,
-    RESET_THRESHOLD: 1.3, // この値以上の拡大時はダブルタップで1倍に戻す
-    ZOOM_DELTA: { IN: 1.1, OUT: 0.9 },
-    THRESHOLD: 0.1,
-    PINCH_MIN_DISTANCE: 10, // ピンチ操作の最小距離
-    PINCH_SCALE_SENSITIVITY: 1.0, // ピンチスケール感度
-} as const;
-
-// 慣性アニメーション用の定数
-export const MOMENTUM_CONFIG = {
-    FRICTION: 0.92, // 減衰係数
-    MIN_VELOCITY: 0.1, // 最小速度閾値
-} as const;
-
-export const TIMING = {
-    EDITOR_FOCUS_DELAY: 100,
-    TRANSITION_DURATION: "0.3s",
-    TAP_TIMEOUT: 300, // タップ検出のタイムアウト
-    ZOOM_TOGGLE_DELAY: 100, // ズーム切り替えの遅延
-    TRANSITION_DELAY: 50, // トランジション再有効化の遅延
-    PINCH_THROTTLE: 16, // ピンチ更新のスロットル間隔（約60FPS）
-} as const;
-
 export const SELECTORS = {
     EDITOR: ".tiptap-editor",
 } as const;

@@ -303,24 +303,29 @@
     }
 
     :global(.ehagaki-pswp-video-container) {
+        position: relative;
         width: 100%;
         height: 100%;
+        min-width: 0;
+        min-height: 0;
         display: flex;
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
-        padding: 24px;
         pointer-events: none;
     }
 
     :global(.ehagaki-pswp-video) {
-        width: auto;
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
         max-width: 100%;
-        max-height: min(100%, 100svh - 112px);
+        max-height: 100%;
+        margin: auto;
         display: block;
         object-fit: contain;
         background: #000;
-        border-radius: 10px;
         pointer-events: auto;
     }
 </style>

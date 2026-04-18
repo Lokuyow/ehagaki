@@ -1,4 +1,5 @@
 import type { FullscreenMediaItem } from '../types';
+import { parseDimString } from './mediaNodeUtils';
 
 export const FULLSCREEN_IMAGE_FALLBACK_SIZE = {
     width: 1600,
@@ -11,13 +12,23 @@ export const FULLSCREEN_VIDEO_FALLBACK_SIZE = {
 } as const;
 
 type ImageFactory = () => HTMLImageElement;
+type VideoFactory = () => HTMLVideoElement;
+
+function resolveDimensionsFromItem(item: FullscreenMediaItem) {
+    if (item.width && item.height) {
+        return { width: item.width, height: item.height };
+    }
+
+    return parseDimString(item.dim);
+}
 
 export async function resolveFullscreenImageSize(
     item: FullscreenMediaItem,
     createImage: ImageFactory = () => new Image(),
 ): Promise<{ width: number; height: number }> {
-    if (item.width && item.height) {
-        return { width: item.width, height: item.height };
+    const resolvedDimensions = resolveDimensionsFromItem(item);
+    if (resolvedDimensions) {
+        return resolvedDimensions;
     }
 
     if (typeof Image === 'undefined') {
@@ -43,18 +54,74 @@ export async function resolveFullscreenImageSize(
     });
 }
 
+export async function resolveFullscreenVideoSize(
+    item: FullscreenMediaItem,
+    createVideo: VideoFactory = () => document.createElement('video'),
+): Promise<{ width: number; height: number }> {
+    const resolvedDimensions = resolveDimensionsFromItem(item);
+    if (resolvedDimensions) {
+        return resolvedDimensions;
+    }
+
+    if (typeof document === 'undefined') {
+        return FULLSCREEN_VIDEO_FALLBACK_SIZE;
+    }
+
+    return await new Promise((resolve) => {
+        const videoElement = createVideo();
+        let resolved = false;
+
+        const cleanup = () => {
+            videoElement.onloadedmetadata = null;
+            videoElement.onerror = null;
+            videoElement.src = '';
+            videoElement.load?.();
+        };
+
+        const finish = (size: { width: number; height: number }) => {
+            if (resolved) {
+                return;
+            }
+
+            resolved = true;
+            cleanup();
+            resolve(size);
+        };
+
+        videoElement.preload = 'metadata';
+        videoElement.muted = true;
+        videoElement.playsInline = true;
+
+        videoElement.onloadedmetadata = () => {
+            finish({
+                width: videoElement.videoWidth || FULLSCREEN_VIDEO_FALLBACK_SIZE.width,
+                height: videoElement.videoHeight || FULLSCREEN_VIDEO_FALLBACK_SIZE.height,
+            });
+        };
+
+        videoElement.onerror = () => {
+            finish(FULLSCREEN_VIDEO_FALLBACK_SIZE);
+        };
+
+        videoElement.src = item.src;
+    });
+}
+
 export async function buildFullscreenViewerDataSource(
     items: FullscreenMediaItem[],
     createImage?: ImageFactory,
+    createVideo?: VideoFactory,
 ) {
     return await Promise.all(
         items.map(async (item) => {
             if (item.type === 'video') {
+                const size = await resolveFullscreenVideoSize(item, createVideo);
+
                 return {
                     ...item,
                     type: 'video',
-                    width: item.width ?? FULLSCREEN_VIDEO_FALLBACK_SIZE.width,
-                    height: item.height ?? FULLSCREEN_VIDEO_FALLBACK_SIZE.height,
+                    width: size.width,
+                    height: size.height,
                 };
             }
 

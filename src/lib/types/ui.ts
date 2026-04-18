@@ -78,21 +78,11 @@ export interface TimeoutAdapter {
     setTimeout(callback: () => void, delay: number): void;
 }
 
-export interface MousePosition {
-    x: number;
-    y: number;
-}
-
 export interface ViewportInfo {
     centerX: number;
     centerY: number;
     offsetX: number;
     offsetY: number;
-}
-
-export interface ZoomCalculation {
-    newScale: number;
-    newTranslate: MousePosition;
 }
 
 export interface TouchPosition {
