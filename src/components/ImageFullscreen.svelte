@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount, onDestroy } from "svelte";
+    import { onMount, onDestroy, tick } from "svelte";
     import { ZOOM_CONFIG } from "../lib/constants";
     import Button from "./Button.svelte";
     import type { TransformState, FullscreenMediaItem } from "../lib/types";
@@ -562,6 +562,24 @@
         }
     });
 
+    $effect(() => {
+        if (!show || !containerElement || typeof document === "undefined") {
+            return;
+        }
+
+        void (async () => {
+            await tick();
+
+            if (
+                show &&
+                containerElement &&
+                containerElement.parentElement !== document.body
+            ) {
+                document.body.appendChild(containerElement);
+            }
+        })();
+    });
+
     // --- Mount/Unmount ---
     function attachGlobalHandlers() {
         const handlers = [
@@ -592,6 +610,7 @@
     });
 
     onDestroy(() => {
+        setBodyStyle("overflow", "");
         resetAllStates(
             animationFrameId,
             pinchAnimationFrameId,
@@ -601,6 +620,10 @@
         );
         historyPushed = false;
         lastTapPosition = null;
+
+        if (containerElement?.parentElement === document.body) {
+            document.body.removeChild(containerElement);
+        }
     });
 </script>
 
