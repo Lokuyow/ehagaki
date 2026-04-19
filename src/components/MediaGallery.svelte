@@ -7,6 +7,7 @@
         SCROLL_BASE_SPEED,
         SCROLL_MAX_SPEED,
     } from "../lib/constants";
+    import { consumeMediaGalleryWheelScroll } from "../lib/utils/mediaGalleryWheelUtils";
 
     // PC ドラッグ＆ドロップ状態
     let dragFromIndex = $state(-1);
@@ -323,9 +324,22 @@
     // --- ホイールスクロール処理 ---
     function handleWheel(event: WheelEvent) {
         if (!galleryEl) return;
-        // deltaYを横スクロール量に変換
-        galleryEl.scrollLeft += event.deltaY;
-        event.preventDefault();
+
+        const composerScrollRegion = galleryEl.closest(
+            ".composer-scroll-region",
+        );
+
+        if (
+            consumeMediaGalleryWheelScroll(
+                galleryEl,
+                event,
+                composerScrollRegion instanceof HTMLElement
+                    ? composerScrollRegion
+                    : null,
+            )
+        ) {
+            event.preventDefault();
+        }
     }
 
     // ホイールイベントをpassive: falseで登録
