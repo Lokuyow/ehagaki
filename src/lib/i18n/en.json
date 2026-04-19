@@ -77,7 +77,8 @@
     "add_account": "Add Account",
     "switch_account": "Switch",
     "active": "Active",
-    "logout_account": "Logout"
+    "logout_account": "Logout",
+    "copy_success": "Copied"
   },
   "settingsDialog": {
     "info_header_setting": "Setting",

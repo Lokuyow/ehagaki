@@ -77,7 +77,8 @@
     "add_account": "アカウントを追加",
     "switch_account": "切替",
     "active": "使用中",
-    "logout_account": "ログアウト"
+    "logout_account": "ログアウト",
+    "copy_success": "コピーしました"
   },
   "settingsDialog": {
     "info_header_setting": "設定",

@@ -319,7 +319,7 @@
     y={popupY}
     onClose={() => (showPopup = false)}
 >
-    <div class="copy-success-message">{$_("imageContextMenu.copySuccess")}</div>
+    <div class="copy-success-message">{$_("profileDialog.copy_success")}</div>
 </PopupModal>
 
 <style>
