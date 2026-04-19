@@ -177,6 +177,7 @@
                 height: 50px;
                 min-width: fit-content;
                 padding: 0 10px 0 10px;
+                border-radius: 0 6px 6px 0;
             }
         }
 
