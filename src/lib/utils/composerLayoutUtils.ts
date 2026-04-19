@@ -10,6 +10,24 @@ interface ResolvePostEditorTargetHeightParams {
     minHeight: number;
 }
 
+function resolveFlexColumnGapHeight(
+    container: HTMLElement,
+    itemCount: number,
+): number {
+    if (typeof window === "undefined" || itemCount <= 1) {
+        return 0;
+    }
+
+    const computedStyle = window.getComputedStyle(container);
+    const rowGap = Number.parseFloat(computedStyle.rowGap || computedStyle.gap);
+
+    if (!Number.isFinite(rowGap) || rowGap <= 0) {
+        return 0;
+    }
+
+    return rowGap * (itemCount - 1);
+}
+
 export function measureElementOuterHeight(element: Element | null): number {
     if (!(element instanceof HTMLElement) || typeof window === "undefined") {
         return 0;
@@ -27,13 +45,18 @@ export function resolveComposerSiblingHeight(
     container: HTMLElement,
     excludedElement: Element | null,
 ): number {
-    return Array.from(container.children).reduce(
+    const children = Array.from(container.children).filter(
+        (child): child is HTMLElement => child instanceof HTMLElement,
+    );
+    const siblingHeight = children.reduce(
         (totalHeight, child) =>
             child === excludedElement
                 ? totalHeight
                 : totalHeight + measureElementOuterHeight(child),
         0,
     );
+
+    return siblingHeight + resolveFlexColumnGapHeight(container, children.length);
 }
 
 export function resolveComposerAvailableHeight(

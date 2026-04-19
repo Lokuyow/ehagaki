@@ -70,7 +70,7 @@ describe('ReplyQuotePreview', () => {
 
         expect(container.querySelector('.preview-header .preview-status')).toBeNull();
 
-        await vi.advanceTimersByTimeAsync(149);
+        await vi.advanceTimersByTimeAsync(299);
         expect(container.querySelector('.preview-header .preview-status')).toBeNull();
 
         await vi.advanceTimersByTimeAsync(1);

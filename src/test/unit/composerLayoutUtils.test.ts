@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
     measureElementOuterHeight,
@@ -6,6 +6,10 @@ import {
     resolveComposerSiblingHeight,
     resolvePostEditorTargetHeight,
 } from '../../lib/utils/composerLayoutUtils';
+
+afterEach(() => {
+    vi.restoreAllMocks();
+});
 
 function defineOuterBox(
     element: HTMLElement,
@@ -28,6 +32,20 @@ function defineOuterBox(
     } as CSSStyleDeclaration);
 }
 
+function mockComputedStyles(styles: Map<Element, Partial<CSSStyleDeclaration>>) {
+    vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => {
+        const style = styles.get(element as Element);
+
+        return {
+            marginTop: '0px',
+            marginBottom: '0px',
+            rowGap: '0px',
+            gap: '0px',
+            ...style,
+        } as CSSStyleDeclaration;
+    });
+}
+
 describe('composerLayoutUtils', () => {
     it('outer height に margin を含める', () => {
         const element = document.createElement('div');
@@ -40,7 +58,7 @@ describe('composerLayoutUtils', () => {
         expect(measureElementOuterHeight(element)).toBe(140);
     });
 
-    it('composer sibling height は post block 以外を合計する', () => {
+    it('composer sibling height は post block 以外と gap を合計する', () => {
         const container = document.createElement('div');
         const reply = document.createElement('div');
         const post = document.createElement('div');
@@ -51,12 +69,15 @@ describe('composerLayoutUtils', () => {
         post.getBoundingClientRect = vi.fn(() => ({ height: 200 })) as any;
         quote.getBoundingClientRect = vi.fn(() => ({ height: 44 })) as any;
 
-        const styleSpy = vi.spyOn(window, 'getComputedStyle');
-        styleSpy
-            .mockReturnValueOnce({ marginTop: '4px', marginBottom: '4px' } as CSSStyleDeclaration)
-            .mockReturnValueOnce({ marginTop: '2px', marginBottom: '2px' } as CSSStyleDeclaration);
+        mockComputedStyles(
+            new Map([
+                [container, { rowGap: '4px', gap: '4px' }],
+                [reply, { marginTop: '4px', marginBottom: '4px' }],
+                [quote, { marginTop: '2px', marginBottom: '2px' }],
+            ]),
+        );
 
-        expect(resolveComposerSiblingHeight(container, post)).toBe(116);
+        expect(resolveComposerSiblingHeight(container, post)).toBe(124);
     });
 
     it('composer available height は minimum を下回らない', () => {
