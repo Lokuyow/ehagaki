@@ -11,9 +11,12 @@
         onClear: () => void;
     }
 
+    const LOADING_INDICATOR_DELAY_MS = 300;
+
     let { reference, mode, onClear }: Props = $props();
 
     let expanded = $state(false);
+    let showDelayedLoading = $state(false);
 
     let isReply = $derived(mode === "reply");
 
@@ -38,6 +41,28 @@
         return clean;
     });
 
+    let canToggleExpand = $derived(!!sanitizedContent);
+
+    let showLoadingStatus = $derived(reference.loading && showDelayedLoading);
+
+    let showErrorStatus = $derived(!!reference.error);
+
+    let showHeaderStatus = $derived(showLoadingStatus || showErrorStatus);
+
+    let statusLabel = $derived(
+        showErrorStatus
+            ? $_("replyQuote.fetch_error")
+            : $_("replyQuote.loading"),
+    );
+
+    let toggleAriaLabel = $derived(
+        canToggleExpand
+            ? expanded
+                ? $_("replyQuote.collapse")
+                : $_("replyQuote.expand")
+            : modeLabel,
+    );
+
     function handleCancel() {
         onClear();
         expanded = false;
@@ -46,6 +71,29 @@
     function toggleExpand() {
         expanded = !expanded;
     }
+
+    $effect(() => {
+        if (!reference.loading) {
+            showDelayedLoading = false;
+            return;
+        }
+
+        showDelayedLoading = false;
+
+        const timeoutId = setTimeout(() => {
+            showDelayedLoading = true;
+        }, LOADING_INDICATOR_DELAY_MS);
+
+        return () => {
+            clearTimeout(timeoutId);
+        };
+    });
+
+    $effect(() => {
+        if (!canToggleExpand && expanded) {
+            expanded = false;
+        }
+    });
 </script>
 
 <div class="reply-quote-preview">
@@ -55,11 +103,9 @@
                 className="preview-label"
                 variant="default"
                 shape="square"
-                onClick={sanitizedContent ? toggleExpand : undefined}
-                aria-expanded={expanded}
-                ariaLabel={expanded
-                    ? $_("replyQuote.collapse")
-                    : $_("replyQuote.expand")}
+                onClick={canToggleExpand ? toggleExpand : undefined}
+                aria-expanded={canToggleExpand ? expanded : undefined}
+                ariaLabel={toggleAriaLabel}
             >
                 <div
                     class="preview-mode-icon svg-icon"
@@ -72,6 +118,15 @@
                 <span class="author-name">{authorDisplay}</span>
             {/if}
         </div>
+        {#if showHeaderStatus}
+            <div
+                class="preview-status"
+                class:loading-status={showLoadingStatus}
+                class:error-status={showErrorStatus}
+            >
+                <span class="preview-status-text">{statusLabel}</span>
+            </div>
+        {/if}
         <Button
             className="cancel-button"
             variant="default"
@@ -84,16 +139,8 @@
         </Button>
     </div>
 
-    {#if reference.loading}
-        <div class="preview-loading">
-            <span class="loading-text">{$_("replyQuote.loading")}</span>
-        </div>
-    {:else if reference.error}
-        <div class="preview-error">
-            <span>{$_("replyQuote.fetch_error")}</span>
-        </div>
-    {:else if sanitizedContent}
-        {#if expanded}
+    {#if expanded}
+        {#if sanitizedContent}
             <div class="preview-content">
                 <p class="content-text">{sanitizedContent}</p>
             </div>
@@ -116,7 +163,6 @@
     .preview-header {
         display: flex;
         align-items: center;
-        justify-content: space-between;
         gap: 12px;
 
         .preview-meta {
@@ -140,6 +186,29 @@
             padding: 2px;
             flex-shrink: 0;
         }
+    }
+
+    .preview-status {
+        min-width: 0;
+        max-width: 220px;
+        flex-shrink: 1;
+        text-align: right;
+    }
+
+    .preview-status-text {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.8rem;
+    }
+
+    .loading-status {
+        color: var(--text-muted);
+    }
+
+    .error-status {
+        color: var(--danger);
     }
 
     .preview-mode-icon {
@@ -176,21 +245,6 @@
         width: 30px;
         height: 30px;
         mask-image: url("/icons/xmark-solid-full.svg");
-    }
-
-    .preview-loading {
-        padding: 4px 0;
-    }
-
-    .loading-text {
-        color: var(--text-muted);
-        font-size: 0.8rem;
-    }
-
-    .preview-error {
-        padding: 4px 0;
-        color: var(--danger);
-        font-size: 0.8rem;
     }
 
     .preview-content {
