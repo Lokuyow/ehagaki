@@ -13,28 +13,20 @@
     let { channel, onClear }: Props = $props();
 
     let expanded = $state(false);
-    let isMetadataLoading = $derived(channel.isMetadataLoading === true);
+    let isMetadataLoading = $derived(!!channel.isMetadataLoading);
 
-    let channelName = $derived.by(() => {
-        const trimmedName = channel.name?.trim();
+    let channelName = $derived(
+        channel.name?.trim() || $_("channelComposer.unnamed"),
+    );
 
-        if (trimmedName) {
-            return trimmedName;
-        }
-
-        return $_("channelComposer.unnamed");
-    });
-
-    let sanitizedAbout = $derived.by(() => {
-        if (!channel.about) {
-            return "";
-        }
-
-        return DOMPurify.sanitize(channel.about, {
-            ALLOWED_TAGS: [],
-            ALLOWED_ATTR: [],
-        });
-    });
+    let sanitizedAbout = $derived(
+        channel.about
+            ? DOMPurify.sanitize(channel.about, {
+                  ALLOWED_TAGS: [],
+                  ALLOWED_ATTR: [],
+              })
+            : "",
+    );
 
     let relaySummary = $derived(channel.relayHints.join("\n"));
     let canToggleExpand = $derived(
@@ -122,14 +114,14 @@
                 {#if sanitizedAbout}
                     <p class="about-text">{sanitizedAbout}</p>
                 {/if}
-                <dl class="meta-list">
-                    {#if relaySummary}
+                {#if relaySummary}
+                    <dl class="meta-list">
                         <div class="meta-row">
                             <dt>{$_("channelComposer.relays_label")}</dt>
                             <dd>{relaySummary}</dd>
                         </div>
-                    {/if}
-                </dl>
+                    </dl>
+                {/if}
             {/if}
         </div>
     {/if}
