@@ -2,14 +2,12 @@
     import { _ } from "svelte-i18n";
     interface Props {
         text?: string | boolean;
-        showImage?: boolean;
         showLoader?: boolean;
         customClass?: string;
     }
 
     let {
         text = false,
-        showImage = false,
         showLoader = false,
         customClass = "",
     }: Props = $props();
@@ -50,9 +48,6 @@
             <div class="square"></div>
         </div>
     {/if}
-    {#if showImage}
-        <div class="placeholder-image" aria-hidden="true"></div>
-    {/if}
     {#if displayText}
         <span class="placeholder-text loading-text"
             >{@html safeDisplayText}</span
@@ -73,14 +68,6 @@
         position: relative;
         width: 100%;
     }
-    .placeholder-image {
-        background: var(--darker);
-        border-radius: 50%;
-        animation: pulse 1.5s ease-in-out infinite;
-        width: 46px;
-        height: 46px;
-        flex-shrink: 0;
-    }
     .placeholder-text {
         padding: 0 4px;
         color: var(--text);
@@ -93,15 +80,6 @@
         line-height: 1.5;
     }
 
-    @keyframes pulse {
-        0%,
-        100% {
-            opacity: 0.6;
-        }
-        50% {
-            opacity: 0.3;
-        }
-    }
     @keyframes pulse-text {
         0%,
         100% {

@@ -166,11 +166,6 @@
                 flex-wrap: nowrap;
             }
 
-            :global(.channel-loading-inline .placeholder-image) {
-                width: 42px;
-                height: 42px;
-            }
-
             :global(.channel-loading-inline .placeholder-text) {
                 padding: 0;
                 white-space: nowrap;
