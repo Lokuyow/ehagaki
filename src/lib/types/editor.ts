@@ -127,6 +127,7 @@ export interface DraftReplyQuoteSelectionData {
 }
 
 export type DraftReplyQuoteData = DraftReplyQuoteSelectionData | DraftReplyQuoteEntryData;
+export type DraftChannelData = import('./nostr').ChannelContextState;
 
 export interface Draft {
     id: string;
@@ -134,6 +135,7 @@ export interface Draft {
     preview: string;
     timestamp: number;
     galleryItems?: MediaGalleryItem[];
+    channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;
 }
 

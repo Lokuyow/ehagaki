@@ -502,6 +502,9 @@ describe("IframeMessageService", () => {
       const result = service.notifyComposerContextUpdated({
         reply: 'nevent1reply',
         quotes: ['note1quote'],
+        channel: {
+          reference: 'nevent1channel',
+        },
       });
 
       expect(result).toBe(true);
@@ -514,6 +517,9 @@ describe("IframeMessageService", () => {
             timestamp: expect.any(Number),
             reply: 'nevent1reply',
             quotes: ['note1quote'],
+            channel: {
+              reference: 'nevent1channel',
+            },
           }),
         }),
         "https://example.com"

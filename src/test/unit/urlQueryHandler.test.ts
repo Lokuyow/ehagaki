@@ -1,9 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { nip19 } from 'nostr-tools';
 import {
+  getChannelFromEmbedPayload,
+  getChannelFromUrlQuery,
   getContentFromUrlQuery,
   cleanupAllQueryParams,
   hasContentQueryParam,
+  hasChannelQueryParam,
   getReplyQuoteFromEmbedPayload,
   getReplyQuoteFromUrlQuery,
   hasReplyQuoteQueryParam,
@@ -251,6 +254,72 @@ describe('urlQueryHandler', () => {
       cleanupAllQueryParams();
 
       expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test?foo=bar&baz=qux');
+    });
+
+    it('channel 関連パラメータも消費対象として削除する', () => {
+      const mockReplaceState = vi.fn();
+      // @ts-ignore
+      window.location = {
+        search: '?channel=note1424242424242424242424242424242424242424242424242424qv3q9y6&channelName=General&channelAbout=Talk&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png&other=value',
+        pathname: '/test',
+      } as Location;
+      // @ts-ignore
+      window.history = {
+        replaceState: mockReplaceState,
+      } as History;
+
+      cleanupAllQueryParams();
+
+      expect(mockReplaceState).toHaveBeenCalledWith({}, '', '/test?other=value');
+    });
+  });
+
+  describe('channel query helpers', () => {
+    const validChannelNevent = nip19.neventEncode({
+      id: 'a'.repeat(64),
+      relays: ['wss://relay.example.com'],
+      author: 'b'.repeat(64),
+    });
+
+    it('channel パラメータがある場合 true を返す', () => {
+      // @ts-ignore
+      window.location = {
+        search: '?channel=note1424242424242424242424242424242424242424242424242424qv3q9y6',
+      } as Location;
+
+      expect(hasChannelQueryParam()).toBe(true);
+    });
+
+    it('channel metadata を含む URL クエリを取得できる', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?channel=${validChannelNevent}&channelName=General&channelAbout=General%20discussion&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png`,
+      } as Location;
+
+      expect(getChannelFromUrlQuery()).toEqual({
+        eventId: 'a'.repeat(64),
+        relayHints: ['wss://relay.example.com/'],
+        name: 'General',
+        about: 'General discussion',
+        picture: 'https://example.com/channel.png',
+      });
+    });
+
+    it('embed payload から channel metadata を取得できる', () => {
+      expect(getChannelFromEmbedPayload({
+        channel: {
+          reference: validChannelNevent,
+          name: 'General',
+          about: 'General discussion',
+          picture: 'https://example.com/channel.png',
+        },
+      } as any)).toEqual({
+        eventId: 'a'.repeat(64),
+        relayHints: ['wss://relay.example.com/'],
+        name: 'General',
+        about: 'General discussion',
+        picture: 'https://example.com/channel.png',
+      });
     });
   });
 

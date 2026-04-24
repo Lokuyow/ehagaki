@@ -1,6 +1,7 @@
 import type { RxNostr } from "rx-nostr";
 import { ALLOWED_IMAGE_EXTENSIONS, ALLOWED_VIDEO_EXTENSIONS } from "./constants";
-import type { PostResult } from "./types";
+import { RelayConfigUtils } from "./relayConfigUtils";
+import type { ChannelContextState, PostResult } from "./types";
 
 // --- 純粋関数（依存性なし） ---
 
@@ -52,10 +53,24 @@ export class PostEventBuilder {
         getClientTagFn?: () => string[] | null,
         contentWarningEnabled?: boolean,
         contentWarningReason?: string,
-        replyQuoteTags?: string[][]
+        replyQuoteTags?: string[][],
+        channelContext?: ChannelContextState | null,
     ): Promise<any> {
         // リプライ/引用タグを先頭に配置
-        const eventTags: string[][] = replyQuoteTags ? [...replyQuoteTags] : [];
+        const eventTags: string[][] = [];
+
+        if (channelContext) {
+            eventTags.push([
+                'e',
+                channelContext.eventId,
+                channelContext.relayHints[0] || '',
+                'root',
+            ]);
+        }
+
+        if (replyQuoteTags) {
+            eventTags.push(...replyQuoteTags);
+        }
 
         // 既にストアに tags が作られていればそれをコピー、なければ hashtags から小文字化して作成
         if (Array.isArray(tags) && tags.length) {
@@ -98,7 +113,7 @@ export class PostEventBuilder {
         }
 
         const event: any = {
-            kind: 1,
+            kind: channelContext ? 42 : 1,
             content,
             tags: eventTags,
             created_at: Math.floor(Date.now() / 1000)
@@ -116,7 +131,10 @@ export class PostEventSender {
         private console: Console
     ) { }
 
-    sendEvent(event: any, signer?: any): Promise<PostResult> {
+    sendEvent(
+        event: any,
+        signerOrOptions?: any | { signer?: any; additionalWriteRelays?: string[] },
+    ): Promise<PostResult> {
         return new Promise((resolve) => {
             let resolved = false;
             let rejectedCount = 0;
@@ -173,8 +191,25 @@ export class PostEventSender {
                 }
             };
 
+            const options = signerOrOptions
+                && typeof signerOrOptions === "object"
+                && ("signer" in signerOrOptions || "additionalWriteRelays" in signerOrOptions)
+                ? signerOrOptions
+                : { signer: signerOrOptions };
+
             const sendOptions: any = { completeOn: "all-ok" as const };
-            if (signer) sendOptions.signer = signer;
+            if (options.signer) sendOptions.signer = options.signer;
+
+            const additionalWriteRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+                options.additionalWriteRelays,
+            );
+            if (additionalWriteRelays.length > 0) {
+                sendOptions.on = {
+                    relays: additionalWriteRelays,
+                    defaultWriteRelays: true,
+                };
+            }
+
             subscription = this.rxNostr.send(event, sendOptions).subscribe(observer);
         });
     }

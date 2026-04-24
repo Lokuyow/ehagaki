@@ -1,4 +1,4 @@
-import type { DraftReplyQuoteData, MediaGalleryItem } from './types';
+import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from './types';
 
 type BooleanDialogStore = {
     set: (value: boolean) => void;
@@ -7,6 +7,7 @@ type BooleanDialogStore = {
 type PendingDraftContent = {
     content: string;
     galleryItems: MediaGalleryItem[];
+    channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;
 };
 
@@ -34,6 +35,7 @@ export function createDraftLimitConfirmHandlers(params: {
         content: string,
         galleryItems: MediaGalleryItem[],
         replyQuoteData?: DraftReplyQuoteData,
+        channelData?: DraftChannelData,
     ) => void;
 }) {
     const clear = () => {
@@ -54,6 +56,7 @@ export function createDraftLimitConfirmHandlers(params: {
                     pending.content,
                     pending.galleryItems,
                     pending.replyQuoteData,
+                    pending.channelData,
                 );
             }
 

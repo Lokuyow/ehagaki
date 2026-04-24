@@ -5,7 +5,7 @@ import {
     createDraftLimitConfirmHandlers,
     type PendingDraftContent,
 } from '../../lib/appDialogUtils';
-import type { DraftReplyQuoteData } from '../../lib/types';
+import type { DraftChannelData, DraftReplyQuoteData } from '../../lib/types';
 
 function createReplyQuoteData(): DraftReplyQuoteData {
     return {
@@ -18,6 +18,16 @@ function createReplyQuoteData(): DraftReplyQuoteData {
         rootEventId: 'root-event-id',
         rootRelayHint: 'wss://root-relay.example.com',
         rootPubkey: 'root-pubkey',
+    };
+}
+
+function createChannelData(): DraftChannelData {
+    return {
+        eventId: 'channel-root-event',
+        relayHints: ['wss://channel-relay.example.com'],
+        name: 'General',
+        about: 'General discussion',
+        picture: 'https://example.com/channel.png',
     };
 }
 
@@ -84,6 +94,7 @@ describe('createDraftLimitConfirmHandlers', () => {
         handlers.stage({
             content: '<p>draft</p>',
             galleryItems: [{ id: 'media-1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }],
+            channelData: createChannelData(),
             replyQuoteData: createReplyQuoteData(),
         });
 
@@ -91,6 +102,7 @@ describe('createDraftLimitConfirmHandlers', () => {
         expect(pendingDraftContentStore.value).toEqual({
             content: '<p>draft</p>',
             galleryItems: [{ id: 'media-1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }],
+            channelData: createChannelData(),
             replyQuoteData: createReplyQuoteData(),
         });
     });
@@ -100,6 +112,7 @@ describe('createDraftLimitConfirmHandlers', () => {
         const pendingDraftContentStore = createPendingDraftStore({
             content: '<p>draft</p>',
             galleryItems: [{ id: 'media-1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }],
+            channelData: createChannelData(),
             replyQuoteData: createReplyQuoteData(),
         });
         const showDraftLimitConfirmStore = createBooleanStore(true);
@@ -115,6 +128,7 @@ describe('createDraftLimitConfirmHandlers', () => {
             '<p>draft</p>',
             [{ id: 'media-1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false }],
             createReplyQuoteData(),
+            createChannelData(),
         );
         expect(pendingDraftContentStore.value).toBeNull();
         expect(showDraftLimitConfirmStore.value).toBe(false);

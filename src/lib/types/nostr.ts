@@ -172,6 +172,7 @@ export interface PostManagerDeps {
     };
     hashtagPinStore?: { value: boolean };
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
+    channelContextState?: { value: ChannelContextState | null };
     replyQuoteState?: { value: ReplyQuoteComposerState };
     replyQuoteService?: {
         buildReplyTags: (state: ReplyQuoteState) => string[][];
@@ -230,6 +231,14 @@ export interface ReplyQuoteComposerState {
     quotes: ReplyQuoteState[];
 }
 
+export interface ChannelContextState {
+    eventId: string;
+    relayHints: string[];
+    name: string | null;
+    about: string | null;
+    picture: string | null;
+}
+
 export interface NostrEvent {
     id: string;
     pubkey: string;
@@ -249,6 +258,14 @@ export interface ReplyQuoteQueryTarget {
     eventId: string;
     relayHints: string[];
     authorPubkey: string | null;
+}
+
+export interface ChannelContextQueryTarget {
+    eventId: string;
+    relayHints: string[];
+    name?: string | null;
+    about?: string | null;
+    picture?: string | null;
 }
 
 // Global Window extensions

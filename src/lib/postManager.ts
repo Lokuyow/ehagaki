@@ -107,6 +107,7 @@ export class PostManager {
     contentWarningEnabled: boolean;
     contentWarningReason: string;
     replyQuoteTags?: string[][];
+    channelContext?: import("./types").ChannelContextState | null;
   }): Promise<any> {
     return PostEventBuilder.buildEvent(
       params.processedContent,
@@ -119,6 +120,7 @@ export class PostManager {
       params.contentWarningEnabled,
       params.contentWarningReason,
       params.replyQuoteTags,
+      params.channelContext,
     );
   }
 
@@ -146,6 +148,7 @@ export class PostManager {
     hashtags: string[];
     rqNotifyOptions?: ReplyQuoteNotifyOptions;
     signer?: any;
+    additionalWriteRelays?: string[];
     signEvent?: (event: any) => Promise<any>;
     logSignedEvent?: boolean;
   }): Promise<PostResult> {
@@ -157,7 +160,10 @@ export class PostManager {
       this.deps.console?.log('署名済みイベント:', eventToSend);
     }
 
-    const result = await this.eventSender!.sendEvent(eventToSend, params.signer);
+    const result = await this.eventSender!.sendEvent(eventToSend, {
+      signer: params.signer,
+      additionalWriteRelays: params.additionalWriteRelays,
+    });
     return this.finalizeSubmittedPost(
       result,
       params.hashtags,
@@ -228,6 +234,8 @@ export class PostManager {
       // Content Warning状態を取得
       const contentWarningEnabled = contentWarningStore.value;
       const contentWarningReason = contentWarningReasonStore.value;
+      const channelContext = this.deps.channelContextState?.value ?? null;
+      const additionalWriteRelays = channelContext?.relayHints;
 
       // リプライ/引用タグを構築
       const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
@@ -238,7 +246,24 @@ export class PostManager {
         replyQuoteTags = [];
 
         if (rqState.reply) {
-          replyQuoteTags.push(...rqService.buildReplyTags(rqState.reply));
+          if (channelContext) {
+            replyQuoteTags.push([
+              'e',
+              rqState.reply.eventId,
+              rqState.reply.relayHints[0] || '',
+              'reply',
+              ...(rqState.reply.authorPubkey ? [rqState.reply.authorPubkey] : []),
+            ]);
+
+            rqService
+              .buildReplyTags(rqState.reply)
+              .filter((tag) => tag[0] === 'p')
+              .forEach((tag) => {
+                replyQuoteTags!.push(tag);
+              });
+          } else {
+            replyQuoteTags.push(...rqService.buildReplyTags(rqState.reply));
+          }
         }
 
         const existingQuoteEventIds = new Set<string>();
@@ -317,6 +342,7 @@ export class PostManager {
             contentWarningEnabled,
             contentWarningReason,
             replyQuoteTags,
+            channelContext,
           });
 
           return await this.sendPreparedEvent({
@@ -325,6 +351,7 @@ export class PostManager {
             rqNotifyOptions,
             signEvent,
             logSignedEvent: true,
+            additionalWriteRelays,
           });
         } catch (err) {
           return this.handleSubmissionError('window.nostrでの投稿エラー:', err);
@@ -353,6 +380,7 @@ export class PostManager {
             contentWarningEnabled,
             contentWarningReason,
             replyQuoteTags,
+            channelContext,
           });
 
           return await this.sendPreparedEvent({
@@ -360,6 +388,7 @@ export class PostManager {
             hashtags,
             rqNotifyOptions,
             signer: nip46Signer,
+            additionalWriteRelays,
           });
         } catch (err) {
           return this.handleSubmissionError('NIP-46での投稿エラー:', err);
@@ -388,6 +417,7 @@ export class PostManager {
             contentWarningEnabled,
             contentWarningReason,
             replyQuoteTags,
+            channelContext,
           });
 
           return await this.sendPreparedEvent({
@@ -395,6 +425,7 @@ export class PostManager {
             hashtags,
             rqNotifyOptions,
             signer: parentClientSigner,
+            additionalWriteRelays,
           });
         } catch (err) {
           return this.handleSubmissionError('親クライアント連携での投稿エラー:', err);
@@ -415,6 +446,7 @@ export class PostManager {
         contentWarningEnabled,
         contentWarningReason,
         replyQuoteTags,
+        channelContext,
       });
 
       const signer = this.deps.seckeySignerFn
@@ -425,6 +457,7 @@ export class PostManager {
         hashtags,
         rqNotifyOptions,
         signer,
+        additionalWriteRelays,
       });
 
     } catch (err) {

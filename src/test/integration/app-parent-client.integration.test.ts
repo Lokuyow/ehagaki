@@ -15,11 +15,22 @@ const DEFAULT_QUOTE_EVENT_ID = '22'.repeat(32);
 const QUEUED_REPLY_EVENT_ID = '33'.repeat(32);
 const CLEAR_REPLY_EVENT_ID = '44'.repeat(32);
 const CLEAR_QUOTE_EVENT_ID = '55'.repeat(32);
+const CHANNEL_EVENT_ID = '66'.repeat(32);
 
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
     const logoutAccount = vi.fn(() => null);
     const applyReplyQuoteQuery = vi.fn().mockResolvedValue(undefined);
+    const applyChannelContextQuery = vi.fn().mockImplementation(async ({ channelContextQuery }: any) => {
+        const { setChannelContext } = await import('../../stores/channelContextStore.svelte');
+        setChannelContext({
+            eventId: channelContextQuery.eventId,
+            relayHints: channelContextQuery.relayHints,
+            name: channelContextQuery.name ?? 'General',
+            about: channelContextQuery.about ?? 'Public chat',
+            picture: channelContextQuery.picture ?? 'https://example.com/channel.png',
+        });
+    });
     const authenticateWithParentClient = vi.fn(async () => ({
         success: true,
         pubkeyHex: PARENT_CLIENT_PUBKEY,
@@ -32,6 +43,7 @@ const mockState = vi.hoisted(() => {
         },
         quotes: [],
     }) as any);
+    const getChannelFromEmbedPayload = vi.fn(() => null);
     const initializeNostrSession = vi.fn(async () => ({
         rxNostr: undefined,
         relayProfileService: {
@@ -95,9 +107,11 @@ const mockState = vi.hoisted(() => {
         initializeNostrSession,
         completePostAuthBootstrap,
         applyReplyQuoteQuery,
+        applyChannelContextQuery,
         runAppInitializationBootstrap,
         cleanupVisibilityHandler,
         getReplyQuoteFromEmbedPayload,
+        getChannelFromEmbedPayload,
         remoteLoginCleanup,
         remoteLogoutCleanup,
         remoteComposerSetContextCleanup,
@@ -158,6 +172,8 @@ vi.mock('../../components/ReasonInput.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
 vi.mock('../../components/ReplyQuotePreview.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
+vi.mock('../../components/ChannelContextPreview.svelte', async () =>
+    await import('../mocks/EmptyComponent.svelte'));
 
 vi.mock('../../lib/authService', () => ({
     authService: {
@@ -216,10 +232,12 @@ vi.mock('../../lib/iframeMessageService', () => ({
 
 vi.mock('../../lib/bootstrap/externalInputBootstrap', () => ({
     applyReplyQuoteQuery: mockState.applyReplyQuoteQuery,
+    applyChannelContextQuery: mockState.applyChannelContextQuery,
 }));
 
 vi.mock('../../lib/urlQueryHandler', () => ({
     getReplyQuoteFromEmbedPayload: mockState.getReplyQuoteFromEmbedPayload,
+    getChannelFromEmbedPayload: mockState.getChannelFromEmbedPayload,
 }));
 
 vi.mock('../../lib/bootstrap/appInitializationBootstrap', () => ({
@@ -286,7 +304,9 @@ describe('App parentClient integration', () => {
         mockState.initializeNostrSession.mockClear();
         mockState.completePostAuthBootstrap.mockClear();
         mockState.applyReplyQuoteQuery.mockClear();
+        mockState.applyChannelContextQuery.mockClear();
         mockState.getReplyQuoteFromEmbedPayload.mockClear();
+        mockState.getChannelFromEmbedPayload.mockClear();
         mockState.notifyComposerContextApplied.mockClear();
         mockState.notifyComposerContextError.mockClear();
         mockState.notifyComposerContextUpdated.mockClear();
@@ -638,6 +658,65 @@ describe('App parentClient integration', () => {
         });
         expect(mockState.applyReplyQuoteQuery).not.toHaveBeenCalled();
         expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(requestId);
+        expect(mockState.notifyComposerContextError).not.toHaveBeenCalled();
+    });
+
+    it('channel を含む remote composer.setContext は channel context を適用して ack を返す', async () => {
+        const { channelContextState, clearChannelContext } = await import('../../stores/channelContextStore.svelte');
+        clearChannelContext();
+        mockState.getReplyQuoteFromEmbedPayload.mockReturnValue(null as any);
+        mockState.getChannelFromEmbedPayload.mockReturnValue({
+            eventId: CHANNEL_EVENT_ID,
+            relayHints: ['wss://channel-relay.example.com'],
+            name: 'General',
+            about: 'Public chat',
+            picture: 'https://example.com/channel.png',
+        } as any);
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.composerRemoteSetContextListener).toBeTruthy();
+        });
+
+        mockState.composerRemoteSetContextListener?.(
+            {
+                channel: {
+                    reference: `note1${CHANNEL_EVENT_ID}`,
+                    name: 'General',
+                    about: 'Public chat',
+                    picture: 'https://example.com/channel.png',
+                },
+            } as any,
+            'composer-request-channel',
+        );
+
+        await waitFor(() => {
+            expect(mockState.getChannelFromEmbedPayload).toHaveBeenCalled();
+        });
+        await waitFor(() => {
+            expect(mockState.applyChannelContextQuery).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    channelContextQuery: {
+                        eventId: CHANNEL_EVENT_ID,
+                        relayHints: ['wss://channel-relay.example.com'],
+                        name: 'General',
+                        about: 'Public chat',
+                        picture: 'https://example.com/channel.png',
+                    },
+                }),
+            );
+        });
+        await waitFor(() => {
+            expect(channelContextState.value).toEqual({
+                eventId: CHANNEL_EVENT_ID,
+                relayHints: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: 'Public chat',
+                picture: 'https://example.com/channel.png',
+            });
+        });
+        expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith('composer-request-channel');
         expect(mockState.notifyComposerContextError).not.toHaveBeenCalled();
     });
 

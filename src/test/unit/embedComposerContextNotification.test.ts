@@ -56,23 +56,37 @@ describe('embedComposerContextNotification', () => {
                     error: null,
                 },
             ],
+        }, {
+            eventId: '44'.repeat(32),
+            relayHints: ['wss://channel-relay.example.com'],
+            name: 'General',
+            about: 'General discussion',
+            picture: 'https://example.com/channel.png',
         }, 12345);
 
         expect(payload).toEqual({
             timestamp: 12345,
             reply: expect.stringMatching(/^nevent1/),
             quotes: [expect.stringMatching(/^note1/)],
+            channel: {
+                reference: expect.stringMatching(/^nevent1/),
+                name: 'General',
+                about: 'General discussion',
+                picture: 'https://example.com/channel.png',
+            },
         });
     });
 
-    it('signature は timestamp を無視して reply / quotes だけで決まる', () => {
+    it('signature は timestamp を無視して reply / quotes / channel だけで決まる', () => {
         const first = buildComposerContextSignature({
             reply: 'nevent1reply',
             quotes: ['note1quote'],
+            channel: { reference: 'nevent1channel', name: 'General' },
         });
         const second = buildComposerContextSignature({
             reply: 'nevent1reply',
             quotes: ['note1quote'],
+            channel: { reference: 'nevent1channel', name: 'General' },
         });
 
         expect(first).toBe(second);

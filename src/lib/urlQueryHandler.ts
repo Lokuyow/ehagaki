@@ -5,9 +5,21 @@ import { nip19 } from 'nostr-tools';
 import { RelayConfigUtils } from './relayConfigUtils';
 import { normalizeLineBreaks } from './utils/editorUrlUtils';
 import type { EmbedComposerSetContextPayload } from './embedProtocol';
-import type { ReplyQuoteQueryResult } from './types';
+import type { ChannelContextQueryTarget, ReplyQuoteQueryResult } from './types';
 
-function decodeReplyQuoteValue(value: string): {
+function trimToNull(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function decodeEventPointerValue(
+  value: string,
+  additionalRelayHints: string[] = [],
+): {
   eventId: string;
   relayHints: string[];
   authorPubkey: string | null;
@@ -19,7 +31,10 @@ function decodeReplyQuoteValue(value: string): {
       const data = decoded.data as nip19.EventPointer;
       return {
         eventId: data.id,
-        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(data.relays ? [...data.relays] : [], {
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
+          ...(data.relays ? [...data.relays] : []),
+          ...additionalRelayHints,
+        ], {
           limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
         }),
         authorPubkey: data.author ?? null,
@@ -29,7 +44,9 @@ function decodeReplyQuoteValue(value: string): {
     if (decoded.type === 'note') {
       return {
         eventId: decoded.data as string,
-        relayHints: [],
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(additionalRelayHints, {
+          limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
+        }),
         authorPubkey: null,
       };
     }
@@ -46,12 +63,12 @@ function buildReplyQuoteQueryResult(
   quoteValues: string[],
 ): ReplyQuoteQueryResult | null {
   const reply = replyValues
-    .map((value) => decodeReplyQuoteValue(value))
+    .map((value) => decodeEventPointerValue(value))
     .find((value) => value !== null) ?? null;
 
   const seenQuoteIds = new Set<string>();
   const quotes = quoteValues
-    .map((value) => decodeReplyQuoteValue(value))
+    .map((value) => decodeEventPointerValue(value))
     .filter((value): value is NonNullable<typeof value> => value !== null)
     .filter((value) => {
       if (seenQuoteIds.has(value.eventId)) {
@@ -78,6 +95,41 @@ export function getReplyQuoteFromEmbedPayload(
     : [];
 
   return buildReplyQuoteQueryResult(replyValues, quoteValues);
+}
+
+export function getChannelFromEmbedPayload(
+  payload: EmbedComposerSetContextPayload,
+): ChannelContextQueryTarget | null {
+  if (!payload.channel || typeof payload.channel !== 'object') {
+    return null;
+  }
+
+  const reference = typeof payload.channel.reference === 'string'
+    ? payload.channel.reference
+    : null;
+
+  if (!reference) {
+    return null;
+  }
+
+  const decoded = decodeEventPointerValue(
+    reference,
+    Array.isArray(payload.channel.relayHints)
+      ? payload.channel.relayHints.filter((value): value is string => typeof value === 'string')
+      : [],
+  );
+
+  if (!decoded) {
+    return null;
+  }
+
+  return {
+    eventId: decoded.eventId,
+    relayHints: decoded.relayHints,
+    name: trimToNull(payload.channel.name),
+    about: trimToNull(payload.channel.about),
+    picture: trimToNull(payload.channel.picture),
+  };
 }
 
 export function getContentFromUrlQuery(): string | null {
@@ -111,6 +163,30 @@ export function getReplyQuoteFromUrlQuery(): ReplyQuoteQueryResult | null {
   return buildReplyQuoteQueryResult(replyValues, quoteValues);
 }
 
+export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
+  if (typeof window === 'undefined' || !window.location) return null;
+
+  const urlParams = new URLSearchParams(window.location.search);
+  const reference = urlParams.get('channel');
+
+  if (!reference) {
+    return null;
+  }
+
+  const decoded = decodeEventPointerValue(reference, urlParams.getAll('channelRelay'));
+  if (!decoded) {
+    return null;
+  }
+
+  return {
+    eventId: decoded.eventId,
+    relayHints: decoded.relayHints,
+    name: trimToNull(urlParams.get('channelName')),
+    about: trimToNull(urlParams.get('channelAbout')),
+    picture: trimToNull(urlParams.get('channelPicture')),
+  };
+}
+
 /**
  * URLクエリパラメータにreplyまたはquoteが含まれているかチェック
  */
@@ -119,6 +195,13 @@ export function hasReplyQuoteQueryParam(): boolean {
 
   const urlParams = new URLSearchParams(window.location.search);
   return urlParams.has('reply') || urlParams.has('quote');
+}
+
+export function hasChannelQueryParam(): boolean {
+  if (typeof window === 'undefined' || !window.location) return false;
+
+  const urlParams = new URLSearchParams(window.location.search);
+  return urlParams.has('channel');
 }
 
 /**
@@ -145,6 +228,13 @@ export function cleanupAllQueryParams(): void {
   if (urlParams.has('quote')) {
     urlParams.delete('quote');
     needsCleanup = true;
+  }
+
+  for (const key of ['channel', 'channelRelay', 'channelName', 'channelAbout', 'channelPicture']) {
+    if (urlParams.has(key)) {
+      urlParams.delete(key);
+      needsCleanup = true;
+    }
   }
 
   // クリーンアップが必要な場合のみURLを更新

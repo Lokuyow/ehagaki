@@ -1,10 +1,13 @@
 import { ReplyQuoteService } from "../replyQuoteService";
+import { ChannelContextService } from "../channelContextService";
 import { checkIfOpenedFromShare } from "../shareHandler";
 import {
+    getChannelFromUrlQuery,
     getContentFromUrlQuery,
     hasContentQueryParam,
     cleanupAllQueryParams,
     getReplyQuoteFromUrlQuery,
+    hasChannelQueryParam,
     hasReplyQuoteQueryParam,
 } from "../urlQueryHandler";
 import { RelayConfigUtils } from '../relayConfigUtils';
@@ -14,7 +17,7 @@ import {
     getSharedMediaWithFallback,
 } from "../utils/swCommunication";
 import type { RelayProfileService } from "../relayProfileService";
-import type { ReplyQuoteQueryResult } from "../types";
+import type { ChannelContextQueryTarget, ReplyQuoteQueryResult } from "../types";
 
 interface SharedMediaStoreLike {
     files: File[];
@@ -31,6 +34,7 @@ export interface RunExternalInputBootstrapParams {
     consumeFirstVisitFlag: () => boolean;
     showWelcomeDialog: () => void;
     updateUrlQueryContentStore: (content: string) => void;
+    setChannelContext: (value: any) => void;
     setReplyQuote: (value: any) => void;
     updateReferencedEvent: (eventId: string, event: any, threadInfo: any) => void;
     updateAuthorDisplayName: (eventId: string, name: string) => void;
@@ -147,6 +151,88 @@ async function bootstrapReplyQuote({
     });
 }
 
+export interface ApplyChannelContextQueryParams extends Pick<
+    RunExternalInputBootstrapParams,
+    | "rxNostr"
+    | "relayConfig"
+    | "setChannelContext"
+> {
+    channelContextQuery: ChannelContextQueryTarget;
+}
+
+function sanitizeChannelContextQuery(
+    channelContextQuery: ChannelContextQueryTarget,
+): ChannelContextQueryTarget {
+    return {
+        ...channelContextQuery,
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
+            channelContextQuery.relayHints,
+            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        ),
+    };
+}
+
+function hasProvidedChannelMetadata(
+    channelContextQuery: ChannelContextQueryTarget,
+): boolean {
+    return !!(
+        channelContextQuery.name
+        || channelContextQuery.about
+        || channelContextQuery.picture
+    );
+}
+
+export async function applyChannelContextQuery({
+    channelContextQuery,
+    rxNostr,
+    relayConfig,
+    setChannelContext,
+}: ApplyChannelContextQueryParams): Promise<void> {
+    const sanitizedChannelContextQuery = sanitizeChannelContextQuery(
+        channelContextQuery,
+    );
+
+    if (hasProvidedChannelMetadata(sanitizedChannelContextQuery) || !rxNostr) {
+        setChannelContext({
+            ...sanitizedChannelContextQuery,
+            name: sanitizedChannelContextQuery.name ?? null,
+            about: sanitizedChannelContextQuery.about ?? null,
+            picture: sanitizedChannelContextQuery.picture ?? null,
+        });
+        return;
+    }
+
+    const channelContextService = new ChannelContextService();
+    const resolvedChannelContext = await channelContextService.resolveChannelContext(
+        sanitizedChannelContextQuery,
+        rxNostr,
+        relayConfig,
+    );
+    setChannelContext(resolvedChannelContext);
+}
+
+async function bootstrapChannelContext({
+    rxNostr,
+    relayConfig,
+    setChannelContext,
+}: Pick<RunExternalInputBootstrapParams, 'rxNostr' | 'relayConfig' | 'setChannelContext'>): Promise<void> {
+    if (!hasChannelQueryParam()) {
+        return;
+    }
+
+    const channelContext = getChannelFromUrlQuery();
+    if (!channelContext) {
+        return;
+    }
+
+    await applyChannelContextQuery({
+        channelContextQuery: channelContext,
+        rxNostr,
+        relayConfig,
+        setChannelContext,
+    });
+}
+
 export interface ApplyReplyQuoteQueryParams extends Pick<
     RunExternalInputBootstrapParams,
     | "relayProfileService"
@@ -255,6 +341,7 @@ export async function runExternalInputBootstrap({
     consumeFirstVisitFlag,
     showWelcomeDialog,
     updateUrlQueryContentStore,
+    setChannelContext,
     setReplyQuote,
     updateReferencedEvent,
     updateAuthorDisplayName,
@@ -295,6 +382,12 @@ export async function runExternalInputBootstrap({
             updateUrlQueryContentStore(queryContent);
         }
     }
+
+    await bootstrapChannelContext({
+        rxNostr,
+        relayConfig,
+        setChannelContext,
+    });
 
     await bootstrapReplyQuote({
         relayProfileService,

@@ -1,5 +1,7 @@
 import type {
+    ChannelContextState,
     Draft,
+    DraftChannelData,
     DraftReplyQuoteData,
     MediaGalleryItem,
     ReplyQuoteComposerState,
@@ -23,6 +25,7 @@ type DraftReplyQuoteStateLike = Pick<
 interface CreateDraftSavePayloadParams {
     htmlContent: string;
     galleryItems: MediaGalleryItem[];
+    channelContextState: ChannelContextState | null;
     replyQuoteState: ReplyQuoteComposerState;
 }
 
@@ -42,6 +45,8 @@ interface ApplyDraftToComposerParams {
     loadDraftContent: (content: string) => void;
     appendMediaToEditor: (items: MediaGalleryItem[]) => void;
     generateMediaItemId: () => string;
+    restoreChannelContext: (channelData: DraftChannelData) => void;
+    clearChannelContext: () => void;
     restoreReplyQuote: (replyQuoteData: DraftReplyQuoteData) => void;
     clearReplyQuote: () => void;
 }
@@ -87,13 +92,28 @@ export function buildDraftReplyQuoteData(
     };
 }
 
+function buildDraftChannelData(
+    channelContextState: ChannelContextState | null,
+): DraftChannelData | undefined {
+    if (!channelContextState) {
+        return undefined;
+    }
+
+    return {
+        ...channelContextState,
+        relayHints: [...channelContextState.relayHints],
+    };
+}
+
 export function createDraftSavePayload({
     htmlContent,
     galleryItems,
+    channelContextState,
     replyQuoteState,
 }: CreateDraftSavePayloadParams): {
     content: string;
     galleryItems: MediaGalleryItem[];
+    channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;
 } | null {
     const sanitizedHtmlContent = sanitizeDraftHtml(htmlContent);
@@ -106,6 +126,7 @@ export function createDraftSavePayload({
     return {
         content: sanitizedHtmlContent,
         galleryItems: persistedGalleryItems,
+        channelData: buildDraftChannelData(channelContextState),
         replyQuoteData: buildDraftReplyQuoteData(replyQuoteState),
     };
 }
@@ -167,6 +188,8 @@ export function applyDraftToComposer({
     loadDraftContent,
     appendMediaToEditor,
     generateMediaItemId,
+    restoreChannelContext,
+    clearChannelContext,
     restoreReplyQuote,
     clearReplyQuote,
 }: ApplyDraftToComposerParams): void {
@@ -194,5 +217,11 @@ export function applyDraftToComposer({
         restoreReplyQuote(draft.replyQuoteData);
     } else {
         clearReplyQuote();
+    }
+
+    if (draft.channelData) {
+        restoreChannelContext(draft.channelData);
+    } else {
+        clearChannelContext();
     }
 }

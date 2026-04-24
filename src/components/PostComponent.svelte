@@ -44,6 +44,7 @@
     replyQuoteState,
     clearReplyQuote,
   } from "../stores/replyQuoteStore.svelte";
+  import { channelContextState } from "../stores/channelContextStore.svelte";
   import { ReplyQuoteService } from "../lib/replyQuoteService";
   import {
     editorState,
@@ -165,6 +166,7 @@
         postManager = new PostManager(rxNostr as RxNostr, {
           getNip46SignerFn: () => nip46Service.getSigner(),
           getParentClientSignerFn: () => parentClientAuthService.getSigner(),
+          channelContextState,
           replyQuoteState,
           replyQuoteService: new ReplyQuoteService(),
           clearReplyQuoteFn: clearReplyQuote,

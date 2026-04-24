@@ -1,4 +1,4 @@
-import type { Draft, DraftReplyQuoteData } from './types';
+import type { Draft, DraftChannelData, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
 import { createSanitizedDraftContainer } from './draftHtmlSanitizer';
@@ -32,7 +32,7 @@ function saveDraftsToStorage(drafts: Draft[]): void {
  * HTMLコンテンツからプレビューテキストを生成
  * テキスト、画像、動画の有無を検出し、適切なプレビュー文字列を生成
  */
-export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): string {
+export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): string {
     // HTMLタグを除去してテキストのみを抽出
     const tempDiv = createSanitizedDraftContainer(htmlContent, document);
 
@@ -89,6 +89,7 @@ export function generatePreview(htmlContent: string, galleryItems?: MediaGallery
                 : 0;
     if (hasReply) mediaLabels.push(replyLabel);
     if (quoteCount > 0) mediaLabels.push(quoteLabel);
+    if (channelData?.name) mediaLabels.push(`#${channelData.name}`);
     if (hasImage) mediaLabels.push(imageLabel);
     if (hasVideo) mediaLabels.push(videoLabel);
     const mediaText = mediaLabels.join('');
@@ -140,7 +141,7 @@ function generateId(): string {
  * 新しい下書きを保存する
  * @returns 保存が成功した場合はtrue、上限に達してユーザーの確認が必要な場合はfalse
  */
-export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
+export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
     const drafts = loadDrafts();
 
     // 上限チェック
@@ -151,9 +152,10 @@ export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[]
     const newDraft: Draft = {
         id: generateId(),
         content: htmlContent,
-        preview: generatePreview(htmlContent, galleryItems, replyQuoteData),
+        preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
         timestamp: Date.now(),
         galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+        channelData: channelData || undefined,
         replyQuoteData: replyQuoteData || undefined,
     };
 
@@ -166,7 +168,7 @@ export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[]
 /**
  * 最も古い下書きを削除して新しい下書きを保存する
  */
-export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData): Draft[] {
+export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): Draft[] {
     const drafts = loadDrafts();
 
     // 最も古い下書きを削除（配列の末尾）
@@ -175,9 +177,10 @@ export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: M
     const newDraft: Draft = {
         id: generateId(),
         content: htmlContent,
-        preview: generatePreview(htmlContent, galleryItems, replyQuoteData),
+        preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
         timestamp: Date.now(),
         galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+        channelData: channelData || undefined,
         replyQuoteData: replyQuoteData || undefined,
     };
 

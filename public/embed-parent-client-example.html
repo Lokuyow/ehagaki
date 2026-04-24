@@ -561,7 +561,43 @@
                     </div>
                 </div>
 
-                <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件</div>
+                <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件 / channel: なし</div>
+
+                <div class="card">
+                    <strong>channel context テスト</strong>
+
+                    <div class="field">
+                        <label for="channel-reference">channel reference</label>
+                        <input id="channel-reference" type="text" spellcheck="false"
+                            placeholder="note1... または nevent1...">
+                    </div>
+
+                    <div class="setting-grid">
+                        <div class="field">
+                            <label for="channel-name">channel name</label>
+                            <input id="channel-name" type="text" spellcheck="false" placeholder="General">
+                        </div>
+
+                        <div class="field">
+                            <label for="channel-picture">channel picture</label>
+                            <input id="channel-picture" type="url" spellcheck="false"
+                                placeholder="https://example.com/channel.png">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="channel-about">channel about</label>
+                        <input id="channel-about" type="text" spellcheck="false" placeholder="Public chat">
+                    </div>
+
+                    <div class="buttons">
+                        <button id="sync-channel-context" type="button" class="secondary">channel を同期</button>
+                        <button id="clear-channel-context" type="button" class="ghost">channel を解除</button>
+                    </div>
+
+                    <p class="small">kind 40 の channel event を note1 または nevent1 で指定します。name / about / picture
+                        を渡した場合はそのまま子へ送ります。未指定なら iframe 側が relay に REQ して metadata を取得します。</p>
+                </div>
 
                 <div class="field composer-field">
                     <label for="composer-content">本文同期テスト</label>
@@ -574,8 +610,9 @@
                     <button id="clear-composer-content" type="button" class="ghost">本文をクリア</button>
                 </div>
 
-                <p class="small">reply / quote を付けたまま本文だけ差し替えることもできます。iframe からは requestId 付きで composer.contextApplied /
-                    composer.contextError が返ります。</p>
+                <p class="small">reply / quote / channel を付けたまま本文だけ差し替えることもできます。iframe からは requestId 付きで
+                    composer.contextApplied /
+                    composer.contextError が返り、iframe 側の変更は composer.contextUpdated で親へ戻ります。</p>
 
                 <div id="timeline-list" class="timeline-list"></div>
             </section>

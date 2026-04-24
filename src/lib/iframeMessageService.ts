@@ -2,6 +2,7 @@ import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
     getParentOriginFromSearch,
+    type EmbedChannelContextPayload,
     type EmbedComposerContextAppliedPayload,
     type EmbedComposerContextErrorPayload,
     type EmbedComposerContextUpdatedPayload,
@@ -12,11 +13,11 @@ import {
 
 export interface IframeMessagePayload extends EmbedMessageEnvelope {
     type:
-        | 'post.success'
-        | 'post.error'
-        | 'composer.contextApplied'
-        | 'composer.contextError'
-        | 'composer.contextUpdated';
+    | 'post.success'
+    | 'post.error'
+    | 'composer.contextApplied'
+    | 'composer.contextError'
+    | 'composer.contextUpdated';
 }
 
 export interface IframeMessageServiceConfig {
@@ -182,11 +183,13 @@ export class IframeMessageService {
     notifyComposerContextUpdated(options: {
         reply: string | null;
         quotes: string[];
+        channel: EmbedChannelContextPayload | null;
     }): boolean {
         const payload: EmbedComposerContextUpdatedPayload = {
             timestamp: Date.now(),
             reply: options.reply,
             quotes: options.quotes,
+            channel: options.channel,
         };
 
         return this.sendMessageToParent({

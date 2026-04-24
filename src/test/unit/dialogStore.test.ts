@@ -36,6 +36,13 @@ describe('dialogStore', () => {
                     isPlaceholder: false,
                 },
             ],
+            channelData: {
+                eventId: 'channel-root-event',
+                relayHints: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: 'General discussion',
+                picture: 'https://example.com/channel.png',
+            },
         };
 
         pendingDraftContentStore.set(draftContent);

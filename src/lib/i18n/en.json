@@ -206,6 +206,16 @@
       "quote": "[Quote]"
     }
   },
+  "channelComposer": {
+    "header_label": "Selected channel",
+    "selected_label": "Channel",
+    "expand": "Expand channel details",
+    "collapse": "Collapse channel details",
+    "clear": "Clear channel selection",
+    "unnamed": "Unnamed channel",
+    "event_label": "Channel event",
+    "relays_label": "Relays"
+  },
   "balloonMessage": {
     "success": {
       "compact_post_success": "Post complete",

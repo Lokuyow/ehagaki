@@ -22,6 +22,7 @@
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
+  import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
   import {
     authState,
@@ -70,6 +71,7 @@
   } from "./stores/settingsStore.svelte";
   import type {
     AuthResult,
+    ChannelContextQueryTarget,
     Draft,
     MediaGalleryItem,
     ReplyQuoteQueryResult,
@@ -90,6 +92,13 @@
     clearReplyReference,
     removeQuoteReference,
   } from "./stores/replyQuoteStore.svelte";
+  import {
+    channelContextState,
+    clearChannelContext,
+    onChannelContextChanged,
+    restoreChannelContext,
+    setChannelContext,
+  } from "./stores/channelContextStore.svelte";
   import { relayConfigStore } from "./stores/relayStore.svelte";
   import {
     initializeNostrSession,
@@ -109,6 +118,7 @@
     registerNip46VisibilityHandler,
   } from "./lib/bootstrap/appInitializationBootstrap";
   import {
+    applyChannelContextQuery,
     applyReplyQuoteQuery,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
@@ -121,7 +131,10 @@
     applyDraftToComposer,
     createDraftSavePayload,
   } from "./lib/draftContentUtils";
-  import { getReplyQuoteFromEmbedPayload } from "./lib/urlQueryHandler";
+  import {
+    getChannelFromEmbedPayload,
+    getReplyQuoteFromEmbedPayload,
+  } from "./lib/urlQueryHandler";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -372,6 +385,14 @@
     };
   }
 
+  function getChannelContextApplyParams() {
+    return {
+      rxNostr,
+      relayConfig: relayConfigStore.value,
+      setChannelContext,
+    };
+  }
+
   function notifyRemoteComposerApplied(requestId: string): void {
     iframeMessageService.notifyComposerContextApplied(requestId);
   }
@@ -384,7 +405,10 @@
   }
 
   function notifyRemoteComposerContextUpdated(): void {
-    const payload = buildComposerContextUpdatedPayload(replyQuoteState.value);
+    const payload = buildComposerContextUpdatedPayload(
+      replyQuoteState.value,
+      channelContextState.value,
+    );
     const signature = buildComposerContextSignature(payload);
 
     if (signature === lastNotifiedComposerContextSignature) {
@@ -395,6 +419,7 @@
     iframeMessageService.notifyComposerContextUpdated({
       reply: payload.reply,
       quotes: payload.quotes,
+      channel: payload.channel ?? null,
     });
   }
 
@@ -426,6 +451,26 @@
       relayHints: [...reference.relayHints],
       authorPubkey: reference.authorPubkey,
     };
+  }
+
+  function buildPatchedChannelContext(
+    payload: EmbedComposerSetContextPayload,
+  ): ChannelContextQueryTarget | null | undefined {
+    if (payload.channel === undefined) {
+      return undefined;
+    }
+
+    if (payload.channel === null) {
+      return null;
+    }
+
+    const decoded = getChannelFromEmbedPayload(payload);
+
+    if (!decoded) {
+      throw new Error("invalid_composer_context");
+    }
+
+    return decoded;
   }
 
   function getCurrentReplyQuoteQuery(): ReplyQuoteQueryResult | null {
@@ -497,6 +542,19 @@
     payload: EmbedComposerSetContextPayload,
   ): Promise<void> {
     applyRemoteComposerContent(payload.content);
+
+    const channelContext = buildPatchedChannelContext(payload);
+
+    if (channelContext !== undefined) {
+      if (channelContext === null) {
+        clearChannelContext();
+      } else {
+        await applyChannelContextQuery({
+          channelContextQuery: channelContext,
+          ...getChannelContextApplyParams(),
+        });
+      }
+    }
 
     const replyQuoteQuery = buildPatchedReplyQuoteQuery(payload);
 
@@ -891,6 +949,13 @@
 
       notifyRemoteComposerContextUpdated();
     });
+    const cleanupChannelContextChangeHandler = onChannelContextChanged(() => {
+      if (isBootstrappingApp) {
+        return;
+      }
+
+      notifyRemoteComposerContextUpdated();
+    });
 
     if (parentClientAvailable) {
       parentClientAuthService.announceReady();
@@ -914,6 +979,7 @@
       consumeFirstVisitFlag,
       showWelcomeDialog: welcomeDialog.open,
       updateUrlQueryContentStore,
+      setChannelContext,
       setReplyQuote,
       updateReferencedEvent,
       updateAuthorDisplayName,
@@ -960,6 +1026,7 @@
       cleanupParentClientLogoutHandler();
       cleanupRemoteComposerSetContextHandler();
       cleanupReplyQuoteChangeHandler();
+      cleanupChannelContextChangeHandler();
     };
   });
 
@@ -1010,6 +1077,7 @@
     const payload = createDraftSavePayload({
       htmlContent: postComponentRef.getEditorHtml(),
       galleryItems: mediaGalleryStore.getItems(),
+      channelContextState: channelContextState.value,
       replyQuoteState: replyQuoteState.value,
     });
 
@@ -1019,11 +1087,13 @@
       payload.content,
       payload.galleryItems,
       payload.replyQuoteData,
+      payload.channelData,
     );
     if (result.needsConfirmation) {
       draftLimitConfirm.stage({
         content: payload.content,
         galleryItems: payload.galleryItems,
+        channelData: payload.channelData,
         replyQuoteData: payload.replyQuoteData,
       });
       return false;
@@ -1044,6 +1114,8 @@
       appendMediaToEditor: (items: MediaGalleryItem[]) =>
         postComponentRef?.appendMediaToEditor(items),
       generateMediaItemId,
+      restoreChannelContext,
+      clearChannelContext,
       restoreReplyQuote,
       clearReplyQuote,
     });
@@ -1107,6 +1179,14 @@
                   reference={replyQuoteState.value.reply}
                   mode="reply"
                   onClear={clearReplyReference}
+                />
+              </div>
+            {/if}
+            {#if channelContextState.value}
+              <div class="composer-block composer-reference-block">
+                <ChannelContextPreview
+                  channel={channelContextState.value}
+                  onClear={clearChannelContext}
                 />
               </div>
             {/if}

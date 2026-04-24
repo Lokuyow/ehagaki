@@ -46,6 +46,16 @@ function createEmptyComposerState() {
     };
 }
 
+function createChannelState() {
+    return {
+        eventId: 'channel-root-event',
+        relayHints: ['wss://channel-relay.example.com'],
+        name: 'General',
+        about: 'General discussion',
+        picture: 'https://example.com/channel.png',
+    };
+}
+
 describe('buildDraftReplyQuoteData', () => {
     it('replyQuoteState がある場合に保存用データへ変換する', () => {
         expect(buildDraftReplyQuoteData(createComposerState())).toEqual({
@@ -85,6 +95,7 @@ describe('createDraftSavePayload', () => {
             htmlContent: '<p></p>',
             galleryItems: [{ id: 'ph', type: 'image', src: 'placeholder', isPlaceholder: true }],
             replyQuoteState: createEmptyComposerState(),
+            channelContextState: null,
         })).toBeNull();
     });
 
@@ -98,9 +109,11 @@ describe('createDraftSavePayload', () => {
             htmlContent: '<p>body</p>',
             galleryItems,
             replyQuoteState: createComposerState(),
+            channelContextState: createChannelState(),
         })).toEqual({
             content: '<p>body</p>',
             galleryItems: [galleryItems[0]],
+            channelData: createChannelState(),
             replyQuoteData: {
                 reply: {
                     mode: 'reply',
@@ -133,6 +146,7 @@ describe('createDraftSavePayload', () => {
             htmlContent: '<p>body</p><script>alert(1)</script><a href="javascript:alert(1)">danger</a><img src="javascript:alert(2)">',
             galleryItems: [],
             replyQuoteState: createEmptyComposerState(),
+            channelContextState: null,
         });
 
         expect(payload).not.toBeNull();
@@ -211,6 +225,7 @@ describe('applyDraftToComposer', () => {
             preview: 'body',
             timestamp: 1,
             galleryItems: [{ id: 'stored', type: 'image', src: 'https://example.com/stored.jpg', isPlaceholder: false }],
+            channelData: createChannelState(),
             replyQuoteData: {
                 reply: createReplyState(),
                 quotes: [createQuoteState()],
@@ -220,6 +235,8 @@ describe('applyDraftToComposer', () => {
         const addGalleryItem = vi.fn();
         const loadDraftContent = vi.fn();
         const appendMediaToEditor = vi.fn();
+        const restoreChannelContext = vi.fn();
+        const clearChannelContext = vi.fn();
         const restoreReplyQuote = vi.fn();
         const clearReplyQuote = vi.fn();
 
@@ -232,6 +249,8 @@ describe('applyDraftToComposer', () => {
             loadDraftContent,
             appendMediaToEditor,
             generateMediaItemId: () => 'generated-id',
+            restoreChannelContext,
+            clearChannelContext,
             restoreReplyQuote,
             clearReplyQuote,
         });
@@ -249,6 +268,8 @@ describe('applyDraftToComposer', () => {
         });
         expect(loadDraftContent).toHaveBeenCalledWith('<p>body</p>');
         expect(appendMediaToEditor).not.toHaveBeenCalled();
+        expect(restoreChannelContext).toHaveBeenCalledWith(draft.channelData);
+        expect(clearChannelContext).not.toHaveBeenCalled();
         expect(restoreReplyQuote).toHaveBeenCalledWith(draft.replyQuoteData);
         expect(clearReplyQuote).not.toHaveBeenCalled();
     });
@@ -263,6 +284,7 @@ describe('applyDraftToComposer', () => {
         };
         const loadDraftContent = vi.fn();
         const appendMediaToEditor = vi.fn();
+        const clearChannelContext = vi.fn();
         const clearReplyQuote = vi.fn();
 
         applyDraftToComposer({
@@ -274,12 +296,15 @@ describe('applyDraftToComposer', () => {
             loadDraftContent,
             appendMediaToEditor,
             generateMediaItemId: () => 'generated-id',
+            restoreChannelContext: vi.fn(),
+            clearChannelContext,
             restoreReplyQuote: vi.fn(),
             clearReplyQuote,
         });
 
         expect(loadDraftContent).toHaveBeenCalledWith('<p>body</p>');
         expect(appendMediaToEditor).toHaveBeenCalledWith(draft.galleryItems);
+        expect(clearChannelContext).toHaveBeenCalledOnce();
         expect(clearReplyQuote).toHaveBeenCalledOnce();
     });
 });

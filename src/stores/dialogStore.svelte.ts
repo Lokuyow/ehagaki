@@ -30,11 +30,11 @@ export const showSettingsDialogStore = createBooleanStore(() => showSettings, (v
 export const showWelcomeDialogStore = createBooleanStore(() => showWelcome, (value) => { showWelcome = value; });
 
 // --- 下書きダイアログ状態管理 ---
-import type { DraftReplyQuoteData } from '../lib/types';
+import type { DraftChannelData, DraftReplyQuoteData } from '../lib/types';
 
 let showDraftList = $state(false);
 let showDraftLimitConfirm = $state(false);
-let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null>(null);
+let pendingDraftContent = $state<{ content: string; galleryItems: MediaGalleryItem[]; channelData?: DraftChannelData; replyQuoteData?: DraftReplyQuoteData } | null>(null);
 
 export const showDraftListDialogStore = createBooleanStore(() => showDraftList, (value) => { showDraftList = value; });
 
@@ -42,7 +42,7 @@ export const showDraftLimitConfirmStore = createBooleanStore(() => showDraftLimi
 
 export const pendingDraftContentStore = createValueStore(
     () => pendingDraftContent,
-    (value: { content: string; galleryItems: MediaGalleryItem[]; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
+    (value: { content: string; galleryItems: MediaGalleryItem[]; channelData?: DraftChannelData; replyQuoteData?: DraftReplyQuoteData } | null) => { pendingDraftContent = value; }
 );
 
 // --- アカウント追加ダイアログ ---

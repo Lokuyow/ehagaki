@@ -250,6 +250,22 @@ describe('draftManager', () => {
             expect(result.drafts[0].galleryItems![1].type).toBe('video');
         });
 
+        it('channelData を指定すると下書きに保存される', () => {
+            const channelData = {
+                eventId: 'channel-root-event',
+                relayHints: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: 'General discussion',
+                picture: 'https://example.com/channel.png',
+            };
+
+            const result = saveDraft('<p>テキスト</p>', [], undefined, channelData);
+
+            expect(result.success).toBe(true);
+            expect(result.drafts[0].channelData).toEqual(channelData);
+            expect(result.drafts[0].preview).toContain('#General');
+        });
+
         it('galleryItemsが空配列の場合はgalleryItemsはundefined', () => {
             const result = saveDraft('<p>テキスト</p>', []);
             expect(result.drafts[0].galleryItems).toBeUndefined();

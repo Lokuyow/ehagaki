@@ -626,6 +626,35 @@ describe('PostEventBuilder', () => {
                 ['t', 'example'],
             ]);
         });
+
+        it('channel context がある場合は kind 42 と root e タグを構築する', async () => {
+            const channelContext = {
+                eventId: 'channel-root-event',
+                relayHints: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: 'General discussion',
+                picture: 'https://example.com/channel.png',
+            };
+
+            const event = await PostEventBuilder.buildEvent(
+                'Channel root message',
+                [],
+                [],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                undefined,
+                undefined,
+                channelContext,
+            );
+
+            expect(event.kind).toBe(42);
+            expect(event.tags).toEqual([
+                ['e', 'channel-root-event', 'wss://channel-relay.example.com', 'root'],
+            ]);
+        });
     });
 });
 
@@ -882,6 +911,137 @@ describe('PostManager統合テスト', () => {
             expect.objectContaining({
                 signer: expect.any(Object)
             })
+        );
+    });
+
+    it('channel context がある場合は kind 42 の channel message を送信する', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'relay1',
+                        ok: true,
+                        done: true,
+                        eventId: 'channel-message-id',
+                        type: 'ok',
+                        message: '',
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        (mockDeps as any).channelContextState = {
+            value: {
+                eventId: 'channel-root-event',
+                relayHints: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: 'General discussion',
+                picture: null,
+            },
+        };
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const result = await manager.submitPost('Channel root message');
+
+        expect(result.success).toBe(true);
+        expect(mockRxNostr.send).toHaveBeenCalledWith(
+            expect.objectContaining({
+                kind: 42,
+                content: 'Channel root message',
+                tags: expect.arrayContaining([
+                    ['e', 'channel-root-event', 'wss://channel-relay.example.com', 'root'],
+                ]),
+            }),
+            expect.objectContaining({
+                signer: expect.any(Object),
+                on: {
+                    relays: ['wss://channel-relay.example.com/'],
+                    defaultWriteRelays: true,
+                },
+            }),
+        );
+        expect((mockDeps as any).channelContextState.value).toEqual({
+            eventId: 'channel-root-event',
+            relayHints: ['wss://channel-relay.example.com'],
+            name: 'General',
+            about: 'General discussion',
+            picture: null,
+        });
+    });
+
+    it('channel reply 投稿では channel root と reply e タグを併用する', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'relay1',
+                        ok: true,
+                        done: true,
+                        eventId: 'channel-reply-id',
+                        type: 'ok',
+                        message: '',
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            }),
+        };
+
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        (mockDeps as any).channelContextState = {
+            value: {
+                eventId: 'channel-root-event',
+                relayHints: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: null,
+                picture: null,
+            },
+        };
+        mockDeps.replyQuoteState = {
+            value: {
+                reply: {
+                    mode: 'reply',
+                    eventId: 'channel-reply-target',
+                    relayHints: ['wss://reply-relay.example.com'],
+                    authorPubkey: 'f'.repeat(64),
+                    authorDisplayName: null,
+                    referencedEvent: null,
+                    rootEventId: 'some-thread-root',
+                    rootRelayHint: 'wss://thread-root.example.com',
+                    rootPubkey: null,
+                    loading: false,
+                    error: null,
+                },
+                quotes: [],
+            },
+        } as any;
+
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const result = await manager.submitPost('Channel reply message');
+
+        expect(result.success).toBe(true);
+        expect(mockRxNostr.send).toHaveBeenCalledWith(
+            expect.objectContaining({
+                kind: 42,
+                tags: expect.arrayContaining([
+                    ['e', 'channel-root-event', 'wss://channel-relay.example.com', 'root'],
+                    ['e', 'channel-reply-target', 'wss://reply-relay.example.com', 'reply', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'],
+                    ['p', 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'],
+                ]),
+            }),
+            expect.any(Object),
+        );
+        expect(mockRxNostr.send).not.toHaveBeenCalledWith(
+            expect.objectContaining({
+                tags: expect.arrayContaining([
+                    ['e', 'some-thread-root', 'wss://thread-root.example.com', 'root'],
+                ]),
+            }),
+            expect.any(Object),
         );
     });
 

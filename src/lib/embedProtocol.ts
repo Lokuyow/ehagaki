@@ -42,10 +42,19 @@ export interface EmbedPostErrorPayload extends EmbedErrorPayload {
     timestamp: number;
 }
 
+export interface EmbedChannelContextPayload {
+    reference: string;
+    relayHints?: string[];
+    name?: string | null;
+    about?: string | null;
+    picture?: string | null;
+}
+
 export interface EmbedComposerSetContextPayload {
     reply?: string | null;
     quotes?: string[] | null;
     content?: string | null;
+    channel?: EmbedChannelContextPayload | null;
 }
 
 export interface EmbedComposerContextAppliedPayload {
@@ -60,6 +69,7 @@ export interface EmbedComposerContextUpdatedPayload {
     timestamp: number;
     reply: string | null;
     quotes: string[];
+    channel?: EmbedChannelContextPayload | null;
 }
 
 export function isEmbedMessageEnvelope(

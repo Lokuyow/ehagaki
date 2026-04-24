@@ -206,6 +206,16 @@
       "quote": "[引用]"
     }
   },
+  "channelComposer": {
+    "header_label": "選択中のチャンネル",
+    "selected_label": "チャンネル",
+    "expand": "チャンネル情報を展開",
+    "collapse": "チャンネル情報を折りたたむ",
+    "clear": "チャンネル選択を解除",
+    "unnamed": "名称未設定チャンネル",
+    "event_label": "チャンネルイベント",
+    "relays_label": "リレー"
+  },
   "balloonMessage": {
     "success": {
       "compact_post_success": "投稿完了",
