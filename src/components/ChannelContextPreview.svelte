@@ -70,6 +70,13 @@
                     >{$_("channelComposer.selected_label")}</span
                 >
             </Button>
+            {#if channel.picture}
+                <img
+                    class="channel-picture"
+                    src={channel.picture}
+                    alt={channelName}
+                />
+            {/if}
             <span class="channel-name">{channelName}</span>
         </div>
         <Button
@@ -86,13 +93,6 @@
 
     {#if expanded}
         <div class="preview-content">
-            {#if channel.picture}
-                <img
-                    class="channel-picture"
-                    src={channel.picture}
-                    alt={channelName}
-                />
-            {/if}
             {#if sanitizedAbout}
                 <p class="about-text">{sanitizedAbout}</p>
             {/if}
@@ -128,7 +128,7 @@
         .preview-meta {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 8px;
             min-width: 0;
             flex: 1;
 
@@ -190,11 +190,11 @@
     }
 
     .channel-picture {
-        width: 72px;
-        height: 72px;
-        border-radius: 14px;
+        width: 42px;
+        height: 42px;
         object-fit: cover;
         background: var(--dialog);
+        flex-shrink: 0;
     }
 
     .about-text {
