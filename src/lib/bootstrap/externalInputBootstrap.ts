@@ -202,6 +202,14 @@ export async function applyChannelContextQuery({
         return;
     }
 
+    setChannelContext({
+        ...sanitizedChannelContextQuery,
+        name: null,
+        about: null,
+        picture: null,
+        isMetadataLoading: true,
+    });
+
     const channelContextService = new ChannelContextService();
     const resolvedChannelContext = await channelContextService.resolveChannelContext(
         sanitizedChannelContextQuery,

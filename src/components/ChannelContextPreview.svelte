@@ -2,6 +2,7 @@
     import { _ } from "svelte-i18n";
     import DOMPurify from "dompurify";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import type { ChannelContextState } from "../lib/types";
 
     interface Props {
@@ -12,10 +13,17 @@
     let { channel, onClear }: Props = $props();
 
     let expanded = $state(false);
+    let isMetadataLoading = $derived(channel.isMetadataLoading === true);
 
-    let channelName = $derived(
-        channel.name?.trim() || $_("channelComposer.unnamed"),
-    );
+    let channelName = $derived.by(() => {
+        const trimmedName = channel.name?.trim();
+
+        if (trimmedName) {
+            return trimmedName;
+        }
+
+        return $_("channelComposer.unnamed");
+    });
 
     let sanitizedAbout = $derived.by(() => {
         if (!channel.about) {
@@ -30,7 +38,10 @@
 
     let relaySummary = $derived(channel.relayHints.join("\n"));
     let canToggleExpand = $derived(
-        !!sanitizedAbout || !!channel.picture || channel.relayHints.length > 0,
+        isMetadataLoading ||
+            !!sanitizedAbout ||
+            !!channel.picture ||
+            channel.relayHints.length > 0,
     );
     let toggleAriaLabel = $derived(
         canToggleExpand
@@ -70,14 +81,22 @@
                     >{$_("channelComposer.selected_label")}</span
                 >
             </Button>
-            {#if channel.picture}
-                <img
-                    class="channel-picture"
-                    src={channel.picture}
-                    alt={channelName}
+            {#if isMetadataLoading}
+                <LoadingPlaceholder
+                    showLoader={true}
+                    text={$_("channelComposer.loading")}
+                    customClass="channel-loading-inline"
                 />
+            {:else}
+                {#if channel.picture}
+                    <img
+                        class="channel-picture"
+                        src={channel.picture}
+                        alt={channelName}
+                    />
+                {/if}
+                <span class="channel-name">{channelName}</span>
             {/if}
-            <span class="channel-name">{channelName}</span>
         </div>
         <Button
             className="cancel-button"
@@ -93,17 +112,25 @@
 
     {#if expanded}
         <div class="preview-content">
-            {#if sanitizedAbout}
-                <p class="about-text">{sanitizedAbout}</p>
-            {/if}
-            <dl class="meta-list">
-                {#if relaySummary}
-                    <div class="meta-row">
-                        <dt>{$_("channelComposer.relays_label")}</dt>
-                        <dd>{relaySummary}</dd>
-                    </div>
+            {#if isMetadataLoading}
+                <LoadingPlaceholder
+                    showLoader={true}
+                    text={$_("channelComposer.loading")}
+                    customClass="channel-loading-block"
+                />
+            {:else}
+                {#if sanitizedAbout}
+                    <p class="about-text">{sanitizedAbout}</p>
                 {/if}
-            </dl>
+                <dl class="meta-list">
+                    {#if relaySummary}
+                        <div class="meta-row">
+                            <dt>{$_("channelComposer.relays_label")}</dt>
+                            <dd>{relaySummary}</dd>
+                        </div>
+                    {/if}
+                </dl>
+            {/if}
         </div>
     {/if}
 </div>
@@ -138,6 +165,23 @@
                 min-width: fit-content;
                 padding: 0 10px 0 10px;
                 border-radius: 0 6px 6px 0;
+            }
+
+            :global(.channel-loading-inline) {
+                width: auto;
+                flex: 0 1 auto;
+                justify-content: flex-start;
+                flex-wrap: nowrap;
+            }
+
+            :global(.channel-loading-inline .placeholder-image) {
+                width: 42px;
+                height: 42px;
+            }
+
+            :global(.channel-loading-inline .placeholder-text) {
+                padding: 0;
+                white-space: nowrap;
             }
         }
 
@@ -187,6 +231,11 @@
         width: 100%;
         padding: 12px 20px 14px 20px;
         color: var(--text);
+
+        :global(.channel-loading-block) {
+            width: 100%;
+            padding: 0;
+        }
     }
 
     .channel-picture {

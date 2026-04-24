@@ -237,6 +237,7 @@ export interface ChannelContextState {
     name: string | null;
     about: string | null;
     picture: string | null;
+    isMetadataLoading?: boolean;
 }
 
 export interface NostrEvent {

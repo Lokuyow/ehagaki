@@ -314,9 +314,30 @@ describe('runExternalInputBootstrap', () => {
             picture: null,
         } as any);
 
-        const params = createParams();
+        let resolveChannelContextPromise: ((value: any) => void) | null = null;
+        mockState.resolveChannelContext.mockImplementationOnce(() => new Promise<any>((resolve) => {
+            resolveChannelContextPromise = resolve;
+        }));
 
-        await runExternalInputBootstrap(params as never);
+        const params = createParams();
+        let resolved = false;
+
+        const bootstrapPromise = runExternalInputBootstrap(params as never).then(() => {
+            resolved = true;
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(params.setChannelContext).toHaveBeenNthCalledWith(1, {
+            eventId: 'channel-root-event',
+            relayHints: ['wss://channel-relay.example.com/'],
+            name: null,
+            about: null,
+            picture: null,
+            isMetadataLoading: true,
+        });
+        expect(resolved).toBe(false);
 
         expect(mockState.resolveChannelContext).toHaveBeenCalledWith(
             {
@@ -330,7 +351,23 @@ describe('runExternalInputBootstrap', () => {
             null,
         );
 
-        expect(params.setChannelContext).toHaveBeenCalledWith({
+        if (!resolveChannelContextPromise) {
+            throw new Error('resolveChannelContextPromise was not initialized');
+        }
+
+        const resolveChannelContext = resolveChannelContextPromise as (value: any) => void;
+
+        resolveChannelContext({
+            eventId: 'channel-root-event',
+            relayHints: ['wss://channel-write.example.com/'],
+            name: 'General',
+            about: 'Public chat',
+            picture: 'https://example.com/channel.png',
+        });
+
+        await bootstrapPromise;
+
+        expect(params.setChannelContext).toHaveBeenNthCalledWith(2, {
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-write.example.com/'],
             name: 'General',
