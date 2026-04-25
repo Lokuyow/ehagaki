@@ -321,6 +321,7 @@ export function getStoredThemeModePreference(storage: MutableStorage): ThemeMode
         return migratedMode;
     }
 
+    storage.setItem(STORAGE_KEYS.THEME_MODE, "system");
     return "system";
 }
 

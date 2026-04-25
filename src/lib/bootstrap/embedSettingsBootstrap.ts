@@ -17,6 +17,7 @@ import {
     setUploadEndpointPreference,
     setVideoCompressionLevelPreference,
     type SupportedLocale,
+    type ThemeMode,
 } from "../utils/settingsStorage";
 
 export const EMBED_SETTINGS_QUERY_KEYS = [
@@ -64,7 +65,7 @@ interface EmbedSettingsBootstrapOptions {
 
 interface ParsedEmbedSettings {
     locale?: SupportedLocale;
-    themeDark?: boolean;
+    themeMode?: ThemeMode;
     uploadEndpoint?: string;
     imageCompressionLevel?: string;
     videoCompressionLevel?: string;
@@ -98,18 +99,18 @@ function parseBooleanParam(value: string | null): boolean | undefined {
     return undefined;
 }
 
-function parseThemeParam(value: string | null): boolean | undefined {
+function parseThemeParam(value: string | null): ThemeMode | undefined {
     if (value === null) {
         return undefined;
     }
 
     const normalizedValue = value.trim().toLowerCase();
-    if (normalizedValue === "dark") {
-        return true;
-    }
-
-    if (normalizedValue === "light") {
-        return false;
+    if (
+        normalizedValue === "system" ||
+        normalizedValue === "light" ||
+        normalizedValue === "dark"
+    ) {
+        return normalizedValue;
     }
 
     return undefined;
@@ -127,7 +128,7 @@ function parseEmbedSettings(locationSearch: string): ParsedEmbedSettings {
 
     return {
         locale: locale ? normalizeLocale(locale) : undefined,
-        themeDark: parseThemeParam(params.get("embedTheme")),
+        themeMode: parseThemeParam(params.get("embedTheme")),
         uploadEndpoint: isValidUploadEndpoint(uploadEndpoint)
             ? uploadEndpoint
             : undefined,
@@ -218,12 +219,12 @@ export function applyEmbedSettingsBootstrap({
         }
 
         if (
-            parsedSettings.themeDark !== undefined &&
+            parsedSettings.themeMode !== undefined &&
             getPreferenceSource(storage, "darkMode") !== "user"
         ) {
             setThemeModePreference(
                 storage,
-                parsedSettings.themeDark ? "dark" : "light",
+                parsedSettings.themeMode,
                 "parentBootstrap",
             );
         }

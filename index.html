@@ -59,12 +59,8 @@
         }
 
         var normalized = value.trim().toLowerCase();
-        if (normalized === 'dark') {
-          return true;
-        }
-
-        if (normalized === 'light') {
-          return false;
+        if (normalized === 'system' || normalized === 'light' || normalized === 'dark') {
+          return normalized;
         }
 
         return null;
@@ -82,8 +78,8 @@
           : legacyDarkMode === 'true'
             ? 'dark'
             : 'light';
+        localStorage.setItem(THEME_MODE_KEY, themeMode);
         if (legacyDarkMode !== null) {
-          localStorage.setItem(THEME_MODE_KEY, themeMode);
           localStorage.removeItem(DARK_MODE_KEY);
         }
       } else if (localStorage.getItem(DARK_MODE_KEY) !== null) {
@@ -94,7 +90,7 @@
       var embedTheme = shouldApplyEmbedTheme ? parseEmbedTheme(window.location.search) : null;
 
       if (embedTheme !== null) {
-        themeMode = embedTheme ? 'dark' : 'light';
+        themeMode = embedTheme;
         localStorage.setItem(THEME_MODE_KEY, themeMode);
         localStorage.removeItem(DARK_MODE_KEY);
       }

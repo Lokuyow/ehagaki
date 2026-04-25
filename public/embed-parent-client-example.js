@@ -1074,12 +1074,7 @@ function normalizeInitialTheme(value) {
 }
 
 function resolveInitialTheme(value) {
-    const normalizedValue = normalizeInitialTheme(value);
-    if (normalizedValue === "system") {
-        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-
-    return normalizedValue;
+    return normalizeInitialTheme(value);
 }
 
 function syncInitialSettingsControlsFromAppUrl() {

@@ -104,6 +104,22 @@ describe('embedSettingsBootstrap', () => {
         expect(getPreferenceSource(storage, 'darkMode')).toBe('parentBootstrap');
     });
 
+    it('embedTheme=system を初回 bootstrap で themeMode=system として保存する', () => {
+        const context = createBootstrapContext('?embedTheme=system');
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.applied).toBe(true);
+        expect(result.parsedSettings.themeMode).toBe('system');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('system');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+        expect(getPreferenceSource(storage, 'darkMode')).toBe('parentBootstrap');
+    });
+
     it('user source の設定は embed 初回でも上書きしない', () => {
         setLocalePreference(storage, 'ja', 'user');
         setThemeModePreference(storage, 'light', 'user');

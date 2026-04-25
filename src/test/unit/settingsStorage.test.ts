@@ -50,9 +50,9 @@ describe('settingsStorage preference metadata', () => {
         expect(getPreferenceSource(storage, 'darkMode')).toBe('user');
     });
 
-    it('テーマ設定は未保存時に system を返す', () => {
+    it('テーマ設定は未保存時に system を保存して返す', () => {
         expect(getStoredThemeModePreference(storage)).toBe('system');
-        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('system');
     });
 
     it('themeMode の system/light/dark を正しく読む', () => {
