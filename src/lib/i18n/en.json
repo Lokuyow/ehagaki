@@ -213,7 +213,6 @@
     "collapse": "Collapse channel details",
     "clear": "Clear channel selection",
     "loading": "Loading channel details...",
-    "unnamed": "Unnamed channel",
     "event_label": "Channel event",
     "relays_label": "Relays"
   },

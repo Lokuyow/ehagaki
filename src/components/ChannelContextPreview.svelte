@@ -16,7 +16,7 @@
     let isMetadataLoading = $derived(!!channel.isMetadataLoading);
 
     let channelName = $derived(
-        channel.name?.trim() || $_("channelComposer.unnamed"),
+        channel.name?.trim() || `ID: ${channel.eventId}`,
     );
 
     let sanitizedAbout = $derived(

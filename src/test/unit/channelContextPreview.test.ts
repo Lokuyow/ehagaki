@@ -63,6 +63,23 @@ describe('ChannelContextPreview', () => {
         expect(screen.queryByText('チャンネルイベント')).toBeNull();
     });
 
+    it('channel 名がない場合は eventId を表示する', async () => {
+        render(ChannelContextPreview, {
+            props: {
+                channel: createChannel({
+                    name: null,
+                    about: null,
+                    picture: null,
+                    channelRelays: [],
+                }),
+                onClear: vi.fn(),
+            },
+        });
+
+        expect(screen.getByText(`ID: ${'11'.repeat(32)}`)).toBeTruthy();
+        expect(screen.queryByText('名称未設定チャンネル')).toBeNull();
+    });
+
     it('clear ボタンで onClear を呼ぶ', async () => {
         const onClear = vi.fn();
 
