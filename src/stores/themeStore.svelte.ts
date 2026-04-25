@@ -47,11 +47,12 @@ function applyTheme(isDark: boolean): void {
 
 // --- ストア状態 ---
 const initialThemeMode = getStoredThemeModePreference(localStorage);
+const initialDarkMode = getEffectiveDarkMode(initialThemeMode);
 let themeMode = $state<ThemeMode>(initialThemeMode);
-let darkMode = $state(getEffectiveDarkMode(initialThemeMode));
+let darkMode = $state(initialDarkMode);
 
 // 初期テーマを適用
-applyTheme(darkMode);
+applyTheme(initialDarkMode);
 
 // OS設定変化に追従（system の場合のみ）
 if (typeof window !== 'undefined') {
