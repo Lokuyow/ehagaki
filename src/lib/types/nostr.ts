@@ -174,11 +174,12 @@ export interface PostManagerDeps {
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
     channelContextState?: { value: ChannelContextState | null };
     replyQuoteState?: { value: ReplyQuoteComposerState };
+    settingsStore?: { quoteNotificationEnabled: boolean };
     replyQuoteService?: {
         buildReplyTags: (state: ReplyQuoteState) => string[][];
-        buildQuoteTags: (state: ReplyQuoteState) => string[][];
+        buildQuoteTags: (state: ReplyQuoteState, includePTags?: boolean) => string[][];
         generateNostrUri: (eventId: string, relayHints: string[], authorPubkey?: string | null) => string;
-        extractInlineQuoteTags?: (content: string) => string[][];
+        extractInlineQuoteTags?: (content: string, includePTags?: boolean) => string[][];
     };
     clearReplyQuoteFn?: () => void;
 }

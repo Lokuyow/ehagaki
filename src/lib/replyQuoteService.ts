@@ -188,7 +188,7 @@ export class ReplyQuoteService {
     /**
      * 引用用のq/pタグを構築する（NIP-18, NIP-21）
      */
-    buildQuoteTags(state: ReplyQuoteState): string[][] {
+    buildQuoteTags(state: ReplyQuoteState, includePTags = false): string[][] {
         const tags: string[][] = [];
         const relayHint = state.relayHints[0] || '';
 
@@ -196,7 +196,7 @@ export class ReplyQuoteService {
         tags.push(['q', state.eventId, relayHint, ...(state.authorPubkey ? [state.authorPubkey] : [])]);
 
         // pタグ
-        if (state.authorPubkey) {
+        if (includePTags && state.authorPubkey) {
             tags.push(['p', state.authorPubkey]);
         }
 
@@ -219,7 +219,7 @@ export class ReplyQuoteService {
      * コンテンツ内のnostr:nevent1.../nostr:note1... URIを検出し、引用用のq/pタグを構築する
      * 複数URIがある場合は出現順に処理する
      */
-    extractInlineQuoteTags(content: string): string[][] {
+    extractInlineQuoteTags(content: string, includePTags = false): string[][] {
         const regex = /nostr:(nevent1[a-z0-9]+|note1[a-z0-9]+)/gi;
         const tags: string[][] = [];
         const seenEventIds = new Set<string>();
@@ -248,7 +248,7 @@ export class ReplyQuoteService {
                 seenEventIds.add(eventId);
 
                 tags.push(['q', eventId, relayHint, ...(authorPubkey ? [authorPubkey] : [])]);
-                if (authorPubkey) {
+                if (includePTags && authorPubkey) {
                     pPubkeys.add(authorPubkey);
                 }
             } catch {

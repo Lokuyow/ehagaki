@@ -5,6 +5,7 @@ import {
     getEffectiveLocale,
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
+    getQuoteNotificationEnabledPreference,
     getShowBalloonMessagePreference,
     getShowMascotPreference,
     getUploadEndpointPreference,
@@ -14,6 +15,7 @@ import {
     setImageCompressionLevelPreference,
     setLocalePreference,
     setMediaFreePlacementPreference,
+    setQuoteNotificationEnabledPreference,
     setShowBalloonMessagePreference,
     setShowMascotPreference,
     setUploadEndpointPreference,
@@ -30,6 +32,7 @@ interface SettingsState {
     locale: SupportedLocale;
     uploadEndpoint: string;
     clientTagEnabled: boolean;
+    quoteNotificationEnabled: boolean;
     imageCompressionLevel: string;
     videoCompressionLevel: string;
     mediaFreePlacement: boolean;
@@ -45,6 +48,7 @@ function readSettingsState(): SettingsState {
         locale: effectiveLocale,
         uploadEndpoint,
         clientTagEnabled: getClientTagEnabledPreference(localStorage),
+        quoteNotificationEnabled: getQuoteNotificationEnabledPreference(localStorage),
         imageCompressionLevel: getImageCompressionLevelPreference(localStorage),
         videoCompressionLevel: getVideoCompressionLevelPreference(localStorage),
         mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
@@ -104,6 +108,17 @@ export const settingsStore = {
 
     set clientTagEnabled(value: boolean) {
         settingsState.clientTagEnabled = setClientTagEnabledPreference(localStorage, value);
+    },
+
+    get quoteNotificationEnabled(): boolean {
+        return settingsState.quoteNotificationEnabled;
+    },
+
+    set quoteNotificationEnabled(value: boolean) {
+        settingsState.quoteNotificationEnabled = setQuoteNotificationEnabledPreference(
+            localStorage,
+            value,
+        );
     },
 
     get imageCompressionLevel(): string {

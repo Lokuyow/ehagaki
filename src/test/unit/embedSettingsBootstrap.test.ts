@@ -6,6 +6,7 @@ import {
     markEmbedBootstrapApplied,
     setDarkModePreference,
     setLocalePreference,
+    setQuoteNotificationEnabledPreference,
 } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
 
@@ -64,12 +65,36 @@ describe('embedSettingsBootstrap', () => {
         );
     });
 
+    it('embedQuoteNotification=true を初回 bootstrap で適用して query を掃除する', () => {
+        const context = createBootstrapContext(
+            '?parentOrigin=https%3A%2F%2Fparent.example.com&embedQuoteNotification=true',
+        );
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.applied).toBe(true);
+        expect(storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED)).toBe('true');
+        expect(getPreferenceSource(storage, 'quoteNotificationEnabled')).toBe(
+            'parentBootstrap',
+        );
+        expect(context.windowObj.history.replaceState).toHaveBeenCalledWith(
+            {},
+            '',
+            '/embed?parentOrigin=https%3A%2F%2Fparent.example.com',
+        );
+    });
+
     it('user source の設定は embed 初回でも上書きしない', () => {
         setLocalePreference(storage, 'ja', 'user');
         setDarkModePreference(storage, false, 'user');
+        setQuoteNotificationEnabledPreference(storage, false, 'user');
 
         const context = createBootstrapContext(
-            '?embedLocale=en&embedTheme=dark&embedShowMascot=false',
+            '?embedLocale=en&embedTheme=dark&embedShowMascot=false&embedQuoteNotification=true',
         );
 
         applyEmbedSettingsBootstrap({
@@ -84,6 +109,8 @@ describe('embedSettingsBootstrap', () => {
         expect(getPreferenceSource(storage, 'darkMode')).toBe('user');
         expect(storage.getItem(STORAGE_KEYS.SHOW_MASCOT)).toBe('false');
         expect(getPreferenceSource(storage, 'showMascot')).toBe('parentBootstrap');
+        expect(storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED)).toBe('false');
+        expect(getPreferenceSource(storage, 'quoteNotificationEnabled')).toBe('user');
         expect(context.documentObj.documentElement.lang).toBe('ja');
     });
 

@@ -1481,13 +1481,36 @@ describe('PostManager統合テスト', () => {
             };
         }
 
-        it('コンテンツ内のnostr:nevent1 URIからqタグとpタグを生成する', async () => {
+        it('設定オフ時はコンテンツ内のnostr:nevent1 URIからqタグのみ生成する', async () => {
             const nevent = nip19.neventEncode({
                 id: eventId1,
                 relays: ["wss://relay.example.com"],
                 author: authorPubkey1,
             });
             const content = `テスト投稿\nnostr:${nevent}`;
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            const pTags = sentEvent.tags.filter((t: string[]) => t[0] === 'p');
+            expect(qTags).toHaveLength(1);
+            expect(qTags[0][1]).toBe(eventId1);
+            expect(pTags.some((t: string[]) => t[1] === authorPubkey1)).toBe(false);
+        });
+
+        it('設定オン時はコンテンツ内のnostr:nevent1 URIからqタグとpタグを生成する', async () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `テスト投稿\nnostr:${nevent}`;
+            mockDeps.settingsStore = { quoteNotificationEnabled: true };
+            manager = new PostManager(mockRxNostr, mockDeps);
 
             vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
 
@@ -1583,6 +1606,50 @@ describe('PostManager統合テスト', () => {
             expect(qTags).toHaveLength(2);
             expect(qTags[0][1]).toBe(storeQuoteEventId); // ストアベースが先
             expect(qTags[1][1]).toBe(inlineEventId);
+        });
+
+        it('設定オン時はストアベース引用とインライン引用のpタグを重複排除する', async () => {
+            const inlineEventId = eventId2;
+            const nevent = nip19.neventEncode({
+                id: inlineEventId,
+                relays: ["wss://relay2.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `テスト投稿\nnostr:${nevent}`;
+
+            mockDeps.settingsStore = { quoteNotificationEnabled: true };
+            mockDeps.replyQuoteState = {
+                value: {
+                    reply: null,
+                    quotes: [
+                        {
+                            mode: 'quote',
+                            eventId: eventId1,
+                            relayHints: ["wss://relay1.example.com"],
+                            authorPubkey: authorPubkey1,
+                            authorDisplayName: null,
+                            referencedEvent: null,
+                            rootEventId: null,
+                            rootRelayHint: null,
+                            rootPubkey: null,
+                            loading: false,
+                            error: null,
+                        }
+                    ],
+                }
+            };
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost(content);
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            const pTags = sentEvent.tags.filter((t: string[]) => t[0] === 'p');
+            expect(qTags).toHaveLength(2);
+            expect(pTags.filter((t: string[]) => t[1] === authorPubkey1)).toHaveLength(1);
         });
 
         it('nostr: URIがない場合はqタグを生成しない', async () => {

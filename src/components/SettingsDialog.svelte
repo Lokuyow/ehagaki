@@ -65,6 +65,9 @@
     let videoCompressionPairs = $derived(chunkArray(videoCompressionLevels, 2));
 
     let clientTagEnabled = $state(settingsStore.clientTagEnabled);
+    let quoteNotificationEnabled = $state(
+        settingsStore.quoteNotificationEnabled,
+    );
     let darkMode = $state(darkModeStore.value);
     let hideMascot = $state(!settingsStore.showMascot);
     let hideFlavorText = $state(!settingsStore.showBalloonMessage);
@@ -95,6 +98,7 @@
     onMount(() => {
         settingsStore.reload();
         clientTagEnabled = settingsStore.clientTagEnabled;
+        quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
         darkMode = darkModeStore.value;
         hideMascot = !settingsStore.showMascot;
         hideFlavorText = !settingsStore.showBalloonMessage;
@@ -109,8 +113,20 @@
     });
 
     $effect(() => {
+        quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
+    });
+
+    $effect(() => {
         if (clientTagEnabled !== settingsStore.clientTagEnabled) {
             settingsStore.clientTagEnabled = clientTagEnabled;
+        }
+    });
+
+    $effect(() => {
+        if (
+            quoteNotificationEnabled !== settingsStore.quoteNotificationEnabled
+        ) {
+            settingsStore.quoteNotificationEnabled = quoteNotificationEnabled;
         }
     });
 
@@ -428,6 +444,24 @@
                             </Switch.Root>
                         {/if}
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 引用通知設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.quote_notification_label") ||
+                        "引用投稿時に相手に通知"}</span
+                >
+                <div class="setting-control">
+                    <Switch.Root
+                        class="bui-switch"
+                        bind:checked={quoteNotificationEnabled}
+                    >
+                        <Switch.Thumb class="bui-switch-thumb" />
+                    </Switch.Root>
                 </div>
             </div>
         </div>

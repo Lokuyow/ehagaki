@@ -11,6 +11,7 @@ import {
     setImageCompressionLevelPreference,
     setLocalePreference,
     setMediaFreePlacementPreference,
+    setQuoteNotificationEnabledPreference,
     setShowBalloonMessagePreference,
     setShowMascotPreference,
     setUploadEndpointPreference,
@@ -25,6 +26,7 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "embedImageCompression",
     "embedVideoCompression",
     "embedClientTag",
+    "embedQuoteNotification",
     "embedMediaFreePlacement",
     "embedShowMascot",
     "embedShowBalloonMessage",
@@ -67,6 +69,7 @@ interface ParsedEmbedSettings {
     imageCompressionLevel?: string;
     videoCompressionLevel?: string;
     clientTagEnabled?: boolean;
+    quoteNotificationEnabled?: boolean;
     mediaFreePlacement?: boolean;
     showMascot?: boolean;
     showBalloonMessage?: boolean;
@@ -137,6 +140,9 @@ function parseEmbedSettings(locationSearch: string): ParsedEmbedSettings {
                 params.get("embedVideoCompression"),
             ) ?? undefined,
         clientTagEnabled: parseBooleanParam(params.get("embedClientTag")),
+        quoteNotificationEnabled: parseBooleanParam(
+            params.get("embedQuoteNotification"),
+        ),
         mediaFreePlacement: parseBooleanParam(
             params.get("embedMediaFreePlacement"),
         ),
@@ -262,6 +268,17 @@ export function applyEmbedSettingsBootstrap({
             setClientTagEnabledPreference(
                 storage,
                 parsedSettings.clientTagEnabled,
+                "parentBootstrap",
+            );
+        }
+
+        if (
+            parsedSettings.quoteNotificationEnabled !== undefined &&
+            getPreferenceSource(storage, "quoteNotificationEnabled") !== "user"
+        ) {
+            setQuoteNotificationEnabledPreference(
+                storage,
+                parsedSettings.quoteNotificationEnabled,
                 "parentBootstrap",
             );
         }

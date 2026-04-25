@@ -96,6 +96,7 @@
     "toggle_write_relays_list": "Toggle write relays list",
     "no_relay_info": "No relay info",
     "client_tag_label": "Add client name to post \n(Client tag)",
+    "quote_notification_label": "Notify quoted users",
     "dark_mode": "Dark Mode",
     "hide_mascot_label": "Hide Kit-ten(top-left)",
     "hide_mascot_note": "Turn this on to hide the top-left mascot. Flavor text is also hidden while this is enabled.",

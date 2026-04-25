@@ -3,6 +3,7 @@ import {
     DEFAULT_CLIENT_TAG_ENABLED,
     DEFAULT_COMPRESSION_LEVEL,
     DEFAULT_MEDIA_FREE_PLACEMENT,
+    DEFAULT_QUOTE_NOTIFICATION_ENABLED,
     DEFAULT_SHOW_BALLOON_MESSAGE,
     DEFAULT_SHOW_MASCOT,
     STORAGE_KEYS,
@@ -17,6 +18,7 @@ export type ManagedPreferenceKey =
     | "locale"
     | "uploadEndpoint"
     | "clientTagEnabled"
+    | "quoteNotificationEnabled"
     | "imageCompressionLevel"
     | "videoCompressionLevel"
     | "mediaFreePlacement"
@@ -213,6 +215,14 @@ export function getClientTagEnabledPreference(storage: ReadWriteStorage): boolea
     );
 }
 
+export function getQuoteNotificationEnabledPreference(storage: ReadWriteStorage): boolean {
+    return getStoredBooleanPreference(
+        storage,
+        STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED,
+        DEFAULT_QUOTE_NOTIFICATION_ENABLED,
+    );
+}
+
 export function getImageCompressionLevelPreference(
     storage: Pick<Storage, "getItem"> | StorageAdapter,
     selectedCompression?: string,
@@ -329,6 +339,16 @@ export function setClientTagEnabledPreference(
 ): boolean {
     storage.setItem(STORAGE_KEYS.CLIENT_TAG_ENABLED, enabled ? "true" : "false");
     setPreferenceSource(storage, "clientTagEnabled", source);
+    return enabled;
+}
+
+export function setQuoteNotificationEnabledPreference(
+    storage: ReadWriteStorage,
+    enabled: boolean,
+    source: PreferenceSource = "user",
+): boolean {
+    storage.setItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED, enabled ? "true" : "false");
+    setPreferenceSource(storage, "quoteNotificationEnabled", source);
     return enabled;
 }
 

@@ -96,11 +96,13 @@ export const DEFAULT_COMPRESSION_LEVEL = "medium";
 export const DEFAULT_CLIENT_TAG_ENABLED = true;
 export const DEFAULT_SHOW_MASCOT = true;
 export const DEFAULT_SHOW_BALLOON_MESSAGE = true;
+export const DEFAULT_QUOTE_NOTIFICATION_ENABLED = false;
 
 export const STORAGE_KEYS = {
     LOCALE: "locale",
     UPLOAD_ENDPOINT: "uploadEndpoint",
     CLIENT_TAG_ENABLED: "clientTagEnabled",
+    QUOTE_NOTIFICATION_ENABLED: "quoteNotificationEnabled",
     IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
     VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     SHOW_MASCOT: "showMascot",

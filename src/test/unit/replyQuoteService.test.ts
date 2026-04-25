@@ -194,7 +194,7 @@ describe("ReplyQuoteService", () => {
     });
 
     describe("buildQuoteTags", () => {
-        it("qタグとpタグを生成する", () => {
+        it("デフォルトではqタグのみ生成する", () => {
             const state: ReplyQuoteState = {
                 mode: "quote",
                 eventId: "quoted-id",
@@ -210,6 +210,31 @@ describe("ReplyQuoteService", () => {
             };
 
             const tags = service.buildQuoteTags(state);
+            expect(tags[0]).toEqual([
+                "q",
+                "quoted-id",
+                "wss://relay.example.com",
+                "quoted-author-pk",
+            ]);
+            expect(tags).toHaveLength(1);
+        });
+
+        it("includePTagsがtrueの場合はpタグも生成する", () => {
+            const state: ReplyQuoteState = {
+                mode: "quote",
+                eventId: "quoted-id",
+                relayHints: ["wss://relay.example.com"],
+                authorPubkey: "quoted-author-pk",
+                authorDisplayName: null,
+                referencedEvent: null,
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+                loading: false,
+                error: null,
+            };
+
+            const tags = service.buildQuoteTags(state, true);
             expect(tags[0]).toEqual([
                 "q",
                 "quoted-id",
@@ -496,7 +521,7 @@ describe("ReplyQuoteService", () => {
         const authorPubkey1 = "c".repeat(64);
         const authorPubkey2 = "d".repeat(64);
 
-        it("nostr:nevent1... URIからq/pタグを抽出する", () => {
+        it("nostr:nevent1... URIからデフォルトではqタグのみ抽出する", () => {
             const nevent = nip19.neventEncode({
                 id: eventId1,
                 relays: ["wss://relay.example.com"],
@@ -505,6 +530,22 @@ describe("ReplyQuoteService", () => {
             const content = `テキスト\nnostr:${nevent}\nテキスト`;
 
             const tags = service.extractInlineQuoteTags(content);
+            expect(tags).toHaveLength(1);
+            expect(tags[0][0]).toBe("q");
+            expect(tags[0][1]).toBe(eventId1);
+            expect(tags[0][2]).toBe("wss://relay.example.com");
+            expect(tags[0][3]).toBe(authorPubkey1);
+        });
+
+        it("includePTagsがtrueの場合はnostr:nevent1... URIからq/pタグを抽出する", () => {
+            const nevent = nip19.neventEncode({
+                id: eventId1,
+                relays: ["wss://relay.example.com"],
+                author: authorPubkey1,
+            });
+            const content = `テキスト\nnostr:${nevent}\nテキスト`;
+
+            const tags = service.extractInlineQuoteTags(content, true);
             expect(tags).toHaveLength(2);
             expect(tags[0][0]).toBe("q");
             expect(tags[0][1]).toBe(eventId1);
@@ -537,7 +578,7 @@ describe("ReplyQuoteService", () => {
             });
             const content = `テキスト\nnostr:${nevent1}\nテキスト\nnostr:${nevent2}`;
 
-            const tags = service.extractInlineQuoteTags(content);
+            const tags = service.extractInlineQuoteTags(content, true);
             // qタグ2つ + pタグ2つ
             const qTags = tags.filter(t => t[0] === "q");
             const pTags = tags.filter(t => t[0] === "p");
@@ -557,7 +598,7 @@ describe("ReplyQuoteService", () => {
             const note = nip19.noteEncode(eventId2);
             const content = `nostr:${nevent}\nnostr:${note}`;
 
-            const tags = service.extractInlineQuoteTags(content);
+            const tags = service.extractInlineQuoteTags(content, true);
             const qTags = tags.filter(t => t[0] === "q");
             const pTags = tags.filter(t => t[0] === "p");
             expect(qTags).toHaveLength(2);
@@ -575,12 +616,12 @@ describe("ReplyQuoteService", () => {
             });
             const content = `nostr:${nevent}\nnostr:${nevent}`;
 
-            const tags = service.extractInlineQuoteTags(content);
+            const tags = service.extractInlineQuoteTags(content, true);
             const qTags = tags.filter(t => t[0] === "q");
             expect(qTags).toHaveLength(1);
         });
 
-        it("同一著者の重複pタグは1つだけ生成する", () => {
+        it("includePTagsがtrueの場合は同一著者の重複pタグを1つだけ生成する", () => {
             const nevent1 = nip19.neventEncode({
                 id: eventId1,
                 relays: ["wss://relay.example.com"],
@@ -593,7 +634,7 @@ describe("ReplyQuoteService", () => {
             });
             const content = `nostr:${nevent1}\nnostr:${nevent2}`;
 
-            const tags = service.extractInlineQuoteTags(content);
+            const tags = service.extractInlineQuoteTags(content, true);
             const pTags = tags.filter(t => t[0] === "p");
             expect(pTags).toHaveLength(1);
             expect(pTags[0][1]).toBe(authorPubkey1);

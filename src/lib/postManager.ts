@@ -17,6 +17,7 @@ import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
 import { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
 import { ReplyQuoteService } from "./replyQuoteService";
 import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svelte";
+import { settingsStore } from "../stores/settingsStore.svelte";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -187,10 +188,19 @@ export class PostManager {
   ): Promise<PostResult> {
     // 末尾のメディアURL直後の改行を削除
     let processedContent = trimTrailingNewlineAfterMedia(content);
+    const quoteNotificationEnabled =
+      this.deps.settingsStore?.quoteNotificationEnabled
+      ?? settingsStore.quoteNotificationEnabled;
 
     // インラインのnostr: URIから引用タグを抽出（ストアベースのURI追加前に実行）
-    const inlineQuoteTags = this.deps.replyQuoteService?.extractInlineQuoteTags?.(processedContent)
-      ?? new ReplyQuoteService().extractInlineQuoteTags(processedContent);
+    const inlineQuoteTags = this.deps.replyQuoteService?.extractInlineQuoteTags?.(
+      processedContent,
+      quoteNotificationEnabled,
+    )
+      ?? new ReplyQuoteService().extractInlineQuoteTags(
+        processedContent,
+        quoteNotificationEnabled,
+      );
 
     // ストア由来の引用がある場合、文末にnostr: URIを追加
     const rqStateForUri = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
@@ -272,7 +282,7 @@ export class PostManager {
         );
 
         rqState.quotes.forEach((quote) => {
-          rqService.buildQuoteTags(quote).forEach((tag) => {
+          rqService.buildQuoteTags(quote, quoteNotificationEnabled).forEach((tag) => {
             if (tag[0] === 'q') {
               if (existingQuoteEventIds.has(tag[1])) {
                 return;

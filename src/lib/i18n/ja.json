@@ -96,6 +96,7 @@
     "toggle_write_relays_list": "投稿先リレーの表示切替",
     "no_relay_info": "リレー情報なし",
     "client_tag_label": "投稿にクライアント名をつける\n(Client tag)",
+    "quote_notification_label": "引用投稿時に相手に通知",
     "dark_mode": "ダークモード",
     "hide_mascot_label": "きってん（左上）を非表示",
     "hide_mascot_note": "オンにすると左上のマスコットを隠し、フレーバーテキストもあわせて非表示にします。",
