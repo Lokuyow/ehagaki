@@ -15,6 +15,14 @@ import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, 
 const MEDIA_NODE_TYPES = new Set(['image', 'video']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused';
 
+interface PlaceholderState {
+    text: string;
+}
+
+type EditorWithPlaceholderState = Editor & {
+    __placeholderState?: PlaceholderState;
+};
+
 const GapCursorFocusReset = Extension.create({
     name: 'gapCursorFocusReset',
 
@@ -114,6 +122,7 @@ export interface EditorConfigOptions {
  */
 export function createEditorStore(options: EditorConfigOptions) {
     const { placeholderText, onSubmitPost, onUpdate, onCreate, onDestroy } = options;
+    const placeholderState: PlaceholderState = { text: placeholderText };
 
     const editorStore = createEditor({
         extensions: [
@@ -249,7 +258,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             AndroidCompositionFix, // ← Android日本語入力の自動確定問題を修正
             // Placeholderエクステンションの設定
             Placeholder.configure({
-                placeholder: placeholderText,
+                placeholder: () => placeholderState.text,
                 emptyEditorClass: 'is-editor-empty',
                 showOnlyWhenEditable: true,
                 showOnlyCurrent: false,
@@ -302,6 +311,7 @@ export function createEditorStore(options: EditorConfigOptions) {
         },
         onCreate({ editor }) {
             // エディター作成時にグローバル参照を設定
+            (editor as EditorWithPlaceholderState).__placeholderState = placeholderState;
             (window as any).__currentEditor = editor;
             onCreate?.(editor);
         },
@@ -324,11 +334,36 @@ export function createEditorStore(options: EditorConfigOptions) {
 export function updateEditorPlaceholder(editor: Editor | null, text: string): void {
     if (!editor) return;
 
+    const editorWithPlaceholderState = editor as EditorWithPlaceholderState;
+    const placeholderNodes = Array.from(
+        editor.view.dom.querySelectorAll<HTMLElement>('[data-placeholder]')
+    );
+    const needsDomUpdate = placeholderNodes.some(
+        (node) => node.getAttribute('data-placeholder') !== text
+    );
+    if (
+        editorWithPlaceholderState.__placeholderState?.text === text &&
+        !needsDomUpdate
+    ) {
+        return;
+    }
+
+    if (editorWithPlaceholderState.__placeholderState) {
+        editorWithPlaceholderState.__placeholderState.text = text;
+    }
+
     const placeholderExt = editor.extensionManager.extensions.find(
         (ext: AnyExtension) => ext.name === 'placeholder'
     );
     if (placeholderExt && placeholderExt.options) {
-        placeholderExt.options.placeholder = text;
+        placeholderExt.options.placeholder = editorWithPlaceholderState.__placeholderState
+            ? () => editorWithPlaceholderState.__placeholderState?.text ?? text
+            : text;
+
+        placeholderNodes.forEach((node) => {
+            node.setAttribute('data-placeholder', text);
+        });
+
         // エディターの状態を更新してプレースホルダーを再描画
         editor.view.dispatch(
             editor.state.tr.setMeta('addToHistory', false)

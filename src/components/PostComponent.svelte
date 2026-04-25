@@ -51,6 +51,7 @@
     updateEditorContent,
     updatePostStatus,
     currentEditorStore,
+    updatePlaceholderText,
   } from "../stores/editorStore.svelte";
   import {
     initializeEditor,
@@ -95,6 +96,14 @@
   let postContainerStyle = $derived(
     `--post-editor-min-height: ${POST_EDITOR_MIN_HEIGHT}px; --post-editor-target-height: ${editorTargetHeight}px;`,
   );
+  let editorPlaceholderText = $derived(
+    $_("postComponent.enter_your_text") || "テキストを入力してください",
+  );
+
+  $effect(() => {
+    currentEditor;
+    updatePlaceholderText(editorPlaceholderText);
+  });
 
   function syncEditorTargetHeight() {
     const minHeight = POST_EDITOR_MIN_HEIGHT;
@@ -242,11 +251,8 @@
 
   // --- Editor初期化・クリーンアップ ---
   onMount(() => {
-    const initialPlaceholder =
-      $_("postComponent.enter_your_text") || "テキストを入力してください";
-
     editorResources = initializeEditor({
-      placeholderText: initialPlaceholder,
+      placeholderText: editorPlaceholderText,
       editorContainerEl,
       currentEditor,
       hasStoredKey,
