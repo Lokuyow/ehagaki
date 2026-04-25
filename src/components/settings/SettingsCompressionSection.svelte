@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { RadioGroup } from "bits-ui";
     import { _ } from "svelte-i18n";
     import RadioButton from "../RadioButton.svelte";
     import InfoPopoverButton from "../InfoPopoverButton.svelte";
@@ -91,17 +92,20 @@
                 </table>
             </InfoPopoverButton>
         </div>
-        <div class="setting-control radio-group">
+        <RadioGroup.Root
+            class="setting-control radio-group"
+            name="compression"
+            orientation="horizontal"
+            value={selectedCompression}
+            onValueChange={onCompressionChange}
+        >
             {#each compressionPairs as pair}
                 <div class="radio-pair">
                     {#each pair as level}
                         <RadioButton
                             value={level.value}
-                            name="compression"
-                            checked={selectedCompression === level.value}
                             variant="default"
                             shape="rounded"
-                            onChange={onCompressionChange}
                             ariaLabel={level.label}
                         >
                             {level.label}
@@ -109,7 +113,7 @@
                     {/each}
                 </div>
             {/each}
-        </div>
+        </RadioGroup.Root>
     </div>
 </div>
 
@@ -154,17 +158,20 @@
                 </table>
             </InfoPopoverButton>
         </div>
-        <div class="setting-control radio-group">
+        <RadioGroup.Root
+            class="setting-control radio-group"
+            name="videoCompression"
+            orientation="horizontal"
+            value={selectedVideoCompression}
+            onValueChange={onVideoCompressionChange}
+        >
             {#each videoCompressionPairs as pair}
                 <div class="radio-pair">
                     {#each pair as level}
                         <RadioButton
                             value={level.value}
-                            name="videoCompression"
-                            checked={selectedVideoCompression === level.value}
                             variant="default"
                             shape="rounded"
-                            onChange={onVideoCompressionChange}
                             ariaLabel={level.label}
                         >
                             {level.label}
@@ -172,7 +179,7 @@
                     {/each}
                 </div>
             {/each}
-        </div>
+        </RadioGroup.Root>
     </div>
 </div>
 
@@ -205,7 +212,7 @@
             font-weight: normal;
         }
     }
-    .radio-group {
+    :global(.radio-group) {
         display: flex;
         gap: 4px;
         flex-wrap: wrap;

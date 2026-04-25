@@ -1,7 +1,7 @@
 <script lang="ts">
     import { onMount, tick } from "svelte";
     import { locale, _ } from "svelte-i18n";
-    import { Dialog, Switch } from "bits-ui";
+    import { Dialog, RadioGroup, Switch } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
@@ -18,7 +18,7 @@
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
     } from "../stores/relayStore.svelte";
-    import { darkModeStore } from "../stores/themeStore.svelte";
+    import { themeModeStore } from "../stores/themeStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
     import {
         uploadEndpoints,
@@ -36,6 +36,8 @@
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import SettingsRelaySection from "./settings/SettingsRelaySection.svelte";
     import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
+    import RadioButton from "./RadioButton.svelte";
+    import type { ThemeMode } from "../lib/utils/settingsStorage";
 
     let {
         show = $bindable(false),
@@ -68,7 +70,7 @@
     let quoteNotificationEnabled = $state(
         settingsStore.quoteNotificationEnabled,
     );
-    let darkMode = $state(darkModeStore.value);
+    let themeMode = $state<ThemeMode>(themeModeStore.value);
     let hideMascot = $state(!settingsStore.showMascot);
     let hideFlavorText = $state(!settingsStore.showBalloonMessage);
     let effectiveHideFlavorText = $derived(hideMascot || hideFlavorText);
@@ -80,8 +82,8 @@
     let isUpdating = $derived(isSwUpdatingStore.value);
 
     $effect(() => {
-        if (darkMode !== darkModeStore.value) {
-            darkModeStore.set(darkMode);
+        if (themeMode !== themeModeStore.value) {
+            themeModeStore.set(themeMode);
         }
     });
 
@@ -99,7 +101,7 @@
         settingsStore.reload();
         clientTagEnabled = settingsStore.clientTagEnabled;
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
-        darkMode = darkModeStore.value;
+        themeMode = themeModeStore.value;
         hideMascot = !settingsStore.showMascot;
         hideFlavorText = !settingsStore.showBalloonMessage;
         fetchSwVersion();
@@ -335,6 +337,50 @@
             </div>
         </div>
 
+        <!-- テーマ設定セクション -->
+        <div class="setting-section">
+            <div class="setting-row">
+                <span class="setting-label"
+                    >{$_("settingsDialog.theme_mode") || "カラーテーマ"}</span
+                >
+                <RadioGroup.Root
+                    class="setting-control theme-mode-group"
+                    name="themeMode"
+                    orientation="horizontal"
+                    value={themeMode}
+                    onValueChange={(value) => {
+                        themeMode = value as ThemeMode;
+                    }}
+                >
+                    <RadioButton
+                        value="system"
+                        variant="default"
+                        shape="rounded"
+                        ariaLabel={$_("settingsDialog.theme_system") ||
+                            "システム"}
+                    >
+                        {$_("settingsDialog.theme_system") || "システム"}
+                    </RadioButton>
+                    <RadioButton
+                        value="light"
+                        variant="default"
+                        shape="rounded"
+                        ariaLabel={$_("settingsDialog.theme_light") || "ライト"}
+                    >
+                        {$_("settingsDialog.theme_light") || "ライト"}
+                    </RadioButton>
+                    <RadioButton
+                        value="dark"
+                        variant="default"
+                        shape="rounded"
+                        ariaLabel={$_("settingsDialog.theme_dark") || "ダーク"}
+                    >
+                        {$_("settingsDialog.theme_dark") || "ダーク"}
+                    </RadioButton>
+                </RadioGroup.Root>
+            </div>
+        </div>
+
         <!-- メディア自由配置モード設定セクション -->
         <div class="setting-section">
             <div class="setting-row">
@@ -347,20 +393,6 @@
                         class="bui-switch"
                         bind:checked={settingsStore.mediaFreePlacement}
                     >
-                        <Switch.Thumb class="bui-switch-thumb" />
-                    </Switch.Root>
-                </div>
-            </div>
-        </div>
-
-        <!-- ダークモード設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.dark_mode") || "ダークモード"}</span
-                >
-                <div class="setting-control">
-                    <Switch.Root class="bui-switch" bind:checked={darkMode}>
                         <Switch.Thumb class="bui-switch-thumb" />
                     </Switch.Root>
                 </div>
@@ -718,5 +750,19 @@
 
     :global(.sw-update-btn:disabled) {
         opacity: 0.6;
+    }
+
+    :global(.theme-mode-group) {
+        display: flex;
+        gap: 4px;
+        flex-wrap: nowrap;
+
+        :global(button) {
+            min-width: 74px;
+            min-height: 44px;
+            padding: 8px 10px;
+            font-size: 0.875rem;
+            font-weight: normal;
+        }
     }
 </style>

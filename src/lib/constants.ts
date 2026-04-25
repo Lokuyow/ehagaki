@@ -114,6 +114,7 @@ export const STORAGE_KEYS = {
     DRAFTS: "nostr-drafts",
     HASHTAG_HISTORY: "hashtagHistory",
     MEDIA_FREE_PLACEMENT: "mediaFreePlacement",
+    THEME_MODE: "themeMode",
     DARK_MODE: "darkMode",
     NOSTR_ACCOUNTS: "nostr-accounts",
     NOSTR_ACTIVE_ACCOUNT: "nostr-active-account",

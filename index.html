@@ -33,6 +33,7 @@
 <body ontouchstart="">
   <script>
     (function () {
+      var THEME_MODE_KEY = 'themeMode';
       var DARK_MODE_KEY = 'darkMode';
       var PREFERENCE_METADATA_KEY = 'settingsPreferenceMetadata';
       var THEME_QUERY_KEY = 'embedTheme';
@@ -73,18 +74,36 @@
       var source = metadata.sources && metadata.sources.darkMode
         ? metadata.sources.darkMode
         : 'default';
-      var saved = localStorage.getItem(DARK_MODE_KEY);
+      var themeMode = localStorage.getItem(THEME_MODE_KEY);
+      if (themeMode !== 'system' && themeMode !== 'light' && themeMode !== 'dark') {
+        var legacyDarkMode = localStorage.getItem(DARK_MODE_KEY);
+        themeMode = legacyDarkMode === null
+          ? 'system'
+          : legacyDarkMode === 'true'
+            ? 'dark'
+            : 'light';
+        if (legacyDarkMode !== null) {
+          localStorage.setItem(THEME_MODE_KEY, themeMode);
+          localStorage.removeItem(DARK_MODE_KEY);
+        }
+      } else if (localStorage.getItem(DARK_MODE_KEY) !== null) {
+        localStorage.removeItem(DARK_MODE_KEY);
+      }
+
       var shouldApplyEmbedTheme = metadata.embedBootstrapApplied !== true && source !== 'user';
       var embedTheme = shouldApplyEmbedTheme ? parseEmbedTheme(window.location.search) : null;
 
       if (embedTheme !== null) {
-        saved = embedTheme ? 'true' : 'false';
-        localStorage.setItem(DARK_MODE_KEY, saved);
+        themeMode = embedTheme ? 'dark' : 'light';
+        localStorage.setItem(THEME_MODE_KEY, themeMode);
+        localStorage.removeItem(DARK_MODE_KEY);
       }
 
-      var isDark = saved !== null
-        ? saved === 'true'
-        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var isDark = themeMode === 'dark'
+        ? true
+        : themeMode === 'light'
+          ? false
+          : window.matchMedia('(prefers-color-scheme: dark)').matches;
       var root = document.documentElement;
       if (isDark) {
         root.classList.add('dark');

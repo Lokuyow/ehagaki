@@ -7,13 +7,13 @@ import {
     normalizeCompressionLevelPreference,
     normalizeLocale,
     setClientTagEnabledPreference,
-    setDarkModePreference,
     setImageCompressionLevelPreference,
     setLocalePreference,
     setMediaFreePlacementPreference,
     setQuoteNotificationEnabledPreference,
     setShowBalloonMessagePreference,
     setShowMascotPreference,
+    setThemeModePreference,
     setUploadEndpointPreference,
     setVideoCompressionLevelPreference,
     type SupportedLocale,
@@ -221,9 +221,9 @@ export function applyEmbedSettingsBootstrap({
             parsedSettings.themeDark !== undefined &&
             getPreferenceSource(storage, "darkMode") !== "user"
         ) {
-            setDarkModePreference(
+            setThemeModePreference(
                 storage,
-                parsedSettings.themeDark,
+                parsedSettings.themeDark ? "dark" : "light",
                 "parentBootstrap",
             );
         }

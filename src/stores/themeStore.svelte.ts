@@ -1,28 +1,32 @@
 /**
- * themeStore.svelte.ts - ダークモード設定の状態管理
+ * themeStore.svelte.ts - テーマ設定の状態管理
  *
- * - デフォルト: OS/ブラウザの color-scheme 設定に従う
- * - ユーザーが手動でSwitchを操作した場合は localStorage に保存し次回以降に引き継ぐ
- * - localStorage に保存値がない場合、OS設定変化を自動追従する
+ * - デフォルト: system
+ * - system の場合は OS/ブラウザの color-scheme 設定に従う
+ * - light/dark の場合は明示設定として localStorage に保存する
  */
 
 import {
-    clearDarkModePreference,
-    getStoredDarkModePreference,
-    setDarkModePreference,
+    getStoredThemeModePreference,
+    setThemeModePreference,
     type PreferenceSource,
+    type ThemeMode,
 } from '../lib/utils/settingsStorage';
 
-/**
- * localStorage の保存値を考慮しつつ、現在の有効なダークモード状態を返す
- */
-function getEffectiveDarkMode(): boolean {
-    const saved = getStoredDarkModePreference(localStorage);
-    if (saved !== null) {
-        return saved;
-    }
-    // 保存値なし → OS設定に従う
+function getSystemDarkMode(): boolean {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function getEffectiveDarkMode(mode: ThemeMode): boolean {
+    if (mode === 'dark') {
+        return true;
+    }
+
+    if (mode === 'light') {
+        return false;
+    }
+
+    return getSystemDarkMode();
 }
 
 /**
@@ -42,18 +46,18 @@ function applyTheme(isDark: boolean): void {
 }
 
 // --- ストア状態 ---
-const initialDarkMode = getEffectiveDarkMode();
-let darkMode = $state(initialDarkMode);
+const initialThemeMode = getStoredThemeModePreference(localStorage);
+let themeMode = $state<ThemeMode>(initialThemeMode);
+let darkMode = $state(getEffectiveDarkMode(initialThemeMode));
 
 // 初期テーマを適用
-applyTheme(initialDarkMode);
+applyTheme(darkMode);
 
-// OS設定変化に追従（localStorage に保存値がない場合のみ）
+// OS設定変化に追従（system の場合のみ）
 if (typeof window !== 'undefined') {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     mq.addEventListener('change', (e) => {
-        const saved = getStoredDarkModePreference(localStorage);
-        if (saved === null) {
+        if (themeMode === 'system') {
             darkMode = e.matches;
             applyTheme(e.matches);
         }
@@ -61,22 +65,38 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * ダークモードストア
+ * テーマモードストア
+ */
+export const themeModeStore = {
+    get value() {
+        return themeMode;
+    },
+    get isDark() {
+        return darkMode;
+    },
+    set: (mode: ThemeMode, source: PreferenceSource = 'user') => {
+        const nextMode = setThemeModePreference(localStorage, mode, source);
+        const nextDarkMode = getEffectiveDarkMode(nextMode);
+        themeMode = nextMode;
+        darkMode = nextDarkMode;
+        applyTheme(nextDarkMode);
+    },
+    reset: (source: PreferenceSource = 'user') => {
+        themeModeStore.set('system', source);
+    },
+};
+
+/**
+ * 旧 darkModeStore 互換 API。
  */
 export const darkModeStore = {
     get value() {
         return darkMode;
     },
     set: (isDark: boolean, source: PreferenceSource = 'user') => {
-        darkMode = isDark;
-        applyTheme(isDark);
-        setDarkModePreference(localStorage, isDark, source);
+        themeModeStore.set(isDark ? 'dark' : 'light', source);
     },
-    /** localStorage の保存値を削除し OS 設定に戻す */
     reset: (source: PreferenceSource = 'user') => {
-        clearDarkModePreference(localStorage, source);
-        const nextDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        darkMode = nextDarkMode;
-        applyTheme(nextDarkMode);
+        themeModeStore.reset(source);
     },
 };

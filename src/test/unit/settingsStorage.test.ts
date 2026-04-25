@@ -2,11 +2,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '../../lib/constants';
 import {
     clearDarkModePreference,
+    getStoredThemeModePreference,
     getQuoteNotificationEnabledPreference,
     getPreferenceSource,
     hasAppliedEmbedBootstrap,
     markEmbedBootstrapApplied,
     setDarkModePreference,
+    setThemeModePreference,
     setLocalePreference,
     setQuoteNotificationEnabledPreference,
 } from '../../lib/utils/settingsStorage';
@@ -44,6 +46,58 @@ describe('settingsStorage preference metadata', () => {
         clearDarkModePreference(storage, 'user');
 
         expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('system');
+        expect(getPreferenceSource(storage, 'darkMode')).toBe('user');
+    });
+
+    it('テーマ設定は未保存時に system を返す', () => {
+        expect(getStoredThemeModePreference(storage)).toBe('system');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBeNull();
+    });
+
+    it('themeMode の system/light/dark を正しく読む', () => {
+        storage.setItem(STORAGE_KEYS.THEME_MODE, 'system');
+        expect(getStoredThemeModePreference(storage)).toBe('system');
+
+        storage.setItem(STORAGE_KEYS.THEME_MODE, 'light');
+        expect(getStoredThemeModePreference(storage)).toBe('light');
+
+        storage.setItem(STORAGE_KEYS.THEME_MODE, 'dark');
+        expect(getStoredThemeModePreference(storage)).toBe('dark');
+    });
+
+    it('legacy darkMode=true/false を themeMode に移行する', () => {
+        storage.setItem(STORAGE_KEYS.DARK_MODE, 'true');
+        expect(getStoredThemeModePreference(storage)).toBe('dark');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('dark');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+
+        storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.DARK_MODE, 'false');
+        expect(getStoredThemeModePreference(storage)).toBe('light');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('light');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+    });
+
+    it('不正な themeMode は system に戻す', () => {
+        storage.setItem(STORAGE_KEYS.THEME_MODE, 'sepia');
+        storage.setItem(STORAGE_KEYS.DARK_MODE, 'true');
+
+        expect(getStoredThemeModePreference(storage)).toBe('system');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('system');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+    });
+
+    it('themeMode setter は新キーに保存して source を記録する', () => {
+        setThemeModePreference(storage, 'dark', 'parentBootstrap');
+
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('dark');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+        expect(getPreferenceSource(storage, 'darkMode')).toBe('parentBootstrap');
+
+        setThemeModePreference(storage, 'system');
+
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('system');
         expect(getPreferenceSource(storage, 'darkMode')).toBe('user');
     });
 

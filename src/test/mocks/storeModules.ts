@@ -214,6 +214,12 @@ export const mockPostUIStoreModule = {
 };
 
 export const mockThemeStoreModule = {
+    themeModeStore: {
+        value: 'system',
+        isDark: false,
+        set: vi.fn(),
+        reset: vi.fn(),
+    },
     darkModeStore: {
         value: false,
         set: vi.fn(),

@@ -14,6 +14,7 @@ import {
 
 export type SupportedLocale = "ja" | "en";
 export type PreferenceSource = "default" | "parentBootstrap" | "user";
+export type ThemeMode = "system" | "light" | "dark";
 export type ManagedPreferenceKey =
     | "locale"
     | "uploadEndpoint"
@@ -27,6 +28,7 @@ export type ManagedPreferenceKey =
     | "showBalloonMessage";
 
 type ReadWriteStorage = Pick<Storage, "getItem" | "setItem">;
+type MutableStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 interface PreferenceMetadata {
     embedBootstrapApplied?: boolean;
@@ -285,6 +287,43 @@ export function getStoredDarkModePreference(
     return storedValue === "true";
 }
 
+export function normalizeThemeModePreference(
+    value: string | null | undefined,
+): ThemeMode | null {
+    return value === "system" || value === "light" || value === "dark"
+        ? value
+        : null;
+}
+
+export function getStoredThemeModePreference(storage: MutableStorage): ThemeMode {
+    const storedMode = normalizeThemeModePreference(
+        storage.getItem(STORAGE_KEYS.THEME_MODE),
+    );
+
+    if (storedMode) {
+        if (storage.getItem(STORAGE_KEYS.DARK_MODE) !== null) {
+            storage.removeItem(STORAGE_KEYS.DARK_MODE);
+        }
+        return storedMode;
+    }
+
+    if (storage.getItem(STORAGE_KEYS.THEME_MODE) !== null) {
+        storage.setItem(STORAGE_KEYS.THEME_MODE, "system");
+        storage.removeItem(STORAGE_KEYS.DARK_MODE);
+        return "system";
+    }
+
+    const legacyDarkMode = getStoredDarkModePreference(storage);
+    if (legacyDarkMode !== null) {
+        const migratedMode = legacyDarkMode ? "dark" : "light";
+        storage.setItem(STORAGE_KEYS.THEME_MODE, migratedMode);
+        storage.removeItem(STORAGE_KEYS.DARK_MODE);
+        return migratedMode;
+    }
+
+    return "system";
+}
+
 export function setLocalePreference(
     storage: ReadWriteStorage,
     locale: string,
@@ -383,13 +422,26 @@ export function setShowBalloonMessagePreference(
 }
 
 export function setDarkModePreference(
-    storage: ReadWriteStorage,
+    storage: MutableStorage,
     enabled: boolean,
     source: PreferenceSource = "user",
 ): boolean {
-    storage.setItem(STORAGE_KEYS.DARK_MODE, enabled ? "true" : "false");
+    storage.setItem(STORAGE_KEYS.THEME_MODE, enabled ? "dark" : "light");
+    storage.removeItem(STORAGE_KEYS.DARK_MODE);
     setPreferenceSource(storage, "darkMode", source);
     return enabled;
+}
+
+export function setThemeModePreference(
+    storage: MutableStorage,
+    mode: string,
+    source: PreferenceSource = "user",
+): ThemeMode {
+    const normalizedMode = normalizeThemeModePreference(mode) ?? "system";
+    storage.setItem(STORAGE_KEYS.THEME_MODE, normalizedMode);
+    storage.removeItem(STORAGE_KEYS.DARK_MODE);
+    setPreferenceSource(storage, "darkMode", source);
+    return normalizedMode;
 }
 
 export function clearDarkModePreference(
@@ -397,6 +449,7 @@ export function clearDarkModePreference(
     source: PreferenceSource = "user",
 ): void {
     storage.removeItem(STORAGE_KEYS.DARK_MODE);
+    storage.setItem(STORAGE_KEYS.THEME_MODE, "system");
     setPreferenceSource(storage, "darkMode", source);
 }
 

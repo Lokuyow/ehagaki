@@ -4,9 +4,9 @@ import { applyEmbedSettingsBootstrap } from '../../lib/bootstrap/embedSettingsBo
 import {
     getPreferenceSource,
     markEmbedBootstrapApplied,
-    setDarkModePreference,
     setLocalePreference,
     setQuoteNotificationEnabledPreference,
+    setThemeModePreference,
 } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
 
@@ -52,7 +52,8 @@ describe('embedSettingsBootstrap', () => {
 
         expect(result.applied).toBe(true);
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBe('en');
-        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBe('true');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('dark');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.SHOW_MASCOT)).toBe('false');
         expect(getPreferenceSource(storage, 'locale')).toBe('parentBootstrap');
         expect(getPreferenceSource(storage, 'darkMode')).toBe('parentBootstrap');
@@ -88,9 +89,24 @@ describe('embedSettingsBootstrap', () => {
         );
     });
 
+    it('embedTheme=light を初回 bootstrap で themeMode=light として保存する', () => {
+        const context = createBootstrapContext('?embedTheme=light');
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.applied).toBe(true);
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('light');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
+        expect(getPreferenceSource(storage, 'darkMode')).toBe('parentBootstrap');
+    });
+
     it('user source の設定は embed 初回でも上書きしない', () => {
         setLocalePreference(storage, 'ja', 'user');
-        setDarkModePreference(storage, false, 'user');
+        setThemeModePreference(storage, 'light', 'user');
         setQuoteNotificationEnabledPreference(storage, false, 'user');
 
         const context = createBootstrapContext(
@@ -104,7 +120,8 @@ describe('embedSettingsBootstrap', () => {
         });
 
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBe('ja');
-        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBe('false');
+        expect(storage.getItem(STORAGE_KEYS.THEME_MODE)).toBe('light');
+        expect(storage.getItem(STORAGE_KEYS.DARK_MODE)).toBeNull();
         expect(getPreferenceSource(storage, 'locale')).toBe('user');
         expect(getPreferenceSource(storage, 'darkMode')).toBe('user');
         expect(storage.getItem(STORAGE_KEYS.SHOW_MASCOT)).toBe('false');
