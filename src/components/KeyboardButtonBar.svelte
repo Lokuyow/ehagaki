@@ -91,6 +91,7 @@
     let longPressStartTime = 0;
     let longPressCompleted = false;
     let lastVibrationTime = 0; // プログレッシブバイブのスロットリング用
+    let ignoreNextPostClick = false;
 
     function isPostDisabled(): boolean {
         return (
@@ -103,6 +104,8 @@
     }
 
     function startLongPress(event: PointerEvent) {
+        ignoreNextPostClick = event.pointerType === "touch";
+        if (event.pointerType !== "touch") return;
         if (isPostDisabled()) return;
 
         // キャンセルタイムアウトが残っていればクリア
@@ -281,7 +284,7 @@
                 <Tooltip.Trigger>
                     {#snippet child({ props })}
                         {@const {
-                            onclick: _tooltipOnclick,
+                            onclick: tooltipOnclick,
                             onpointerdown: tooltipPointerDown,
                             onpointerup: tooltipPointerUp,
                             onpointerleave: tooltipPointerLeave,
@@ -298,6 +301,20 @@
                                 isUploading ||
                                 !hasStoredKey ||
                                 postStatus.completed}
+                            onClick={(e) => {
+                                if (typeof tooltipOnclick === "function") {
+                                    tooltipOnclick(e);
+                                }
+
+                                if (ignoreNextPostClick) {
+                                    ignoreNextPostClick = false;
+                                    return;
+                                }
+
+                                if (!isPostDisabled()) {
+                                    submitPost();
+                                }
+                            }}
                             ariaLabel={$_("postComponent.post")}
                             {...restProps}
                             onpointerdown={(e) => {
