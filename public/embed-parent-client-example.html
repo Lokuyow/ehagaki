@@ -590,13 +590,22 @@
                         <input id="channel-about" type="text" spellcheck="false" placeholder="Public chat">
                     </div>
 
+                    <div class="field">
+                        <label for="channel-relays">channel relays</label>
+                        <textarea id="channel-relays" spellcheck="false"
+                            placeholder="wss://channel-write.example.com\nwss://channel-backup.example.com"></textarea>
+                    </div>
+
                     <div class="buttons">
                         <button id="sync-channel-context" type="button" class="secondary">channel を同期</button>
                         <button id="clear-channel-context" type="button" class="ghost">channel を解除</button>
                     </div>
 
-                    <p class="small">kind 40 の channel event を note1 または nevent1 で指定します。name / about / picture
-                        を渡した場合はそのまま子へ送ります。未指定なら iframe 側が relay に REQ して metadata を取得します。</p>
+                    <p class="small">channel reference には nevent1... を使ってください。channel relays は URL 再読み込み時には
+                        `channelRelay`
+                        クエリとして、runtime 更新時には payload.channel.relays として子 iframe に渡します。relays を省略して event id だけ渡した場合は
+                        子 iframe が kind 40 / 41 から metadata と relays を解決し、relays を省略したまま name / about / picture だけ渡した場合は
+                        子 iframe 自身の write relay を使います。</p>
                 </div>
 
                 <div class="field composer-field">

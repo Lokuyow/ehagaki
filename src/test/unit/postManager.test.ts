@@ -936,7 +936,8 @@ describe('PostManager統合テスト', () => {
         (mockDeps as any).channelContextState = {
             value: {
                 eventId: 'channel-root-event',
-                relayHints: ['wss://channel-relay.example.com'],
+                relayHints: ['wss://channel-lookup.example.com'],
+                channelRelays: ['wss://channel-relay.example.com'],
                 name: 'General',
                 about: 'General discussion',
                 picture: null,
@@ -965,7 +966,8 @@ describe('PostManager統合テスト', () => {
         );
         expect((mockDeps as any).channelContextState.value).toEqual({
             eventId: 'channel-root-event',
-            relayHints: ['wss://channel-relay.example.com'],
+            relayHints: ['wss://channel-lookup.example.com'],
+            channelRelays: ['wss://channel-relay.example.com'],
             name: 'General',
             about: 'General discussion',
             picture: null,
@@ -994,7 +996,8 @@ describe('PostManager統合テスト', () => {
         (mockDeps as any).channelContextState = {
             value: {
                 eventId: 'channel-root-event',
-                relayHints: ['wss://channel-relay.example.com'],
+                relayHints: ['wss://channel-lookup.example.com'],
+                channelRelays: ['wss://channel-relay.example.com'],
                 name: 'General',
                 about: null,
                 picture: null,

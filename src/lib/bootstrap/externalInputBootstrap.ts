@@ -163,12 +163,21 @@ export interface ApplyChannelContextQueryParams extends Pick<
 function sanitizeChannelContextQuery(
     channelContextQuery: ChannelContextQueryTarget,
 ): ChannelContextQueryTarget {
+    const sanitizedChannelRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+        channelContextQuery.channelRelays,
+    );
+
     return {
         ...channelContextQuery,
         relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
             channelContextQuery.relayHints,
             { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
         ),
+        ...(sanitizedChannelRelays.length > 0
+            ? {
+                channelRelays: sanitizedChannelRelays,
+            }
+            : {}),
     };
 }
 
@@ -182,6 +191,12 @@ function hasProvidedChannelMetadata(
     );
 }
 
+function hasProvidedChannelRelays(
+    channelContextQuery: ChannelContextQueryTarget,
+): boolean {
+    return (channelContextQuery.channelRelays?.length ?? 0) > 0;
+}
+
 export async function applyChannelContextQuery({
     channelContextQuery,
     rxNostr,
@@ -192,21 +207,31 @@ export async function applyChannelContextQuery({
         channelContextQuery,
     );
 
-    if (hasProvidedChannelMetadata(sanitizedChannelContextQuery) || !rxNostr) {
-        setChannelContext({
-            ...sanitizedChannelContextQuery,
-            name: sanitizedChannelContextQuery.name ?? null,
-            about: sanitizedChannelContextQuery.about ?? null,
-            picture: sanitizedChannelContextQuery.picture ?? null,
-        });
+    const baseContext = {
+        eventId: sanitizedChannelContextQuery.eventId,
+        relayHints: sanitizedChannelContextQuery.relayHints,
+        ...(sanitizedChannelContextQuery.channelRelays?.length
+            ? { channelRelays: sanitizedChannelContextQuery.channelRelays }
+            : {}),
+        name: sanitizedChannelContextQuery.name ?? null,
+        about: sanitizedChannelContextQuery.about ?? null,
+        picture: sanitizedChannelContextQuery.picture ?? null,
+    };
+
+    const metadataProvided = hasProvidedChannelMetadata(
+        sanitizedChannelContextQuery,
+    );
+    const channelRelaysProvided = hasProvidedChannelRelays(
+        sanitizedChannelContextQuery,
+    );
+
+    if (!rxNostr || channelRelaysProvided || metadataProvided) {
+        setChannelContext(baseContext);
         return;
     }
 
     setChannelContext({
-        ...sanitizedChannelContextQuery,
-        name: null,
-        about: null,
-        picture: null,
+        ...baseContext,
         isMetadataLoading: true,
     });
 
@@ -216,7 +241,12 @@ export async function applyChannelContextQuery({
         rxNostr,
         relayConfig,
     );
-    setChannelContext(resolvedChannelContext);
+    setChannelContext({
+        ...resolvedChannelContext,
+        name: sanitizedChannelContextQuery.name ?? resolvedChannelContext.name,
+        about: sanitizedChannelContextQuery.about ?? resolvedChannelContext.about,
+        picture: sanitizedChannelContextQuery.picture ?? resolvedChannelContext.picture,
+    });
 }
 
 async function bootstrapChannelContext({

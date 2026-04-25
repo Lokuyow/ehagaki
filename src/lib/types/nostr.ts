@@ -234,6 +234,7 @@ export interface ReplyQuoteComposerState {
 export interface ChannelContextState {
     eventId: string;
     relayHints: string[];
+    channelRelays?: string[];
     name: string | null;
     about: string | null;
     picture: string | null;
@@ -264,6 +265,7 @@ export interface ReplyQuoteQueryTarget {
 export interface ChannelContextQueryTarget {
     eventId: string;
     relayHints: string[];
+    channelRelays?: string[];
     name?: string | null;
     about?: string | null;
     picture?: string | null;

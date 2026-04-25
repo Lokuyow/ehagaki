@@ -70,12 +70,13 @@ describe('ChannelContextService', () => {
         expect(result).toEqual({
             eventId: 'a'.repeat(64),
             relayHints: [
+                'wss://hint-relay.example.com/',
+                'wss://root-source.example.com/',
+            ],
+            channelRelays: [
                 'wss://channel-write.example.com/',
                 'wss://channel-backup.example.com/',
                 'wss://root-relay.example.com/',
-                'wss://meta-source.example.com/',
-                'wss://root-source.example.com/',
-                'wss://hint-relay.example.com/',
             ],
             name: 'General',
             about: 'Updated about',

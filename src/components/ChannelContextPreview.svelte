@@ -28,12 +28,12 @@
             : "",
     );
 
-    let relaySummary = $derived(channel.relayHints.join("\n"));
+    let relaySummary = $derived((channel.channelRelays ?? []).join("\n"));
     let canToggleExpand = $derived(
         isMetadataLoading ||
             !!sanitizedAbout ||
             !!channel.picture ||
-            channel.relayHints.length > 0,
+            (channel.channelRelays?.length ?? 0) > 0,
     );
     let toggleAriaLabel = $derived(
         canToggleExpand

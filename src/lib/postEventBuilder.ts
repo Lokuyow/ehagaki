@@ -63,7 +63,7 @@ export class PostEventBuilder {
             eventTags.push([
                 'e',
                 channelContext.eventId,
-                channelContext.relayHints[0] || '',
+                channelContext.channelRelays?.[0] || channelContext.relayHints[0] || '',
                 'root',
             ]);
         }

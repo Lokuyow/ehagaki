@@ -42,6 +42,9 @@ function buildChannelContextPayload(
             relayHints: channelContext.relayHints,
             authorPubkey: null,
         }),
+        ...(channelContext.channelRelays?.length
+            ? { relays: [...channelContext.channelRelays] }
+            : {}),
         ...(channelContext.name ? { name: channelContext.name } : {}),
         ...(channelContext.about ? { about: channelContext.about } : {}),
         ...(channelContext.picture ? { picture: channelContext.picture } : {}),

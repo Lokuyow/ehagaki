@@ -18,7 +18,6 @@ function trimToNull(value: unknown): string | null {
 
 function decodeEventPointerValue(
   value: string,
-  additionalRelayHints: string[] = [],
 ): {
   eventId: string;
   relayHints: string[];
@@ -31,10 +30,7 @@ function decodeEventPointerValue(
       const data = decoded.data as nip19.EventPointer;
       return {
         eventId: data.id,
-        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls([
-          ...(data.relays ? [...data.relays] : []),
-          ...additionalRelayHints,
-        ], {
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(data.relays ? [...data.relays] : [], {
           limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
         }),
         authorPubkey: data.author ?? null,
@@ -44,9 +40,7 @@ function decodeEventPointerValue(
     if (decoded.type === 'note') {
       return {
         eventId: decoded.data as string,
-        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(additionalRelayHints, {
-          limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
-        }),
+        relayHints: [],
         authorPubkey: null,
       };
     }
@@ -112,20 +106,26 @@ export function getChannelFromEmbedPayload(
     return null;
   }
 
-  const decoded = decodeEventPointerValue(
-    reference,
-    Array.isArray(payload.channel.relayHints)
-      ? payload.channel.relayHints.filter((value): value is string => typeof value === 'string')
-      : [],
-  );
+  const decoded = decodeEventPointerValue(reference);
 
   if (!decoded) {
     return null;
   }
 
+  const channelRelays = Array.isArray(payload.channel.relays)
+    ? payload.channel.relays.filter(
+      (value): value is string => typeof value === 'string',
+    )
+    : [];
+
   return {
     eventId: decoded.eventId,
     relayHints: decoded.relayHints,
+    ...(channelRelays.length > 0
+      ? {
+        channelRelays,
+      }
+      : {}),
     name: trimToNull(payload.channel.name),
     about: trimToNull(payload.channel.about),
     picture: trimToNull(payload.channel.picture),
@@ -173,7 +173,7 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
     return null;
   }
 
-  const decoded = decodeEventPointerValue(reference, urlParams.getAll('channelRelay'));
+  const decoded = decodeEventPointerValue(reference);
   if (!decoded) {
     return null;
   }
@@ -181,6 +181,13 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
   return {
     eventId: decoded.eventId,
     relayHints: decoded.relayHints,
+    ...(urlParams.getAll('channelRelay').length > 0
+      ? {
+        channelRelays: RelayConfigUtils.sanitizeExternalRelayUrls(
+          urlParams.getAll('channelRelay'),
+        ),
+      }
+      : {}),
     name: trimToNull(urlParams.get('channelName')),
     about: trimToNull(urlParams.get('channelAbout')),
     picture: trimToNull(urlParams.get('channelPicture')),

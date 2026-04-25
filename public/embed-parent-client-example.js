@@ -46,6 +46,7 @@ const channelReferenceInput = document.getElementById("channel-reference");
 const channelNameInput = document.getElementById("channel-name");
 const channelAboutInput = document.getElementById("channel-about");
 const channelPictureInput = document.getElementById("channel-picture");
+const channelRelaysInput = document.getElementById("channel-relays");
 const syncChannelContextButton = document.getElementById("sync-channel-context");
 const clearChannelContextButton = document.getElementById("clear-channel-context");
 const composerContentInput = document.getElementById("composer-content");
@@ -122,6 +123,23 @@ function trimToNull(value) {
 
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseRelayListInput(value) {
+    if (typeof value !== "string") {
+        return [];
+    }
+
+    return value
+        .split(/[\n,]+/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+}
+
+function formatRelayListInput(relays) {
+    return Array.isArray(relays) && relays.length > 0
+        ? relays.join("\n")
+        : "";
 }
 
 function updateStatus(element, text, className) {
@@ -540,6 +558,9 @@ function toEmbedChannelPayload(channelContext) {
 
     return {
         reference: channelContext.reference,
+        ...(Array.isArray(channelContext.relays) && channelContext.relays.length > 0
+            ? { relays: [...channelContext.relays] }
+            : {}),
         ...(channelContext.name ? { name: channelContext.name } : {}),
         ...(channelContext.about ? { about: channelContext.about } : {}),
         ...(channelContext.picture ? { picture: channelContext.picture } : {}),
@@ -563,6 +584,7 @@ function createChannelContextFromPayload(channelPayload) {
     return {
         reference: reference.queryValue,
         eventId: reference.eventId,
+        relays: isStringArray(channelPayload.relays) ? [...channelPayload.relays] : [],
         name: trimToNull(channelPayload.name),
         about: trimToNull(channelPayload.about),
         picture: trimToNull(channelPayload.picture),
@@ -583,6 +605,7 @@ function readChannelContextFromInputs() {
     return {
         reference: reference.queryValue,
         eventId: reference.eventId,
+        relays: parseRelayListInput(channelRelaysInput.value),
         name: trimToNull(channelNameInput.value),
         about: trimToNull(channelAboutInput.value),
         picture: trimToNull(channelPictureInput.value),
@@ -594,6 +617,7 @@ function syncChannelInputsFromSelection() {
     channelNameInput.value = selectedChannelContext?.name ?? "";
     channelAboutInput.value = selectedChannelContext?.about ?? "";
     channelPictureInput.value = selectedChannelContext?.picture ?? "";
+    channelRelaysInput.value = formatRelayListInput(selectedChannelContext?.relays);
     clearChannelContextButton.disabled = !selectedChannelContext;
 }
 
@@ -1125,6 +1149,11 @@ function buildEmbedUrl() {
 
     if (selectedChannelContext) {
         url.searchParams.set("channel", selectedChannelContext.reference);
+        if (Array.isArray(selectedChannelContext.relays)) {
+            selectedChannelContext.relays.forEach((relay) => {
+                url.searchParams.append("channelRelay", relay);
+            });
+        }
         if (selectedChannelContext.name) {
             url.searchParams.set("channelName", selectedChannelContext.name);
         }
@@ -1421,8 +1450,8 @@ function validateComposerContextUpdatedPayload(payload) {
         if (payload.channel && !isNonEmptyString(payload.channel.reference)) {
             return "composer.contextUpdated payload.channel.reference must be a non-empty string";
         }
-        if (payload.channel?.relayHints !== undefined && !isStringArray(payload.channel.relayHints)) {
-            return "composer.contextUpdated payload.channel.relayHints must be a string array";
+        if (payload.channel?.relays !== undefined && !isStringArray(payload.channel.relays)) {
+            return "composer.contextUpdated payload.channel.relays must be a string array";
         }
         if (payload.channel?.name !== undefined && payload.channel.name !== null && typeof payload.channel.name !== "string") {
             return "composer.contextUpdated payload.channel.name must be a string or null";

@@ -44,7 +44,7 @@ export interface EmbedPostErrorPayload extends EmbedErrorPayload {
 
 export interface EmbedChannelContextPayload {
     reference: string;
-    relayHints?: string[];
+    relays?: string[];
     name?: string | null;
     about?: string | null;
     picture?: string | null;

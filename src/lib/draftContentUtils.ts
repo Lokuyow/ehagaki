@@ -102,6 +102,9 @@ function buildDraftChannelData(
     return {
         ...channelContextState,
         relayHints: [...channelContextState.relayHints],
+        ...(channelContextState.channelRelays
+            ? { channelRelays: [...channelContextState.channelRelays] }
+            : {}),
     };
 }
 

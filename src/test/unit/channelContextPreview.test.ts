@@ -25,6 +25,7 @@ import ChannelContextPreview from '../../components/ChannelContextPreview.svelte
 function createChannel(overrides: Partial<{
     eventId: string;
     relayHints: string[];
+    channelRelays: string[];
     name: string | null;
     about: string | null;
     picture: string | null;
@@ -32,7 +33,8 @@ function createChannel(overrides: Partial<{
 }> = {}) {
     return {
         eventId: '11'.repeat(32),
-        relayHints: ['wss://channel-relay.example.com'],
+        relayHints: ['wss://channel-lookup.example.com'],
+        channelRelays: ['wss://channel-relay.example.com'],
         name: 'General',
         about: 'General discussion',
         picture: 'https://example.com/channel.png',
@@ -83,7 +85,8 @@ describe('ChannelContextPreview', () => {
                     name: null,
                     about: null,
                     picture: null,
-                    relayHints: [],
+                    relayHints: ['wss://channel-lookup.example.com'],
+                    channelRelays: [],
                     isMetadataLoading: true,
                 }),
                 onClear: vi.fn(),

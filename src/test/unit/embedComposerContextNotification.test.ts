@@ -59,6 +59,7 @@ describe('embedComposerContextNotification', () => {
         }, {
             eventId: '44'.repeat(32),
             relayHints: ['wss://channel-relay.example.com'],
+            channelRelays: ['wss://channel-write.example.com'],
             name: 'General',
             about: 'General discussion',
             picture: 'https://example.com/channel.png',
@@ -70,6 +71,7 @@ describe('embedComposerContextNotification', () => {
             quotes: [expect.stringMatching(/^note1/)],
             channel: {
                 reference: expect.stringMatching(/^nevent1/),
+                relays: ['wss://channel-write.example.com'],
                 name: 'General',
                 about: 'General discussion',
                 picture: 'https://example.com/channel.png',

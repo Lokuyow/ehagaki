@@ -19,7 +19,8 @@ const mockState = vi.hoisted(() => {
         cleanupAllQueryParams: vi.fn(),
         resolveChannelContext: vi.fn().mockResolvedValue({
             eventId: 'channel-root-event',
-            relayHints: ['wss://channel-write.example.com/'],
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelays: ['wss://channel-write.example.com/'],
             name: 'General',
             about: 'Public chat',
             picture: 'https://example.com/channel.png',
@@ -117,7 +118,8 @@ describe('runExternalInputBootstrap', () => {
         mockState.getChannelFromUrlQuery.mockReturnValue(null);
         mockState.resolveChannelContext.mockResolvedValue({
             eventId: 'channel-root-event',
-            relayHints: ['wss://channel-write.example.com/'],
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelays: ['wss://channel-write.example.com/'],
             name: 'General',
             about: 'Public chat',
             picture: 'https://example.com/channel.png',
@@ -276,7 +278,7 @@ describe('runExternalInputBootstrap', () => {
         await bootstrapPromise;
     });
 
-    it('channel クエリがある場合は channel context を適用してから cleanup する', async () => {
+    it('channel metadata がある場合は parent preview をそのまま使い自身の relays を使う', async () => {
         mockState.hasChannelQueryParam.mockReturnValue(true);
         mockState.hasReplyQuoteQueryParam.mockReturnValue(false);
         mockState.getChannelFromUrlQuery.mockReturnValue({
@@ -291,8 +293,6 @@ describe('runExternalInputBootstrap', () => {
 
         await runExternalInputBootstrap(params as never);
 
-        expect(mockState.resolveChannelContext).not.toHaveBeenCalled();
-
         expect(params.setChannelContext).toHaveBeenCalledWith({
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-relay.example.com/'],
@@ -300,6 +300,41 @@ describe('runExternalInputBootstrap', () => {
             about: 'Public chat',
             picture: 'https://example.com/channel.png',
         });
+        expect(mockState.resolveChannelContext).not.toHaveBeenCalled();
+        expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
+    });
+
+    it('channel relays が parent から渡された場合はそのまま適用する', async () => {
+        mockState.hasChannelQueryParam.mockReturnValue(true);
+        mockState.hasReplyQuoteQueryParam.mockReturnValue(false);
+        mockState.getChannelFromUrlQuery.mockReturnValue({
+            eventId: 'channel-root-event',
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelays: [
+                'wss://channel-write.example.com/',
+                'wss://channel-backup.example.com/',
+            ],
+            name: 'General',
+            about: null,
+            picture: null,
+        } as any);
+
+        const params = createParams();
+
+        await runExternalInputBootstrap(params as never);
+
+        expect(params.setChannelContext).toHaveBeenCalledWith({
+            eventId: 'channel-root-event',
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelays: [
+                'wss://channel-write.example.com/',
+                'wss://channel-backup.example.com/',
+            ],
+            name: 'General',
+            about: null,
+            picture: null,
+        });
+        expect(mockState.resolveChannelContext).not.toHaveBeenCalled();
         expect(mockState.cleanupAllQueryParams).toHaveBeenCalledOnce();
     });
 
@@ -359,7 +394,8 @@ describe('runExternalInputBootstrap', () => {
 
         resolveChannelContext({
             eventId: 'channel-root-event',
-            relayHints: ['wss://channel-write.example.com/'],
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelays: ['wss://channel-write.example.com/'],
             name: 'General',
             about: 'Public chat',
             picture: 'https://example.com/channel.png',
@@ -369,7 +405,8 @@ describe('runExternalInputBootstrap', () => {
 
         expect(params.setChannelContext).toHaveBeenNthCalledWith(2, {
             eventId: 'channel-root-event',
-            relayHints: ['wss://channel-write.example.com/'],
+            relayHints: ['wss://channel-relay.example.com/'],
+            channelRelays: ['wss://channel-write.example.com/'],
             name: 'General',
             about: 'Public chat',
             picture: 'https://example.com/channel.png',

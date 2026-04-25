@@ -130,17 +130,27 @@ export class ChannelContextService {
             ? this.parseChannelMetadataContent(metadataResult.event.content)
             : { relays: [] };
 
+        const channelRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+            RelayConfigUtils.mergeRelayConfigs(
+                latestMetadata.relays,
+                baseMetadata.relays,
+            ),
+        );
+
+        const resolvedRelayHints = RelayConfigUtils.sanitizeExternalRelayUrls(
+            RelayConfigUtils.mergeRelayConfigs(
+                relayHints,
+                rootResult.relayUrl ? [rootResult.relayUrl] : [],
+            ),
+            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        );
+
         return {
             eventId,
-            relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
-                RelayConfigUtils.mergeRelayConfigs(
-                    latestMetadata.relays,
-                    baseMetadata.relays,
-                    metadataResult.relayUrls,
-                    rootResult.relayUrl ? [rootResult.relayUrl] : [],
-                    relayHints,
-                ),
-            ),
+            relayHints: resolvedRelayHints,
+            ...(channelRelays.length > 0
+                ? { channelRelays }
+                : {}),
             name: resolveMetadataValue(latestMetadata.name, baseMetadata.name),
             about: resolveMetadataValue(latestMetadata.about, baseMetadata.about),
             picture: resolveMetadataValue(latestMetadata.picture, baseMetadata.picture),

@@ -12,6 +12,9 @@ function cloneChannelContext(
     return {
         ...value,
         relayHints: [...value.relayHints],
+        ...(value.channelRelays
+            ? { channelRelays: [...value.channelRelays] }
+            : {}),
     };
 }
 

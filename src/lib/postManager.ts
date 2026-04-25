@@ -235,7 +235,7 @@ export class PostManager {
       const contentWarningEnabled = contentWarningStore.value;
       const contentWarningReason = contentWarningReasonStore.value;
       const channelContext = this.deps.channelContextState?.value ?? null;
-      const additionalWriteRelays = channelContext?.relayHints;
+      const additionalWriteRelays = channelContext?.channelRelays;
 
       // リプライ/引用タグを構築
       const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
