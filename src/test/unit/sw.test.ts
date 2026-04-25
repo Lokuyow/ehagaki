@@ -15,8 +15,8 @@ interface ServiceWorkerModule {
     ClientManager: any;
     MessageHandler: any;
     RequestHandler: any;
-    PRECACHE_VERSION: string;
-    PRECACHE_NAME: string;
+    SW_VERSION: string;
+    RUNTIME_LARGE_ASSET_CACHE_NAME: string;
     PROFILE_CACHE_NAME: string;
     INDEXEDDB_NAME: string;
     INDEXEDDB_VERSION: number;
@@ -59,15 +59,15 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     };
 
     // Service Worker実装をここに組み込み（実際のコードから抽出）
-    const PRECACHE_VERSION = '1.3.0';
-    const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
+    const SW_VERSION = '1.3.0';
+    const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
     const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
+    const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
     const INDEXEDDB_NAME = 'eHagakiSharedData';
     const INDEXEDDB_VERSION = 1;
 
     const ServiceWorkerState = {
         sharedMediaCache: null,
-        precacheManifest: [],
         getSharedMediaCache() { return this.sharedMediaCache; },
         setSharedMediaCache(data: any) { this.sharedMediaCache = data; },
         clearSharedMediaCache() { this.sharedMediaCache = null; }
@@ -242,53 +242,23 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     class CacheManager {
         constructor(public dependencies = ServiceWorkerDependencies) { }
 
-        async precacheResources(manifest: any[]) {
-            if (manifest.length === 0) return;
-
-            const mockCache = {
-                addAll: vi.fn().mockResolvedValue(undefined)
-            };
-            this.dependencies.caches.open.mockResolvedValue(mockCache);
-
-            await this.dependencies.caches.open(PRECACHE_NAME);
-            const urls = manifest.map(entry => entry.url);
-            await mockCache.addAll(urls);
-            this.dependencies.console.log('SW cached resources:', urls.length);
-        }
-
         async cleanupOldCaches() {
-            const cacheNames = ['old-cache-1', 'old-cache-2', PRECACHE_NAME, PROFILE_CACHE_NAME];
+            const cacheNames = [
+                'old-cache-1',
+                `${LEGACY_PRECACHE_PREFIX}1.2.0`,
+                PROFILE_CACHE_NAME,
+                RUNTIME_LARGE_ASSET_CACHE_NAME,
+                'workbox-precache-v2-example'
+            ];
             this.dependencies.caches.keys.mockResolvedValue(cacheNames);
             this.dependencies.caches.delete.mockResolvedValue(true);
 
             // 実際にメソッド呼び出しを実行
             await this.dependencies.caches.keys();
 
-            const toDelete = cacheNames.filter(name =>
-                name !== PRECACHE_NAME && name !== PROFILE_CACHE_NAME
-            );
+            const toDelete = cacheNames.filter(name => name.startsWith(LEGACY_PRECACHE_PREFIX));
 
             await Promise.all(toDelete.map(name => this.dependencies.caches.delete(name)));
-        }
-
-        async handleCacheFirst(request: Request) {
-            const mockCache = {
-                match: vi.fn().mockResolvedValue(null), // キャッシュにヒットしない場合
-                put: vi.fn().mockResolvedValue(undefined)
-            };
-            await this.dependencies.caches.open(PRECACHE_NAME);
-
-            const cached = await mockCache.match(request);
-            if (cached) return cached;
-
-            const networkResponse = new Response('network content');
-            this.dependencies.fetch.mockResolvedValue(networkResponse);
-
-            const response = await this.dependencies.fetch(request);
-            if (response.ok && request.method === 'GET') {
-                await mockCache.put(request, response.clone());
-            }
-            return response;
         }
 
         async clearProfileCache() {
@@ -476,13 +446,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         ) { }
 
         async handleInstall(event: any) {
-            ServiceWorkerDependencies.console.log('SW installing...', PRECACHE_VERSION);
-            await this.cacheManager.precacheResources(ServiceWorkerState.precacheManifest);
+            ServiceWorkerDependencies.console.log('SW installing...', SW_VERSION);
             ServiceWorkerDependencies.console.log('SW installed, waiting for user action');
         }
 
         async handleActivate(event: any) {
-            ServiceWorkerDependencies.console.log('SW activating...', PRECACHE_VERSION);
+            ServiceWorkerDependencies.console.log('SW activating...', SW_VERSION);
             await this.cacheManager.cleanupOldCaches();
             await ServiceWorkerDependencies.clients.claim();
         }
@@ -494,8 +463,6 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 return await this.requestHandler.handleUploadRequest(event.request);
             } else if (Utilities.isProfileImageRequest(event.request)) {
                 return await this.requestHandler.handleProfileImageRequest(event.request);
-            } else if (url.origin === ServiceWorkerDependencies.location.origin) {
-                return await this.cacheManager.handleCacheFirst(event.request);
             }
 
             return undefined;
@@ -508,7 +475,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 ServiceWorkerDependencies.console.log('SW received SKIP_WAITING, updating...');
                 mockSelf.skipWaiting();
             } else if (type === 'GET_VERSION') {
-                event.ports?.[0]?.postMessage({ version: PRECACHE_VERSION });
+                event.ports?.[0]?.postMessage({ version: SW_VERSION });
             } else if (action === 'getSharedMedia') {
                 this.messageHandler.respondSharedMedia(event);
             } else if (action === 'clearProfileCache') {
@@ -528,8 +495,8 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         ClientManager,
         MessageHandler,
         RequestHandler,
-        PRECACHE_VERSION,
-        PRECACHE_NAME,
+        SW_VERSION,
+        RUNTIME_LARGE_ASSET_CACHE_NAME,
         PROFILE_CACHE_NAME,
         INDEXEDDB_NAME,
         INDEXEDDB_VERSION
@@ -639,30 +606,16 @@ describe('Service Worker Tests', () => {
     });
 
     describe('CacheManager', () => {
-        it('should precache resources', async () => {
-            const manager = new swModule.CacheManager();
-            const manifest = [{ url: '/test.js' }, { url: '/test.css' }];
-
-            await manager.precacheResources(manifest);
-
-            expect(swModule.ServiceWorkerDependencies.caches.open).toHaveBeenCalledWith(swModule.PRECACHE_NAME);
-        });
-
-        it('should clean up old caches', async () => {
+        it('should clean up only legacy precache caches', async () => {
             const manager = new swModule.CacheManager();
             await manager.cleanupOldCaches();
 
             expect(swModule.ServiceWorkerDependencies.caches.keys).toHaveBeenCalled();
-        });
-
-        it('should handle cache first strategy', async () => {
-            const manager = new swModule.CacheManager();
-            const request = new Request('https://example.com/test.js');
-
-            const response = await manager.handleCacheFirst(request);
-
-            expect(swModule.ServiceWorkerDependencies.caches.open).toHaveBeenCalled();
-            expect(response).toBeDefined();
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledTimes(1);
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-cache-1.2.0');
+            expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
+            expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.RUNTIME_LARGE_ASSET_CACHE_NAME);
+            expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith('workbox-precache-v2-example');
         });
 
         it('should clear profile cache', async () => {
@@ -846,8 +799,9 @@ describe('Service Worker Tests', () => {
 
             expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
                 'SW installing...',
-                swModule.PRECACHE_VERSION
+                swModule.SW_VERSION
             );
+            expect(swModule.ServiceWorkerDependencies.caches.open).not.toHaveBeenCalled();
         });
 
         it('should handle activate event', async () => {
@@ -858,8 +812,9 @@ describe('Service Worker Tests', () => {
 
             expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
                 'SW activating...',
-                swModule.PRECACHE_VERSION
+                swModule.SW_VERSION
             );
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-cache-1.2.0');
             expect(swModule.ServiceWorkerDependencies.clients.claim).toHaveBeenCalled();
         });
 
@@ -881,6 +836,18 @@ describe('Service Worker Tests', () => {
             const response = await core.handleFetch(mockEvent);
 
             expect(response).toBeDefined();
+        });
+
+        it('should leave normal same-origin GET requests to Workbox routes', async () => {
+            const core = new swModule.ServiceWorkerCore();
+            const request = new Request('https://example.com/test.js');
+            const mockEvent = { request };
+
+            const response = await core.handleFetch(mockEvent);
+
+            expect(response).toBeUndefined();
+            expect(swModule.ServiceWorkerDependencies.fetch).not.toHaveBeenCalled();
+            expect(swModule.ServiceWorkerDependencies.caches.open).not.toHaveBeenCalled();
         });
 
         it('should handle message event for SKIP_WAITING', async () => {
@@ -908,7 +875,7 @@ describe('Service Worker Tests', () => {
             await core.handleMessage(mockEvent);
 
             expect(mockPort.postMessage).toHaveBeenCalledWith({
-                version: swModule.PRECACHE_VERSION
+                version: swModule.SW_VERSION
             });
         });
     });

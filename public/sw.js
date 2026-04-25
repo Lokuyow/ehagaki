@@ -2,11 +2,15 @@ import {
     getProfilePictureCacheKeyUrl,
     normalizeProfilePictureUrl,
 } from "../src/lib/profilePictureUrlUtils";
+import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+import { registerRoute } from "workbox-routing";
+import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const PRECACHE_VERSION = '1.16.1';
-const PRECACHE_NAME = `ehagaki-cache-${PRECACHE_VERSION}`;
+const SW_VERSION = '1.16.1';
+const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
+const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
 
@@ -21,25 +25,22 @@ const BASE_PATH = (() => {
     return pathParts.length > 0 ? '/' + pathParts.join('/') + '/' : '/';
 })();
 
-// マニフェスト注入ポイントの確実な初期化
-let PRECACHE_MANIFEST = [];
-try {
-    // Workboxによるマニフェスト注入
-    PRECACHE_MANIFEST = self.__WB_MANIFEST || [];
-    if (PRECACHE_MANIFEST.length === 0) {
-        console.warn('SW: Precache manifest is empty');
-    } else {
-        console.log(`SW: Precache manifest loaded with ${PRECACHE_MANIFEST.length} entries`);
-    }
-} catch (error) {
-    console.error('SW: Failed to load precache manifest:', error);
-    PRECACHE_MANIFEST = [];
-}
+precacheAndRoute(self.__WB_MANIFEST);
+cleanupOutdatedCaches();
+
+registerRoute(
+    ({ request, url }) =>
+        request.method === 'GET' &&
+        url.origin === self.location.origin &&
+        (url.pathname.includes('/ffmpeg-core/') || url.pathname.endsWith('.wasm')),
+    new CacheFirst({
+        cacheName: RUNTIME_LARGE_ASSET_CACHE_NAME
+    })
+);
 
 // グローバル状態管理
 const ServiceWorkerState = {
     sharedMediaCache: null,
-    precacheManifest: PRECACHE_MANIFEST,
 
     getSharedMediaCache() {
         return this.sharedMediaCache;
@@ -282,64 +283,13 @@ class CacheManager {
         this.console = dependencies.console;
     }
 
-    // プリキャッシュの実行を改善
-    async precacheResources(manifest) {
-        if (!manifest || manifest.length === 0) {
-            this.console.warn('SW: No resources to precache');
-            return;
-        }
-
-        try {
-            const cache = await this.caches.open(PRECACHE_NAME);
-            const urls = manifest.map(entry => {
-                // エントリが文字列の場合とオブジェクトの場合に対応
-                if (typeof entry === 'string') {
-                    return entry;
-                } else if (entry && typeof entry === 'object' && entry.url) {
-                    return entry.url;
-                } else {
-                    this.console.warn('SW: Invalid manifest entry:', entry);
-                    return null;
-                }
-            }).filter(Boolean);
-
-            if (urls.length > 0) {
-                // バッチサイズを小さくしてVercel環境での成功率を向上
-                const batchSize = 10;
-                for (let i = 0; i < urls.length; i += batchSize) {
-                    const batch = urls.slice(i, i + batchSize);
-                    try {
-                        await cache.addAll(batch);
-                        this.console.log(`SW: Cached batch ${Math.floor(i / batchSize) + 1}: ${batch.length} resources`);
-                    } catch (batchError) {
-                        this.console.error(`SW: Failed to cache batch ${Math.floor(i / batchSize) + 1}:`, batchError);
-                        // 個別にリトライ
-                        for (const url of batch) {
-                            try {
-                                await cache.add(url);
-                            } catch (individualError) {
-                                this.console.error(`SW: Failed to cache individual resource: ${url}`, individualError);
-                            }
-                        }
-                    }
-                }
-                this.console.log(`SW: Successfully cached ${urls.length} resources`);
-            } else {
-                this.console.warn('SW: No valid URLs to cache');
-            }
-        } catch (error) {
-            this.console.error('SW: Precache error:', error);
-        }
-    }
-
-    // 古いキャッシュの削除
+    // Workbox移行前のプリキャッシュだけを削除
     async cleanupOldCaches() {
         try {
             const cacheNames = await this.caches.keys();
             await Promise.all(
                 cacheNames.map(name => {
-                    // プリキャッシュとプロフィール画像キャッシュは保護する
-                    if (name !== PRECACHE_NAME && name !== PROFILE_CACHE_NAME) {
+                    if (name.startsWith(LEGACY_PRECACHE_PREFIX)) {
                         return this.caches.delete(name);
                     }
                     return undefined;
@@ -347,24 +297,6 @@ class CacheManager {
             );
         } catch (error) {
             this.console.error('キャッシュクリーンアップエラー:', error);
-        }
-    }
-
-    // Cache First戦略
-    async handleCacheFirst(request) {
-        try {
-            const cache = await this.caches.open(PRECACHE_NAME);
-            const cached = await cache.match(request);
-            if (cached) return cached;
-
-            const network = await this.fetch(request);
-            if (network.ok && request.method === 'GET') {
-                await cache.put(request, network.clone());
-            }
-            return network;
-        } catch (error) {
-            this.console.error('キャッシュ戦略エラー:', error);
-            return new Response('Not Found', { status: 404 });
         }
     }
 
@@ -856,14 +788,13 @@ class ServiceWorkerCore {
 
     // インストールイベント処理
     async handleInstall(event) {
-        ServiceWorkerDependencies.console.log('SW installing...', PRECACHE_VERSION);
-        await this.cacheManager.precacheResources(ServiceWorkerState.precacheManifest);
+        ServiceWorkerDependencies.console.log('SW installing...', SW_VERSION);
         ServiceWorkerDependencies.console.log('SW installed, waiting for user action');
     }
 
     // アクティベートイベント処理
     async handleActivate(event) {
-        ServiceWorkerDependencies.console.log('SW activating...', PRECACHE_VERSION);
+        ServiceWorkerDependencies.console.log('SW activating...', SW_VERSION);
         await this.cacheManager.cleanupOldCaches();
         await ServiceWorkerDependencies.clients.claim();
     }
@@ -881,10 +812,8 @@ class ServiceWorkerCore {
         else if (Utilities.isProfileImageRequest(event.request)) {
             return await this.requestHandler.handleProfileImageRequest(event.request);
         }
-        // 同一オリジンの通常リクエスト
-        else {
-            return await this.cacheManager.handleCacheFirst(event.request);
-        }
+
+        return undefined;
     }
 
     // メッセージイベント処理
@@ -895,11 +824,11 @@ class ServiceWorkerCore {
                 self.skipWaiting();
             },
             'GET_VERSION': () => {
-                event.ports?.[0]?.postMessage({ version: PRECACHE_VERSION });
+                event.ports?.[0]?.postMessage({ version: SW_VERSION });
             },
             'PING_TEST': () => {
                 // Service Worker通信テスト用
-                const response = { type: 'PONG', timestamp: Date.now(), version: PRECACHE_VERSION };
+                const response = { type: 'PONG', timestamp: Date.now(), version: SW_VERSION };
                 try {
                     if (event.ports?.[0]) {
                         event.ports[0].postMessage(response);
@@ -959,16 +888,13 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
 
-    // 同一オリジンのリクエストを厳密に判定して処理
-    if (new URL(event.request.url).origin === self.location.origin) {
-        const response = serviceWorkerCore.handleFetch(event);
-        if (response !== undefined) {
-            event.respondWith(response);
+    // 通常の同一オリジンGETはWorkbox precache/runtime routeに任せる
+    if (url.origin === self.location.origin && Utilities.isUploadRequest(event.request, url)) {
+        event.respondWith(serviceWorkerCore.requestHandler.handleUploadRequest(event.request));
+    } else if (Utilities.isProfileImageRequest(event.request)) {
+        if (url.origin !== self.location.origin) {
+            ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
         }
-    }
-    // 外部ドメインのプロフィール画像リクエストも処理
-    else if (Utilities.isProfileImageRequest(event.request)) {
-        ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
         event.respondWith(serviceWorkerCore.requestHandler.handleProfileImageRequest(event.request));
     }
 });
@@ -990,8 +916,8 @@ if (typeof module !== 'undefined' && module.exports) {
         ClientManager,
         MessageHandler,
         RequestHandler,
-        PRECACHE_VERSION,
-        PRECACHE_NAME,
+        SW_VERSION,
+        RUNTIME_LARGE_ASSET_CACHE_NAME,
         PROFILE_CACHE_NAME,
         INDEXEDDB_NAME,
         INDEXEDDB_VERSION

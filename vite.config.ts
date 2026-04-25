@@ -145,6 +145,7 @@ export default defineConfig({
         // Vercel環境での追加設定
         globIgnores: [
           '**/node_modules/**/*',
+          'ffmpeg-core/**/*',
           'sw.js',
           'workbox-*.js'
         ]
