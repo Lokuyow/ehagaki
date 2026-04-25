@@ -8,7 +8,6 @@
         contentWarningReasonStore,
         hashtagPinStore,
     } from "../stores/tagsStore.svelte";
-    import { keyboardHeightStore } from "../stores/uiStore.svelte";
     import { authState } from "../stores/authStore.svelte";
     import { editorState, submitPost } from "../stores/editorStore.svelte";
     import {
@@ -16,6 +15,7 @@
         triggerProgressiveVibration,
         stopVibration,
     } from "../lib/utils/appDomUtils";
+    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         onUploadImage?: () => void;
@@ -65,16 +65,6 @@
     // ハッシュタグピン留めトグル
     function toggleHashtagPin() {
         hashtagPinStore.toggle();
-    }
-
-    // ボタン押下時にキーボードの状態を維持する
-    // キーボードが開いている場合: preventDefaultでフォーカスを維持しキーボードを閉じさせない
-    // キーボードが閉じている場合: blurでフォーカスを外しキーボードが開かないようにする
-    function preventFocusLoss(event: Event) {
-        event.preventDefault();
-        if (keyboardHeightStore.value === 0) {
-            (document.activeElement as HTMLElement)?.blur();
-        }
     }
 
     // 長押し投稿の設定
@@ -209,8 +199,8 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
-        onmousedown={preventFocusLoss}
-        ontouchstart={preventFocusLoss}
+        onmousedown={preventKeyboardFocusChange}
+        ontouchstart={preventKeyboardFocusChange}
     >
         <div class="button-group-left">
             <Tooltip.Root delayDuration={500}>

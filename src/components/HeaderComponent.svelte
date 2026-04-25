@@ -7,6 +7,7 @@
     import PopupModal from "./PopupModal.svelte";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
+    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         onResetPostContent: () => void;
@@ -98,99 +99,107 @@
             </div>
         {/if}
     </div>
-    <div class="post-actions">
-        <div class="buttons-container">
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="header"
-                            shape="square"
-                            className="clear-button"
-                            disabled={!canPost ||
-                                postStatus.sending ||
-                                isUploading}
-                            onClick={(e) => {
-                                onResetPostContent();
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_("postComponent.clear_editor")}
-                            {...restProps}
-                        >
-                            <div class="trash-icon svg-icon"></div>
-                        </Button>
-                    {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("postComponent.clear_editor")}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="header"
-                            shape="square"
-                            className="draft-list-button"
-                            onClick={(e) => {
-                                onShowDraftList();
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_("draft.list_title") || "下書き一覧"}
-                            {...restProps}
-                        >
-                            <div class="list-icon svg-icon"></div>
-                        </Button>
-                    {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("draft.list_title") || "下書き一覧"}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
-            <Tooltip.Root delayDuration={500}>
-                <Tooltip.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: tooltipOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="header"
-                            shape="square"
-                            className="draft-save-button"
-                            disabled={!canPost ||
-                                postStatus.sending ||
-                                isUploading}
-                            onClick={(e) => {
-                                handleSaveDraft(e);
-                                if (typeof tooltipOnclick === "function") {
-                                    tooltipOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_("draft.save") || "下書き保存"}
-                            {...restProps}
-                        >
-                            <div class="floppy-disk-icon svg-icon"></div>
-                        </Button>
-                    {/snippet}
-                </Tooltip.Trigger>
-                <Tooltip.Portal>
-                    <Tooltip.Content sideOffset={8} class="tooltip-content">
-                        {$_("draft.save") || "下書き保存"}
-                    </Tooltip.Content>
-                </Tooltip.Portal>
-            </Tooltip.Root>
-        </div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="header-actions"
+        onmousedown={preventKeyboardFocusChange}
+        ontouchstart={preventKeyboardFocusChange}
+    >
+        <Tooltip.Provider>
+            <div class="buttons-container">
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } =
+                                props}
+                            <Button
+                                variant="header"
+                                shape="square"
+                                className="clear-button"
+                                disabled={!canPost ||
+                                    postStatus.sending ||
+                                    isUploading}
+                                onClick={(e) => {
+                                    onResetPostContent();
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+                                }}
+                                ariaLabel={$_("postComponent.clear_editor")}
+                                {...restProps}
+                            >
+                                <div class="trash-icon svg-icon"></div>
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("postComponent.clear_editor")}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } =
+                                props}
+                            <Button
+                                variant="header"
+                                shape="square"
+                                className="draft-list-button"
+                                onClick={(e) => {
+                                    onShowDraftList();
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+                                }}
+                                ariaLabel={$_("draft.list_title") ||
+                                    "下書き一覧"}
+                                {...restProps}
+                            >
+                                <div class="list-icon svg-icon"></div>
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("draft.list_title") || "下書き一覧"}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } =
+                                props}
+                            <Button
+                                variant="header"
+                                shape="square"
+                                className="draft-save-button"
+                                disabled={!canPost ||
+                                    postStatus.sending ||
+                                    isUploading}
+                                onClick={(e) => {
+                                    handleSaveDraft(e);
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+                                }}
+                                ariaLabel={$_("draft.save") || "下書き保存"}
+                                {...restProps}
+                            >
+                                <div class="floppy-disk-icon svg-icon"></div>
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content sideOffset={8} class="tooltip-content">
+                            {$_("draft.save") || "下書き保存"}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            </div>
+        </Tooltip.Provider>
     </div>
 </div>
 
@@ -294,7 +303,7 @@
         overflow-wrap: anywhere;
     }
 
-    .post-actions {
+    .header-actions {
         display: flex;
         justify-content: flex-end;
         align-items: center;

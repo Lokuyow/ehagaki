@@ -4,6 +4,7 @@
     import Button from "./Button.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import type { ChannelContextState } from "../lib/types";
+    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         channel: ChannelContextState;
@@ -58,7 +59,12 @@
 </script>
 
 <div class="channel-context-preview">
-    <div class="preview-header">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="preview-header"
+        onmousedown={preventKeyboardFocusChange}
+        ontouchstart={preventKeyboardFocusChange}
+    >
         <div class="preview-meta">
             <Button
                 className="preview-label"

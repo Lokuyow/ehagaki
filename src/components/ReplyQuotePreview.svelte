@@ -5,6 +5,7 @@
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
     import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
+    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         reference: ReplyQuoteState;
@@ -126,7 +127,12 @@
 </script>
 
 <div class="reply-quote-preview">
-    <div class="preview-header">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div
+        class="preview-header"
+        onmousedown={preventKeyboardFocusChange}
+        ontouchstart={preventKeyboardFocusChange}
+    >
         <div class="preview-meta">
             <Button
                 className="preview-label"

@@ -117,4 +117,24 @@ describe('ChannelContextPreview', () => {
 
         expect(container.querySelector('.channel-loading-block')).toBeTruthy();
     });
+
+    it('button 押下前に focus 移動を抑止し、キーボード表示中の activeElement を維持する', () => {
+        const editor = document.createElement('textarea');
+        document.body.append(editor);
+        editor.focus();
+
+        render(ChannelContextPreview, {
+            props: {
+                channel: createChannel(),
+                onClear: vi.fn(),
+            },
+        });
+
+        const button = screen.getByRole('button', { name: 'チャンネル情報を展開' });
+        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+
+        expect(button.dispatchEvent(event)).toBe(false);
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(editor);
+    });
 });

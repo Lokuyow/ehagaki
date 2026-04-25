@@ -1,0 +1,48 @@
+import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/svelte';
+import { readable } from 'svelte/store';
+
+const mockTranslate = vi.hoisted(() => (key: string) => {
+    const translations: Record<string, string> = {
+        'postComponent.clear_editor': 'エディターをクリア',
+        'draft.list_title': '下書き一覧',
+        'draft.save': '下書き保存',
+        'draft.saved': '下書きを保存しました',
+        'balloonMessage.success.compact_post_success': '投稿完了',
+    };
+
+    return translations[key] || key;
+});
+
+vi.mock('svelte-i18n', () => ({
+    _: readable(mockTranslate),
+}));
+
+import HeaderComponent from '../../components/HeaderComponent.svelte';
+
+describe('HeaderComponent', () => {
+    it('header actions button 押下前に focus 移動を抑止し、activeElement を維持する', () => {
+        const editor = document.createElement('textarea');
+        document.body.append(editor);
+        editor.focus();
+
+        const { container } = render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onSaveDraft: vi.fn(() => true),
+                onShowDraftList: vi.fn(),
+                showMascot: false,
+                showBalloonMessage: false,
+            },
+        });
+
+        expect(container.querySelector('.header-actions')).toBeTruthy();
+
+        const button = screen.getByRole('button', { name: '下書き一覧' });
+        const event = new MouseEvent('mousedown', { bubbles: true, cancelable: true });
+
+        expect(button.dispatchEvent(event)).toBe(false);
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(editor);
+    });
+});
