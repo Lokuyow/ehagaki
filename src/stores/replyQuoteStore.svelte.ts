@@ -7,6 +7,7 @@ import type {
     ReplyQuoteQueryResult,
     DraftReplyQuoteEntryData,
 } from '../lib/types';
+import { settingsStore } from './settingsStore.svelte';
 
 // --- リプライ・引用状態管理 ---
 let replyQuote = $state<ReplyQuoteComposerState>({
@@ -29,6 +30,10 @@ function createReplyQuoteState(params: {
         eventId: params.eventId,
         relayHints: params.relayHints,
         authorPubkey: params.authorPubkey,
+        quoteNotificationEnabled:
+            params.mode === 'quote'
+                ? settingsStore.quoteNotificationEnabled
+                : false,
         authorDisplayName: null,
         referencedEvent: null,
         rootEventId: null,
@@ -42,6 +47,7 @@ function createReplyQuoteState(params: {
 function createDraftEntryState(data: DraftReplyQuoteEntryData): ReplyQuoteState {
     return {
         ...data,
+        quoteNotificationEnabled: data.quoteNotificationEnabled === true,
         loading: false,
         error: null,
     };
@@ -168,6 +174,20 @@ export function clearReplyReference(): void {
 export function removeQuoteReference(eventId: string): void {
     replyQuote.quotes = replyQuote.quotes.filter((quote) => quote.eventId !== eventId);
     notifyReplyQuoteChanged();
+}
+
+export function setQuoteNotificationEnabled(eventId: string, enabled: boolean): void {
+    let changed = false;
+    replyQuote.quotes.forEach((quote) => {
+        if (quote.eventId === eventId && quote.quoteNotificationEnabled !== enabled) {
+            quote.quoteNotificationEnabled = enabled;
+            changed = true;
+        }
+    });
+
+    if (changed) {
+        notifyReplyQuoteChanged();
+    }
 }
 
 export function clearReplyQuote(): void {

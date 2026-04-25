@@ -16,6 +16,7 @@ type DraftReplyQuoteStateLike = Pick<
     | 'eventId'
     | 'relayHints'
     | 'authorPubkey'
+    | 'quoteNotificationEnabled'
     | 'authorDisplayName'
     | 'referencedEvent'
     | 'rootEventId'
@@ -69,6 +70,7 @@ function buildDraftReplyQuoteEntry(
         eventId: replyQuoteState.eventId,
         relayHints: replyQuoteState.relayHints,
         authorPubkey: replyQuoteState.authorPubkey,
+        quoteNotificationEnabled: replyQuoteState.quoteNotificationEnabled,
         authorDisplayName: replyQuoteState.authorDisplayName,
         referencedEvent: replyQuoteState.referencedEvent,
         rootEventId: replyQuoteState.rootEventId,

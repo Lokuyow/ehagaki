@@ -6,6 +6,7 @@ import {
     removeQuoteReference,
     replyQuoteState,
     restoreReplyQuote,
+    setQuoteNotificationEnabled,
     setReplyQuote,
 } from '../../stores/replyQuoteStore.svelte';
 
@@ -72,6 +73,7 @@ describe('replyQuoteStore', () => {
                 eventId: '11'.repeat(32),
                 relayHints: [],
                 authorPubkey: null,
+                quoteNotificationEnabled: false,
                 authorDisplayName: null,
                 referencedEvent: null,
                 rootEventId: null,
@@ -81,6 +83,56 @@ describe('replyQuoteStore', () => {
             quotes: [],
         });
 
+        expect(listener).toHaveBeenCalledWith(replyQuoteState.value);
+        cleanup();
+    });
+
+    it('古い下書きのquoteNotificationEnabled未指定はfalseで復元する', () => {
+        restoreReplyQuote({
+            reply: null,
+            quotes: [
+                {
+                    mode: 'quote',
+                    eventId: '33'.repeat(32),
+                    relayHints: [],
+                    authorPubkey: null,
+                    authorDisplayName: null,
+                    referencedEvent: null,
+                    rootEventId: null,
+                    rootRelayHint: null,
+                    rootPubkey: null,
+                },
+            ],
+        });
+
+        expect(replyQuoteState.value.quotes[0].quoteNotificationEnabled).toBe(false);
+    });
+
+    it('setQuoteNotificationEnabled で quote の通知状態だけを更新する', () => {
+        const listener = vi.fn();
+        const cleanup = onReplyQuoteChanged(listener);
+        const quoteEventId = '33'.repeat(32);
+
+        setReplyQuote({
+            reply: {
+                eventId: '11'.repeat(32),
+                relayHints: [],
+                authorPubkey: '22'.repeat(32),
+            },
+            quotes: [
+                {
+                    eventId: quoteEventId,
+                    relayHints: [],
+                    authorPubkey: '44'.repeat(32),
+                },
+            ],
+        });
+        listener.mockClear();
+
+        setQuoteNotificationEnabled(quoteEventId, true);
+
+        expect(replyQuoteState.value.reply?.quoteNotificationEnabled).toBe(false);
+        expect(replyQuoteState.value.quotes[0].quoteNotificationEnabled).toBe(true);
         expect(listener).toHaveBeenCalledWith(replyQuoteState.value);
         cleanup();
     });

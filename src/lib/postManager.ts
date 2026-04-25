@@ -282,7 +282,7 @@ export class PostManager {
         );
 
         rqState.quotes.forEach((quote) => {
-          rqService.buildQuoteTags(quote, quoteNotificationEnabled).forEach((tag) => {
+          rqService.buildQuoteTags(quote, quote.quoteNotificationEnabled).forEach((tag) => {
             if (tag[0] === 'q') {
               if (existingQuoteEventIds.has(tag[1])) {
                 return;

@@ -307,6 +307,10 @@
     "loading": "読み込み中...",
     "fetch_error": "イベントの取得に失敗しました",
     "cancel": "リプライ/引用を取り消す",
+    "quote_notification_on_tooltip": "引用先に通知します",
+    "quote_notification_off_tooltip": "引用先に通知しません",
+    "enable_quote_notification": "引用先への通知をオン",
+    "disable_quote_notification": "引用先への通知をオフ",
     "collapse": "折りたたむ",
     "expand": "展開する"
   }

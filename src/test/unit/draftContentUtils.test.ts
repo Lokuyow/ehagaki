@@ -14,6 +14,7 @@ function createReplyState() {
         eventId: 'event-1',
         relayHints: ['wss://relay'],
         authorPubkey: 'author',
+        quoteNotificationEnabled: false,
         authorDisplayName: 'author-name',
         referencedEvent: null,
         rootEventId: 'root-event',
@@ -29,6 +30,7 @@ function createQuoteState() {
         ...createReplyState(),
         mode: 'quote' as const,
         eventId: 'event-2',
+        quoteNotificationEnabled: true,
     };
 }
 
@@ -64,6 +66,7 @@ describe('buildDraftReplyQuoteData', () => {
                 eventId: 'event-1',
                 relayHints: ['wss://relay'],
                 authorPubkey: 'author',
+                quoteNotificationEnabled: false,
                 authorDisplayName: 'author-name',
                 referencedEvent: null,
                 rootEventId: 'root-event',
@@ -75,6 +78,7 @@ describe('buildDraftReplyQuoteData', () => {
                 eventId: 'event-2',
                 relayHints: ['wss://relay'],
                 authorPubkey: 'author',
+                quoteNotificationEnabled: true,
                 authorDisplayName: 'author-name',
                 referencedEvent: null,
                 rootEventId: 'root-event',
@@ -120,6 +124,7 @@ describe('createDraftSavePayload', () => {
                     eventId: 'event-1',
                     relayHints: ['wss://relay'],
                     authorPubkey: 'author',
+                    quoteNotificationEnabled: false,
                     authorDisplayName: 'author-name',
                     referencedEvent: null,
                     rootEventId: 'root-event',
@@ -131,6 +136,7 @@ describe('createDraftSavePayload', () => {
                     eventId: 'event-2',
                     relayHints: ['wss://relay'],
                     authorPubkey: 'author',
+                    quoteNotificationEnabled: true,
                     authorDisplayName: 'author-name',
                     referencedEvent: null,
                     rootEventId: 'root-event',

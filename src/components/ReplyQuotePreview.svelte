@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { Tooltip } from "bits-ui";
     import DOMPurify from "dompurify";
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
@@ -9,11 +10,19 @@
         reference: ReplyQuoteState;
         mode: ReplyQuoteMode;
         onClear: () => void;
+        quoteNotificationEnabled?: boolean;
+        onToggleQuoteNotification?: (enabled: boolean) => void;
     }
 
     const LOADING_INDICATOR_DELAY_MS = 300;
 
-    let { reference, mode, onClear }: Props = $props();
+    let {
+        reference,
+        mode,
+        onClear,
+        quoteNotificationEnabled = undefined,
+        onToggleQuoteNotification = undefined,
+    }: Props = $props();
 
     let expanded = $state(false);
     let showDelayedLoading = $state(false);
@@ -49,6 +58,22 @@
 
     let showHeaderStatus = $derived(showLoadingStatus || showErrorStatus);
 
+    let effectiveQuoteNotificationEnabled = $derived(
+        quoteNotificationEnabled ?? reference.quoteNotificationEnabled,
+    );
+
+    let quoteNotificationAriaLabel = $derived(
+        effectiveQuoteNotificationEnabled
+            ? $_("replyQuote.disable_quote_notification")
+            : $_("replyQuote.enable_quote_notification"),
+    );
+
+    let quoteNotificationTooltip = $derived(
+        effectiveQuoteNotificationEnabled
+            ? $_("replyQuote.quote_notification_on_tooltip")
+            : $_("replyQuote.quote_notification_off_tooltip"),
+    );
+
     let statusLabel = $derived(
         showErrorStatus
             ? $_("replyQuote.fetch_error")
@@ -70,6 +95,10 @@
 
     function toggleExpand() {
         expanded = !expanded;
+    }
+
+    function toggleQuoteNotification() {
+        onToggleQuoteNotification?.(!effectiveQuoteNotificationEnabled);
     }
 
     $effect(() => {
@@ -114,6 +143,50 @@
                 ></div>
                 <span class="mode-text">{modeLabel}</span>
             </Button>
+            {#if !isReply}
+                <Tooltip.Provider>
+                    <Tooltip.Root delayDuration={500}>
+                        <Tooltip.Trigger>
+                            {#snippet child({ props })}
+                                {@const {
+                                    onclick: tooltipOnclick,
+                                    ...restProps
+                                } = props}
+                                <Button
+                                    className="quote-notification-button"
+                                    variant="default"
+                                    shape="square"
+                                    onClick={(e) => {
+                                        toggleQuoteNotification();
+                                        if (
+                                            typeof tooltipOnclick === "function"
+                                        ) {
+                                            tooltipOnclick(e);
+                                        }
+                                    }}
+                                    aria-pressed={effectiveQuoteNotificationEnabled}
+                                    ariaLabel={quoteNotificationAriaLabel}
+                                    {...restProps}
+                                >
+                                    <div
+                                        class="quote-notification-icon svg-icon"
+                                        class:bell-solid-icon={effectiveQuoteNotificationEnabled}
+                                        class:bell-regular-icon={!effectiveQuoteNotificationEnabled}
+                                    ></div>
+                                </Button>
+                            {/snippet}
+                        </Tooltip.Trigger>
+                        <Tooltip.Portal>
+                            <Tooltip.Content
+                                sideOffset={8}
+                                class="tooltip-content reply-quote-tooltip-content"
+                            >
+                                {quoteNotificationTooltip}
+                            </Tooltip.Content>
+                        </Tooltip.Portal>
+                    </Tooltip.Root>
+                </Tooltip.Provider>
+            {/if}
             {#if authorDisplay}
                 <span class="author-name">{authorDisplay}</span>
             {/if}
@@ -179,6 +252,12 @@
                 padding: 0 10px 0 10px;
                 border-radius: 0 6px 6px 0;
             }
+
+            :global(.quote-notification-button) {
+                height: 100%;
+                width: 46px;
+                flex-shrink: 0;
+            }
         }
 
         :global(.cancel-button) {
@@ -226,6 +305,19 @@
         mask-image: url("/icons/quote-right-solid-full.svg");
     }
 
+    .quote-notification-icon {
+        width: 24px;
+        height: 24px;
+    }
+
+    .bell-regular-icon {
+        mask-image: url("/icons/bell-regular-full.svg");
+    }
+
+    .bell-solid-icon {
+        mask-image: url("/icons/bell-solid-full.svg");
+    }
+
     .mode-text {
         font-size: 1rem;
         font-weight: 600;
@@ -246,6 +338,19 @@
         width: 30px;
         height: 30px;
         mask-image: url("/icons/xmark-solid-full.svg");
+    }
+
+    :global(.reply-quote-tooltip-content) {
+        z-index: 10000;
+        max-width: 240px;
+        border-radius: 6px;
+        padding: 6px 8px;
+        background: var(--bg-modal);
+        color: var(--text);
+        border: 1px solid var(--border);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+        font-size: 0.8rem;
+        line-height: 1.35;
     }
 
     .preview-content {

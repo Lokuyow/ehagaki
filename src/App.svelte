@@ -91,6 +91,7 @@
     clearReplyQuote,
     clearReplyReference,
     removeQuoteReference,
+    setQuoteNotificationEnabled,
   } from "./stores/replyQuoteStore.svelte";
   import {
     channelContextState,
@@ -1207,6 +1208,9 @@
                 <ReplyQuotePreview
                   reference={quote}
                   mode="quote"
+                  quoteNotificationEnabled={quote.quoteNotificationEnabled}
+                  onToggleQuoteNotification={(enabled) =>
+                    setQuoteNotificationEnabled(quote.eventId, enabled)}
                   onClear={() => removeQuoteReference(quote.eventId)}
                 />
               </div>

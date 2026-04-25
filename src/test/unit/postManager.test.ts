@@ -1010,6 +1010,7 @@ describe('PostManager統合テスト', () => {
                     eventId: 'channel-reply-target',
                     relayHints: ['wss://reply-relay.example.com'],
                     authorPubkey: 'f'.repeat(64),
+                    quoteNotificationEnabled: false,
                     authorDisplayName: null,
                     referencedEvent: null,
                     rootEventId: 'some-thread-root',
@@ -1582,6 +1583,7 @@ describe('PostManager統合テスト', () => {
                             eventId: storeQuoteEventId,
                             relayHints: ["wss://relay1.example.com"],
                             authorPubkey: authorPubkey1,
+                            quoteNotificationEnabled: false,
                             authorDisplayName: null,
                             referencedEvent: null,
                             rootEventId: null,
@@ -1627,6 +1629,7 @@ describe('PostManager統合テスト', () => {
                             eventId: eventId1,
                             relayHints: ["wss://relay1.example.com"],
                             authorPubkey: authorPubkey1,
+                            quoteNotificationEnabled: true,
                             authorDisplayName: null,
                             referencedEvent: null,
                             rootEventId: null,
@@ -1650,6 +1653,58 @@ describe('PostManager統合テスト', () => {
             const pTags = sentEvent.tags.filter((t: string[]) => t[0] === 'p');
             expect(qTags).toHaveLength(2);
             expect(pTags.filter((t: string[]) => t[1] === authorPubkey1)).toHaveLength(1);
+        });
+
+        it('ストアベース引用はquoteごとの通知状態に従ってpタグを追加する', async () => {
+            mockDeps.settingsStore = { quoteNotificationEnabled: true };
+            mockDeps.replyQuoteState = {
+                value: {
+                    reply: null,
+                    quotes: [
+                        {
+                            mode: 'quote',
+                            eventId: eventId1,
+                            relayHints: ["wss://relay1.example.com"],
+                            authorPubkey: authorPubkey1,
+                            quoteNotificationEnabled: false,
+                            authorDisplayName: null,
+                            referencedEvent: null,
+                            rootEventId: null,
+                            rootRelayHint: null,
+                            rootPubkey: null,
+                            loading: false,
+                            error: null,
+                        },
+                        {
+                            mode: 'quote',
+                            eventId: eventId2,
+                            relayHints: ["wss://relay2.example.com"],
+                            authorPubkey: "d".repeat(64),
+                            quoteNotificationEnabled: true,
+                            authorDisplayName: null,
+                            referencedEvent: null,
+                            rootEventId: null,
+                            rootRelayHint: null,
+                            rootPubkey: null,
+                            loading: false,
+                            error: null,
+                        },
+                    ],
+                },
+            };
+            manager = new PostManager(mockRxNostr, mockDeps);
+
+            vi.mocked(mockRxNostr.send).mockReturnValue(createSuccessMock() as any);
+
+            const result = await manager.submitPost('テスト投稿');
+            expect(result.success).toBe(true);
+
+            const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+            const qTags = sentEvent.tags.filter((t: string[]) => t[0] === 'q');
+            const pTags = sentEvent.tags.filter((t: string[]) => t[0] === 'p');
+            expect(qTags).toHaveLength(2);
+            expect(pTags.some((t: string[]) => t[1] === authorPubkey1)).toBe(false);
+            expect(pTags.some((t: string[]) => t[1] === "d".repeat(64))).toBe(true);
         });
 
         it('nostr: URIがない場合はqタグを生成しない', async () => {

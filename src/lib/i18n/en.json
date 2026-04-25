@@ -307,6 +307,10 @@
     "loading": "Loading...",
     "fetch_error": "Failed to fetch event",
     "cancel": "Cancel reply/quote",
+    "quote_notification_on_tooltip": "Quoted users will be notified",
+    "quote_notification_off_tooltip": "Quoted users will not be notified",
+    "enable_quote_notification": "Enable quote notification",
+    "disable_quote_notification": "Disable quote notification",
     "collapse": "Collapse",
     "expand": "Expand"
   }
