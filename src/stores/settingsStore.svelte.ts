@@ -57,8 +57,9 @@ function readSettingsState(): SettingsState {
     };
 }
 
-let settingsState = $state<SettingsState>(readSettingsState());
-mediaFreePlacementStore.set(settingsState.mediaFreePlacement);
+const initialSettingsState = readSettingsState();
+let settingsState = $state<SettingsState>(initialSettingsState);
+mediaFreePlacementStore.set(initialSettingsState.mediaFreePlacement);
 
 function updateMediaPlacement(enabled: boolean): void {
     mediaFreePlacementStore.set(enabled);
