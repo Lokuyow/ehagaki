@@ -12,6 +12,11 @@
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
+    const EMOJI_GRID_COLUMN_WIDTH = 50;
+    const EMOJI_GRID_ROW_HEIGHT = 40;
+    const EMOJI_GRID_PADDING = 4;
+    const VIRTUAL_OVERSCAN_ROWS = 3;
+
     interface Props {
         rxNostr?: RxNostr | null;
         pubkey?: string | null;
@@ -24,7 +29,10 @@
     let pickerHeight = $state(CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT);
     let resizing = $state(false);
     let renderItems = $state(false);
+    let scrollTop = $state(0);
+    let pickerWidth = $state(800);
     let renderItemsFrameId: number | null = null;
+    let pickerElement: HTMLDivElement | null = null;
 
     let items = $derived(customEmojiStore.items);
     let loading = $derived(customEmojiStore.loading);
@@ -35,9 +43,61 @@
             item.shortcode.toLowerCase().includes(query),
         );
     });
+    let columnCount = $derived(
+        Math.max(1, Math.floor(pickerWidth / EMOJI_GRID_COLUMN_WIDTH)),
+    );
+    let totalRowCount = $derived(
+        Math.ceil(filteredItems.length / columnCount),
+    );
+    let visibleRowCount = $derived(
+        Math.ceil(pickerHeight / EMOJI_GRID_ROW_HEIGHT) +
+            VIRTUAL_OVERSCAN_ROWS * 2,
+    );
+    let startRow = $derived(
+        Math.max(
+            0,
+            Math.min(
+                Math.max(0, totalRowCount - visibleRowCount),
+                Math.floor(scrollTop / EMOJI_GRID_ROW_HEIGHT) -
+                    VIRTUAL_OVERSCAN_ROWS,
+            ),
+        ),
+    );
+    let endRow = $derived(
+        Math.min(totalRowCount, startRow + visibleRowCount),
+    );
+    let virtualStartIndex = $derived(startRow * columnCount);
+    let virtualEndIndex = $derived(
+        Math.min(filteredItems.length, endRow * columnCount),
+    );
+    let visibleItems = $derived(
+        filteredItems.slice(virtualStartIndex, virtualEndIndex),
+    );
+    let virtualListHeight = $derived(
+        totalRowCount * EMOJI_GRID_ROW_HEIGHT + EMOJI_GRID_PADDING * 2,
+    );
+    let virtualOffsetY = $derived(startRow * EMOJI_GRID_ROW_HEIGHT);
+
+    function updatePickerWidth(): void {
+        const viewportWidth =
+            window.visualViewport?.width ?? window.innerWidth ?? 800;
+        pickerWidth = Math.min(800, Math.max(1, viewportWidth));
+    }
 
     onMount(() => {
         pickerHeight = readCustomEmojiPickerHeight(localStorage);
+        updatePickerWidth();
+
+        window.addEventListener("resize", updatePickerWidth);
+        window.visualViewport?.addEventListener("resize", updatePickerWidth);
+
+        return () => {
+            window.removeEventListener("resize", updatePickerWidth);
+            window.visualViewport?.removeEventListener(
+                "resize",
+                updatePickerWidth,
+            );
+        };
     });
 
     $effect(() => {
@@ -69,6 +129,10 @@
         search;
         open;
         items.length;
+        scrollTop = 0;
+        pickerElement
+            ?.querySelector<HTMLElement>(".custom-emoji-scroll-viewport")
+            ?.scrollTo({ top: 0 });
     });
 
     function selectEmoji(emoji: CustomEmojiItem): void {
@@ -100,9 +164,17 @@
         window.addEventListener("pointerup", stop);
         window.addEventListener("pointercancel", stop);
     }
+
+    function handleScroll(event: Event): void {
+        scrollTop = (event.currentTarget as HTMLElement).scrollTop;
+    }
 </script>
 
-<div class="custom-emoji-picker" data-resizing={resizing}>
+<div
+    class="custom-emoji-picker"
+    data-resizing={resizing}
+    bind:this={pickerElement}
+>
     <div
         class="resize-handle"
         role="separator"
@@ -126,7 +198,10 @@
             class="custom-emoji-scroll-root"
             style={`height: ${pickerHeight}px;`}
         >
-            <ScrollArea.Viewport class="custom-emoji-scroll-viewport">
+            <ScrollArea.Viewport
+                class="custom-emoji-scroll-viewport"
+                onscroll={handleScroll}
+            >
                 <Command.List class="custom-emoji-list">
                     {#if loading || !renderItems}
                         <Command.Loading class="custom-emoji-message">
@@ -137,27 +212,35 @@
                             {$_("customEmoji.empty")}
                         </Command.Empty>
                     {:else}
-                        <div class="emoji-grid">
-                            {#each filteredItems as emoji (emoji.shortcode)}
-                                <Command.Item
-                                    value={emoji.shortcode}
-                                    keywords={[emoji.shortcode]}
-                                    class="emoji-item"
-                                    onSelect={() => selectEmoji(emoji)}
-                                    onmousedown={preventKeyboardFocusChange}
-                                    ontouchstart={preventKeyboardFocusChange}
-                                >
-                                    <img
-                                        src={emoji.src}
-                                        alt={`:${emoji.shortcode}:`}
-                                        title={`:${emoji.shortcode}:`}
-                                        class="emoji-image"
-                                        draggable="false"
-                                        loading="lazy"
-                                        decoding="async"
-                                    />
-                                </Command.Item>
-                            {/each}
+                        <div
+                            class="emoji-virtual-list"
+                            style={`height: ${virtualListHeight}px;`}
+                        >
+                            <div
+                                class="emoji-grid"
+                                style={`transform: translateY(${virtualOffsetY}px); grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                            >
+                                {#each visibleItems as emoji (emoji.shortcode)}
+                                    <Command.Item
+                                        value={emoji.shortcode}
+                                        keywords={[emoji.shortcode]}
+                                        class="emoji-item"
+                                        onSelect={() => selectEmoji(emoji)}
+                                        onmousedown={preventKeyboardFocusChange}
+                                        ontouchstart={preventKeyboardFocusChange}
+                                    >
+                                        <img
+                                            src={emoji.src}
+                                            alt={`:${emoji.shortcode}:`}
+                                            title={`:${emoji.shortcode}:`}
+                                            class="emoji-image"
+                                            draggable="false"
+                                            loading="lazy"
+                                            decoding="async"
+                                        />
+                                    </Command.Item>
+                                {/each}
+                            </div>
                         </div>
                     {/if}
                 </Command.List>
@@ -237,11 +320,19 @@
         min-height: 100%;
     }
 
+    .emoji-virtual-list {
+        position: relative;
+        width: 100%;
+    }
+
     .emoji-grid {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        right: 4px;
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+        grid-auto-rows: 40px;
         justify-items: center;
-        padding: 4px;
     }
 
     :global(.emoji-item) {
