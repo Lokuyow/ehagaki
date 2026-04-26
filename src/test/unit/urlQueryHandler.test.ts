@@ -260,7 +260,7 @@ describe('urlQueryHandler', () => {
       const mockReplaceState = vi.fn();
       // @ts-ignore
       window.location = {
-        search: '?channel=note1424242424242424242424242424242424242424242424242424qv3q9y6&channelRelay=wss%3A%2F%2Frelay.example.com&channelName=General&channelAbout=Talk&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png&other=value',
+        search: '?channel=note1424242424242424242424242424242424242424242424242424qv3q9y6&channelRelays=wss%3A%2F%2Frelay.example.com&channelName=General&channelAbout=Talk&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png&other=value',
         pathname: '/test',
       } as Location;
       // @ts-ignore
@@ -294,7 +294,7 @@ describe('urlQueryHandler', () => {
     it('channel metadata を含む URL クエリを取得できる', () => {
       // @ts-ignore
       window.location = {
-        search: `?channel=${validChannelNevent}&channelRelay=wss%3A%2F%2Fchannel-write.example.com&channelRelay=https%3A%2F%2Finvalid.example.com&channelName=General&channelAbout=General%20discussion&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png`,
+        search: `?channel=${validChannelNevent}&channelRelays=wss%3A%2F%2Fchannel-write.example.com%2Chttps%3A%2F%2Finvalid.example.com&channelName=General&channelAbout=General%20discussion&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png`,
       } as Location;
 
       expect(getChannelFromUrlQuery()).toEqual({
@@ -305,6 +305,18 @@ describe('urlQueryHandler', () => {
         about: 'General discussion',
         picture: 'https://example.com/channel.png',
       });
+    });
+
+    it('channelRelays は空白を除去して複数 relay を取得できる', () => {
+      // @ts-ignore
+      window.location = {
+        search: `?channel=${validChannelNevent}&channelRelays=wss%3A%2F%2Fchannel-write.example.com%2C%20wss%3A%2F%2Fchannel-backup.example.com`,
+      } as Location;
+
+      expect(getChannelFromUrlQuery()?.channelRelays).toEqual([
+        'wss://channel-write.example.com/',
+        'wss://channel-backup.example.com/',
+      ]);
     });
 
     it('embed payload から channel metadata を取得できる', () => {

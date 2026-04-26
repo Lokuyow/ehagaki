@@ -1148,7 +1148,7 @@ function buildEmbedUrl() {
     url.searchParams.delete("reply");
     url.searchParams.delete("quote");
     url.searchParams.delete("channel");
-    url.searchParams.delete("channelRelay");
+    url.searchParams.delete("channelRelays");
     url.searchParams.delete("channelName");
     url.searchParams.delete("channelAbout");
     url.searchParams.delete("channelPicture");
@@ -1192,10 +1192,8 @@ function buildEmbedUrl() {
 
     if (selectedChannelContext) {
         url.searchParams.set("channel", selectedChannelContext.reference);
-        if (Array.isArray(selectedChannelContext.relays)) {
-            selectedChannelContext.relays.forEach((relay) => {
-                url.searchParams.append("channelRelay", relay);
-            });
+        if (Array.isArray(selectedChannelContext.relays) && selectedChannelContext.relays.length > 0) {
+            url.searchParams.set("channelRelays", selectedChannelContext.relays.join(","));
         }
         if (selectedChannelContext.name) {
             url.searchParams.set("channelName", selectedChannelContext.name);

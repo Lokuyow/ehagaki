@@ -188,7 +188,7 @@ iframe の `src` に URL クエリを付けることで、起動時の composer 
 </iframe>
 
 <iframe
-  src="https://lokuyow.github.io/ehagaki/?channel=nevent1...&channelRelay=wss%3A%2F%2Fchannel-write.example.com&channelRelay=wss%3A%2F%2Fchannel-backup.example.com&channelName=General&channelAbout=Public%20chat&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png"
+  src="https://lokuyow.github.io/ehagaki/?channel=nevent1...&channelRelays=wss%3A%2F%2Fchannel-write.example.com%2Cwss%3A%2F%2Fchannel-backup.example.com&channelName=General&channelAbout=Public%20chat&channelPicture=https%3A%2F%2Fexample.com%2Fchannel.png"
   allow="local-network-access; local-network; loopback-network"
   width="600"
   height="400">
@@ -202,7 +202,7 @@ iframe の `src` に URL クエリを付けることで、起動時の composer 
 | `reply=nevent1...` または `reply=note1...` | リプライ先を指定します。最初に正しく decode できた 1 件だけを採用します |
 | `quote=nevent1...` または `quote=note1...` | 引用対象を指定します。複数指定でき、同じ event id は重複排除されます |
 | `channel=nevent1...` または `channel=note1...` | パブリックチャットの kind 40 channel を指定します |
-| `channelRelay=wss://...` | kind 42 の送受信に使う relay です。複数指定できます |
+| `channelRelays=wss://...,wss://...` | kind 42 の送受信に使う relay です。カンマ区切りで複数指定できます |
 | `channelName=...` / `channelAbout=...` / `channelPicture=...` | パブリックチャットの preview metadata です。指定した値を iframe 側でそのまま使います |
 | `content=...` | 本文の初期値です |
 
@@ -210,9 +210,9 @@ iframe の `src` に URL クエリを付けることで、起動時の composer 
 
 パブリックチャットの relay と metadata は次のルールで扱われます。
 
-- `channelRelay` が 1 件以上ある場合は、その一覧を kind 42 用 relay として使います
+- `channelRelays` が 1 件以上ある場合は、その一覧を kind 42 用 relay として使います
 - `channelName`、`channelAbout`、`channelPicture` が 1 つも無い場合は、iframe 側が kind 40 / kind 41 から metadata と `relays` を解決します
-- metadata だけがあり `channelRelay` が無い場合、kind 42 は eHagaki 自身の write relay 一覧を使います
+- metadata だけがあり `channelRelays` が無い場合、kind 42 は eHagaki 自身の write relay 一覧を使います
 
 常時表示している iframe では、context を切り替えるたびに `src` を更新すると再読み込みが発生してチラつきます。その場合は初回表示だけ URL クエリを使い、起動後の更新は `postMessage` に切り替えてください。
 

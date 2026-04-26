@@ -16,6 +16,17 @@ function trimToNull(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function parseChannelRelaysQuery(value: string | null): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
 function decodeEventPointerValue(
   value: string,
 ): {
@@ -178,13 +189,15 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
     return null;
   }
 
+  const channelRelays = parseChannelRelaysQuery(urlParams.get('channelRelays'));
+
   return {
     eventId: decoded.eventId,
     relayHints: decoded.relayHints,
-    ...(urlParams.getAll('channelRelay').length > 0
+    ...(channelRelays.length > 0
       ? {
         channelRelays: RelayConfigUtils.sanitizeExternalRelayUrls(
-          urlParams.getAll('channelRelay'),
+          channelRelays,
         ),
       }
       : {}),
@@ -237,7 +250,7 @@ export function cleanupAllQueryParams(): void {
     needsCleanup = true;
   }
 
-  for (const key of ['channel', 'channelRelay', 'channelName', 'channelAbout', 'channelPicture']) {
+  for (const key of ['channel', 'channelRelays', 'channelName', 'channelAbout', 'channelPicture']) {
     if (urlParams.has(key)) {
       urlParams.delete(key);
       needsCleanup = true;
