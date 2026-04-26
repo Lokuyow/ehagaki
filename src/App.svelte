@@ -19,6 +19,7 @@
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
   import { embedSettingsService } from "./lib/embedSettingsService";
+  import { embedStorageService, EMBED_STORAGE_KEYS } from "./lib/embedStorageService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
@@ -625,6 +626,19 @@
     }
   }
 
+  async function initializeEmbedStorageSync(): Promise<void> {
+    try {
+      const result = await embedStorageService.get([...EMBED_STORAGE_KEYS]);
+      const applied = embedStorageService.applySnapshotToLocalStorage(result.values);
+      if (applied.length > 0) {
+        settingsStore.applyStoredSnapshot();
+      }
+      embedStorageService.persistLocalStorageKeys([...EMBED_STORAGE_KEYS]);
+    } catch (error) {
+      console.warn("親 storage の初期同期をスキップ:", error);
+    }
+  }
+
   async function flushPendingRemoteComposerAction(): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       return;
@@ -953,6 +967,9 @@
     embedSettingsService.initialize({
       locationSearch: window.location.search,
     });
+    if (embedStorageService.initialize({ locationSearch: window.location.search })) {
+      void initializeEmbedStorageSync();
+    }
 
     const cleanupParentClientLoginHandler =
       parentClientAuthService.onRemoteLogin((pubkeyHex) => {

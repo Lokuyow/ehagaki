@@ -11,6 +11,11 @@ export type EmbedMessageType =
     | "settings.set"
     | "settings.applied"
     | "settings.error"
+    | "storage.get"
+    | "storage.set"
+    | "storage.remove"
+    | "storage.result"
+    | "storage.error"
     | "composer.setContext"
     | "composer.contextApplied"
     | "composer.contextError"
@@ -82,6 +87,29 @@ export interface EmbedSettingsErrorPayload extends EmbedErrorPayload {
     timestamp: number;
 }
 
+export interface EmbedStorageGetPayload {
+    keys: string[];
+}
+
+export interface EmbedStorageSetPayload {
+    values: Record<string, string>;
+}
+
+export interface EmbedStorageRemovePayload {
+    keys: string[];
+}
+
+export interface EmbedStorageResultPayload {
+    timestamp: number;
+    values?: Record<string, string | null>;
+    applied?: string[];
+    removed?: string[];
+}
+
+export interface EmbedStorageErrorPayload extends EmbedErrorPayload {
+    timestamp: number;
+}
+
 export interface EmbedComposerContextAppliedPayload {
     timestamp: number;
 }
@@ -119,6 +147,11 @@ const EMBED_REQUEST_ID_REQUIRED_TYPES = new Set<EmbedMessageType>([
     "settings.set",
     "settings.applied",
     "settings.error",
+    "storage.get",
+    "storage.set",
+    "storage.remove",
+    "storage.result",
+    "storage.error",
     "composer.setContext",
     "composer.contextApplied",
     "composer.contextError",

@@ -1,4 +1,5 @@
 import { STORAGE_KEYS } from '../constants';
+import { embedStorageService } from '../embedStorageService';
 import type { HashtagHistoryEntry } from '../types';
 
 const MAX_HISTORY = 50;    // localStorageへの最大保存件数
@@ -25,6 +26,7 @@ export function loadHashtagHistory(): HashtagHistoryEntry[] {
 function persistHistory(entries: HashtagHistoryEntry[]): void {
     try {
         localStorage.setItem(STORAGE_KEYS.HASHTAG_HISTORY, JSON.stringify(entries));
+        embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.HASHTAG_HISTORY]);
     } catch {
         // localStorageが使えない環境では無視
     }

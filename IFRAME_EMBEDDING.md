@@ -10,6 +10,7 @@
 
 - iframe として埋め込む
 - テーマ、言語、圧縮設定などを注入・同期する
+- iOS Safari などで iframe 内 localStorage が使えない場合に、親ページへ設定保存を委譲する
 - リプライ、引用、パブリックチャット、本文を起動時または実行中に指定する
 - 親ページの signer を使ってログインを委譲する
 - 投稿結果を親ページで受け取る
@@ -306,6 +307,188 @@ iframe.contentWindow.postMessage({
 - 適用された値は iframe 内 eHagaki の localStorage に保存されます
 - 成功時は `settings.applied`、失敗時は `settings.error` が同じ `requestId` で返ります
 - `settings.applied` の payload は `{ timestamp, applied }`、`settings.error` の payload は `{ timestamp, code, message? }` です
+
+### iframe 内 localStorage が使えない場合の親保存委譲
+
+iOS Safari など一部ブラウザでは、cross-origin iframe 内の localStorage が安定して使えないことがあります。その場合、親ページが `storage.*` メッセージに応答すると、eHagaki は設定と軽量履歴を親ページ側 localStorage に委譲できます。
+
+この仕組みは任意です。親ページが `storage.*` に対応していない場合、eHagaki は従来どおり iframe 内 localStorage だけを使います。
+
+子 iframe から親ページへ送られる request は次の 3 種類です。
+
+```js
+// 保存済み値の読み込み
+{
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'storage.get',
+  requestId: 'storage-1',
+  payload: {
+    keys: ['locale', 'themeMode', 'uploadEndpoint']
+  }
+}
+
+// 値の保存
+{
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'storage.set',
+  requestId: 'storage-2',
+  payload: {
+    values: {
+      locale: 'en',
+      themeMode: 'dark'
+    }
+  }
+}
+
+// 値の削除
+{
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'storage.remove',
+  requestId: 'storage-3',
+  payload: {
+    keys: ['darkMode']
+  }
+}
+```
+
+親ページは同じ `requestId` で `storage.result` または `storage.error` を返してください。
+
+```js
+iframe.contentWindow.postMessage({
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'storage.result',
+  requestId: 'storage-1',
+  payload: {
+    timestamp: Date.now(),
+    values: {
+      locale: 'en',
+      themeMode: 'dark',
+      uploadEndpoint: null
+    }
+  }
+}, 'https://lokuyow.github.io');
+
+iframe.contentWindow.postMessage({
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'storage.error',
+  requestId: 'storage-1',
+  payload: {
+    timestamp: Date.now(),
+    code: 'storage_parent_failed',
+    message: 'optional error detail'
+  }
+}, 'https://lokuyow.github.io');
+```
+
+親保存に対応するキーは次の allowlist だけです。秘密鍵、アカウント、NIP-46 session、下書き、profile / relay 個別データは親保存委譲の対象外です。
+
+- `locale`
+- `themeMode`
+- `darkMode`
+- `uploadEndpoint`
+- `clientTagEnabled`
+- `quoteNotificationEnabled`
+- `imageCompressionLevel`
+- `videoCompressionLevel`
+- `mediaFreePlacement`
+- `showMascot`
+- `showFlavorText`
+- `settingsPreferenceMetadata`
+- `firstVisit`
+- `sharedMediaProcessed`
+- `hashtagHistory`
+
+親ページ側では、eHagaki のキーと衝突しないように prefix を付けて保存することを推奨します。
+
+```js
+const STORAGE_PREFIX = 'ehagaki.embed.storage.v1:';
+const ALLOWED_STORAGE_KEYS = new Set([
+  'locale',
+  'themeMode',
+  'darkMode',
+  'uploadEndpoint',
+  'clientTagEnabled',
+  'quoteNotificationEnabled',
+  'imageCompressionLevel',
+  'videoCompressionLevel',
+  'mediaFreePlacement',
+  'showMascot',
+  'showFlavorText',
+  'settingsPreferenceMetadata',
+  'firstVisit',
+  'sharedMediaProcessed',
+  'hashtagHistory',
+]);
+
+function postToIframe(message) {
+  iframe.contentWindow.postMessage(message, 'https://lokuyow.github.io');
+}
+
+window.addEventListener('message', (event) => {
+  if (event.origin !== 'https://lokuyow.github.io') return;
+  if (event.source !== iframe.contentWindow) return;
+
+  const data = event.data;
+  if (data?.namespace !== 'ehagaki.embed' || data?.version !== 1) return;
+  if (!data.requestId) return;
+
+  if (data.type === 'storage.get') {
+    const values = {};
+    for (const key of data.payload.keys) {
+      if (!ALLOWED_STORAGE_KEYS.has(key)) return;
+      values[key] = localStorage.getItem(STORAGE_PREFIX + key);
+    }
+    postToIframe({
+      namespace: 'ehagaki.embed',
+      version: 1,
+      type: 'storage.result',
+      requestId: data.requestId,
+      payload: { timestamp: Date.now(), values },
+    });
+  }
+
+  if (data.type === 'storage.set') {
+    const applied = [];
+    for (const [key, value] of Object.entries(data.payload.values)) {
+      if (!ALLOWED_STORAGE_KEYS.has(key) || typeof value !== 'string') return;
+      localStorage.setItem(STORAGE_PREFIX + key, value);
+      applied.push(key);
+    }
+    postToIframe({
+      namespace: 'ehagaki.embed',
+      version: 1,
+      type: 'storage.result',
+      requestId: data.requestId,
+      payload: { timestamp: Date.now(), applied },
+    });
+  }
+
+  if (data.type === 'storage.remove') {
+    const removed = [];
+    for (const key of data.payload.keys) {
+      if (!ALLOWED_STORAGE_KEYS.has(key)) return;
+      localStorage.removeItem(STORAGE_PREFIX + key);
+      removed.push(key);
+    }
+    postToIframe({
+      namespace: 'ehagaki.embed',
+      version: 1,
+      type: 'storage.result',
+      requestId: data.requestId,
+      payload: { timestamp: Date.now(), removed },
+    });
+  }
+});
+```
+
+初回描画のテーマや言語のちらつきを抑えたい場合は、親ページに保存済みの `themeMode` / `locale` を iframe URL の `defaultTheme` / `defaultLocale` にも反映してください。起動後に `storage.get` の結果が返ると、iframe 側の設定ストアも親保存値へ同期されます。
+
+既存の [public/embed-parent-client-example.html](public/embed-parent-client-example.html) は、この親保存委譲にも対応しています。
 
 ### 都度生成 iframe の設定注入
 

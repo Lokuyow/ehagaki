@@ -5,6 +5,7 @@ import {
     getSuggestions,
 } from '../../lib/utils/hashtagHistory';
 import { STORAGE_KEYS } from '../../lib/constants';
+import { embedStorageService } from '../../lib/embedStorageService';
 import { MockStorage } from '../helpers';
 
 describe('hashtagHistory', () => {
@@ -20,6 +21,7 @@ describe('hashtagHistory', () => {
 
     afterEach(() => {
         storage.clear();
+        vi.restoreAllMocks();
     });
 
     // --- loadHashtagHistory ---
@@ -60,11 +62,16 @@ describe('hashtagHistory', () => {
     // --- saveHashtagsToHistory ---
     describe('saveHashtagsToHistory', () => {
         it('新しいハッシュタグを保存する', () => {
+            const persistSpy = vi
+                .spyOn(embedStorageService, 'persistLocalStorageKeys')
+                .mockImplementation(() => { });
+
             saveHashtagsToHistory(['nostr', 'svelte']);
             const history = loadHashtagHistory();
             const tags = history.map(e => e.tag);
             expect(tags).toContain('nostr');
             expect(tags).toContain('svelte');
+            expect(persistSpy).toHaveBeenCalledWith([STORAGE_KEYS.HASHTAG_HISTORY]);
         });
 
         it('既存エントリは lastUsed を更新する（大文字小文字を無視して比較）', () => {

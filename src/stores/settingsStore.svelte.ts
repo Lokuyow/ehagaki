@@ -30,6 +30,8 @@ import {
 } from "../lib/utils/settingsStorage";
 import { themeModeStore } from "./themeStore.svelte";
 import { mediaFreePlacementStore } from "./uploadStore.svelte";
+import { STORAGE_KEYS } from "../lib/constants";
+import { embedStorageService } from "../lib/embedStorageService";
 
 interface SettingsState {
     locale: SupportedLocale;
@@ -68,6 +70,13 @@ function updateMediaPlacement(enabled: boolean): void {
     mediaFreePlacementStore.set(enabled);
 }
 
+function persistSettingsKeys(keys: string[]): void {
+    embedStorageService.persistLocalStorageKeys([
+        ...keys,
+        STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
+    ]);
+}
+
 export const settingsStore = {
     get value(): SettingsState {
         return settingsState;
@@ -96,6 +105,7 @@ export const settingsStore = {
         }
 
         i18nLocale.set(nextLocale);
+        persistSettingsKeys([STORAGE_KEYS.LOCALE, STORAGE_KEYS.UPLOAD_ENDPOINT]);
     },
 
     get uploadEndpoint(): string {
@@ -104,6 +114,7 @@ export const settingsStore = {
 
     set uploadEndpoint(value: string) {
         settingsState.uploadEndpoint = setUploadEndpointPreference(localStorage, value);
+        persistSettingsKeys([STORAGE_KEYS.UPLOAD_ENDPOINT]);
     },
 
     get clientTagEnabled(): boolean {
@@ -112,6 +123,7 @@ export const settingsStore = {
 
     set clientTagEnabled(value: boolean) {
         settingsState.clientTagEnabled = setClientTagEnabledPreference(localStorage, value);
+        persistSettingsKeys([STORAGE_KEYS.CLIENT_TAG_ENABLED]);
     },
 
     get quoteNotificationEnabled(): boolean {
@@ -123,6 +135,7 @@ export const settingsStore = {
             localStorage,
             value,
         );
+        persistSettingsKeys([STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED]);
     },
 
     get imageCompressionLevel(): string {
@@ -134,6 +147,7 @@ export const settingsStore = {
             localStorage,
             value,
         );
+        persistSettingsKeys([STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL]);
     },
 
     get videoCompressionLevel(): string {
@@ -145,6 +159,7 @@ export const settingsStore = {
             localStorage,
             value,
         );
+        persistSettingsKeys([STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL]);
     },
 
     get mediaFreePlacement(): boolean {
@@ -154,6 +169,7 @@ export const settingsStore = {
     set mediaFreePlacement(value: boolean) {
         settingsState.mediaFreePlacement = setMediaFreePlacementPreference(localStorage, value);
         updateMediaPlacement(settingsState.mediaFreePlacement);
+        persistSettingsKeys([STORAGE_KEYS.MEDIA_FREE_PLACEMENT]);
     },
 
     get showMascot(): boolean {
@@ -162,6 +178,7 @@ export const settingsStore = {
 
     set showMascot(value: boolean) {
         settingsState.showMascot = setShowMascotPreference(localStorage, value);
+        persistSettingsKeys([STORAGE_KEYS.SHOW_MASCOT]);
     },
 
     get showFlavorText(): boolean {
@@ -173,6 +190,7 @@ export const settingsStore = {
             localStorage,
             value,
         );
+        persistSettingsKeys([STORAGE_KEYS.SHOW_FLAVOR_TEXT]);
     },
 
     applyParentSettings(
@@ -275,12 +293,36 @@ export const settingsStore = {
             applied.push("showFlavorText");
         }
 
+        if (applied.length > 0) {
+            embedStorageService.persistLocalStorageKeys([
+                STORAGE_KEYS.LOCALE,
+                STORAGE_KEYS.THEME_MODE,
+                STORAGE_KEYS.DARK_MODE,
+                STORAGE_KEYS.UPLOAD_ENDPOINT,
+                STORAGE_KEYS.CLIENT_TAG_ENABLED,
+                STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED,
+                STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL,
+                STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
+                STORAGE_KEYS.MEDIA_FREE_PLACEMENT,
+                STORAGE_KEYS.SHOW_MASCOT,
+                STORAGE_KEYS.SHOW_FLAVOR_TEXT,
+                STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
+            ]);
+        }
+
         return applied;
+    },
+
+    applyStoredSnapshot(): void {
+        settingsStore.reload();
+        themeModeStore.reload();
     },
 };
 
 export function consumeFirstVisitFlag(): boolean {
-    return consumeFirstVisit(localStorage);
+    const result = consumeFirstVisit(localStorage);
+    embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.FIRST_VISIT]);
+    return result;
 }
 
 export function isSharedMediaProcessed(): boolean {
@@ -289,8 +331,10 @@ export function isSharedMediaProcessed(): boolean {
 
 export function markSharedMediaProcessed(): void {
     writeSharedMediaProcessed(localStorage);
+    embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.SHARED_MEDIA_PROCESSED]);
 }
 
 export function clearSharedMediaProcessed(): void {
     removeSharedMediaProcessed(localStorage);
+    embedStorageService.persistLocalStorageKeys([STORAGE_KEYS.SHARED_MEDIA_PROCESSED]);
 }
