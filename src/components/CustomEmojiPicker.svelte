@@ -9,6 +9,7 @@
         writeCustomEmojiPickerHeight,
         type CustomEmojiItem,
     } from "../lib/customEmoji";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
@@ -46,9 +47,7 @@
     let columnCount = $derived(
         Math.max(1, Math.floor(pickerWidth / EMOJI_GRID_COLUMN_WIDTH)),
     );
-    let totalRowCount = $derived(
-        Math.ceil(filteredItems.length / columnCount),
-    );
+    let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
     let visibleRowCount = $derived(
         Math.ceil(pickerHeight / EMOJI_GRID_ROW_HEIGHT) +
             VIRTUAL_OVERSCAN_ROWS * 2,
@@ -63,9 +62,7 @@
             ),
         ),
     );
-    let endRow = $derived(
-        Math.min(totalRowCount, startRow + visibleRowCount),
-    );
+    let endRow = $derived(Math.min(totalRowCount, startRow + visibleRowCount));
     let virtualStartIndex = $derived(startRow * columnCount);
     let virtualEndIndex = $derived(
         Math.min(filteredItems.length, endRow * columnCount),
@@ -205,7 +202,11 @@
                 <Command.List class="custom-emoji-list">
                     {#if loading || !renderItems}
                         <Command.Loading class="custom-emoji-message">
-                            {$_("customEmoji.loading")}
+                            <LoadingPlaceholder
+                                showLoader={true}
+                                text={$_("customEmoji.loading")}
+                                customClass="custom-emoji-loading"
+                            />
                         </Command.Loading>
                     {:else if filteredItems.length === 0}
                         <Command.Empty class="custom-emoji-message">
@@ -363,6 +364,14 @@
         text-align: center;
         color: var(--text-muted, var(--text));
         font-size: 0.9rem;
+    }
+
+    :global(.custom-emoji-loading) {
+        min-height: 96px;
+
+        :global(.placeholder-text.loading-text) {
+            font-size: 1rem;
+        }
     }
 
     :global(.scrollbar) {
