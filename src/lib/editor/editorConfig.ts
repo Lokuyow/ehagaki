@@ -3,13 +3,13 @@ import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
 import Image from '@tiptap/extension-image';
 import { Placeholder, Focus } from '@tiptap/extensions';
-import UniqueID from '@tiptap/extension-unique-id';
 import { Extension, Editor, AnyExtension } from '@tiptap/core';
 import { GapCursor } from '@tiptap/pm/gapcursor';
 import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
+import UniqueID from './uniqueIdExtension';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion } from '.';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video']);

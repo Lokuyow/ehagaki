@@ -20,7 +20,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
-import UniqueID from '@tiptap/extension-unique-id';
+import UniqueID from '../../lib/editor/uniqueIdExtension';
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
