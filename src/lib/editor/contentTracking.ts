@@ -8,6 +8,7 @@ import {
     cleanUrlEnd,
 } from '../utils/editorUrlUtils';
 import {
+    extractPostContentFromDoc,
     isEditorDocEmpty,
     isParagraphWithOnlyImageUrl,
 } from '../utils/editorDocumentUtils';
@@ -571,7 +572,7 @@ export const ContentTrackingExtension = Extension.create<ContentTrackingOptions>
                             storage.updateTimeout = setTimeout(() => {
                                 updateHashtagData(tr.doc);
                                 window.dispatchEvent(new CustomEvent('editor-content-changed', {
-                                    detail: { plainText: tr.doc.textContent }
+                                    detail: { plainText: extractPostContentFromDoc(tr.doc).content }
                                 }));
                             }, options.debounceDelay ?? CONTENT_TRACKING_CONFIG.DEBOUNCE_DELAY);
                         }
