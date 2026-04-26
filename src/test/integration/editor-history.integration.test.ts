@@ -15,8 +15,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { Schema } from '@tiptap/pm/model';
-import { schema as basicSchema } from '@tiptap/pm/schema-basic';
-import { history, undo, redo } from '@tiptap/pm/history';
+import { closeHistory, history, undo, redo } from '@tiptap/pm/history';
 
 // PWA関連のモック
 vi.mock("virtual:pwa-register/svelte", () => ({
@@ -30,7 +29,18 @@ describe('エディター履歴管理 - 統合テスト', () => {
     let schema: Schema;
     
     beforeEach(() => {
-        schema = basicSchema;
+        schema = new Schema({
+            nodes: {
+                doc: { content: 'block+' },
+                paragraph: {
+                    content: 'inline*',
+                    group: 'block',
+                    parseDOM: [{ tag: 'p' }],
+                    toDOM: () => ['p', 0]
+                },
+                text: { group: 'inline' }
+            }
+        });
     });
 
     /**
@@ -67,14 +77,20 @@ describe('エディター履歴管理 - 統合テスト', () => {
      * ヘルパー: ペースト操作をシミュレート
      */
     function pasteText(state: EditorState, text: string): EditorState {
-        let tr = state.tr
+        let tr = closeHistory(state.tr
             .insertText(text, state.selection.from)
             .setMeta('paste', true)
             .setMeta('addToHistory', true)
             .setMeta('rebased', 0)
-            .setTime(Date.now());
+            .setTime(Date.now()));
         
         return state.apply(tr);
+    }
+
+    function moveCursorToTextEnd(state: EditorState): EditorState {
+        return state.apply(
+            state.tr.setSelection(TextSelection.create(state.doc, state.doc.content.size - 1))
+        );
     }
 
     /**
@@ -146,9 +162,7 @@ describe('エディター履歴管理 - 統合テスト', () => {
             expect(state.doc.textContent).toBe('typed');
             
             // カーソルを末尾に移動
-            state = state.apply(
-                state.tr.setSelection(TextSelection.create(state.doc, state.doc.content.size))
-            );
+            state = moveCursorToTextEnd(state);
             
             // 2. ペースト
             state = pasteText(state, 'pasted');
@@ -282,9 +296,7 @@ describe('エディター履歴管理 - 統合テスト', () => {
             
             // 1回目のペースト
             state = pasteText(state, 'first');
-            state = state.apply(
-                state.tr.setSelection(TextSelection.create(state.doc, state.doc.content.size))
-            );
+            state = moveCursorToTextEnd(state);
             
             // 2回目のペースト
             state = pasteText(state, 'second');
