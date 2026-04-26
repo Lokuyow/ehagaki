@@ -10,6 +10,7 @@ import { CacheFirst } from "workbox-strategies";
 const SW_VERSION = '1.17.0';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
+const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images';
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
@@ -382,6 +383,67 @@ class CacheManager {
         }
 
         return null;
+    }
+
+    async handleCustomEmojiImageRequest(request) {
+        try {
+            const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
+            const baseUrl = Utilities.getBaseUrl(request.url);
+            if (baseUrl) {
+                const cacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+                const cachedBase = await cache.match(cacheKey);
+                if (cachedBase) {
+                    return cachedBase;
+                }
+            }
+
+            const cached = await cache.match(request);
+            if (cached) {
+                return cached;
+            }
+        } catch (error) {
+            this.console.warn('カスタム絵文字キャッシュ取得に失敗:', error);
+        }
+
+        return this.fetch(request);
+    }
+
+    async cacheCustomEmojiImages(urls) {
+        if (!Array.isArray(urls) || urls.length === 0) {
+            return { success: true, cached: 0, failed: 0 };
+        }
+
+        const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
+        let cached = 0;
+        let failed = 0;
+
+        for (const rawUrl of [...new Set(urls)].slice(0, 300)) {
+            try {
+                const baseUrl = Utilities.getBaseUrl(rawUrl);
+                if (!baseUrl) {
+                    failed++;
+                    continue;
+                }
+
+                const request = Utilities.createCorsRequest(baseUrl, {
+                    mode: 'no-cors',
+                    headers: { 'Cache-Control': 'no-cache' },
+                    cache: 'no-cache'
+                });
+                const response = await this.fetch(request);
+                if (response && (response.ok || response.type === 'opaque')) {
+                    await cache.put(Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' }), response.clone());
+                    cached++;
+                } else {
+                    failed++;
+                }
+            } catch (error) {
+                failed++;
+                this.console.warn('カスタム絵文字画像のキャッシュ保存に失敗:', error, rawUrl);
+            }
+        }
+
+        return { success: true, cached, failed };
     }
 
     // プロフィール画像キャッシュをクリア
@@ -855,6 +917,10 @@ class ServiceWorkerCore {
             'cleanupDuplicateProfileCache': async () => {
                 const result = await this.cacheManager.cleanupDuplicateProfileCache();
                 event.ports?.[0]?.postMessage(result);
+            },
+            'cacheCustomEmojiImages': async () => {
+                const result = await this.cacheManager.cacheCustomEmojiImages(event.data?.urls);
+                event.ports?.[0]?.postMessage(result);
             }
         };
 
@@ -896,6 +962,8 @@ self.addEventListener('fetch', (event) => {
             ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
         }
         event.respondWith(serviceWorkerCore.requestHandler.handleProfileImageRequest(event.request));
+    } else if (event.request.method === 'GET' && event.request.destination === 'image') {
+        event.respondWith(serviceWorkerCore.cacheManager.handleCustomEmojiImageRequest(event.request));
     }
 });
 
@@ -918,6 +986,7 @@ if (typeof module !== 'undefined' && module.exports) {
         RequestHandler,
         SW_VERSION,
         RUNTIME_LARGE_ASSET_CACHE_NAME,
+        CUSTOM_EMOJI_CACHE_NAME,
         PROFILE_CACHE_NAME,
         INDEXEDDB_NAME,
         INDEXEDDB_VERSION

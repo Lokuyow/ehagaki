@@ -7,7 +7,7 @@ import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
 import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
 import { getClientTag } from "./tags/clientTag";
-import { extractContentWithImages } from "./utils/editorDocumentUtils";
+import { extractContentWithImages, extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
 import type { PostResult, PostManagerDeps, HashtagStore } from "./types";
@@ -54,7 +54,12 @@ export class PostManager {
     this.deps.createImetaTagFn = deps.createImetaTagFn || createImetaTag;
     this.deps.getClientTagFn = deps.getClientTagFn || getClientTag;
     this.deps.seckeySignerFn = deps.seckeySignerFn || seckeySigner; // ★追加
-    this.deps.extractContentWithImagesFn = deps.extractContentWithImagesFn || extractContentWithImages;
+    this.deps.extractContentWithImagesFn = deps.extractContentWithImagesFn;
+    this.deps.extractContentWithEmojiTagsFn = deps.extractContentWithEmojiTagsFn || (
+      deps.extractContentWithImagesFn
+        ? (editor: TipTapEditor) => ({ content: deps.extractContentWithImagesFn!(editor), emojiTags: [] })
+        : extractPostContentWithEmojiTags
+    );
     this.deps.extractImageBlurhashMapFn = deps.extractImageBlurhashMapFn || extractImageBlurhashMap;
     this.deps.resetEditorStateFn = deps.resetEditorStateFn || resetEditorState;
     this.deps.resetPostStatusFn = deps.resetPostStatusFn || resetPostStatus;
@@ -109,6 +114,7 @@ export class PostManager {
     contentWarningReason: string;
     replyQuoteTags?: string[][];
     channelContext?: import("./types").ChannelContextState | null;
+    emojiTags?: string[][];
   }): Promise<any> {
     return PostEventBuilder.buildEvent(
       params.processedContent,
@@ -122,6 +128,7 @@ export class PostManager {
       params.contentWarningReason,
       params.replyQuoteTags,
       params.channelContext,
+      params.emojiTags,
     );
   }
 
@@ -185,6 +192,7 @@ export class PostManager {
   async submitPost(
     content: string,
     imageImetaMap?: ImageImetaMap,
+    emojiTags: string[][] = [],
   ): Promise<PostResult> {
     // 末尾のメディアURL直後の改行を削除
     let processedContent = trimTrailingNewlineAfterMedia(content);
@@ -353,6 +361,7 @@ export class PostManager {
             contentWarningReason,
             replyQuoteTags,
             channelContext,
+            emojiTags,
           });
 
           return await this.sendPreparedEvent({
@@ -391,6 +400,7 @@ export class PostManager {
             contentWarningReason,
             replyQuoteTags,
             channelContext,
+            emojiTags,
           });
 
           return await this.sendPreparedEvent({
@@ -428,6 +438,7 @@ export class PostManager {
             contentWarningReason,
             replyQuoteTags,
             channelContext,
+            emojiTags,
           });
 
           return await this.sendPreparedEvent({
@@ -457,6 +468,7 @@ export class PostManager {
         contentWarningReason,
         replyQuoteTags,
         channelContext,
+        emojiTags,
       });
 
       const signer = this.deps.seckeySignerFn
@@ -511,18 +523,24 @@ export class PostManager {
   }
 
   // --- PostComponent 統合メソッド ---
-  preparePostContent(editor: TipTapEditor): string {
-    const editorContent = this.deps.extractContentWithImagesFn!(editor) || "";
+  preparePostPayload(editor: TipTapEditor): ExtractedPostContent {
+    const extraction = this.deps.extractContentWithEmojiTagsFn!(editor);
     if (!mediaFreePlacementStore.value) {
       // ギャラリーモード: エディタのテキスト + ギャラリーのメディアURL
       const galleryUrls = mediaGalleryStore.getContentUrls();
       if (galleryUrls.length > 0) {
-        const textPart = editorContent.trim();
-        return textPart ? textPart + '\n' + galleryUrls.join('\n') : galleryUrls.join('\n');
+        const textPart = extraction.content.trim();
+        return {
+          content: textPart ? textPart + '\n' + galleryUrls.join('\n') : galleryUrls.join('\n'),
+          emojiTags: extraction.emojiTags,
+        };
       }
-      return editorContent;
     }
-    return editorContent;
+    return extraction;
+  }
+
+  preparePostContent(editor: TipTapEditor): string {
+    return this.preparePostPayload(editor).content;
   }
 
   prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): Record<string, any> {
@@ -551,13 +569,13 @@ export class PostManager {
     onSuccess?: () => void,
     onError?: (error: string) => void
   ): Promise<void> {
-    const postContent = this.preparePostContent(editor);
+    const postPayload = this.preparePostPayload(editor);
     const imageBlurhashMap = this.prepareImageBlurhashMap(editor, imageOxMap, imageXMap);
 
     onStart?.();
 
     try {
-      const result = await this.submitPost(postContent, imageBlurhashMap);
+      const result = await this.submitPost(postPayload.content, imageBlurhashMap, postPayload.emojiTags);
       if (result.success) {
         onSuccess?.();
       } else {

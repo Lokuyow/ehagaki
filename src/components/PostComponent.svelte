@@ -28,6 +28,7 @@
     fileDropActionWithDragState,
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
+  import type { CustomEmojiAttrs } from "../lib/editor";
   import { containsSecretKey } from "../lib/utils/nostrUtils";
   import {
     collectFullscreenMediaItems,
@@ -395,11 +396,19 @@
     currentEditor.commands.focus("end");
   }
 
+  export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
+    if (!currentEditor) return;
+    currentEditor.chain().focus().insertCustomEmoji(emoji).run();
+  }
+
   export async function submitPost() {
     if (!postManager || !currentEditor) return;
-    const postContent = postManager.preparePostContent(currentEditor);
-    if (containsSecretKey(postContent)) {
-      postComponentUIStore.showSecretKeyDialog(postContent);
+    const postPayload = postManager.preparePostPayload(currentEditor);
+    if (containsSecretKey(postPayload.content)) {
+      postComponentUIStore.showSecretKeyDialog(
+        postPayload.content,
+        postPayload.emojiTags,
+      );
       return;
     }
     await postManager.performPostSubmission(
@@ -425,6 +434,7 @@
   // UI状態管理をストアから取得して使用
   async function confirmSendWithSecretKey() {
     const pendingPost = postComponentUIStore.getPendingPost();
+    const pendingEmojiTags = postComponentUIStore.getPendingEmojiTags();
     postComponentUIStore.hideSecretKeyDialog();
     if (postManager && currentEditor) {
       await submitPendingPostWithSecretKey({
@@ -433,6 +443,7 @@
         imageOxMap,
         imageXMap,
         pendingPost,
+        pendingEmojiTags,
         onStart: postStatusHandlers.markSending,
         onSuccess: postStatusHandlers.markSuccess,
         onFailure: postStatusHandlers.markFailure,

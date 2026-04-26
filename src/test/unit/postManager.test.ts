@@ -655,6 +655,63 @@ describe('PostEventBuilder', () => {
                 ['e', 'channel-root-event', 'wss://channel-relay.example.com', 'root'],
             ]);
         });
+
+        it('emoji tags を kind 1 に追加する', async () => {
+            const event = await PostEventBuilder.buildEvent(
+                'Hello :blobcat:',
+                [],
+                [],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                undefined,
+                undefined,
+                null,
+                [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+            );
+
+            expect(event.kind).toBe(1);
+            expect(event.tags).toContainEqual([
+                'emoji',
+                'blobcat',
+                'https://example.com/blobcat.webp',
+            ]);
+        });
+
+        it('emoji tags を kind 42 に追加する', async () => {
+            const channelContext = {
+                eventId: 'channel-root-event',
+                relayHints: ['wss://channel-relay.example.com'],
+                channelRelays: ['wss://channel-relay.example.com'],
+                name: 'General',
+                about: 'General discussion',
+                picture: '',
+            };
+
+            const event = await PostEventBuilder.buildEvent(
+                'Hello :blobcat:',
+                [],
+                [],
+                undefined,
+                undefined,
+                undefined,
+                undefined,
+                false,
+                undefined,
+                undefined,
+                channelContext,
+                [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+            );
+
+            expect(event.kind).toBe(42);
+            expect(event.tags).toContainEqual([
+                'emoji',
+                'blobcat',
+                'https://example.com/blobcat.webp',
+            ]);
+        });
     });
 });
 

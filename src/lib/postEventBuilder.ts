@@ -55,6 +55,7 @@ export class PostEventBuilder {
         contentWarningReason?: string,
         replyQuoteTags?: string[][],
         channelContext?: ChannelContextState | null,
+        emojiTags?: string[][],
     ): Promise<any> {
         // リプライ/引用タグを先頭に配置
         const eventTags: string[][] = [];
@@ -100,6 +101,10 @@ export class PostEventBuilder {
             if (clientTag) {
                 eventTags.push(clientTag);
             }
+        }
+
+        if (Array.isArray(emojiTags) && emojiTags.length) {
+            eventTags.push(...emojiTags);
         }
 
         // 画像imetaタグ追加

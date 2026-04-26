@@ -152,6 +152,7 @@
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
+  import type { CustomEmojiItem } from "./lib/customEmoji";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -180,6 +181,7 @@
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
+  let customEmojiPickerOpen = $state(false);
 
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
@@ -1209,6 +1211,14 @@
       accountProfileCacheStore,
     });
   }
+
+  function handleCustomEmojiSelect(emoji: CustomEmojiItem): void {
+    postComponentRef?.insertCustomEmoji?.({
+      shortcode: emoji.shortcode,
+      src: emoji.src,
+      setAddress: emoji.setAddress ?? null,
+    });
+  }
 </script>
 
 {#if $locale && localeInitialized}
@@ -1281,6 +1291,12 @@
       <KeyboardButtonBar
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
+        {rxNostr}
+        customEmojiPubkey={authState.value.pubkey}
+        {customEmojiPickerOpen}
+        onCustomEmojiPickerOpenChange={(open) =>
+          (customEmojiPickerOpen = open)}
+        onCustomEmojiSelect={handleCustomEmojiSelect}
       />
       <FooterComponent
         {isAuthenticated}

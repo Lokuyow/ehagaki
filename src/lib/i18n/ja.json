@@ -162,9 +162,18 @@
     "content_warning_toggle": "Content Warning切り替え",
     "content_warning_tooltip": "センシティブコンテンツ設定",
     "upload_image_tooltip": "メディアアップロード",
+    "custom_emoji": "カスタム絵文字",
     "post_tooltip": "投稿",
     "hashtag_pin_toggle": "ハッシュタグピン止め切り替え",
     "hashtag_pin_tooltip": "ハッシュタグを保持"
+  },
+  "customEmoji": {
+    "search_label": "カスタム絵文字検索",
+    "search_placeholder": "絵文字を検索",
+    "loading": "絵文字を読み込み中...",
+    "empty": "絵文字がありません",
+    "resize": "絵文字ピッカーの高さを変更",
+    "show_more": "さらに表示"
   },
   "imageNode": {
     "uploading": "画像を<wbr>アップロード中..."

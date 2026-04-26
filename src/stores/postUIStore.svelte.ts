@@ -2,6 +2,7 @@
 let postComponentUI = $state<{
     showSecretKeyDialog: boolean;
     pendingPost: string;
+    pendingEmojiTags: string[][];
     showImageFullscreen: boolean;
     fullscreenMediaId: string;
     fullscreenImageSrc: string;
@@ -13,6 +14,7 @@ let postComponentUI = $state<{
 }>({
     showSecretKeyDialog: false,
     pendingPost: '',
+    pendingEmojiTags: [],
     showImageFullscreen: false,
     fullscreenMediaId: '',
     fullscreenImageSrc: '',
@@ -26,15 +28,18 @@ let postComponentUI = $state<{
 export const postComponentUIStore = {
     get value() { return postComponentUI; },
     // 秘密鍵ダイアログ
-    showSecretKeyDialog: (post: string) => {
+    showSecretKeyDialog: (post: string, emojiTags: string[][] = []) => {
         postComponentUI.pendingPost = post;
+        postComponentUI.pendingEmojiTags = emojiTags.map((tag) => [...tag]);
         postComponentUI.showSecretKeyDialog = true;
     },
     hideSecretKeyDialog: () => {
         postComponentUI.showSecretKeyDialog = false;
         postComponentUI.pendingPost = '';
+        postComponentUI.pendingEmojiTags = [];
     },
     getPendingPost: () => postComponentUI.pendingPost,
+    getPendingEmojiTags: () => postComponentUI.pendingEmojiTags.map((tag) => [...tag]),
     // 画像フルスクリーン
     showImageFullscreen: (src: string, alt: string = '', mediaId: string = '') => {
         postComponentUI.fullscreenMediaId = mediaId;

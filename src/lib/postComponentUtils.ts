@@ -23,6 +23,7 @@ interface SecretKeyPostManager {
     submitPost: (
         content: string,
         imageImetaMap?: Record<string, any>,
+        emojiTags?: string[][],
     ) => Promise<PostResult>;
 }
 
@@ -82,6 +83,7 @@ export async function submitPendingPostWithSecretKey(params: {
     imageOxMap: Record<string, string>;
     imageXMap: Record<string, string>;
     pendingPost: string;
+    pendingEmojiTags?: string[][];
     onStart: () => void;
     onSuccess: () => void;
     onFailure: (message?: string) => void;
@@ -95,10 +97,16 @@ export async function submitPendingPostWithSecretKey(params: {
     params.onStart();
 
     try {
-        const result = await params.postManager.submitPost(
-            params.pendingPost,
-            imageBlurhashMap,
-        );
+        const result = params.pendingEmojiTags?.length
+            ? await params.postManager.submitPost(
+                params.pendingPost,
+                imageBlurhashMap,
+                params.pendingEmojiTags,
+            )
+            : await params.postManager.submitPost(
+                params.pendingPost,
+                imageBlurhashMap,
+            );
 
         if (result.success) {
             params.onSuccess();

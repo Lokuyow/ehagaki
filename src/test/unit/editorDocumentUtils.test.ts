@@ -9,6 +9,7 @@ import {
     createParagraphNodeData,
     createVideoNodeData,
     extractFragmentsFromDoc,
+    extractPostContentFromDoc,
     getDocumentFromEditor,
     isDocumentEmpty,
     isParagraphWithOnlyImageUrl,
@@ -232,6 +233,45 @@ describe('editorDocumentUtils', () => {
 
             const result = extractFragmentsFromDoc(mockDoc as unknown as PMNode);
             expect(result).toEqual(['https://example.com/image.jpg', 'https://example.com/video.mp4']);
+        });
+
+        it('should serialize custom emoji nodes as shortcodes and emoji tags', () => {
+            const textNode = { isText: true, text: 'Hello ', type: { name: 'text' } };
+            const firstEmoji = {
+                isText: false,
+                type: { name: 'customEmoji' },
+                attrs: {
+                    shortcode: 'blobcat',
+                    src: 'https://example.com/blobcat.webp',
+                    setAddress: '30030:pubkey:set',
+                },
+                textContent: '',
+            };
+            const duplicateEmoji = {
+                ...firstEmoji,
+                attrs: {
+                    shortcode: 'blobcat',
+                    src: 'https://example.com/other.webp',
+                },
+            };
+            const paragraph = {
+                type: { name: 'paragraph' },
+                forEach: (callback: (node: any) => void) => {
+                    [textNode, firstEmoji, duplicateEmoji].forEach(callback);
+                },
+            };
+            const doc = {
+                forEach: (callback: (node: any) => void) => {
+                    callback(paragraph);
+                },
+            };
+
+            const result = extractPostContentFromDoc(doc as unknown as PMNode);
+
+            expect(result.content).toBe('Hello :blobcat::blobcat:');
+            expect(result.emojiTags).toEqual([
+                ['emoji', 'blobcat', 'https://example.com/blobcat.webp', '30030:pubkey:set'],
+            ]);
         });
 
         it('should get document from editor', () => {

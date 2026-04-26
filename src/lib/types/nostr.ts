@@ -159,6 +159,10 @@ export interface PostManagerDeps {
     getNip46SignerFn?: () => any;
     getParentClientSignerFn?: () => any;
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
+    extractContentWithEmojiTagsFn?: (editor: TipTapEditor) => {
+        content: string;
+        emojiTags: string[][];
+    };
     extractImageBlurhashMapFn?: (editor: TipTapEditor) => Record<string, string>;
     resetEditorStateFn?: () => void;
     resetPostStatusFn?: () => void;

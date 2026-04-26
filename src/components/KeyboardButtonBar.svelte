@@ -1,8 +1,11 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { Tooltip } from "bits-ui";
+    import { Popover, Tooltip } from "bits-ui";
+    import type { RxNostr } from "rx-nostr";
     import Button from "./Button.svelte";
+    import CustomEmojiPicker from "./CustomEmojiPicker.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import type { CustomEmojiItem } from "../lib/customEmoji";
     import {
         contentWarningStore,
         contentWarningReasonStore,
@@ -20,9 +23,22 @@
     interface Props {
         onUploadImage?: () => void;
         onPostButtonTap?: () => void;
+        customEmojiPickerOpen?: boolean;
+        onCustomEmojiPickerOpenChange?: (open: boolean) => void;
+        onCustomEmojiSelect?: (emoji: CustomEmojiItem) => void;
+        rxNostr?: RxNostr | null;
+        customEmojiPubkey?: string | null;
     }
 
-    let { onUploadImage, onPostButtonTap }: Props = $props();
+    let {
+        onUploadImage,
+        onPostButtonTap,
+        customEmojiPickerOpen = false,
+        onCustomEmojiPickerOpenChange,
+        onCustomEmojiSelect,
+        rxNostr = null,
+        customEmojiPubkey = null,
+    }: Props = $props();
 
     // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
     let hasStoredKey = $derived(authState.value?.isAuthenticated ?? false);
@@ -193,6 +209,10 @@
             }
         }, CANCEL_REVERSE_DELAY);
     }
+
+    function setCustomEmojiPickerOpen(open: boolean): void {
+        onCustomEmojiPickerOpenChange?.(open);
+    }
 </script>
 
 <div class="footer-button-bar">
@@ -234,6 +254,56 @@
                     </Tooltip.Content>
                 </Tooltip.Portal>
             </Tooltip.Root>
+            <Popover.Root
+                bind:open={
+                    () => customEmojiPickerOpen,
+                    (value) => setCustomEmojiPickerOpen(value)
+                }
+            >
+                <Popover.Trigger>
+                    {#snippet child({ props })}
+                        {@const { onclick: popoverOnclick, ...restProps } =
+                            props}
+                        <Button
+                            variant="footer"
+                            shape="square"
+                            className="custom-emoji-button"
+                            selected={customEmojiPickerOpen}
+                            disabled={!hasStoredKey}
+                            onClick={(e) => {
+                                if (typeof popoverOnclick === "function") {
+                                    popoverOnclick(e);
+                                }
+                            }}
+                            ariaLabel={$_("keyboardButtonBar.custom_emoji")}
+                            {...restProps}
+                        >
+                            <div class="custom-emoji-icon svg-icon"></div>
+                        </Button>
+                    {/snippet}
+                </Popover.Trigger>
+                <Popover.Portal>
+                    <Popover.Content
+                        side="top"
+                        align="start"
+                        sideOffset={8}
+                        class="custom-emoji-popover-content"
+                        trapFocus={false}
+                        onOpenAutoFocus={(e) => e.preventDefault()}
+                        onCloseAutoFocus={(e) => e.preventDefault()}
+                    >
+                        <CustomEmojiPicker
+                            {rxNostr}
+                            pubkey={customEmojiPubkey}
+                            open={customEmojiPickerOpen}
+                            onSelect={(emoji) => {
+                                onCustomEmojiSelect?.(emoji);
+                                setCustomEmojiPickerOpen(false);
+                            }}
+                        />
+                    </Popover.Content>
+                </Popover.Portal>
+            </Popover.Root>
         </div>
         <div class="button-group-center">
             {#if showProgressRing}
@@ -441,6 +511,12 @@
             height: 36px;
         }
 
+        .custom-emoji-icon {
+            mask-image: url("/icons/face-smile-solid-full.svg");
+            width: 32px;
+            height: 32px;
+        }
+
         :global(.post-button) {
             width: 71px;
             height: var(--keyboard-button-bar-height);
@@ -520,7 +596,7 @@
     .button-group-left {
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: space-evenly;
     }
 
     .button-group-center {
@@ -528,6 +604,12 @@
         align-items: center;
         justify-content: center;
         position: relative;
+    }
+
+    .button-group-right {
+        display: flex;
+        align-items: center;
+        justify-content: space-evenly;
     }
 
     .progress-ring-container {
@@ -557,12 +639,6 @@
         stroke-dasharray: 100.53px;
     }
 
-    .button-group-right {
-        display: flex;
-        align-items: center;
-        justify-content: space-evenly;
-    }
-
     :global(.footer-button-bar .footer) {
         width: 50px;
         height: var(--keyboard-button-bar-height);
@@ -577,5 +653,10 @@
         font-size: 1rem;
         font-weight: 600;
         z-index: 100;
+    }
+
+    :global(.custom-emoji-popover-content) {
+        z-index: 10000;
+        outline: none;
     }
 </style>

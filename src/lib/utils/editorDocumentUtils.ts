@@ -187,19 +187,146 @@ export function insertImagesToEditor(editor: TipTapEditor | null, urls: string |
     insertNodesToEditor(editor, imageNodes);
 }
 
-export function extractFragmentsFromDoc(doc: PMNode): string[] {
+export interface ExtractedPostContent {
+    content: string;
+    emojiTags: string[][];
+}
+
+function iterateChildNodes(node: PMNode, callback: (child: PMNode) => void): void {
+    if (typeof node.forEach === 'function') {
+        node.forEach((child: PMNode) => callback(child));
+    }
+}
+
+function normalizeEmojiShortcode(value: unknown): string {
+    return String(value ?? '').replace(/^:+|:+$/g, '').trim();
+}
+
+function isValidEmojiImageUrl(value: unknown): value is string {
+    if (typeof value !== 'string' || !value) return false;
+    try {
+        const url = new URL(value);
+        return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+        return false;
+    }
+}
+
+function createCustomEmojiTextAndTag(
+    attrs: Record<string, unknown> | undefined,
+): { text: string; tag: string[] | null } {
+    const shortcode = normalizeEmojiShortcode(attrs?.shortcode);
+    const src = attrs?.src;
+    if (!shortcode) {
+        return { text: '', tag: null };
+    }
+
+    const text = `:${shortcode}:`;
+    if (!isValidEmojiImageUrl(src)) {
+        return { text, tag: null };
+    }
+
+    const tag = ['emoji', shortcode, src];
+    const setAddress = typeof attrs?.setAddress === 'string' ? attrs.setAddress.trim() : '';
+    if (setAddress) {
+        tag.push(setAddress);
+    }
+    return { text, tag };
+}
+
+function pushEmojiTag(tag: string[] | null, emojiTags: string[][], seenShortcodes: Set<string>): void {
+    if (!tag) return;
+    const shortcode = tag[1];
+    if (!shortcode || seenShortcodes.has(shortcode)) return;
+    seenShortcodes.add(shortcode);
+    emojiTags.push(tag);
+}
+
+function extractInlineTextWithEmoji(
+    node: PMNode,
+    emojiTags: string[][],
+    seenShortcodes: Set<string>,
+): string {
+    let text = '';
+
+    iterateChildNodes(node, (child) => {
+        if (child.isText) {
+            text += child.text ?? '';
+            return;
+        }
+
+        if (child.type.name === 'customEmoji') {
+            const result = createCustomEmojiTextAndTag(child.attrs);
+            text += result.text;
+            pushEmojiTag(result.tag, emojiTags, seenShortcodes);
+            return;
+        }
+
+        text += child.textContent ?? '';
+    });
+
+    return text;
+}
+
+export function extractPostContentFromDoc(doc: PMNode): ExtractedPostContent {
     const fragments: string[] = [];
-    doc.descendants((node: PMNode) => {
+    const emojiTags: string[][] = [];
+    const seenShortcodes = new Set<string>();
+
+    if (typeof doc.forEach !== 'function' && typeof doc.descendants === 'function') {
+        doc.descendants((node: PMNode) => {
+            if (node.type.name === 'paragraph') {
+                fragments.push(node.textContent);
+            } else if (node.type.name === 'image' || node.type.name === 'video') {
+                const src = node.attrs?.src;
+                if (src) {
+                    fragments.push(src);
+                }
+            } else if (node.type.name === 'customEmoji') {
+                const result = createCustomEmojiTextAndTag(node.attrs);
+                if (result.text) {
+                    fragments.push(result.text);
+                }
+                pushEmojiTag(result.tag, emojiTags, seenShortcodes);
+            }
+        });
+        return {
+            content: fragments.join('\n'),
+            emojiTags,
+        };
+    }
+
+    iterateChildNodes(doc, (node) => {
         if (node.type.name === 'paragraph') {
-            fragments.push(node.textContent);
-        } else if (node.type.name === 'image' || node.type.name === 'video') {
+            fragments.push(extractInlineTextWithEmoji(node, emojiTags, seenShortcodes));
+            return;
+        }
+
+        if (node.type.name === 'image' || node.type.name === 'video') {
             const src = node.attrs?.src;
             if (src) {
                 fragments.push(src);
             }
+            return;
+        }
+
+        if (node.type.name === 'customEmoji') {
+            const result = createCustomEmojiTextAndTag(node.attrs);
+            if (result.text) {
+                fragments.push(result.text);
+            }
+            pushEmojiTag(result.tag, emojiTags, seenShortcodes);
         }
     });
-    return fragments;
+
+    return {
+        content: fragments.join('\n'),
+        emojiTags,
+    };
+}
+
+export function extractFragmentsFromDoc(doc: PMNode): string[] {
+    return extractPostContentFromDoc(doc).content.split('\n');
 }
 
 export function getDocumentFromEditor(editor: TipTapEditor | null): PMNode | null {
@@ -215,6 +342,14 @@ export function extractContentWithImages(editor: TipTapEditor | null): string {
     const doc = getDocumentFromEditor(editor);
     if (!doc) return '';
 
-    const fragments = extractFragmentsFromDoc(doc);
-    return fragments.join('\n');
+    return extractPostContentFromDoc(doc).content;
+}
+
+export function extractPostContentWithEmojiTags(editor: TipTapEditor | null): ExtractedPostContent {
+    const doc = getDocumentFromEditor(editor);
+    if (!doc) {
+        return { content: '', emojiTags: [] };
+    }
+
+    return extractPostContentFromDoc(doc);
 }
