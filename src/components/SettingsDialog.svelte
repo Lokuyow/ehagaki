@@ -13,7 +13,7 @@
         handleSwUpdate,
     } from "../stores/swStore.svelte";
     import {
-        writeRelaysStore,
+        relayConfigStore,
         showRelaysStore,
         isSwUpdatingStore,
         loadRelayConfigFromStorage,
@@ -77,7 +77,7 @@
 
     // Store派生値
     let swVersion = $derived(swVersionStore.value);
-    let writeRelays = $derived(writeRelaysStore.value);
+    let relayConfig = $derived(relayConfigStore.value);
     let showRelays = $derived(showRelaysStore.value);
     let isUpdating = $derived(isSwUpdatingStore.value);
 
@@ -518,7 +518,7 @@
 
         <!-- リレー・プロフィール再取得セクション -->
         <SettingsRelaySection
-            {writeRelays}
+            {relayConfig}
             {showRelays}
             onToggleShowRelays={() => showRelaysStore.set(!showRelays)}
             {onRefreshRelaysAndProfile}
