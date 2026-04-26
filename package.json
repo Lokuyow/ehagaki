@@ -43,7 +43,7 @@
     "@tiptap/starter-kit": "^3.22.4",
     "@tiptap/suggestion": "^3.22.4",
     "@types/dompurify": "^3.0.5",
-    "bits-ui": "^2.14.4",
+    "bits-ui": "^2.18.0",
     "blurhash": "^2.0.5",
     "browser-image-compression": "^2.0.2",
     "dompurify": "^3.3.3",
