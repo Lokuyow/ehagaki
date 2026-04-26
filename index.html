@@ -28,9 +28,9 @@
   <link rel="icon" href="/ehagaki/favicon.ico" sizes="48x48">
   <link rel="icon" href="/ehagaki/ehagaki_icon.svg" sizes="any" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/ehagaki/apple-touch-icon.png">
-  <script type="module" crossorigin src="/ehagaki/assets/index-BkHvyl8W.js"></script>
-  <link rel="modulepreload" crossorigin href="/ehagaki/assets/settingsStorage-DEMri-dB.js">
-  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-ui-DlGzpeT_.js">
+  <script type="module" crossorigin src="/ehagaki/assets/index-DKpDTgut.js"></script>
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/settingsStorage-DvZ4waW6.js">
+  <link rel="modulepreload" crossorigin href="/ehagaki/assets/vendor-ui-Cg7l8Fgu.js">
   <link rel="stylesheet" crossorigin href="/ehagaki/assets/vendor-ui-BpcL6yKj.css">
   <link rel="stylesheet" crossorigin href="/ehagaki/assets/index-DMEJ5ita.css">
 <link rel="manifest" href="/ehagaki/manifest.webmanifest"></head>
@@ -38,9 +38,11 @@
 <body ontouchstart="">
   <script>
     (function () {
+      var THEME_MODE_KEY = 'themeMode';
       var DARK_MODE_KEY = 'darkMode';
       var PREFERENCE_METADATA_KEY = 'settingsPreferenceMetadata';
       var THEME_QUERY_KEY = 'embedTheme';
+      var DEFAULT_THEME_QUERY_KEY = 'defaultTheme';
 
       function readPreferenceMetadata() {
         try {
@@ -56,40 +58,73 @@
         }
       }
 
-      function parseEmbedTheme(search) {
-        var value = new URLSearchParams(search).get(THEME_QUERY_KEY);
+      function writeDarkModeSource(source) {
+        try {
+          var metadata = readPreferenceMetadata();
+          var sources = metadata.sources && typeof metadata.sources === 'object'
+            ? metadata.sources
+            : {};
+          sources.darkMode = source;
+          localStorage.setItem(PREFERENCE_METADATA_KEY, JSON.stringify({
+            embedBootstrapApplied: metadata.embedBootstrapApplied === true,
+            sources: sources
+          }));
+        } catch {
+        }
+      }
+
+      function parseThemeQuery(search, key) {
+        var value = new URLSearchParams(search).get(key);
         if (!value) {
           return null;
         }
 
         var normalized = value.trim().toLowerCase();
-        if (normalized === 'dark') {
-          return true;
-        }
-
-        if (normalized === 'light') {
-          return false;
+        if (normalized === 'system' || normalized === 'light' || normalized === 'dark') {
+          return normalized;
         }
 
         return null;
       }
 
-      var metadata = readPreferenceMetadata();
-      var source = metadata.sources && metadata.sources.darkMode
-        ? metadata.sources.darkMode
-        : 'default';
-      var saved = localStorage.getItem(DARK_MODE_KEY);
-      var shouldApplyEmbedTheme = metadata.embedBootstrapApplied !== true && source !== 'user';
-      var embedTheme = shouldApplyEmbedTheme ? parseEmbedTheme(window.location.search) : null;
-
-      if (embedTheme !== null) {
-        saved = embedTheme ? 'true' : 'false';
-        localStorage.setItem(DARK_MODE_KEY, saved);
+      var themeMode = localStorage.getItem(THEME_MODE_KEY);
+      var hasStoredThemeMode = themeMode === 'system' || themeMode === 'light' || themeMode === 'dark';
+      var hasLegacyDarkMode = localStorage.getItem(DARK_MODE_KEY) !== null;
+      if (themeMode !== 'system' && themeMode !== 'light' && themeMode !== 'dark') {
+        var legacyDarkMode = localStorage.getItem(DARK_MODE_KEY);
+        themeMode = legacyDarkMode === null
+          ? 'system'
+          : legacyDarkMode === 'true'
+            ? 'dark'
+            : 'light';
+        localStorage.setItem(THEME_MODE_KEY, themeMode);
+        if (legacyDarkMode !== null) {
+          localStorage.removeItem(DARK_MODE_KEY);
+        }
+      } else if (localStorage.getItem(DARK_MODE_KEY) !== null) {
+        localStorage.removeItem(DARK_MODE_KEY);
       }
 
-      var isDark = saved !== null
-        ? saved === 'true'
-        : window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var embedTheme = parseThemeQuery(window.location.search, THEME_QUERY_KEY);
+      var defaultTheme = parseThemeQuery(window.location.search, DEFAULT_THEME_QUERY_KEY);
+
+      if (embedTheme !== null) {
+        themeMode = embedTheme;
+        localStorage.setItem(THEME_MODE_KEY, themeMode);
+        localStorage.removeItem(DARK_MODE_KEY);
+        writeDarkModeSource('parentForced');
+      } else if (!hasStoredThemeMode && !hasLegacyDarkMode && defaultTheme !== null) {
+        themeMode = defaultTheme;
+        localStorage.setItem(THEME_MODE_KEY, themeMode);
+        localStorage.removeItem(DARK_MODE_KEY);
+        writeDarkModeSource('parentDefault');
+      }
+
+      var isDark = themeMode === 'dark'
+        ? true
+        : themeMode === 'light'
+          ? false
+          : window.matchMedia('(prefers-color-scheme: dark)').matches;
       var root = document.documentElement;
       if (isDark) {
         root.classList.add('dark');

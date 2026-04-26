@@ -16,6 +16,8 @@ const INBOUND_TYPES = new Set([
     "composer.contextApplied",
     "composer.contextError",
     "composer.contextUpdated",
+    "settings.applied",
+    "settings.error",
     "post.success",
     "post.error",
 ]);
@@ -27,9 +29,11 @@ const KNOWN_CAPABILITIES = new Set([
 ]);
 
 const appUrlInput = document.getElementById("app-url");
+const initialQueryModeSelect = document.getElementById("initial-query-mode");
 const initialLocaleSelect = document.getElementById("initial-locale");
 const initialThemeSelect = document.getElementById("initial-theme");
 const initialHideMascotInput = document.getElementById("initial-hide-mascot");
+const syncRuntimeSettingsButton = document.getElementById("sync-runtime-settings");
 const resetInitialSettingsButton = document.getElementById("reset-initial-settings");
 const initialSettingsFeedback = document.getElementById("initial-settings-feedback");
 const parentOriginInput = document.getElementById("parent-origin");
@@ -42,6 +46,13 @@ const handshakeStatus = document.getElementById("handshake-status");
 const timelineStatus = document.getElementById("timeline-status");
 const timelineSelection = document.getElementById("timeline-selection");
 const timelineList = document.getElementById("timeline-list");
+const channelReferenceInput = document.getElementById("channel-reference");
+const channelNameInput = document.getElementById("channel-name");
+const channelAboutInput = document.getElementById("channel-about");
+const channelPictureInput = document.getElementById("channel-picture");
+const channelRelaysInput = document.getElementById("channel-relays");
+const syncChannelContextButton = document.getElementById("sync-channel-context");
+const clearChannelContextButton = document.getElementById("clear-channel-context");
 const composerContentInput = document.getElementById("composer-content");
 const syncComposerContentButton = document.getElementById("sync-composer-content");
 const clearComposerContentButton = document.getElementById("clear-composer-content");
@@ -63,9 +74,10 @@ const AUTH_METHOD_LABELS = {
 
 const INITIAL_SETTINGS_RESET_KEYS = [
     "locale",
+    "themeMode",
     "darkMode",
     "showMascot",
-    "showBalloonMessage",
+    "showFlavorText",
     "settingsPreferenceMetadata",
 ];
 
@@ -75,10 +87,13 @@ let isIframeReady = false;
 let timelineEvents = [];
 let selectedReplyReference = null;
 let selectedQuoteReferences = [];
+let selectedChannelContext = null;
 let timelineSubscription = null;
 let composerRequestSequence = 0;
+let settingsRequestSequence = 0;
 
 const pendingComposerRequests = new Map();
+const pendingSettingsRequests = new Map();
 
 const timelinePool = new SimplePool({
     enablePing: true,
@@ -106,6 +121,32 @@ function isStringMatrix(value) {
         && value.every(
             (row) => Array.isArray(row) && row.every((item) => typeof item === "string"),
         );
+}
+
+function trimToNull(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseRelayListInput(value) {
+    if (typeof value !== "string") {
+        return [];
+    }
+
+    return value
+        .split(/[\n,]+/)
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0);
+}
+
+function formatRelayListInput(relays) {
+    return Array.isArray(relays) && relays.length > 0
+        ? relays.join("\n")
+        : "";
 }
 
 function updateStatus(element, text, className) {
@@ -505,6 +546,88 @@ function isQuoteSelected(eventId) {
     return selectedQuoteReferences.some((reference) => reference.eventId === eventId);
 }
 
+function buildSelectedChannelLabel() {
+    if (!selectedChannelContext) {
+        return "なし";
+    }
+
+    if (selectedChannelContext.name) {
+        return `#${selectedChannelContext.name}`;
+    }
+
+    return truncateMiddle(selectedChannelContext.eventId ?? selectedChannelContext.reference);
+}
+
+function toEmbedChannelPayload(channelContext) {
+    if (!channelContext) {
+        return null;
+    }
+
+    return {
+        reference: channelContext.reference,
+        ...(Array.isArray(channelContext.relays) && channelContext.relays.length > 0
+            ? { relays: [...channelContext.relays] }
+            : {}),
+        ...(channelContext.name ? { name: channelContext.name } : {}),
+        ...(channelContext.about ? { about: channelContext.about } : {}),
+        ...(channelContext.picture ? { picture: channelContext.picture } : {}),
+    };
+}
+
+function createChannelContextFromPayload(channelPayload) {
+    if (channelPayload === null || channelPayload === undefined) {
+        return null;
+    }
+
+    if (!isRecord(channelPayload) || !isNonEmptyString(channelPayload.reference)) {
+        return null;
+    }
+
+    const reference = createReferenceFromQueryValue(channelPayload.reference);
+    if (!reference) {
+        return null;
+    }
+
+    return {
+        reference: reference.queryValue,
+        eventId: reference.eventId,
+        relays: isStringArray(channelPayload.relays) ? [...channelPayload.relays] : [],
+        name: trimToNull(channelPayload.name),
+        about: trimToNull(channelPayload.about),
+        picture: trimToNull(channelPayload.picture),
+    };
+}
+
+function readChannelContextFromInputs() {
+    const referenceValue = trimToNull(channelReferenceInput.value);
+    if (!referenceValue) {
+        return null;
+    }
+
+    const reference = createReferenceFromQueryValue(referenceValue);
+    if (!reference) {
+        throw new Error("channel には note1... または nevent1... を入力してください");
+    }
+
+    return {
+        reference: reference.queryValue,
+        eventId: reference.eventId,
+        relays: parseRelayListInput(channelRelaysInput.value),
+        name: trimToNull(channelNameInput.value),
+        about: trimToNull(channelAboutInput.value),
+        picture: trimToNull(channelPictureInput.value),
+    };
+}
+
+function syncChannelInputsFromSelection() {
+    channelReferenceInput.value = selectedChannelContext?.reference ?? "";
+    channelNameInput.value = selectedChannelContext?.name ?? "";
+    channelAboutInput.value = selectedChannelContext?.about ?? "";
+    channelPictureInput.value = selectedChannelContext?.picture ?? "";
+    channelRelaysInput.value = formatRelayListInput(selectedChannelContext?.relays);
+    clearChannelContextButton.disabled = !selectedChannelContext;
+}
+
 function updateTimelineSelection() {
     const replyLabel = selectedReplyReference
         ? `${truncateMiddle(selectedReplyReference.eventId)}${selectedReplyReference.pubkey ? ` / ${truncateMiddle(selectedReplyReference.pubkey, 8, 6)}` : ""}`
@@ -516,8 +639,9 @@ function updateTimelineSelection() {
             .map((reference) => truncateMiddle(reference.eventId))
             .join(", ")}${selectedQuoteReferences.length > 2 ? ", ..." : ""})`;
 
-    timelineSelection.textContent = `reply: ${replyLabel} / quote: ${quoteLabel}`;
+    timelineSelection.textContent = `reply: ${replyLabel} / quote: ${quoteLabel} / channel: ${buildSelectedChannelLabel()}`;
     clearReplyQuoteButton.disabled = !selectedReplyReference && selectedQuoteReferences.length === 0;
+    clearChannelContextButton.disabled = !selectedChannelContext;
 }
 
 function applyComposerContextUpdate(payload) {
@@ -540,6 +664,11 @@ function applyComposerContextUpdate(payload) {
         return true;
     });
 
+    if (payload.channel !== undefined) {
+        selectedChannelContext = createChannelContextFromPayload(payload.channel);
+        syncChannelInputsFromSelection();
+    }
+
     renderTimeline();
     updateDisplayedEmbedUrl();
 }
@@ -559,6 +688,15 @@ function createComposerRequestId() {
     return `composer-${Date.now()}-${composerRequestSequence}`;
 }
 
+function createSettingsRequestId() {
+    if (typeof window.crypto?.randomUUID === "function") {
+        return `settings-${window.crypto.randomUUID()}`;
+    }
+
+    settingsRequestSequence += 1;
+    return `settings-${Date.now()}-${settingsRequestSequence}`;
+}
+
 function rememberComposerRequest(requestId, actionLabel) {
     pendingComposerRequests.set(requestId, actionLabel);
 }
@@ -570,6 +708,20 @@ function consumeComposerRequestAction(requestId) {
 
     const actionLabel = pendingComposerRequests.get(requestId) ?? "composer context 更新";
     pendingComposerRequests.delete(requestId);
+    return actionLabel;
+}
+
+function rememberSettingsRequest(requestId, actionLabel) {
+    pendingSettingsRequests.set(requestId, actionLabel);
+}
+
+function consumeSettingsRequestAction(requestId) {
+    if (!requestId) {
+        return "settings 同期";
+    }
+
+    const actionLabel = pendingSettingsRequests.get(requestId) ?? "settings 同期";
+    pendingSettingsRequests.delete(requestId);
     return actionLabel;
 }
 
@@ -660,6 +812,7 @@ function buildComposerContextPayload(options = {}) {
         includeContent = false,
         clearContent = false,
         includeReplyQuote = false,
+        includeChannel = false,
     } = options;
     const content = clearContent ? null : getComposerContentValue();
     const quoteValues = selectedQuoteReferences.map((reference) => reference.queryValue);
@@ -669,6 +822,9 @@ function buildComposerContextPayload(options = {}) {
             : {}),
         ...(includeReplyQuote || quoteValues.length > 0
             ? { quotes: quoteValues }
+            : {}),
+        ...(includeChannel || selectedChannelContext
+            ? { channel: toEmbedChannelPayload(selectedChannelContext) }
             : {}),
     };
 
@@ -788,6 +944,45 @@ function clearReplyQuoteSelection() {
     });
 }
 
+function syncChannelContext() {
+    try {
+        selectedChannelContext = readChannelContextFromInputs();
+    } catch (error) {
+        updateStatus(handshakeStatus, "channel context 入力エラー", "warn");
+        appendLog("warn", "channel context の同期を中止しました", error instanceof Error ? error.message : String(error));
+        return;
+    }
+
+    syncChannelInputsFromSelection();
+    updateTimelineSelection();
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeChannel: true }), {
+        actionLabel: selectedChannelContext ? "channel コンテキスト更新" : "channel コンテキスト解除",
+        infoMessage: selectedChannelContext ? "channel コンテキストを送信しました" : "channel コンテキストを解除しました",
+        detail: selectedChannelContext ? toEmbedChannelPayload(selectedChannelContext) : null,
+        failureMessage: "runtime channel context 同期に失敗したため iframe を再読み込みします",
+    });
+}
+
+function clearChannelContext() {
+    if (!selectedChannelContext
+        && !trimToNull(channelReferenceInput.value)
+        && !trimToNull(channelNameInput.value)
+        && !trimToNull(channelAboutInput.value)
+        && !trimToNull(channelPictureInput.value)) {
+        return;
+    }
+
+    selectedChannelContext = null;
+    syncChannelInputsFromSelection();
+    updateTimelineSelection();
+    sendRuntimeComposerMessage("composer.setContext", buildComposerContextPayload({ includeChannel: true }), {
+        actionLabel: "channel コンテキスト解除",
+        infoMessage: "channel コンテキストを解除しました",
+        detail: null,
+        failureMessage: "runtime channel context 解除に失敗したため iframe を再読み込みします",
+    });
+}
+
 function syncComposerContent() {
     const content = getComposerContentValue();
     if (content === null) {
@@ -803,6 +998,7 @@ function syncComposerContent() {
             contentLength: content.length,
             hasReply: !!selectedReplyReference,
             quoteCount: selectedQuoteReferences.length,
+            hasChannel: !!selectedChannelContext,
         },
         failureMessage: "runtime 本文同期に失敗したため iframe を再読み込みします",
     });
@@ -816,6 +1012,7 @@ function clearComposerContent() {
         detail: {
             hasReply: !!selectedReplyReference,
             quoteCount: selectedQuoteReferences.length,
+            hasChannel: !!selectedChannelContext,
         },
         failureMessage: "runtime 本文クリアに失敗したため iframe を再読み込みします",
     });
@@ -907,23 +1104,30 @@ function normalizeInitialTheme(value) {
 }
 
 function resolveInitialTheme(value) {
-    const normalizedValue = normalizeInitialTheme(value);
-    if (normalizedValue === "system") {
-        return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-
-    return normalizedValue;
+    return normalizeInitialTheme(value);
 }
 
 function syncInitialSettingsControlsFromAppUrl() {
     try {
         const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
         initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("embedLocale"));
-        const initialTheme = url.searchParams.get("embedTheme");
+        const hasDefaultSettings = [
+            "defaultLocale",
+            "defaultTheme",
+            "defaultShowMascot",
+            "defaultShowFlavorText",
+        ].some((key) => url.searchParams.has(key));
+        initialQueryModeSelect.value = hasDefaultSettings ? "default" : "embed";
+        if (hasDefaultSettings) {
+            initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("defaultLocale"));
+        }
+        const initialTheme = url.searchParams.get(hasDefaultSettings ? "defaultTheme" : "embedTheme");
         if (initialTheme !== null) {
             initialThemeSelect.value = normalizeInitialTheme(initialTheme);
         }
-        initialHideMascotInput.checked = url.searchParams.get("embedShowMascot") === "false";
+        initialHideMascotInput.checked = url.searchParams.get(
+            hasDefaultSettings ? "defaultShowMascot" : "embedShowMascot",
+        ) === "false";
     } catch {
         // app-url の入力途中など一時的な不正値では既存 UI を維持する
     }
@@ -943,23 +1147,34 @@ function buildEmbedUrl() {
     url.searchParams.delete("content");
     url.searchParams.delete("reply");
     url.searchParams.delete("quote");
+    url.searchParams.delete("channel");
+    url.searchParams.delete("channelRelays");
+    url.searchParams.delete("channelName");
+    url.searchParams.delete("channelAbout");
+    url.searchParams.delete("channelPicture");
     url.searchParams.delete("embedLocale");
     url.searchParams.delete("embedTheme");
     url.searchParams.delete("embedShowMascot");
+    url.searchParams.delete("embedShowFlavorText");
+    url.searchParams.delete("defaultLocale");
+    url.searchParams.delete("defaultTheme");
+    url.searchParams.delete("defaultShowMascot");
+    url.searchParams.delete("defaultShowFlavorText");
 
     const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
     const initialTheme = resolveInitialTheme(initialThemeSelect.value);
+    const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
 
     if (initialLocale) {
-        url.searchParams.set("embedLocale", initialLocale);
+        url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
     }
 
     if (initialTheme) {
-        url.searchParams.set("embedTheme", initialTheme);
+        url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
     }
 
     if (initialHideMascotInput.checked) {
-        url.searchParams.set("embedShowMascot", "false");
+        url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
     }
 
     const content = getComposerContentValue();
@@ -975,6 +1190,22 @@ function buildEmbedUrl() {
         url.searchParams.append("quote", reference.queryValue);
     });
 
+    if (selectedChannelContext) {
+        url.searchParams.set("channel", selectedChannelContext.reference);
+        if (Array.isArray(selectedChannelContext.relays) && selectedChannelContext.relays.length > 0) {
+            url.searchParams.set("channelRelays", selectedChannelContext.relays.join(","));
+        }
+        if (selectedChannelContext.name) {
+            url.searchParams.set("channelName", selectedChannelContext.name);
+        }
+        if (selectedChannelContext.about) {
+            url.searchParams.set("channelAbout", selectedChannelContext.about);
+        }
+        if (selectedChannelContext.picture) {
+            url.searchParams.set("channelPicture", selectedChannelContext.picture);
+        }
+    }
+
     return url.toString();
 }
 
@@ -982,10 +1213,50 @@ function updateDisplayedEmbedUrl() {
     iframeSrcDisplay.textContent = buildEmbedUrl();
 }
 
+function buildRuntimeSettingsPayload() {
+    const payload = {};
+    const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
+    const initialTheme = resolveInitialTheme(initialThemeSelect.value);
+
+    if (initialLocale) {
+        payload.locale = initialLocale;
+    }
+
+    if (initialTheme) {
+        payload.themeMode = initialTheme;
+    }
+
+    if (initialHideMascotInput.checked) {
+        payload.showMascot = false;
+    }
+
+    return payload;
+}
+
+function syncRuntimeSettings(actionLabel = "settings 同期") {
+    if (!isIframeReady) {
+        appendLog("warn", "iframe ready 前のため settings.set を送信できません");
+        return;
+    }
+
+    const payload = buildRuntimeSettingsPayload();
+    const requestId = createSettingsRequestId();
+    rememberSettingsRequest(requestId, actionLabel);
+
+    try {
+        postToIframe("settings.set", payload, requestId);
+        updateStatus(handshakeStatus, `${actionLabel} を送信しました`, "ok");
+    } catch (error) {
+        pendingSettingsRequests.delete(requestId);
+        appendLog("error", "settings.set の送信に失敗しました", error instanceof Error ? error.message : String(error));
+    }
+}
+
 function loadIframe() {
     const embedUrl = buildEmbedUrl();
     isIframeReady = false;
     pendingComposerRequests.clear();
+    pendingSettingsRequests.clear();
     iframe.src = embedUrl;
     iframeSrcDisplay.textContent = embedUrl;
     updateStatus(handshakeStatus, "iframe 読み込み中", "warn");
@@ -1071,6 +1342,9 @@ function requiresRequestId(type) {
     return [
         "auth.request",
         "rpc.request",
+        "settings.set",
+        "settings.applied",
+        "settings.error",
         "composer.contextApplied",
         "composer.contextError",
     ].includes(type);
@@ -1240,6 +1514,35 @@ function validateComposerContextErrorPayload(payload) {
     return null;
 }
 
+function validateSettingsAppliedPayload(payload) {
+    if (!isRecord(payload)) {
+        return "settings.applied payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "settings.applied payload.timestamp must be a number";
+    }
+    if (!isStringArray(payload.applied)) {
+        return "settings.applied payload.applied must be a string array";
+    }
+    return null;
+}
+
+function validateSettingsErrorPayload(payload) {
+    if (!isRecord(payload)) {
+        return "settings.error payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "settings.error payload.timestamp must be a number";
+    }
+    if (!isNonEmptyString(payload.code)) {
+        return "settings.error payload.code must be a non-empty string";
+    }
+    if (payload.message !== undefined && typeof payload.message !== "string") {
+        return "settings.error payload.message must be a string when provided";
+    }
+    return null;
+}
+
 function validateComposerContextUpdatedPayload(payload) {
     if (!isRecord(payload)) {
         return "composer.contextUpdated payload must be an object";
@@ -1252,6 +1555,26 @@ function validateComposerContextUpdatedPayload(payload) {
     }
     if (!isStringArray(payload.quotes)) {
         return "composer.contextUpdated payload.quotes must be a string array";
+    }
+    if (payload.channel !== undefined) {
+        if (payload.channel !== null && !isRecord(payload.channel)) {
+            return "composer.contextUpdated payload.channel must be an object or null";
+        }
+        if (payload.channel && !isNonEmptyString(payload.channel.reference)) {
+            return "composer.contextUpdated payload.channel.reference must be a non-empty string";
+        }
+        if (payload.channel?.relays !== undefined && !isStringArray(payload.channel.relays)) {
+            return "composer.contextUpdated payload.channel.relays must be a string array";
+        }
+        if (payload.channel?.name !== undefined && payload.channel.name !== null && typeof payload.channel.name !== "string") {
+            return "composer.contextUpdated payload.channel.name must be a string or null";
+        }
+        if (payload.channel?.about !== undefined && payload.channel.about !== null && typeof payload.channel.about !== "string") {
+            return "composer.contextUpdated payload.channel.about must be a string or null";
+        }
+        if (payload.channel?.picture !== undefined && payload.channel.picture !== null && typeof payload.channel.picture !== "string") {
+            return "composer.contextUpdated payload.channel.picture must be a string or null";
+        }
     }
     return null;
 }
@@ -1288,6 +1611,10 @@ function validateEnvelope(data) {
             return validateComposerContextAppliedPayload(data.payload);
         case "composer.contextError":
             return validateComposerContextErrorPayload(data.payload);
+        case "settings.applied":
+            return validateSettingsAppliedPayload(data.payload);
+        case "settings.error":
+            return validateSettingsErrorPayload(data.payload);
         case "composer.contextUpdated":
             return validateComposerContextUpdatedPayload(data.payload);
         case "post.success":
@@ -1301,6 +1628,7 @@ function validateEnvelope(data) {
 
 async function handleReady() {
     isIframeReady = true;
+    syncRuntimeSettings("ready 後 settings 同期");
 
     if (!activeParentSession) {
         updateStatus(handshakeStatus, "ready を受信。未ログイン待機中", "ok");
@@ -1494,9 +1822,20 @@ async function handleEmbedMessage(event) {
             appendLog("warn", `${actionLabel} の反映に失敗しました`, message.payload);
             break;
         }
+        case "settings.applied": {
+            const actionLabel = consumeSettingsRequestAction(message.requestId);
+            updateStatus(handshakeStatus, `${actionLabel} が iframe に反映されました`, "ok");
+            break;
+        }
+        case "settings.error": {
+            const actionLabel = consumeSettingsRequestAction(message.requestId);
+            updateStatus(handshakeStatus, `${actionLabel} に失敗: ${message.payload.code}`, "error");
+            appendLog("warn", `${actionLabel} の反映に失敗しました`, message.payload);
+            break;
+        }
         case "composer.contextUpdated":
             applyComposerContextUpdate(message.payload);
-            updateStatus(handshakeStatus, "iframe 側の reply / quote 更新を反映しました", "ok");
+            updateStatus(handshakeStatus, "iframe 側の composer context 更新を反映しました", "ok");
             break;
         case "post.success":
             updateStatus(handshakeStatus, "投稿成功を受信", "ok");
@@ -1587,6 +1926,7 @@ if (storedParentSession) {
 }
 
 renderTimeline();
+syncChannelInputsFromSelection();
 updateDisplayedEmbedUrl();
 reloadIframeButton.addEventListener("click", loadIframe);
 appUrlInput.addEventListener("input", () => {
@@ -1598,10 +1938,16 @@ appUrlInput.addEventListener("change", () => {
     updateDisplayedEmbedUrl();
 });
 initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrl);
+initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrl);
 initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrl);
 initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrl);
+syncRuntimeSettingsButton.addEventListener("click", () => {
+    syncRuntimeSettings("手動 settings 同期");
+});
 resetInitialSettingsButton.addEventListener("click", resetInitialSettingsState);
 composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
+syncChannelContextButton.addEventListener("click", syncChannelContext);
+clearChannelContextButton.addEventListener("click", clearChannelContext);
 loginNip07Button.addEventListener("click", () => {
     void handleNip07Login();
 });

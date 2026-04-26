@@ -471,14 +471,22 @@
             <div class="field">
                 <label for="app-url">eHagaki URL</label>
                 <input id="app-url" type="url" spellcheck="false">
-                <p class="small">`embedLocale=en` や `embedTheme=dark` のような埋め込み初期設定クエリを付けてもそのまま保持されます。これらは embed
-                    初回だけ反映されます。</p>
+                <p class="small">`embedLocale=en` や `embedTheme=dark` は iframe 起動ごとに毎回強制されます。初期値だけ渡したい場合は
+                    `defaultLocale=en` や `defaultTheme=dark` を使います。</p>
             </div>
 
             <div class="card">
                 <strong>初回設定テスト</strong>
 
                 <div class="setting-grid">
+                    <div class="field">
+                        <label for="initial-query-mode">query mode</label>
+                        <select id="initial-query-mode">
+                            <option value="embed" selected>embed (毎回強制)</option>
+                            <option value="default">default (未保存時のみ)</option>
+                        </select>
+                    </div>
+
                     <div class="field">
                         <label for="initial-locale">locale</label>
                         <select id="initial-locale">
@@ -504,11 +512,11 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">locale はそのまま、theme は既定で親ページの `window.matchMedia('(prefers-color-scheme: dark)')`
-                    から `embedTheme=light|dark` に展開して iframe 再読み込み時に自動付与します。未指定を選ぶと iframe
-                    側の生の判定を試せます。</p>
+                <p class="small">常時表示 iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同じ設定へ同期できます。</p>
 
                 <div class="buttons">
+                    <button id="sync-runtime-settings" type="button"
+                        class="secondary button-full">現在の設定を postMessage で同期</button>
                     <button id="reset-initial-settings" type="button"
                         class="secondary button-full">初期設定をリセットして再読み込み</button>
                 </div>
@@ -561,7 +569,52 @@
                     </div>
                 </div>
 
-                <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件</div>
+                <div id="timeline-selection" class="timeline-selection">reply: なし / quote: 0 件 / channel: なし</div>
+
+                <div class="card">
+                    <strong>channel context テスト</strong>
+
+                    <div class="field">
+                        <label for="channel-reference">channel reference</label>
+                        <input id="channel-reference" type="text" spellcheck="false"
+                            placeholder="note1... または nevent1...">
+                    </div>
+
+                    <div class="setting-grid">
+                        <div class="field">
+                            <label for="channel-name">channel name</label>
+                            <input id="channel-name" type="text" spellcheck="false" placeholder="General">
+                        </div>
+
+                        <div class="field">
+                            <label for="channel-picture">channel picture</label>
+                            <input id="channel-picture" type="url" spellcheck="false"
+                                placeholder="https://example.com/channel.png">
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label for="channel-about">channel about</label>
+                        <input id="channel-about" type="text" spellcheck="false" placeholder="Public chat">
+                    </div>
+
+                    <div class="field">
+                        <label for="channel-relays">channel relays</label>
+                        <textarea id="channel-relays" spellcheck="false"
+                            placeholder="wss://channel-write.example.com\nwss://channel-backup.example.com"></textarea>
+                    </div>
+
+                    <div class="buttons">
+                        <button id="sync-channel-context" type="button" class="secondary">channel を同期</button>
+                        <button id="clear-channel-context" type="button" class="ghost">channel を解除</button>
+                    </div>
+
+                    <p class="small">channel reference には nevent1... を使ってください。channel relays は URL 再読み込み時には
+                        `channelRelays`
+                        クエリとして、runtime 更新時には payload.channel.relays として子 iframe に渡します。relays を省略して event id だけ渡した場合は
+                        子 iframe が kind 40 / 41 から metadata と relays を解決し、relays を省略したまま name / about / picture だけ渡した場合は
+                        子 iframe 自身の write relay を使います。</p>
+                </div>
 
                 <div class="field composer-field">
                     <label for="composer-content">本文同期テスト</label>
@@ -574,8 +627,9 @@
                     <button id="clear-composer-content" type="button" class="ghost">本文をクリア</button>
                 </div>
 
-                <p class="small">reply / quote を付けたまま本文だけ差し替えることもできます。iframe からは requestId 付きで composer.contextApplied /
-                    composer.contextError が返ります。</p>
+                <p class="small">reply / quote / channel を付けたまま本文だけ差し替えることもできます。iframe からは requestId 付きで
+                    composer.contextApplied /
+                    composer.contextError が返り、iframe 側の変更は composer.contextUpdated で親へ戻ります。</p>
 
                 <div id="timeline-list" class="timeline-list"></div>
             </section>
