@@ -98,6 +98,7 @@
     let longPressCompleted = false;
     let lastVibrationTime = 0; // プログレッシブバイブのスロットリング用
     let ignoreNextPostClick = false;
+    let footerButtonBarElement: HTMLDivElement | null = $state(null);
 
     function isPostDisabled(): boolean {
         return (
@@ -215,7 +216,7 @@
     }
 </script>
 
-<div class="footer-button-bar">
+<div class="footer-button-bar" bind:this={footerButtonBarElement}>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
@@ -285,8 +286,10 @@
                 <Popover.Portal>
                     <Popover.Content
                         side="top"
-                        align="start"
+                        align="center"
                         sideOffset={8}
+                        collisionPadding={12}
+                        customAnchor={footerButtonBarElement}
                         class="custom-emoji-popover-content"
                         trapFocus={false}
                         onOpenAutoFocus={(e) => e.preventDefault()}
@@ -298,7 +301,6 @@
                             open={customEmojiPickerOpen}
                             onSelect={(emoji) => {
                                 onCustomEmojiSelect?.(emoji);
-                                setCustomEmojiPickerOpen(false);
                             }}
                         />
                     </Popover.Content>

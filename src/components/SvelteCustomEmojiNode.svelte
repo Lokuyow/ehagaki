@@ -29,7 +29,8 @@
 </NodeViewWrapper>
 
 <style>
-    :global(.custom-emoji-wrapper) {
+    :global(.custom-emoji-wrapper),
+    :global(.custom-emoji-wrapper[data-node-view-wrapper]) {
         display: inline-flex;
         width: 1.45em;
         height: 1.45em;

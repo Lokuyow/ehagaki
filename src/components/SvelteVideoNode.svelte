@@ -191,7 +191,7 @@
     :global(.node-video) {
         margin: 12px 0;
     }
-    :global([data-node-view-wrapper]) {
+    :global(.node-video[data-node-view-wrapper]) {
         display: block;
         margin: 0;
     }

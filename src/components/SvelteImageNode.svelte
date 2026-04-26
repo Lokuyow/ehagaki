@@ -252,7 +252,7 @@
     }
 
     /* NodeViewWrapperが生成するdata-node-view-wrapperを縦並び用に調整 */
-    :global([data-node-view-wrapper]) {
+    :global(.node-image[data-node-view-wrapper]) {
         display: block;
         margin: 0;
         padding: 0;

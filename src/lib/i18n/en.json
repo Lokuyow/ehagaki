@@ -172,8 +172,7 @@
     "search_placeholder": "Search emoji",
     "loading": "Loading emoji...",
     "empty": "No emoji",
-    "resize": "Resize emoji picker",
-    "show_more": "Show more"
+    "resize": "Resize emoji picker"
   },
   "imageNode": {
     "uploading": "Uploading image..."

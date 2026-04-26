@@ -12,9 +12,6 @@
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
-    const INITIAL_VISIBLE_EMOJI_COUNT = 96;
-    const VISIBLE_EMOJI_INCREMENT = 96;
-
     interface Props {
         rxNostr?: RxNostr | null;
         pubkey?: string | null;
@@ -26,7 +23,8 @@
     let search = $state("");
     let pickerHeight = $state(CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT);
     let resizing = $state(false);
-    let visibleCount = $state(INITIAL_VISIBLE_EMOJI_COUNT);
+    let renderItems = $state(false);
+    let renderItemsFrameId: number | null = null;
 
     let items = $derived(customEmojiStore.items);
     let loading = $derived(customEmojiStore.loading);
@@ -37,23 +35,40 @@
             item.shortcode.toLowerCase().includes(query),
         );
     });
-    let visibleItems = $derived(filteredItems.slice(0, visibleCount));
-    let hasMoreItems = $derived(filteredItems.length > visibleItems.length);
 
     onMount(() => {
         pickerHeight = readCustomEmojiPickerHeight(localStorage);
     });
 
     $effect(() => {
-        if (!open) return;
+        if (renderItemsFrameId !== null) {
+            cancelAnimationFrame(renderItemsFrameId);
+            renderItemsFrameId = null;
+        }
+
+        renderItems = false;
+        if (!open) {
+            return;
+        }
+
         void customEmojiStore.load({ rxNostr, pubkey });
+        renderItemsFrameId = requestAnimationFrame(() => {
+            renderItemsFrameId = null;
+            renderItems = true;
+        });
+
+        return () => {
+            if (renderItemsFrameId !== null) {
+                cancelAnimationFrame(renderItemsFrameId);
+                renderItemsFrameId = null;
+            }
+        };
     });
 
     $effect(() => {
         search;
         open;
         items.length;
-        visibleCount = INITIAL_VISIBLE_EMOJI_COUNT;
     });
 
     function selectEmoji(emoji: CustomEmojiItem): void {
@@ -113,7 +128,7 @@
         >
             <ScrollArea.Viewport class="custom-emoji-scroll-viewport">
                 <Command.List class="custom-emoji-list">
-                    {#if loading}
+                    {#if loading || !renderItems}
                         <Command.Loading class="custom-emoji-message">
                             {$_("customEmoji.loading")}
                         </Command.Loading>
@@ -123,7 +138,7 @@
                         </Command.Empty>
                     {:else}
                         <div class="emoji-grid">
-                            {#each visibleItems as emoji (emoji.shortcode)}
+                            {#each filteredItems as emoji (emoji.shortcode)}
                                 <Command.Item
                                     value={emoji.shortcode}
                                     keywords={[emoji.shortcode]}
@@ -144,18 +159,6 @@
                                 </Command.Item>
                             {/each}
                         </div>
-                        {#if hasMoreItems}
-                            <button
-                                type="button"
-                                class="show-more-button"
-                                onmousedown={preventKeyboardFocusChange}
-                                ontouchstart={preventKeyboardFocusChange}
-                                onclick={() =>
-                                    (visibleCount += VISIBLE_EMOJI_INCREMENT)}
-                            >
-                                {$_("customEmoji.show_more")}
-                            </button>
-                        {/if}
                     {/if}
                 </Command.List>
             </ScrollArea.Viewport>
@@ -220,6 +223,17 @@
         width: 100%;
     }
 
+    :global(.custom-emoji-scroll-root) {
+        overflow: hidden;
+    }
+
+    :global(.custom-emoji-scroll-viewport) {
+        height: 100%;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
     :global(.custom-emoji-list) {
         min-height: 100%;
     }
@@ -253,23 +267,6 @@
         object-fit: contain;
         user-select: none;
         -webkit-user-drag: none;
-    }
-
-    .show-more-button {
-        display: block;
-        width: calc(100% - 16px);
-        height: 40px;
-        margin: 0 8px 8px;
-        border: 1px solid var(--border);
-        border-radius: 6px;
-        background: var(--bg-buttonbar);
-        color: var(--text);
-        font: inherit;
-        cursor: pointer;
-    }
-
-    .show-more-button:hover {
-        background: var(--btn-hover-bg, rgba(127, 127, 127, 0.12));
     }
 
     :global(.custom-emoji-message) {

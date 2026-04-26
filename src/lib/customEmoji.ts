@@ -248,6 +248,10 @@ function scheduleBackgroundTask(task: () => void): void {
 }
 
 export function cacheCustomEmojiImages(urls: string[]): void {
+    if (typeof navigator === "undefined" || !navigator.serviceWorker?.controller) {
+        return;
+    }
+
     const batches = getCustomEmojiCacheBatches(urls);
     if (!batches.length) return;
 
