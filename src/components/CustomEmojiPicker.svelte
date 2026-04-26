@@ -171,11 +171,10 @@
 
 <style>
     .custom-emoji-picker {
-        width: min(800px, calc(100vw - 24px));
+        width: min(100vw, 800px);
         background: var(--dialog);
         color: var(--text);
-        border: 1px solid var(--border);
-        border-radius: 8px;
+        border-radius: 8px 8px 0 0;
         box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
         overflow: hidden;
     }
@@ -240,18 +239,17 @@
 
     .emoji-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
-        gap: 4px;
-        padding: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+        justify-items: center;
+        padding: 4px;
     }
 
     :global(.emoji-item) {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 44px;
-        height: 44px;
-        border-radius: 6px;
+        width: 40px;
+        height: 40px;
         cursor: pointer;
         outline: none;
     }
@@ -262,8 +260,8 @@
     }
 
     .emoji-image {
-        width: 30px;
-        height: 30px;
+        width: 34px;
+        height: 34px;
         object-fit: contain;
         user-select: none;
         -webkit-user-drag: none;

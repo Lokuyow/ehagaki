@@ -287,8 +287,6 @@
                     <Popover.Content
                         side="top"
                         align="center"
-                        sideOffset={8}
-                        collisionPadding={12}
                         customAnchor={footerButtonBarElement}
                         class="custom-emoji-popover-content"
                         trapFocus={false}
