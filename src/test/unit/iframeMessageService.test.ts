@@ -442,6 +442,82 @@ describe("IframeMessageService", () => {
     });
   });
 
+  describe("notifySettingsApplied", () => {
+    it("settings.applied メッセージを送信する", () => {
+      const postMessageMock = vi.fn();
+      mockWindow = {
+        self: {},
+        top: {},
+        parent: {
+          postMessage: postMessageMock,
+        },
+      };
+
+      const service = new IframeMessageService({
+        window: mockWindow,
+        parentOrigin: 'https://example.com',
+        console: mockConsole,
+      });
+
+      const result = service.notifySettingsApplied(['themeMode'], 'settings-request-1');
+
+      expect(result).toBe(true);
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "settings.applied",
+          requestId: 'settings-request-1',
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+            applied: ['themeMode'],
+          }),
+        }),
+        "https://example.com"
+      );
+    });
+  });
+
+  describe("notifySettingsError", () => {
+    it("settings.error メッセージを送信する", () => {
+      const postMessageMock = vi.fn();
+      mockWindow = {
+        self: {},
+        top: {},
+        parent: {
+          postMessage: postMessageMock,
+        },
+      };
+
+      const service = new IframeMessageService({
+        window: mockWindow,
+        parentOrigin: 'https://example.com',
+        console: mockConsole,
+      });
+
+      const result = service.notifySettingsError(
+        { code: 'settings_invalid_payload', message: 'bad payload' },
+        'settings-request-2',
+      );
+
+      expect(result).toBe(true);
+      expect(postMessageMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          namespace: EMBED_MESSAGE_NAMESPACE,
+          version: EMBED_MESSAGE_VERSION,
+          type: "settings.error",
+          requestId: 'settings-request-2',
+          payload: expect.objectContaining({
+            timestamp: expect.any(Number),
+            code: 'settings_invalid_payload',
+            message: 'bad payload',
+          }),
+        }),
+        "https://example.com"
+      );
+    });
+  });
+
   describe("notifyComposerContextError", () => {
     it("composer.contextError メッセージを送信する", () => {
       const postMessageMock = vi.fn();

@@ -16,7 +16,7 @@
         balloonMessage?: BalloonMessageType | null;
         compactMessage?: BalloonMessageType | null;
         showMascot?: boolean;
-        showBalloonMessage?: boolean;
+        showFlavorText?: boolean;
     }
 
     let {
@@ -26,7 +26,7 @@
         balloonMessage = null,
         compactMessage = null,
         showMascot = true,
-        showBalloonMessage = true,
+        showFlavorText = true,
     }: Props = $props();
 
     // 下書き保存ポップアップの状態
@@ -87,13 +87,13 @@
                 />
             </a>
         {/if}
-        {#if showBalloonMessage && balloonMessage}
+        {#if showFlavorText && balloonMessage}
             <BalloonMessage
                 type={balloonMessage.type}
                 message={balloonMessage.message}
             />
         {/if}
-        {#if (!showBalloonMessage || !showMascot) && compactMessage}
+        {#if (!showFlavorText || !showMascot) && compactMessage}
             <div class="compact-message {compactMessage.type}">
                 <span class="compact-message-text">{compactMessageText}</span>
             </div>

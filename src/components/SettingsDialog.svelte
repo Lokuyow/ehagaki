@@ -72,7 +72,7 @@
     );
     let themeMode = $state<ThemeMode>(themeModeStore.value);
     let hideMascot = $state(!settingsStore.showMascot);
-    let hideFlavorText = $state(!settingsStore.showBalloonMessage);
+    let hideFlavorText = $state(!settingsStore.showFlavorText);
     let effectiveHideFlavorText = $derived(hideMascot || hideFlavorText);
 
     // Store派生値
@@ -103,7 +103,7 @@
         quoteNotificationEnabled = settingsStore.quoteNotificationEnabled;
         themeMode = themeModeStore.value;
         hideMascot = !settingsStore.showMascot;
-        hideFlavorText = !settingsStore.showBalloonMessage;
+        hideFlavorText = !settingsStore.showFlavorText;
         fetchSwVersion();
         if (authState.value?.pubkey && authState.value?.isAuthenticated) {
             loadRelayConfigFromStorage(authState.value.pubkey);
@@ -139,8 +139,8 @@
     });
 
     $effect(() => {
-        if (!hideFlavorText !== settingsStore.showBalloonMessage) {
-            settingsStore.showBalloonMessage = !hideFlavorText;
+        if (!hideFlavorText !== settingsStore.showFlavorText) {
+            settingsStore.showFlavorText = !hideFlavorText;
         }
     });
 

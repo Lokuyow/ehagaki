@@ -18,6 +18,7 @@
   import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
+  import { embedSettingsService } from "./lib/embedSettingsService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
@@ -123,7 +124,10 @@
     applyReplyQuoteQuery,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
-  import type { EmbedComposerSetContextPayload } from "./lib/embedProtocol";
+  import type {
+    EmbedComposerSetContextPayload,
+    EmbedSettingsSetPayload,
+  } from "./lib/embedProtocol";
   import {
     buildComposerContextSignature,
     buildComposerContextUpdatedPayload,
@@ -602,6 +606,25 @@
     }
   }
 
+  function handleRemoteSettingsSet(
+    payload: EmbedSettingsSetPayload,
+    requestId: string,
+  ): void {
+    try {
+      const applied = settingsStore.applyParentSettings(payload, "parentForced");
+      iframeMessageService.notifySettingsApplied(applied, requestId);
+    } catch (error) {
+      console.error("settings.set の適用に失敗:", error);
+      iframeMessageService.notifySettingsError(
+        {
+          code: "settings_apply_failed",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        requestId,
+      );
+    }
+  }
+
   async function flushPendingRemoteComposerAction(): Promise<void> {
     if (isBootstrappingApp || parentClientAuthPromise) {
       return;
@@ -927,6 +950,9 @@
     embedComposerContextService.initialize({
       locationSearch: window.location.search,
     });
+    embedSettingsService.initialize({
+      locationSearch: window.location.search,
+    });
 
     const cleanupParentClientLoginHandler =
       parentClientAuthService.onRemoteLogin((pubkeyHex) => {
@@ -941,6 +967,20 @@
     const cleanupRemoteComposerSetContextHandler =
       embedComposerContextService.onRemoteSetContext((payload, requestId) => {
         void handleRemoteComposerSetContext(payload, requestId);
+      });
+
+    const cleanupRemoteSettingsSetHandler =
+      embedSettingsService.onRemoteSetSettings((payload, requestId) => {
+        handleRemoteSettingsSet(payload, requestId);
+      });
+
+    const cleanupRemoteSettingsErrorHandler =
+      embedSettingsService.onRemoteSettingsError((error, requestId) => {
+        if (!requestId) {
+          return;
+        }
+
+        iframeMessageService.notifySettingsError(error, requestId);
       });
 
     const cleanupReplyQuoteChangeHandler = onReplyQuoteChanged(() => {
@@ -1026,6 +1066,8 @@
       cleanupParentClientLoginHandler();
       cleanupParentClientLogoutHandler();
       cleanupRemoteComposerSetContextHandler();
+      cleanupRemoteSettingsSetHandler();
+      cleanupRemoteSettingsErrorHandler();
       cleanupReplyQuoteChangeHandler();
       cleanupChannelContextChangeHandler();
     };
@@ -1128,7 +1170,7 @@
     () => localeInitialized,
   );
   const showHeaderBalloonMessage = $derived(
-    settingsStore.showMascot && settingsStore.showBalloonMessage,
+    settingsStore.showMascot && settingsStore.showFlavorText,
   );
 
   // --- 設定ダイアログからのリレー・プロフィール再取得ハンドラ ---
@@ -1167,7 +1209,7 @@
             ? null
             : balloon.compactMessage}
           showMascot={settingsStore.showMascot}
-          showBalloonMessage={showHeaderBalloonMessage}
+          showFlavorText={showHeaderBalloonMessage}
         />
         <div class="composer-scroll-region" bind:this={composerScrollRegionEl}>
           <div

@@ -16,6 +16,8 @@ const INBOUND_TYPES = new Set([
     "composer.contextApplied",
     "composer.contextError",
     "composer.contextUpdated",
+    "settings.applied",
+    "settings.error",
     "post.success",
     "post.error",
 ]);
@@ -27,9 +29,11 @@ const KNOWN_CAPABILITIES = new Set([
 ]);
 
 const appUrlInput = document.getElementById("app-url");
+const initialQueryModeSelect = document.getElementById("initial-query-mode");
 const initialLocaleSelect = document.getElementById("initial-locale");
 const initialThemeSelect = document.getElementById("initial-theme");
 const initialHideMascotInput = document.getElementById("initial-hide-mascot");
+const syncRuntimeSettingsButton = document.getElementById("sync-runtime-settings");
 const resetInitialSettingsButton = document.getElementById("reset-initial-settings");
 const initialSettingsFeedback = document.getElementById("initial-settings-feedback");
 const parentOriginInput = document.getElementById("parent-origin");
@@ -70,9 +74,10 @@ const AUTH_METHOD_LABELS = {
 
 const INITIAL_SETTINGS_RESET_KEYS = [
     "locale",
+    "themeMode",
     "darkMode",
     "showMascot",
-    "showBalloonMessage",
+    "showFlavorText",
     "settingsPreferenceMetadata",
 ];
 
@@ -85,8 +90,10 @@ let selectedQuoteReferences = [];
 let selectedChannelContext = null;
 let timelineSubscription = null;
 let composerRequestSequence = 0;
+let settingsRequestSequence = 0;
 
 const pendingComposerRequests = new Map();
+const pendingSettingsRequests = new Map();
 
 const timelinePool = new SimplePool({
     enablePing: true,
@@ -681,6 +688,15 @@ function createComposerRequestId() {
     return `composer-${Date.now()}-${composerRequestSequence}`;
 }
 
+function createSettingsRequestId() {
+    if (typeof window.crypto?.randomUUID === "function") {
+        return `settings-${window.crypto.randomUUID()}`;
+    }
+
+    settingsRequestSequence += 1;
+    return `settings-${Date.now()}-${settingsRequestSequence}`;
+}
+
 function rememberComposerRequest(requestId, actionLabel) {
     pendingComposerRequests.set(requestId, actionLabel);
 }
@@ -692,6 +708,20 @@ function consumeComposerRequestAction(requestId) {
 
     const actionLabel = pendingComposerRequests.get(requestId) ?? "composer context 更新";
     pendingComposerRequests.delete(requestId);
+    return actionLabel;
+}
+
+function rememberSettingsRequest(requestId, actionLabel) {
+    pendingSettingsRequests.set(requestId, actionLabel);
+}
+
+function consumeSettingsRequestAction(requestId) {
+    if (!requestId) {
+        return "settings 同期";
+    }
+
+    const actionLabel = pendingSettingsRequests.get(requestId) ?? "settings 同期";
+    pendingSettingsRequests.delete(requestId);
     return actionLabel;
 }
 
@@ -1081,11 +1111,23 @@ function syncInitialSettingsControlsFromAppUrl() {
     try {
         const url = new URL(appUrlInput.value || getDefaultAppUrl(), window.location.href);
         initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("embedLocale"));
-        const initialTheme = url.searchParams.get("embedTheme");
+        const hasDefaultSettings = [
+            "defaultLocale",
+            "defaultTheme",
+            "defaultShowMascot",
+            "defaultShowFlavorText",
+        ].some((key) => url.searchParams.has(key));
+        initialQueryModeSelect.value = hasDefaultSettings ? "default" : "embed";
+        if (hasDefaultSettings) {
+            initialLocaleSelect.value = normalizeInitialLocale(url.searchParams.get("defaultLocale"));
+        }
+        const initialTheme = url.searchParams.get(hasDefaultSettings ? "defaultTheme" : "embedTheme");
         if (initialTheme !== null) {
             initialThemeSelect.value = normalizeInitialTheme(initialTheme);
         }
-        initialHideMascotInput.checked = url.searchParams.get("embedShowMascot") === "false";
+        initialHideMascotInput.checked = url.searchParams.get(
+            hasDefaultSettings ? "defaultShowMascot" : "embedShowMascot",
+        ) === "false";
     } catch {
         // app-url の入力途中など一時的な不正値では既存 UI を維持する
     }
@@ -1113,20 +1155,26 @@ function buildEmbedUrl() {
     url.searchParams.delete("embedLocale");
     url.searchParams.delete("embedTheme");
     url.searchParams.delete("embedShowMascot");
+    url.searchParams.delete("embedShowFlavorText");
+    url.searchParams.delete("defaultLocale");
+    url.searchParams.delete("defaultTheme");
+    url.searchParams.delete("defaultShowMascot");
+    url.searchParams.delete("defaultShowFlavorText");
 
     const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
     const initialTheme = resolveInitialTheme(initialThemeSelect.value);
+    const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
 
     if (initialLocale) {
-        url.searchParams.set("embedLocale", initialLocale);
+        url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
     }
 
     if (initialTheme) {
-        url.searchParams.set("embedTheme", initialTheme);
+        url.searchParams.set(`${queryPrefix}Theme`, initialTheme);
     }
 
     if (initialHideMascotInput.checked) {
-        url.searchParams.set("embedShowMascot", "false");
+        url.searchParams.set(`${queryPrefix}ShowMascot`, "false");
     }
 
     const content = getComposerContentValue();
@@ -1167,10 +1215,50 @@ function updateDisplayedEmbedUrl() {
     iframeSrcDisplay.textContent = buildEmbedUrl();
 }
 
+function buildRuntimeSettingsPayload() {
+    const payload = {};
+    const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
+    const initialTheme = resolveInitialTheme(initialThemeSelect.value);
+
+    if (initialLocale) {
+        payload.locale = initialLocale;
+    }
+
+    if (initialTheme) {
+        payload.themeMode = initialTheme;
+    }
+
+    if (initialHideMascotInput.checked) {
+        payload.showMascot = false;
+    }
+
+    return payload;
+}
+
+function syncRuntimeSettings(actionLabel = "settings 同期") {
+    if (!isIframeReady) {
+        appendLog("warn", "iframe ready 前のため settings.set を送信できません");
+        return;
+    }
+
+    const payload = buildRuntimeSettingsPayload();
+    const requestId = createSettingsRequestId();
+    rememberSettingsRequest(requestId, actionLabel);
+
+    try {
+        postToIframe("settings.set", payload, requestId);
+        updateStatus(handshakeStatus, `${actionLabel} を送信しました`, "ok");
+    } catch (error) {
+        pendingSettingsRequests.delete(requestId);
+        appendLog("error", "settings.set の送信に失敗しました", error instanceof Error ? error.message : String(error));
+    }
+}
+
 function loadIframe() {
     const embedUrl = buildEmbedUrl();
     isIframeReady = false;
     pendingComposerRequests.clear();
+    pendingSettingsRequests.clear();
     iframe.src = embedUrl;
     iframeSrcDisplay.textContent = embedUrl;
     updateStatus(handshakeStatus, "iframe 読み込み中", "warn");
@@ -1256,6 +1344,9 @@ function requiresRequestId(type) {
     return [
         "auth.request",
         "rpc.request",
+        "settings.set",
+        "settings.applied",
+        "settings.error",
         "composer.contextApplied",
         "composer.contextError",
     ].includes(type);
@@ -1425,6 +1516,35 @@ function validateComposerContextErrorPayload(payload) {
     return null;
 }
 
+function validateSettingsAppliedPayload(payload) {
+    if (!isRecord(payload)) {
+        return "settings.applied payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "settings.applied payload.timestamp must be a number";
+    }
+    if (!isStringArray(payload.applied)) {
+        return "settings.applied payload.applied must be a string array";
+    }
+    return null;
+}
+
+function validateSettingsErrorPayload(payload) {
+    if (!isRecord(payload)) {
+        return "settings.error payload must be an object";
+    }
+    if (typeof payload.timestamp !== "number") {
+        return "settings.error payload.timestamp must be a number";
+    }
+    if (!isNonEmptyString(payload.code)) {
+        return "settings.error payload.code must be a non-empty string";
+    }
+    if (payload.message !== undefined && typeof payload.message !== "string") {
+        return "settings.error payload.message must be a string when provided";
+    }
+    return null;
+}
+
 function validateComposerContextUpdatedPayload(payload) {
     if (!isRecord(payload)) {
         return "composer.contextUpdated payload must be an object";
@@ -1493,6 +1613,10 @@ function validateEnvelope(data) {
             return validateComposerContextAppliedPayload(data.payload);
         case "composer.contextError":
             return validateComposerContextErrorPayload(data.payload);
+        case "settings.applied":
+            return validateSettingsAppliedPayload(data.payload);
+        case "settings.error":
+            return validateSettingsErrorPayload(data.payload);
         case "composer.contextUpdated":
             return validateComposerContextUpdatedPayload(data.payload);
         case "post.success":
@@ -1506,6 +1630,7 @@ function validateEnvelope(data) {
 
 async function handleReady() {
     isIframeReady = true;
+    syncRuntimeSettings("ready 後 settings 同期");
 
     if (!activeParentSession) {
         updateStatus(handshakeStatus, "ready を受信。未ログイン待機中", "ok");
@@ -1699,6 +1824,17 @@ async function handleEmbedMessage(event) {
             appendLog("warn", `${actionLabel} の反映に失敗しました`, message.payload);
             break;
         }
+        case "settings.applied": {
+            const actionLabel = consumeSettingsRequestAction(message.requestId);
+            updateStatus(handshakeStatus, `${actionLabel} が iframe に反映されました`, "ok");
+            break;
+        }
+        case "settings.error": {
+            const actionLabel = consumeSettingsRequestAction(message.requestId);
+            updateStatus(handshakeStatus, `${actionLabel} に失敗: ${message.payload.code}`, "error");
+            appendLog("warn", `${actionLabel} の反映に失敗しました`, message.payload);
+            break;
+        }
         case "composer.contextUpdated":
             applyComposerContextUpdate(message.payload);
             updateStatus(handshakeStatus, "iframe 側の composer context 更新を反映しました", "ok");
@@ -1804,8 +1940,12 @@ appUrlInput.addEventListener("change", () => {
     updateDisplayedEmbedUrl();
 });
 initialLocaleSelect.addEventListener("change", updateDisplayedEmbedUrl);
+initialQueryModeSelect.addEventListener("change", updateDisplayedEmbedUrl);
 initialThemeSelect.addEventListener("change", updateDisplayedEmbedUrl);
 initialHideMascotInput.addEventListener("change", updateDisplayedEmbedUrl);
+syncRuntimeSettingsButton.addEventListener("click", () => {
+    syncRuntimeSettings("手動 settings 同期");
+});
 resetInitialSettingsButton.addEventListener("click", resetInitialSettingsState);
 composerContentInput.addEventListener("input", updateDisplayedEmbedUrl);
 syncChannelContextButton.addEventListener("click", syncChannelContext);

@@ -1,4 +1,5 @@
 import { locale as i18nLocale } from "svelte-i18n";
+import type { EmbedSettingsSetPayload } from "../lib/embedProtocol";
 import {
     getClientTagEnabledPreference,
     ensureUploadEndpointPreference,
@@ -6,7 +7,7 @@ import {
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
     getQuoteNotificationEnabledPreference,
-    getShowBalloonMessagePreference,
+    getShowFlavorTextPreference,
     getShowMascotPreference,
     getUploadEndpointPreference,
     getVideoCompressionLevelPreference,
@@ -16,7 +17,7 @@ import {
     setLocalePreference,
     setMediaFreePlacementPreference,
     setQuoteNotificationEnabledPreference,
-    setShowBalloonMessagePreference,
+    setShowFlavorTextPreference,
     setShowMascotPreference,
     setUploadEndpointPreference,
     setVideoCompressionLevelPreference,
@@ -25,7 +26,9 @@ import {
     markSharedMediaProcessed as writeSharedMediaProcessed,
     clearSharedMediaProcessed as removeSharedMediaProcessed,
     type SupportedLocale,
+    type PreferenceSource,
 } from "../lib/utils/settingsStorage";
+import { themeModeStore } from "./themeStore.svelte";
 import { mediaFreePlacementStore } from "./uploadStore.svelte";
 
 interface SettingsState {
@@ -37,7 +40,7 @@ interface SettingsState {
     videoCompressionLevel: string;
     mediaFreePlacement: boolean;
     showMascot: boolean;
-    showBalloonMessage: boolean;
+    showFlavorText: boolean;
 }
 
 function readSettingsState(): SettingsState {
@@ -53,7 +56,7 @@ function readSettingsState(): SettingsState {
         videoCompressionLevel: getVideoCompressionLevelPreference(localStorage),
         mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
         showMascot: getShowMascotPreference(localStorage),
-        showBalloonMessage: getShowBalloonMessagePreference(localStorage),
+        showFlavorText: getShowFlavorTextPreference(localStorage),
     };
 }
 
@@ -161,15 +164,118 @@ export const settingsStore = {
         settingsState.showMascot = setShowMascotPreference(localStorage, value);
     },
 
-    get showBalloonMessage(): boolean {
-        return settingsState.showBalloonMessage;
+    get showFlavorText(): boolean {
+        return settingsState.showFlavorText;
     },
 
-    set showBalloonMessage(value: boolean) {
-        settingsState.showBalloonMessage = setShowBalloonMessagePreference(
+    set showFlavorText(value: boolean) {
+        settingsState.showFlavorText = setShowFlavorTextPreference(
             localStorage,
             value,
         );
+    },
+
+    applyParentSettings(
+        payload: EmbedSettingsSetPayload,
+        source: PreferenceSource = "parentForced",
+    ): string[] {
+        const applied: string[] = [];
+
+        if (payload.locale !== undefined) {
+            const hadStoredEndpoint = hasStoredUploadEndpoint(localStorage);
+            const nextLocale = setLocalePreference(localStorage, payload.locale, source);
+            settingsState.locale = nextLocale;
+            document.documentElement.lang = nextLocale;
+            i18nLocale.set(nextLocale);
+            applied.push("locale");
+
+            if (!hadStoredEndpoint && payload.uploadEndpoint === undefined) {
+                settingsState.uploadEndpoint = ensureUploadEndpointPreference(
+                    localStorage,
+                    nextLocale,
+                );
+            }
+        }
+
+        if (payload.themeMode !== undefined) {
+            themeModeStore.set(payload.themeMode, source);
+            applied.push("themeMode");
+        }
+
+        if (payload.uploadEndpoint !== undefined) {
+            settingsState.uploadEndpoint = setUploadEndpointPreference(
+                localStorage,
+                payload.uploadEndpoint,
+                source,
+            );
+            applied.push("uploadEndpoint");
+        }
+
+        if (payload.imageCompressionLevel !== undefined) {
+            settingsState.imageCompressionLevel = setImageCompressionLevelPreference(
+                localStorage,
+                payload.imageCompressionLevel,
+                source,
+            );
+            applied.push("imageCompressionLevel");
+        }
+
+        if (payload.videoCompressionLevel !== undefined) {
+            settingsState.videoCompressionLevel = setVideoCompressionLevelPreference(
+                localStorage,
+                payload.videoCompressionLevel,
+                source,
+            );
+            applied.push("videoCompressionLevel");
+        }
+
+        if (payload.clientTagEnabled !== undefined) {
+            settingsState.clientTagEnabled = setClientTagEnabledPreference(
+                localStorage,
+                payload.clientTagEnabled,
+                source,
+            );
+            applied.push("clientTagEnabled");
+        }
+
+        if (payload.quoteNotificationEnabled !== undefined) {
+            settingsState.quoteNotificationEnabled = setQuoteNotificationEnabledPreference(
+                localStorage,
+                payload.quoteNotificationEnabled,
+                source,
+            );
+            applied.push("quoteNotificationEnabled");
+        }
+
+        if (payload.mediaFreePlacement !== undefined) {
+            settingsState.mediaFreePlacement = setMediaFreePlacementPreference(
+                localStorage,
+                payload.mediaFreePlacement,
+                source,
+            );
+            updateMediaPlacement(settingsState.mediaFreePlacement);
+            applied.push("mediaFreePlacement");
+        }
+
+        if (payload.showMascot !== undefined) {
+            settingsState.showMascot = setShowMascotPreference(
+                localStorage,
+                payload.showMascot,
+                source,
+            );
+            applied.push("showMascot");
+        }
+
+        if (payload.showFlavorText !== undefined) {
+            settingsState.showFlavorText = setShowFlavorTextPreference(
+                localStorage,
+                payload.showFlavorText,
+                source,
+            );
+            applied.push("showFlavorText");
+        }
+
+        return applied;
     },
 };
 

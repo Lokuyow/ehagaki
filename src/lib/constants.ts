@@ -95,7 +95,7 @@ export const SCROLL_MAX_SPEED = 10;   // px/frame, 自動スクロールの最�
 export const DEFAULT_COMPRESSION_LEVEL = "medium";
 export const DEFAULT_CLIENT_TAG_ENABLED = true;
 export const DEFAULT_SHOW_MASCOT = true;
-export const DEFAULT_SHOW_BALLOON_MESSAGE = true;
+export const DEFAULT_SHOW_FLAVOR_TEXT = true;
 export const DEFAULT_QUOTE_NOTIFICATION_ENABLED = false;
 
 export const STORAGE_KEYS = {
@@ -106,7 +106,7 @@ export const STORAGE_KEYS = {
     IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
     VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     SHOW_MASCOT: "showMascot",
-    SHOW_BALLOON_MESSAGE: "showBalloonMessage",
+    SHOW_FLAVOR_TEXT: "showFlavorText",
     SETTINGS_PREFERENCE_METADATA: "settingsPreferenceMetadata",
     FIRST_VISIT: "firstVisit",
     SHARED_MEDIA_PROCESSED: "sharedMediaProcessed",

@@ -117,4 +117,5 @@ describe('settingsStorage preference metadata', () => {
         expect(storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED)).toBe('false');
         expect(getPreferenceSource(storage, 'quoteNotificationEnabled')).toBe('user');
     });
+
 });

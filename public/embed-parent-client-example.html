@@ -471,14 +471,22 @@
             <div class="field">
                 <label for="app-url">eHagaki URL</label>
                 <input id="app-url" type="url" spellcheck="false">
-                <p class="small">`embedLocale=en` や `embedTheme=dark` のような埋め込み初期設定クエリを付けてもそのまま保持されます。これらは embed
-                    初回だけ反映されます。</p>
+                <p class="small">`embedLocale=en` や `embedTheme=dark` は iframe 起動ごとに毎回強制されます。初期値だけ渡したい場合は
+                    `defaultLocale=en` や `defaultTheme=dark` を使います。</p>
             </div>
 
             <div class="card">
                 <strong>初回設定テスト</strong>
 
                 <div class="setting-grid">
+                    <div class="field">
+                        <label for="initial-query-mode">query mode</label>
+                        <select id="initial-query-mode">
+                            <option value="embed" selected>embed (毎回強制)</option>
+                            <option value="default">default (未保存時のみ)</option>
+                        </select>
+                    </div>
+
                     <div class="field">
                         <label for="initial-locale">locale</label>
                         <select id="initial-locale">
@@ -504,11 +512,11 @@
                     <span>左上のマスコットを非表示にする</span>
                 </label>
 
-                <p class="small">locale はそのまま、theme は既定で `embedTheme=system`
-                    として iframe 再読み込み時に自動付与します。未指定を選ぶと iframe
-                    側の生の判定を試せます。</p>
+                <p class="small">常時表示 iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同じ設定へ同期できます。</p>
 
                 <div class="buttons">
+                    <button id="sync-runtime-settings" type="button"
+                        class="secondary button-full">現在の設定を postMessage で同期</button>
                     <button id="reset-initial-settings" type="button"
                         class="secondary button-full">初期設定をリセットして再読み込み</button>
                 </div>

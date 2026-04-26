@@ -1,9 +1,7 @@
+import { STORAGE_KEYS } from "../constants";
 import {
     getEffectiveLocale,
-    getPreferenceSource,
-    hasAppliedEmbedBootstrap,
     isValidUploadEndpoint,
-    markEmbedBootstrapApplied,
     normalizeCompressionLevelPreference,
     normalizeLocale,
     setClientTagEnabledPreference,
@@ -11,7 +9,7 @@ import {
     setLocalePreference,
     setMediaFreePlacementPreference,
     setQuoteNotificationEnabledPreference,
-    setShowBalloonMessagePreference,
+    setShowFlavorTextPreference,
     setShowMascotPreference,
     setThemeModePreference,
     setUploadEndpointPreference,
@@ -30,7 +28,17 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "embedQuoteNotification",
     "embedMediaFreePlacement",
     "embedShowMascot",
-    "embedShowBalloonMessage",
+    "embedShowFlavorText",
+    "defaultLocale",
+    "defaultTheme",
+    "defaultUploadEndpoint",
+    "defaultImageCompression",
+    "defaultVideoCompression",
+    "defaultClientTag",
+    "defaultQuoteNotification",
+    "defaultMediaFreePlacement",
+    "defaultShowMascot",
+    "defaultShowFlavorText",
 ] as const;
 
 interface NavigatorLike {
@@ -73,14 +81,31 @@ interface ParsedEmbedSettings {
     quoteNotificationEnabled?: boolean;
     mediaFreePlacement?: boolean;
     showMascot?: boolean;
-    showBalloonMessage?: boolean;
+    showFlavorText?: boolean;
 }
+
+type ParsedSettingsKey = keyof ParsedEmbedSettings;
 
 interface EmbedSettingsBootstrapResult {
     hasQueryParams: boolean;
     applied: boolean;
+    appliedSettings: ParsedSettingsKey[];
     parsedSettings: ParsedEmbedSettings;
+    parsedDefaultSettings: ParsedEmbedSettings;
 }
+
+const PARSED_SETTINGS_KEYS: ParsedSettingsKey[] = [
+    "locale",
+    "themeMode",
+    "uploadEndpoint",
+    "imageCompressionLevel",
+    "videoCompressionLevel",
+    "clientTagEnabled",
+    "quoteNotificationEnabled",
+    "mediaFreePlacement",
+    "showMascot",
+    "showFlavorText",
+];
 
 function parseBooleanParam(value: string | null): boolean | undefined {
     if (value === null) {
@@ -121,37 +146,47 @@ function hasEmbedSettingsQuery(locationSearch: string): boolean {
     return EMBED_SETTINGS_QUERY_KEYS.some((key) => params.has(key));
 }
 
-function parseEmbedSettings(locationSearch: string): ParsedEmbedSettings {
-    const params = new URLSearchParams(locationSearch);
-    const locale = params.get("embedLocale");
-    const uploadEndpoint = params.get("embedUploadEndpoint");
+function parseSettingsFromParams(
+    params: URLSearchParams,
+    prefix: "embed" | "default",
+): ParsedEmbedSettings {
+    const locale = params.get(`${prefix}Locale`);
+    const uploadEndpoint = params.get(`${prefix}UploadEndpoint`);
 
     return {
         locale: locale ? normalizeLocale(locale) : undefined,
-        themeMode: parseThemeParam(params.get("embedTheme")),
+        themeMode: parseThemeParam(params.get(`${prefix}Theme`)),
         uploadEndpoint: isValidUploadEndpoint(uploadEndpoint)
             ? uploadEndpoint
             : undefined,
         imageCompressionLevel:
             normalizeCompressionLevelPreference(
-                params.get("embedImageCompression"),
+                params.get(`${prefix}ImageCompression`),
             ) ?? undefined,
         videoCompressionLevel:
             normalizeCompressionLevelPreference(
-                params.get("embedVideoCompression"),
+                params.get(`${prefix}VideoCompression`),
             ) ?? undefined,
-        clientTagEnabled: parseBooleanParam(params.get("embedClientTag")),
+        clientTagEnabled: parseBooleanParam(params.get(`${prefix}ClientTag`)),
         quoteNotificationEnabled: parseBooleanParam(
-            params.get("embedQuoteNotification"),
+            params.get(`${prefix}QuoteNotification`),
         ),
         mediaFreePlacement: parseBooleanParam(
-            params.get("embedMediaFreePlacement"),
+            params.get(`${prefix}MediaFreePlacement`),
         ),
-        showMascot: parseBooleanParam(params.get("embedShowMascot")),
-        showBalloonMessage: parseBooleanParam(
-            params.get("embedShowBalloonMessage"),
+        showMascot: parseBooleanParam(params.get(`${prefix}ShowMascot`)),
+        showFlavorText: parseBooleanParam(
+            params.get(`${prefix}ShowFlavorText`),
         ),
     };
+}
+
+function parseEmbedSettings(locationSearch: string): ParsedEmbedSettings {
+    return parseSettingsFromParams(new URLSearchParams(locationSearch), "embed");
+}
+
+function parseDefaultSettings(locationSearch: string): ParsedEmbedSettings {
+    return parseSettingsFromParams(new URLSearchParams(locationSearch), "default");
 }
 
 function cleanupEmbedSettingsQueryParams(windowObj: WindowLike): void {
@@ -189,6 +224,81 @@ function applyDocumentLanguage(
     documentObj.documentElement.lang = getEffectiveLocale(storage, navigatorObj);
 }
 
+function isPreferenceStored(storage: Storage, key: ParsedSettingsKey): boolean {
+    switch (key) {
+        case "locale":
+            return storage.getItem(STORAGE_KEYS.LOCALE) === "ja"
+                || storage.getItem(STORAGE_KEYS.LOCALE) === "en";
+        case "themeMode":
+            return storage.getItem(STORAGE_KEYS.THEME_MODE) !== null
+                || storage.getItem(STORAGE_KEYS.DARK_MODE) !== null;
+        case "uploadEndpoint":
+            return isValidUploadEndpoint(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT));
+        case "imageCompressionLevel":
+            return normalizeCompressionLevelPreference(
+                storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL),
+            ) !== null;
+        case "videoCompressionLevel":
+            return normalizeCompressionLevelPreference(
+                storage.getItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL),
+            ) !== null;
+        case "clientTagEnabled":
+            return storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED) !== null;
+        case "quoteNotificationEnabled":
+            return storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED) !== null;
+        case "mediaFreePlacement":
+            return storage.getItem(STORAGE_KEYS.MEDIA_FREE_PLACEMENT) !== null;
+        case "showMascot":
+            return storage.getItem(STORAGE_KEYS.SHOW_MASCOT) !== null;
+        case "showFlavorText":
+            return storage.getItem(STORAGE_KEYS.SHOW_FLAVOR_TEXT) !== null;
+    }
+}
+
+function applySetting(
+    storage: Storage,
+    key: ParsedSettingsKey,
+    value: ParsedEmbedSettings[ParsedSettingsKey],
+    source: "parentForced" | "parentDefault",
+): boolean {
+    if (value === undefined) {
+        return false;
+    }
+
+    switch (key) {
+        case "locale":
+            setLocalePreference(storage, value as SupportedLocale, source);
+            return true;
+        case "themeMode":
+            setThemeModePreference(storage, value as ThemeMode, source);
+            return true;
+        case "uploadEndpoint":
+            setUploadEndpointPreference(storage, value as string, source);
+            return true;
+        case "imageCompressionLevel":
+            setImageCompressionLevelPreference(storage, value as string, source);
+            return true;
+        case "videoCompressionLevel":
+            setVideoCompressionLevelPreference(storage, value as string, source);
+            return true;
+        case "clientTagEnabled":
+            setClientTagEnabledPreference(storage, value as boolean, source);
+            return true;
+        case "quoteNotificationEnabled":
+            setQuoteNotificationEnabledPreference(storage, value as boolean, source);
+            return true;
+        case "mediaFreePlacement":
+            setMediaFreePlacementPreference(storage, value as boolean, source);
+            return true;
+        case "showMascot":
+            setShowMascotPreference(storage, value as boolean, source);
+            return true;
+        case "showFlavorText":
+            setShowFlavorTextPreference(storage, value as boolean, source);
+            return true;
+    }
+}
+
 export function applyEmbedSettingsBootstrap({
     storage = localStorage,
     navigatorObj = navigator,
@@ -198,126 +308,33 @@ export function applyEmbedSettingsBootstrap({
 }: EmbedSettingsBootstrapOptions = {}): EmbedSettingsBootstrapResult {
     const hasQueryParams = hasEmbedSettingsQuery(locationSearch);
     const parsedSettings = parseEmbedSettings(locationSearch);
+    const parsedDefaultSettings = parseDefaultSettings(locationSearch);
 
     if (!hasQueryParams) {
         applyDocumentLanguage(storage, navigatorObj, documentObj);
         return {
             hasQueryParams: false,
             applied: false,
+            appliedSettings: [],
             parsedSettings,
+            parsedDefaultSettings,
         };
     }
 
-    const canApplyBootstrap = !hasAppliedEmbedBootstrap(storage);
+    const appliedSettings: ParsedSettingsKey[] = [];
 
-    if (canApplyBootstrap) {
-        if (
-            parsedSettings.locale &&
-            getPreferenceSource(storage, "locale") !== "user"
-        ) {
-            setLocalePreference(storage, parsedSettings.locale, "parentBootstrap");
+    for (const key of PARSED_SETTINGS_KEYS) {
+        if (applySetting(storage, key, parsedSettings[key], "parentForced")) {
+            appliedSettings.push(key);
+            continue;
         }
 
         if (
-            parsedSettings.themeMode !== undefined &&
-            getPreferenceSource(storage, "darkMode") !== "user"
+            !isPreferenceStored(storage, key)
+            && applySetting(storage, key, parsedDefaultSettings[key], "parentDefault")
         ) {
-            setThemeModePreference(
-                storage,
-                parsedSettings.themeMode,
-                "parentBootstrap",
-            );
+            appliedSettings.push(key);
         }
-
-        if (
-            parsedSettings.uploadEndpoint &&
-            getPreferenceSource(storage, "uploadEndpoint") !== "user"
-        ) {
-            setUploadEndpointPreference(
-                storage,
-                parsedSettings.uploadEndpoint,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.imageCompressionLevel &&
-            getPreferenceSource(storage, "imageCompressionLevel") !== "user"
-        ) {
-            setImageCompressionLevelPreference(
-                storage,
-                parsedSettings.imageCompressionLevel,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.videoCompressionLevel &&
-            getPreferenceSource(storage, "videoCompressionLevel") !== "user"
-        ) {
-            setVideoCompressionLevelPreference(
-                storage,
-                parsedSettings.videoCompressionLevel,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.clientTagEnabled !== undefined &&
-            getPreferenceSource(storage, "clientTagEnabled") !== "user"
-        ) {
-            setClientTagEnabledPreference(
-                storage,
-                parsedSettings.clientTagEnabled,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.quoteNotificationEnabled !== undefined &&
-            getPreferenceSource(storage, "quoteNotificationEnabled") !== "user"
-        ) {
-            setQuoteNotificationEnabledPreference(
-                storage,
-                parsedSettings.quoteNotificationEnabled,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.mediaFreePlacement !== undefined &&
-            getPreferenceSource(storage, "mediaFreePlacement") !== "user"
-        ) {
-            setMediaFreePlacementPreference(
-                storage,
-                parsedSettings.mediaFreePlacement,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.showMascot !== undefined &&
-            getPreferenceSource(storage, "showMascot") !== "user"
-        ) {
-            setShowMascotPreference(
-                storage,
-                parsedSettings.showMascot,
-                "parentBootstrap",
-            );
-        }
-
-        if (
-            parsedSettings.showBalloonMessage !== undefined &&
-            getPreferenceSource(storage, "showBalloonMessage") !== "user"
-        ) {
-            setShowBalloonMessagePreference(
-                storage,
-                parsedSettings.showBalloonMessage,
-                "parentBootstrap",
-            );
-        }
-
-        markEmbedBootstrapApplied(storage);
     }
 
     applyDocumentLanguage(storage, navigatorObj, documentObj);
@@ -325,7 +342,9 @@ export function applyEmbedSettingsBootstrap({
 
     return {
         hasQueryParams: true,
-        applied: canApplyBootstrap,
+        applied: appliedSettings.length > 0,
+        appliedSettings,
         parsedSettings,
+        parsedDefaultSettings,
     };
 }

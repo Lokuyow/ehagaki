@@ -32,7 +32,7 @@ describe('HeaderComponent', () => {
                 onSaveDraft: vi.fn(() => true),
                 onShowDraftList: vi.fn(),
                 showMascot: false,
-                showBalloonMessage: false,
+                showFlavorText: false,
             },
         });
 

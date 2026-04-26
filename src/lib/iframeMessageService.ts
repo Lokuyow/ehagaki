@@ -9,12 +9,16 @@ import {
     type EmbedMessageEnvelope,
     type EmbedPostErrorPayload,
     type EmbedPostSuccessPayload,
+    type EmbedSettingsAppliedPayload,
+    type EmbedSettingsErrorPayload,
 } from './embedProtocol';
 
 export interface IframeMessagePayload extends EmbedMessageEnvelope {
     type:
     | 'post.success'
     | 'post.error'
+    | 'settings.applied'
+    | 'settings.error'
     | 'composer.contextApplied'
     | 'composer.contextError'
     | 'composer.contextUpdated';
@@ -143,6 +147,40 @@ export class IframeMessageService {
             namespace: EMBED_MESSAGE_NAMESPACE,
             version: EMBED_MESSAGE_VERSION,
             type: 'post.error',
+            payload,
+        });
+    }
+
+    notifySettingsApplied(applied: string[], requestId: string): boolean {
+        const payload: EmbedSettingsAppliedPayload = {
+            timestamp: Date.now(),
+            applied,
+        };
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'settings.applied',
+            requestId,
+            payload,
+        });
+    }
+
+    notifySettingsError(
+        error: string | { code: string; message?: string },
+        requestId: string,
+    ): boolean {
+        const payload: EmbedSettingsErrorPayload = {
+            timestamp: Date.now(),
+            code: typeof error === 'string' ? error : error.code,
+            ...(typeof error === 'object' && error.message ? { message: error.message } : {}),
+        };
+
+        return this.sendMessageToParent({
+            namespace: EMBED_MESSAGE_NAMESPACE,
+            version: EMBED_MESSAGE_VERSION,
+            type: 'settings.error',
+            requestId,
             payload,
         });
     }

@@ -8,6 +8,9 @@ export type EmbedMessageType =
     | "auth.error"
     | "auth.result"
     | "auth.logout"
+    | "settings.set"
+    | "settings.applied"
+    | "settings.error"
     | "composer.setContext"
     | "composer.contextApplied"
     | "composer.contextError"
@@ -57,6 +60,28 @@ export interface EmbedComposerSetContextPayload {
     channel?: EmbedChannelContextPayload | null;
 }
 
+export interface EmbedSettingsSetPayload {
+    locale?: "ja" | "en";
+    themeMode?: "system" | "light" | "dark";
+    uploadEndpoint?: string;
+    imageCompressionLevel?: "none" | "low" | "medium" | "high";
+    videoCompressionLevel?: "none" | "low" | "medium" | "high";
+    clientTagEnabled?: boolean;
+    quoteNotificationEnabled?: boolean;
+    mediaFreePlacement?: boolean;
+    showMascot?: boolean;
+    showFlavorText?: boolean;
+}
+
+export interface EmbedSettingsAppliedPayload {
+    timestamp: number;
+    applied: string[];
+}
+
+export interface EmbedSettingsErrorPayload extends EmbedErrorPayload {
+    timestamp: number;
+}
+
 export interface EmbedComposerContextAppliedPayload {
     timestamp: number;
 }
@@ -91,6 +116,9 @@ const EMBED_REQUEST_ID_REQUIRED_TYPES = new Set<EmbedMessageType>([
     "auth.request",
     "auth.error",
     "auth.result",
+    "settings.set",
+    "settings.applied",
+    "settings.error",
     "composer.setContext",
     "composer.contextApplied",
     "composer.contextError",

@@ -4,7 +4,7 @@ import {
     DEFAULT_COMPRESSION_LEVEL,
     DEFAULT_MEDIA_FREE_PLACEMENT,
     DEFAULT_QUOTE_NOTIFICATION_ENABLED,
-    DEFAULT_SHOW_BALLOON_MESSAGE,
+    DEFAULT_SHOW_FLAVOR_TEXT,
     DEFAULT_SHOW_MASCOT,
     STORAGE_KEYS,
     VALID_COMPRESSION_LEVELS,
@@ -13,7 +13,12 @@ import {
 } from "../constants";
 
 export type SupportedLocale = "ja" | "en";
-export type PreferenceSource = "default" | "parentBootstrap" | "user";
+export type PreferenceSource =
+    | "default"
+    | "parentBootstrap"
+    | "parentForced"
+    | "parentDefault"
+    | "user";
 export type ThemeMode = "system" | "light" | "dark";
 export type ManagedPreferenceKey =
     | "locale"
@@ -25,7 +30,7 @@ export type ManagedPreferenceKey =
     | "mediaFreePlacement"
     | "darkMode"
     | "showMascot"
-    | "showBalloonMessage";
+    | "showFlavorText";
 
 type ReadWriteStorage = Pick<Storage, "getItem" | "setItem">;
 type MutableStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
@@ -268,11 +273,11 @@ export function getShowMascotPreference(storage: ReadWriteStorage): boolean {
     );
 }
 
-export function getShowBalloonMessagePreference(storage: ReadWriteStorage): boolean {
+export function getShowFlavorTextPreference(storage: ReadWriteStorage): boolean {
     return getStoredBooleanPreference(
         storage,
-        STORAGE_KEYS.SHOW_BALLOON_MESSAGE,
-        DEFAULT_SHOW_BALLOON_MESSAGE,
+        STORAGE_KEYS.SHOW_FLAVOR_TEXT,
+        DEFAULT_SHOW_FLAVOR_TEXT,
     );
 }
 
@@ -412,13 +417,13 @@ export function setShowMascotPreference(
     return enabled;
 }
 
-export function setShowBalloonMessagePreference(
+export function setShowFlavorTextPreference(
     storage: ReadWriteStorage,
     enabled: boolean,
     source: PreferenceSource = "user",
 ): boolean {
-    storage.setItem(STORAGE_KEYS.SHOW_BALLOON_MESSAGE, enabled ? "true" : "false");
-    setPreferenceSource(storage, "showBalloonMessage", source);
+    storage.setItem(STORAGE_KEYS.SHOW_FLAVOR_TEXT, enabled ? "true" : "false");
+    setPreferenceSource(storage, "showFlavorText", source);
     return enabled;
 }
 
