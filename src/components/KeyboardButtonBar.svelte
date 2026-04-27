@@ -222,8 +222,8 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
-        onmousedown={preventKeyboardFocusChange}
-        ontouchstart={preventKeyboardFocusChange}
+        onpointerdowncapture={preventKeyboardFocusChange}
+        ontouchstartcapture={preventKeyboardFocusChange}
     >
         <div class="button-group-left">
             <Tooltip.Root delayDuration={500}>
