@@ -62,7 +62,8 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     // Service Worker実装をここに組み込み（実際のコードから抽出）
     const SW_VERSION = '1.3.0';
     const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
-    const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
+    const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
+    const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
     const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
     const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
     const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
@@ -269,8 +270,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             const cacheNames = [
                 'old-cache-1',
                 `${LEGACY_PRECACHE_PREFIX}1.2.0`,
-                PROFILE_CACHE_NAME,
+                LEGACY_PROFILE_CACHE_NAMES[0],
                 LEGACY_CUSTOM_EMOJI_CACHE_NAMES[0],
+                PROFILE_CACHE_NAME,
                 RUNTIME_LARGE_ASSET_CACHE_NAME,
                 'workbox-precache-v2-example'
             ];
@@ -281,7 +283,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             await this.dependencies.caches.keys();
 
             const toDelete = cacheNames.filter(name =>
-                name.startsWith(LEGACY_PRECACHE_PREFIX) || LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)
+                name.startsWith(LEGACY_PRECACHE_PREFIX) ||
+                LEGACY_PROFILE_CACHE_NAMES.includes(name) ||
+                LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)
             );
 
             await Promise.all(toDelete.map(name => this.dependencies.caches.delete(name)));
@@ -305,7 +309,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             }
 
             const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
-            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
+            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'cors' });
 
             const cachedBase = await cache.match(baseRequest);
             if (cachedBase) {
@@ -324,7 +328,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             }
 
             const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
-            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
+            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'cors' });
 
             const cachedResponse = await cache.match(baseRequest);
             if (cachedResponse) {
@@ -333,8 +337,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
             const networkResponse = await this.dependencies.fetch(baseRequest);
 
-            // ok または opaque を許容してキャッシュする
-            if (networkResponse && (networkResponse.ok || networkResponse.type === 'opaque')) {
+            if (networkResponse && networkResponse.ok && networkResponse.type !== 'opaque') {
                 try {
                     const toPut = (typeof networkResponse.clone === 'function') ? networkResponse.clone() : networkResponse;
                     await cache.put(baseRequest, toPut);
@@ -681,8 +684,9 @@ describe('Service Worker Tests', () => {
             await manager.cleanupOldCaches();
 
             expect(swModule.ServiceWorkerDependencies.caches.keys).toHaveBeenCalled();
-            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledTimes(2);
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledTimes(3);
             expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-cache-1.2.0');
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-profile-images');
             expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-custom-emoji-images');
             expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
             expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.RUNTIME_LARGE_ASSET_CACHE_NAME);
@@ -709,21 +713,15 @@ describe('Service Worker Tests', () => {
             };
             swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
 
-            // ネットワークレスポンスを opaque をシミュレートして返す（no-cors相当）
-            const mockOpaqueResponse = {
-                ok: false,
-                type: 'opaque',
-                status: 0,
-                statusText: '',
-                clone: () => ({ /* clone placeholder */ })
-            };
-            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(mockOpaqueResponse);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(new Response('image', {
+                status: 200,
+                headers: { 'Content-Type': 'image/jpeg' }
+            }));
 
             const response = await manager.fetchAndCacheProfileImage(request);
 
             expect(response).toBeDefined();
-            // opaqueでも返却されることを確認
-            expect(response.type === 'opaque' || response.status === 200 || response).toBeTruthy();
+            expect(response.status).toBe(200);
 
             // キャッシュは PROFILE_CACHE_NAME を開いて put が呼ばれていること
             expect(swModule.ServiceWorkerDependencies.caches.open).toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
@@ -734,6 +732,29 @@ describe('Service Worker Tests', () => {
             // Requestオブジェクトの場合は .url を確認、文字列等の場合も想定してハンドリング
             const putKeyUrl = putCallFirstArg && (putCallFirstArg.url || putCallFirstArg);
             expect(putKeyUrl).toBe('https://example.com/profile.jpg');
+            expect(putCallFirstArg.mode).toBe('cors');
+        });
+
+        it('should not cache opaque profile image responses', async () => {
+            const manager = new swModule.CacheManager();
+            const request = new Request('https://example.com/profile.jpg?profile=true');
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue({
+                ok: false,
+                type: 'opaque',
+                status: 0,
+                statusText: '',
+                clone: () => ({})
+            });
+
+            const response = await manager.fetchAndCacheProfileImage(request);
+
+            expect(response).toEqual(expect.objectContaining({ type: 'opaque' }));
+            expect(mockCache.put).not.toHaveBeenCalled();
         });
 
         it('should reject private profile image fetches', async () => {

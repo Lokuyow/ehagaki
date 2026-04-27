@@ -9,7 +9,8 @@ import { CacheFirst } from "workbox-strategies";
 // 定数定義
 const SW_VERSION = '1.17.0test';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
-const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
+const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
+const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
 const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
@@ -114,9 +115,8 @@ const Utilities = {
     },
 
     // 共通のHTTPリクエスト作成
-    // mode をオプション化してプロフィール取得時に 'no-cors' を選べるようにする
     createCorsRequest(url, options = {}) {
-        const mode = options.mode || 'cors'; // default 'cors', can be overridden to 'no-cors'
+        const mode = options.mode || 'cors';
         const headers = new Headers({
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
             ...(options.headers || {})
@@ -311,7 +311,11 @@ class CacheManager {
             const cacheNames = await this.caches.keys();
             await Promise.all(
                 cacheNames.map(name => {
-                    if (name.startsWith(LEGACY_PRECACHE_PREFIX) || LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)) {
+                    if (
+                        name.startsWith(LEGACY_PRECACHE_PREFIX) ||
+                        LEGACY_PROFILE_CACHE_NAMES.includes(name) ||
+                        LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)
+                    ) {
                         return this.caches.delete(name);
                     }
                     return undefined;
@@ -331,8 +335,8 @@ class CacheManager {
                 return null;
             }
 
-            // キャッシュキーは fetch時と同じ生成方法（no-cors モードのベースRequest）で検索する
-            const baseRequest = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+            // キャッシュキーは fetch時と同じ生成方法（cors モードのベースRequest）で検索する
+            const baseRequest = Utilities.createCorsRequest(baseUrl);
 
             // まずベースURLで検索
             const cachedBase = await cache.match(baseRequest);
@@ -368,22 +372,19 @@ class CacheManager {
                 return null;
             }
 
-            // クロスオリジン画像は no-cors リクエストで取得（サーバの CORS 設定に依存せず取得可能）
             const profileFetchRequest = Utilities.createCorsRequest(baseUrl, {
-                mode: 'no-cors',
-                headers: { 'Cache-Control': 'no-cache' },
-                cache: 'no-cache'
+                mode: 'cors',
+                cache: 'reload'
             });
 
             this.console.log('プロフィール画像をネットワークから取得中:', baseUrl);
             const response = await this.fetch(profileFetchRequest);
 
-            // opaque（no-cors の不透明レスポンス）も許容してキャッシュする
-            if (response && (response.ok || response.type === 'opaque')) {
+            if (response && response.ok && response.type !== 'opaque') {
                 const cache = await this.caches.open(PROFILE_CACHE_NAME);
 
-                // キャッシュキーは同じ生成ルールで作成（no-cors のベースRequest）
-                const cacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+                // キャッシュキーは同じ生成ルールで作成（cors のベースRequest）
+                const cacheKey = Utilities.createCorsRequest(baseUrl);
 
                 try {
                     // レスポンスをクローンしてキャッシュに保存
