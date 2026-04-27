@@ -34,7 +34,7 @@
         display: inline-flex;
         width: 1.45em;
         height: 1.45em;
-        margin: 0 0.05em;
+        margin: 0;
         vertical-align: -0.25em;
         border-radius: 4px;
     }
