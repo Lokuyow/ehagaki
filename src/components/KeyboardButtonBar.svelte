@@ -28,6 +28,7 @@
         onCustomEmojiSelect?: (emoji: CustomEmojiItem) => void;
         rxNostr?: RxNostr | null;
         customEmojiPubkey?: string | null;
+        customEmojiPickerMaxHeight?: number | null;
     }
 
     let {
@@ -38,6 +39,7 @@
         onCustomEmojiSelect,
         rxNostr = null,
         customEmojiPubkey = null,
+        customEmojiPickerMaxHeight = null,
     }: Props = $props();
 
     // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
@@ -299,6 +301,7 @@
                             {rxNostr}
                             pubkey={customEmojiPubkey}
                             open={customEmojiPickerOpen}
+                            maxHeight={customEmojiPickerMaxHeight}
                             onSelect={(emoji) => {
                                 onCustomEmojiSelect?.(emoji);
                             }}

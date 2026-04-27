@@ -1308,6 +1308,7 @@
         onPostButtonTap={() => balloon.showTips()}
         {rxNostr}
         customEmojiPubkey={authState.value.pubkey}
+        customEmojiPickerMaxHeight={Math.floor(composerAvailableHeight * 0.8)}
         {customEmojiPickerOpen}
         onCustomEmojiPickerOpenChange={(open) =>
           (customEmojiPickerOpen = open)}

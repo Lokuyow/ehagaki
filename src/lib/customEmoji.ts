@@ -190,18 +190,22 @@ export async function fetchCustomEmojiList(params: {
     ]);
 }
 
-export function readCustomEmojiPickerHeight(storage: Pick<Storage, "getItem">, viewportHeight?: number): number {
+export function readCustomEmojiPickerHeight(storage: Pick<Storage, "getItem">, viewportHeight?: number, maxHeight?: number): number {
     const raw = Number(storage.getItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY));
-    return clampCustomEmojiPickerHeight(Number.isFinite(raw) ? raw : CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT, viewportHeight);
+    return clampCustomEmojiPickerHeight(Number.isFinite(raw) ? raw : CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT, viewportHeight, maxHeight);
 }
 
-export function clampCustomEmojiPickerHeight(value: number, viewportHeight = typeof window !== "undefined" ? (window.visualViewport?.height ?? window.innerHeight) : 800): number {
-    const max = Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.floor(viewportHeight * 0.6));
+export function clampCustomEmojiPickerHeight(value: number, viewportHeight = typeof window !== "undefined" ? (window.visualViewport?.height ?? window.innerHeight) : 800, maxHeight?: number): number {
+    const viewportMax = Math.floor(viewportHeight * 0.6);
+    const max = Math.max(
+        CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+        Number.isFinite(maxHeight) ? Math.floor(maxHeight as number) : viewportMax,
+    );
     return Math.min(max, Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.round(value)));
 }
 
-export function writeCustomEmojiPickerHeight(storage: Pick<Storage, "setItem">, value: number, viewportHeight?: number): number {
-    const height = clampCustomEmojiPickerHeight(value, viewportHeight);
+export function writeCustomEmojiPickerHeight(storage: Pick<Storage, "setItem">, value: number, viewportHeight?: number, maxHeight?: number): number {
+    const height = clampCustomEmojiPickerHeight(value, viewportHeight, maxHeight);
     storage.setItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY, String(height));
     return height;
 }

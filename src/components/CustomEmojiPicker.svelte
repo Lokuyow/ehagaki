@@ -24,10 +24,17 @@
         rxNostr?: RxNostr | null;
         pubkey?: string | null;
         open?: boolean;
+        maxHeight?: number | null;
         onSelect?: (emoji: CustomEmojiItem) => void;
     }
 
-    let { rxNostr, pubkey, open = false, onSelect }: Props = $props();
+    let {
+        rxNostr,
+        pubkey,
+        open = false,
+        maxHeight = null,
+        onSelect,
+    }: Props = $props();
     let search = $state("");
     let pickerHeight = $state(CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT);
     let resizing = $state(false);
@@ -84,6 +91,11 @@
         totalRowCount * EMOJI_GRID_ROW_HEIGHT + EMOJI_GRID_PADDING * 2,
     );
     let virtualOffsetY = $derived(startRow * EMOJI_GRID_ROW_HEIGHT);
+    let pickerMaxHeight = $derived(
+        Number.isFinite(maxHeight)
+            ? Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.floor(maxHeight as number))
+            : undefined,
+    );
 
     function updatePickerWidth(): void {
         const viewportWidth =
@@ -139,7 +151,11 @@
     }
 
     onMount(() => {
-        pickerHeight = readCustomEmojiPickerHeight(localStorage);
+        pickerHeight = readCustomEmojiPickerHeight(
+            localStorage,
+            getPickerHeightClampViewport(),
+            pickerMaxHeight,
+        );
         updatePickerLayout();
 
         window.addEventListener("resize", schedulePickerLayoutUpdate);
@@ -205,6 +221,15 @@
             ?.scrollTo({ top: 0 });
     });
 
+    $effect(() => {
+        pickerMaxHeight;
+        pickerHeight = readCustomEmojiPickerHeight(
+            localStorage,
+            getPickerHeightClampViewport(),
+            pickerMaxHeight,
+        );
+    });
+
     function selectEmoji(emoji: CustomEmojiItem): void {
         onSelect?.(emoji);
     }
@@ -227,6 +252,7 @@
                 localStorage,
                 nextStoredHeight,
                 getPickerHeightClampViewport(),
+                pickerMaxHeight,
             );
         };
 
