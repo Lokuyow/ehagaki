@@ -58,6 +58,7 @@
     initializeEditor,
     cleanupEditor,
   } from "../lib/editor/editorLifecycle";
+  import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import { POST_EDITOR_MIN_HEIGHT } from "../lib/postLayoutUtils";
   import {
@@ -398,7 +399,7 @@
 
   export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
     if (!currentEditor) return;
-    currentEditor.chain().focus().insertCustomEmoji(emoji).run();
+    insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
   }
 
   export async function submitPost() {
