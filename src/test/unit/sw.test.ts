@@ -63,10 +63,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     const SW_VERSION = '1.3.0';
     const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
     const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
-    const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images';
+    const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
+    const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
     const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
     const INDEXEDDB_NAME = 'eHagakiSharedData';
     const INDEXEDDB_VERSION = 1;
+    const CUSTOM_EMOJI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
     const ServiceWorkerState = {
         sharedMediaCache: null,
@@ -146,6 +148,25 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             return normalizeProfilePictureUrl(url, {
                 currentOrigin: ServiceWorkerDependencies.location.origin
             });
+        },
+
+        async isCacheableCustomEmojiResponse(response: Response) {
+            if (!response || !response.ok || response.type === 'opaque') return false;
+
+            const contentType = response.headers.get('Content-Type') || '';
+            if (!contentType.toLowerCase().startsWith('image/')) return false;
+
+            const contentLength = Number(response.headers.get('Content-Length'));
+            if (Number.isFinite(contentLength) && contentLength > CUSTOM_EMOJI_MAX_IMAGE_BYTES) {
+                return false;
+            }
+
+            try {
+                const blob = await response.clone().blob();
+                return blob.size <= CUSTOM_EMOJI_MAX_IMAGE_BYTES;
+            } catch {
+                return false;
+            }
         },
 
         async extractMediaFromFormData(formData: FormData) {
@@ -249,6 +270,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 'old-cache-1',
                 `${LEGACY_PRECACHE_PREFIX}1.2.0`,
                 PROFILE_CACHE_NAME,
+                LEGACY_CUSTOM_EMOJI_CACHE_NAMES[0],
                 RUNTIME_LARGE_ASSET_CACHE_NAME,
                 'workbox-precache-v2-example'
             ];
@@ -258,7 +280,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             // 実際にメソッド呼び出しを実行
             await this.dependencies.caches.keys();
 
-            const toDelete = cacheNames.filter(name => name.startsWith(LEGACY_PRECACHE_PREFIX));
+            const toDelete = cacheNames.filter(name =>
+                name.startsWith(LEGACY_PRECACHE_PREFIX) || LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)
+            );
 
             await Promise.all(toDelete.map(name => this.dependencies.caches.delete(name)));
         }
@@ -326,7 +350,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             const cache = await this.dependencies.caches.open(CUSTOM_EMOJI_CACHE_NAME);
             const baseUrl = Utilities.getBaseUrl(request.url);
             if (baseUrl) {
-                const cachedBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'no-cors' }));
+                const cachedBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'cors' }));
                 if (cachedBase) return cachedBase;
             }
 
@@ -347,9 +371,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                     failed++;
                     continue;
                 }
-                const request = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
+                const request = new Request(baseUrl, { method: 'GET', mode: 'cors' });
                 const response = await this.dependencies.fetch(request);
-                if (response && (response.ok || response.type === 'opaque')) {
+                if (await Utilities.isCacheableCustomEmojiResponse(response)) {
                     await cache.put(request, response.clone ? response.clone() : response);
                     cached++;
                 } else {
@@ -657,8 +681,9 @@ describe('Service Worker Tests', () => {
             await manager.cleanupOldCaches();
 
             expect(swModule.ServiceWorkerDependencies.caches.keys).toHaveBeenCalled();
-            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledTimes(1);
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledTimes(2);
             expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-cache-1.2.0');
+            expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith('ehagaki-custom-emoji-images');
             expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
             expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.RUNTIME_LARGE_ASSET_CACHE_NAME);
             expect(swModule.ServiceWorkerDependencies.caches.delete).not.toHaveBeenCalledWith(swModule.CUSTOM_EMOJI_CACHE_NAME);
@@ -728,11 +753,10 @@ describe('Service Worker Tests', () => {
                 put: vi.fn().mockResolvedValue(undefined)
             };
             swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
-            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue({
-                ok: false,
-                type: 'opaque',
-                clone: () => ({})
-            });
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(new Response('emoji', {
+                status: 200,
+                headers: { 'Content-Type': 'image/webp' }
+            }));
 
             const result = await manager.cacheCustomEmojiImages([
                 'https://example.com/emoji.webp?size=small',
@@ -744,6 +768,74 @@ describe('Service Worker Tests', () => {
                 swModule.CUSTOM_EMOJI_CACHE_NAME,
             );
             expect(mockCache.put).toHaveBeenCalledTimes(1);
+        });
+
+        it('should not cache opaque custom emoji image responses', async () => {
+            const manager = new swModule.CacheManager();
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue({
+                ok: false,
+                type: 'opaque',
+                headers: new Headers(),
+                clone: () => ({})
+            });
+
+            const result = await manager.cacheCustomEmojiImages([
+                'https://example.com/emoji.webp',
+            ]);
+
+            expect(result).toEqual({ success: true, cached: 0, failed: 1 });
+            expect(mockCache.put).not.toHaveBeenCalled();
+        });
+
+        it('should cache custom emoji image responses up to 10MB', async () => {
+            const manager = new swModule.CacheManager();
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(new Response('emoji', {
+                status: 200,
+                headers: {
+                    'Content-Type': 'image/webp',
+                    'Content-Length': String(10 * 1024 * 1024),
+                }
+            }));
+
+            const result = await manager.cacheCustomEmojiImages([
+                'https://example.com/emoji.webp',
+            ]);
+
+            expect(result).toEqual({ success: true, cached: 1, failed: 0 });
+            expect(mockCache.put).toHaveBeenCalledTimes(1);
+        });
+
+        it('should not cache custom emoji image responses over 10MB', async () => {
+            const manager = new swModule.CacheManager();
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(new Response('emoji', {
+                status: 200,
+                headers: {
+                    'Content-Type': 'image/webp',
+                    'Content-Length': String(10 * 1024 * 1024 + 1),
+                }
+            }));
+
+            const result = await manager.cacheCustomEmojiImages([
+                'https://example.com/emoji.webp',
+            ]);
+
+            expect(result).toEqual({ success: true, cached: 0, failed: 1 });
+            expect(mockCache.put).not.toHaveBeenCalled();
         });
 
         it('should return cached custom emoji image before network', async () => {

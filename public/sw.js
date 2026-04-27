@@ -10,10 +10,12 @@ import { CacheFirst } from "workbox-strategies";
 const SW_VERSION = '1.17.0test';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
-const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images';
+const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
+const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = 'eHagakiSharedData';
 const INDEXEDDB_VERSION = 1;
+const CUSTOM_EMOJI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 // IndexedDB永続化時のファイルサイズ上限（100MB）
 const MAX_INDEXEDDB_FILE_SIZE = 100 * 1024 * 1024;
@@ -169,6 +171,25 @@ const Utilities = {
         });
     },
 
+    async isCacheableCustomEmojiResponse(response) {
+        if (!response || !response.ok || response.type === 'opaque') return false;
+
+        const contentType = response.headers.get('Content-Type') || '';
+        if (!contentType.toLowerCase().startsWith('image/')) return false;
+
+        const contentLength = Number(response.headers.get('Content-Length'));
+        if (Number.isFinite(contentLength) && contentLength > CUSTOM_EMOJI_MAX_IMAGE_BYTES) {
+            return false;
+        }
+
+        try {
+            const blob = await response.clone().blob();
+            return blob.size <= CUSTOM_EMOJI_MAX_IMAGE_BYTES;
+        } catch {
+            return false;
+        }
+    },
+
     // 共有メディアデータから FormData を抽出（複数メディア対応）
     async extractMediaFromFormData(formData) {
         const mediaFiles = formData.getAll('media');
@@ -290,7 +311,7 @@ class CacheManager {
             const cacheNames = await this.caches.keys();
             await Promise.all(
                 cacheNames.map(name => {
-                    if (name.startsWith(LEGACY_PRECACHE_PREFIX)) {
+                    if (name.startsWith(LEGACY_PRECACHE_PREFIX) || LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)) {
                         return this.caches.delete(name);
                     }
                     return undefined;
@@ -390,7 +411,7 @@ class CacheManager {
             const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
             const baseUrl = Utilities.getBaseUrl(request.url);
             if (baseUrl) {
-                const cacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+                const cacheKey = Utilities.createCorsRequest(baseUrl);
                 const cachedBase = await cache.match(cacheKey);
                 if (cachedBase) {
                     return cachedBase;
@@ -426,13 +447,12 @@ class CacheManager {
                 }
 
                 const request = Utilities.createCorsRequest(baseUrl, {
-                    mode: 'no-cors',
-                    headers: { 'Cache-Control': 'no-cache' },
-                    cache: 'no-cache'
+                    mode: 'cors',
+                    cache: 'reload'
                 });
                 const response = await this.fetch(request);
-                if (response && (response.ok || response.type === 'opaque')) {
-                    await cache.put(Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' }), response.clone());
+                if (await Utilities.isCacheableCustomEmojiResponse(response)) {
+                    await cache.put(Utilities.createCorsRequest(baseUrl), response.clone());
                     cached++;
                 } else {
                     failed++;
