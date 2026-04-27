@@ -100,6 +100,11 @@
               )
             : undefined,
     );
+    let pickerStorageMaxHeight = $derived(
+        pickerMaxHeight === undefined
+            ? undefined
+            : pickerMaxHeight + keyboardLayoutLift,
+    );
 
     function updatePickerWidth(): void {
         const viewportWidth =
@@ -158,7 +163,7 @@
         pickerHeight = readCustomEmojiPickerHeight(
             localStorage,
             getPickerHeightClampViewport(),
-            pickerMaxHeight,
+            pickerStorageMaxHeight,
         );
         updatePickerLayout();
 
@@ -226,11 +231,11 @@
     });
 
     $effect(() => {
-        pickerMaxHeight;
+        pickerStorageMaxHeight;
         pickerHeight = readCustomEmojiPickerHeight(
             localStorage,
             getPickerHeightClampViewport(),
-            pickerMaxHeight,
+            pickerStorageMaxHeight,
         );
     });
 
@@ -256,7 +261,7 @@
                 localStorage,
                 nextStoredHeight,
                 getPickerHeightClampViewport(),
-                pickerMaxHeight,
+                pickerStorageMaxHeight,
             );
         };
 
