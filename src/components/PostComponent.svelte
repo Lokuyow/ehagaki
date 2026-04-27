@@ -700,7 +700,7 @@
     padding: 10px;
     font-family: inherit;
     font-size: 1.25rem;
-    line-height: 1.3;
+    line-height: 1.5;
     outline: none;
     overflow-y: auto;
     overflow-x: hidden;

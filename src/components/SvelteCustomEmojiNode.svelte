@@ -32,10 +32,10 @@
     :global(.custom-emoji-wrapper),
     :global(.custom-emoji-wrapper[data-node-view-wrapper]) {
         display: inline-flex;
-        width: 1.45em;
-        height: 1.45em;
+        width: 1.6em;
+        height: 1.6em;
         margin: 0;
-        vertical-align: -0.25em;
+        vertical-align: -0.44em;
         border-radius: 4px;
     }
 
