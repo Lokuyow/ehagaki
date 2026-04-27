@@ -112,6 +112,17 @@
         );
     }
 
+    function getPickerHeightClampViewport(): number {
+        const visualViewportHeight = window.visualViewport?.height ?? 0;
+        const keyboardHeight = readRootPixelValue("--keyboard-height");
+        return Math.max(
+            window.innerHeight || 0,
+            visualViewportHeight + keyboardHeight,
+            visualViewportHeight,
+            800,
+        );
+    }
+
     function updatePickerLayout(): void {
         updatePickerWidth();
         keyboardLayoutLift = readKeyboardLayoutLift();
@@ -200,15 +211,22 @@
 
     function startResize(event: PointerEvent): void {
         event.preventDefault();
+        updatePickerLayout();
         const startY = event.clientY;
-        const startHeight = pickerHeight;
+        const startVisibleHeight = effectivePickerHeight;
+        const startKeyboardLayoutLift = keyboardLayoutLift;
         resizing = true;
 
         const move = (moveEvent: PointerEvent) => {
-            const nextHeight = startHeight + (startY - moveEvent.clientY);
+            moveEvent.preventDefault();
+            const nextVisibleHeight =
+                startVisibleHeight + (startY - moveEvent.clientY);
+            const nextStoredHeight =
+                nextVisibleHeight + startKeyboardLayoutLift;
             pickerHeight = writeCustomEmojiPickerHeight(
                 localStorage,
-                nextHeight,
+                nextStoredHeight,
+                getPickerHeightClampViewport(),
             );
         };
 

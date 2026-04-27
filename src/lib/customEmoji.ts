@@ -200,8 +200,8 @@ export function clampCustomEmojiPickerHeight(value: number, viewportHeight = typ
     return Math.min(max, Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.round(value)));
 }
 
-export function writeCustomEmojiPickerHeight(storage: Pick<Storage, "setItem">, value: number): number {
-    const height = clampCustomEmojiPickerHeight(value);
+export function writeCustomEmojiPickerHeight(storage: Pick<Storage, "setItem">, value: number, viewportHeight?: number): number {
+    const height = clampCustomEmojiPickerHeight(value, viewportHeight);
     storage.setItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY, String(height));
     return height;
 }
