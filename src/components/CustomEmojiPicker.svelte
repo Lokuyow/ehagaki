@@ -5,10 +5,12 @@
     import { _ } from "svelte-i18n";
     import {
         CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT,
+        CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
         readCustomEmojiPickerHeight,
         writeCustomEmojiPickerHeight,
         type CustomEmojiItem,
     } from "../lib/customEmoji";
+    import { FOOTER_HEIGHT } from "../stores/uiStore.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
@@ -32,7 +34,9 @@
     let renderItems = $state(false);
     let scrollTop = $state(0);
     let pickerWidth = $state(800);
+    let keyboardLayoutLift = $state(0);
     let renderItemsFrameId: number | null = null;
+    let layoutFrameId: number | null = null;
     let pickerElement: HTMLDivElement | null = null;
 
     let items = $derived(customEmojiStore.items);
@@ -48,8 +52,14 @@
         Math.max(1, Math.floor(pickerWidth / EMOJI_GRID_COLUMN_WIDTH)),
     );
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
+    let effectivePickerHeight = $derived(
+        Math.max(
+            CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+            pickerHeight - keyboardLayoutLift,
+        ),
+    );
     let visibleRowCount = $derived(
-        Math.ceil(pickerHeight / EMOJI_GRID_ROW_HEIGHT) +
+        Math.ceil(effectivePickerHeight / EMOJI_GRID_ROW_HEIGHT) +
             VIRTUAL_OVERSCAN_ROWS * 2,
     );
     let startRow = $derived(
@@ -81,18 +91,69 @@
         pickerWidth = Math.min(800, Math.max(1, viewportWidth));
     }
 
+    function readRootPixelValue(name: string): number {
+        if (typeof document === "undefined") return 0;
+        const rawValue = getComputedStyle(document.documentElement)
+            .getPropertyValue(name)
+            .trim();
+        const value = Number.parseFloat(rawValue);
+        return Number.isFinite(value) ? value : 0;
+    }
+
+    function readKeyboardLayoutLift(): number {
+        const buttonBarBottom = readRootPixelValue(
+            "--keyboard-button-bar-bottom",
+        );
+        const keyboardHeight = readRootPixelValue("--keyboard-height");
+        return Math.max(
+            0,
+            buttonBarBottom - FOOTER_HEIGHT,
+            keyboardHeight - FOOTER_HEIGHT,
+        );
+    }
+
+    function updatePickerLayout(): void {
+        updatePickerWidth();
+        keyboardLayoutLift = readKeyboardLayoutLift();
+    }
+
+    function schedulePickerLayoutUpdate(): void {
+        if (layoutFrameId !== null) {
+            cancelAnimationFrame(layoutFrameId);
+        }
+        layoutFrameId = requestAnimationFrame(() => {
+            layoutFrameId = null;
+            updatePickerLayout();
+        });
+    }
+
     onMount(() => {
         pickerHeight = readCustomEmojiPickerHeight(localStorage);
-        updatePickerWidth();
+        updatePickerLayout();
 
-        window.addEventListener("resize", updatePickerWidth);
-        window.visualViewport?.addEventListener("resize", updatePickerWidth);
+        window.addEventListener("resize", schedulePickerLayoutUpdate);
+        window.visualViewport?.addEventListener(
+            "resize",
+            schedulePickerLayoutUpdate,
+        );
+        window.visualViewport?.addEventListener(
+            "scroll",
+            schedulePickerLayoutUpdate,
+        );
 
         return () => {
-            window.removeEventListener("resize", updatePickerWidth);
+            if (layoutFrameId !== null) {
+                cancelAnimationFrame(layoutFrameId);
+                layoutFrameId = null;
+            }
+            window.removeEventListener("resize", schedulePickerLayoutUpdate);
             window.visualViewport?.removeEventListener(
                 "resize",
-                updatePickerWidth,
+                schedulePickerLayoutUpdate,
+            );
+            window.visualViewport?.removeEventListener(
+                "scroll",
+                schedulePickerLayoutUpdate,
             );
         };
     });
@@ -109,6 +170,7 @@
         }
 
         void customEmojiStore.load({ rxNostr, pubkey });
+        schedulePickerLayoutUpdate();
         renderItemsFrameId = requestAnimationFrame(() => {
             renderItemsFrameId = null;
             renderItems = true;
@@ -193,7 +255,7 @@
         <ScrollArea.Root
             type="auto"
             class="custom-emoji-scroll-root"
-            style={`height: ${pickerHeight}px;`}
+            style={`height: ${effectivePickerHeight}px;`}
         >
             <ScrollArea.Viewport
                 class="custom-emoji-scroll-viewport"
