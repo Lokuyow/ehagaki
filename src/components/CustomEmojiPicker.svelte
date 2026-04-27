@@ -5,6 +5,8 @@
     import { _ } from "svelte-i18n";
     import {
         CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT,
+        CUSTOM_EMOJI_GRID_ROW_HEIGHT,
+        CUSTOM_EMOJI_GRID_VERTICAL_PADDING,
         CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
         readCustomEmojiPickerHeight,
         writeCustomEmojiPickerHeight,
@@ -16,8 +18,6 @@
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     const EMOJI_GRID_COLUMN_WIDTH = 50;
-    const EMOJI_GRID_ROW_HEIGHT = 40;
-    const EMOJI_GRID_PADDING = 4;
     const VIRTUAL_OVERSCAN_ROWS = 3;
 
     interface Props {
@@ -66,7 +66,7 @@
         ),
     );
     let visibleRowCount = $derived(
-        Math.ceil(effectivePickerHeight / EMOJI_GRID_ROW_HEIGHT) +
+        Math.ceil(effectivePickerHeight / CUSTOM_EMOJI_GRID_ROW_HEIGHT) +
             VIRTUAL_OVERSCAN_ROWS * 2,
     );
     let startRow = $derived(
@@ -74,7 +74,7 @@
             0,
             Math.min(
                 Math.max(0, totalRowCount - visibleRowCount),
-                Math.floor(scrollTop / EMOJI_GRID_ROW_HEIGHT) -
+                Math.floor(scrollTop / CUSTOM_EMOJI_GRID_ROW_HEIGHT) -
                     VIRTUAL_OVERSCAN_ROWS,
             ),
         ),
@@ -88,12 +88,16 @@
         filteredItems.slice(virtualStartIndex, virtualEndIndex),
     );
     let virtualListHeight = $derived(
-        totalRowCount * EMOJI_GRID_ROW_HEIGHT + EMOJI_GRID_PADDING * 2,
+        totalRowCount * CUSTOM_EMOJI_GRID_ROW_HEIGHT +
+            CUSTOM_EMOJI_GRID_VERTICAL_PADDING,
     );
-    let virtualOffsetY = $derived(startRow * EMOJI_GRID_ROW_HEIGHT);
+    let virtualOffsetY = $derived(startRow * CUSTOM_EMOJI_GRID_ROW_HEIGHT);
     let pickerMaxHeight = $derived(
         Number.isFinite(maxHeight)
-            ? Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.floor(maxHeight as number))
+            ? Math.max(
+                  CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+                  Math.floor(maxHeight as number),
+              )
             : undefined,
     );
 
@@ -325,7 +329,7 @@
                         >
                             <div
                                 class="emoji-grid"
-                                style={`transform: translateY(${virtualOffsetY}px); grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                                style={`transform: translateY(${virtualOffsetY}px); grid-template-columns: repeat(${columnCount}, minmax(0, 1fr)); grid-auto-rows: ${CUSTOM_EMOJI_GRID_ROW_HEIGHT}px;`}
                             >
                                 {#each visibleItems as emoji (emoji.shortcode)}
                                     <Command.Item
@@ -437,7 +441,6 @@
         left: 4px;
         right: 4px;
         display: grid;
-        grid-auto-rows: 38px;
         justify-items: center;
     }
 

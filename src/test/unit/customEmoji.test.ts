@@ -62,7 +62,7 @@ describe('customEmoji', () => {
     });
 
     it('clamps picker height to the supported viewport range', () => {
-        expect(clampCustomEmojiPickerHeight(20, 1000)).toBe(160);
+        expect(clampCustomEmojiPickerHeight(20, 1000)).toBe(42);
         expect(clampCustomEmojiPickerHeight(900, 1000)).toBe(600);
         expect(clampCustomEmojiPickerHeight(240, 1000)).toBe(240);
         expect(clampCustomEmojiPickerHeight(900, 1000, 320)).toBe(320);
