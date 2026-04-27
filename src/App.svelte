@@ -153,6 +153,7 @@
   } from "./lib/appAuthUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import type { CustomEmojiItem } from "./lib/customEmoji";
+  import { customEmojiStore } from "./stores/customEmojiStore.svelte";
 
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
@@ -914,6 +915,15 @@
         // TODO: 必要に応じてストアを更新
       }
     }
+  });
+
+  $effect(() => {
+    const pubkey = authState.value?.pubkey;
+    if (!pubkey || !authState.value?.isAuthenticated) {
+      return;
+    }
+
+    void customEmojiStore.prefetchCache({ pubkey });
   });
 
   $effect(() => {

@@ -61,6 +61,36 @@ describe("customEmojiStore", () => {
         expect(customEmojiMocks.cacheCustomEmojiImages).toHaveBeenCalledWith(["https://example.com/fresh.webp"]);
     });
 
+    it("prefetches cached items before the picker opens", async () => {
+        const cachedItems: CustomEmojiItem[] = [
+            { shortcode: "cached", src: "https://example.com/cached.webp" },
+        ];
+        customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
+
+        await customEmojiStore.prefetchCache({ pubkey: "pubkey" });
+
+        expect(customEmojiStore.items).toEqual(cachedItems);
+        expect(customEmojiMocks.fetchCustomEmojiList).not.toHaveBeenCalled();
+    });
+
+    it("keeps prefetched items visible and still fetches fresh items on first open", async () => {
+        const cachedItems: CustomEmojiItem[] = [
+            { shortcode: "cached", src: "https://example.com/cached.webp" },
+        ];
+        const fetchedItems: CustomEmojiItem[] = [
+            { shortcode: "fresh", src: "https://example.com/fresh.webp" },
+        ];
+        customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
+        customEmojiMocks.fetchCustomEmojiList.mockResolvedValue(fetchedItems);
+
+        await customEmojiStore.prefetchCache({ pubkey: "pubkey" });
+        await customEmojiStore.load({ rxNostr: {} as never, pubkey: "pubkey" });
+
+        expect(customEmojiMocks.readCachedCustomEmojiItems).toHaveBeenCalledTimes(1);
+        expect(customEmojiMocks.fetchCustomEmojiList).toHaveBeenCalled();
+        expect(customEmojiStore.items).toEqual(fetchedItems);
+    });
+
     it("does not read IndexedDB cache when force loading", async () => {
         const fetchedItems: CustomEmojiItem[] = [
             { shortcode: "fresh", src: "https://example.com/fresh.webp" },
