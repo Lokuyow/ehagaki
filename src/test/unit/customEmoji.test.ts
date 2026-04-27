@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     clampCustomEmojiPickerHeight,
     getCustomEmojiCacheBatches,
-    getCustomEmojiListCacheKey,
+    getEmojisCacheKey,
     getKind10030EmojiSetAddresses,
     mergeCustomEmojiItems,
     parseEmojiSetAddress,
@@ -91,33 +91,47 @@ describe('customEmoji', () => {
         ]);
     });
 
-    it('restores cached custom emoji items from local storage metadata', () => {
-        const values = new Map<string, string>();
-        const storage = {
-            getItem: (key: string) => values.get(key) ?? null,
-            setItem: (key: string, value: string) => values.set(key, value),
+    it('restores cached custom emoji items from IndexedDB metadata', async () => {
+        const records = new Map<string, unknown>();
+        const repository = {
+            get: async (pubkeyHex: string) => records.get(pubkeyHex) as any ?? null,
+            put: async (pubkeyHex: string, items: unknown[]) => {
+                records.set(pubkeyHex, {
+                    pubkeyHex,
+                    items,
+                    fetchedAt: 1234,
+                    updatedAt: 1234,
+                    schemaVersion: 1,
+                });
+            },
         };
 
-        writeCachedCustomEmojiItems(storage, 'pubkey', [
+        await writeCachedCustomEmojiItems('pubkey', [
             { shortcode: ':blobcat:', src: 'https://example.com/blobcat.webp' },
             { shortcode: 'blobcat', src: 'https://example.com/other.webp' },
             { shortcode: 'bad', src: 'notaurl' },
             { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
-        ]);
+        ], repository);
 
-        expect(values.has(getCustomEmojiListCacheKey('pubkey'))).toBe(true);
-        expect(readCachedCustomEmojiItems(storage, 'pubkey')).toEqual([
+        expect(records.has(getEmojisCacheKey('pubkey'))).toBe(true);
+        expect(await readCachedCustomEmojiItems('pubkey', repository)).toEqual([
             { shortcode: 'blobcat', src: 'https://example.com/blobcat.webp', setAddress: null },
             { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
         ]);
     });
 
-    it('ignores broken cached custom emoji metadata', () => {
-        const storage = {
-            getItem: () => '{"version":1,"items":[{"shortcode":"bad","src":"notaurl"}',
+    it('ignores broken cached custom emoji metadata', async () => {
+        const repository = {
+            get: async () => ({
+                pubkeyHex: 'pubkey',
+                items: [{ shortcode: 'bad', src: 'notaurl' }],
+                fetchedAt: 1234,
+                updatedAt: 1234,
+                schemaVersion: 1,
+            }),
         };
 
-        expect(readCachedCustomEmojiItems(storage, 'pubkey')).toEqual([]);
-        expect(readCachedCustomEmojiItems({ getItem: () => null }, 'pubkey')).toEqual([]);
+        expect(await readCachedCustomEmojiItems('pubkey', repository)).toEqual([]);
+        expect(await readCachedCustomEmojiItems('pubkey', { get: async () => null })).toEqual([]);
     });
 });

@@ -14,14 +14,6 @@ let loading = $state(false);
 let error = $state<string | null>(null);
 let lastLoadKey = $state<LoadKey | null>(null);
 
-function getLocalStorage(): Storage | null {
-    try {
-        return typeof localStorage === "undefined" ? null : localStorage;
-    } catch {
-        return null;
-    }
-}
-
 export const customEmojiStore = {
     get items() {
         return items;
@@ -47,8 +39,7 @@ export const customEmojiStore = {
             return;
         }
 
-        const storage = getLocalStorage();
-        const cachedItems = storage && !params.force ? readCachedCustomEmojiItems(storage, loadKey) : [];
+        const cachedItems = params.force ? [] : await readCachedCustomEmojiItems(loadKey);
         const hasCachedItems = cachedItems.length > 0;
         if (hasCachedItems) {
             items = cachedItems;
@@ -65,7 +56,7 @@ export const customEmojiStore = {
             });
             if (nextItems.length > 0 || !hasCachedItems) {
                 items = nextItems;
-                storage && writeCachedCustomEmojiItems(storage, loadKey, nextItems);
+                await writeCachedCustomEmojiItems(loadKey, nextItems);
                 cacheCustomEmojiImages(nextItems.map((item) => item.src));
             }
         } catch {

@@ -1,4 +1,5 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
+import type { EmojisRepository } from "./storage/emojisRepository";
 
 export interface CustomEmojiItem {
     shortcode: string;
@@ -21,8 +22,7 @@ export const CUSTOM_EMOJI_PICKER_MIN_HEIGHT =
 export const CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT = 240;
 export const CUSTOM_EMOJI_CACHE_URL_LIMIT = 300;
 export const CUSTOM_EMOJI_CACHE_BATCH_SIZE = 24;
-export const CUSTOM_EMOJI_LIST_CACHE_KEY_PREFIX = "customEmojiList:";
-export const CUSTOM_EMOJI_LIST_CACHE_VERSION = 1;
+export const EMOJIS_CACHE_SCHEMA_VERSION = 1;
 
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
@@ -102,26 +102,30 @@ function normalizeCustomEmojiItem(value: unknown): CustomEmojiItem | null {
     };
 }
 
-export function getCustomEmojiListCacheKey(pubkey: string): string {
-    return `${CUSTOM_EMOJI_LIST_CACHE_KEY_PREFIX}${pubkey}`;
+export function getEmojisCacheKey(pubkey: string): string {
+    return pubkey;
 }
 
-export function readCachedCustomEmojiItems(storage: Pick<Storage, "getItem">, pubkey: string): CustomEmojiItem[] {
+async function getDefaultEmojisRepository(): Promise<EmojisRepository> {
+    const { emojisRepository } = await import("./storage/emojisRepository");
+    return emojisRepository;
+}
+
+export async function readCachedCustomEmojiItems(
+    pubkey: string,
+    repository?: Pick<EmojisRepository, "get">,
+): Promise<CustomEmojiItem[]> {
     if (!pubkey) return [];
 
     try {
-        const raw = storage.getItem(getCustomEmojiListCacheKey(pubkey));
-        if (!raw) return [];
-        const payload = JSON.parse(raw) as {
-            version?: number;
-            items?: unknown[];
-        };
-        if (payload.version !== CUSTOM_EMOJI_LIST_CACHE_VERSION || !Array.isArray(payload.items)) {
+        const cacheRepository = repository ?? await getDefaultEmojisRepository();
+        const record = await cacheRepository.get(pubkey);
+        if (!record || record.schemaVersion !== EMOJIS_CACHE_SCHEMA_VERSION || !Array.isArray(record.items)) {
             return [];
         }
 
         return mergeCustomEmojiItems([
-            payload.items
+            record.items
                 .map((item) => normalizeCustomEmojiItem(item))
                 .filter((item): item is CustomEmojiItem => !!item),
         ]);
@@ -130,11 +134,11 @@ export function readCachedCustomEmojiItems(storage: Pick<Storage, "getItem">, pu
     }
 }
 
-export function writeCachedCustomEmojiItems(
-    storage: Pick<Storage, "setItem">,
+export async function writeCachedCustomEmojiItems(
     pubkey: string,
     nextItems: CustomEmojiItem[],
-): void {
+    repository?: Pick<EmojisRepository, "put">,
+): Promise<void> {
     if (!pubkey) return;
 
     const items = mergeCustomEmojiItems([
@@ -144,14 +148,8 @@ export function writeCachedCustomEmojiItems(
     ]);
 
     try {
-        storage.setItem(
-            getCustomEmojiListCacheKey(pubkey),
-            JSON.stringify({
-                version: CUSTOM_EMOJI_LIST_CACHE_VERSION,
-                cachedAt: Date.now(),
-                items,
-            }),
-        );
+        const cacheRepository = repository ?? await getDefaultEmojisRepository();
+        await cacheRepository.put(pubkey, items);
     } catch {
         // Metadata caching is an optimization.
     }
