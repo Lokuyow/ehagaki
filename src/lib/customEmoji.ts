@@ -21,6 +21,8 @@ export const CUSTOM_EMOJI_PICKER_MIN_HEIGHT =
 export const CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT = 240;
 export const CUSTOM_EMOJI_CACHE_URL_LIMIT = 300;
 export const CUSTOM_EMOJI_CACHE_BATCH_SIZE = 24;
+export const CUSTOM_EMOJI_LIST_CACHE_KEY_PREFIX = "customEmojiList:";
+export const CUSTOM_EMOJI_LIST_CACHE_VERSION = 1;
 
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
@@ -85,6 +87,74 @@ export function mergeCustomEmojiItems(groups: CustomEmojiItem[][]): CustomEmojiI
     }
 
     return merged;
+}
+
+function normalizeCustomEmojiItem(value: unknown): CustomEmojiItem | null {
+    if (!value || typeof value !== "object") return null;
+    const item = value as Partial<CustomEmojiItem>;
+    const shortcode = normalizeEmojiShortcode(item.shortcode);
+    if (!shortcode || !isValidCustomEmojiUrl(item.src)) return null;
+
+    return {
+        shortcode,
+        src: item.src,
+        setAddress: typeof item.setAddress === "string" && item.setAddress ? item.setAddress : null,
+    };
+}
+
+export function getCustomEmojiListCacheKey(pubkey: string): string {
+    return `${CUSTOM_EMOJI_LIST_CACHE_KEY_PREFIX}${pubkey}`;
+}
+
+export function readCachedCustomEmojiItems(storage: Pick<Storage, "getItem">, pubkey: string): CustomEmojiItem[] {
+    if (!pubkey) return [];
+
+    try {
+        const raw = storage.getItem(getCustomEmojiListCacheKey(pubkey));
+        if (!raw) return [];
+        const payload = JSON.parse(raw) as {
+            version?: number;
+            items?: unknown[];
+        };
+        if (payload.version !== CUSTOM_EMOJI_LIST_CACHE_VERSION || !Array.isArray(payload.items)) {
+            return [];
+        }
+
+        return mergeCustomEmojiItems([
+            payload.items
+                .map((item) => normalizeCustomEmojiItem(item))
+                .filter((item): item is CustomEmojiItem => !!item),
+        ]);
+    } catch {
+        return [];
+    }
+}
+
+export function writeCachedCustomEmojiItems(
+    storage: Pick<Storage, "setItem">,
+    pubkey: string,
+    nextItems: CustomEmojiItem[],
+): void {
+    if (!pubkey) return;
+
+    const items = mergeCustomEmojiItems([
+        nextItems
+            .map((item) => normalizeCustomEmojiItem(item))
+            .filter((item): item is CustomEmojiItem => !!item),
+    ]);
+
+    try {
+        storage.setItem(
+            getCustomEmojiListCacheKey(pubkey),
+            JSON.stringify({
+                version: CUSTOM_EMOJI_LIST_CACHE_VERSION,
+                cachedAt: Date.now(),
+                items,
+            }),
+        );
+    } catch {
+        // Metadata caching is an optimization.
+    }
 }
 
 function fetchEvents(params: {

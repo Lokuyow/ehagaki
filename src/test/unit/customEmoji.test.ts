@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
     clampCustomEmojiPickerHeight,
     getCustomEmojiCacheBatches,
+    getCustomEmojiListCacheKey,
     getKind10030EmojiSetAddresses,
     mergeCustomEmojiItems,
     parseEmojiSetAddress,
     parseEmojiTags,
+    readCachedCustomEmojiItems,
+    writeCachedCustomEmojiItems,
 } from '../../lib/customEmoji';
 
 describe('customEmoji', () => {
@@ -86,5 +89,35 @@ describe('customEmoji', () => {
             ['https://example.com/a.webp', 'https://example.com/b.webp'],
             ['https://example.com/c.webp'],
         ]);
+    });
+
+    it('restores cached custom emoji items from local storage metadata', () => {
+        const values = new Map<string, string>();
+        const storage = {
+            getItem: (key: string) => values.get(key) ?? null,
+            setItem: (key: string, value: string) => values.set(key, value),
+        };
+
+        writeCachedCustomEmojiItems(storage, 'pubkey', [
+            { shortcode: ':blobcat:', src: 'https://example.com/blobcat.webp' },
+            { shortcode: 'blobcat', src: 'https://example.com/other.webp' },
+            { shortcode: 'bad', src: 'notaurl' },
+            { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
+        ]);
+
+        expect(values.has(getCustomEmojiListCacheKey('pubkey'))).toBe(true);
+        expect(readCachedCustomEmojiItems(storage, 'pubkey')).toEqual([
+            { shortcode: 'blobcat', src: 'https://example.com/blobcat.webp', setAddress: null },
+            { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
+        ]);
+    });
+
+    it('ignores broken cached custom emoji metadata', () => {
+        const storage = {
+            getItem: () => '{"version":1,"items":[{"shortcode":"bad","src":"notaurl"}',
+        };
+
+        expect(readCachedCustomEmojiItems(storage, 'pubkey')).toEqual([]);
+        expect(readCachedCustomEmojiItems({ getItem: () => null }, 'pubkey')).toEqual([]);
     });
 });

@@ -2,7 +2,9 @@ import type { RxNostr } from "rx-nostr";
 import {
     cacheCustomEmojiImages,
     fetchCustomEmojiList,
+    readCachedCustomEmojiItems,
     type CustomEmojiItem,
+    writeCachedCustomEmojiItems,
 } from "../lib/customEmoji";
 
 type LoadKey = string;
@@ -11,6 +13,14 @@ let items = $state<CustomEmojiItem[]>([]);
 let loading = $state(false);
 let error = $state<string | null>(null);
 let lastLoadKey = $state<LoadKey | null>(null);
+
+function getLocalStorage(): Storage | null {
+    try {
+        return typeof localStorage === "undefined" ? null : localStorage;
+    } catch {
+        return null;
+    }
+}
 
 export const customEmojiStore = {
     get items() {
@@ -37,7 +47,14 @@ export const customEmojiStore = {
             return;
         }
 
-        loading = true;
+        const storage = getLocalStorage();
+        const cachedItems = storage && !params.force ? readCachedCustomEmojiItems(storage, loadKey) : [];
+        const hasCachedItems = cachedItems.length > 0;
+        if (hasCachedItems) {
+            items = cachedItems;
+        }
+
+        loading = !hasCachedItems;
         error = null;
         lastLoadKey = loadKey;
 
@@ -46,11 +63,16 @@ export const customEmojiStore = {
                 rxNostr: params.rxNostr,
                 pubkey: params.pubkey,
             });
-            items = nextItems;
-            cacheCustomEmojiImages(nextItems.map((item) => item.src));
+            if (nextItems.length > 0 || !hasCachedItems) {
+                items = nextItems;
+                storage && writeCachedCustomEmojiItems(storage, loadKey, nextItems);
+                cacheCustomEmojiImages(nextItems.map((item) => item.src));
+            }
         } catch {
             error = "customEmoji.load_failed";
-            items = [];
+            if (!hasCachedItems) {
+                items = [];
+            }
         } finally {
             loading = false;
         }
