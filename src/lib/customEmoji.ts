@@ -196,7 +196,7 @@ export function readCustomEmojiPickerHeight(storage: Pick<Storage, "getItem">, v
 }
 
 export function clampCustomEmojiPickerHeight(value: number, viewportHeight = typeof window !== "undefined" ? (window.visualViewport?.height ?? window.innerHeight) : 800): number {
-    const max = Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.floor(viewportHeight * 0.45));
+    const max = Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.floor(viewportHeight * 0.6));
     return Math.min(max, Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.round(value)));
 }
 
