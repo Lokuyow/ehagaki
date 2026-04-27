@@ -7,7 +7,7 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.17.0';
+const SW_VERSION = '1.17.0test';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images';
 const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images';
