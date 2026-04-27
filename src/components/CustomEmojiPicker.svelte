@@ -374,18 +374,27 @@
 
     .resize-handle {
         width: 100%;
-        height: 14px;
+        height: 12px;
         cursor: ns-resize;
         touch-action: none;
         position: relative;
         background: var(--bg-buttonbar);
     }
 
+    .resize-handle::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: -14px;
+        bottom: -14px;
+    }
+
     .resize-handle::after {
         content: "";
         position: absolute;
         left: 50%;
-        top: 5px;
+        top: 4px;
         width: 38px;
         height: 4px;
         border-radius: 999px;
@@ -400,7 +409,7 @@
 
     :global(.custom-emoji-search) {
         width: 100%;
-        height: 34px;
+        height: 40px;
         padding: 0 12px;
         border: 0;
         border-bottom: 1px solid var(--border);
