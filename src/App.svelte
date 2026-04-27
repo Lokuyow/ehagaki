@@ -182,6 +182,15 @@
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let customEmojiPickerOpen = $state(false);
+  const anyDialogOpen = $derived(
+    showLoginDialogStore.value ||
+      showLogoutDialogStore.value ||
+      showSettingsDialogStore.value ||
+      showWelcomeDialogStore.value ||
+      showDraftListDialogStore.value ||
+      showDraftLimitConfirmStore.value ||
+      showAddAccountDialogStore.value,
+  );
 
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
@@ -216,6 +225,12 @@
     pendingDraftContentStore,
     showDraftLimitConfirmStore,
     saveDraftWithReplaceOldest,
+  });
+
+  $effect(() => {
+    if (anyDialogOpen && customEmojiPickerOpen) {
+      customEmojiPickerOpen = false;
+    }
   });
 
   function syncComposerAvailableHeight(): void {

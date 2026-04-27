@@ -290,6 +290,8 @@
                         customAnchor={footerButtonBarElement}
                         class="custom-emoji-popover-content"
                         trapFocus={false}
+                        interactOutsideBehavior="ignore"
+                        escapeKeydownBehavior="ignore"
                         onOpenAutoFocus={(e) => e.preventDefault()}
                         onCloseAutoFocus={(e) => e.preventDefault()}
                     >
@@ -642,6 +644,40 @@
     :global(.footer-button-bar .footer) {
         width: 50px;
         height: var(--keyboard-button-bar-height);
+    }
+
+    :global(:root .footer-button-bar button.custom-emoji-button.selected) {
+        filter: none;
+    }
+
+    :global(
+            :root.light .footer-button-bar button.custom-emoji-button.selected
+        ) {
+        --btn-bg: rgba(0, 0, 0, 0.12);
+        --svg: hsl(0, 0%, 18%);
+    }
+
+    :global(:root.dark .footer-button-bar button.custom-emoji-button.selected) {
+        --btn-bg: rgba(255, 255, 255, 0.18);
+        --svg: hsl(0, 0%, 100%);
+    }
+
+    :global(
+            :root.light
+                .footer-button-bar
+                button.custom-emoji-button.selected:hover
+        ) {
+        --btn-bg: rgba(0, 0, 0, 0.12);
+        --svg: hsl(0, 0%, 18%);
+    }
+
+    :global(
+            :root.dark
+                .footer-button-bar
+                button.custom-emoji-button.selected:hover
+        ) {
+        --btn-bg: rgba(255, 255, 255, 0.18);
+        --svg: hsl(0, 0%, 100%);
     }
 
     :global(.tooltip-content) {

@@ -259,13 +259,12 @@
         background: var(--dialog);
         color: var(--text);
         border-radius: 8px 8px 0 0;
-        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.18);
         overflow: hidden;
     }
 
     .resize-handle {
         width: 100%;
-        height: 12px;
+        height: 14px;
         cursor: ns-resize;
         touch-action: none;
         position: relative;
@@ -276,7 +275,7 @@
         content: "";
         position: absolute;
         left: 50%;
-        top: 4px;
+        top: 5px;
         width: 38px;
         height: 4px;
         border-radius: 999px;
@@ -291,13 +290,13 @@
 
     :global(.custom-emoji-search) {
         width: 100%;
-        height: 42px;
+        height: 34px;
         padding: 0 12px;
         border: 0;
         border-bottom: 1px solid var(--border);
         background: var(--input-bg, var(--dialog));
         color: var(--text);
-        font-size: 0.95rem;
+        font-size: 1rem;
         outline: none;
     }
 
@@ -332,7 +331,7 @@
         left: 4px;
         right: 4px;
         display: grid;
-        grid-auto-rows: 40px;
+        grid-auto-rows: 38px;
         justify-items: center;
     }
 
@@ -340,8 +339,8 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 40px;
-        height: 40px;
+        width: 100%;
+        height: 38px;
         cursor: pointer;
         outline: none;
     }
