@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     clampCustomEmojiPickerHeight,
     getCustomEmojiCacheBatches,
@@ -8,6 +8,7 @@ import {
     parseEmojiSetAddress,
     parseEmojiTags,
     readCachedCustomEmojiItems,
+    readCustomEmojiPickerHeight,
     writeCachedCustomEmojiItems,
 } from '../../lib/customEmoji';
 
@@ -70,6 +71,14 @@ describe('customEmoji', () => {
         expect(clampCustomEmojiPickerHeight(240, 1000)).toBe(240);
         expect(clampCustomEmojiPickerHeight(900, 1000, 320)).toBe(320);
         expect(clampCustomEmojiPickerHeight(900, 1000, 720)).toBe(720);
+    });
+
+    it('uses the default picker height when no stored height exists', () => {
+        const storage = {
+            getItem: vi.fn(() => null),
+        };
+
+        expect(readCustomEmojiPickerHeight(storage, 1000)).toBe(240);
     });
 
     it('batches custom emoji cache urls and ignores duplicates or invalid urls', () => {

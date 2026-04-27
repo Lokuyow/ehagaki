@@ -262,7 +262,8 @@ export async function fetchCustomEmojiList(params: {
 }
 
 export function readCustomEmojiPickerHeight(storage: Pick<Storage, "getItem">, viewportHeight?: number, maxHeight?: number): number {
-    const raw = Number(storage.getItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY));
+    const storedValue = storage.getItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY);
+    const raw = storedValue === null ? NaN : Number(storedValue);
     return clampCustomEmojiPickerHeight(Number.isFinite(raw) ? raw : CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT, viewportHeight, maxHeight);
 }
 
