@@ -57,11 +57,29 @@ export function preventKeyboardFocusChange(event: Event): void {
     suppressEditorKeyboardForCurrentTap(event);
 }
 
+export function isIosTouchDevice(): boolean {
+    if (typeof navigator === "undefined") {
+        return false;
+    }
+
+    const userAgent = navigator.userAgent ?? "";
+    const platform = navigator.platform ?? "";
+
+    return (
+        /iPad|iPhone|iPod/.test(userAgent) ||
+        (platform === "MacIntel" && navigator.maxTouchPoints > 1)
+    );
+}
+
 export function focusEditorWithoutKeyboardForCurrentTap(
     editorElement: HTMLElement,
-): void {
+): boolean {
     if (document.activeElement === editorElement) {
-        return;
+        return true;
+    }
+
+    if (isIosTouchDevice()) {
+        return false;
     }
 
     if (!suppressedEditor) {
@@ -79,4 +97,6 @@ export function focusEditorWithoutKeyboardForCurrentTap(
         restoreTimeoutId = null;
         restoreEditorKeyboardInput();
     }, 400);
+
+    return document.activeElement === editorElement;
 }

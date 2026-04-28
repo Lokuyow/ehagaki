@@ -59,6 +59,7 @@
     initializeEditor,
     cleanupEditor,
   } from "../lib/editor/editorLifecycle";
+  import { showToolbarCaret } from "../lib/editor/toolbarCaretExtension";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
   import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
@@ -406,7 +407,12 @@
 
   function revealToolbarCaret(): void {
     if (!currentEditor) return;
-    focusEditorWithoutKeyboardForCurrentTap(currentEditor.view.dom);
+    const focusedWithoutKeyboard = focusEditorWithoutKeyboardForCurrentTap(
+      currentEditor.view.dom,
+    );
+    if (!focusedWithoutKeyboard) {
+      showToolbarCaret(currentEditor);
+    }
   }
 
   function moveCaret(direction: -1 | 1): void {
@@ -827,6 +833,28 @@
       height: 0;
       pointer-events: none;
       opacity: 0.6;
+    }
+
+    :global(.toolbar-caret) {
+      display: inline-block;
+      width: 0;
+      height: 1.5em;
+      margin-left: -1px;
+      border-left: 2px solid var(--text);
+      vertical-align: -0.25em;
+      pointer-events: none;
+      animation: toolbar-caret-blink 1s steps(1) infinite;
+    }
+  }
+
+  @keyframes toolbar-caret-blink {
+    0%,
+    49% {
+      opacity: 1;
+    }
+    50%,
+    100% {
+      opacity: 0;
     }
   }
 
