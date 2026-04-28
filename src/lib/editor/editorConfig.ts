@@ -226,6 +226,13 @@ export function createEditorStore(options: EditorConfigOptions) {
                 },
                 allowBase64: false,
             }).extend({
+                parseHTML() {
+                    return [
+                        {
+                            tag: 'img[src]:not([src^="data:"]):not([data-custom-emoji]):not(.custom-emoji-inline[alt])',
+                        },
+                    ];
+                },
                 addAttributes() {
                     return {
                         src: { default: null },

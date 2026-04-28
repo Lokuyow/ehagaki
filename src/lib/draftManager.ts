@@ -65,7 +65,7 @@ export function generatePreview(htmlContent: string, galleryItems?: MediaGallery
     const tempDiv = createSanitizedDraftContainer(htmlContent, document);
 
     // 画像と動画の有無をチェック（エディタ内 + ギャラリーアイテム）
-    const hasEditorImage = tempDiv.querySelector('img') !== null;
+    const hasEditorImage = tempDiv.querySelector('img:not([data-custom-emoji]):not(.custom-emoji-inline[alt])') !== null;
     const hasEditorVideo = tempDiv.querySelector('video') !== null;
     const hasGalleryImage = galleryItems?.some(item => !item.isPlaceholder && item.type === 'image') ?? false;
     const hasGalleryVideo = galleryItems?.some(item => !item.isPlaceholder && item.type === 'video') ?? false;

@@ -198,6 +198,68 @@ describe('extractMediaToGalleryHtml', () => {
         expect(stripped).not.toContain('<video');
     });
 
+    it('カスタム絵文字はギャラリーへ移さず本文に残す', () => {
+        const addGalleryItem = vi.fn();
+
+        const stripped = extractMediaToGalleryHtml({
+            htmlContent: [
+                '<p>text ',
+                '<img src="https://example.com/emoji.webp" data-custom-emoji="true" data-shortcode="blobcat" alt=":blobcat:" class="custom-emoji-inline">',
+                '</p>',
+            ].join(''),
+            document,
+            addGalleryItem,
+            generateMediaItemId: () => 'media-1',
+        });
+
+        expect(addGalleryItem).not.toHaveBeenCalled();
+        expect(stripped).toContain('data-custom-emoji="true"');
+        expect(stripped).toContain('data-shortcode="blobcat"');
+        expect(stripped).toContain('src="https://example.com/emoji.webp"');
+    });
+
+    it('data 属性がない旧下書きのカスタム絵文字もギャラリーへ移さず本文に残す', () => {
+        const addGalleryItem = vi.fn();
+
+        const stripped = extractMediaToGalleryHtml({
+            htmlContent: '<p><img src="https://example.com/emoji.webp" class="custom-emoji-inline" alt=":blobcat:"></p>',
+            document,
+            addGalleryItem,
+            generateMediaItemId: () => 'media-1',
+        });
+
+        expect(addGalleryItem).not.toHaveBeenCalled();
+        expect(stripped).toContain('class="custom-emoji-inline"');
+        expect(stripped).toContain('alt=":blobcat:"');
+    });
+
+    it('カスタム絵文字以外の画像だけギャラリーへ移す', () => {
+        const addGalleryItem = vi.fn();
+
+        const stripped = extractMediaToGalleryHtml({
+            htmlContent: [
+                '<p><img src="https://example.com/emoji.webp" data-custom-emoji="true" data-shortcode="blobcat"></p>',
+                '<p><img src="https://example.com/photo.jpg" alt="photo"></p>',
+            ].join(''),
+            document,
+            addGalleryItem,
+            generateMediaItemId: () => 'media-1',
+        });
+
+        expect(addGalleryItem).toHaveBeenCalledOnce();
+        expect(addGalleryItem).toHaveBeenCalledWith({
+            id: 'media-1',
+            type: 'image',
+            src: 'https://example.com/photo.jpg',
+            isPlaceholder: false,
+            blurhash: undefined,
+            alt: 'photo',
+            dim: undefined,
+        });
+        expect(stripped).toContain('data-custom-emoji="true"');
+        expect(stripped).not.toContain('photo.jpg');
+    });
+
     it('危険な media src はギャラリーへ追加しない', () => {
         const addGalleryItem = vi.fn();
 

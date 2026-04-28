@@ -30,6 +30,17 @@ function normalizeShortcode(value: unknown): string {
     return normalizeEmojiShortcode(value);
 }
 
+function parseShortcodeFromElement(element: HTMLElement): string {
+    const shortcode = normalizeShortcode(element.getAttribute('data-shortcode') ?? '');
+    if (shortcode) {
+        return shortcode;
+    }
+
+    const alt = element.getAttribute('alt') ?? '';
+    const match = alt.match(/^:([^:]+):$/);
+    return normalizeShortcode(match?.[1] ?? '');
+}
+
 const SHORTCODE_PATTERN = '[\\p{L}\\p{N}_+-]';
 const SHORTCODE_INPUT_REGEX = new RegExp(`:(${SHORTCODE_PATTERN}{1,64}):$`, 'u');
 const SHORTCODE_PASTE_REGEX = new RegExp(`:(${SHORTCODE_PATTERN}{1,64}):`, 'gu');
@@ -69,7 +80,7 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
         return {
             shortcode: {
                 default: '',
-                parseHTML: (element) => normalizeShortcode(element.getAttribute('data-shortcode') ?? ''),
+                parseHTML: (element) => parseShortcodeFromElement(element as HTMLElement),
             },
             src: {
                 default: '',
@@ -85,7 +96,10 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
     },
 
     parseHTML() {
-        return [{ tag: 'img[data-custom-emoji]' }];
+        return [
+            { tag: 'img[data-custom-emoji]' },
+            { tag: 'img.custom-emoji-inline[alt]' },
+        ];
     },
 
     renderHTML({ HTMLAttributes }) {

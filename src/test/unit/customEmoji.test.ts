@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
+import Image from '@tiptap/extension-image';
 import {
     clampCustomEmojiPickerHeight,
     findCustomEmojiByShortcode,
@@ -83,6 +84,43 @@ function createCustomEmojiEditor(items: CustomEmojiItem[] = emojiItems): Editor 
             }),
         ],
         enablePasteRules: ['customEmoji'],
+        content: '<p></p>',
+    });
+}
+
+function createImageBeforeCustomEmojiEditor(items: CustomEmojiItem[] = emojiItems): Editor {
+    return new Editor({
+        extensions: [
+            StarterKit.configure({
+                heading: false,
+                blockquote: false,
+                bold: false,
+                italic: false,
+                strike: false,
+                code: false,
+                codeBlock: false,
+                bulletList: false,
+                orderedList: false,
+                listItem: false,
+                horizontalRule: false,
+                hardBreak: false,
+                link: false,
+            }),
+            Image.configure({
+                allowBase64: false,
+            }).extend({
+                parseHTML() {
+                    return [
+                        {
+                            tag: 'img[src]:not([src^="data:"]):not([data-custom-emoji]):not(.custom-emoji-inline[alt])',
+                        },
+                    ];
+                },
+            }),
+            CustomEmoji.configure({
+                getItems: () => items,
+            }),
+        ],
         content: '<p></p>',
     });
 }
@@ -336,6 +374,56 @@ describe('customEmoji', () => {
                 ['emoji', 'party', 'https://example.com/party.webp', '30030:pubkey:set'],
             ]);
             expect(editor.getJSON().content?.[0].content?.filter((node: any) => node.type === 'customEmoji')).toHaveLength(2);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('parses draft HTML custom emoji as customEmoji even when Image is registered first', () => {
+        const editor = createImageBeforeCustomEmojiEditor();
+        try {
+            editor.commands.setContent([
+                '<p>text ',
+                '<img src="https://example.com/party.webp" data-custom-emoji="true" data-shortcode="party" data-set-address="30030:pubkey:set" alt=":party:">',
+                '</p>',
+            ].join(''));
+
+            expect(editor.getJSON().content?.[0].content).toEqual([
+                { type: 'text', text: 'text ' },
+                {
+                    type: 'customEmoji',
+                    attrs: {
+                        shortcode: 'party',
+                        src: 'https://example.com/party.webp',
+                        setAddress: '30030:pubkey:set',
+                    },
+                },
+            ]);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('parses legacy draft custom emoji HTML from class and alt when data attributes are missing', () => {
+        const editor = createImageBeforeCustomEmojiEditor();
+        try {
+            editor.commands.setContent([
+                '<p>legacy ',
+                '<img src="https://example.com/kubi.webp" class="custom-emoji-inline" alt=":kubi:">',
+                '</p>',
+            ].join(''));
+
+            expect(editor.getJSON().content?.[0].content).toEqual([
+                { type: 'text', text: 'legacy ' },
+                {
+                    type: 'customEmoji',
+                    attrs: {
+                        shortcode: 'kubi',
+                        src: 'https://example.com/kubi.webp',
+                        setAddress: null,
+                    },
+                },
+            ]);
         } finally {
             editor.destroy();
         }

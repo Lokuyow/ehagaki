@@ -62,6 +62,10 @@ function removeMediaElement(element: Element, root: HTMLDivElement): void {
     element.remove();
 }
 
+function isCustomEmojiElement(element: Element): boolean {
+    return element.matches('img[data-custom-emoji], img.custom-emoji-inline[alt]');
+}
+
 function buildDraftReplyQuoteEntry(
     replyQuoteState: DraftReplyQuoteStateLike,
 ): DraftReplyQuoteEntryData {
@@ -149,6 +153,10 @@ export function extractMediaToGalleryHtml({
     const tempDiv = createSanitizedDraftContainer(htmlContent, document);
 
     tempDiv.querySelectorAll('img').forEach((img) => {
+        if (isCustomEmojiElement(img)) {
+            return;
+        }
+
         const src = img.getAttribute('src');
         if (!src || img.getAttribute('isPlaceholder') === 'true') {
             return;

@@ -41,4 +41,18 @@ describe('draftHtmlSanitizer', () => {
         expect(container.querySelector('img')?.getAttribute('src')).toBe('https://example.com/image');
         expect(container.querySelector('video')?.getAttribute('src')).toBe('https://example.com/video');
     });
+
+    it('カスタム絵文字の復元に必要な属性を保持する', () => {
+        const sanitized = sanitizeDraftHtml([
+            '<p>',
+            '<img src="https://example.com/emoji.webp" data-custom-emoji="true" data-shortcode="blobcat" data-set-address="30023:pubkey:set" alt=":blobcat:" class="custom-emoji-inline">',
+            '</p>',
+        ].join(''));
+
+        expect(sanitized).toContain('data-custom-emoji="true"');
+        expect(sanitized).toContain('data-shortcode="blobcat"');
+        expect(sanitized).toContain('data-set-address="30023:pubkey:set"');
+        expect(sanitized).toContain('class="custom-emoji-inline"');
+        expect(sanitized).toContain('alt=":blobcat:"');
+    });
 });
