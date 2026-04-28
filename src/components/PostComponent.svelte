@@ -60,6 +60,7 @@
     cleanupEditor,
   } from "../lib/editor/editorLifecycle";
   import { insertCustomEmojiWithoutUnwantedKeyboard } from "../lib/editor/customEmojiInsertion";
+  import { focusEditorWithoutKeyboardForCurrentTap } from "../lib/utils/keyboardFocusUtils";
   import { isEditorElement } from "../lib/utils/appDomUtils";
   import { POST_EDITOR_MIN_HEIGHT } from "../lib/postLayoutUtils";
   import {
@@ -403,9 +404,15 @@
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
   }
 
+  function revealToolbarCaret(): void {
+    if (!currentEditor) return;
+    focusEditorWithoutKeyboardForCurrentTap(currentEditor.view.dom);
+  }
+
   function moveCaret(direction: -1 | 1): void {
     if (!currentEditor) return;
 
+    revealToolbarCaret();
     const { state, view } = currentEditor;
     const currentPos = direction < 0 ? state.selection.from : state.selection.to;
     const nextPos = Math.max(
@@ -435,6 +442,7 @@
   export function deleteBackward(): void {
     if (!currentEditor) return;
 
+    revealToolbarCaret();
     const { state, view } = currentEditor;
     const { selection } = state;
 
@@ -469,6 +477,7 @@
 
   export function insertLineBreak(): void {
     if (!currentEditor) return;
+    revealToolbarCaret();
     currentEditor.commands.keyboardShortcut("Enter");
   }
 

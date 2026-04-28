@@ -56,3 +56,27 @@ export function preventKeyboardFocusChange(event: Event): void {
     event.preventDefault();
     suppressEditorKeyboardForCurrentTap(event);
 }
+
+export function focusEditorWithoutKeyboardForCurrentTap(
+    editorElement: HTMLElement,
+): void {
+    if (document.activeElement === editorElement) {
+        return;
+    }
+
+    if (!suppressedEditor) {
+        suppressedEditor = [editorElement, editorElement.getAttribute("inputmode")];
+    }
+
+    editorElement.setAttribute("inputmode", "none");
+    editorElement.focus({ preventScroll: true });
+
+    if (restoreTimeoutId !== null) {
+        clearTimeout(restoreTimeoutId);
+    }
+
+    restoreTimeoutId = setTimeout(() => {
+        restoreTimeoutId = null;
+        restoreEditorKeyboardInput();
+    }, 400);
+}
