@@ -41,6 +41,16 @@ function findEmojiFromMatch(
     return findCustomEmojiByShortcode(items, match[1]);
 }
 
+function findKnownEmojiPasteMatches(text: string, items: CustomEmojiItem[]) {
+    return [...text.matchAll(SHORTCODE_PASTE_REGEX)]
+        .filter((match) => findEmojiFromMatch(items, match))
+        .map((match) => ({
+            index: match.index ?? 0,
+            text: match[0],
+            replaceWith: String(match[1] ?? ''),
+        }));
+}
+
 export const CustomEmoji = Node.create<CustomEmojiOptions>({
     name: 'customEmoji',
 
@@ -145,7 +155,7 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
     addPasteRules() {
         return [
             new PasteRule({
-                find: SHORTCODE_PASTE_REGEX,
+                find: (text) => findKnownEmojiPasteMatches(text, this.options.getItems()),
                 handler: ({ state, range, match }) => {
                     const emoji = findEmojiFromMatch(this.options.getItems(), match);
                     if (!emoji) {

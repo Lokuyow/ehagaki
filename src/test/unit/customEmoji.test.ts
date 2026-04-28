@@ -340,4 +340,41 @@ describe('customEmoji', () => {
             editor.destroy();
         }
     });
+
+    it('keeps unknown pasted shortcodes as text while converting known custom emoji', () => {
+        installClipboardEventPolyfill();
+        const editor = createCustomEmojiEditor();
+        try {
+            editor.commands.insertContent('a :kubi: b :missing: c :party:', { applyPasteRules: true });
+
+            const extraction = extractPostContentFromDoc(editor.state.doc);
+            expect(extraction.content).toBe('a :kubi: b :missing: c :party:');
+            expect(extraction.emojiTags).toEqual([
+                ['emoji', 'kubi', 'https://example.com/kubi.webp'],
+                ['emoji', 'party', 'https://example.com/party.webp', '30030:pubkey:set'],
+            ]);
+            expect(editor.getJSON().content?.[0].content).toEqual([
+                { type: 'text', text: 'a ' },
+                {
+                    type: 'customEmoji',
+                    attrs: {
+                        shortcode: 'kubi',
+                        src: 'https://example.com/kubi.webp',
+                        setAddress: null,
+                    },
+                },
+                { type: 'text', text: ' b :missing: c ' },
+                {
+                    type: 'customEmoji',
+                    attrs: {
+                        shortcode: 'party',
+                        src: 'https://example.com/party.webp',
+                        setAddress: '30030:pubkey:set',
+                    },
+                },
+            ]);
+        } finally {
+            editor.destroy();
+        }
+    });
 });
