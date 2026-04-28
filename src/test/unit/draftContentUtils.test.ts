@@ -147,6 +147,53 @@ describe('createDraftSavePayload', () => {
         });
     });
 
+    it('ギャラリーメディアとカスタム絵文字だけの本文でも保存 payload を返す', () => {
+        const galleryItems: MediaGalleryItem[] = [
+            { id: 'image-1', type: 'image', src: 'https://example.com/a.jpg', isPlaceholder: false },
+        ];
+
+        expect(createDraftSavePayload({
+            htmlContent: '<p><img src="https://example.com/blobcat.webp" data-custom-emoji="true" data-shortcode="blobcat" alt=":blobcat:" class="custom-emoji-inline"></p>',
+            galleryItems,
+            replyQuoteState: createEmptyComposerState(),
+            channelContextState: null,
+        })).toEqual({
+            content: '<p><img src="https://example.com/blobcat.webp" data-custom-emoji="true" data-shortcode="blobcat" alt=":blobcat:" class="custom-emoji-inline"></p>',
+            galleryItems,
+            channelData: undefined,
+            replyQuoteData: undefined,
+        });
+    });
+
+    it('ギャラリーメディアを下書き保存用の plain data に正規化する', () => {
+        const dimensions = { width: 100, height: 80, displayWidth: 100, displayHeight: 80 };
+        const galleryItem = {
+            id: 'image-1',
+            type: 'image',
+            src: 'https://example.com/a.jpg',
+            isPlaceholder: false,
+            dimensions,
+            ignoredRuntimeValue: () => null,
+        } as MediaGalleryItem & { ignoredRuntimeValue: () => null };
+
+        const payload = createDraftSavePayload({
+            htmlContent: '<p><img src="https://example.com/blobcat.webp" data-custom-emoji="true" data-shortcode="blobcat"></p>',
+            galleryItems: [galleryItem],
+            replyQuoteState: createEmptyComposerState(),
+            channelContextState: null,
+        });
+
+        expect(payload?.galleryItems).toEqual([{
+            id: 'image-1',
+            type: 'image',
+            src: 'https://example.com/a.jpg',
+            isPlaceholder: false,
+            dimensions,
+        }]);
+        expect(payload?.galleryItems[0]).not.toHaveProperty('ignoredRuntimeValue');
+        expect(payload?.galleryItems[0].dimensions).not.toBe(dimensions);
+    });
+
     it('危険な HTML を保存前に sanitize する', () => {
         const payload = createDraftSavePayload({
             htmlContent: '<p>body</p><script>alert(1)</script><a href="javascript:alert(1)">danger</a><img src="javascript:alert(2)">',

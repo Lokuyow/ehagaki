@@ -249,6 +249,24 @@ describe("draftManager", () => {
             expect(fetched?.channelData).toEqual(channelData);
             expect(fetched?.replyQuoteData).toEqual(replyQuoteData);
         });
+
+        it("ギャラリー画像とカスタム絵文字本文を同じ下書きに保存できる", async () => {
+            const galleryItems: MediaGalleryItem[] = [
+                { id: "image-1", type: "image", src: "https://example.com/photo.jpg", isPlaceholder: false },
+            ];
+
+            const result = await saveDraft(
+                '<p><img src="https://example.com/blobcat.webp" data-custom-emoji="true" data-shortcode="blobcat" alt=":blobcat:" class="custom-emoji-inline"></p>',
+                galleryItems,
+            );
+            const fetched = await getDraft(result.drafts[0].id);
+
+            expect(result.success).toBe(true);
+            expect(fetched?.content).toContain('data-custom-emoji="true"');
+            expect(fetched?.galleryItems).toEqual(galleryItems);
+            expect(fetched?.preview).toContain(":blobcat:");
+            expect(fetched?.preview).toContain("[画像]");
+        });
     });
 
     describe("saveDraftWithReplaceOldest", () => {

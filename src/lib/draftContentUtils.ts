@@ -114,6 +114,22 @@ function buildDraftChannelData(
     };
 }
 
+function buildDraftGalleryItem(item: MediaGalleryItem): MediaGalleryItem {
+    return {
+        id: item.id,
+        type: item.type,
+        src: item.src,
+        isPlaceholder: false,
+        ...(item.blurhash ? { blurhash: item.blurhash } : {}),
+        ...(item.ox ? { ox: item.ox } : {}),
+        ...(item.x ? { x: item.x } : {}),
+        ...(item.dimensions ? { dimensions: { ...item.dimensions } } : {}),
+        ...(item.mimeType ? { mimeType: item.mimeType } : {}),
+        ...(item.alt ? { alt: item.alt } : {}),
+        ...(item.dim ? { dim: item.dim } : {}),
+    };
+}
+
 export function createDraftSavePayload({
     htmlContent,
     galleryItems,
@@ -126,7 +142,9 @@ export function createDraftSavePayload({
     replyQuoteData?: DraftReplyQuoteData;
 } | null {
     const sanitizedHtmlContent = sanitizeDraftHtml(htmlContent);
-    const persistedGalleryItems = galleryItems.filter((item) => !item.isPlaceholder);
+    const persistedGalleryItems = galleryItems
+        .filter((item) => !item.isPlaceholder)
+        .map(buildDraftGalleryItem);
 
     if ((!sanitizedHtmlContent || sanitizedHtmlContent === '<p></p>') && persistedGalleryItems.length === 0) {
         return null;
