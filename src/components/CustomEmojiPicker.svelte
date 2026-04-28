@@ -5,7 +5,7 @@
     import { _ } from "svelte-i18n";
     import {
         CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT,
-        CUSTOM_EMOJI_GRID_ROW_HEIGHT,
+        CUSTOM_EMOJI_GRID_CELL_SIZE,
         CUSTOM_EMOJI_GRID_VERTICAL_PADDING,
         CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
         readCustomEmojiPickerHeight,
@@ -16,7 +16,6 @@
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
-    const EMOJI_GRID_COLUMN_WIDTH = 50;
     const VIRTUAL_OVERSCAN_ROWS = 3;
 
     interface Props {
@@ -64,14 +63,14 @@
         );
     });
     let columnCount = $derived(
-        Math.max(1, Math.floor(pickerWidth / EMOJI_GRID_COLUMN_WIDTH)),
+        Math.max(1, Math.floor(pickerWidth / CUSTOM_EMOJI_GRID_CELL_SIZE)),
     );
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
     let effectivePickerHeight = $derived(
         Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, pickerHeight),
     );
     let visibleRowCount = $derived(
-        Math.ceil(effectivePickerHeight / CUSTOM_EMOJI_GRID_ROW_HEIGHT) +
+        Math.ceil(effectivePickerHeight / CUSTOM_EMOJI_GRID_CELL_SIZE) +
             VIRTUAL_OVERSCAN_ROWS * 2,
     );
     let startRow = $derived(
@@ -79,7 +78,7 @@
             0,
             Math.min(
                 Math.max(0, totalRowCount - visibleRowCount),
-                Math.floor(scrollTop / CUSTOM_EMOJI_GRID_ROW_HEIGHT) -
+                Math.floor(scrollTop / CUSTOM_EMOJI_GRID_CELL_SIZE) -
                     VIRTUAL_OVERSCAN_ROWS,
             ),
         ),
@@ -93,10 +92,10 @@
         filteredItems.slice(virtualStartIndex, virtualEndIndex),
     );
     let virtualListHeight = $derived(
-        totalRowCount * CUSTOM_EMOJI_GRID_ROW_HEIGHT +
+        totalRowCount * CUSTOM_EMOJI_GRID_CELL_SIZE +
             CUSTOM_EMOJI_GRID_VERTICAL_PADDING,
     );
-    let virtualOffsetY = $derived(startRow * CUSTOM_EMOJI_GRID_ROW_HEIGHT);
+    let virtualOffsetY = $derived(startRow * CUSTOM_EMOJI_GRID_CELL_SIZE);
     let pickerMaxHeight = $derived(
         Number.isFinite(maxHeight)
             ? Math.max(
@@ -338,7 +337,7 @@
                         >
                             <div
                                 class="emoji-grid"
-                                style={`transform: translateY(${virtualOffsetY}px); grid-template-columns: repeat(${columnCount}, minmax(0, 1fr)); grid-auto-rows: ${CUSTOM_EMOJI_GRID_ROW_HEIGHT}px;`}
+                                style={`transform: translateY(${virtualOffsetY}px); grid-template-columns: repeat(${columnCount}, minmax(0, 1fr)); grid-auto-rows: ${CUSTOM_EMOJI_GRID_CELL_SIZE}px;`}
                             >
                                 {#each visibleItems as emoji (emoji.shortcode)}
                                     <Command.Item
@@ -612,8 +611,8 @@
     }
 
     .emoji-image {
-        width: 34px;
-        height: 34px;
+        width: 32px;
+        height: 32px;
         object-fit: contain;
         user-select: none;
         -webkit-user-drag: none;
