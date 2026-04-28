@@ -43,6 +43,8 @@
     let renderItemsFrameId: number | null = null;
     let layoutFrameId: number | null = null;
     let pickerElement: HTMLDivElement | null = null;
+    let lastLoadRxNostr: RxNostr | null | undefined = undefined;
+    let lastLoadPubkey: string | null | undefined = undefined;
 
     let items = $derived(customEmojiStore.items);
     let loading = $derived(customEmojiStore.loading);
@@ -182,10 +184,16 @@
 
         renderItems = false;
         if (!open) {
+            lastLoadRxNostr = undefined;
+            lastLoadPubkey = undefined;
             return;
         }
 
-        void customEmojiStore.load({ rxNostr, pubkey });
+        if (rxNostr !== lastLoadRxNostr || pubkey !== lastLoadPubkey) {
+            lastLoadRxNostr = rxNostr;
+            lastLoadPubkey = pubkey;
+            void customEmojiStore.load({ rxNostr, pubkey });
+        }
         schedulePickerLayoutUpdate();
         renderItemsFrameId = requestAnimationFrame(() => {
             renderItemsFrameId = null;

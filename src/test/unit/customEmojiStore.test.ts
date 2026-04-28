@@ -114,4 +114,18 @@ describe("customEmojiStore", () => {
 
         expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledWith("pubkey", fetchedItems);
     });
+
+    it("clears cached items when relay fetch succeeds with no emoji", async () => {
+        const cachedItems: CustomEmojiItem[] = [
+            { shortcode: "cached", src: "https://example.com/cached.webp" },
+        ];
+        customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
+        customEmojiMocks.fetchCustomEmojiList.mockResolvedValue([]);
+
+        await customEmojiStore.load({ rxNostr: {} as never, pubkey: "pubkey" });
+
+        expect(customEmojiStore.items).toEqual([]);
+        expect(customEmojiMocks.writeCachedCustomEmojiItems).toHaveBeenCalledWith("pubkey", []);
+        expect(customEmojiMocks.cacheCustomEmojiImages).toHaveBeenCalledWith([]);
+    });
 });

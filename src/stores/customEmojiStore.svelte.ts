@@ -97,11 +97,9 @@ export const customEmojiStore = {
                 rxNostr: params.rxNostr,
                 pubkey: params.pubkey,
             });
-            if (nextItems.length > 0 || !hasCachedItems) {
-                items = nextItems;
-                await writeCachedCustomEmojiItems(loadKey, nextItems);
-                cacheCustomEmojiImages(nextItems.map((item) => item.src));
-            }
+            items = nextItems;
+            await writeCachedCustomEmojiItems(loadKey, nextItems);
+            cacheCustomEmojiImages(nextItems.map((item) => item.src));
             lastFetchedLoadKey = loadKey;
         } catch {
             error = "customEmoji.load_failed";
