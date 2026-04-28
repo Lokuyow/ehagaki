@@ -381,42 +381,47 @@
                 loop={false}
                 aria-label={$_("customEmoji.editor_toolbar")}
             >
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.delete_backward")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={deleteBackward}
-                >
-                    <span class="delete-left-icon svg-icon"></span>
-                </Toolbar.Button>
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.move_left")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={moveCaretLeft}
-                >
-                    <span class="caret-left-icon svg-icon"></span>
-                </Toolbar.Button>
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.move_right")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={moveCaretRight}
-                >
-                    <span class="caret-right-icon svg-icon"></span>
-                </Toolbar.Button>
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.insert_line_break")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={insertLineBreak}
-                >
-                    <span class="enter-key-icon svg-icon"></span>
-                </Toolbar.Button>
+                <div class="arrow-keys">
+                    <Toolbar.Button
+                        class="custom-emoji-editor-button left"
+                        aria-label={$_("customEmoji.move_left")}
+                        onmousedown={preventKeyboardFocusChange}
+                        ontouchstart={preventKeyboardFocusChange}
+                        onclick={moveCaretLeft}
+                    >
+                        <span class="caret-left-icon svg-icon"></span>
+                    </Toolbar.Button>
+                    <Toolbar.Button
+                        class="custom-emoji-editor-button right"
+                        aria-label={$_("customEmoji.move_right")}
+                        onmousedown={preventKeyboardFocusChange}
+                        ontouchstart={preventKeyboardFocusChange}
+                        onclick={moveCaretRight}
+                    >
+                        <span class="caret-right-icon svg-icon"></span>
+                    </Toolbar.Button>
+                </div>
+                <div class="line-break-delete">
+                    <Toolbar.Button
+                        class="custom-emoji-editor-button"
+                        aria-label={$_("customEmoji.insert_line_break")}
+                        onmousedown={preventKeyboardFocusChange}
+                        ontouchstart={preventKeyboardFocusChange}
+                        onclick={insertLineBreak}
+                    >
+                        <span class="enter-key-icon svg-icon"></span>
+                    </Toolbar.Button>
+
+                    <Toolbar.Button
+                        class="custom-emoji-editor-button"
+                        aria-label={$_("customEmoji.delete_backward")}
+                        onmousedown={preventKeyboardFocusChange}
+                        ontouchstart={preventKeyboardFocusChange}
+                        onclick={deleteBackward}
+                    >
+                        <span class="delete-left-icon svg-icon"></span>
+                    </Toolbar.Button>
+                </div>
             </Toolbar.Root>
         </div>
     </Command.Root>
@@ -495,16 +500,29 @@
         height: 40px;
         padding-right: 4px;
         gap: 2px;
+
+        .arrow-keys {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            gap: 2px;
+        }
+
+        .line-break-delete {
+            display: flex;
+            align-items: center;
+            height: 100%;
+            gap: 2px;
+        }
     }
 
     :global(.custom-emoji-editor-button) {
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 46px;
+        width: 48px;
         height: 100%;
         padding: 0;
-        border-radius: 6px;
         color: var(--text);
         touch-action: manipulation;
     }
