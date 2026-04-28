@@ -206,12 +206,7 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                                     exports.moveDown?.();
                                     return true;
                                 case 'Tab':
-                                    if (props.event.shiftKey) {
-                                        exports.moveUp?.();
-                                    } else {
-                                        exports.moveDown?.();
-                                    }
-                                    return true;
+                                    return exports.confirmSelection?.() ?? false;
                                 case 'ArrowUp':
                                     exports.moveUp?.();
                                     return true;
