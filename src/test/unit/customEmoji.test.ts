@@ -4,6 +4,12 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import {
     clampCustomEmojiPickerHeight,
+    CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
+    CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+    CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT,
+    CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP,
+    CUSTOM_EMOJI_PICKER_SEARCH_ROW_BORDER_HEIGHT,
+    CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT,
     findCustomEmojiByShortcode,
     getCustomEmojiCacheBatches,
     getCustomEmojiSuggestionItems,
@@ -248,11 +254,22 @@ describe('customEmoji', () => {
     });
 
     it('clamps picker height to the supported viewport range', () => {
-        expect(clampCustomEmojiPickerHeight(20, 1000)).toBe(42);
+        expect(clampCustomEmojiPickerHeight(20, 1000)).toBe(
+            CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+        );
         expect(clampCustomEmojiPickerHeight(900, 1000)).toBe(600);
         expect(clampCustomEmojiPickerHeight(240, 1000)).toBe(240);
         expect(clampCustomEmojiPickerHeight(900, 1000, 320)).toBe(320);
         expect(clampCustomEmojiPickerHeight(900, 1000, 720)).toBe(720);
+    });
+
+    it('picker chrome height matches the non-scrollable picker controls', () => {
+        expect(CUSTOM_EMOJI_PICKER_CHROME_HEIGHT).toBe(
+            CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT -
+                CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP +
+                CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT +
+                CUSTOM_EMOJI_PICKER_SEARCH_ROW_BORDER_HEIGHT,
+        );
     });
 
     it('uses the default picker height when no stored height exists', () => {

@@ -7,6 +7,9 @@
         CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT,
         CUSTOM_EMOJI_GRID_CELL_SIZE,
         CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+        CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT,
+        CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP,
+        CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT,
         readCustomEmojiPickerHeight,
         writeCustomEmojiPickerHeight,
         type CustomEmojiItem,
@@ -106,6 +109,11 @@
     );
     let pickerStorageMaxHeight = $derived(
         pickerMaxHeight === undefined ? undefined : pickerMaxHeight,
+    );
+    let pickerChromeStyle = $derived(
+        `--custom-emoji-picker-resize-handle-height: ${CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT}px; ` +
+            `--custom-emoji-picker-resize-handle-overlap: ${CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP}px; ` +
+            `--custom-emoji-picker-search-row-height: ${CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT}px;`,
     );
 
     function updatePickerWidth(): void {
@@ -294,6 +302,7 @@
     class="custom-emoji-picker"
     data-resizing={resizing}
     bind:this={pickerElement}
+    style={pickerChromeStyle}
 >
     <div
         class="resize-handle"
@@ -437,8 +446,10 @@
 
     .resize-handle {
         width: 100%;
-        height: 30px;
-        margin-bottom: -16px;
+        height: var(--custom-emoji-picker-resize-handle-height);
+        margin-bottom: calc(
+            var(--custom-emoji-picker-resize-handle-overlap) * -1
+        );
         cursor: ns-resize;
         touch-action: none;
         position: relative;
@@ -477,6 +488,7 @@
         display: flex;
         align-items: center;
         width: 100%;
+        min-height: var(--custom-emoji-picker-search-row-height);
         border-top: 1px solid var(--border);
         background: var(--input-bg, var(--dialog));
     }
@@ -485,7 +497,7 @@
         flex: 1 1 auto;
         min-width: 0;
         width: 100%;
-        height: 40px;
+        height: var(--custom-emoji-picker-search-row-height);
         padding: 0 8px;
         border: 0;
         background: transparent;
@@ -498,7 +510,7 @@
         display: flex;
         align-items: center;
         flex: 0 0 auto;
-        height: 40px;
+        height: var(--custom-emoji-picker-search-row-height);
         gap: 2px;
 
         .arrow-keys {
