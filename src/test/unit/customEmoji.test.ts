@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { Editor } from '@tiptap/core';
+import StarterKit from '@tiptap/starter-kit';
 import {
     clampCustomEmojiPickerHeight,
+    findCustomEmojiByShortcode,
     getCustomEmojiCacheBatches,
+    getCustomEmojiSuggestionItems,
     getEmojisCacheKey,
     getKind10030EmojiSetAddresses,
     mergeCustomEmojiItems,
@@ -11,8 +15,148 @@ import {
     readCustomEmojiPickerHeight,
     writeCachedCustomEmojiItems,
 } from '../../lib/customEmoji';
+import type { CustomEmojiItem } from '../../lib/customEmoji';
+import { CustomEmoji } from '../../lib/editor/customEmojiExtension';
+import { findCustomEmojiSuggestionMatch } from '../../lib/editor/customEmojiSuggestion';
+import { extractPostContentFromDoc } from '../../lib/utils/editorDocumentUtils';
+
+const emojiItems: CustomEmojiItem[] = [
+    { shortcode: 'kubi', src: 'https://example.com/kubi.webp' },
+    { shortcode: 'kubi_spin', src: 'https://example.com/kubi-spin.webp' },
+    { shortcode: 'blobkubi', src: 'https://example.com/blobkubi.webp' },
+    { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
+];
+
+function waitForRules(): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, 10));
+}
+
+function installClipboardEventPolyfill(): void {
+    if (typeof globalThis.DataTransfer === 'undefined') {
+        class TestDataTransfer {
+            private values = new Map<string, string>();
+
+            setData(type: string, value: string): void {
+                this.values.set(type, value);
+            }
+
+            getData(type: string): string {
+                return this.values.get(type) ?? '';
+            }
+        }
+        vi.stubGlobal('DataTransfer', TestDataTransfer);
+    }
+
+    if (typeof globalThis.ClipboardEvent === 'undefined') {
+        class TestClipboardEvent extends Event {
+            clipboardData: DataTransfer | null;
+
+            constructor(type: string, init?: { clipboardData?: DataTransfer }) {
+                super(type);
+                this.clipboardData = init?.clipboardData ?? null;
+            }
+        }
+        vi.stubGlobal('ClipboardEvent', TestClipboardEvent);
+    }
+}
+
+function createCustomEmojiEditor(items: CustomEmojiItem[] = emojiItems): Editor {
+    return new Editor({
+        extensions: [
+            StarterKit.configure({
+                heading: false,
+                blockquote: false,
+                bold: false,
+                italic: false,
+                strike: false,
+                code: false,
+                codeBlock: false,
+                bulletList: false,
+                orderedList: false,
+                listItem: false,
+                horizontalRule: false,
+                hardBreak: false,
+                link: false,
+            }),
+            CustomEmoji.configure({
+                getItems: () => items,
+            }),
+        ],
+        enablePasteRules: ['customEmoji'],
+        content: '<p></p>',
+    });
+}
 
 describe('customEmoji', () => {
+    it('finds emoji by normalized shortcode', () => {
+        expect(findCustomEmojiByShortcode(emojiItems, ':KUBI:')).toEqual(emojiItems[0]);
+        expect(findCustomEmojiByShortcode(emojiItems, 'missing')).toBeNull();
+    });
+
+    it('orders shortcode suggestions by prefix matches before includes matches', () => {
+        expect(getCustomEmojiSuggestionItems(emojiItems, 'kubi').map((item) => item.shortcode)).toEqual([
+            'kubi',
+            'kubi_spin',
+            'blobkubi',
+        ]);
+        expect(getCustomEmojiSuggestionItems(emojiItems, 'kubi', 2).map((item) => item.shortcode)).toEqual([
+            'kubi',
+            'kubi_spin',
+        ]);
+    });
+
+    it('matches custom emoji suggestions without requiring a leading space', () => {
+        const match = findCustomEmojiSuggestionMatch({
+            char: ':',
+            allowSpaces: false,
+            allowToIncludeChar: false,
+            allowedPrefixes: null,
+            startOfLine: false,
+            $position: {
+                pos: 'テスト:kubi'.length,
+                nodeBefore: {
+                    isText: true,
+                    text: 'テスト:kubi',
+                },
+            } as any,
+        });
+
+        expect(match).toEqual({
+            range: {
+                from: 'テスト'.length,
+                to: 'テスト:kubi'.length,
+            },
+            query: 'kubi',
+            text: ':kubi',
+        });
+    });
+
+    it('does not match empty or URL-like custom emoji suggestions', () => {
+        const baseConfig = {
+            char: ':',
+            allowSpaces: false,
+            allowToIncludeChar: false,
+            allowedPrefixes: null,
+            startOfLine: false,
+        };
+
+        expect(findCustomEmojiSuggestionMatch({
+            ...baseConfig,
+            $position: {
+                pos: ':'.length,
+                nodeBefore: { isText: true, text: ':' },
+            } as any,
+        })).toBeNull();
+
+        expect(findCustomEmojiSuggestionMatch({
+            ...baseConfig,
+            $position: {
+                pos: 'https://example.com:kubi'.length,
+                nodeBefore: { isText: true, text: 'https://example.com:kubi' },
+            } as any,
+        })).toBeNull();
+    });
+
     it('parses valid emoji tags and ignores invalid entries', () => {
         expect(
             parseEmojiTags(
@@ -142,5 +286,58 @@ describe('customEmoji', () => {
 
         expect(await readCachedCustomEmojiItems('pubkey', repository)).toEqual([]);
         expect(await readCachedCustomEmojiItems('pubkey', { get: async () => null })).toEqual([]);
+    });
+
+    it('converts typed shortcode text to a custom emoji node', async () => {
+        const editor = createCustomEmojiEditor();
+        try {
+            editor.commands.insertContent('テスト:kubi:', { applyInputRules: true });
+            await waitForRules();
+
+            const json = editor.getJSON();
+            expect(json.content?.[0].content).toEqual([
+                { type: 'text', text: 'テスト' },
+                {
+                    type: 'customEmoji',
+                    attrs: {
+                        shortcode: 'kubi',
+                        src: 'https://example.com/kubi.webp',
+                        setAddress: null,
+                    },
+                },
+            ]);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('keeps unknown typed shortcode text unchanged', async () => {
+        const editor = createCustomEmojiEditor();
+        try {
+            editor.commands.insertContent('テスト:missing:', { applyInputRules: true });
+            await waitForRules();
+
+            expect(editor.getText()).toBe('テスト:missing:');
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('converts pasted shortcode text to multiple custom emoji nodes', () => {
+        installClipboardEventPolyfill();
+        const editor = createCustomEmojiEditor();
+        try {
+            editor.commands.insertContent('a :kubi: b :party:', { applyPasteRules: true });
+
+            const extraction = extractPostContentFromDoc(editor.state.doc);
+            expect(extraction.content).toBe('a :kubi: b :party:');
+            expect(extraction.emojiTags).toEqual([
+                ['emoji', 'kubi', 'https://example.com/kubi.webp'],
+                ['emoji', 'party', 'https://example.com/party.webp', '30030:pubkey:set'],
+            ]);
+            expect(editor.getJSON().content?.[0].content?.filter((node: any) => node.type === 'customEmoji')).toHaveLength(2);
+        } finally {
+            editor.destroy();
+        }
     });
 });

@@ -24,9 +24,53 @@ export const CUSTOM_EMOJI_PICKER_CHROME_HEIGHT = 52;
 export const CUSTOM_EMOJI_CACHE_URL_LIMIT = 300;
 export const CUSTOM_EMOJI_CACHE_BATCH_SIZE = 24;
 export const EMOJIS_CACHE_SCHEMA_VERSION = 1;
+export const CUSTOM_EMOJI_SUGGESTION_LIMIT = 30;
 
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
+}
+
+function normalizeEmojiShortcodeForLookup(value: unknown): string {
+    return normalizeEmojiShortcode(value).toLowerCase();
+}
+
+export function findCustomEmojiByShortcode(
+    items: CustomEmojiItem[],
+    shortcode: unknown,
+): CustomEmojiItem | null {
+    const normalizedShortcode = normalizeEmojiShortcodeForLookup(shortcode);
+    if (!normalizedShortcode) return null;
+
+    return items.find((item) =>
+        normalizeEmojiShortcodeForLookup(item.shortcode) === normalizedShortcode
+    ) ?? null;
+}
+
+export function getCustomEmojiSuggestionItems(
+    items: CustomEmojiItem[],
+    query: unknown,
+    limit = CUSTOM_EMOJI_SUGGESTION_LIMIT,
+): CustomEmojiItem[] {
+    const normalizedQuery = normalizeEmojiShortcodeForLookup(query);
+    if (!normalizedQuery || limit <= 0) return [];
+
+    const prefixMatches: CustomEmojiItem[] = [];
+    const includesMatches: CustomEmojiItem[] = [];
+
+    for (const item of items) {
+        const shortcode = normalizeEmojiShortcodeForLookup(item.shortcode);
+        if (!shortcode) continue;
+        if (shortcode.startsWith(normalizedQuery)) {
+            prefixMatches.push(item);
+        } else if (shortcode.includes(normalizedQuery)) {
+            includesMatches.push(item);
+        }
+        if (prefixMatches.length >= limit) {
+            return prefixMatches.slice(0, limit);
+        }
+    }
+
+    return [...prefixMatches, ...includesMatches].slice(0, limit);
 }
 
 export function isValidCustomEmojiUrl(value: unknown): value is string {

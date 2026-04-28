@@ -11,7 +11,7 @@ import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
 import { CustomEmoji } from './customEmojiExtension';
 import UniqueID from './uniqueIdExtension';
-import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion } from '.';
+import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion, CustomEmojiSuggestion } from '.';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
@@ -253,6 +253,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             HashtagSuggestion,
             Video,
             CustomEmoji,
+            CustomEmojiSuggestion,
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）
             MediaPasteExtension,
             ImageDragDropExtension,
@@ -267,8 +268,8 @@ export function createEditorStore(options: EditorConfigOptions) {
                 includeChildren: false,
             }),
         ],
-        // カスタムのClipboardExtensionのみ有効化（他のペーストルールを無効化して競合を回避）
-        enablePasteRules: ['clipboardExtension'],
+        // 必要なカスタムペーストルールのみ有効化（他のペーストルールを無効化して競合を回避）
+        enablePasteRules: ['clipboardExtension', 'customEmoji'],
         // HTMLではなくJSONノード構造で初期化
         content: {
             type: 'doc',

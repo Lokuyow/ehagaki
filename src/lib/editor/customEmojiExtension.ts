@@ -1,11 +1,21 @@
-import { Node, mergeAttributes } from '@tiptap/core';
+import { InputRule, Node, PasteRule, mergeAttributes } from '@tiptap/core';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteCustomEmojiNode from '../../components/SvelteCustomEmojiNode.svelte';
+import {
+    findCustomEmojiByShortcode,
+    normalizeEmojiShortcode,
+    type CustomEmojiItem,
+} from '../customEmoji';
+import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
 
 export interface CustomEmojiAttrs {
     shortcode: string;
     src: string;
     setAddress?: string | null;
+}
+
+export interface CustomEmojiOptions {
+    getItems: () => CustomEmojiItem[];
 }
 
 declare module '@tiptap/core' {
@@ -16,17 +26,34 @@ declare module '@tiptap/core' {
     }
 }
 
-function normalizeShortcode(value: string): string {
-    return value.replace(/^:+|:+$/g, '').trim();
+function normalizeShortcode(value: unknown): string {
+    return normalizeEmojiShortcode(value);
 }
 
-export const CustomEmoji = Node.create({
+const SHORTCODE_PATTERN = '[\\p{L}\\p{N}_+-]';
+const SHORTCODE_INPUT_REGEX = new RegExp(`:(${SHORTCODE_PATTERN}{1,64}):$`, 'u');
+const SHORTCODE_PASTE_REGEX = new RegExp(`:(${SHORTCODE_PATTERN}{1,64}):`, 'gu');
+
+function findEmojiFromMatch(
+    items: CustomEmojiItem[],
+    match: ArrayLike<unknown>,
+): CustomEmojiItem | null {
+    return findCustomEmojiByShortcode(items, match[1]);
+}
+
+export const CustomEmoji = Node.create<CustomEmojiOptions>({
     name: 'customEmoji',
 
     group: 'inline',
     inline: true,
     atom: true,
     selectable: true,
+
+    addOptions() {
+        return {
+            getItems: () => customEmojiStore.items,
+        };
+    },
 
     addAttributes() {
         return {
@@ -87,6 +114,56 @@ export const CustomEmoji = Node.create({
                         .run();
                 },
         };
+    },
+
+    addInputRules() {
+        return [
+            new InputRule({
+                find: SHORTCODE_INPUT_REGEX,
+                handler: ({ state, range, match }) => {
+                    const emoji = findEmojiFromMatch(this.options.getItems(), match);
+                    if (!emoji) {
+                        return null;
+                    }
+
+                    state.tr
+                        .replaceWith(
+                            range.from,
+                            range.to,
+                            this.type.create({
+                                shortcode: normalizeShortcode(emoji.shortcode),
+                                src: emoji.src,
+                                setAddress: emoji.setAddress ?? null,
+                            }),
+                        )
+                        .scrollIntoView();
+                },
+            }),
+        ];
+    },
+
+    addPasteRules() {
+        return [
+            new PasteRule({
+                find: SHORTCODE_PASTE_REGEX,
+                handler: ({ state, range, match }) => {
+                    const emoji = findEmojiFromMatch(this.options.getItems(), match);
+                    if (!emoji) {
+                        return null;
+                    }
+
+                    state.tr.replaceWith(
+                        range.from,
+                        range.to,
+                        this.type.create({
+                            shortcode: normalizeShortcode(emoji.shortcode),
+                            src: emoji.src,
+                            setAddress: emoji.setAddress ?? null,
+                        }),
+                    );
+                },
+            }),
+        ];
     },
 
     addNodeView() {
