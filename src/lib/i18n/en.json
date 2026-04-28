@@ -176,7 +176,8 @@
     "editor_toolbar": "Editor controls",
     "move_left": "Move caret left",
     "move_right": "Move caret right",
-    "delete_backward": "Delete backward"
+    "delete_backward": "Delete backward",
+    "insert_line_break": "Insert line break"
   },
   "imageNode": {
     "uploading": "Uploading image..."

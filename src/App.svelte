@@ -1375,6 +1375,8 @@
                         postComponentRef?.moveCaretRight?.()}
                       onDeleteBackward={() =>
                         postComponentRef?.deleteBackward?.()}
+                      onInsertLineBreak={() =>
+                        postComponentRef?.insertLineBreak?.()}
                     />
                   </div>
                 {/if}

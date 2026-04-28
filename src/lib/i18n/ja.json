@@ -176,7 +176,8 @@
     "editor_toolbar": "エディター操作",
     "move_left": "キャレットを左へ移動",
     "move_right": "キャレットを右へ移動",
-    "delete_backward": "1文字戻って削除"
+    "delete_backward": "1文字戻って削除",
+    "insert_line_break": "改行を挿入"
   },
   "imageNode": {
     "uploading": "画像を<wbr>アップロード中..."

@@ -28,6 +28,7 @@
         onMoveCaretLeft?: () => void;
         onMoveCaretRight?: () => void;
         onDeleteBackward?: () => void;
+        onInsertLineBreak?: () => void;
     }
 
     let {
@@ -39,6 +40,7 @@
         onMoveCaretLeft,
         onMoveCaretRight,
         onDeleteBackward,
+        onInsertLineBreak,
     }: Props = $props();
     let search = $state("");
     let pickerHeight = $state(CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT);
@@ -249,6 +251,10 @@
         onDeleteBackward?.();
     }
 
+    function insertLineBreak(): void {
+        onInsertLineBreak?.();
+    }
+
     function startResize(event: PointerEvent): void {
         event.preventDefault();
         updatePickerLayout();
@@ -317,6 +323,15 @@
             >
                 <Toolbar.Button
                     class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.delete_backward")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={deleteBackward}
+                >
+                    <span class="delete-left-icon svg-icon"></span>
+                </Toolbar.Button>
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
                     aria-label={$_("customEmoji.move_left")}
                     onmousedown={preventKeyboardFocusChange}
                     ontouchstart={preventKeyboardFocusChange}
@@ -335,12 +350,12 @@
                 </Toolbar.Button>
                 <Toolbar.Button
                     class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.delete_backward")}
+                    aria-label={$_("customEmoji.insert_line_break")}
                     onmousedown={preventKeyboardFocusChange}
                     ontouchstart={preventKeyboardFocusChange}
-                    onclick={deleteBackward}
+                    onclick={insertLineBreak}
                 >
-                    <span class="delete-left-icon svg-icon"></span>
+                    <span class="enter-key-icon svg-icon"></span>
                 </Toolbar.Button>
             </Toolbar.Root>
         </div>
@@ -523,6 +538,10 @@
 
     .delete-left-icon {
         mask-image: url("/icons/delete-left-solid-full.svg");
+    }
+
+    .enter-key-icon {
+        mask-image: url("/icons/enter-key-arrow.svg");
     }
 
     :global(.custom-emoji-scroll-root),

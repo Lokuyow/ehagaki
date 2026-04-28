@@ -467,6 +467,11 @@
     ]);
   }
 
+  export function insertLineBreak(): void {
+    if (!currentEditor) return;
+    currentEditor.commands.keyboardShortcut("Enter");
+  }
+
   export async function submitPost() {
     if (!postManager || !currentEditor) return;
     const postPayload = postManager.preparePostPayload(currentEditor);
