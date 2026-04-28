@@ -4,12 +4,6 @@
   import { _, locale, waitLocale } from "svelte-i18n";
   import { Tooltip } from "bits-ui";
   import type { RelayProfileService } from "./lib/relayProfileService";
-  import PostComponent from "./components/PostComponent.svelte";
-  import SettingsDialog from "./components/SettingsDialog.svelte";
-  import ProfileComponent from "./components/ProfileComponent.svelte";
-  import LoginDialog from "./components/LoginDialog.svelte";
-  import WelcomeDialog from "./components/WelcomeDialog.svelte";
-  import DraftListDialog from "./components/DraftListDialog.svelte";
   import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import { authService } from "./lib/authService";
   import { iframeMessageService } from "./lib/iframeMessageService";
@@ -23,7 +17,6 @@
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
-  import CustomEmojiPicker from "./components/CustomEmojiPicker.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
   import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
@@ -163,6 +156,78 @@
   } from "./lib/customEmoji";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
 
+  type PostComponent = typeof import("./components/PostComponent.svelte").default;
+  type LoginDialogComponent = typeof import("./components/LoginDialog.svelte").default;
+  type ProfileComponent = typeof import("./components/ProfileComponent.svelte").default;
+  type SettingsDialogComponent = typeof import("./components/SettingsDialog.svelte").default;
+  type WelcomeDialogComponent = typeof import("./components/WelcomeDialog.svelte").default;
+  type DraftListDialogComponent = typeof import("./components/DraftListDialog.svelte").default;
+  type CustomEmojiPickerComponent = typeof import("./components/CustomEmojiPicker.svelte").default;
+
+  let PostComponent: PostComponent | null = $state(null);
+  let LoginDialogComponent: LoginDialogComponent | null = $state(null);
+  let ProfileComponent: ProfileComponent | null = $state(null);
+  let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
+  let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
+  let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
+  let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null = $state(null);
+
+  const postComponentModulePromise: Promise<PostComponent> = import(
+    "./components/PostComponent.svelte"
+  ).then((module) => module.default);
+  let loginDialogModulePromise: Promise<LoginDialogComponent> | null = null;
+  let profileModulePromise: Promise<ProfileComponent> | null = null;
+  let settingsDialogModulePromise: Promise<SettingsDialogComponent> | null = null;
+  let welcomeDialogModulePromise: Promise<WelcomeDialogComponent> | null = null;
+  let draftListDialogModulePromise: Promise<DraftListDialogComponent> | null = null;
+  let customEmojiPickerModulePromise: Promise<CustomEmojiPickerComponent> | null = null;
+
+  async function loadPostComponent(): Promise<void> {
+    PostComponent = await postComponentModulePromise;
+  }
+
+  async function loadLoginDialog(): Promise<void> {
+    loginDialogModulePromise ??= import("./components/LoginDialog.svelte").then(
+      (module) => module.default,
+    );
+    LoginDialogComponent = await loginDialogModulePromise;
+  }
+
+  async function loadProfileDialog(): Promise<void> {
+    profileModulePromise ??= import("./components/ProfileComponent.svelte").then(
+      (module) => module.default,
+    );
+    ProfileComponent = await profileModulePromise;
+  }
+
+  async function loadSettingsDialog(): Promise<void> {
+    settingsDialogModulePromise ??= import(
+      "./components/SettingsDialog.svelte"
+    ).then((module) => module.default);
+    SettingsDialogComponent = await settingsDialogModulePromise;
+  }
+
+  async function loadWelcomeDialog(): Promise<void> {
+    welcomeDialogModulePromise ??= import(
+      "./components/WelcomeDialog.svelte"
+    ).then((module) => module.default);
+    WelcomeDialogComponent = await welcomeDialogModulePromise;
+  }
+
+  async function loadDraftListDialog(): Promise<void> {
+    draftListDialogModulePromise ??= import(
+      "./components/DraftListDialog.svelte"
+    ).then((module) => module.default);
+    DraftListDialogComponent = await draftListDialogModulePromise;
+  }
+
+  async function loadCustomEmojiPicker(): Promise<void> {
+    customEmojiPickerModulePromise ??= import(
+      "./components/CustomEmojiPicker.svelte"
+    ).then((module) => module.default);
+    CustomEmojiPickerComponent = await customEmojiPickerModulePromise;
+  }
+
   // --- 秘密鍵入力・保存・認証 ---
   let errorMessage = $state("");
   let secretKey = $state("");
@@ -260,6 +325,48 @@
   $effect(() => {
     if (anyDialogOpen && customEmojiPickerOpen) {
       customEmojiPickerOpen = false;
+    }
+  });
+
+  $effect(() => {
+    if ($locale && localeInitialized) {
+      void loadPostComponent();
+    }
+  });
+
+  $effect(() => {
+    if (showLoginDialogStore.value || showAddAccountDialogStore.value) {
+      void loadLoginDialog();
+    }
+  });
+
+  $effect(() => {
+    if (showLogoutDialogStore.value) {
+      void loadProfileDialog();
+    }
+  });
+
+  $effect(() => {
+    if (showSettingsDialogStore.value) {
+      void loadSettingsDialog();
+    }
+  });
+
+  $effect(() => {
+    if (showWelcomeDialogStore.value) {
+      void loadWelcomeDialog();
+    }
+  });
+
+  $effect(() => {
+    if (showDraftListDialogStore.value) {
+      void loadDraftListDialog();
+    }
+  });
+
+  $effect(() => {
+    if (customEmojiPickerOpen) {
+      void loadCustomEmojiPicker();
     }
   });
 
@@ -1353,20 +1460,22 @@
               data-composer-block="post"
             >
               <div class="composer-post-layout">
-                <PostComponent
-                  bind:this={postComponentRef}
-                  {rxNostr}
-                  hasStoredKey={isAuthenticated}
-                  availableComposerHeight={postAvailableComposerHeight}
-                  minEditorHeight={postEditorMinHeight}
-                  onPostSuccess={handlePostSuccess}
-                />
-                {#if customEmojiPickerOpen}
+                {#if PostComponent}
+                  <PostComponent
+                    bind:this={postComponentRef}
+                    {rxNostr}
+                    hasStoredKey={isAuthenticated}
+                    availableComposerHeight={postAvailableComposerHeight}
+                    minEditorHeight={postEditorMinHeight}
+                    onPostSuccess={handlePostSuccess}
+                  />
+                {/if}
+                {#if customEmojiPickerOpen && CustomEmojiPickerComponent}
                   <div
                     class="custom-emoji-picker-region"
                     bind:this={customEmojiPickerRegionEl}
                   >
-                    <CustomEmojiPicker
+                    <CustomEmojiPickerComponent
                       {rxNostr}
                       pubkey={authState.value.pubkey}
                       open={customEmojiPickerOpen}
@@ -1415,8 +1524,8 @@
         onOpenSettingsDialog={settingsDialog.open}
         onOpenLogoutDialog={logoutDialog.open}
       />
-      {#if showLoginDialogStore.value}
-        <LoginDialog
+      {#if showLoginDialogStore.value && LoginDialogComponent}
+        <LoginDialogComponent
           show={showLoginDialogStore.value}
           bind:secretKey
           onClose={loginDialog.close}
@@ -1434,8 +1543,8 @@
       {#if showTransitionOverlay}
         <div class="transition-overlay"></div>
       {/if}
-      {#if showAddAccountDialogStore.value}
-        <LoginDialog
+      {#if showAddAccountDialogStore.value && LoginDialogComponent}
+        <LoginDialogComponent
           show={showAddAccountDialogStore.value}
           bind:secretKey
           onClose={addAccountDialog.close}
@@ -1451,7 +1560,7 @@
           isAddAccountMode={true}
         />
       {/if}
-      {#if showLogoutDialogStore.value}
+      {#if showLogoutDialogStore.value && ProfileComponent}
         <ProfileComponent
           show={showLogoutDialogStore.value}
           onClose={logoutDialog.close}
@@ -1464,14 +1573,14 @@
           {isSwitchingAccount}
         />
       {/if}
-      {#if showWelcomeDialogStore.value}
-        <WelcomeDialog
+      {#if showWelcomeDialogStore.value && WelcomeDialogComponent}
+        <WelcomeDialogComponent
           show={showWelcomeDialogStore.value}
           onClose={welcomeDialog.close}
         />
       {/if}
-      {#if showDraftListDialogStore.value}
-        <DraftListDialog
+      {#if showDraftListDialogStore.value && DraftListDialogComponent}
+        <DraftListDialogComponent
           show={showDraftListDialogStore.value}
           onClose={draftListDialog.close}
           onApplyDraft={handleApplyDraft}
@@ -1491,12 +1600,14 @@
           onCancel={draftLimitConfirm.cancel}
         />
       {/if}
-      <SettingsDialog
-        show={showSettingsDialogStore.value}
-        onClose={settingsDialog.close}
-        onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
-        onOpenWelcomeDialog={welcomeDialog.open}
-      />
+      {#if SettingsDialogComponent}
+        <SettingsDialogComponent
+          show={showSettingsDialogStore.value}
+          onClose={settingsDialog.close}
+          onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
+          onOpenWelcomeDialog={welcomeDialog.open}
+        />
+      {/if}
     </main>
   </Tooltip.Provider>
 {/if}

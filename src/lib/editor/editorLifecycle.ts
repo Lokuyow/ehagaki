@@ -1,7 +1,7 @@
 import type { InitializeEditorParams, InitializeEditorResult, CleanupEditorParams } from '../types';
 import { setupEventListeners, cleanupEventListeners } from './editorDomActions.svelte';
 import type { Editor as TipTapEditor } from '@tiptap/core';
-import { createEditorStore as createTiptapEditorStore } from './index';
+import { createEditorStore as createTiptapEditorStore } from './editorConfig';
 import { placeholderTextStore, currentEditorStore, editorState, setPostSubmitter } from '../../stores/editorStore.svelte';
 
 /**
