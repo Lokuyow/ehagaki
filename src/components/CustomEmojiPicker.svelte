@@ -12,7 +12,6 @@
         writeCustomEmojiPickerHeight,
         type CustomEmojiItem,
     } from "../lib/customEmoji";
-    import { FOOTER_HEIGHT } from "../stores/uiStore.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
@@ -41,7 +40,6 @@
     let renderItems = $state(false);
     let scrollTop = $state(0);
     let pickerWidth = $state(800);
-    let keyboardLayoutLift = $state(0);
     let renderItemsFrameId: number | null = null;
     let layoutFrameId: number | null = null;
     let pickerElement: HTMLDivElement | null = null;
@@ -60,10 +58,7 @@
     );
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
     let effectivePickerHeight = $derived(
-        Math.max(
-            CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
-            pickerHeight - keyboardLayoutLift,
-        ),
+        Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, pickerHeight),
     );
     let visibleRowCount = $derived(
         Math.ceil(effectivePickerHeight / CUSTOM_EMOJI_GRID_ROW_HEIGHT) +
@@ -101,9 +96,7 @@
             : undefined,
     );
     let pickerStorageMaxHeight = $derived(
-        pickerMaxHeight === undefined
-            ? undefined
-            : pickerMaxHeight + keyboardLayoutLift,
+        pickerMaxHeight === undefined ? undefined : pickerMaxHeight,
     );
 
     function updatePickerWidth(): void {
@@ -121,18 +114,6 @@
         return Number.isFinite(value) ? value : 0;
     }
 
-    function readKeyboardLayoutLift(): number {
-        const buttonBarBottom = readRootPixelValue(
-            "--keyboard-button-bar-bottom",
-        );
-        const keyboardHeight = readRootPixelValue("--keyboard-height");
-        return Math.max(
-            0,
-            buttonBarBottom - FOOTER_HEIGHT,
-            keyboardHeight - FOOTER_HEIGHT,
-        );
-    }
-
     function getPickerHeightClampViewport(): number {
         const visualViewportHeight = window.visualViewport?.height ?? 0;
         const keyboardHeight = readRootPixelValue("--keyboard-height");
@@ -146,7 +127,6 @@
 
     function updatePickerLayout(): void {
         updatePickerWidth();
-        keyboardLayoutLift = readKeyboardLayoutLift();
     }
 
     function schedulePickerLayoutUpdate(): void {
@@ -248,18 +228,15 @@
         updatePickerLayout();
         const startY = event.clientY;
         const startVisibleHeight = effectivePickerHeight;
-        const startKeyboardLayoutLift = keyboardLayoutLift;
         resizing = true;
 
         const move = (moveEvent: PointerEvent) => {
             moveEvent.preventDefault();
             const nextVisibleHeight =
                 startVisibleHeight + (startY - moveEvent.clientY);
-            const nextStoredHeight =
-                nextVisibleHeight + startKeyboardLayoutLift;
             pickerHeight = writeCustomEmojiPickerHeight(
                 localStorage,
-                nextStoredHeight,
+                nextVisibleHeight,
                 getPickerHeightClampViewport(),
                 pickerStorageMaxHeight,
             );
@@ -370,7 +347,8 @@
 
 <style>
     .custom-emoji-picker {
-        width: min(100vw, 800px);
+        width: 100%;
+        max-width: 800px;
         background: var(--dialog);
         color: var(--text);
         border-radius: 8px 8px 0 0;

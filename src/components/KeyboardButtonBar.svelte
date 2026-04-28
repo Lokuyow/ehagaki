@@ -1,11 +1,8 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
-    import { Popover, Tooltip } from "bits-ui";
-    import type { RxNostr } from "rx-nostr";
+    import { Tooltip } from "bits-ui";
     import Button from "./Button.svelte";
-    import CustomEmojiPicker from "./CustomEmojiPicker.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import type { CustomEmojiItem } from "../lib/customEmoji";
     import {
         contentWarningStore,
         contentWarningReasonStore,
@@ -25,10 +22,6 @@
         onPostButtonTap?: () => void;
         customEmojiPickerOpen?: boolean;
         onCustomEmojiPickerOpenChange?: (open: boolean) => void;
-        onCustomEmojiSelect?: (emoji: CustomEmojiItem) => void;
-        rxNostr?: RxNostr | null;
-        customEmojiPubkey?: string | null;
-        customEmojiPickerMaxHeight?: number | null;
     }
 
     let {
@@ -36,10 +29,6 @@
         onPostButtonTap,
         customEmojiPickerOpen = false,
         onCustomEmojiPickerOpenChange,
-        onCustomEmojiSelect,
-        rxNostr = null,
-        customEmojiPubkey = null,
-        customEmojiPickerMaxHeight = null,
     }: Props = $props();
 
     // 認証状態を $derived で参照（svelte/store subscribe パターンを廃止）
@@ -100,7 +89,6 @@
     let longPressCompleted = false;
     let lastVibrationTime = 0; // プログレッシブバイブのスロットリング用
     let ignoreNextPostClick = false;
-    let footerButtonBarElement: HTMLDivElement | null = $state(null);
 
     function isPostDisabled(): boolean {
         return (
@@ -218,7 +206,7 @@
     }
 </script>
 
-<div class="footer-button-bar" bind:this={footerButtonBarElement}>
+<div class="footer-button-bar">
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
@@ -257,58 +245,19 @@
                     </Tooltip.Content>
                 </Tooltip.Portal>
             </Tooltip.Root>
-            <Popover.Root
-                bind:open={
-                    () => customEmojiPickerOpen,
-                    (value) => setCustomEmojiPickerOpen(value)
-                }
+            <Button
+                variant="footer"
+                shape="square"
+                className="custom-emoji-button"
+                selected={customEmojiPickerOpen}
+                disabled={!hasStoredKey}
+                onClick={() => {
+                    setCustomEmojiPickerOpen(!customEmojiPickerOpen);
+                }}
+                ariaLabel={$_("keyboardButtonBar.custom_emoji")}
             >
-                <Popover.Trigger>
-                    {#snippet child({ props })}
-                        {@const { onclick: popoverOnclick, ...restProps } =
-                            props}
-                        <Button
-                            variant="footer"
-                            shape="square"
-                            className="custom-emoji-button"
-                            selected={customEmojiPickerOpen}
-                            disabled={!hasStoredKey}
-                            onClick={(e) => {
-                                if (typeof popoverOnclick === "function") {
-                                    popoverOnclick(e);
-                                }
-                            }}
-                            ariaLabel={$_("keyboardButtonBar.custom_emoji")}
-                            {...restProps}
-                        >
-                            <div class="custom-emoji-icon svg-icon"></div>
-                        </Button>
-                    {/snippet}
-                </Popover.Trigger>
-                <Popover.Portal>
-                    <Popover.Content
-                        side="top"
-                        align="center"
-                        customAnchor={footerButtonBarElement}
-                        class="custom-emoji-popover-content"
-                        trapFocus={false}
-                        interactOutsideBehavior="ignore"
-                        escapeKeydownBehavior="ignore"
-                        onOpenAutoFocus={(e) => e.preventDefault()}
-                        onCloseAutoFocus={(e) => e.preventDefault()}
-                    >
-                        <CustomEmojiPicker
-                            {rxNostr}
-                            pubkey={customEmojiPubkey}
-                            open={customEmojiPickerOpen}
-                            maxHeight={customEmojiPickerMaxHeight}
-                            onSelect={(emoji) => {
-                                onCustomEmojiSelect?.(emoji);
-                            }}
-                        />
-                    </Popover.Content>
-                </Popover.Portal>
-            </Popover.Root>
+                <div class="custom-emoji-icon svg-icon"></div>
+            </Button>
         </div>
         <div class="button-group-center">
             {#if showProgressRing}
@@ -692,10 +641,5 @@
         font-size: 1rem;
         font-weight: 600;
         z-index: 100;
-    }
-
-    :global(.custom-emoji-popover-content) {
-        z-index: 10000;
-        outline: none;
     }
 </style>

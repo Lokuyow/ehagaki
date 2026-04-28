@@ -23,6 +23,7 @@
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
+  import CustomEmojiPicker from "./components/CustomEmojiPicker.svelte";
   import ReasonInput from "./components/ReasonInput.svelte";
   import ChannelContextPreview from "./components/ChannelContextPreview.svelte";
   import ReplyQuotePreview from "./components/ReplyQuotePreview.svelte";
@@ -152,7 +153,10 @@
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
-  import type { CustomEmojiItem } from "./lib/customEmoji";
+  import {
+    CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
+    type CustomEmojiItem,
+  } from "./lib/customEmoji";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
 
   // --- 秘密鍵入力・保存・認証 ---
@@ -181,8 +185,28 @@
   let isBootstrappingApp = true;
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
+  let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
   let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
+  let customEmojiPickerHeight = $state(0);
   let customEmojiPickerOpen = $state(false);
+  let customEmojiPickerMaxHeight = $derived(
+    Math.max(
+      0,
+      Math.floor(
+        composerAvailableHeight -
+          POST_EDITOR_MIN_HEIGHT -
+          CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
+      ),
+    ),
+  );
+  let postAvailableComposerHeight = $derived(
+    customEmojiPickerOpen
+      ? Math.max(
+          POST_EDITOR_MIN_HEIGHT,
+          composerAvailableHeight - customEmojiPickerHeight,
+        )
+      : composerAvailableHeight,
+  );
   const anyDialogOpen = $derived(
     showLoginDialogStore.value ||
       showLogoutDialogStore.value ||
@@ -982,6 +1006,39 @@
     };
   });
 
+  $effect(() => {
+    customEmojiPickerOpen;
+    customEmojiPickerRegionEl;
+
+    if (!customEmojiPickerOpen) {
+      customEmojiPickerHeight = 0;
+      return;
+    }
+
+    if (!customEmojiPickerRegionEl || typeof ResizeObserver === "undefined") {
+      customEmojiPickerHeight = 0;
+      return;
+    }
+
+    const syncCustomEmojiPickerHeight = () => {
+      customEmojiPickerHeight = Math.ceil(
+        customEmojiPickerRegionEl?.getBoundingClientRect().height ?? 0,
+      );
+    };
+
+    syncCustomEmojiPickerHeight();
+
+    const resizeObserver = new ResizeObserver(() => {
+      syncCustomEmojiPickerHeight();
+    });
+
+    resizeObserver.observe(customEmojiPickerRegionEl);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  });
+
   let localeInitialized = $state(false);
 
   onMount(() => {
@@ -1289,13 +1346,29 @@
               class="composer-block composer-post-block"
               data-composer-block="post"
             >
-              <PostComponent
-                bind:this={postComponentRef}
-                {rxNostr}
-                hasStoredKey={isAuthenticated}
-                availableComposerHeight={composerAvailableHeight}
-                onPostSuccess={handlePostSuccess}
-              />
+              <div class="composer-post-layout">
+                <PostComponent
+                  bind:this={postComponentRef}
+                  {rxNostr}
+                  hasStoredKey={isAuthenticated}
+                  availableComposerHeight={postAvailableComposerHeight}
+                  onPostSuccess={handlePostSuccess}
+                />
+                {#if customEmojiPickerOpen}
+                  <div
+                    class="custom-emoji-picker-region"
+                    bind:this={customEmojiPickerRegionEl}
+                  >
+                    <CustomEmojiPicker
+                      {rxNostr}
+                      pubkey={authState.value.pubkey}
+                      open={customEmojiPickerOpen}
+                      maxHeight={customEmojiPickerMaxHeight}
+                      onSelect={handleCustomEmojiSelect}
+                    />
+                  </div>
+                {/if}
+              </div>
             </div>
             {#each replyQuoteState.value.quotes as quote (quote.eventId)}
               <div class="composer-block composer-reference-block">
@@ -1316,13 +1389,9 @@
       <KeyboardButtonBar
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
-        {rxNostr}
-        customEmojiPubkey={authState.value.pubkey}
-        customEmojiPickerMaxHeight={Math.floor(composerAvailableHeight * 0.8)}
         {customEmojiPickerOpen}
         onCustomEmojiPickerOpenChange={(open) =>
           (customEmojiPickerOpen = open)}
-        onCustomEmojiSelect={handleCustomEmojiSelect}
       />
       <FooterComponent
         {isAuthenticated}
@@ -1480,6 +1549,22 @@
 
   .composer-post-block {
     flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .composer-post-layout {
+    width: 100%;
+    max-width: 800px;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .custom-emoji-picker-region {
+    width: 100%;
+    flex: 0 0 auto;
     min-height: 0;
   }
 </style>
