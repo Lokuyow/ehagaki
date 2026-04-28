@@ -486,12 +486,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 36px;
+        width: 46px;
+        height: 100%;
         padding: 0;
-        border: 0;
         border-radius: 6px;
-        background: transparent;
         color: var(--text);
         touch-action: manipulation;
     }
@@ -507,8 +505,8 @@
     }
 
     :global(.custom-emoji-editor-button .svg-icon) {
-        width: 20px;
-        height: 20px;
+        width: 34px;
+        height: 34px;
         background-color: var(--svg, currentColor);
         mask-repeat: no-repeat;
         mask-position: center;
