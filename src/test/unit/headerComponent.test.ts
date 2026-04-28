@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
 const mockTranslate = vi.hoisted(() => (key: string) => {
@@ -44,5 +44,29 @@ describe('HeaderComponent', () => {
         expect(button.dispatchEvent(event)).toBe(false);
         expect(event.defaultPrevented).toBe(true);
         expect(document.activeElement).toBe(editor);
+    });
+
+    it('async な下書き保存後も保存ポップアップを表示できる', async () => {
+        let resolveSave: (value: boolean) => void = () => { };
+        const onSaveDraft = vi.fn(() => new Promise<boolean>((resolve) => {
+            resolveSave = resolve;
+        }));
+
+        render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onSaveDraft,
+                onShowDraftList: vi.fn(),
+                showMascot: false,
+                showFlavorText: false,
+            },
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+        resolveSave(true);
+
+        await waitFor(() => {
+            expect(screen.getByText('下書きを保存しました')).toBeTruthy();
+        });
     });
 });

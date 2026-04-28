@@ -38,14 +38,19 @@
     async function handleSaveDraft(e: MouseEvent) {
         if (isSavingDraft) return;
 
-        isSavingDraft = true;
-        const success = await onSaveDraft();
-        isSavingDraft = false;
+        const target = e.currentTarget as HTMLElement | null;
+        const rect = target?.getBoundingClientRect();
 
-        if (success) {
+        isSavingDraft = true;
+        let success = false;
+        try {
+            success = await onSaveDraft();
+        } finally {
+            isSavingDraft = false;
+        }
+
+        if (success && rect) {
             // ボタンの位置を基準にポップアップを表示
-            const target = e.currentTarget as HTMLElement;
-            const rect = target.getBoundingClientRect();
             draftPopupX = rect.left + rect.width / 2;
             draftPopupY = rect.bottom + 8;
             showDraftSavedPopup = true;
