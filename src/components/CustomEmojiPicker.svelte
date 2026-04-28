@@ -309,56 +309,6 @@
         shouldFilter={false}
         loop={true}
     >
-        <div class="custom-emoji-search-row">
-            <Command.Input
-                class="custom-emoji-search"
-                bind:value={search}
-                placeholder={$_("customEmoji.search_placeholder")}
-            />
-            <Toolbar.Root
-                class="custom-emoji-editor-toolbar"
-                orientation="horizontal"
-                loop={false}
-                aria-label={$_("customEmoji.editor_toolbar")}
-            >
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.delete_backward")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={deleteBackward}
-                >
-                    <span class="delete-left-icon svg-icon"></span>
-                </Toolbar.Button>
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.move_left")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={moveCaretLeft}
-                >
-                    <span class="caret-left-icon svg-icon"></span>
-                </Toolbar.Button>
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.move_right")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={moveCaretRight}
-                >
-                    <span class="caret-right-icon svg-icon"></span>
-                </Toolbar.Button>
-                <Toolbar.Button
-                    class="custom-emoji-editor-button"
-                    aria-label={$_("customEmoji.insert_line_break")}
-                    onmousedown={preventKeyboardFocusChange}
-                    ontouchstart={preventKeyboardFocusChange}
-                    onclick={insertLineBreak}
-                >
-                    <span class="enter-key-icon svg-icon"></span>
-                </Toolbar.Button>
-            </Toolbar.Root>
-        </div>
         <ScrollArea.Root
             type="auto"
             class="custom-emoji-scroll-root"
@@ -419,6 +369,56 @@
                 <ScrollArea.Thumb class="scrollbar-thumb" />
             </ScrollArea.Scrollbar>
         </ScrollArea.Root>
+        <div class="custom-emoji-search-row">
+            <Command.Input
+                class="custom-emoji-search"
+                bind:value={search}
+                placeholder={$_("customEmoji.search_placeholder")}
+            />
+            <Toolbar.Root
+                class="custom-emoji-editor-toolbar"
+                orientation="horizontal"
+                loop={false}
+                aria-label={$_("customEmoji.editor_toolbar")}
+            >
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.delete_backward")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={deleteBackward}
+                >
+                    <span class="delete-left-icon svg-icon"></span>
+                </Toolbar.Button>
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.move_left")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={moveCaretLeft}
+                >
+                    <span class="caret-left-icon svg-icon"></span>
+                </Toolbar.Button>
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.move_right")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={moveCaretRight}
+                >
+                    <span class="caret-right-icon svg-icon"></span>
+                </Toolbar.Button>
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.insert_line_break")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={insertLineBreak}
+                >
+                    <span class="enter-key-icon svg-icon"></span>
+                </Toolbar.Button>
+            </Toolbar.Root>
+        </div>
     </Command.Root>
 </div>
 
@@ -471,7 +471,7 @@
         display: flex;
         align-items: center;
         width: 100%;
-        border-bottom: 1px solid var(--border);
+        border-top: 1px solid var(--border);
         background: var(--input-bg, var(--dialog));
     }
 
