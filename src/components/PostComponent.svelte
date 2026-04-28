@@ -76,6 +76,7 @@
     hasStoredKey: boolean;
     onPostSuccess?: () => void;
     availableComposerHeight?: number;
+    minEditorHeight?: number;
   }
 
   let {
@@ -83,6 +84,7 @@
     hasStoredKey,
     onPostSuccess,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
+    minEditorHeight = POST_EDITOR_MIN_HEIGHT,
   }: Props = $props();
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
@@ -99,7 +101,7 @@
   let editorResources: InitializeEditorResult | null = null;
   let editorTargetHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let postContainerStyle = $derived(
-    `--post-editor-min-height: ${POST_EDITOR_MIN_HEIGHT}px; --post-editor-target-height: ${editorTargetHeight}px;`,
+    `--post-editor-min-height: ${minEditorHeight}px; --post-editor-target-height: ${editorTargetHeight}px;`,
   );
   let editorPlaceholderText = $derived(
     $_("postComponent.enter_your_text") || "テキストを入力してください",
@@ -111,7 +113,7 @@
   });
 
   function syncEditorTargetHeight() {
-    const minHeight = POST_EDITOR_MIN_HEIGHT;
+    const minHeight = minEditorHeight;
 
     if (!postContainerEl || !editorContainerEl) {
       editorTargetHeight = minHeight;
@@ -207,6 +209,7 @@
 
   $effect(() => {
     availableComposerHeight;
+    minEditorHeight;
     mediaFreePlacement;
     uploadErrorMessage;
     currentEditor;
@@ -227,6 +230,7 @@
 
   $effect(() => {
     availableComposerHeight;
+    minEditorHeight;
     currentEditor;
     mediaFreePlacement;
     uploadErrorMessage;

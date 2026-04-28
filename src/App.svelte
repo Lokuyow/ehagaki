@@ -111,7 +111,10 @@
     syncAccountStores,
     type NostrSessionBootstrap,
   } from "./lib/bootstrap/authBootstrap";
-  import { POST_EDITOR_MIN_HEIGHT } from "./lib/postLayoutUtils";
+  import {
+    POST_EDITOR_COMPACT_MIN_HEIGHT,
+    POST_EDITOR_MIN_HEIGHT,
+  } from "./lib/postLayoutUtils";
   import {
     resolveComposerAvailableHeight,
     resolveComposerSiblingHeight,
@@ -189,12 +192,17 @@
   let composerAvailableHeight = $state(POST_EDITOR_MIN_HEIGHT);
   let customEmojiPickerHeight = $state(0);
   let customEmojiPickerOpen = $state(false);
+  let postEditorMinHeight = $derived(
+    customEmojiPickerOpen
+      ? POST_EDITOR_COMPACT_MIN_HEIGHT
+      : POST_EDITOR_MIN_HEIGHT,
+  );
   let customEmojiPickerMaxHeight = $derived(
     Math.max(
       0,
       Math.floor(
         composerAvailableHeight -
-          POST_EDITOR_MIN_HEIGHT -
+          postEditorMinHeight -
           CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
       ),
     ),
@@ -202,7 +210,7 @@
   let postAvailableComposerHeight = $derived(
     customEmojiPickerOpen
       ? Math.max(
-          POST_EDITOR_MIN_HEIGHT,
+          postEditorMinHeight,
           composerAvailableHeight - customEmojiPickerHeight,
         )
       : composerAvailableHeight,
@@ -1357,6 +1365,7 @@
                   {rxNostr}
                   hasStoredKey={isAuthenticated}
                   availableComposerHeight={postAvailableComposerHeight}
+                  minEditorHeight={postEditorMinHeight}
                   onPostSuccess={handlePostSuccess}
                 />
                 {#if customEmojiPickerOpen}
