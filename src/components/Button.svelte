@@ -17,7 +17,7 @@
             | "footer"
             | "close"
             | "copy";
-        shape?: "square" | "rounded" | "pill" | "circle";
+        shape?: "none" | "square" | "rounded" | "pill" | "circle";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void;
         selected?: boolean;
@@ -30,7 +30,7 @@
         ariaLabel = "",
         style = "",
         variant = "default",
-        shape = "rounded",
+        shape = "none",
         children,
         onClick = undefined,
         selected = false,
@@ -185,8 +185,10 @@
     }
 
     .footer {
+        max-width: 100px;
+        min-width: 40px;
+        flex: 1 1 0;
         --btn-bg: transparent;
-        border: none;
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {

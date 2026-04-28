@@ -221,7 +221,6 @@
                             props}
                         <Button
                             variant="footer"
-                            shape="square"
                             className="image-button"
                             disabled={!hasStoredKey ||
                                 postStatus.sending ||
@@ -247,7 +246,6 @@
             </Tooltip.Root>
             <Button
                 variant="footer"
-                shape="square"
                 className="custom-emoji-button"
                 selected={customEmojiPickerOpen}
                 disabled={!hasStoredKey}
@@ -306,7 +304,6 @@
                         } = props}
                         <Button
                             variant="primary"
-                            shape="square"
                             className="post-button {isShowingLoader
                                 ? 'loading'
                                 : ''}"
@@ -376,7 +373,6 @@
                             props}
                         <Button
                             variant="footer"
-                            shape="square"
                             selected={contentWarningEnabled}
                             onClick={(e) => {
                                 toggleContentWarning();
@@ -406,7 +402,6 @@
                             props}
                         <Button
                             variant="footer"
-                            shape="square"
                             selected={hashtagPinEnabled}
                             onClick={(e) => {
                                 toggleHashtagPin();
@@ -471,10 +466,12 @@
             height: 32px;
         }
 
-        :global(.post-button) {
-            width: 71px;
+        /* postボタンは他より大きく見えるよう成長比と最小幅を優先 */
+        :global(button.post-button) {
+            flex: 2 1 0;
+            width: clamp(40px, 22vw, 100px);
             height: var(--keyboard-button-bar-height);
-            padding: 0;
+            padding: 0 6px;
             border-radius: 4px;
 
             &:active {
@@ -495,7 +492,6 @@
             background-color: var(--theme);
             padding: 0;
             height: 100%;
-            border-radius: 4px;
 
             :global(.square) {
                 background-color: var(--svg);
@@ -545,6 +541,13 @@
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
         width: 100%;
+    }
+
+    /* flexアイテムが縮小できるようにmin-widthを0にする */
+    .button-group-left,
+    .button-group-center,
+    .button-group-right {
+        min-width: 0;
     }
 
     .button-group-left {
