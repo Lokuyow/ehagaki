@@ -36,7 +36,7 @@ export function createDraftLimitConfirmHandlers(params: {
         galleryItems: MediaGalleryItem[],
         replyQuoteData?: DraftReplyQuoteData,
         channelData?: DraftChannelData,
-    ) => void;
+    ) => void | Promise<void>;
 }) {
     const clear = () => {
         params.pendingDraftContentStore.set(null);
@@ -48,11 +48,11 @@ export function createDraftLimitConfirmHandlers(params: {
             params.pendingDraftContentStore.set(payload);
             params.showDraftLimitConfirmStore.set(true);
         },
-        confirm: () => {
+        confirm: async () => {
             const pending = params.pendingDraftContentStore.value;
 
             if (pending) {
-                params.saveDraftWithReplaceOldest(
+                await params.saveDraftWithReplaceOldest(
                     pending.content,
                     pending.galleryItems,
                     pending.replyQuoteData,

@@ -11,7 +11,7 @@
 
     interface Props {
         onResetPostContent: () => void;
-        onSaveDraft: () => boolean;
+        onSaveDraft: () => Promise<boolean>;
         onShowDraftList: () => void;
         balloonMessage?: BalloonMessageType | null;
         compactMessage?: BalloonMessageType | null;
@@ -33,9 +33,15 @@
     let showDraftSavedPopup = $state(false);
     let draftPopupX = $state(0);
     let draftPopupY = $state(0);
+    let isSavingDraft = $state(false);
 
-    function handleSaveDraft(e: MouseEvent) {
-        const success = onSaveDraft();
+    async function handleSaveDraft(e: MouseEvent) {
+        if (isSavingDraft) return;
+
+        isSavingDraft = true;
+        const success = await onSaveDraft();
+        isSavingDraft = false;
+
         if (success) {
             // ボタンの位置を基準にポップアップを表示
             const target = e.currentTarget as HTMLElement;
@@ -178,9 +184,10 @@
                                 className="draft-save-button"
                                 disabled={!canPost ||
                                     postStatus.sending ||
-                                    isUploading}
+                                    isUploading ||
+                                    isSavingDraft}
                                 onClick={(e) => {
-                                    handleSaveDraft(e);
+                                    void handleSaveDraft(e);
                                     if (typeof tooltipOnclick === "function") {
                                         tooltipOnclick(e);
                                     }

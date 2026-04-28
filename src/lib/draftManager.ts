@@ -2,13 +2,20 @@ import type { Draft, DraftChannelData, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
 import { createSanitizedDraftContainer } from './draftHtmlSanitizer';
+import { draftsRepository, type DraftsRepositoryOptions } from './storage/draftsRepository';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
+
+export type SaveDraftResult = {
+    success: boolean;
+    needsConfirmation: boolean;
+    drafts: Draft[];
+};
 
 /**
  * 下書きをlocalStorageから読み込む
  */
-export function loadDrafts(): Draft[] {
+function loadDraftsFromStorage(): Draft[] {
     const draftsJson = localStorage.getItem(STORAGE_KEYS.DRAFTS);
     if (!draftsJson) return [];
 
@@ -26,6 +33,27 @@ export function loadDrafts(): Draft[] {
  */
 function saveDraftsToStorage(drafts: Draft[]): void {
     localStorage.setItem(STORAGE_KEYS.DRAFTS, JSON.stringify(drafts));
+}
+
+async function runWithLocalStorageFallback<T>(
+    runIndexedDb: () => Promise<T>,
+    runFallback: () => T,
+): Promise<T> {
+    try {
+        return await runIndexedDb();
+    } catch {
+        return runFallback();
+    }
+}
+
+/**
+ * 下書きをIndexedDBから読み込む
+ */
+export async function loadDrafts(options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
+    return runWithLocalStorageFallback(
+        () => draftsRepository.getAll(options),
+        loadDraftsFromStorage,
+    );
 }
 
 /**
@@ -141,86 +169,176 @@ function generateId(): string {
  * 新しい下書きを保存する
  * @returns 保存が成功した場合はtrue、上限に達してユーザーの確認が必要な場合はfalse
  */
-export function saveDraft(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): { success: boolean; needsConfirmation: boolean; drafts: Draft[] } {
-    const drafts = loadDrafts();
+export async function saveDraft(
+    htmlContent: string,
+    galleryItems?: MediaGalleryItem[],
+    replyQuoteData?: DraftReplyQuoteData,
+    channelData?: DraftChannelData,
+    options: DraftsRepositoryOptions = {},
+): Promise<SaveDraftResult> {
+    return runWithLocalStorageFallback(
+        async () => {
+            const drafts = await draftsRepository.getAll(options);
 
-    // 上限チェック
-    if (drafts.length >= MAX_DRAFTS) {
-        return { success: false, needsConfirmation: true, drafts };
-    }
+            // 上限チェック
+            if (drafts.length >= MAX_DRAFTS) {
+                return { success: false, needsConfirmation: true, drafts };
+            }
 
-    const newDraft: Draft = {
-        id: generateId(),
-        content: htmlContent,
-        preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
-        timestamp: Date.now(),
-        galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
-        channelData: channelData || undefined,
-        replyQuoteData: replyQuoteData || undefined,
-    };
+            const timestamp = Date.now();
+            const newDraft: Draft = {
+                id: generateId(),
+                content: htmlContent,
+                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                timestamp,
+                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+                channelData: channelData || undefined,
+                replyQuoteData: replyQuoteData || undefined,
+            };
 
-    const updatedDrafts = [newDraft, ...drafts];
-    saveDraftsToStorage(updatedDrafts);
+            await draftsRepository.put({
+                ...newDraft,
+                pubkeyHex: options.pubkeyHex ?? null,
+            });
 
-    return { success: true, needsConfirmation: false, drafts: updatedDrafts };
+            return {
+                success: true,
+                needsConfirmation: false,
+                drafts: [newDraft, ...drafts].sort((a, b) => b.timestamp - a.timestamp),
+            };
+        },
+        () => {
+            const drafts = loadDraftsFromStorage();
+
+            if (drafts.length >= MAX_DRAFTS) {
+                return { success: false, needsConfirmation: true, drafts };
+            }
+
+            const newDraft: Draft = {
+                id: generateId(),
+                content: htmlContent,
+                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                timestamp: Date.now(),
+                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+                channelData: channelData || undefined,
+                replyQuoteData: replyQuoteData || undefined,
+            };
+
+            const updatedDrafts = [newDraft, ...drafts];
+            saveDraftsToStorage(updatedDrafts);
+
+            return { success: true, needsConfirmation: false, drafts: updatedDrafts };
+        },
+    );
 }
 
 /**
  * 最も古い下書きを削除して新しい下書きを保存する
  */
-export function saveDraftWithReplaceOldest(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): Draft[] {
-    const drafts = loadDrafts();
+export async function saveDraftWithReplaceOldest(
+    htmlContent: string,
+    galleryItems?: MediaGalleryItem[],
+    replyQuoteData?: DraftReplyQuoteData,
+    channelData?: DraftChannelData,
+    options: DraftsRepositoryOptions = {},
+): Promise<Draft[]> {
+    return runWithLocalStorageFallback(
+        async () => {
+            const drafts = await draftsRepository.getAll(options);
 
-    // 最も古い下書きを削除（配列の末尾）
-    const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
+            // 最も古い下書きを削除（配列の末尾）
+            const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
+            const oldestDraft = drafts[MAX_DRAFTS - 1];
 
-    const newDraft: Draft = {
-        id: generateId(),
-        content: htmlContent,
-        preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
-        timestamp: Date.now(),
-        galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
-        channelData: channelData || undefined,
-        replyQuoteData: replyQuoteData || undefined,
-    };
+            const newDraft: Draft = {
+                id: generateId(),
+                content: htmlContent,
+                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                timestamp: Date.now(),
+                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+                channelData: channelData || undefined,
+                replyQuoteData: replyQuoteData || undefined,
+            };
 
-    const updatedDrafts = [newDraft, ...remainingDrafts];
-    saveDraftsToStorage(updatedDrafts);
+            if (oldestDraft) {
+                await draftsRepository.delete(oldestDraft.id);
+            }
+            await draftsRepository.put({
+                ...newDraft,
+                pubkeyHex: options.pubkeyHex ?? null,
+            });
 
-    return updatedDrafts;
+            return [newDraft, ...remainingDrafts].sort((a, b) => b.timestamp - a.timestamp);
+        },
+        () => {
+            const drafts = loadDraftsFromStorage();
+            const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
+
+            const newDraft: Draft = {
+                id: generateId(),
+                content: htmlContent,
+                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                timestamp: Date.now(),
+                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
+                channelData: channelData || undefined,
+                replyQuoteData: replyQuoteData || undefined,
+            };
+
+            const updatedDrafts = [newDraft, ...remainingDrafts];
+            saveDraftsToStorage(updatedDrafts);
+
+            return updatedDrafts;
+        },
+    );
 }
 
 /**
  * 指定IDの下書きを削除する
  */
-export function deleteDraft(id: string): Draft[] {
-    const drafts = loadDrafts();
-    const updatedDrafts = drafts.filter(draft => draft.id !== id);
-    saveDraftsToStorage(updatedDrafts);
-    return updatedDrafts;
+export async function deleteDraft(id: string, options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
+    return runWithLocalStorageFallback(
+        async () => {
+            await draftsRepository.delete(id);
+            return draftsRepository.getAll(options);
+        },
+        () => {
+            const drafts = loadDraftsFromStorage();
+            const updatedDrafts = drafts.filter(draft => draft.id !== id);
+            saveDraftsToStorage(updatedDrafts);
+            return updatedDrafts;
+        },
+    );
 }
 
 /**
  * 全ての下書きを削除する
  */
-export function deleteAllDrafts(): Draft[] {
-    saveDraftsToStorage([]);
-    return [];
+export async function deleteAllDrafts(options: DraftsRepositoryOptions = {}): Promise<Draft[]> {
+    return runWithLocalStorageFallback(
+        async () => {
+            await draftsRepository.deleteAll(options);
+            return [];
+        },
+        () => {
+            saveDraftsToStorage([]);
+            return [];
+        },
+    );
 }
 
 /**
  * 指定IDの下書きを取得する
  */
-export function getDraft(id: string): Draft | undefined {
-    const drafts = loadDrafts();
+export async function getDraft(id: string, options: DraftsRepositoryOptions = {}): Promise<Draft | undefined> {
+    const drafts = await loadDrafts(options);
     return drafts.find(draft => draft.id === id);
 }
 
 /**
  * 下書きが存在するかチェック
  */
-export function hasDrafts(): boolean {
-    return loadDrafts().length > 0;
+export async function hasDrafts(options: DraftsRepositoryOptions = {}): Promise<boolean> {
+    return (await loadDrafts(options)).length > 0;
 }
 
 /**

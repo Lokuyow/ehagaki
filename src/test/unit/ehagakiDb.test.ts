@@ -20,12 +20,13 @@ afterEach(async () => {
 });
 
 describe("EHagakiDB", () => {
-    it("opens one app database with only currently used stores", async () => {
+    it("opens one app database with currently used stores", async () => {
         const db = createTestDb();
         await db.open();
 
         expect(db.name).toBeTypeOf("string");
         expect(db.tables.map((table) => table.name).sort()).toEqual([
+            "drafts",
             "emojis",
             "meta",
         ]);

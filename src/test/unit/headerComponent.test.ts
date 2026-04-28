@@ -29,7 +29,7 @@ describe('HeaderComponent', () => {
         const { container } = render(HeaderComponent, {
             props: {
                 onResetPostContent: vi.fn(),
-                onSaveDraft: vi.fn(() => true),
+                onSaveDraft: vi.fn(async () => true),
                 onShowDraftList: vi.fn(),
                 showMascot: false,
                 showFlavorText: false,

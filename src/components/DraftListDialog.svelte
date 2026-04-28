@@ -17,12 +17,17 @@
         show: boolean;
         onClose: () => void;
         onApplyDraft: (draft: Draft) => void;
+        pubkeyHex?: string | null;
     }
 
-    let { show = $bindable(false), onClose, onApplyDraft }: Props = $props();
+    let { show = $bindable(false), onClose, onApplyDraft, pubkeyHex = null }: Props = $props();
 
     // 下書きリスト
     let drafts = $state<Draft[]>([]);
+
+    const getDraftOptions = () => ({
+        pubkeyHex,
+    });
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -36,7 +41,11 @@
     // ダイアログが開かれたときに下書きを読み込む
     $effect(() => {
         if (show) {
-            drafts = loadDrafts();
+            void loadDrafts(getDraftOptions()).then((loadedDrafts) => {
+                if (show) {
+                    drafts = loadedDrafts;
+                }
+            });
         }
     });
 
@@ -47,13 +56,13 @@
     }
 
     // 下書きを削除
-    function handleDeleteDraft(id: string) {
-        drafts = deleteDraft(id);
+    async function handleDeleteDraft(id: string) {
+        drafts = await deleteDraft(id, getDraftOptions());
     }
 
     // 全ての下書きを削除
-    function handleDeleteAllDrafts() {
-        drafts = deleteAllDrafts();
+    async function handleDeleteAllDrafts() {
+        drafts = await deleteAllDrafts(getDraftOptions());
     }
 </script>
 
@@ -115,7 +124,7 @@
                             variant="default"
                             shape="square"
                             ariaLabel={$_("draft.delete") || "削除"}
-                            onClick={() => handleDeleteDraft(draft.id)}
+                            onClick={() => void handleDeleteDraft(draft.id)}
                         >
                             <div class="trash-icon svg-icon"></div>
                         </Button>

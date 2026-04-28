@@ -23,7 +23,7 @@
         /** 確認ボタンの無効化 */
         confirmDisabled?: boolean;
         /** 確認時のコールバック */
-        onConfirm: () => void;
+        onConfirm: () => void | Promise<void>;
         /** キャンセル時のコールバック */
         onCancel?: () => void;
         /** Dialog.Contentに追加するCSSクラス */
@@ -93,13 +93,16 @@
     }
 
     // 確認ボタンのハンドラ
-    function handleConfirm() {
+    async function handleConfirm() {
         isConfirming = true;
-        onConfirm();
-        setOpen(false);
-        queueMicrotask(() => {
-            isConfirming = false;
-        });
+        try {
+            await onConfirm();
+            setOpen(false);
+        } finally {
+            queueMicrotask(() => {
+                isConfirming = false;
+            });
+        }
     }
 
     // ブラウザ履歴統合

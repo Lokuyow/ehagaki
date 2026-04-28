@@ -107,7 +107,7 @@ describe('createDraftLimitConfirmHandlers', () => {
         });
     });
 
-    it('confirm で oldest draft を置換し state をクリアする', () => {
+    it('confirm で oldest draft を置換し state をクリアする', async () => {
         const saveDraftWithReplaceOldest = vi.fn();
         const pendingDraftContentStore = createPendingDraftStore({
             content: '<p>draft</p>',
@@ -122,7 +122,7 @@ describe('createDraftLimitConfirmHandlers', () => {
             saveDraftWithReplaceOldest,
         });
 
-        handlers.confirm();
+        await handlers.confirm();
 
         expect(saveDraftWithReplaceOldest).toHaveBeenCalledWith(
             '<p>draft</p>',

@@ -249,7 +249,11 @@
   const draftLimitConfirm = createDraftLimitConfirmHandlers({
     pendingDraftContentStore,
     showDraftLimitConfirmStore,
-    saveDraftWithReplaceOldest,
+    saveDraftWithReplaceOldest: async (content, galleryItems, replyQuoteData, channelData) => {
+      await saveDraftWithReplaceOldest(content, galleryItems, replyQuoteData, channelData, {
+        pubkeyHex: authState.value?.pubkey ?? null,
+      });
+    },
   });
 
   $effect(() => {
@@ -1216,7 +1220,7 @@
   }
 
   // --- 下書き機能ハンドラ---
-  function handleSaveDraft(): boolean {
+  async function handleSaveDraft(): Promise<boolean> {
     if (!postComponentRef?.getEditorHtml) return false;
     const payload = createDraftSavePayload({
       htmlContent: postComponentRef.getEditorHtml(),
@@ -1227,11 +1231,12 @@
 
     if (!payload) return false;
 
-    const result = saveDraft(
+    const result = await saveDraft(
       payload.content,
       payload.galleryItems,
       payload.replyQuoteData,
       payload.channelData,
+      { pubkeyHex: authState.value?.pubkey ?? null },
     );
     if (result.needsConfirmation) {
       draftLimitConfirm.stage({
@@ -1461,6 +1466,7 @@
           show={showDraftListDialogStore.value}
           onClose={draftListDialog.close}
           onApplyDraft={handleApplyDraft}
+          pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}
