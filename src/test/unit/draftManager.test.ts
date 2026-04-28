@@ -180,6 +180,22 @@ describe("draftManager", () => {
             expect(result).toContain("[動画]");
         });
 
+        it("カスタム絵文字をショートコードとしてプレビューに表示する", () => {
+            expect(
+                generatePreview(
+                    '<p>Hello <img src="https://example.com/blobcat.webp" data-custom-emoji="true" data-shortcode="blobcat" alt=":blobcat:" class="custom-emoji-inline"></p>',
+                ),
+            ).toBe("Hello :blobcat:");
+        });
+
+        it("旧形式のカスタム絵文字も alt からショートコードとしてプレビューに表示する", () => {
+            expect(
+                generatePreview(
+                    '<p><img src="https://example.com/kubi.webp" class="custom-emoji-inline" alt=":kubi:"></p>',
+                ),
+            ).toBe(":kubi:");
+        });
+
         it("内容が空の場合は(内容なし)を返す", () => {
             expect(generatePreview("<p></p>")).toBe("(内容なし)");
         });

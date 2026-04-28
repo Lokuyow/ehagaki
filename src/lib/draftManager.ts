@@ -12,6 +12,30 @@ export type SaveDraftResult = {
     drafts: Draft[];
 };
 
+function getCustomEmojiShortcode(element: Element): string {
+    const shortcode = element.getAttribute('data-shortcode')?.trim();
+    if (shortcode) {
+        return shortcode.replace(/^:+|:+$/g, '');
+    }
+
+    const alt = element.getAttribute('alt')?.trim() ?? '';
+    const altMatch = alt.match(/^:([^:]+):$/);
+    return altMatch?.[1]?.trim() ?? '';
+}
+
+function replaceCustomEmojiWithShortcodeText(container: HTMLElement, documentObj: Document): void {
+    container
+        .querySelectorAll('img[data-custom-emoji], img.custom-emoji-inline[alt]')
+        .forEach((element) => {
+            const shortcode = getCustomEmojiShortcode(element);
+            if (!shortcode) {
+                return;
+            }
+
+            element.replaceWith(documentObj.createTextNode(`:${shortcode}:`));
+        });
+}
+
 /**
  * 下書きをlocalStorageから読み込む
  */
@@ -63,6 +87,7 @@ export async function loadDrafts(options: DraftsRepositoryOptions = {}): Promise
 export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): string {
     // HTMLタグを除去してテキストのみを抽出
     const tempDiv = createSanitizedDraftContainer(htmlContent, document);
+    replaceCustomEmojiWithShortcodeText(tempDiv, document);
 
     // 画像と動画の有無をチェック（エディタ内 + ギャラリーアイテム）
     const hasEditorImage = tempDiv.querySelector('img:not([data-custom-emoji]):not(.custom-emoji-inline[alt])') !== null;
