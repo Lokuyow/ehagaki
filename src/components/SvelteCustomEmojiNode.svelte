@@ -32,7 +32,7 @@
     :global(.custom-emoji-wrapper),
     :global(.custom-emoji-wrapper[data-node-view-wrapper]) {
         display: inline-flex;
-        width: 1.6em;
+        width: auto;
         height: 1.6em;
         margin: 0;
         vertical-align: -0.44em;
@@ -45,9 +45,9 @@
     }
 
     .custom-emoji-image {
-        width: 100%;
+        width: auto;
         height: 100%;
-        object-fit: contain;
+        max-width: none;
         user-select: none;
         -webkit-user-drag: none;
     }
