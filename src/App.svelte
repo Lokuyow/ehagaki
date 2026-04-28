@@ -42,6 +42,7 @@
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
     showAddAccountDialogStore,
+    isAnyDialogOpen,
   } from "./stores/dialogStore.svelte";
   import { swNeedRefresh } from "./stores/swStore.svelte";
   import {
@@ -215,15 +216,7 @@
         )
       : composerAvailableHeight,
   );
-  const anyDialogOpen = $derived(
-    showLoginDialogStore.value ||
-      showLogoutDialogStore.value ||
-      showSettingsDialogStore.value ||
-      showWelcomeDialogStore.value ||
-      showDraftListDialogStore.value ||
-      showDraftLimitConfirmStore.value ||
-      showAddAccountDialogStore.value,
-  );
+  const anyDialogOpen = $derived(isAnyDialogOpen());
 
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;

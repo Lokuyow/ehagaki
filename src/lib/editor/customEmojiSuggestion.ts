@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import Suggestion, { type SuggestionMatch, type Trigger } from '@tiptap/suggestion';
+import Suggestion, { exitSuggestion, type SuggestionMatch, type Trigger } from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import { mount, unmount } from 'svelte';
 import CustomEmojiSuggestionList from '../../components/CustomEmojiSuggestionList.svelte';
@@ -75,9 +75,11 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
     },
 
     addProseMirrorPlugins() {
+        const editor = this.editor;
+
         return [
             Suggestion<CustomEmojiItem>({
-                editor: this.editor,
+                editor,
                 pluginKey: CUSTOM_EMOJI_SUGGESTION_PLUGIN_KEY,
                 char: ':',
                 allowSpaces: false,
@@ -128,6 +130,9 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                             props: {
                                 items: currentItems,
                                 onSelect: currentCommand,
+                                onDismiss: () => {
+                                    exitSuggestion(editor.view, CUSTOM_EMOJI_SUGGESTION_PLUGIN_KEY);
+                                },
                             },
                         });
                     }

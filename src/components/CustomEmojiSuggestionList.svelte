@@ -2,14 +2,23 @@
     import { Command, ScrollArea } from "bits-ui";
     import type { CustomEmojiItem } from "../lib/customEmoji";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import { isAnyDialogOpen } from "../stores/dialogStore.svelte";
 
     interface Props {
         items: CustomEmojiItem[];
         onSelect: (item: CustomEmojiItem) => void;
+        onDismiss?: () => void;
     }
 
-    let { items, onSelect }: Props = $props();
+    let { items, onSelect, onDismiss }: Props = $props();
     let selectedIndex = $state(0);
+    let anyDialogOpen = $derived(isAnyDialogOpen());
+
+    $effect(() => {
+        if (anyDialogOpen) {
+            onDismiss?.();
+        }
+    });
 
     export function moveDown(): void {
         if (items.length > 0) {

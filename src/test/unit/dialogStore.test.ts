@@ -1,16 +1,25 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 
 import {
+    isAnyDialogOpen,
     pendingDraftContentStore,
     showAddAccountDialogStore,
+    showDraftListDialogStore,
     showDraftLimitConfirmStore,
     showLoginDialogStore,
+    showLogoutDialogStore,
+    showSettingsDialogStore,
+    showWelcomeDialogStore,
 } from '../../stores/dialogStore.svelte';
 
 describe('dialogStore', () => {
     beforeEach(() => {
         showLoginDialogStore.set(false);
+        showLogoutDialogStore.set(false);
+        showSettingsDialogStore.set(false);
+        showWelcomeDialogStore.set(false);
         showAddAccountDialogStore.set(false);
+        showDraftListDialogStore.set(false);
         showDraftLimitConfirmStore.set(false);
         pendingDraftContentStore.set(null);
     });
@@ -23,6 +32,17 @@ describe('dialogStore', () => {
         expect(showLoginDialogStore.value).toBe(true);
         expect(showAddAccountDialogStore.value).toBe(true);
         expect(showDraftLimitConfirmStore.value).toBe(true);
+    });
+
+    it('いずれかの dialog が開いているか判定できる', () => {
+        expect(isAnyDialogOpen()).toBe(false);
+
+        showSettingsDialogStore.set(true);
+        expect(isAnyDialogOpen()).toBe(true);
+
+        showSettingsDialogStore.set(false);
+        showDraftListDialogStore.set(true);
+        expect(isAnyDialogOpen()).toBe(true);
     });
 
     it('pending draft content を保持してクリアできる', () => {

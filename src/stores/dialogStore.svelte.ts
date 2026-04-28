@@ -47,3 +47,13 @@ export const pendingDraftContentStore = createValueStore(
 
 // --- アカウント追加ダイアログ ---
 export const showAddAccountDialogStore = createBooleanStore(() => showAddAccount, (value) => { showAddAccount = value; });
+
+export function isAnyDialogOpen(): boolean {
+    return showLogin ||
+        showLogout ||
+        showSettings ||
+        showWelcome ||
+        showAddAccount ||
+        showDraftList ||
+        showDraftLimitConfirm;
+}
