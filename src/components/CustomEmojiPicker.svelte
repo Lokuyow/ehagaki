@@ -402,7 +402,7 @@
                 </div>
                 <div class="line-break-delete">
                     <Toolbar.Button
-                        class="custom-emoji-editor-button"
+                        class="custom-emoji-editor-button line-break"
                         aria-label={$_("customEmoji.insert_line_break")}
                         onmousedown={preventKeyboardFocusChange}
                         ontouchstart={preventKeyboardFocusChange}
@@ -412,7 +412,7 @@
                     </Toolbar.Button>
 
                     <Toolbar.Button
-                        class="custom-emoji-editor-button"
+                        class="custom-emoji-editor-button delete"
                         aria-label={$_("customEmoji.delete_backward")}
                         onmousedown={preventKeyboardFocusChange}
                         ontouchstart={preventKeyboardFocusChange}
@@ -484,7 +484,7 @@
         min-width: 0;
         width: 100%;
         height: 40px;
-        padding: 0 12px;
+        padding: 0 8px;
         border: 0;
         background: transparent;
         color: var(--text);
@@ -497,7 +497,6 @@
         align-items: center;
         flex: 0 0 auto;
         height: 40px;
-        padding-right: 4px;
         gap: 2px;
 
         .arrow-keys {
@@ -512,6 +511,14 @@
             align-items: center;
             height: 100%;
             gap: 2px;
+
+            :global(.line-break) {
+                width: 62px;
+            }
+
+            :global(.delete) {
+                width: 62px;
+            }
         }
     }
 
@@ -519,7 +526,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 48px;
+        width: 50px;
         height: 100%;
         padding: 0;
         color: var(--text);
