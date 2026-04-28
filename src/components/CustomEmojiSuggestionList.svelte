@@ -103,17 +103,28 @@
     }
 
     :global(.custom-emoji-suggestion-list) {
-        max-height: 220px;
+        --custom-emoji-suggestion-row-height: 44px;
+        --custom-emoji-suggestion-visible-rows: 10;
+        max-height: calc(
+            var(--custom-emoji-suggestion-row-height) *
+                var(--custom-emoji-suggestion-visible-rows)
+        );
     }
 
     :global(.custom-emoji-suggestion-scroll) {
         width: 100%;
-        max-height: 220px;
+        max-height: calc(
+            var(--custom-emoji-suggestion-row-height) *
+                var(--custom-emoji-suggestion-visible-rows)
+        );
         overflow: hidden;
     }
 
     :global(.custom-emoji-suggestion-viewport) {
-        max-height: 220px;
+        max-height: calc(
+            var(--custom-emoji-suggestion-row-height) *
+                var(--custom-emoji-suggestion-visible-rows)
+        );
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
