@@ -6,7 +6,6 @@
     import {
         CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT,
         CUSTOM_EMOJI_GRID_CELL_SIZE,
-        CUSTOM_EMOJI_GRID_VERTICAL_PADDING,
         CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
         readCustomEmojiPickerHeight,
         writeCustomEmojiPickerHeight,
@@ -17,6 +16,7 @@
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
 
     const VIRTUAL_OVERSCAN_ROWS = 3;
+    const CUSTOM_EMOJI_GRID_TOP_PADDING = 8;
 
     interface Props {
         rxNostr?: RxNostr | null;
@@ -93,7 +93,7 @@
     );
     let virtualListHeight = $derived(
         totalRowCount * CUSTOM_EMOJI_GRID_CELL_SIZE +
-            CUSTOM_EMOJI_GRID_VERTICAL_PADDING,
+            CUSTOM_EMOJI_GRID_TOP_PADDING,
     );
     let virtualOffsetY = $derived(startRow * CUSTOM_EMOJI_GRID_CELL_SIZE);
     let pickerMaxHeight = $derived(
@@ -432,17 +432,18 @@
         max-width: 800px;
         background: var(--dialog);
         color: var(--text);
-        border-radius: 8px 8px 0 0;
         overflow: hidden;
     }
 
     .resize-handle {
         width: 100%;
-        height: 12px;
+        height: 30px;
+        margin-bottom: -16px;
         cursor: ns-resize;
         touch-action: none;
         position: relative;
-        background: var(--bg-buttonbar);
+        z-index: 1;
+        background: transparent;
     }
 
     .resize-handle::before {
@@ -450,19 +451,20 @@
         position: absolute;
         left: 0;
         right: 0;
-        top: -14px;
-        bottom: -14px;
+        top: 0;
+        height: 12px;
+        background: var(--bg-buttonbar);
     }
 
     .resize-handle::after {
         content: "";
         position: absolute;
         left: 50%;
-        top: 4px;
+        top: 6px;
         width: 38px;
         height: 4px;
         border-radius: 999px;
-        transform: translateX(-50%);
+        transform: translate(-50%, -50%);
         background: var(--border);
     }
 
@@ -595,7 +597,7 @@
 
     .emoji-grid {
         position: absolute;
-        top: 4px;
+        top: 8px;
         left: 4px;
         right: 4px;
         display: grid;
