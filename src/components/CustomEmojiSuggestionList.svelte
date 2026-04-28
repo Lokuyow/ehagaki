@@ -73,7 +73,8 @@
         if (itemTop < viewportTop) {
             viewportElement.scrollTop = itemTop;
         } else if (itemBottom > viewportBottom) {
-            viewportElement.scrollTop = itemBottom - viewportElement.clientHeight;
+            viewportElement.scrollTop =
+                itemBottom - viewportElement.clientHeight;
         }
     }
 </script>
@@ -134,7 +135,7 @@
     }
 
     :global(.custom-emoji-suggestion-list) {
-        --custom-emoji-suggestion-row-height: 44px;
+        --custom-emoji-suggestion-row-height: 40px;
         --custom-emoji-suggestion-visible-rows: 10;
         max-height: calc(
             var(--custom-emoji-suggestion-row-height) *
@@ -167,8 +168,8 @@
         align-items: center;
         gap: 8px;
         width: 100%;
-        min-height: 44px;
-        padding: 6px 10px;
+        min-height: 40px;
+        padding: 4px 10px;
         cursor: pointer;
         color: var(--text);
         outline: none;
