@@ -4,6 +4,7 @@
   import { untrack } from "svelte";
   import { EditorContent } from "svelte-tiptap";
   import type { Editor as TipTapEditor } from "@tiptap/core";
+  import { Selection } from "@tiptap/pm/state";
   import type { RxNostr } from "rx-nostr";
   import type { FullscreenMediaItem } from "../lib/types";
   import type { MediaGalleryItem } from "../lib/types";
@@ -400,6 +401,70 @@
   export function insertCustomEmoji(emoji: CustomEmojiAttrs): void {
     if (!currentEditor) return;
     insertCustomEmojiWithoutUnwantedKeyboard(currentEditor, emoji);
+  }
+
+  function moveCaret(direction: -1 | 1): void {
+    if (!currentEditor) return;
+
+    const { state, view } = currentEditor;
+    const currentPos = direction < 0 ? state.selection.from : state.selection.to;
+    const nextPos = Math.max(
+      0,
+      Math.min(state.doc.content.size, currentPos + direction),
+    );
+
+    if (nextPos === currentPos) return;
+
+    const selection = Selection.near(state.doc.resolve(nextPos), direction);
+    view.dispatch(
+      state.tr
+        .setSelection(selection)
+        .scrollIntoView()
+        .setMeta("addToHistory", false),
+    );
+  }
+
+  export function moveCaretLeft(): void {
+    moveCaret(-1);
+  }
+
+  export function moveCaretRight(): void {
+    moveCaret(1);
+  }
+
+  export function deleteBackward(): void {
+    if (!currentEditor) return;
+
+    const { state, view } = currentEditor;
+    const { selection } = state;
+
+    if (!selection.empty) {
+      currentEditor.commands.deleteSelection();
+      return;
+    }
+
+    const resolvedFrom = selection.$from;
+    const nodeBefore = resolvedFrom.nodeBefore;
+
+    if (nodeBefore) {
+      const deleteSize = nodeBefore.isText
+        ? Array.from(nodeBefore.text ?? "").at(-1)?.length ?? 0
+        : nodeBefore.nodeSize;
+
+      if (deleteSize > 0) {
+        view.dispatch(
+          state.tr
+            .delete(selection.from - deleteSize, selection.from)
+            .scrollIntoView(),
+        );
+      }
+      return;
+    }
+
+    currentEditor.commands.first(({ commands }) => [
+      () => commands.joinBackward(),
+      () => commands.selectNodeBackward(),
+    ]);
   }
 
   export async function submitPost() {

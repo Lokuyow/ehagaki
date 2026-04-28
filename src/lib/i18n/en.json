@@ -172,7 +172,11 @@
     "search_placeholder": "Search emoji",
     "loading": "Loading emoji...",
     "empty": "No emoji",
-    "resize": "Resize emoji picker"
+    "resize": "Resize emoji picker",
+    "editor_toolbar": "Editor controls",
+    "move_left": "Move caret left",
+    "move_right": "Move caret right",
+    "delete_backward": "Delete backward"
   },
   "imageNode": {
     "uploading": "Uploading image..."

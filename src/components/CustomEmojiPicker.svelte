@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { Command, ScrollArea } from "bits-ui";
+    import { Command, ScrollArea, Toolbar } from "bits-ui";
     import type { RxNostr } from "rx-nostr";
     import { _ } from "svelte-i18n";
     import {
@@ -25,6 +25,9 @@
         open?: boolean;
         maxHeight?: number | null;
         onSelect?: (emoji: CustomEmojiItem) => void;
+        onMoveCaretLeft?: () => void;
+        onMoveCaretRight?: () => void;
+        onDeleteBackward?: () => void;
     }
 
     let {
@@ -33,6 +36,9 @@
         open = false,
         maxHeight = null,
         onSelect,
+        onMoveCaretLeft,
+        onMoveCaretRight,
+        onDeleteBackward,
     }: Props = $props();
     let search = $state("");
     let pickerHeight = $state(CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT);
@@ -231,6 +237,18 @@
         onSelect?.(emoji);
     }
 
+    function moveCaretLeft(): void {
+        onMoveCaretLeft?.();
+    }
+
+    function moveCaretRight(): void {
+        onMoveCaretRight?.();
+    }
+
+    function deleteBackward(): void {
+        onDeleteBackward?.();
+    }
+
     function startResize(event: PointerEvent): void {
         event.preventDefault();
         updatePickerLayout();
@@ -285,11 +303,47 @@
         shouldFilter={false}
         loop={true}
     >
-        <Command.Input
-            class="custom-emoji-search"
-            bind:value={search}
-            placeholder={$_("customEmoji.search_placeholder")}
-        />
+        <div class="custom-emoji-search-row">
+            <Command.Input
+                class="custom-emoji-search"
+                bind:value={search}
+                placeholder={$_("customEmoji.search_placeholder")}
+            />
+            <Toolbar.Root
+                class="custom-emoji-editor-toolbar"
+                orientation="horizontal"
+                loop={false}
+                aria-label={$_("customEmoji.editor_toolbar")}
+            >
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.move_left")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={moveCaretLeft}
+                >
+                    <span class="caret-left-icon svg-icon"></span>
+                </Toolbar.Button>
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.move_right")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={moveCaretRight}
+                >
+                    <span class="caret-right-icon svg-icon"></span>
+                </Toolbar.Button>
+                <Toolbar.Button
+                    class="custom-emoji-editor-button"
+                    aria-label={$_("customEmoji.delete_backward")}
+                    onmousedown={preventKeyboardFocusChange}
+                    ontouchstart={preventKeyboardFocusChange}
+                    onclick={deleteBackward}
+                >
+                    <span class="delete-left-icon svg-icon"></span>
+                </Toolbar.Button>
+            </Toolbar.Root>
+        </div>
         <ScrollArea.Root
             type="auto"
             class="custom-emoji-scroll-root"
@@ -398,16 +452,79 @@
         flex-direction: column;
     }
 
+    .custom-emoji-search-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        border-bottom: 1px solid var(--border);
+        background: var(--input-bg, var(--dialog));
+    }
+
     :global(.custom-emoji-search) {
+        flex: 1 1 auto;
+        min-width: 0;
         width: 100%;
         height: 40px;
         padding: 0 12px;
         border: 0;
-        border-bottom: 1px solid var(--border);
-        background: var(--input-bg, var(--dialog));
+        background: transparent;
         color: var(--text);
         font-size: 1rem;
         outline: none;
+    }
+
+    :global(.custom-emoji-editor-toolbar) {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+        height: 40px;
+        padding-right: 4px;
+        gap: 2px;
+    }
+
+    :global(.custom-emoji-editor-button) {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        padding: 0;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--text);
+        touch-action: manipulation;
+    }
+
+    @media (min-width: 601px) {
+        :global(.custom-emoji-editor-button:hover) {
+            background: var(--btn-bg);
+        }
+    }
+
+    :global(.custom-emoji-editor-button:active) {
+        transform: scale(0.94);
+    }
+
+    :global(.custom-emoji-editor-button .svg-icon) {
+        width: 20px;
+        height: 20px;
+        background-color: var(--svg, currentColor);
+        mask-repeat: no-repeat;
+        mask-position: center;
+        mask-size: contain;
+    }
+
+    .caret-left-icon {
+        mask-image: url("/icons/caret-left-solid-full.svg");
+    }
+
+    .caret-right-icon {
+        mask-image: url("/icons/caret-right-solid-full.svg");
+    }
+
+    .delete-left-icon {
+        mask-image: url("/icons/delete-left-solid-full.svg");
     }
 
     :global(.custom-emoji-scroll-root),

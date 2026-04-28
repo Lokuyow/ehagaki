@@ -1370,6 +1370,11 @@
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
+                      onMoveCaretLeft={() => postComponentRef?.moveCaretLeft?.()}
+                      onMoveCaretRight={() =>
+                        postComponentRef?.moveCaretRight?.()}
+                      onDeleteBackward={() =>
+                        postComponentRef?.deleteBackward?.()}
                     />
                   </div>
                 {/if}

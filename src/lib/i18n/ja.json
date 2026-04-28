@@ -172,7 +172,11 @@
     "search_placeholder": "絵文字を検索",
     "loading": "絵文字を読み込み中...",
     "empty": "絵文字がありません",
-    "resize": "絵文字ピッカーの高さを変更"
+    "resize": "絵文字ピッカーの高さを変更",
+    "editor_toolbar": "エディター操作",
+    "move_left": "キャレットを左へ移動",
+    "move_right": "キャレットを右へ移動",
+    "delete_backward": "1文字戻って削除"
   },
   "imageNode": {
     "uploading": "画像を<wbr>アップロード中..."
