@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { tick } from "svelte";
     import { Command, ScrollArea } from "bits-ui";
     import type { CustomEmojiItem } from "../lib/customEmoji";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
@@ -13,6 +14,7 @@
     let { items, onSelect, onDismiss }: Props = $props();
     let selectedIndex = $state(0);
     let anyDialogOpen = $derived(isAnyDialogOpen());
+    let viewportElement = $state<HTMLElement | null>(null);
 
     $effect(() => {
         if (anyDialogOpen) {
@@ -23,12 +25,14 @@
     export function moveDown(): void {
         if (items.length > 0) {
             selectedIndex = (selectedIndex + 1) % items.length;
+            scheduleSelectedItemScroll();
         }
     }
 
     export function moveUp(): void {
         if (items.length > 0) {
             selectedIndex = (selectedIndex - 1 + items.length) % items.length;
+            scheduleSelectedItemScroll();
         }
     }
 
@@ -43,10 +47,34 @@
 
     export function resetIndex(): void {
         selectedIndex = 0;
+        scheduleSelectedItemScroll();
     }
 
     function selectItem(item: CustomEmojiItem): void {
         onSelect(item);
+    }
+
+    function scheduleSelectedItemScroll(): void {
+        void tick().then(scrollSelectedItemIntoView);
+    }
+
+    function scrollSelectedItemIntoView(): void {
+        if (!viewportElement) return;
+        const selectedItem = viewportElement.querySelector<HTMLElement>(
+            ".custom-emoji-suggestion-item.selected",
+        );
+        if (!selectedItem) return;
+
+        const itemTop = selectedItem.offsetTop;
+        const itemBottom = itemTop + selectedItem.offsetHeight;
+        const viewportTop = viewportElement.scrollTop;
+        const viewportBottom = viewportTop + viewportElement.clientHeight;
+
+        if (itemTop < viewportTop) {
+            viewportElement.scrollTop = itemTop;
+        } else if (itemBottom > viewportBottom) {
+            viewportElement.scrollTop = itemBottom - viewportElement.clientHeight;
+        }
     }
 </script>
 
@@ -58,7 +86,10 @@
     >
         <Command.List class="custom-emoji-suggestion-list">
             <ScrollArea.Root type="auto" class="custom-emoji-suggestion-scroll">
-                <ScrollArea.Viewport class="custom-emoji-suggestion-viewport">
+                <ScrollArea.Viewport
+                    class="custom-emoji-suggestion-viewport"
+                    bind:ref={viewportElement}
+                >
                     {#each items as item, i (item.shortcode)}
                         <Command.Item
                             value={item.shortcode}
