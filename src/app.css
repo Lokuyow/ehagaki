@@ -40,6 +40,7 @@
 
   --btn-bg: hsl(0, 0%, 94%);
   --btn-border: hsl(0, 0%, 75%);
+  --btn-hover-bg: rgba(50, 50, 50, 0.12);
 
   --border: var(--light-gray);
   --border-hr: hsl(0, 0%, 84%);
@@ -55,6 +56,8 @@
 
   --dialog: white;
   --dialog-overlay: rgba(0, 0, 0, 0.6);
+
+  --window: hsl(0, 0%, 95%);
 
   --svg: hsl(0, 0%, 32%);
   --svg-light: var(--text-light);
@@ -210,6 +213,7 @@ select {
 
   --border: dimgray;
   --border-hr: hsl(0, 0%, 30%);
+  --btn-hover-bg: rgba(255, 255, 255, 0.12);
 
   --text: hsl(0, 0%, 90%);
   --text-light: hsl(0, 0%, 75%);
@@ -222,6 +226,8 @@ select {
 
   --dialog: hsl(0, 0%, 14%);
   --dialog-overlay: rgba(0, 0, 0, 0.8);
+
+  --window: hsl(0, 0%, 12%);
 
   --svg: hsl(0, 0%, 94%);
   --svg-light: var(--text-light);
@@ -245,7 +251,7 @@ select {
   :root.dark button:hover:not(:disabled),
   :root.dark a:hover,
   :root.dark select:hover {
-    filter: brightness(115%);
+    filter: brightness(120%);
   }
 }
 

@@ -140,7 +140,7 @@
         display: inline-block;
         width: fit-content;
         max-width: calc(100vw - 16px);
-        background: var(--dialog);
+        background: var(--window);
         color: var(--text);
         overflow: hidden;
     }
@@ -199,7 +199,7 @@
     :global(.suggestion-command-item:hover),
     :global(.suggestion-command-item.selected),
     :global(.suggestion-command-item[data-highlighted]) {
-        background: var(--btn-hover-bg, rgba(127, 127, 127, 0.12));
+        background: var(--btn-hover-bg);
     }
 
     :global(.suggestion-command-scrollbar) {

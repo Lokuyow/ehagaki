@@ -628,7 +628,7 @@
 
     :global(.emoji-item:hover),
     :global(.emoji-item[data-highlighted]) {
-        background: var(--btn-hover-bg, rgba(127, 127, 127, 0.12));
+        background: var(--btn-hover-bg);
     }
 
     .emoji-image {
