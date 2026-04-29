@@ -151,7 +151,7 @@
         border-top: 1px solid var(--border-hr);
 
         :global(.modal-close) {
-            background-color: var(--dialog);
+            --btn-bg: var(--dialog);
             border: none;
             border-radius: 0;
             width: 100%;

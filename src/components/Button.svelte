@@ -178,19 +178,6 @@
         min-width: 40px;
         flex: 1 1 0;
         --btn-bg: transparent;
-
-        @media (min-width: 601px) {
-            &:hover:not(:disabled) {
-                :global(:root.light) & {
-                    --text: hsl(0, 0%, 24%);
-                    --svg: hsl(0, 0%, 20%);
-                }
-                :global(:root.dark) & {
-                    --text: hsl(0, 0%, 92%);
-                    --svg: hsl(0, 0%, 99%);
-                }
-            }
-        }
     }
 
     button.close {

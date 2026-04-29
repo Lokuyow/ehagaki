@@ -245,21 +245,47 @@ select {
   :root.light button:hover:not(:disabled),
   :root.light select:hover {
     background: color-mix(in srgb, var(--btn-bg), black 6%);
+    color: color-mix(in srgb, var(--text), black 6%);
+    --svg: currentColor;
+  }
+
+  :root.light button.selected:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--btn-bg), black 20%);
+    color: color-mix(in srgb, var(--text), black 20%);
+    --svg: currentColor;
   }
 
   :root.dark button:hover:not(:disabled),
   :root.dark select:hover {
     background: color-mix(in srgb, var(--btn-bg), white 10%);
+    color: color-mix(in srgb, var(--text), white 10%);
+    --svg: currentColor;
+  }
+
+  :root.dark button.selected:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--btn-bg), white 30%);
+    color: color-mix(in srgb, var(--text), white 30%);
+    --svg: currentColor;
   }
 
   :root.light a:hover {
-    color: color-mix(in srgb, currentColor, black 20%);
+    color: color-mix(in srgb, currentColor, black 30%);
   }
 
   :root.dark a:hover {
-    color: color-mix(in srgb, currentColor, white 20%);
+    color: color-mix(in srgb, currentColor, white 30%);
   }
 }
+
+:root.light button.selected:not(:disabled) {
+  background: color-mix(in srgb, var(--btn-bg), black 15%);
+}
+
+:root.dark button.selected:not(:disabled) {
+  background: color-mix(in srgb, var(--btn-bg), white 22%);
+}
+
+
 
 /* ===== Settings共通レイアウト ===== */
 .setting-section {
@@ -289,12 +315,4 @@ select {
   align-items: center;
   justify-content: flex-end;
   height: fit-content;
-}
-
-:root.light button.selected:not(:disabled) {
-  background: color-mix(in srgb, var(--btn-bg), black 15%);
-}
-
-:root.dark button.selected:not(:disabled) {
-  background: color-mix(in srgb, var(--btn-bg), white 25%);
 }
