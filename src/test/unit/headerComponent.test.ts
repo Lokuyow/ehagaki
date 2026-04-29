@@ -69,4 +69,38 @@ describe('HeaderComponent', () => {
             expect(screen.getByText('下書きを保存しました')).toBeTruthy();
         });
     });
+
+    it('投稿できない空本文でも canSaveDraft が true なら下書き保存できる', async () => {
+        const onSaveDraft = vi.fn(async () => true);
+
+        render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onSaveDraft,
+                onShowDraftList: vi.fn(),
+                canSaveDraft: true,
+                showMascot: false,
+                showFlavorText: false,
+            },
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '下書き保存' }));
+
+        expect(onSaveDraft).toHaveBeenCalledOnce();
+    });
+
+    it('canSaveDraft が false なら下書き保存ボタンを無効化する', () => {
+        render(HeaderComponent, {
+            props: {
+                onResetPostContent: vi.fn(),
+                onSaveDraft: vi.fn(async () => true),
+                onShowDraftList: vi.fn(),
+                canSaveDraft: false,
+                showMascot: false,
+                showFlavorText: false,
+            },
+        });
+
+        expect(screen.getByRole<HTMLButtonElement>('button', { name: '下書き保存' }).disabled).toBe(true);
+    });
 });

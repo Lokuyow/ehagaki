@@ -280,6 +280,11 @@
         )
       : composerAvailableHeight,
   );
+  let hasDraftComposerContext = $derived(
+    !!channelContextState.value ||
+      !!replyQuoteState.value.reply ||
+      replyQuoteState.value.quotes.length > 0,
+  );
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
   let lastNotifiedComposerContextSignature: string | null = null;
@@ -1415,6 +1420,7 @@
           onResetPostContent={handleResetPostContent}
           onSaveDraft={handleSaveDraft}
           onShowDraftList={draftListDialog.open}
+          canSaveDraft={hasDraftComposerContext || undefined}
           balloonMessage={showHeaderBalloonMessage
             ? balloon.finalMessage
             : null}

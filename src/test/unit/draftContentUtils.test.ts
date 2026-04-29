@@ -25,6 +25,18 @@ function createReplyState() {
     };
 }
 
+function createReferencedEvent() {
+    return {
+        id: 'referenced-event',
+        pubkey: 'referenced-author',
+        created_at: 1,
+        kind: 1,
+        tags: [['e', 'root-event', 'wss://relay']],
+        content: 'referenced content',
+        sig: 'sig',
+    };
+}
+
 function createQuoteState() {
     return {
         ...createReplyState(),
@@ -91,6 +103,27 @@ describe('buildDraftReplyQuoteData', () => {
     it('replyQuoteState がない場合は undefined を返す', () => {
         expect(buildDraftReplyQuoteData(createEmptyComposerState())).toBeUndefined();
     });
+
+    it('replyQuoteState の配列と referencedEvent を plain data として複製する', () => {
+        const relayHints = ['wss://relay'];
+        const referencedEvent = createReferencedEvent();
+        const data = buildDraftReplyQuoteData({
+            reply: {
+                ...createReplyState(),
+                relayHints,
+                referencedEvent,
+            },
+            quotes: [],
+        });
+
+        expect(data && 'reply' in data ? data.reply?.relayHints : undefined).toEqual(relayHints);
+        expect(data && 'reply' in data ? data.reply?.relayHints : undefined).not.toBe(relayHints);
+        expect(data && 'reply' in data ? data.reply?.referencedEvent : undefined).toEqual(referencedEvent);
+        expect(data && 'reply' in data ? data.reply?.referencedEvent : undefined).not.toBe(referencedEvent);
+        expect(data && 'reply' in data ? data.reply?.referencedEvent?.tags : undefined).not.toBe(referencedEvent.tags);
+        expect(data && 'reply' in data ? data.reply?.referencedEvent?.tags[0] : undefined).not.toBe(referencedEvent.tags[0]);
+        expect(() => structuredClone(data)).not.toThrow();
+    });
 });
 
 describe('createDraftSavePayload', () => {
@@ -101,6 +134,66 @@ describe('createDraftSavePayload', () => {
             replyQuoteState: createEmptyComposerState(),
             channelContextState: null,
         })).toBeNull();
+    });
+
+    it('空本文でも channel context があれば保存 payload を返す', () => {
+        expect(createDraftSavePayload({
+            htmlContent: '<p></p>',
+            galleryItems: [],
+            replyQuoteState: createEmptyComposerState(),
+            channelContextState: createChannelState(),
+        })).toEqual({
+            content: '<p></p>',
+            galleryItems: [],
+            channelData: createChannelState(),
+            replyQuoteData: undefined,
+        });
+    });
+
+    it('空本文でも reply context があれば保存 payload を返す', () => {
+        expect(createDraftSavePayload({
+            htmlContent: '<p></p>',
+            galleryItems: [],
+            replyQuoteState: { reply: createReplyState(), quotes: [] },
+            channelContextState: null,
+        })?.replyQuoteData).toEqual({
+            reply: {
+                mode: 'reply',
+                eventId: 'event-1',
+                relayHints: ['wss://relay'],
+                authorPubkey: 'author',
+                quoteNotificationEnabled: false,
+                authorDisplayName: 'author-name',
+                referencedEvent: null,
+                rootEventId: 'root-event',
+                rootRelayHint: 'wss://root-relay',
+                rootPubkey: 'root-pubkey',
+            },
+            quotes: [],
+        });
+    });
+
+    it('空本文でも quote context があれば保存 payload を返す', () => {
+        expect(createDraftSavePayload({
+            htmlContent: '<p></p>',
+            galleryItems: [],
+            replyQuoteState: { reply: null, quotes: [createQuoteState()] },
+            channelContextState: null,
+        })?.replyQuoteData).toEqual({
+            reply: null,
+            quotes: [{
+                mode: 'quote',
+                eventId: 'event-2',
+                relayHints: ['wss://relay'],
+                authorPubkey: 'author',
+                quoteNotificationEnabled: true,
+                authorDisplayName: 'author-name',
+                referencedEvent: null,
+                rootEventId: 'root-event',
+                rootRelayHint: 'wss://root-relay',
+                rootPubkey: 'root-pubkey',
+            }],
+        });
     });
 
     it('非プレースホルダーメディアと replyQuoteData を含む payload を返す', () => {

@@ -7,6 +7,7 @@ import type {
     ReplyQuoteComposerState,
     ReplyQuoteState,
     DraftReplyQuoteEntryData,
+    NostrEvent,
 } from './types';
 import { createSanitizedDraftContainer, sanitizeDraftHtml } from './draftHtmlSanitizer';
 
@@ -66,17 +67,37 @@ function isCustomEmojiElement(element: Element): boolean {
     return element.matches('img[data-custom-emoji], img.custom-emoji-inline[alt]');
 }
 
+function cloneStringArray(value: string[] | null | undefined): string[] {
+    return Array.from(value ?? []);
+}
+
+function cloneReferencedEvent(event: NostrEvent | null): NostrEvent | null {
+    if (!event) {
+        return null;
+    }
+
+    return {
+        id: event.id,
+        pubkey: event.pubkey,
+        created_at: event.created_at,
+        kind: event.kind,
+        tags: event.tags.map((tag) => Array.from(tag)),
+        content: event.content,
+        sig: event.sig,
+    };
+}
+
 function buildDraftReplyQuoteEntry(
     replyQuoteState: DraftReplyQuoteStateLike,
 ): DraftReplyQuoteEntryData {
     return {
         mode: replyQuoteState.mode,
         eventId: replyQuoteState.eventId,
-        relayHints: replyQuoteState.relayHints,
+        relayHints: cloneStringArray(replyQuoteState.relayHints),
         authorPubkey: replyQuoteState.authorPubkey,
         quoteNotificationEnabled: replyQuoteState.quoteNotificationEnabled,
         authorDisplayName: replyQuoteState.authorDisplayName,
-        referencedEvent: replyQuoteState.referencedEvent,
+        referencedEvent: cloneReferencedEvent(replyQuoteState.referencedEvent),
         rootEventId: replyQuoteState.rootEventId,
         rootRelayHint: replyQuoteState.rootRelayHint,
         rootPubkey: replyQuoteState.rootPubkey,
@@ -145,16 +166,23 @@ export function createDraftSavePayload({
     const persistedGalleryItems = galleryItems
         .filter((item) => !item.isPlaceholder)
         .map(buildDraftGalleryItem);
+    const channelData = buildDraftChannelData(channelContextState);
+    const replyQuoteData = buildDraftReplyQuoteData(replyQuoteState);
+    const hasComposerContext = !!channelData || !!replyQuoteData;
 
-    if ((!sanitizedHtmlContent || sanitizedHtmlContent === '<p></p>') && persistedGalleryItems.length === 0) {
+    if (
+        (!sanitizedHtmlContent || sanitizedHtmlContent === '<p></p>') &&
+        persistedGalleryItems.length === 0 &&
+        !hasComposerContext
+    ) {
         return null;
     }
 
     return {
         content: sanitizedHtmlContent,
         galleryItems: persistedGalleryItems,
-        channelData: buildDraftChannelData(channelContextState),
-        replyQuoteData: buildDraftReplyQuoteData(replyQuoteState),
+        channelData,
+        replyQuoteData,
     };
 }
 

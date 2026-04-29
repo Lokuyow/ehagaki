@@ -7,6 +7,10 @@
     import InfoPopoverButton from "./InfoPopoverButton.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import {
+        createDraftListDisplay,
+        type DraftContextLabels,
+    } from "../lib/draftDisplayUtils";
+    import {
         loadDrafts,
         deleteDraft,
         deleteAllDrafts,
@@ -33,6 +37,16 @@
     const getDraftOptions = () => ({
         pubkeyHex,
     });
+
+    function getDraftDisplayLabels(): DraftContextLabels {
+        return {
+            channel: $_("channelComposer.selected_label") || "チャンネル",
+            reply: $_("replyQuote.reply_label") || "リプライ",
+            quote: $_("replyQuote.quote_label") || "引用",
+            image: $_("draft.media.image") || "[画像]",
+            video: $_("draft.media.video") || "[動画]",
+        };
+    }
 
     // ダイアログを閉じるハンドラ
     function handleClose() {
@@ -113,13 +127,55 @@
         {:else}
             <ul class="draft-list">
                 {#each drafts as draft (draft.id)}
+                    {@const display = createDraftListDisplay(
+                        draft,
+                        getDraftDisplayLabels(),
+                        document,
+                    )}
                     <li class="draft-item">
                         <button
                             type="button"
                             class="draft-content"
                             onclick={() => handleApplyDraft(draft)}
                         >
-                            <span class="draft-preview">{draft.preview}</span>
+                            <span class="draft-main">
+                                <span class="draft-title">{display.title}</span>
+                                {#if display.contexts.length > 0}
+                                    <span class="draft-context-list">
+                                        {#each display.contexts as context}
+                                            <span
+                                                class="draft-context-row"
+                                                class:channel-context={context.kind ===
+                                                    "channel"}
+                                                class:reply-context={context.kind ===
+                                                    "reply"}
+                                                class:quote-context={context.kind ===
+                                                    "quote"}
+                                            >
+                                                <span
+                                                    class="preview-mode-icon svg-icon"
+                                                ></span>
+                                                <span class="context-label"
+                                                    >{context.label}</span
+                                                >
+                                                <span class="context-name"
+                                                    >{context.name}</span
+                                                >
+                                                {#if context.detail}
+                                                    <span class="context-detail"
+                                                        >{context.detail}</span
+                                                    >
+                                                {/if}
+                                            </span>
+                                        {/each}
+                                    </span>
+                                    {#if display.bodyPreview}
+                                        <span class="draft-preview"
+                                            >{display.bodyPreview}</span
+                                        >
+                                    {/if}
+                                {/if}
+                            </span>
                             <span class="draft-timestamp"
                                 >{formatDraftTimestamp(draft.timestamp)}</span
                             >
@@ -211,7 +267,7 @@
     .draft-item {
         display: flex;
         align-items: center;
-        min-height: 50px;
+        min-height: 58px;
         border-bottom: 1px solid var(--border-hr);
 
         &:last-child {
@@ -234,23 +290,101 @@
         flex: 1;
         display: flex;
         justify-content: space-between;
-        align-items: center;
+        align-items: flex-start;
+        gap: 12px;
         padding: 12px;
         --btn-bg: var(--dialog);
         border: none;
         cursor: pointer;
         text-align: left;
         color: var(--text);
-        font-size: 1.125rem;
+        font-size: 1rem;
         min-width: 0;
     }
 
-    .draft-preview {
+    .draft-main {
         flex: 1;
+        display: grid;
+        gap: 6px;
+        min-width: 0;
+    }
+
+    .draft-title,
+    .draft-preview {
+        display: block;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        margin: 0 8px;
+    }
+
+    .draft-title {
+        font-size: 1.0625rem;
+        font-weight: 600;
+        color: var(--text);
+    }
+
+    .draft-preview {
+        font-size: 0.95rem;
+        color: var(--text-muted);
+    }
+
+    .draft-context-list {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .draft-context-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+        color: var(--text-light);
+        font-size: 0.9rem;
+        line-height: 1.3;
+    }
+
+    .preview-mode-icon {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+        color: var(--theme);
+    }
+
+    .channel-context .preview-mode-icon {
+        mask-image: url("/icons/comments-solid-full.svg");
+    }
+
+    .reply-context .preview-mode-icon {
+        mask-image: url("/icons/reply-solid-full.svg");
+    }
+
+    .quote-context .preview-mode-icon {
+        mask-image: url("/icons/quote-right-solid-full.svg");
+    }
+
+    .context-label {
+        flex-shrink: 0;
+        color: var(--theme);
+        font-weight: 600;
+    }
+
+    .context-name,
+    .context-detail {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .context-name {
+        flex: 0 1 auto;
+        min-width: 3em;
+    }
+
+    .context-detail {
+        flex: 1 1 auto;
+        min-width: 0;
+        color: var(--text-muted);
     }
 
     .draft-timestamp {
