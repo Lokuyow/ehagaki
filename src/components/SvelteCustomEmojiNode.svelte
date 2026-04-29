@@ -1,18 +1,21 @@
 <script lang="ts">
     import type { NodeViewProps } from "@tiptap/core";
+    import { NodeSelection } from "@tiptap/pm/state";
     import { NodeViewWrapper } from "svelte-tiptap";
     import { onDestroy } from "svelte";
     import { customEmojiDragState } from "../stores/editorStore.svelte";
     import { isTouchDevice } from "../lib/utils/appDomUtils";
+    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { useCustomEmojiDrag } from "../lib/hooks/useCustomEmojiDrag.svelte";
 
     interface Props {
+        editor: NodeViewProps["editor"];
         node: NodeViewProps["node"];
         selected: boolean;
         getPos: NodeViewProps["getPos"];
     }
 
-    let { node, selected, getPos }: Props = $props();
+    let { editor, node, selected, getPos }: Props = $props();
     let shortcode = $derived(String(node.attrs.shortcode ?? ""));
     let label = $derived(shortcode ? `:${shortcode}:` : "Custom emoji");
     let dragElement: HTMLSpanElement | undefined = $state();
@@ -55,6 +58,30 @@
         window.dispatchEvent(new CustomEvent("custom-emoji-native-drag-end"));
     }
 
+    function selectNodeFromPress(event: Event): void {
+        const isTouchEvent =
+            event.type === "touchstart" ||
+            (typeof PointerEvent !== "undefined" &&
+                event instanceof PointerEvent &&
+                event.pointerType === "touch");
+        if (isTouchEvent) {
+            preventKeyboardFocusChange(event);
+        }
+
+        const pos = getPos();
+        if (typeof pos !== "number") {
+            return;
+        }
+
+        const { state, view } = editor;
+        const selection = NodeSelection.create(state.doc, pos);
+        if (selection.eq(state.selection)) {
+            return;
+        }
+
+        view.dispatch(state.tr.setSelection(selection));
+    }
+
     onDestroy(() => {
         cleanupDrag();
         Object.assign(customEmojiDragState, {
@@ -79,6 +106,8 @@
         draggable="false"
         title={label}
         aria-label={label}
+        onpointerdowncapture={selectNodeFromPress}
+        ontouchstartcapture={selectNodeFromPress}
         ondragstart={handleDragStart}
         ondragend={handleDragEnd}
     >

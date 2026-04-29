@@ -1,6 +1,6 @@
 import { LONG_PRESS_DELAY, MOVE_CANCEL_THRESHOLD } from '../constants';
 import { getEventPosition } from '../utils/appUtils';
-import { blurEditorAndBody, isTouchDevice } from '../utils/appDomUtils';
+import { isTouchDevice } from '../utils/appDomUtils';
 import {
     checkMoveThreshold,
     createDragPreview,
@@ -74,7 +74,6 @@ export function useCustomEmojiDrag({
 
     function handleTouchStart(event: TouchEvent): void {
         if (event.touches.length !== 1) return;
-        blurEditorAndBody();
         const pos = getEventPosition(event);
         clearLongPress();
         dragState.startPos = { x: pos.x, y: pos.y };
