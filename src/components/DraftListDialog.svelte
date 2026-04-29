@@ -174,7 +174,9 @@
                                         >
                                     {/if}
                                 {:else}
-                                    <span class="draft-preview">{display.title}</span>
+                                    <span class="draft-preview"
+                                        >{display.title}</span
+                                    >
                                 {/if}
                             </span>
                             <span class="draft-timestamp"
@@ -267,8 +269,8 @@
 
     .draft-item {
         display: flex;
-        align-items: center;
-        min-height: 58px;
+        align-items: stretch;
+        min-height: 50px;
         border-bottom: 1px solid var(--border-hr);
 
         &:last-child {
@@ -277,7 +279,7 @@
 
         :global(.delete-button) {
             width: 50px;
-            height: 50px;
+            height: auto;
             --btn-bg: var(--dialog);
 
             .trash-icon {
