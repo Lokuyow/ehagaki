@@ -246,12 +246,10 @@ select {
   :root.light select:hover {
     background: color-mix(in srgb, var(--btn-bg), black 6%);
     color: color-mix(in srgb, var(--text), black 6%);
-    --svg: currentColor;
   }
 
-  :root.light button.selected:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--btn-bg), black 20%);
-    color: color-mix(in srgb, var(--text), black 20%);
+  :root.light button:hover:not(:disabled):not(.draft-content),
+  :root.light select:hover {
     --svg: currentColor;
   }
 
@@ -259,6 +257,16 @@ select {
   :root.dark select:hover {
     background: color-mix(in srgb, var(--btn-bg), white 10%);
     color: color-mix(in srgb, var(--text), white 10%);
+  }
+
+  :root.dark button:hover:not(:disabled):not(.draft-content),
+  :root.dark select:hover {
+    --svg: currentColor;
+  }
+
+  :root.light button.selected:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--btn-bg), black 20%);
+    color: color-mix(in srgb, var(--text), black 20%);
     --svg: currentColor;
   }
 

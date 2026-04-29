@@ -287,23 +287,23 @@
                 height: 24px;
             }
         }
-    }
 
-    .draft-content {
-        flex: 1;
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        gap: 12px;
-        padding: 12px;
-        --btn-bg: var(--dialog);
-        border: none;
-        cursor: pointer;
-        text-align: left;
-        color: var(--text);
-        font-size: 1rem;
-        min-width: 0;
-        height: auto;
+        button.draft-content {
+            flex: 1;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 12px;
+            --btn-bg: var(--dialog);
+            border: none;
+            cursor: pointer;
+            text-align: left;
+            color: var(--text);
+            font-size: 1rem;
+            min-width: 0;
+            height: auto;
+        }
     }
 
     .draft-main {
