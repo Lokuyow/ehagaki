@@ -14,6 +14,7 @@
         onSaveDraft: () => Promise<boolean>;
         onShowDraftList: () => void;
         canSaveDraft?: boolean;
+        canResetPostContent?: boolean;
         balloonMessage?: BalloonMessageType | null;
         compactMessage?: BalloonMessageType | null;
         showMascot?: boolean;
@@ -25,6 +26,7 @@
         onSaveDraft,
         onShowDraftList,
         canSaveDraft = undefined,
+        canResetPostContent = undefined,
         balloonMessage = null,
         compactMessage = null,
         showMascot = true,
@@ -68,6 +70,7 @@
     let isUploading = $derived(editorState.isUploading);
     let canPost = $derived(editorState.canPost);
     let canSaveCurrentDraft = $derived(canSaveDraft ?? canPost);
+    let canResetCurrentPostContent = $derived(canResetPostContent ?? canPost);
     let compactSuccessText = $derived(
         $_("balloonMessage.success.compact_post_success") || "投稿完了",
     );
@@ -130,7 +133,7 @@
                                 variant="header"
                                 shape="square"
                                 className="clear-button"
-                                disabled={!canPost ||
+                                disabled={!canResetCurrentPostContent ||
                                     postStatus.sending ||
                                     isUploading}
                                 onClick={(e) => {

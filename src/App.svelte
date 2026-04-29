@@ -1318,9 +1318,10 @@
     clearSharedMediaProcessed();
   }
 
-  // 追加: エディター内容クリア
   function handleResetPostContent() {
     postComponentRef?.resetPostContent();
+    clearReplyQuote();
+    clearChannelContext();
   }
 
   // --- 下書き機能ハンドラ---
@@ -1421,6 +1422,7 @@
           onSaveDraft={handleSaveDraft}
           onShowDraftList={draftListDialog.open}
           canSaveDraft={hasDraftComposerContext || undefined}
+          canResetPostContent={hasDraftComposerContext || undefined}
           balloonMessage={showHeaderBalloonMessage
             ? balloon.finalMessage
             : null}

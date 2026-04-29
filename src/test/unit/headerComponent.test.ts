@@ -89,6 +89,25 @@ describe('HeaderComponent', () => {
         expect(onSaveDraft).toHaveBeenCalledOnce();
     });
 
+    it('投稿できない空本文でも canResetPostContent が true ならクリアできる', async () => {
+        const onResetPostContent = vi.fn();
+
+        render(HeaderComponent, {
+            props: {
+                onResetPostContent,
+                onSaveDraft: vi.fn(async () => true),
+                onShowDraftList: vi.fn(),
+                canResetPostContent: true,
+                showMascot: false,
+                showFlavorText: false,
+            },
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'エディターをクリア' }));
+
+        expect(onResetPostContent).toHaveBeenCalledOnce();
+    });
+
     it('canSaveDraft が false なら下書き保存ボタンを無効化する', () => {
         render(HeaderComponent, {
             props: {
