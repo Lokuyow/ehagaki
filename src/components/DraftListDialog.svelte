@@ -303,6 +303,7 @@
         color: var(--text);
         font-size: 1rem;
         min-width: 0;
+        height: auto;
     }
 
     .draft-main {
