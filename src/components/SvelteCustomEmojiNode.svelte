@@ -75,7 +75,8 @@
         bind:this={dragElement}
         class="custom-emoji-drag-target"
         data-dragging={dragState.isDragging}
-        draggable={!isTouchCapable}
+        data-drag-handle
+        draggable="false"
         title={label}
         aria-label={label}
         ondragstart={handleDragStart}

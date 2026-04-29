@@ -146,20 +146,107 @@ export function useCustomEmojiDrag({
         dragState.preview = null;
     }
 
+    function handlePointerDown(event: PointerEvent): void {
+        if (event.pointerType === 'touch' || event.button !== 0) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        clearLongPress();
+        dragState.startPos = { x: event.clientX, y: event.clientY };
+        dragState.startTarget = event.currentTarget as HTMLElement;
+
+        window.addEventListener('pointermove', handlePointerMove, { passive: false });
+        window.addEventListener('pointerup', handlePointerUp, { passive: false });
+        window.addEventListener('pointercancel', handlePointerUp, { passive: false });
+    }
+
+    function handlePointerMove(event: PointerEvent): void {
+        if (event.pointerType === 'touch') return;
+
+        if (!dragState.isDragging) {
+            if (
+                !checkMoveThreshold(
+                    event.clientX,
+                    event.clientY,
+                    dragState.startPos.x,
+                    dragState.startPos.y,
+                    MOVE_CANCEL_THRESHOLD,
+                )
+            ) {
+                return;
+            }
+            startDrag();
+        }
+
+        event.preventDefault();
+        updateDragPreview(dragState.preview, event.clientX, event.clientY);
+        highlightDropZoneAtPosition(event.clientX, event.clientY);
+        dispatchCustomEmojiDragEvent('move', {
+            touchX: event.clientX,
+            touchY: event.clientY,
+            nodePos: getPos(),
+        });
+    }
+
+    function removePointerListeners(): void {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        window.removeEventListener('pointercancel', handlePointerUp);
+    }
+
+    function handlePointerUp(event: PointerEvent): void {
+        if (event.pointerType === 'touch') return;
+        removePointerListeners();
+
+        if (!dragState.isDragging) {
+            dragState.startTarget = null;
+            return;
+        }
+
+        event.preventDefault();
+        const elementBelow = document.elementFromPoint(event.clientX, event.clientY);
+        const dropZone = elementBelow?.closest('.drop-zone-indicator');
+        const targetDropPos = dropZone?.getAttribute('data-drop-pos');
+
+        dispatchCustomEmojiDragEvent('end', {
+            nodeData: {
+                type: 'customEmoji',
+                attrs: getNodeAttrs(),
+                pos: getPos(),
+            },
+            dropX: event.clientX,
+            dropY: event.clientY,
+            target: elementBelow,
+            dropPosition: targetDropPos ? Number.parseInt(targetDropPos, 10) : null,
+        });
+
+        dragState.isDragging = false;
+        dragState.startTarget = null;
+        removeDragPreview(dragState.preview);
+        dragState.preview = null;
+    }
+
     $effect(() => {
         const element = getElement();
-        if (!isTouchCapable || !element) return;
+        if (!element) return;
 
-        element.addEventListener('touchstart', handleTouchStart, { passive: false });
-        element.addEventListener('touchmove', handleTouchMove, { passive: false });
-        element.addEventListener('touchend', handleTouchEnd, { passive: false });
-        element.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+        element.addEventListener('pointerdown', handlePointerDown, { passive: false });
+        if (isTouchCapable) {
+            element.addEventListener('touchstart', handleTouchStart, { passive: false });
+            element.addEventListener('touchmove', handleTouchMove, { passive: false });
+            element.addEventListener('touchend', handleTouchEnd, { passive: false });
+            element.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+        }
 
         return () => {
-            element.removeEventListener('touchstart', handleTouchStart);
-            element.removeEventListener('touchmove', handleTouchMove);
-            element.removeEventListener('touchend', handleTouchEnd);
-            element.removeEventListener('touchcancel', handleTouchEnd);
+            element.removeEventListener('pointerdown', handlePointerDown);
+            if (isTouchCapable) {
+                element.removeEventListener('touchstart', handleTouchStart);
+                element.removeEventListener('touchmove', handleTouchMove);
+                element.removeEventListener('touchend', handleTouchEnd);
+                element.removeEventListener('touchcancel', handleTouchEnd);
+            }
+            removePointerListeners();
             clearLongPress();
             removeDragPreview(dragState.preview);
             dragState.preview = null;
@@ -167,6 +254,7 @@ export function useCustomEmojiDrag({
     });
 
     function cleanup(): void {
+        removePointerListeners();
         clearLongPress();
         removeDragPreview(dragState.preview);
         dragState.preview = null;

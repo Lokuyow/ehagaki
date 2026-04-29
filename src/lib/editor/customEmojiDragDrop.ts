@@ -1,6 +1,7 @@
 import { Extension } from '@tiptap/core';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
+import type { EditorView } from '@tiptap/pm/view';
 import {
     findClosestCustomEmojiDropPosition,
     getCustomEmojiDropPositions,
@@ -29,6 +30,37 @@ function parseCustomEmojiDragData(event: DragEvent): { pos: number; attrs: Recor
     } catch {
         return null;
     }
+}
+
+function findCustomEmojiDragDataFromDom(
+    view: EditorView,
+    event: DragEvent,
+): { pos: number; attrs: Record<string, unknown> } | null {
+    const target = event.target as HTMLElement | null;
+    const customEmojiElement = target?.closest?.('.custom-emoji-wrapper, .custom-emoji-drag-target, [data-custom-emoji]');
+    if (!customEmojiElement) return null;
+
+    let found: { pos: number; attrs: Record<string, unknown> } | null = null;
+    view.state.doc.descendants((node, pos) => {
+        if (found || node.type.name !== 'customEmoji') {
+            return;
+        }
+
+        const nodeDom = view.nodeDOM(pos);
+        if (nodeDom instanceof HTMLElement && nodeDom.contains(customEmojiElement)) {
+            found = { pos, attrs: node.attrs };
+            return false;
+        }
+    });
+
+    return found;
+}
+
+function getCustomEmojiDragData(
+    view: EditorView,
+    event: DragEvent,
+): { pos: number; attrs: Record<string, unknown> } | null {
+    return parseCustomEmojiDragData(event) ?? findCustomEmojiDragDataFromDom(view, event);
 }
 
 function getDropZonePositionFromPoint(x: number, y: number): number | null {
@@ -137,9 +169,20 @@ export const CustomEmojiDragDropExtension = Extension.create({
                     handleDOMEvents: {
                         dragstart: (view, event) => {
                             const dragEvent = event as DragEvent;
-                            const nodeData = parseCustomEmojiDragData(dragEvent);
+                            const nodeData = getCustomEmojiDragData(view, dragEvent);
                             if (!nodeData) return false;
 
+                            dragEvent.dataTransfer?.setData(
+                                INTERNAL_NODE_MIME,
+                                JSON.stringify({
+                                    type: 'customEmoji',
+                                    attrs: nodeData.attrs,
+                                    pos: nodeData.pos,
+                                }),
+                            );
+                            if (dragEvent.dataTransfer) {
+                                dragEvent.dataTransfer.effectAllowed = 'move';
+                            }
                             view.dispatch(
                                 view.state.tr.setMeta(CUSTOM_EMOJI_DRAG_META, {
                                     isDragging: true,

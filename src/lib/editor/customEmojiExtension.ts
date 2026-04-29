@@ -69,6 +69,7 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
     inline: true,
     atom: true,
     selectable: true,
+    draggable: true,
 
     addOptions() {
         return {
