@@ -1,5 +1,6 @@
 import type { Editor as TipTapEditor } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { NodeSelection } from '@tiptap/pm/state';
 import type { Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import { isMediaPlaceholder } from './mediaNodeUtils';
@@ -74,6 +75,106 @@ export function moveImageNode(
         return true;
     } catch (error) {
         console.error('Error moving image:', error);
+        return false;
+    }
+}
+
+export function getCustomEmojiDropPositions(
+    doc: PMNode,
+    draggedNodePos?: number | null,
+): number[] {
+    const positions = new Set<number>();
+
+    doc.descendants((node, pos) => {
+        if (node.type.name !== 'paragraph') {
+            return;
+        }
+
+        const paragraphStart = pos + 1;
+        const paragraphEnd = pos + node.nodeSize - 1;
+        positions.add(paragraphStart);
+        positions.add(paragraphEnd);
+
+        node.descendants((child, childOffset) => {
+            if (child.type.name !== 'customEmoji') {
+                return;
+            }
+
+            const emojiPos = paragraphStart + childOffset;
+            positions.add(emojiPos);
+            positions.add(emojiPos + child.nodeSize);
+        });
+    });
+
+    if (typeof draggedNodePos === 'number') {
+        positions.delete(draggedNodePos);
+        positions.delete(draggedNodePos + 1);
+    }
+
+    return [...positions].sort((left, right) => left - right);
+}
+
+export function findClosestCustomEmojiDropPosition(
+    doc: PMNode,
+    dropPos: number,
+    draggedNodePos?: number | null,
+): number | null {
+    const positions = getCustomEmojiDropPositions(doc, draggedNodePos);
+    if (positions.length === 0) return null;
+
+    return positions.reduce((closest, position) => {
+        const closestDistance = Math.abs(closest - dropPos);
+        const positionDistance = Math.abs(position - dropPos);
+        return positionDistance < closestDistance ? position : closest;
+    }, positions[0]);
+}
+
+export function moveCustomEmojiNode(
+    view: EditorView,
+    nodeData: { pos: number; attrs: Record<string, unknown> },
+    dropPos: number,
+): boolean {
+    const { tr, doc, schema } = view.state;
+    const originalPos = nodeData.pos;
+    const originalNode = doc.nodeAt(originalPos);
+
+    if (originalNode?.type.name !== 'customEmoji') {
+        return false;
+    }
+
+    if (dropPos === originalPos || dropPos === originalPos + originalNode.nodeSize) {
+        return true;
+    }
+
+    const allowedPositions = getCustomEmojiDropPositions(doc, originalPos);
+    if (!allowedPositions.includes(dropPos)) {
+        return true;
+    }
+
+    const customEmojiNode = schema.nodes.customEmoji.create({
+        ...originalNode.attrs,
+        ...nodeData.attrs,
+    });
+
+    try {
+        const insertPos =
+            dropPos < originalPos
+                ? dropPos
+                : dropPos - originalNode.nodeSize;
+        const transaction =
+            dropPos < originalPos
+                ? tr
+                    .insert(insertPos, customEmojiNode)
+                    .delete(originalPos + customEmojiNode.nodeSize, originalPos + customEmojiNode.nodeSize + originalNode.nodeSize)
+                : tr
+                    .delete(originalPos, originalPos + originalNode.nodeSize)
+                    .insert(insertPos, customEmojiNode);
+
+        transaction.setSelection(NodeSelection.create(transaction.doc, insertPos));
+        view.dispatch(transaction.scrollIntoView());
+        return true;
+    } catch (error) {
+        console.error('Error moving custom emoji:', error);
         return false;
     }
 }

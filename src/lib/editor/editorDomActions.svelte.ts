@@ -168,7 +168,10 @@ export function touchAction(node: HTMLElement) {
         const target = event.target as HTMLElement;
         if (
             target &&
-            target.closest('.editor-image-button[data-dragging="true"]')
+            (
+                target.closest('.editor-image-button[data-dragging="true"]') ||
+                target.closest('.custom-emoji-drag-target[data-dragging="true"]')
+            )
         ) {
             const touch = event.touches[0];
             const scrollThreshold = 120;

@@ -44,6 +44,14 @@ export const imageSelectionState = $state({
     justSelectedTimeout: null as ReturnType<typeof setTimeout> | null,
 });
 
+export const customEmojiDragState = $state({
+    isDragging: false,
+    startPos: { x: 0, y: 0 },
+    longPressTimeout: null as ReturnType<typeof setTimeout> | null,
+    startTarget: null as HTMLElement | null,
+    preview: null as HTMLElement | null,
+});
+
 // --- エディター状態更新関数 ---
 function canPostByContent(content: string, hasMedia: boolean): boolean {
     const galleryHasMedia = mediaGalleryStore.getItems().some(item => !item.isPlaceholder);

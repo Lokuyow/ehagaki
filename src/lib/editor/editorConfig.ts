@@ -11,7 +11,7 @@ import SvelteImageNode from '../../components/SvelteImageNode.svelte';
 import { Video } from './videoExtension';
 import { CustomEmoji } from './customEmojiExtension';
 import UniqueID from './uniqueIdExtension';
-import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion, CustomEmojiSuggestion, ToolbarCaretExtension } from '.';
+import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, CustomEmojiDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion, CustomEmojiSuggestion, ToolbarCaretExtension } from '.';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
@@ -265,6 +265,7 @@ export function createEditorStore(options: EditorConfigOptions) {
             ClipboardExtension, // ← クリップボード処理を追加（MediaPasteExtensionの前に配置）
             MediaPasteExtension,
             ImageDragDropExtension,
+            CustomEmojiDragDropExtension,
             SmartBackspaceExtension,
             AndroidCompositionFix, // ← Android日本語入力の自動確定問題を修正
             // Placeholderエクステンションの設定

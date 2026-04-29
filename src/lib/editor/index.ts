@@ -8,6 +8,7 @@ export { ClipboardExtension } from './clipboardExtension';
 export { AndroidCompositionFix } from './androidCompositionFix';
 export { HashtagSuggestion } from './hashtagSuggestion';
 export { CustomEmoji } from './customEmojiExtension';
+export { CustomEmojiDragDropExtension } from './customEmojiDragDrop';
 export { CustomEmojiSuggestion, findCustomEmojiSuggestionMatch } from './customEmojiSuggestion';
 export { ToolbarCaretExtension, showToolbarCaret } from './toolbarCaretExtension';
 export type { CustomEmojiAttrs } from './customEmojiExtension';
