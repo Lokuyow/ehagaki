@@ -189,11 +189,7 @@
         align-items: center;
         flex-shrink: 0;
     }
-    :global(.info-trigger) {
-        height: 40px;
-        width: 40px;
-        border-radius: 50%;
-    }
+
     :global(.popover-table) {
         border-collapse: collapse;
         font-size: 1rem;

@@ -20,7 +20,12 @@
         pubkeyHex?: string | null;
     }
 
-    let { show = $bindable(false), onClose, onApplyDraft, pubkeyHex = null }: Props = $props();
+    let {
+        show = $bindable(false),
+        onClose,
+        onApplyDraft,
+        pubkeyHex = null,
+    }: Props = $props();
 
     // 下書きリスト
     let drafts = $state<Draft[]>([]);
@@ -207,7 +212,6 @@
         display: flex;
         align-items: center;
         min-height: 50px;
-        padding: 0 8px;
         border-bottom: 1px solid var(--border-hr);
 
         &:last-child {
@@ -217,7 +221,7 @@
         :global(.delete-button) {
             width: 50px;
             height: 50px;
-            background-color: transparent;
+            --btn-bg: var(--dialog);
 
             .trash-icon {
                 width: 24px;
@@ -231,8 +235,8 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 12px 8px;
-        background: none;
+        padding: 12px;
+        --btn-bg: var(--dialog);
         border: none;
         cursor: pointer;
         text-align: left;
@@ -246,7 +250,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        margin-right: 8px;
+        margin: 0 8px;
     }
 
     .draft-timestamp {
