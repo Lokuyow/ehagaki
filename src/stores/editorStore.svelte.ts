@@ -46,6 +46,7 @@ export const imageSelectionState = $state({
 
 export const customEmojiDragState = $state({
     isDragging: false,
+    draggedNodePos: null as number | null,
     startPos: { x: 0, y: 0 },
     longPressTimeout: null as ReturnType<typeof setTimeout> | null,
     startTarget: null as HTMLElement | null,

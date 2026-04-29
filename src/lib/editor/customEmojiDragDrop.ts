@@ -66,7 +66,7 @@ function getCustomEmojiDragData(
 function getDropZonePositionFromPoint(x: number, y: number): number | null {
     const dropZone = document
         .elementFromPoint(x, y)
-        ?.closest('.drop-zone-indicator[data-drop-pos]');
+        ?.closest('.drop-zone-indicator[data-drop-pos], .custom-emoji-origin-drop-zone[data-drop-pos]');
     const rawPosition = dropZone?.getAttribute('data-drop-pos');
     if (!rawPosition) return null;
 
@@ -356,7 +356,7 @@ export const CustomEmojiDragDropExtension = Extension.create({
                             return DecorationSet.empty;
                         }
 
-                        const decorations = getCustomEmojiDropPositions(
+                        const dragPositions = getCustomEmojiDropPositions(
                             newState.doc,
                             dragState.draggedNodePos,
                         ).map((position) =>
@@ -364,8 +364,7 @@ export const CustomEmojiDragDropExtension = Extension.create({
                                 side: -1,
                             }),
                         );
-
-                        return DecorationSet.create(newState.doc, decorations);
+                        return DecorationSet.create(newState.doc, dragPositions);
                     },
                 },
                 props: {

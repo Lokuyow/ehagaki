@@ -122,12 +122,14 @@ export function dispatchDragEvent(type: DragEvent['type'], details?: Record<stri
 // ドロップゾーン処理
 // =============================================================================
 
+const DROP_ZONE_TARGET_SELECTOR = ".drop-zone-indicator, .custom-emoji-origin-drop-zone";
+
 function findDropZoneAtPosition(x: number, y: number): Element | null {
-    return document.elementFromPoint(x, y)?.closest(".drop-zone-indicator") || null;
+    return document.elementFromPoint(x, y)?.closest(DROP_ZONE_TARGET_SELECTOR) || null;
 }
 
 export function clearAllDropZoneHighlights(): void {
-    domUtils.querySelectorAll(".drop-zone-indicator").forEach(zone => {
+    domUtils.querySelectorAll(DROP_ZONE_TARGET_SELECTOR).forEach(zone => {
         zone.classList.remove("drop-zone-hover");
     });
 }

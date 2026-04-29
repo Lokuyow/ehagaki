@@ -11,6 +11,7 @@ import {
 
 interface CustomEmojiDragStateRef {
     isDragging: boolean;
+    draggedNodePos: number | null;
     longPressTimeout: ReturnType<typeof setTimeout> | null;
     startTarget: HTMLElement | null;
     startPos: { x: number; y: number };
@@ -64,6 +65,7 @@ export function useCustomEmojiDrag({
         if (typeof nodePos !== 'number' || !dragState.startTarget) return;
 
         dragState.isDragging = true;
+        dragState.draggedNodePos = nodePos;
         dispatchCustomEmojiDragEvent('start', { nodePos });
         dragState.preview = createDragPreview(
             dragState.startTarget,
@@ -125,7 +127,7 @@ export function useCustomEmojiDrag({
         event.preventDefault();
         const pos = getEventPosition(event);
         const elementBelow = document.elementFromPoint(pos.x, pos.y);
-        const dropZone = elementBelow?.closest('.drop-zone-indicator');
+        const dropZone = elementBelow?.closest('.drop-zone-indicator, .custom-emoji-origin-drop-zone');
         const targetDropPos = dropZone?.getAttribute('data-drop-pos');
 
         dispatchCustomEmojiDragEvent('end', {
@@ -141,6 +143,7 @@ export function useCustomEmojiDrag({
         });
 
         dragState.isDragging = false;
+        dragState.draggedNodePos = null;
         removeDragPreview(dragState.preview);
         dragState.preview = null;
     }
@@ -204,7 +207,7 @@ export function useCustomEmojiDrag({
 
         event.preventDefault();
         const elementBelow = document.elementFromPoint(event.clientX, event.clientY);
-        const dropZone = elementBelow?.closest('.drop-zone-indicator');
+        const dropZone = elementBelow?.closest('.drop-zone-indicator, .custom-emoji-origin-drop-zone');
         const targetDropPos = dropZone?.getAttribute('data-drop-pos');
 
         dispatchCustomEmojiDragEvent('end', {
@@ -220,6 +223,7 @@ export function useCustomEmojiDrag({
         });
 
         dragState.isDragging = false;
+        dragState.draggedNodePos = null;
         dragState.startTarget = null;
         removeDragPreview(dragState.preview);
         dragState.preview = null;
@@ -248,6 +252,7 @@ export function useCustomEmojiDrag({
             removePointerListeners();
             clearLongPress();
             removeDragPreview(dragState.preview);
+            dragState.draggedNodePos = null;
             dragState.preview = null;
         };
     });
@@ -256,6 +261,7 @@ export function useCustomEmojiDrag({
         removePointerListeners();
         clearLongPress();
         removeDragPreview(dragState.preview);
+        dragState.draggedNodePos = null;
         dragState.preview = null;
     }
 

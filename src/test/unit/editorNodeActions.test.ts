@@ -5,7 +5,9 @@ import type { Transaction } from '@tiptap/pm/state';
 import {
     calculateDragPositions,
     createMoveTransaction,
+    findClosestCustomEmojiDropPosition,
     getCustomEmojiDropPositions,
+    isCustomEmojiOriginalDropPosition,
     moveCustomEmojiNode,
 } from '../../lib/utils/editorNodeActions';
 
@@ -88,7 +90,7 @@ describe('editorNodeActions', () => {
             });
         }
 
-        it('limits custom emoji drop positions to paragraph edges and emoji boundaries', () => {
+        it('keeps one original drop target while omitting original-side drop bars', () => {
             const doc = schema.nodes.doc.create(null, [
                 schema.nodes.paragraph.create(null, [
                     schema.text('a'),
@@ -99,6 +101,12 @@ describe('editorNodeActions', () => {
 
             expect(getCustomEmojiDropPositions(doc)).toEqual([1, 2, 3, 4]);
             expect(getCustomEmojiDropPositions(doc, 2)).toEqual([1, 4]);
+            expect(isCustomEmojiOriginalDropPosition(doc, 2, 2)).toBe(true);
+            expect(isCustomEmojiOriginalDropPosition(doc, 3, 2)).toBe(true);
+            expect(isCustomEmojiOriginalDropPosition(doc, 1, 2)).toBe(false);
+            expect(isCustomEmojiOriginalDropPosition(doc, 4, 2)).toBe(false);
+            expect(findClosestCustomEmojiDropPosition(doc, 2, 2)).toBe(2);
+            expect(findClosestCustomEmojiDropPosition(doc, 3, 2)).toBe(2);
         });
 
         it('moves custom emoji nodes while preserving attrs', () => {

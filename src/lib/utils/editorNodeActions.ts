@@ -107,11 +107,26 @@ export function getCustomEmojiDropPositions(
     });
 
     if (typeof draggedNodePos === 'number') {
+        const draggedNode = doc.nodeAt(draggedNodePos);
+        const draggedNodeSize = draggedNode?.type.name === 'customEmoji' ? draggedNode.nodeSize : 1;
         positions.delete(draggedNodePos);
-        positions.delete(draggedNodePos + 1);
+        positions.delete(draggedNodePos + draggedNodeSize);
     }
 
     return [...positions].sort((left, right) => left - right);
+}
+
+export function isCustomEmojiOriginalDropPosition(
+    doc: PMNode,
+    dropPos: number,
+    draggedNodePos?: number | null,
+): boolean {
+    if (typeof draggedNodePos !== 'number') return false;
+
+    const draggedNode = doc.nodeAt(draggedNodePos);
+    if (draggedNode?.type.name !== 'customEmoji') return false;
+
+    return dropPos >= draggedNodePos && dropPos <= draggedNodePos + draggedNode.nodeSize;
 }
 
 export function findClosestCustomEmojiDropPosition(
@@ -119,6 +134,10 @@ export function findClosestCustomEmojiDropPosition(
     dropPos: number,
     draggedNodePos?: number | null,
 ): number | null {
+    if (isCustomEmojiOriginalDropPosition(doc, dropPos, draggedNodePos)) {
+        return draggedNodePos ?? null;
+    }
+
     const positions = getCustomEmojiDropPositions(doc, draggedNodePos);
     if (positions.length === 0) return null;
 

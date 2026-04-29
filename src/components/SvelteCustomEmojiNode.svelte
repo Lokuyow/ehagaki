@@ -21,6 +21,12 @@
     let dragElement: HTMLSpanElement | undefined = $state();
     let dragState = customEmojiDragState;
     const isTouchCapable = isTouchDevice();
+    let currentPos = $derived(getPos());
+    let isOriginDropZone = $derived(
+        dragState.isDragging &&
+            typeof currentPos === "number" &&
+            dragState.draggedNodePos === currentPos,
+    );
 
     const { cleanup: cleanupDrag } = useCustomEmojiDrag({
         getElement: () => dragElement,
@@ -46,15 +52,18 @@
         );
         event.dataTransfer.effectAllowed = "move";
         dragState.isDragging = true;
+        const nodePos = getPos();
+        dragState.draggedNodePos = typeof nodePos === "number" ? nodePos : null;
         window.dispatchEvent(
             new CustomEvent("custom-emoji-native-drag-start", {
-                detail: { nodePos: getPos() },
+                detail: { nodePos },
             }),
         );
     }
 
     function handleDragEnd(): void {
         dragState.isDragging = false;
+        dragState.draggedNodePos = null;
         window.dispatchEvent(new CustomEvent("custom-emoji-native-drag-end"));
     }
 
@@ -86,6 +95,7 @@
         cleanupDrag();
         Object.assign(customEmojiDragState, {
             isDragging: false,
+            draggedNodePos: null,
             longPressTimeout: null,
             startTarget: null,
             preview: null,
@@ -95,7 +105,8 @@
 
 <NodeViewWrapper
     as="span"
-    class={`custom-emoji-wrapper${selected ? " is-selected" : ""}`}
+    class={`custom-emoji-wrapper${selected ? " is-selected" : ""}${isOriginDropZone ? " custom-emoji-origin-drop-zone" : ""}`}
+    data-drop-pos={isOriginDropZone ? currentPos : undefined}
 >
     <!-- svelte-ignore a11y_no_static_element_interactions - ProseMirror manages node selection and keyboard editing. -->
     <span
@@ -137,6 +148,19 @@
     :global(.custom-emoji-wrapper.is-selected) {
         outline: 2px solid var(--theme);
         outline-offset: 1px;
+    }
+
+    :global(.custom-emoji-wrapper.custom-emoji-origin-drop-zone) {
+        outline: 2px solid dodgerblue;
+        outline-offset: 2px;
+        background: rgba(30, 144, 255, 0.16);
+    }
+
+    :global(.custom-emoji-wrapper.custom-emoji-origin-drop-zone.drop-zone-hover) {
+        outline-color: var(--yellow);
+        outline-width: 3px;
+        background: rgba(255, 200, 0, 0.28);
+        box-shadow: 0 0 0 3px rgba(255, 200, 0, 0.22);
     }
 
     .custom-emoji-image {
