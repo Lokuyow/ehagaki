@@ -139,7 +139,6 @@
                             onclick={() => handleApplyDraft(draft)}
                         >
                             <span class="draft-main">
-                                <span class="draft-title">{display.title}</span>
                                 {#if display.contexts.length > 0}
                                     <span class="draft-context-list">
                                         {#each display.contexts as context}
@@ -174,6 +173,8 @@
                                             >{display.bodyPreview}</span
                                         >
                                     {/if}
+                                {:else}
+                                    <span class="draft-preview">{display.title}</span>
                                 {/if}
                             </span>
                             <span class="draft-timestamp"
@@ -309,7 +310,6 @@
         min-width: 0;
     }
 
-    .draft-title,
     .draft-preview {
         display: block;
         overflow: hidden;
@@ -317,15 +317,9 @@
         white-space: nowrap;
     }
 
-    .draft-title {
-        font-size: 1.0625rem;
-        font-weight: 600;
-        color: var(--text);
-    }
-
     .draft-preview {
-        font-size: 0.95rem;
-        color: var(--text-muted);
+        font-size: 1rem;
+        color: var(--text);
     }
 
     .draft-context-list {
