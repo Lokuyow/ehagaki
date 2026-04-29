@@ -1,8 +1,6 @@
 <script lang="ts">
-    import { tick } from "svelte";
-    import { Command, ScrollArea } from "bits-ui";
+    import SuggestionCommandList from "./SuggestionCommandList.svelte";
     import type { CustomEmojiItem } from "../lib/customEmoji";
-    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { isAnyDialogOpen } from "../stores/dialogStore.svelte";
 
     interface Props {
@@ -12,174 +10,58 @@
     }
 
     let { items, onSelect, onDismiss }: Props = $props();
-    let selectedIndex = $state(0);
     let anyDialogOpen = $derived(isAnyDialogOpen());
-    let viewportElement = $state<HTMLElement | null>(null);
-
-    $effect(() => {
-        if (anyDialogOpen) {
-            onDismiss?.();
-        }
-    });
+    let listComponent = $state<{
+        moveUp?: () => void;
+        moveDown?: () => void;
+        confirmSelection?: () => boolean;
+        resetIndex?: () => void;
+    } | null>(null);
 
     export function moveDown(): void {
-        if (items.length > 0) {
-            selectedIndex = (selectedIndex + 1) % items.length;
-            scheduleSelectedItemScroll();
-        }
+        listComponent?.moveDown?.();
     }
 
     export function moveUp(): void {
-        if (items.length > 0) {
-            selectedIndex = (selectedIndex - 1 + items.length) % items.length;
-            scheduleSelectedItemScroll();
-        }
+        listComponent?.moveUp?.();
     }
 
     export function confirmSelection(): boolean {
-        const item = items[selectedIndex];
-        if (item) {
-            onSelect(item);
-            return true;
-        }
-        return false;
+        return listComponent?.confirmSelection?.() ?? false;
     }
 
     export function resetIndex(): void {
-        selectedIndex = 0;
-        scheduleSelectedItemScroll();
-    }
-
-    function selectItem(item: CustomEmojiItem): void {
-        onSelect(item);
-    }
-
-    function scheduleSelectedItemScroll(): void {
-        void tick().then(scrollSelectedItemIntoView);
-    }
-
-    function scrollSelectedItemIntoView(): void {
-        if (!viewportElement) return;
-        const selectedItem = viewportElement.querySelector<HTMLElement>(
-            ".custom-emoji-suggestion-item.selected",
-        );
-        if (!selectedItem) return;
-
-        const itemTop = selectedItem.offsetTop;
-        const itemBottom = itemTop + selectedItem.offsetHeight;
-        const viewportTop = viewportElement.scrollTop;
-        const viewportBottom = viewportTop + viewportElement.clientHeight;
-
-        if (itemTop < viewportTop) {
-            viewportElement.scrollTop = itemTop;
-        } else if (itemBottom > viewportBottom) {
-            viewportElement.scrollTop =
-                itemBottom - viewportElement.clientHeight;
-        }
+        listComponent?.resetIndex?.();
     }
 </script>
 
-{#if items.length > 0}
-    <Command.Root
-        class="custom-emoji-suggestion-command"
-        shouldFilter={false}
-        loop={true}
-    >
-        <Command.List class="custom-emoji-suggestion-list">
-            <ScrollArea.Root type="auto" class="custom-emoji-suggestion-scroll">
-                <ScrollArea.Viewport
-                    class="custom-emoji-suggestion-viewport"
-                    bind:ref={viewportElement}
-                >
-                    {#each items as item, i (item.shortcode)}
-                        <Command.Item
-                            value={item.shortcode}
-                            keywords={[item.shortcode]}
-                            class={`custom-emoji-suggestion-item${i === selectedIndex ? " selected" : ""}`}
-                            onSelect={() => selectItem(item)}
-                            onmouseenter={() => {
-                                selectedIndex = i;
-                            }}
-                            onmousedown={preventKeyboardFocusChange}
-                            ontouchstart={preventKeyboardFocusChange}
-                        >
-                            <img
-                                src={item.src}
-                                alt={`:${item.shortcode}:`}
-                                class="custom-emoji-suggestion-image"
-                                draggable="false"
-                                loading="lazy"
-                                decoding="async"
-                            />
-                            <span class="custom-emoji-suggestion-shortcode"
-                                >:{item.shortcode}:</span
-                            >
-                        </Command.Item>
-                    {/each}
-                </ScrollArea.Viewport>
-                <ScrollArea.Scrollbar orientation="vertical" class="scrollbar">
-                    <ScrollArea.Thumb class="scrollbar-thumb" />
-                </ScrollArea.Scrollbar>
-            </ScrollArea.Root>
-        </Command.List>
-    </Command.Root>
-{/if}
+<SuggestionCommandList
+    bind:this={listComponent}
+    {items}
+    getKey={(item) => item.shortcode}
+    getValue={(item) => item.shortcode}
+    {onSelect}
+    {onDismiss}
+    dismissWhen={anyDialogOpen}
+    rootClass="custom-emoji-suggestion-command"
+    itemClass="custom-emoji-suggestion-item"
+>
+    {#snippet children(item)}
+        <img
+            src={item.src}
+            alt={`:${item.shortcode}:`}
+            class="custom-emoji-suggestion-image"
+            draggable="false"
+            loading="lazy"
+            decoding="async"
+        />
+        <span class="custom-emoji-suggestion-shortcode">:{item.shortcode}:</span>
+    {/snippet}
+</SuggestionCommandList>
 
 <style>
     :global(.custom-emoji-suggestion-command) {
-        width: min(320px, calc(100vw - 16px));
-        background: var(--dialog);
-        color: var(--text);
-        box-shadow: 0 4px 16px var(--shadow);
-        overflow: hidden;
-    }
-
-    :global(.custom-emoji-suggestion-list) {
-        --custom-emoji-suggestion-row-height: 40px;
-        --custom-emoji-suggestion-visible-rows: 10;
-        max-height: calc(
-            var(--custom-emoji-suggestion-row-height) *
-                var(--custom-emoji-suggestion-visible-rows)
-        );
-    }
-
-    :global(.custom-emoji-suggestion-scroll) {
-        width: 100%;
-        max-height: calc(
-            var(--custom-emoji-suggestion-row-height) *
-                var(--custom-emoji-suggestion-visible-rows)
-        );
-        overflow: hidden;
-    }
-
-    :global(.custom-emoji-suggestion-viewport) {
-        max-height: calc(
-            var(--custom-emoji-suggestion-row-height) *
-                var(--custom-emoji-suggestion-visible-rows)
-        );
-        overflow-y: auto;
-        overscroll-behavior: contain;
-        -webkit-overflow-scrolling: touch;
-    }
-
-    :global(.custom-emoji-suggestion-item) {
-        display: grid;
-        grid-template-columns: 34px minmax(0, 1fr);
-        align-items: center;
-        gap: 8px;
-        width: 100%;
-        min-height: 40px;
-        padding: 4px 10px;
-        cursor: pointer;
-        color: var(--text);
-        outline: none;
-        user-select: none;
-    }
-
-    :global(.custom-emoji-suggestion-item:hover),
-    :global(.custom-emoji-suggestion-item.selected),
-    :global(.custom-emoji-suggestion-item[data-highlighted]) {
-        background: var(--btn-hover-bg, rgba(127, 127, 127, 0.12));
+        --suggestion-command-item-columns: 34px minmax(0, 1fr);
     }
 
     .custom-emoji-suggestion-image {
@@ -197,18 +79,5 @@
         white-space: nowrap;
         font-size: 0.95rem;
         font-weight: 600;
-    }
-
-    :global(.scrollbar) {
-        display: flex;
-        width: 8px;
-        padding: 1px;
-        background: transparent;
-    }
-
-    :global(.scrollbar-thumb) {
-        flex: 1;
-        border-radius: 999px;
-        background: var(--border);
     }
 </style>
