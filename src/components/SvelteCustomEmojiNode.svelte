@@ -76,6 +76,8 @@
         class="custom-emoji-drag-target"
         data-dragging={dragState.isDragging}
         draggable={!isTouchCapable}
+        title={label}
+        aria-label={label}
         ondragstart={handleDragStart}
         ondragend={handleDragEnd}
     >
@@ -86,7 +88,6 @@
             data-set-address={node.attrs.setAddress ?? undefined}
             src={node.attrs.src}
             alt={label}
-            title={label}
             draggable="false"
         />
     </span>
@@ -114,11 +115,15 @@
         max-width: none;
         user-select: none;
         -webkit-user-drag: none;
+        pointer-events: none;
     }
 
     .custom-emoji-drag-target {
         display: inline-flex;
+        align-items: center;
+        justify-content: center;
         height: 100%;
+        min-width: 1.2em;
         cursor: grab;
         touch-action: pan-y;
         -webkit-touch-callout: none;
