@@ -345,6 +345,13 @@ class CacheManager {
                 return cachedBase;
             }
 
+            const opaqueBaseRequest = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+            const cachedOpaqueBase = await cache.match(opaqueBaseRequest);
+            if (cachedOpaqueBase) {
+                this.console.log('プロフィール画像をopaqueキャッシュから返却（ベースURL）:', baseUrl);
+                return cachedOpaqueBase;
+            }
+
             // 互換性のため、元のリクエストでも検索
             const cached = await cache.match(request);
             if (cached) {
@@ -359,14 +366,37 @@ class CacheManager {
         }
     }
 
+    async fetchAndCacheOpaqueProfileImage(baseUrl) {
+        const profileFetchRequest = Utilities.createCorsRequest(baseUrl, {
+            mode: 'no-cors',
+            cache: 'reload'
+        });
+        const response = await this.fetch(profileFetchRequest);
+        if (!response || response.type !== 'opaque') {
+            return null;
+        }
+
+        const cache = await this.caches.open(PROFILE_CACHE_NAME);
+        const cacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+        try {
+            await cache.put(cacheKey, response.clone());
+            this.console.log('プロフィール画像をopaqueキャッシュに保存完了:', baseUrl);
+        } catch (cacheError) {
+            this.console.warn('プロフィール画像のopaqueキャッシュ保存に失敗:', cacheError, baseUrl);
+        }
+
+        return response;
+    }
+
     // プロフィール画像をネットワークから取得してキャッシュ
     async fetchAndCacheProfileImage(request) {
         // ネットワーク取得はオフライン時はスキップ
         if (ServiceWorkerDependencies.navigator && ServiceWorkerDependencies.navigator.onLine === false) return null;
 
+        let baseUrl = null;
         try {
             const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
-            const baseUrl = Utilities.getBaseUrl(request.url);
+            baseUrl = Utilities.getBaseUrl(request.url);
             if (!normalizedUrl || !baseUrl) {
                 this.console.warn('プロフィール画像 URL を拒否:', request.url);
                 return null;
@@ -402,6 +432,9 @@ class CacheManager {
             }
         } catch (networkError) {
             this.console.log('プロフィール画像のネットワークエラー:', networkError && networkError.message);
+            if (baseUrl) {
+                return this.fetchAndCacheOpaqueProfileImage(baseUrl);
+            }
         }
 
         return null;

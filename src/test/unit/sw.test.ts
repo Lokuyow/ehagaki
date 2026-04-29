@@ -316,13 +316,31 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 return cachedBase;
             }
 
+            const cachedOpaqueBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'no-cors' }));
+            if (cachedOpaqueBase) {
+                return cachedOpaqueBase;
+            }
+
             const cached = await cache.match(request);
             return cached || null;
         }
 
+        async fetchAndCacheOpaqueProfileImage(baseUrl: string) {
+            const request = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
+            const response = await this.dependencies.fetch(request);
+            if (!response || response.type !== 'opaque') {
+                return null;
+            }
+
+            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
+            await cache.put(request, response.clone ? response.clone() : response);
+            return response;
+        }
+
         async fetchAndCacheProfileImage(request: Request) {
+            let baseUrl: string | null = null;
             const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
-            const baseUrl = Utilities.getBaseUrl(request.url);
+            baseUrl = Utilities.getBaseUrl(request.url);
             if (!normalizedUrl || !baseUrl) {
                 return null;
             }
@@ -335,7 +353,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 return cachedResponse;
             }
 
-            const networkResponse = await this.dependencies.fetch(baseRequest);
+            let networkResponse;
+            try {
+                networkResponse = await this.dependencies.fetch(baseRequest);
+            } catch {
+                return this.fetchAndCacheOpaqueProfileImage(baseUrl);
+            }
 
             if (networkResponse && networkResponse.ok && networkResponse.type !== 'opaque') {
                 try {
@@ -778,6 +801,33 @@ describe('Service Worker Tests', () => {
 
             expect(response).toEqual(expect.objectContaining({ type: 'opaque' }));
             expect(mockCache.put).not.toHaveBeenCalled();
+        });
+
+        it('should fall back to opaque profile image cache when cors fetch fails', async () => {
+            const manager = new swModule.CacheManager();
+            const request = new Request('https://example.com/profile.jpg?profile=true');
+            const opaqueResponse = {
+                type: 'opaque',
+                clone: vi.fn(() => ({ type: 'opaque' }))
+            };
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch
+                .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+                .mockResolvedValueOnce(opaqueResponse);
+
+            const response = await manager.fetchAndCacheProfileImage(request);
+
+            expect(response).toBe(opaqueResponse);
+            expect(swModule.ServiceWorkerDependencies.fetch).toHaveBeenCalledTimes(2);
+            expect(swModule.ServiceWorkerDependencies.fetch.mock.calls[0][0].mode).toBe('cors');
+            expect(swModule.ServiceWorkerDependencies.fetch.mock.calls[1][0].mode).toBe('no-cors');
+            expect(mockCache.put).toHaveBeenCalledTimes(1);
+            expect(mockCache.put.mock.calls[0][0].url).toBe('https://example.com/profile.jpg');
+            expect(mockCache.put.mock.calls[0][0].mode).toBe('no-cors');
         });
 
         it('should reject private profile image fetches', async () => {
