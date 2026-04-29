@@ -15,6 +15,8 @@
         contentClass?: string;
         /** フッターのバリエーション: "default" = シンプル, "close-button" = 閉じるボタン付き */
         footerVariant?: "default" | "close-button";
+        /** 開いた直後のフォーカス先 */
+        initialFocus?: "default" | "content";
         /** ダイアログのメインコンテンツ */
         children?: Snippet;
         /** ダイアログのフッター（閉じるボタン等） */
@@ -28,14 +30,24 @@
         description,
         contentClass = "",
         footerVariant = "default",
+        initialFocus = "default",
         children,
         footer,
     }: Props = $props();
+
+    let contentRef: HTMLElement | null = $state(null);
 
     function handleOpenChange(newOpen: boolean) {
         if (!newOpen) {
             onOpenChange?.(false);
         }
+    }
+
+    function handleOpenAutoFocus(e: Event) {
+        if (initialFocus !== "content") return;
+
+        e.preventDefault();
+        contentRef?.focus({ preventScroll: true });
     }
 
     // ダイアログを閉じる際のフォーカス復元を防ぐ
@@ -48,8 +60,11 @@
     <Dialog.Portal>
         <Dialog.Overlay class="dialog-overlay" />
         <Dialog.Content
+            bind:ref={contentRef}
             class="dialog {contentClass}"
+            tabindex={initialFocus === "content" ? -1 : undefined}
             preventScroll={false}
+            onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >
             <!-- スクリーンリーダー用タイトル -->
@@ -106,6 +121,10 @@
         flex-direction: column;
         align-items: center;
         z-index: 101;
+    }
+
+    :global(.dialog:focus) {
+        outline: none;
     }
 
     .dialog-content {

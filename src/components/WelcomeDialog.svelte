@@ -28,6 +28,7 @@
     title={$_("welcomeDialog.title")}
     description={$_("welcomeDialog.description")}
     contentClass="welcome-dialog"
+    initialFocus="content"
 >
     <div class="welcome-content">
         <div class="title-section">
