@@ -21,16 +21,32 @@
     let dragElement: HTMLSpanElement | undefined = $state();
     let dragState = customEmojiDragState;
     const isTouchCapable = isTouchDevice();
-    let currentPos = $derived(getPos());
-    let isOriginDropZone = $derived(
-        dragState.isDragging &&
+    let originDropPos: number | undefined = $state(undefined);
+
+    function getCurrentPos(): number | undefined {
+        try {
+            const pos = getPos();
+            return typeof pos === "number" ? pos : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    $effect(() => {
+        const isDragging = dragState.isDragging;
+        const draggedNodePos = dragState.draggedNodePos;
+        const currentPos = getCurrentPos();
+        originDropPos =
+            isDragging &&
             typeof currentPos === "number" &&
-            dragState.draggedNodePos === currentPos,
-    );
+            draggedNodePos === currentPos
+                ? currentPos
+                : undefined;
+    });
 
     const { cleanup: cleanupDrag } = useCustomEmojiDrag({
         getElement: () => dragElement,
-        getPos: () => getPos(),
+        getPos: getCurrentPos,
         dragState,
         getNodeAttrs: () => node.attrs,
     });
@@ -42,18 +58,20 @@
         }
 
         if (!event.dataTransfer) return;
+        const nodePos = getCurrentPos();
+        if (typeof nodePos !== "number") return;
+
         event.dataTransfer.setData(
             "application/x-tiptap-node",
             JSON.stringify({
                 type: "customEmoji",
                 attrs: node.attrs,
-                pos: getPos(),
+                pos: nodePos,
             }),
         );
         event.dataTransfer.effectAllowed = "move";
         dragState.isDragging = true;
-        const nodePos = getPos();
-        dragState.draggedNodePos = typeof nodePos === "number" ? nodePos : null;
+        dragState.draggedNodePos = nodePos;
         window.dispatchEvent(
             new CustomEvent("custom-emoji-native-drag-start", {
                 detail: { nodePos },
@@ -77,7 +95,7 @@
             preventKeyboardFocusChange(event);
         }
 
-        const pos = getPos();
+        const pos = getCurrentPos();
         if (typeof pos !== "number") {
             return;
         }
@@ -105,8 +123,8 @@
 
 <NodeViewWrapper
     as="span"
-    class={`custom-emoji-wrapper${selected ? " is-selected" : ""}${isOriginDropZone ? " custom-emoji-origin-drop-zone" : ""}`}
-    data-drop-pos={isOriginDropZone ? currentPos : undefined}
+    class={`custom-emoji-wrapper${selected ? " is-selected" : ""}${typeof originDropPos === "number" ? " custom-emoji-origin-drop-zone" : ""}`}
+    data-drop-pos={originDropPos}
 >
     <!-- svelte-ignore a11y_no_static_element_interactions - ProseMirror manages node selection and keyboard editing. -->
     <span
