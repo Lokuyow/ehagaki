@@ -115,6 +115,10 @@ export function createKeyboardTouchScrollLock(
         );
 
         if (!activeScrollElement) {
+            if (isDocumentPullToRefreshGesture(targetDocument, deltaY)) {
+                return;
+            }
+
             event.preventDefault();
         }
     }

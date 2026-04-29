@@ -193,13 +193,63 @@ describe('keyboardTouchScrollLock', () => {
         lock.dispose();
     });
 
-    it('composer scroll region の上端で下方向へ引いた場合は document scroll へ伝播させない', () => {
+    it('composer scroll region の上端でも document 上端の下方向 pull-to-refresh gesture は許可する', () => {
         const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
         const lock = createKeyboardTouchScrollLock(document);
 
         Object.defineProperty(window, 'scrollY', {
             configurable: true,
             value: 0,
+        });
+        lock.sync(true);
+
+        const touchStartHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchstart',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchmove',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+
+        const composerScrollRegion = document.createElement('div');
+        composerScrollRegion.className = 'composer-scroll-region';
+        defineScrollMetrics(composerScrollRegion, {
+            scrollHeight: 600,
+            clientHeight: 200,
+            scrollTop: 0,
+        });
+        const inner = document.createElement('div');
+        composerScrollRegion.append(inner);
+        document.body.append(composerScrollRegion);
+        const preventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: inner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: inner,
+            touches: [{ clientY: 130 }],
+            changedTouches: [{ clientY: 130 }],
+            preventDefault,
+        } as unknown as TouchEvent);
+
+        expect(preventDefault).not.toHaveBeenCalled();
+
+        lock.dispose();
+    });
+
+    it('composer scroll region の上端でも document 上端でなければ下方向へ伝播させない', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const lock = createKeyboardTouchScrollLock(document);
+
+        Object.defineProperty(window, 'scrollY', {
+            configurable: true,
+            value: 80,
+        });
+        Object.defineProperty(document.documentElement, 'scrollTop', {
+            configurable: true,
+            value: 80,
         });
         lock.sync(true);
 
