@@ -174,7 +174,9 @@
         background: rgba(30, 144, 255, 0.16);
     }
 
-    :global(.custom-emoji-wrapper.custom-emoji-origin-drop-zone.drop-zone-hover) {
+    :global(
+            .custom-emoji-wrapper.custom-emoji-origin-drop-zone.drop-zone-hover
+        ) {
         outline-color: var(--yellow);
         outline-width: 3px;
         background: rgba(255, 200, 0, 0.28);
@@ -211,12 +213,12 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 10px;
-        height: 1.7em;
+        width: 12px;
+        height: 1.5lh;
         min-height: 0;
+        margin: 0;
         padding: 0;
-        margin: 0 1px;
-        vertical-align: -0.44em;
+        vertical-align: middle;
         background: none;
         border: 0;
         box-shadow: none;
@@ -226,15 +228,18 @@
 
     :global(.drop-zone-indicator.custom-emoji-drop-zone .drop-zone-bar) {
         width: 4px;
-        max-width: 4px;
-        height: 1.35em;
-        min-height: 18px;
+        height: 1.4lh;
+        min-height: 0;
         border-radius: 999px;
         background: dodgerblue;
         margin: 0;
+        padding: 0;
     }
 
-    :global(.drop-zone-indicator.custom-emoji-drop-zone.drop-zone-hover .drop-zone-bar) {
+    :global(
+            .drop-zone-indicator.custom-emoji-drop-zone.drop-zone-hover
+                .drop-zone-bar
+        ) {
         background: var(--yellow);
         outline: 2px solid var(--yellow);
     }

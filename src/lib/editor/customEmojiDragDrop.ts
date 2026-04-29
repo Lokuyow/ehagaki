@@ -78,30 +78,9 @@ function createDropZoneWidget(position: number): HTMLElement {
     const dropZone = document.createElement('span');
     dropZone.className = 'drop-zone-indicator custom-emoji-drop-zone';
     dropZone.setAttribute('data-drop-pos', String(position));
-    Object.assign(dropZone.style, {
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        width: '10px',
-        height: '1.7em',
-        minHeight: '0',
-        padding: '0',
-        margin: '0 1px',
-        verticalAlign: '-0.44em',
-        background: 'none',
-        border: '0',
-        boxShadow: 'none',
-        position: 'relative',
-    });
 
     const bar = document.createElement('span');
     bar.className = 'drop-zone-bar';
-    Object.assign(bar.style, {
-        width: '4px',
-        height: '1.35em',
-        minHeight: '18px',
-        borderRadius: '999px',
-    });
     dropZone.appendChild(bar);
 
     return dropZone;
