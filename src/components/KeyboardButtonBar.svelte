@@ -563,10 +563,26 @@
         position: relative;
     }
 
-    .button-group-right {
+    div.button-group-right {
         display: flex;
         align-items: center;
         justify-content: space-evenly;
+
+        :global(.footer.selected:not(:disabled)) {
+            background: var(--btn-bg);
+        }
+    }
+
+    :global(:root.light button.footer.selected:hover:not(:disabled)) {
+        background: color-mix(in srgb, var(--btn-bg), black 6%);
+        color: color-mix(in srgb, var(--text), black 6%);
+        --svg: currentColor;
+    }
+
+    :global(:root.dark button.footer.selected:hover:not(:disabled)) {
+        background: color-mix(in srgb, var(--btn-bg), white 10%);
+        color: color-mix(in srgb, var(--text), white 10%);
+        --svg: currentColor;
     }
 
     .progress-ring-container {
