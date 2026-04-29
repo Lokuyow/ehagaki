@@ -108,6 +108,49 @@ describe('keyboardTouchScrollLock', () => {
         expect(removeEventListenerSpy).toHaveBeenCalledWith('touchmove', expect.any(Function));
     });
 
+    it('document 上端での下方向 pull-to-refresh gesture は許可する', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const lock = createKeyboardTouchScrollLock(document);
+
+        Object.defineProperty(window, 'scrollY', {
+            configurable: true,
+            value: 0,
+        });
+        Object.defineProperty(document.documentElement, 'scrollTop', {
+            configurable: true,
+            value: 0,
+        });
+
+        lock.sync(true);
+
+        const touchStartHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchstart',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchmove',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+
+        const outside = document.createElement('div');
+        document.body.append(outside);
+        const preventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: outside,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: outside,
+            touches: [{ clientY: 130 }],
+            changedTouches: [{ clientY: 130 }],
+            preventDefault,
+        } as unknown as TouchEvent);
+
+        expect(preventDefault).not.toHaveBeenCalled();
+
+        lock.dispose();
+    });
+
     it('composer scroll region がスクロールできる場合は touchmove を許可する', () => {
         const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
         const lock = createKeyboardTouchScrollLock(document);

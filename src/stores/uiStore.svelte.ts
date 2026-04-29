@@ -76,9 +76,10 @@ function syncLayoutCssVariables(
 
     const footerReservedHeight = getFooterReservedHeight(isKeyboardVisible);
     const isSafariViewportMode = isNonPwaIPhoneSafari();
-    const shouldLockAppRoot = shouldLockAppRootForKeyboard(isKeyboardVisible);
+    const shouldLockAppRoot =
+        isSafariViewportMode && shouldLockAppRootForKeyboard(isKeyboardVisible);
 
-    syncKeyboardTouchScrollLock(shouldLockAppRoot && isSafariViewportMode);
+    syncKeyboardTouchScrollLock(shouldLockAppRoot);
     const keyboardButtonBarBottom = shouldLockAppRoot
         ? "0px"
         : `${bottomPosition}px`;
@@ -123,7 +124,7 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--app-overscroll-behavior",
-        shouldLockAppRoot ? "none" : "auto",
+        "auto",
     );
     setRootStyleProperty("--footer-height", `${FOOTER_HEIGHT}px`);
     setRootStyleProperty(

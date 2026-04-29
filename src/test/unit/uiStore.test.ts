@@ -107,7 +107,9 @@ describe('uiStore', () => {
         });
     });
 
-    it('iPhone Safari 以外でもキーボード表示中は visual viewport レイアウトへ切り替える', async () => {
+    it('Android Chrome ではキーボード表示中も document scroll を残して pull-to-refresh を塞がない', async () => {
+        setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
+
         const requestAnimationFrameSpy = vi
             .spyOn(window, 'requestAnimationFrame')
             .mockImplementation((callback: FrameRequestCallback) => {
@@ -128,29 +130,31 @@ describe('uiStore', () => {
 
         const cleanup = setupViewportListener();
 
-        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
-        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
-        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
-        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
-        expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('0');
-        expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('100%');
-        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
-        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('none');
-        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
+        expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
-        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
-        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('350px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('300px');
         expect(keyboardHeightStore.value).toBe(300);
         expect(bottomPositionStore.value).toBe(300);
 
         setWindowScroll(220);
         window.dispatchEvent(new Event('scroll'));
 
-        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
         expect(keyboardHeightStore.value).toBe(300);
         expect(bottomPositionStore.value).toBe(300);
 
@@ -212,7 +216,7 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('0');
         expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('100%');
         expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
-        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('none');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
@@ -228,6 +232,7 @@ describe('uiStore', () => {
         expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
 
@@ -342,7 +347,7 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('非PWAの iPhone Safari ではキーボード表示中に editor 外 touchmove を抑止する', async () => {
+    it('非PWAの iPhone Safari ではキーボード表示中に pull-to-refresh 以外の editor 外 touchmove を抑止する', async () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1');
         setDocumentClientHeight(549);
 
@@ -395,6 +400,22 @@ describe('uiStore', () => {
         } as unknown as TouchEvent);
 
         expect(outsidePreventDefault).toHaveBeenCalledTimes(1);
+
+        const pullToRefreshPreventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: outside,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: outside,
+            touches: [{ clientY: 130 }],
+            changedTouches: [{ clientY: 130 }],
+            preventDefault: pullToRefreshPreventDefault,
+        } as unknown as TouchEvent);
+
+        expect(pullToRefreshPreventDefault).not.toHaveBeenCalled();
 
         const composerScrollRegion = document.createElement('div');
         composerScrollRegion.className = 'composer-scroll-region';

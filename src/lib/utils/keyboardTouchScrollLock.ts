@@ -3,6 +3,22 @@ function getTouchClientY(event: TouchEvent): number | null {
     return typeof touch?.clientY === "number" ? touch.clientY : null;
 }
 
+function getDocumentScrollTop(targetDocument: Document): number {
+    return Math.max(
+        0,
+        targetDocument.defaultView?.scrollY ?? 0,
+        targetDocument.documentElement?.scrollTop ?? 0,
+        targetDocument.scrollingElement?.scrollTop ?? 0,
+    );
+}
+
+function isDocumentPullToRefreshGesture(
+    targetDocument: Document,
+    deltaY: number,
+): boolean {
+    return deltaY > 0 && getDocumentScrollTop(targetDocument) <= 0;
+}
+
 export function resolveTouchScrollElements(
     target: EventTarget | null,
 ): HTMLElement[] {
@@ -79,11 +95,6 @@ export function createKeyboardTouchScrollLock(
             touchTarget ?? event.target,
         );
 
-        if (scrollElements.length === 0) {
-            event.preventDefault();
-            return;
-        }
-
         if (currentClientY === null || lastClientY === null) {
             lastClientY = currentClientY;
             return;
@@ -91,6 +102,13 @@ export function createKeyboardTouchScrollLock(
 
         const deltaY = currentClientY - lastClientY;
         lastClientY = currentClientY;
+
+        if (scrollElements.length === 0) {
+            if (!isDocumentPullToRefreshGesture(targetDocument, deltaY)) {
+                event.preventDefault();
+            }
+            return;
+        }
 
         const activeScrollElement =
             scrollElements.find((element) =>
