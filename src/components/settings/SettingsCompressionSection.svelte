@@ -192,6 +192,7 @@
     :global(.info-trigger) {
         height: 40px;
         width: 40px;
+        border-radius: 50%;
     }
     :global(.popover-table) {
         border-collapse: collapse;

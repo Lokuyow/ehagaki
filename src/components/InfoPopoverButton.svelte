@@ -43,7 +43,7 @@
 
 <style>
     :global(button.info-trigger) {
-        background: transparent;
+        --btn-bg: transparent;
     }
 
     .info-icon {

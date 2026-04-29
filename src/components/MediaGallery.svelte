@@ -394,6 +394,7 @@
         overflow-y: visible;
         scrollbar-width: thin;
         gap: 4px;
+        background-color: var(--window);
     }
 
     .gallery-item-wrapper {

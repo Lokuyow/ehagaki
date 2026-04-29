@@ -264,42 +264,36 @@
         display: inline-block;
         max-width: 100%;
         max-height: 240px;
-    }
 
-    /* ボタンを画像サイズに完全に合わせる */
-    .editor-image-button {
-        background: none;
-        border: none;
-        padding: 0;
-        margin: 0;
-        cursor: grab;
-        display: inline;
-        position: relative;
-        touch-action: pan-y; /* 垂直スクロールを許可し、水平ドラッグはJavaScriptで制御 */
-        -webkit-touch-callout: none;
-        -webkit-user-select: none;
-        user-select: none;
-        max-width: 100%;
-        max-height: 240px;
-        line-height: 0;
-        vertical-align: top;
-        pointer-events: auto;
-        outline: none;
-        -webkit-tap-highlight-color: transparent;
-
-        &:focus {
+        /* ボタンを画像サイズに完全に合わせる */
+        button.editor-image-button {
+            background: none;
+            border: none;
+            padding: 0;
+            margin: 0;
+            cursor: grab;
+            display: inline;
+            position: relative;
+            touch-action: pan-y; /* 垂直スクロールを許可し、水平ドラッグはJavaScriptで制御 */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            max-width: 100%;
+            max-height: 240px;
+            line-height: 0;
+            vertical-align: top;
+            pointer-events: auto;
             outline: none;
-        }
-        &:active {
-            transform: scale(1);
-        }
+            -webkit-tap-highlight-color: transparent;
 
-        @media (min-width: 601px) {
-            :global(:root.light) &:hover:not(:disabled) {
-                filter: brightness(100%);
+            &:focus {
+                outline: none;
             }
-            :global(:root.dark) &:hover:not(:disabled) {
-                filter: brightness(100%);
+            &:active {
+                transform: scale(1);
+            }
+            &:hover {
+                background: none;
             }
         }
     }

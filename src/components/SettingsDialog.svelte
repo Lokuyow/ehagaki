@@ -694,7 +694,7 @@
         display: inline-block;
         width: 90px;
         height: 44px;
-        background-color: var(--toggle-bg);
+        --btn-bg: var(--toggle-bg);
         opacity: 0.2;
         border-radius: 50px;
         border: none;
@@ -702,9 +702,26 @@
         cursor: pointer;
         transition: opacity 0.2s;
         flex-shrink: 0;
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                opacity: 0.15;
+                background: var(--btn-bg);
+                transition: none;
+            }
+        }
     }
-    :global(.bui-switch[data-state="checked"]) {
+
+    :global(button.bui-switch[data-state="checked"]) {
         opacity: 1;
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                opacity: 0.9;
+                background: var(--btn-bg);
+                transition: none;
+            }
+        }
     }
     :global(.bui-switch[data-disabled]) {
         cursor: not-allowed;

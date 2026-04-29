@@ -153,10 +153,9 @@
 
         :global(.relay-toggle-label) {
             min-height: 40px;
-            padding: 10px 0;
-            background-color: transparent;
-            /* border: 1px solid var(--border); */
-            /* border-radius: 0; */
+            padding: 10px;
+            --btn-bg: transparent;
+            border-radius: 6px;
         }
     }
     .rotate-right-icon {

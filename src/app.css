@@ -227,7 +227,7 @@ select {
   --dialog: hsl(0, 0%, 14%);
   --dialog-overlay: rgba(0, 0, 0, 0.8);
 
-  --window: hsl(0, 0%, 12%);
+  --window: hsl(0, 0%, 14%);
 
   --svg: hsl(0, 0%, 94%);
   --svg-light: var(--text-light);
@@ -243,15 +243,21 @@ select {
 @media (min-width: 601px) {
 
   :root.light button:hover:not(:disabled),
-  :root.light a:hover,
   :root.light select:hover {
-    filter: brightness(96%);
+    background: color-mix(in srgb, var(--btn-bg), black 6%);
   }
 
   :root.dark button:hover:not(:disabled),
-  :root.dark a:hover,
   :root.dark select:hover {
-    filter: brightness(120%);
+    background: color-mix(in srgb, var(--btn-bg), white 10%);
+  }
+
+  :root.light a:hover {
+    color: color-mix(in srgb, currentColor, black 20%);
+  }
+
+  :root.dark a:hover {
+    color: color-mix(in srgb, currentColor, white 20%);
   }
 }
 
@@ -283,4 +289,12 @@ select {
   align-items: center;
   justify-content: flex-end;
   height: fit-content;
+}
+
+:root.light button.selected:not(:disabled) {
+  background: color-mix(in srgb, var(--btn-bg), black 15%);
+}
+
+:root.dark button.selected:not(:disabled) {
+  background: color-mix(in srgb, var(--btn-bg), white 25%);
 }

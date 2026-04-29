@@ -259,10 +259,6 @@
     a.site-icon-link {
         display: flex;
         height: 100%;
-
-        &:hover {
-            filter: brightness(100%);
-        }
     }
 
     .site-icon {

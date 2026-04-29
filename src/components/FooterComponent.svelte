@@ -208,7 +208,8 @@
         z-index: 10;
 
         &:hover:not(:disabled) {
-            filter: brightness(94%);
+            opacity: 0.85;
+            background: var(--btn-bg);
         }
     }
 

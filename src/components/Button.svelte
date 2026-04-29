@@ -106,12 +106,12 @@
         }
 
         @media (min-width: 601px) {
-            &:hover {
+            &:hover:not(:disabled) {
                 :global(:root.light) & {
-                    filter: brightness(96%);
+                    background: color-mix(in srgb, var(--btn-bg), black 8%);
                 }
                 :global(:root.dark) & {
-                    filter: brightness(90%);
+                    background: color-mix(in srgb, var(--btn-bg), black 12%);
                 }
             }
         }
@@ -122,17 +122,6 @@
         --btn-bg: white;
         --text: var(--text-black);
         --border: var(--light-gray);
-
-        @media (min-width: 601px) {
-            &:hover:not(:disabled) {
-                :global(:root.light) & {
-                    filter: brightness(97%);
-                }
-                :global(:root.dark) & {
-                    filter: brightness(90%);
-                }
-            }
-        }
     }
 
     .header {
@@ -158,10 +147,10 @@
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
-                    filter: brightness(94%);
+                    background: color-mix(in srgb, var(--btn-bg), black 8%);
                 }
                 :global(:root.dark) & {
-                    filter: brightness(90%);
+                    background: color-mix(in srgb, var(--btn-bg), black 12%);
                 }
             }
         }
@@ -175,10 +164,10 @@
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
-                    filter: brightness(96%);
+                    background: color-mix(in srgb, var(--btn-bg), black 8%);
                 }
                 :global(:root.dark) & {
-                    filter: brightness(90%);
+                    background: color-mix(in srgb, var(--btn-bg), black 12%);
                 }
             }
         }
@@ -223,12 +212,13 @@
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 --btn-bg: rgba(25, 25, 25, 0.5);
+                background: var(--btn-bg);
             }
         }
     }
 
     button.copy {
-        --btn-bg: rgba(0, 0, 0, 0.5);
+        --btn-bg: rgba(0, 0, 0, 0.45);
         --svg: whitesmoke;
         backdrop-filter: blur(4px);
         opacity: 0.8;
@@ -245,7 +235,8 @@
 
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
-                --btn-bg: rgba(25, 25, 25, 0.5);
+                --btn-bg: rgba(25, 25, 25, 0.45);
+                background: var(--btn-bg);
             }
         }
     }
@@ -281,14 +272,5 @@
             width: 28px;
             height: 28px;
         }
-    }
-
-    /* Selected Styles */
-    :global(:root.light) button.selected {
-        filter: brightness(85%);
-    }
-
-    :global(:root.dark) button.selected {
-        filter: brightness(150%);
     }
 </style>
