@@ -15,6 +15,7 @@ import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, 
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';
+const EDITOR_AUXILIARY_SELECTOR = '.custom-emoji-picker';
 
 interface PlaceholderState {
     text: string;
@@ -70,6 +71,10 @@ const GapCursorFocusReset = Extension.create({
 
             // エディターDOM内のクリックは無視
             if (view.dom.contains(target)) {
+                return;
+            }
+
+            if (target.closest(EDITOR_AUXILIARY_SELECTOR)) {
                 return;
             }
 
