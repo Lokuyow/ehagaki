@@ -355,6 +355,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             if (baseUrl) {
                 const cachedBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'cors' }));
                 if (cachedBase) return cachedBase;
+
+                const cachedOpaqueBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'no-cors' }));
+                if (cachedOpaqueBase) return cachedOpaqueBase;
             }
 
             const cached = await cache.match(request);
@@ -363,24 +366,44 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             return this.dependencies.fetch(request);
         }
 
+        async cacheOpaqueCustomEmojiImage(cache: any, baseUrl: string) {
+            const request = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
+            const response = await this.dependencies.fetch(request);
+            if (!response || response.type !== 'opaque') {
+                return false;
+            }
+
+            await cache.put(request, response.clone ? response.clone() : response);
+            return true;
+        }
+
         async cacheCustomEmojiImages(urls: string[]) {
             const cache = await this.dependencies.caches.open(CUSTOM_EMOJI_CACHE_NAME);
             let cached = 0;
             let failed = 0;
 
             for (const rawUrl of [...new Set(urls)].slice(0, 300)) {
-                const baseUrl = Utilities.getBaseUrl(rawUrl);
-                if (!baseUrl) {
-                    failed++;
-                    continue;
-                }
-                const request = new Request(baseUrl, { method: 'GET', mode: 'cors' });
-                const response = await this.dependencies.fetch(request);
-                if (await Utilities.isCacheableCustomEmojiResponse(response)) {
-                    await cache.put(request, response.clone ? response.clone() : response);
-                    cached++;
-                } else {
-                    failed++;
+                let baseUrl: string | null = null;
+                try {
+                    baseUrl = Utilities.getBaseUrl(rawUrl);
+                    if (!baseUrl) {
+                        failed++;
+                        continue;
+                    }
+                    const request = new Request(baseUrl, { method: 'GET', mode: 'cors' });
+                    const response = await this.dependencies.fetch(request);
+                    if (await Utilities.isCacheableCustomEmojiResponse(response)) {
+                        await cache.put(request, response.clone ? response.clone() : response);
+                        cached++;
+                    } else {
+                        failed++;
+                    }
+                } catch {
+                    if (baseUrl && await this.cacheOpaqueCustomEmojiImage(cache, baseUrl)) {
+                        cached++;
+                    } else {
+                        failed++;
+                    }
                 }
             }
 
@@ -811,6 +834,34 @@ describe('Service Worker Tests', () => {
 
             expect(result).toEqual({ success: true, cached: 0, failed: 1 });
             expect(mockCache.put).not.toHaveBeenCalled();
+        });
+
+        it('should fall back to opaque custom emoji cache when cors fetch fails', async () => {
+            const manager = new swModule.CacheManager();
+            const opaqueResponse = {
+                type: 'opaque',
+                clone: vi.fn(() => ({ type: 'opaque' }))
+            };
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn().mockResolvedValue(undefined)
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch
+                .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+                .mockResolvedValueOnce(opaqueResponse);
+
+            const result = await manager.cacheCustomEmojiImages([
+                'https://example.com/emoji.webp?size=small',
+            ]);
+
+            expect(result).toEqual({ success: true, cached: 1, failed: 0 });
+            expect(swModule.ServiceWorkerDependencies.fetch).toHaveBeenCalledTimes(2);
+            expect(swModule.ServiceWorkerDependencies.fetch.mock.calls[0][0].mode).toBe('cors');
+            expect(swModule.ServiceWorkerDependencies.fetch.mock.calls[1][0].mode).toBe('no-cors');
+            expect(mockCache.put).toHaveBeenCalledTimes(1);
+            expect(mockCache.put.mock.calls[0][0].url).toBe('https://example.com/emoji.webp');
+            expect(mockCache.put.mock.calls[0][0].mode).toBe('no-cors');
         });
 
         it('should cache custom emoji image responses up to 10MB', async () => {

@@ -417,6 +417,12 @@ class CacheManager {
                 if (cachedBase) {
                     return cachedBase;
                 }
+
+                const opaqueCacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
+                const cachedOpaqueBase = await cache.match(opaqueCacheKey);
+                if (cachedOpaqueBase) {
+                    return cachedOpaqueBase;
+                }
             }
 
             const cached = await cache.match(request);
@@ -430,6 +436,20 @@ class CacheManager {
         return this.fetch(request);
     }
 
+    async cacheOpaqueCustomEmojiImage(cache, baseUrl) {
+        const request = Utilities.createCorsRequest(baseUrl, {
+            mode: 'no-cors',
+            cache: 'reload'
+        });
+        const response = await this.fetch(request);
+        if (!response || response.type !== 'opaque') {
+            return false;
+        }
+
+        await cache.put(Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' }), response.clone());
+        return true;
+    }
+
     async cacheCustomEmojiImages(urls) {
         if (!Array.isArray(urls) || urls.length === 0) {
             return { success: true, cached: 0, failed: 0 };
@@ -440,8 +460,9 @@ class CacheManager {
         let failed = 0;
 
         for (const rawUrl of [...new Set(urls)].slice(0, 300)) {
+            let baseUrl = null;
             try {
-                const baseUrl = Utilities.getBaseUrl(rawUrl);
+                baseUrl = Utilities.getBaseUrl(rawUrl);
                 if (!baseUrl) {
                     failed++;
                     continue;
@@ -459,8 +480,16 @@ class CacheManager {
                     failed++;
                 }
             } catch (error) {
-                failed++;
-                this.console.warn('カスタム絵文字画像のキャッシュ保存に失敗:', error, rawUrl);
+                try {
+                    if (baseUrl && await this.cacheOpaqueCustomEmojiImage(cache, baseUrl)) {
+                        cached++;
+                    } else {
+                        failed++;
+                    }
+                } catch (opaqueError) {
+                    failed++;
+                    this.console.warn('カスタム絵文字画像のopaqueキャッシュ保存に失敗:', opaqueError, rawUrl);
+                }
             }
         }
 
