@@ -43,10 +43,16 @@
         );
         event.dataTransfer.effectAllowed = "move";
         dragState.isDragging = true;
+        window.dispatchEvent(
+            new CustomEvent("custom-emoji-native-drag-start", {
+                detail: { nodePos: getPos() },
+            }),
+        );
     }
 
     function handleDragEnd(): void {
         dragState.isDragging = false;
+        window.dispatchEvent(new CustomEvent("custom-emoji-native-drag-end"));
     }
 
     onDestroy(() => {

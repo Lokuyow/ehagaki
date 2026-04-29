@@ -6,6 +6,7 @@ import {
     getCustomEmojiDropPositions,
     moveCustomEmojiNode,
 } from '../utils/editorNodeActions';
+import { highlightDropZoneAtPosition } from '../utils/mediaNodeUtils';
 import { SCROLL_BASE_SPEED, SCROLL_MAX_SPEED, SCROLL_THRESHOLD } from '../constants';
 
 const CUSTOM_EMOJI_DRAG_META = 'customEmojiDrag';
@@ -154,6 +155,7 @@ export const CustomEmojiDragDropExtension = Extension.create({
                             }
                             event.preventDefault();
                             dragEvent.dataTransfer.dropEffect = 'move';
+                            highlightDropZoneAtPosition(dragEvent.clientX, dragEvent.clientY);
                             return false;
                         },
                         dragend: (view) => {
@@ -269,9 +271,25 @@ export const CustomEmojiDragDropExtension = Extension.create({
                         }
                     };
 
+                    const handleNativeDragStart = (event: CustomEvent) => {
+                        const { nodePos } = event.detail;
+                        editorView.dispatch(
+                            editorView.state.tr.setMeta(CUSTOM_EMOJI_DRAG_META, {
+                                isDragging: true,
+                                draggedNodePos: typeof nodePos === 'number' ? nodePos : null,
+                            }),
+                        );
+                    };
+
+                    const handleNativeDragEnd = () => {
+                        setDraggingFalse(editorView);
+                    };
+
                     window.addEventListener('touch-custom-emoji-drop', handleTouchDrop as EventListener);
                     window.addEventListener('touch-custom-emoji-drag-start', handleTouchDragStart as EventListener);
                     window.addEventListener('touch-custom-emoji-drag-move', handleTouchMove as EventListener);
+                    window.addEventListener('custom-emoji-native-drag-start', handleNativeDragStart as EventListener);
+                    window.addEventListener('custom-emoji-native-drag-end', handleNativeDragEnd as EventListener);
 
                     return {
                         destroy() {
@@ -279,6 +297,8 @@ export const CustomEmojiDragDropExtension = Extension.create({
                             window.removeEventListener('touch-custom-emoji-drop', handleTouchDrop as EventListener);
                             window.removeEventListener('touch-custom-emoji-drag-start', handleTouchDragStart as EventListener);
                             window.removeEventListener('touch-custom-emoji-drag-move', handleTouchMove as EventListener);
+                            window.removeEventListener('custom-emoji-native-drag-start', handleNativeDragStart as EventListener);
+                            window.removeEventListener('custom-emoji-native-drag-end', handleNativeDragEnd as EventListener);
                         },
                     };
                 },
