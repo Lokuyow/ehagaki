@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core';
-import Suggestion, { exitSuggestion, type SuggestionMatch, type Trigger } from '@tiptap/suggestion';
+import Suggestion, { type SuggestionMatch, type Trigger } from '@tiptap/suggestion';
 import { PluginKey } from '@tiptap/pm/state';
 import CustomEmojiSuggestionList from '../../components/CustomEmojiSuggestionList.svelte';
 import {
@@ -95,12 +95,10 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                 render: createSuggestionRenderer<CustomEmojiItem>({
                     component: CustomEmojiSuggestionList,
                     className: 'custom-emoji-suggestion-popover',
+                    zIndex: '99',
                     getProps: ({ items, command }) => ({
                         items,
                         onSelect: command,
-                        onDismiss: () => {
-                            exitSuggestion(editor.view, CUSTOM_EMOJI_SUGGESTION_PLUGIN_KEY);
-                        },
                     }),
                 }),
 

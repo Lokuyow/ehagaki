@@ -13,6 +13,7 @@ interface CreateSuggestionRendererOptions<T> {
     component: any;
     className?: string;
     approxDropdownHeight?: number;
+    zIndex?: string;
     getProps?: (params: {
         items: T[];
         command: (item: T) => void;
@@ -30,6 +31,7 @@ export function createSuggestionRenderer<T>({
     component: Component,
     className,
     approxDropdownHeight = 220,
+    zIndex = '9999',
     getProps,
 }: CreateSuggestionRendererOptions<T>) {
     return () => {
@@ -48,7 +50,7 @@ export function createSuggestionRenderer<T>({
                 el.className = className;
             }
             el.style.position = 'fixed';
-            el.style.zIndex = '9999';
+            el.style.zIndex = zIndex;
             document.body.appendChild(el);
             return el;
         }

@@ -1,16 +1,13 @@
 <script lang="ts">
     import SuggestionCommandList from "./SuggestionCommandList.svelte";
     import type { CustomEmojiItem } from "../lib/customEmoji";
-    import { isAnyDialogOpen } from "../stores/dialogStore.svelte";
 
     interface Props {
         items: CustomEmojiItem[];
         onSelect: (item: CustomEmojiItem) => void;
-        onDismiss?: () => void;
     }
 
-    let { items, onSelect, onDismiss }: Props = $props();
-    let anyDialogOpen = $derived(isAnyDialogOpen());
+    let { items, onSelect }: Props = $props();
     let listComponent = $state<{
         moveUp?: () => void;
         moveDown?: () => void;
@@ -41,8 +38,6 @@
     getKey={(item) => item.shortcode}
     getValue={(item) => item.shortcode}
     {onSelect}
-    {onDismiss}
-    dismissWhen={anyDialogOpen}
     rootClass="custom-emoji-suggestion-command"
     itemClass="custom-emoji-suggestion-item"
 >

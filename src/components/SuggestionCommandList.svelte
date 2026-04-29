@@ -9,8 +9,6 @@
         getKey: (item: T) => string;
         getValue: (item: T) => string;
         onSelect: (item: T) => void;
-        onDismiss?: () => void;
-        dismissWhen?: boolean;
         rootClass?: string;
         itemClass?: string;
         children: Snippet<[item: T, index: number, selected: boolean]>;
@@ -21,8 +19,6 @@
         getKey,
         getValue,
         onSelect,
-        onDismiss,
-        dismissWhen = false,
         rootClass = "",
         itemClass = "",
         children,
@@ -30,12 +26,6 @@
 
     let selectedIndex = $state(0);
     let viewportElement = $state<HTMLElement | null>(null);
-
-    $effect(() => {
-        if (dismissWhen) {
-            onDismiss?.();
-        }
-    });
 
     export function moveDown(): void {
         if (items.length > 0) {

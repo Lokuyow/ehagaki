@@ -442,6 +442,8 @@
         background: var(--dialog);
         color: var(--text);
         overflow: hidden;
+        position: relative;
+        z-index: 99;
     }
 
     .resize-handle {

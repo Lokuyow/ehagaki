@@ -35,7 +35,6 @@
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
     showAddAccountDialogStore,
-    isAnyDialogOpen,
   } from "./stores/dialogStore.svelte";
   import { swNeedRefresh } from "./stores/swStore.svelte";
   import {
@@ -281,8 +280,6 @@
         )
       : composerAvailableHeight,
   );
-  const anyDialogOpen = $derived(isAnyDialogOpen());
-
   let parentClientAuthPromise: Promise<AuthResult> | null = null;
   let pendingRemoteParentLoginPubkey: string | null | undefined = undefined;
   let lastNotifiedComposerContextSignature: string | null = null;
@@ -320,12 +317,6 @@
         pubkeyHex: authState.value?.pubkey ?? null,
       });
     },
-  });
-
-  $effect(() => {
-    if (anyDialogOpen && customEmojiPickerOpen) {
-      customEmojiPickerOpen = false;
-    }
   });
 
   $effect(() => {
@@ -1692,5 +1683,7 @@
     width: 100%;
     flex: 0 0 auto;
     min-height: 0;
+    position: relative;
+    z-index: 99;
   }
 </style>
