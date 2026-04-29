@@ -71,7 +71,7 @@ describe('keyboardTouchScrollLock', () => {
         expect(canScrollElementInDirection(element, -20)).toBe(true);
     });
 
-    it('lock 中は許可されていない touchmove を抑止する', () => {
+    it('lock 中は editor 外の全体スクロールを抑止する', () => {
         const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
         const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
         const lock = createKeyboardTouchScrollLock(document);
@@ -189,6 +189,94 @@ describe('keyboardTouchScrollLock', () => {
         } as unknown as TouchEvent);
 
         expect(preventDefault).not.toHaveBeenCalled();
+
+        lock.dispose();
+    });
+
+    it('composer scroll region の上端で下方向へ引いた場合は document scroll へ伝播させない', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const lock = createKeyboardTouchScrollLock(document);
+
+        Object.defineProperty(window, 'scrollY', {
+            configurable: true,
+            value: 0,
+        });
+        lock.sync(true);
+
+        const touchStartHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchstart',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchmove',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+
+        const composerScrollRegion = document.createElement('div');
+        composerScrollRegion.className = 'composer-scroll-region';
+        defineScrollMetrics(composerScrollRegion, {
+            scrollHeight: 600,
+            clientHeight: 200,
+            scrollTop: 0,
+        });
+        const inner = document.createElement('div');
+        composerScrollRegion.append(inner);
+        document.body.append(composerScrollRegion);
+        const preventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: inner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: inner,
+            touches: [{ clientY: 130 }],
+            changedTouches: [{ clientY: 130 }],
+            preventDefault,
+        } as unknown as TouchEvent);
+
+        expect(preventDefault).toHaveBeenCalledTimes(1);
+
+        lock.dispose();
+    });
+
+    it('composer scroll region の下端で上方向へ引いた場合は document scroll へ伝播させない', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const lock = createKeyboardTouchScrollLock(document);
+
+        lock.sync(true);
+
+        const touchStartHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchstart',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchmove',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+
+        const composerScrollRegion = document.createElement('div');
+        composerScrollRegion.className = 'composer-scroll-region';
+        defineScrollMetrics(composerScrollRegion, {
+            scrollHeight: 600,
+            clientHeight: 200,
+            scrollTop: 400,
+        });
+        const inner = document.createElement('div');
+        composerScrollRegion.append(inner);
+        document.body.append(composerScrollRegion);
+        const preventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: inner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: inner,
+            touches: [{ clientY: 70 }],
+            changedTouches: [{ clientY: 70 }],
+            preventDefault,
+        } as unknown as TouchEvent);
+
+        expect(preventDefault).toHaveBeenCalledTimes(1);
 
         lock.dispose();
     });

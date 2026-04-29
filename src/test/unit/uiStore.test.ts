@@ -107,7 +107,7 @@ describe('uiStore', () => {
         });
     });
 
-    it('Android Chrome ではキーボード表示中も document scroll を残して pull-to-refresh を塞がない', async () => {
+    it('Android Chrome ではキーボード表示中も document を固定せず visual viewport 高さへ合わせる', async () => {
         setUserAgent('Mozilla/5.0 (Linux; Android 15; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Mobile Safari/537.36');
 
         const requestAnimationFrameSpy = vi
@@ -130,31 +130,33 @@ describe('uiStore', () => {
 
         const cleanup = setupViewportListener();
 
-        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
-        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('100svh');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
         expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
         expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
-        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('350px');
-        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(keyboardHeightStore.value).toBe(300);
         expect(bottomPositionStore.value).toBe(300);
 
         setWindowScroll(220);
         window.dispatchEvent(new Event('scroll'));
 
-        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('100%');
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
         expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
         expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('300px');
+        expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
+        expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(keyboardHeightStore.value).toBe(300);
         expect(bottomPositionStore.value).toBe(300);
 
@@ -184,7 +186,7 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('非PWAの iPhone Safari では visual viewport を維持しつつ body 固定を適用する', async () => {
+    it('非PWAの iPhone Safari でも Android と同じ visual viewport レイアウトへ切り替える', async () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1');
 
         const requestAnimationFrameSpy = vi
@@ -209,32 +211,32 @@ describe('uiStore', () => {
         const cleanup = setupViewportListener();
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
-        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('72px');
-        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
+        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
-        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
-        expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('0');
-        expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('100%');
-        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
+        expect(document.documentElement.style.getPropertyValue('--app-body-inset')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--app-body-width')).toBe('auto');
+        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
         expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--main-content-keyboard-adjustment')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('300px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
-        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('228px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('278px');
         expect(keyboardHeightStore.value).toBe(300);
         expect(bottomPositionStore.value).toBe(228);
 
         reasonInputVisibleStore.set(true);
 
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('500px');
-        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('72px');
-        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('hidden');
+        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
         expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('500px');
-        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
         expect(document.documentElement.style.getPropertyValue('--app-overscroll-behavior')).toBe('auto');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
-        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('278px');
 
         viewport.visualViewport.height = 800;
         viewport.visualViewport.offsetTop = 0;
@@ -293,9 +295,11 @@ describe('uiStore', () => {
         expect(keyboardHeightStore.value).toBe(235);
         expect(bottomPositionStore.value).toBe(235);
         expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
-        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('absolute');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
-        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
+        expect(document.documentElement.style.getPropertyValue('--app-overlay-position')).toBe('fixed');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('235px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('285px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
 
@@ -308,8 +312,9 @@ describe('uiStore', () => {
 
         expect(keyboardHeightStore.value).toBe(235);
         expect(bottomPositionStore.value).toBe(4);
-        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('231px');
-        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
+        expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('4px');
+        expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('54px');
         expect(document.documentElement.style.getPropertyValue('--footer-bottom')).toBe('-66px');
         expect(document.documentElement.style.getPropertyValue('--composer-bottom-reserved-height')).toBe('50px');
 
@@ -323,7 +328,7 @@ describe('uiStore', () => {
 
         expect(keyboardHeightStore.value).toBe(235);
         expect(bottomPositionStore.value).toBe(0);
-        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('308px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
 
         setWindowScroll(333);
@@ -334,7 +339,7 @@ describe('uiStore', () => {
         expect(keyboardHeightStore.value).toBe(333);
         expect(bottomPositionStore.value).toBe(0);
         expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('216px');
-        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('333px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-top')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-height')).toBe('333px');
         expect(document.documentElement.style.getPropertyValue('--keyboard-button-bar-bottom')).toBe('0px');
         expect(document.documentElement.style.getPropertyValue('--reason-input-bottom')).toBe('50px');
@@ -347,7 +352,7 @@ describe('uiStore', () => {
         cancelAnimationFrameSpy.mockRestore();
     });
 
-    it('非PWAの iPhone Safari ではキーボード表示中に pull-to-refresh 以外の editor 外 touchmove を抑止する', async () => {
+    it('キーボード表示中は document touch lock を追加し、解除時に外す', async () => {
         setUserAgent('Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.4 Mobile/15E148 Safari/604.1');
         setDocumentClientHeight(549);
 
@@ -366,179 +371,28 @@ describe('uiStore', () => {
             .spyOn(window, 'cancelAnimationFrame')
             .mockImplementation(() => { });
         const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
-        const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
 
         createVisualViewportMock(314, 0);
         const { setupViewportListener } = await import('../../stores/uiStore.svelte');
 
         const cleanup = setupViewportListener();
 
-        const touchStartHandler = addEventListenerSpy.mock.calls.find(
-            ([type]) => type === 'touchstart',
-        )?.[1] as ((event: TouchEvent) => void) | undefined;
-        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
-            ([type]) => type === 'touchmove',
-        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const removeEventListenerSpy = vi.spyOn(document, 'removeEventListener');
 
-        expect(touchStartHandler).toBeDefined();
-        expect(touchMoveHandler).toBeDefined();
-
-        const outside = document.createElement('div');
-        document.body.append(outside);
-        const outsidePreventDefault = vi.fn();
-
-        touchStartHandler?.({
-            target: outside,
-            touches: [{ clientY: 100 }],
-            changedTouches: [{ clientY: 100 }],
-        } as unknown as TouchEvent);
-        touchMoveHandler?.({
-            target: outside,
-            touches: [{ clientY: 80 }],
-            changedTouches: [{ clientY: 80 }],
-            preventDefault: outsidePreventDefault,
-        } as unknown as TouchEvent);
-
-        expect(outsidePreventDefault).toHaveBeenCalledTimes(1);
-
-        const pullToRefreshPreventDefault = vi.fn();
-
-        touchStartHandler?.({
-            target: outside,
-            touches: [{ clientY: 100 }],
-            changedTouches: [{ clientY: 100 }],
-        } as unknown as TouchEvent);
-        touchMoveHandler?.({
-            target: outside,
-            touches: [{ clientY: 130 }],
-            changedTouches: [{ clientY: 130 }],
-            preventDefault: pullToRefreshPreventDefault,
-        } as unknown as TouchEvent);
-
-        expect(pullToRefreshPreventDefault).not.toHaveBeenCalled();
-
-        const composerScrollRegion = document.createElement('div');
-        composerScrollRegion.className = 'composer-scroll-region';
-        Object.defineProperty(composerScrollRegion, 'scrollHeight', {
-            configurable: true,
-            value: 600,
-        });
-        Object.defineProperty(composerScrollRegion, 'clientHeight', {
-            configurable: true,
-            value: 200,
-        });
-        Object.defineProperty(composerScrollRegion, 'scrollTop', {
-            configurable: true,
-            value: 120,
-            writable: true,
-        });
-        const composerInner = document.createElement('div');
-        composerScrollRegion.append(composerInner);
-        document.body.append(composerScrollRegion);
-        const composerPreventDefault = vi.fn();
-
-        touchStartHandler?.({
-            target: composerInner,
-            touches: [{ clientY: 100 }],
-            changedTouches: [{ clientY: 100 }],
-        } as unknown as TouchEvent);
-        touchMoveHandler?.({
-            target: composerInner,
-            touches: [{ clientY: 80 }],
-            changedTouches: [{ clientY: 80 }],
-            preventDefault: composerPreventDefault,
-        } as unknown as TouchEvent);
-
-        expect(composerPreventDefault).not.toHaveBeenCalled();
-
-        const editor = document.createElement('div');
-        editor.className = 'tiptap-editor';
-        Object.defineProperty(editor, 'scrollHeight', {
-            configurable: true,
-            value: 600,
-        });
-        Object.defineProperty(editor, 'clientHeight', {
-            configurable: true,
-            value: 200,
-        });
-        Object.defineProperty(editor, 'scrollTop', {
-            configurable: true,
-            value: 100,
-            writable: true,
-        });
-        const inner = document.createElement('span');
-        editor.append(inner);
-        document.body.append(editor);
-        const editorPreventDefault = vi.fn();
-
-        touchStartHandler?.({
-            target: inner,
-            touches: [{ clientY: 100 }],
-            changedTouches: [{ clientY: 100 }],
-        } as unknown as TouchEvent);
-        touchMoveHandler?.({
-            target: inner,
-            touches: [{ clientY: 80 }],
-            changedTouches: [{ clientY: 80 }],
-            preventDefault: editorPreventDefault,
-        } as unknown as TouchEvent);
-
-        expect(editorPreventDefault).not.toHaveBeenCalled();
-
-        Object.defineProperty(editor, 'scrollTop', {
-            configurable: true,
-            value: 0,
-            writable: true,
-        });
-        const editorWithComposer = document.createElement('div');
-        editorWithComposer.className = 'composer-scroll-region';
-        Object.defineProperty(editorWithComposer, 'scrollHeight', {
-            configurable: true,
-            value: 900,
-        });
-        Object.defineProperty(editorWithComposer, 'clientHeight', {
-            configurable: true,
-            value: 220,
-        });
-        Object.defineProperty(editorWithComposer, 'scrollTop', {
-            configurable: true,
-            value: 140,
-            writable: true,
-        });
-        const nestedEditor = document.createElement('div');
-        nestedEditor.className = 'tiptap-editor';
-        Object.defineProperty(nestedEditor, 'scrollHeight', {
-            configurable: true,
-            value: 600,
-        });
-        Object.defineProperty(nestedEditor, 'clientHeight', {
-            configurable: true,
-            value: 200,
-        });
-        Object.defineProperty(nestedEditor, 'scrollTop', {
-            configurable: true,
-            value: 0,
-            writable: true,
-        });
-        const nestedInner = document.createElement('span');
-        nestedEditor.append(nestedInner);
-        editorWithComposer.append(nestedEditor);
-        document.body.append(editorWithComposer);
-        const nestedPreventDefault = vi.fn();
-
-        touchStartHandler?.({
-            target: nestedInner,
-            touches: [{ clientY: 100 }],
-            changedTouches: [{ clientY: 100 }],
-        } as unknown as TouchEvent);
-        touchMoveHandler?.({
-            target: nestedInner,
-            touches: [{ clientY: 130 }],
-            changedTouches: [{ clientY: 130 }],
-            preventDefault: nestedPreventDefault,
-        } as unknown as TouchEvent);
-
-        expect(nestedPreventDefault).not.toHaveBeenCalled();
+        expect(addEventListenerSpy).toHaveBeenCalledWith(
+            'touchstart',
+            expect.any(Function),
+            expect.anything(),
+        );
+        expect(addEventListenerSpy).toHaveBeenCalledWith(
+            'touchmove',
+            expect.any(Function),
+            expect.anything(),
+        );
+        expect(document.documentElement.style.getPropertyValue('--app-root-height')).toBe('314px');
+        expect(document.documentElement.style.getPropertyValue('--app-root-overflow-y')).toBe('visible');
+        expect(document.documentElement.style.getPropertyValue('--app-body-position')).toBe('static');
+        expect(document.documentElement.style.getPropertyValue('--app-main-height')).toBe('314px');
 
         cleanup?.();
 

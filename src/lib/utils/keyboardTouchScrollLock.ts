@@ -110,10 +110,9 @@ export function createKeyboardTouchScrollLock(
             return;
         }
 
-        const activeScrollElement =
-            scrollElements.find((element) =>
-                canScrollElementInDirection(element, deltaY),
-            ) ?? scrollElements.find((element) => canScrollElement(element));
+        const activeScrollElement = scrollElements.find((element) =>
+            canScrollElementInDirection(element, deltaY),
+        );
 
         if (!activeScrollElement) {
             event.preventDefault();

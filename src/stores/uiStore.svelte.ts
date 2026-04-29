@@ -3,12 +3,12 @@
  * キーボード追従などのレイアウト状態を管理
  */
 
-import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
 import {
     getEffectiveViewportOffsetTop,
     getLayoutViewportHeight,
     isNonPwaIPhoneSafari,
 } from "../lib/utils/viewportLayout";
+import { createKeyboardTouchScrollLock } from "../lib/utils/keyboardTouchScrollLock";
 
 // --- 定数 ---
 /** フッターの高さ（px） */
@@ -27,7 +27,6 @@ export const MAIN_CONTENT_TOP_SPACING = 6;
 const KEYBOARD_THRESHOLD = 100;
 
 let lastViewportHeight: number | undefined;
-let lastViewportOffsetTop = 0;
 let lastLayoutViewportHeight: number | undefined;
 const keyboardTouchScrollLock =
     typeof document === "undefined"
@@ -50,10 +49,6 @@ function getFooterReservedHeight(isKeyboardOpen: boolean): number {
     return isKeyboardOpen ? 0 : FOOTER_HEIGHT;
 }
 
-function shouldLockAppRootForKeyboard(isKeyboardVisible: boolean): boolean {
-    return isKeyboardVisible && lastViewportHeight !== undefined;
-}
-
 function syncLayoutCssVariables(
     isKeyboardVisible: boolean,
     viewportMetrics: {
@@ -66,61 +61,53 @@ function syncLayoutCssVariables(
         lastViewportHeight = viewportMetrics.height;
     }
 
-    if (viewportMetrics.offsetTop !== undefined) {
-        lastViewportOffsetTop = viewportMetrics.offsetTop;
-    }
-
     if (viewportMetrics.layoutViewportHeight !== undefined) {
         lastLayoutViewportHeight = viewportMetrics.layoutViewportHeight;
     }
 
     const footerReservedHeight = getFooterReservedHeight(isKeyboardVisible);
-    const isSafariViewportMode = isNonPwaIPhoneSafari();
-    const shouldLockAppRoot =
-        isSafariViewportMode && shouldLockAppRootForKeyboard(isKeyboardVisible);
+    const shouldUseKeyboardViewportHeight =
+        isKeyboardVisible && lastViewportHeight !== undefined;
 
-    syncKeyboardTouchScrollLock(shouldLockAppRoot);
-    const keyboardButtonBarBottom = shouldLockAppRoot
-        ? "0px"
-        : `${bottomPosition}px`;
-    const reasonInputBottom = shouldLockAppRoot
-        ? `${KEYBOARD_BUTTON_BAR_HEIGHT}px`
-        : `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
-    const footerBottom = shouldLockAppRoot
+    syncKeyboardTouchScrollLock(shouldUseKeyboardViewportHeight);
+
+    const keyboardButtonBarBottom = `${bottomPosition}px`;
+    const reasonInputBottom = `${bottomPosition + KEYBOARD_BUTTON_BAR_HEIGHT}px`;
+    const footerBottom = isKeyboardVisible
         ? `${-FOOTER_HEIGHT}px`
         : "0px";
 
     setRootStyleProperty(
         "--app-root-height",
-        shouldLockAppRoot ? `${lastViewportHeight}px` : "100%",
+        shouldUseKeyboardViewportHeight ? `${lastViewportHeight}px` : "100%",
     );
     setRootStyleProperty(
         "--app-root-top",
-        shouldLockAppRoot ? `${lastViewportOffsetTop}px` : "0px",
+        "0px",
     );
     setRootStyleProperty(
         "--app-root-overflow-y",
-        shouldLockAppRoot ? "hidden" : "visible",
+        "visible",
     );
     setRootStyleProperty(
         "--app-main-height",
-        shouldLockAppRoot ? `${lastViewportHeight}px` : "100svh",
+        shouldUseKeyboardViewportHeight ? `${lastViewportHeight}px` : "100svh",
     );
     setRootStyleProperty(
         "--app-body-position",
-        shouldLockAppRoot ? "fixed" : "static",
+        "static",
     );
     setRootStyleProperty(
         "--app-body-inset",
-        shouldLockAppRoot ? "0" : "auto",
+        "auto",
     );
     setRootStyleProperty(
         "--app-body-width",
-        shouldLockAppRoot ? "100%" : "auto",
+        "auto",
     );
     setRootStyleProperty(
         "--app-overlay-position",
-        shouldLockAppRoot ? "absolute" : "fixed",
+        "fixed",
     );
     setRootStyleProperty(
         "--app-overscroll-behavior",
@@ -145,7 +132,7 @@ function syncLayoutCssVariables(
     );
     setRootStyleProperty(
         "--main-content-keyboard-adjustment",
-        shouldLockAppRoot ? "0px" : `${keyboardHeight}px`,
+        shouldUseKeyboardViewportHeight ? "0px" : `${keyboardHeight}px`,
     );
     setRootStyleProperty("--footer-bottom", footerBottom);
     setRootStyleProperty(
