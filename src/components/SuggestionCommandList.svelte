@@ -88,7 +88,8 @@
         if (itemTop < viewportTop) {
             viewportElement.scrollTop = itemTop;
         } else if (itemBottom > viewportBottom) {
-            viewportElement.scrollTop = itemBottom - viewportElement.clientHeight;
+            viewportElement.scrollTop =
+                itemBottom - viewportElement.clientHeight;
         }
     }
 </script>
@@ -125,7 +126,9 @@
                     orientation="vertical"
                     class="suggestion-command-scrollbar"
                 >
-                    <ScrollArea.Thumb class="suggestion-command-scrollbar-thumb" />
+                    <ScrollArea.Thumb
+                        class="suggestion-command-scrollbar-thumb"
+                    />
                 </ScrollArea.Scrollbar>
             </ScrollArea.Root>
         </Command.List>
@@ -134,10 +137,11 @@
 
 <style>
     :global(.suggestion-command) {
-        width: min(320px, calc(100vw - 16px));
+        display: inline-block;
+        width: fit-content;
+        max-width: calc(100vw - 16px);
         background: var(--dialog);
         color: var(--text);
-        box-shadow: 0 4px 16px var(--shadow);
         overflow: hidden;
     }
 
@@ -148,10 +152,13 @@
             var(--suggestion-command-row-height) *
                 var(--suggestion-command-visible-rows)
         );
+        width: max-content;
+        max-width: 100%;
     }
 
     :global(.suggestion-command-scroll) {
-        width: 100%;
+        width: max-content;
+        max-width: 100%;
         max-height: calc(
             var(--suggestion-command-row-height) *
                 var(--suggestion-command-visible-rows)
@@ -164,6 +171,8 @@
             var(--suggestion-command-row-height) *
                 var(--suggestion-command-visible-rows)
         );
+        width: max-content;
+        max-width: calc(100vw - 16px);
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
@@ -178,6 +187,7 @@
         align-items: center;
         gap: 8px;
         width: 100%;
+        max-width: calc(100vw - 16px);
         min-height: var(--suggestion-command-row-height);
         padding: 4px 10px;
         cursor: pointer;

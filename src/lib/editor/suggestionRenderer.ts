@@ -84,7 +84,13 @@ export function createSuggestionRenderer<T>({
 
             const viewportHeight = window.innerHeight;
             const spaceBelow = viewportHeight - rect.bottom;
-            container.style.left = `${Math.max(0, rect.left)}px`;
+            const margin = 8;
+            const containerWidth = container.offsetWidth;
+            const maxLeft = Math.max(
+                0,
+                window.innerWidth - containerWidth - margin,
+            );
+            container.style.left = `${Math.min(Math.max(0, rect.left), maxLeft)}px`;
             if (spaceBelow < approxDropdownHeight && rect.top > approxDropdownHeight) {
                 container.style.top = `${rect.top - approxDropdownHeight - 4}px`;
             } else {
