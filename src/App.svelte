@@ -67,11 +67,8 @@
   } from "./stores/settingsStore.svelte";
   import type {
     AuthResult,
-    ChannelContextQueryTarget,
     Draft,
     MediaGalleryItem,
-    ReplyQuoteQueryResult,
-    ReplyQuoteState,
   } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
@@ -135,9 +132,9 @@
     createDraftSavePayload,
   } from "./lib/draftContentUtils";
   import {
-    getChannelFromEmbedPayload,
-    getReplyQuoteFromEmbedPayload,
-  } from "./lib/urlQueryHandler";
+    buildPatchedChannelContext,
+    buildPatchedReplyQuoteQuery,
+  } from "./lib/embedComposerContextPatch";
   import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
@@ -602,99 +599,6 @@
     updateUrlQueryContentStore(content);
   }
 
-  function createReplyQuoteQueryTarget(reference: ReplyQuoteState) {
-    return {
-      eventId: reference.eventId,
-      relayHints: [...reference.relayHints],
-      authorPubkey: reference.authorPubkey,
-    };
-  }
-
-  function buildPatchedChannelContext(
-    payload: EmbedComposerSetContextPayload,
-  ): ChannelContextQueryTarget | null | undefined {
-    if (payload.channel === undefined) {
-      return undefined;
-    }
-
-    if (payload.channel === null) {
-      return null;
-    }
-
-    const decoded = getChannelFromEmbedPayload(payload);
-
-    if (!decoded) {
-      throw new Error("invalid_composer_context");
-    }
-
-    return decoded;
-  }
-
-  function getCurrentReplyQuoteQuery(): ReplyQuoteQueryResult | null {
-    const current = replyQuoteState.value;
-
-    if (!current.reply && current.quotes.length === 0) {
-      return null;
-    }
-
-    return {
-      reply: current.reply ? createReplyQuoteQueryTarget(current.reply) : null,
-      quotes: current.quotes.map((quote) => createReplyQuoteQueryTarget(quote)),
-    };
-  }
-
-  function buildPatchedReplyQuoteQuery(
-    payload: EmbedComposerSetContextPayload,
-  ): ReplyQuoteQueryResult | null | undefined {
-    const touchesReply = payload.reply !== undefined;
-    const touchesQuotes = payload.quotes !== undefined;
-
-    if (!touchesReply && !touchesQuotes) {
-      return undefined;
-    }
-
-    const decodedPatch = getReplyQuoteFromEmbedPayload(payload);
-    const current = getCurrentReplyQuoteQuery();
-
-    let nextReply = current?.reply ?? null;
-    let nextQuotes = current?.quotes ?? [];
-
-    if (touchesReply) {
-      if (payload.reply === null) {
-        nextReply = null;
-      } else {
-        if (!decodedPatch?.reply) {
-          throw new Error("invalid_composer_context");
-        }
-        nextReply = decodedPatch.reply;
-      }
-    }
-
-    if (touchesQuotes) {
-      if (payload.quotes === null) {
-        nextQuotes = [];
-      } else {
-        if (
-          (payload.quotes?.length ?? 0) > 0 &&
-          (!decodedPatch || decodedPatch.quotes.length === 0)
-        ) {
-          throw new Error("invalid_composer_context");
-        }
-
-        nextQuotes = decodedPatch?.quotes ?? [];
-      }
-    }
-
-    if (!nextReply && nextQuotes.length === 0) {
-      return null;
-    }
-
-    return {
-      reply: nextReply,
-      quotes: nextQuotes,
-    };
-  }
-
   async function applyRemoteComposerSetContext(
     payload: EmbedComposerSetContextPayload,
   ): Promise<void> {
@@ -713,7 +617,10 @@
       }
     }
 
-    const replyQuoteQuery = buildPatchedReplyQuoteQuery(payload);
+    const replyQuoteQuery = buildPatchedReplyQuoteQuery(
+      payload,
+      replyQuoteState.value,
+    );
 
     if (replyQuoteQuery === undefined) {
       return;
