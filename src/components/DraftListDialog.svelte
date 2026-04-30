@@ -154,9 +154,6 @@
                                                 <span
                                                     class="preview-mode-icon svg-icon"
                                                 ></span>
-                                                <span class="context-label"
-                                                    >{context.label}</span
-                                                >
                                                 <span class="context-name"
                                                     >{context.name}</span
                                                 >
@@ -358,12 +355,6 @@
 
     .quote-context .preview-mode-icon {
         mask-image: url("/icons/quote-right-solid-full.svg");
-    }
-
-    .context-label {
-        flex-shrink: 0;
-        color: var(--theme);
-        font-weight: 600;
     }
 
     .context-name,
