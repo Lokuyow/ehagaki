@@ -131,7 +131,7 @@ export const DEFAULT_MEDIA_FREE_PLACEMENT = false;
 export const VALID_COMPRESSION_LEVELS = ["none", "low", "medium", "high"] as const;
 
 // --- 下書き機能用定数 ---
-export const MAX_DRAFTS = 20; // 下書きの最大保存数
+export const MAX_DRAFTS = 100; // 下書きの最大保存数
 export const DRAFT_PREVIEW_LENGTH = 50; // 下書きプレビューの最大文字数
 
 export const SW_UPDATE_TIMEOUT = 1000;
