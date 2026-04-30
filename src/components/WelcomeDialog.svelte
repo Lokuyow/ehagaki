@@ -92,9 +92,9 @@
     .features {
         text-align: left;
         white-space: pre-line;
-        padding: 8px;
-        border-radius: 8px;
         margin-bottom: 1rem;
+        padding-left: 1rem;
+        border-radius: 8px;
         line-height: 1.6;
     }
 

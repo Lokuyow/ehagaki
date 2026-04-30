@@ -21,7 +21,7 @@
   "welcomeDialog": {
     "title": "Welcome to eHagaki",
     "description": "eHagaki is a post-only Nostr client. You can compress images and videos before sending them.",
-    "features": "Advantages:\n• Save data usage\n• Avoid upload failures in poor network conditions\n• Upload images from the share button of external apps (Android)",
+    "features": "Key Features:\n• Save data usage with automatic image/video compression\n• Visual editor that lets you edit exactly as it will appear without a separate preview\n• Supports custom emoji, multiple accounts, and drafts\n• Reply, Quote, and Channel post support\n• Upload media directly from the share button of external apps (Android)\n• Embeddable as an iframe in other apps",
     "get_started": "Get Started"
   },
   "loginDialog": {
