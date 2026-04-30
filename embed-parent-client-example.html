@@ -499,8 +499,8 @@
                     <div class="field">
                         <label for="initial-theme">theme</label>
                         <select id="initial-theme">
-                            <option value="system" selected>system (親の prefers-color-scheme を使う)</option>
-                            <option value="">未指定</option>
+                            <option value="" selected>未指定</option>
+                            <option value="system">system</option>
                             <option value="light">light</option>
                             <option value="dark">dark</option>
                         </select>
@@ -515,8 +515,8 @@
                 <p class="small">常時表示 iframe では ready 後や親設定変更時に `settings.set` を送ると、iframe を再読み込みせずに同じ設定へ同期できます。</p>
 
                 <div class="buttons">
-                    <button id="sync-runtime-settings" type="button"
-                        class="secondary button-full">現在の設定を postMessage で同期</button>
+                    <button id="sync-runtime-settings" type="button" class="secondary button-full">現在の設定を postMessage
+                        で同期</button>
                     <button id="reset-initial-settings" type="button"
                         class="secondary button-full">初期設定をリセットして再読み込み</button>
                 </div>

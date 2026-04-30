@@ -2966,4 +2966,4 @@ zoo`.split(`
           max-width: 78px;
         }
       }
-  `;const i=document.createElement("div");document.body.appendChild(i),Ai=i.attachShadow({mode:"open"}),Ai.appendChild(s)})(),Vs(),window.nostrZap={init:qs,initTarget:Zs,initTargets:Vs},ba}Ng();export{Dg as a,zg as g};
+  `;const i=document.createElement("div");document.body.appendChild(i),Ai=i.attachShadow({mode:"open"}),Ai.appendChild(s)})(),Vs(),window.nostrZap={init:qs,initTarget:Zs,initTargets:Vs},ba}Ng();export{Dg as a,Ks as c,zg as g};

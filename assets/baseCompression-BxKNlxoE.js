@@ -1,0 +1,1 @@
+import{a$ as o,a_ as r}from"./App-BO89Qa-f.js";class n{onProgress;context;constructor(s){this.context=s}setProgressCallback(s){this.onProgress=s}checkAbort(s){return o(s,this.context,this.onProgress)}resetProgress(){this.onProgress&&this.onProgress(0)}updateProgress(s){this.onProgress&&this.onProgress(Math.round(s))}log(...s){r(this.context,...s)}}export{n as B};

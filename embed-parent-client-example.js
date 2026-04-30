@@ -5,6 +5,7 @@ import { SimplePool } from "https://esm.sh/nostr-tools@2.23.3/pool";
 const EMBED_NAMESPACE = "ehagaki.embed";
 const EMBED_VERSION = 1;
 const PARENT_SESSION_STORAGE_KEY = "ehagaki.parent-client-sample.session";
+const PARENT_EMBED_STORAGE_PREFIX = "ehagaki.embed.storage.v1:";
 const TIMELINE_RELAYS = ["wss://nos.lol"];
 const TIMELINE_EVENT_LIMIT = 24;
 const TIMELINE_QUERY_MAX_WAIT_MS = 4000;
@@ -18,6 +19,9 @@ const INBOUND_TYPES = new Set([
     "composer.contextUpdated",
     "settings.applied",
     "settings.error",
+    "storage.get",
+    "storage.set",
+    "storage.remove",
     "post.success",
     "post.error",
 ]);
@@ -81,6 +85,23 @@ const INITIAL_SETTINGS_RESET_KEYS = [
     "settingsPreferenceMetadata",
 ];
 
+const EMBED_STORAGE_KEYS = new Set([
+    "locale",
+    "themeMode",
+    "darkMode",
+    "uploadEndpoint",
+    "clientTagEnabled",
+    "quoteNotificationEnabled",
+    "imageCompressionLevel",
+    "videoCompressionLevel",
+    "mediaFreePlacement",
+    "showMascot",
+    "showFlavorText",
+    "settingsPreferenceMetadata",
+    "firstVisit",
+    "sharedMediaProcessed",
+]);
+
 let lastPubkeyHex = null;
 let activeParentSession = null;
 let isIframeReady = false;
@@ -114,6 +135,22 @@ function isHex64(value) {
 
 function isStringArray(value) {
     return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isAllowedEmbedStorageKey(key) {
+    return EMBED_STORAGE_KEYS.has(key);
+}
+
+function getParentEmbedStorageKey(key) {
+    return `${PARENT_EMBED_STORAGE_PREFIX}${key}`;
+}
+
+function getParentStoredEmbedValue(key) {
+    if (!isAllowedEmbedStorageKey(key)) {
+        return null;
+    }
+
+    return window.localStorage.getItem(getParentEmbedStorageKey(key));
 }
 
 function isStringMatrix(value) {
@@ -1161,9 +1198,15 @@ function buildEmbedUrl() {
     url.searchParams.delete("defaultShowMascot");
     url.searchParams.delete("defaultShowFlavorText");
 
-    const initialLocale = normalizeInitialLocale(initialLocaleSelect.value);
-    const initialTheme = resolveInitialTheme(initialThemeSelect.value);
     const queryPrefix = initialQueryModeSelect.value === "default" ? "default" : "embed";
+    const storedLocale = normalizeInitialLocale(getParentStoredEmbedValue("locale"));
+    const storedTheme = normalizeInitialTheme(getParentStoredEmbedValue("themeMode"));
+    const initialLocale =
+        normalizeInitialLocale(initialLocaleSelect.value)
+        || (queryPrefix === "default" ? storedLocale : "");
+    const initialTheme =
+        resolveInitialTheme(initialThemeSelect.value)
+        || (queryPrefix === "default" ? storedTheme : "");
 
     if (initialLocale) {
         url.searchParams.set(`${queryPrefix}Locale`, initialLocale);
@@ -1290,6 +1333,13 @@ function resetInitialSettingsState() {
         }
         window.localStorage.removeItem(key);
     });
+    EMBED_STORAGE_KEYS.forEach((key) => {
+        const parentKey = getParentEmbedStorageKey(key);
+        if (window.localStorage.getItem(parentKey) !== null) {
+            clearedKeys.push(parentKey);
+        }
+        window.localStorage.removeItem(parentKey);
+    });
 
     setInitialSettingsFeedback("First-run state cleared. iframe reloaded.", "ok");
     appendLog("info", "初回設定状態をリセットしました", {
@@ -1345,6 +1395,11 @@ function requiresRequestId(type) {
         "settings.set",
         "settings.applied",
         "settings.error",
+        "storage.get",
+        "storage.set",
+        "storage.remove",
+        "storage.result",
+        "storage.error",
         "composer.contextApplied",
         "composer.contextError",
     ].includes(type);
@@ -1543,6 +1598,48 @@ function validateSettingsErrorPayload(payload) {
     return null;
 }
 
+function validateEmbedStorageKeys(keys, label) {
+    if (!isStringArray(keys)) {
+        return `${label} must be a string array`;
+    }
+    if (keys.some((key) => !isAllowedEmbedStorageKey(key))) {
+        return `${label} contains unsupported keys`;
+    }
+    return null;
+}
+
+function validateStorageGetPayload(payload) {
+    if (!isRecord(payload)) {
+        return "storage.get payload must be an object";
+    }
+    return validateEmbedStorageKeys(payload.keys, "storage.get payload.keys");
+}
+
+function validateStorageSetPayload(payload) {
+    if (!isRecord(payload)) {
+        return "storage.set payload must be an object";
+    }
+    if (!isRecord(payload.values)) {
+        return "storage.set payload.values must be an object";
+    }
+    for (const [key, value] of Object.entries(payload.values)) {
+        if (!isAllowedEmbedStorageKey(key)) {
+            return "storage.set payload.values contains unsupported keys";
+        }
+        if (typeof value !== "string") {
+            return "storage.set payload.values must contain string values";
+        }
+    }
+    return null;
+}
+
+function validateStorageRemovePayload(payload) {
+    if (!isRecord(payload)) {
+        return "storage.remove payload must be an object";
+    }
+    return validateEmbedStorageKeys(payload.keys, "storage.remove payload.keys");
+}
+
 function validateComposerContextUpdatedPayload(payload) {
     if (!isRecord(payload)) {
         return "composer.contextUpdated payload must be an object";
@@ -1615,6 +1712,12 @@ function validateEnvelope(data) {
             return validateSettingsAppliedPayload(data.payload);
         case "settings.error":
             return validateSettingsErrorPayload(data.payload);
+        case "storage.get":
+            return validateStorageGetPayload(data.payload);
+        case "storage.set":
+            return validateStorageSetPayload(data.payload);
+        case "storage.remove":
+            return validateStorageRemovePayload(data.payload);
         case "composer.contextUpdated":
             return validateComposerContextUpdatedPayload(data.payload);
         case "post.success":
@@ -1780,6 +1883,50 @@ async function handleRpcRequest(message) {
     }
 }
 
+function handleStorageRequest(message) {
+    try {
+        if (message.type === "storage.get") {
+            const values = {};
+            for (const key of message.payload.keys) {
+                values[key] = getParentStoredEmbedValue(key);
+            }
+            postToIframe("storage.result", { timestamp: Date.now(), values }, message.requestId);
+            return;
+        }
+
+        if (message.type === "storage.set") {
+            const applied = [];
+            for (const [key, value] of Object.entries(message.payload.values)) {
+                window.localStorage.setItem(getParentEmbedStorageKey(key), value);
+                applied.push(key);
+            }
+            postToIframe("storage.result", { timestamp: Date.now(), applied }, message.requestId);
+            updateDisplayedEmbedUrl();
+            return;
+        }
+
+        if (message.type === "storage.remove") {
+            const removed = [];
+            for (const key of message.payload.keys) {
+                window.localStorage.removeItem(getParentEmbedStorageKey(key));
+                removed.push(key);
+            }
+            postToIframe("storage.result", { timestamp: Date.now(), removed }, message.requestId);
+            updateDisplayedEmbedUrl();
+        }
+    } catch (error) {
+        postToIframe(
+            "storage.error",
+            {
+                timestamp: Date.now(),
+                code: "storage_parent_failed",
+                message: error instanceof Error ? error.message : String(error),
+            },
+            message.requestId,
+        );
+    }
+}
+
 async function handleEmbedMessage(event) {
     if (event.source !== iframe.contentWindow) {
         return;
@@ -1810,6 +1957,11 @@ async function handleEmbedMessage(event) {
             break;
         case "rpc.request":
             await handleRpcRequest(message);
+            break;
+        case "storage.get":
+        case "storage.set":
+        case "storage.remove":
+            handleStorageRequest(message);
             break;
         case "composer.contextApplied": {
             const actionLabel = consumeComposerRequestAction(message.requestId);
