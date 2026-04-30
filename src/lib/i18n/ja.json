@@ -59,8 +59,8 @@
   "logoutDialog": {
     "logout_confirmation": "ログアウト確認",
     "logout_warning": "本当にログアウトしますか？",
-    "last_account_reset_confirmation": "最後のアカウントをログアウト",
-    "last_account_reset_warning": "最後のアカウントをログアウトすると、eHagaki が保存した認証情報、アカウント情報、プロフィール、リレー、絵文字、下書き、共有メディア、関連画像キャッシュを削除します。",
+    "last_account_reset_confirmation": "全てのアカウントをログアウト",
+    "last_account_reset_warning": "全てのアカウントをログアウトすると、eHagaki が保存した認証情報、アカウント情報、プロフィール、リレー、絵文字、下書き、共有メディア、関連画像キャッシュを削除します。",
     "last_account_reset_error": "削除に失敗しました。時間をおいてもう一度お試しください。",
     "logout": "ログアウト",
     "cancel": "キャンセル"
