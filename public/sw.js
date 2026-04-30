@@ -15,7 +15,7 @@ const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = 'eHagakiDB';
-const INDEXEDDB_VERSION = 5;
+const INDEXEDDB_VERSION = 1;
 const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
 const SHARED_MEDIA_RECORD_ID = 'latest';
 const SHARED_MEDIA_SCHEMA_VERSION = 1;
@@ -269,6 +269,12 @@ function ensureCurrentEHagakiDbSchema(db) {
     ]);
     createObjectStoreIfMissing(db, SHARED_MEDIA_STORE_NAME, 'id', [
         { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' }
+    ]);
+    createObjectStoreIfMissing(db, 'hashtagHistory', 'tagLower', [
+        { name: 'useCount', keyPath: 'useCount' },
+        { name: 'lastUsed', keyPath: 'lastUsed' },
         { name: 'updatedAt', keyPath: 'updatedAt' },
         { name: 'schemaVersion', keyPath: 'schemaVersion' }
     ]);

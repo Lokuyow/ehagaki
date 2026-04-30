@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 6;
+export const EHAGAKI_DB_VERSION = 1;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -120,14 +120,8 @@ export class EHagakiDB extends Dexie {
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
 
-        this.version(1).stores({
-            meta: "key, updatedAt",
-            emojis: "pubkeyHex, fetchedAt, updatedAt",
-        });
-
         this.version(EHAGAKI_DB_VERSION).stores({
             meta: "key, updatedAt",
-            emojis: null,
             emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
             emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
