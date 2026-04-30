@@ -135,6 +135,7 @@ export interface Draft {
     content: string;
     preview: string;
     timestamp: number;
+    pinned?: boolean;
     galleryItems?: MediaGalleryItem[];
     channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;

@@ -36,6 +36,14 @@ function replaceCustomEmojiWithShortcodeText(container: HTMLElement, documentObj
         });
 }
 
+function sortDrafts(a: Pick<Draft, "timestamp" | "pinned">, b: Pick<Draft, "timestamp" | "pinned">): number {
+    if (!!a.pinned !== !!b.pinned) {
+        return a.pinned ? -1 : 1;
+    }
+
+    return b.timestamp - a.timestamp;
+}
+
 /**
  * 下書きをlocalStorageから読み込む
  */
@@ -46,7 +54,7 @@ function loadDraftsFromStorage(): Draft[] {
     try {
         const drafts = JSON.parse(draftsJson) as Draft[];
         // タイムスタンプの降順でソート（新しいものが先頭）
-        return drafts.sort((a, b) => b.timestamp - a.timestamp);
+        return drafts.sort(sortDrafts);
     } catch {
         return [];
     }
@@ -229,7 +237,7 @@ export async function saveDraft(
             return {
                 success: true,
                 needsConfirmation: false,
-                drafts: [newDraft, ...drafts].sort((a, b) => b.timestamp - a.timestamp),
+                drafts: [newDraft, ...drafts].sort(sortDrafts),
             };
         },
         () => {
@@ -252,7 +260,7 @@ export async function saveDraft(
             const updatedDrafts = [newDraft, ...drafts];
             saveDraftsToStorage(updatedDrafts);
 
-            return { success: true, needsConfirmation: false, drafts: updatedDrafts };
+            return { success: true, needsConfirmation: false, drafts: updatedDrafts.sort(sortDrafts) };
         },
     );
 }
@@ -293,7 +301,7 @@ export async function saveDraftWithReplaceOldest(
                 pubkeyHex: options.pubkeyHex ?? null,
             });
 
-            return [newDraft, ...remainingDrafts].sort((a, b) => b.timestamp - a.timestamp);
+            return [newDraft, ...remainingDrafts].sort(sortDrafts);
         },
         () => {
             const drafts = loadDraftsFromStorage();
@@ -312,6 +320,30 @@ export async function saveDraftWithReplaceOldest(
             const updatedDrafts = [newDraft, ...remainingDrafts];
             saveDraftsToStorage(updatedDrafts);
 
+            return updatedDrafts.sort(sortDrafts);
+        },
+    );
+}
+
+/**
+ * 下書きのピン留め状態を切り替える
+ */
+export async function toggleDraftPinned(
+    id: string,
+    pinned: boolean,
+    options: DraftsRepositoryOptions = {},
+): Promise<Draft[]> {
+    return runWithLocalStorageFallback(
+        async () => {
+            await draftsRepository.setPinned(id, pinned);
+            return draftsRepository.getAll(options);
+        },
+        () => {
+            const drafts = loadDraftsFromStorage();
+            const updatedDrafts = drafts
+                .map((draft) => draft.id === id ? { ...draft, pinned: pinned || undefined } : draft)
+                .sort(sortDrafts);
+            saveDraftsToStorage(updatedDrafts);
             return updatedDrafts;
         },
     );

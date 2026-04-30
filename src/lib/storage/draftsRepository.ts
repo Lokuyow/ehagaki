@@ -12,6 +12,7 @@ type DraftInput = {
     content: string;
     preview: string;
     timestamp: number;
+    pinned?: boolean;
     galleryItems?: MediaGalleryItem[];
     channelData?: DraftChannelData;
     replyQuoteData?: DraftReplyQuoteData;
@@ -24,6 +25,7 @@ export type DraftsRepositoryOptions = {
 export interface DraftsRepository {
     getAll(options?: DraftsRepositoryOptions): Promise<Draft[]>;
     put(draft: DraftInput): Promise<void>;
+    setPinned(id: string, pinned: boolean): Promise<void>;
     delete(id: string): Promise<void>;
     deleteAll(options?: DraftsRepositoryOptions): Promise<void>;
     trimToMax(options?: DraftsRepositoryOptions, maxDrafts?: number): Promise<void>;
@@ -42,10 +44,18 @@ function readLegacyDraftsFromLocalStorage(storage: Pick<Storage, "getItem"> = lo
         if (!Array.isArray(drafts)) return [];
         return drafts
             .filter((draft): draft is Draft => typeof draft?.id === "string")
-            .sort((a, b) => b.timestamp - a.timestamp);
+            .sort(sortDrafts);
     } catch {
         return [];
     }
+}
+
+function sortDrafts(a: Pick<Draft, "timestamp" | "pinned">, b: Pick<Draft, "timestamp" | "pinned">): number {
+    if (!!a.pinned !== !!b.pinned) {
+        return a.pinned ? -1 : 1;
+    }
+
+    return b.timestamp - a.timestamp;
 }
 
 function toDraft(record: DraftRecord): Draft {
@@ -54,6 +64,7 @@ function toDraft(record: DraftRecord): Draft {
         content: record.content,
         preview: record.preview,
         timestamp: record.timestamp,
+        pinned: record.pinned || undefined,
         galleryItems: record.galleryItems,
         channelData: record.channelData,
         replyQuoteData: record.replyQuoteData,
@@ -70,6 +81,7 @@ function toRecord(draft: DraftInput, now: () => number): DraftRecord {
         content: draft.content,
         preview: draft.preview,
         timestamp,
+        pinned: draft.pinned || undefined,
         updatedAt: timestamp,
         galleryItems: draft.galleryItems && draft.galleryItems.length > 0 ? draft.galleryItems : undefined,
         channelData: draft.channelData || undefined,
@@ -95,13 +107,21 @@ export class DexieDraftsRepository implements DraftsRepository {
             .toArray();
 
         return records
-            .sort((a, b) => b.timestamp - a.timestamp)
+            .sort(sortDrafts)
             .map(toDraft);
     }
 
     async put(draft: DraftInput): Promise<void> {
         await this.ensureLegacyDraftsMigrated();
         await this.db.drafts.put(toRecord(draft, this.now));
+    }
+
+    async setPinned(id: string, pinned: boolean): Promise<void> {
+        await this.ensureLegacyDraftsMigrated();
+        await this.db.drafts.update(id, {
+            pinned: pinned || undefined,
+            updatedAt: this.now(),
+        });
     }
 
     async delete(id: string): Promise<void> {

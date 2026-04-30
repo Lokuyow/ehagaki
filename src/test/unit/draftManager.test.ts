@@ -10,6 +10,7 @@ import {
     loadDrafts,
     saveDraft,
     saveDraftWithReplaceOldest,
+    toggleDraftPinned,
 } from "../../lib/draftManager";
 import type { Draft, DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../../lib/types";
 import { MAX_DRAFTS, STORAGE_KEYS } from "../../lib/constants";
@@ -152,6 +153,20 @@ describe("draftManager", () => {
             const result = await loadDrafts({ pubkeyHex: "pubkey-a" });
 
             expect(result.map((draft) => draft.preview)).toEqual(["Unscoped", "Account A"]);
+        });
+
+        it("ピン留めされた下書きをタイムスタンプより優先して先頭に並べる", async () => {
+            const drafts: Draft[] = [
+                { id: "draft_1", content: "<p>Pinned old</p>", preview: "Pinned old", timestamp: 1000, pinned: true },
+                { id: "draft_2", content: "<p>New</p>", preview: "New", timestamp: 3000 },
+                { id: "draft_3", content: "<p>Mid</p>", preview: "Mid", timestamp: 2000 },
+            ];
+            storage.setItem(STORAGE_KEYS.DRAFTS, JSON.stringify(drafts));
+
+            const result = await loadDrafts();
+
+            expect(result.map((draft) => draft.id)).toEqual(["draft_1", "draft_2", "draft_3"]);
+            expect(result[0].pinned).toBe(true);
         });
     });
 
@@ -299,6 +314,32 @@ describe("draftManager", () => {
 
             expect(result).toHaveLength(1);
             expect(result[0].id).toBe(drafts[1].id);
+        });
+    });
+
+    describe("toggleDraftPinned", () => {
+        it("下書きのピン留め状態を保存して、ピン留めした下書きを先頭に表示する", async () => {
+            await saveDraft("<p>Old</p>", undefined, undefined, undefined, { pubkeyHex: "pubkey-a" });
+            await saveDraft("<p>New</p>", undefined, undefined, undefined, { pubkeyHex: "pubkey-a" });
+            const before = await loadDrafts({ pubkeyHex: "pubkey-a" });
+
+            const result = await toggleDraftPinned(before[1].id, true, { pubkeyHex: "pubkey-a" });
+            const fetched = await getDraft(before[1].id, { pubkeyHex: "pubkey-a" });
+
+            expect(result.map((draft) => draft.preview)).toEqual(["Old", "New"]);
+            expect(fetched?.pinned).toBe(true);
+        });
+
+        it("ピン留め解除後はタイムスタンプ降順に戻す", async () => {
+            await saveDraft("<p>Old</p>");
+            await saveDraft("<p>New</p>");
+            const before = await loadDrafts();
+
+            await toggleDraftPinned(before[1].id, true);
+            const result = await toggleDraftPinned(before[1].id, false);
+
+            expect(result.map((draft) => draft.preview)).toEqual(["New", "Old"]);
+            expect(result.find((draft) => draft.preview === "Old")?.pinned).toBeUndefined();
         });
     });
 

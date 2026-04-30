@@ -14,6 +14,7 @@
         loadDrafts,
         deleteDraft,
         deleteAllDrafts,
+        toggleDraftPinned,
         formatDraftTimestamp,
     } from "../lib/draftManager";
 
@@ -79,6 +80,14 @@
         drafts = await deleteDraft(id, getDraftOptions());
     }
 
+    async function handleTogglePinned(draft: Draft) {
+        drafts = await toggleDraftPinned(
+            draft.id,
+            !draft.pinned,
+            getDraftOptions(),
+        );
+    }
+
     // 全ての下書きを削除
     async function handleDeleteAllDrafts() {
         drafts = await deleteAllDrafts(getDraftOptions());
@@ -133,6 +142,18 @@
                         document,
                     )}
                     <li class="draft-item">
+                        <Button
+                            className={`pin-button ${draft.pinned ? "pinned" : ""}`}
+                            variant="default"
+                            shape="square"
+                            ariaLabel={draft.pinned
+                                ? $_("draft.unpin") || "ピン留めを解除"
+                                : $_("draft.pin") || "ピン留め"}
+                            aria-pressed={draft.pinned ? "true" : "false"}
+                            onClick={() => void handleTogglePinned(draft)}
+                        >
+                            <div class="thumbtack-icon svg-icon"></div>
+                        </Button>
                         <button
                             type="button"
                             class="draft-content"
@@ -285,13 +306,30 @@
             }
         }
 
+        :global(.pin-button) {
+            width: 44px;
+            height: auto;
+            --btn-bg: var(--dialog);
+
+            .thumbtack-icon {
+                width: 20px;
+                height: 20px;
+                opacity: 0.38;
+                transition: opacity 0.15s ease;
+            }
+
+            &.pinned .thumbtack-icon {
+                opacity: 1;
+            }
+        }
+
         button.draft-content {
             flex: 1;
             display: flex;
             justify-content: space-between;
             align-items: flex-start;
-            gap: 12px;
-            padding: 12px;
+            gap: 8px;
+            padding: 10px;
             --btn-bg: var(--dialog);
             border: none;
             cursor: pointer;
@@ -384,6 +422,10 @@
 
     .trash-icon {
         mask-image: url("/icons/trash-solid-full.svg");
+    }
+
+    .thumbtack-icon {
+        mask-image: url("/icons/thumbtack-solid-full.svg");
     }
 
     .xmark-icon {

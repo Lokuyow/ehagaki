@@ -40,6 +40,7 @@ export interface DraftRecord {
     content: string;
     preview: string;
     timestamp: number;
+    pinned?: boolean;
     updatedAt: number;
     galleryItems?: MediaGalleryItem[];
     channelData?: DraftChannelData;
