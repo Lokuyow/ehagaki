@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 3;
+export const EHAGAKI_DB_VERSION = 4;
 
 export interface MetaRecord {
     key: string;
@@ -48,11 +48,39 @@ export interface DraftRecord {
     schemaVersion: number;
 }
 
+export interface ProfileRecord {
+    pubkeyHex: string;
+    name: string;
+    displayName: string;
+    pictureUrl: string;
+    npub: string;
+    nprofile: string;
+    profileRelays?: string[];
+    fetchedAt: number;
+    updatedAtFromEvent?: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
+export interface RelayConfigRecord {
+    pubkeyHex: string;
+    config: unknown;
+    writeRelays: string[];
+    readRelays: string[];
+    source?: string;
+    fetchedAt: number;
+    updatedAtFromEvent?: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
     emojiCacheMeta!: Table<EmojiCacheMetaRecord, string>;
     drafts!: Table<DraftRecord, string>;
+    profiles!: Table<ProfileRecord, string>;
+    relayConfigs!: Table<RelayConfigRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -68,6 +96,8 @@ export class EHagakiDB extends Dexie {
             emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
             emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
+            profiles: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
+            relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
         });
     }
 }

@@ -120,6 +120,7 @@ export interface RelayFetchResult {
     relayConfig?: RelayConfig;
     source?: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
     error?: string;
+    updatedAtFromEvent?: number;
 }
 
 export interface UserRelaysFetchResult {
@@ -212,6 +213,8 @@ export interface ProfileData {
     npub: string;
     nprofile: string;
     profileRelays?: string[];
+    fetchedAt?: number;
+    updatedAtFromEvent?: number;
 }
 
 // Reply / Quote types (NIP-10, NIP-18, NIP-21)

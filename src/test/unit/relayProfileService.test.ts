@@ -13,15 +13,15 @@ import { createMockRxNostr } from '../helpers';
 
 function createMockRelayManager(): RelayManager {
     return {
-        useRelaysFromLocalStorageIfExists: vi.fn().mockReturnValue(false),
+        useRelaysFromLocalStorageIfExists: vi.fn().mockResolvedValue(false),
         setBootstrapRelays: vi.fn(),
-        getFromLocalStorage: vi.fn().mockReturnValue(null),
+        getFromLocalStorage: vi.fn().mockResolvedValue(null),
         fetchUserRelays: vi.fn().mockResolvedValue({
             success: true,
             relayConfig: ['wss://relay1.example.com/'],
             source: 'kind10002'
         }),
-        getRelayListsForProfile: vi.fn().mockReturnValue({
+        getRelayListsForProfile: vi.fn().mockResolvedValue({
             writeRelays: ['wss://relay1.example.com/'],
             additionalRelays: ['wss://relay1.example.com/', 'wss://bootstrap.example.com/']
         }),
@@ -44,7 +44,7 @@ function createMockProfileManager(): ProfileManager {
             npub: 'npub1realtime',
             nprofile: 'nprofile1realtime'
         }),
-        getFromLocalStorage: vi.fn().mockReturnValue(null),
+        getFromLocalStorage: vi.fn().mockResolvedValue(null),
     } as unknown as ProfileManager;
 }
 
@@ -64,7 +64,7 @@ describe('RelayProfileService', () => {
 
     describe('initializeRelays', () => {
         it('pubkeyHexが指定され、ローカルストレージにリレーがある場合はそれを使用する', async () => {
-            vi.mocked(mockRelayManager.useRelaysFromLocalStorageIfExists).mockReturnValue(true);
+            vi.mocked(mockRelayManager.useRelaysFromLocalStorageIfExists).mockResolvedValue(true);
 
             await service.initializeRelays('pubkey123');
 
@@ -73,7 +73,7 @@ describe('RelayProfileService', () => {
         });
 
         it('pubkeyHexが指定され、ローカルストレージにリレーがない場合はブートストラップリレーを設定する', async () => {
-            vi.mocked(mockRelayManager.useRelaysFromLocalStorageIfExists).mockReturnValue(false);
+            vi.mocked(mockRelayManager.useRelaysFromLocalStorageIfExists).mockResolvedValue(false);
 
             await service.initializeRelays('pubkey123');
 
@@ -98,7 +98,7 @@ describe('RelayProfileService', () => {
     describe('fetchRelays', () => {
         it('forceRemote=falseでキャッシュがある場合はローカルストレージから返す', async () => {
             const cachedRelays = { 'wss://cached.relay.com/': { read: true, write: true } };
-            vi.mocked(mockRelayManager.getFromLocalStorage).mockReturnValue(cachedRelays);
+            vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(cachedRelays);
 
             const result = await service.fetchRelays('pubkey123', false);
 
@@ -109,7 +109,7 @@ describe('RelayProfileService', () => {
         });
 
         it('forceRemote=falseでキャッシュがない場合はリモート取得する', async () => {
-            vi.mocked(mockRelayManager.getFromLocalStorage).mockReturnValue(null);
+            vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(null);
 
             const result = await service.fetchRelays('pubkey123', false);
 
@@ -119,7 +119,7 @@ describe('RelayProfileService', () => {
 
         it('forceRemote=trueの場合はキャッシュを無視してリモート取得する', async () => {
             const cachedRelays = { 'wss://cached.relay.com/': { read: true, write: true } };
-            vi.mocked(mockRelayManager.getFromLocalStorage).mockReturnValue(cachedRelays);
+            vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(cachedRelays);
 
             await service.fetchRelays('pubkey123', true);
 
@@ -128,7 +128,7 @@ describe('RelayProfileService', () => {
         });
 
         it('デフォルトではforceRemote=falseとして動作する', async () => {
-            vi.mocked(mockRelayManager.getFromLocalStorage).mockReturnValue(null);
+            vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(null);
 
             await service.fetchRelays('pubkey123');
 
@@ -173,7 +173,7 @@ describe('RelayProfileService', () => {
         });
 
         it('RelayManagerからリレーリストを取得してProfileManagerに渡す', async () => {
-            vi.mocked(mockRelayManager.getRelayListsForProfile).mockReturnValue({
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
                 writeRelays: ['wss://write.relay.com/'],
                 additionalRelays: ['wss://write.relay.com/', 'wss://read.relay.com/']
             });
@@ -190,7 +190,7 @@ describe('RelayProfileService', () => {
 
     describe('fetchProfileRealtime', () => {
         it('relay hint を既存のプロフィール取得リレーにマージして network-only 取得する', async () => {
-            vi.mocked(mockRelayManager.getRelayListsForProfile).mockReturnValue({
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
                 writeRelays: ['wss://write.relay.com/'],
                 additionalRelays: ['wss://bootstrap.example.com/']
             });
@@ -212,7 +212,7 @@ describe('RelayProfileService', () => {
         });
 
         it('無効な external relay hint を除外して network-only 取得する', async () => {
-            vi.mocked(mockRelayManager.getRelayListsForProfile).mockReturnValue({
+            vi.mocked(mockRelayManager.getRelayListsForProfile).mockResolvedValue({
                 writeRelays: ['wss://write.relay.com/'],
                 additionalRelays: ['wss://bootstrap.example.com/']
             });
@@ -249,7 +249,7 @@ describe('RelayProfileService', () => {
         });
 
         it('リレーキャッシュがある場合はリモート取得をスキップする', async () => {
-            vi.mocked(mockRelayManager.getFromLocalStorage).mockReturnValue(
+            vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(
                 ['wss://cached.relay.com/']
             );
 
@@ -259,7 +259,7 @@ describe('RelayProfileService', () => {
         });
 
         it('リレーキャッシュがない場合はリモート取得する', async () => {
-            vi.mocked(mockRelayManager.getFromLocalStorage).mockReturnValue(null);
+            vi.mocked(mockRelayManager.getFromLocalStorage).mockResolvedValue(null);
 
             await service.initializeForLogin('pubkey123');
 

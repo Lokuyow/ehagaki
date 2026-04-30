@@ -1,5 +1,7 @@
 import type { StoredAccount } from './types';
 import { STORAGE_KEYS } from './constants';
+import { profilesRepository } from './storage/profilesRepository';
+import { relayConfigsRepository } from './storage/relayConfigsRepository';
 
 export interface AccountManagerDeps {
     localStorage: Storage;
@@ -201,6 +203,8 @@ export class AccountManager {
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex);
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex);
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex);
+            void profilesRepository.delete(pubkeyHex);
+            void relayConfigsRepository.delete(pubkeyHex);
         } catch (error) {
             this.console.error('アカウントデータ削除エラー:', error);
         }

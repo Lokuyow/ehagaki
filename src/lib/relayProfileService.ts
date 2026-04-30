@@ -11,8 +11,8 @@ import { RelayConfigUtils } from './relayConfigUtils';
  *      ログインフローや再取得フローを提供する
  * 
  * 処理フロー:
- * 1. リレー取得: BOOTSTRAP_RELAYS → kind 10002/3 → Store, nostr-relays-{pubkeyHex} に保存
- * 2. プロフィール取得: BOOTSTRAP_RELAYS + nostr-relays-{pubkeyHex} → kind 0 → Store, nostr-profile-{pubkeyHex} に保存
+ * 1. リレー取得: BOOTSTRAP_RELAYS → kind 10002/3 → Store, IndexedDB に保存
+ * 2. プロフィール取得: BOOTSTRAP_RELAYS + 保存済みリレー → kind 0 → Store, IndexedDB に保存
  */
 export class RelayProfileService {
     private relayManager: RelayManager;
@@ -29,11 +29,11 @@ export class RelayProfileService {
 
     /**
      * 初期化時のリレー設定
-     * ローカルストレージにリレー情報があれば使用、なければBOOTSTRAP_RELAYSを設定
+     * 保存済みリレー情報があれば使用、なければBOOTSTRAP_RELAYSを設定
      */
     async initializeRelays(pubkeyHex?: string): Promise<void> {
         if (pubkeyHex) {
-            if (!this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
+            if (!await this.relayManager.useRelaysFromLocalStorageIfExists(pubkeyHex)) {
                 this.relayManager.setBootstrapRelays();
             }
         } else {
@@ -42,7 +42,7 @@ export class RelayProfileService {
     }
 
     /**
-     * リレーリストを取得（ローカルストレージにない場合はリモート取得）
+     * リレーリストを取得（キャッシュにない場合はリモート取得）
      * @param pubkeyHex 公開鍵
      * @param forceRemote 強制的にリモート取得するか
      * @returns リレー取得結果
@@ -53,7 +53,7 @@ export class RelayProfileService {
         source: 'localStorage' | 'kind10002' | 'kind3' | 'fallback';
     }> {
         if (!forceRemote) {
-            const cachedRelays = this.relayManager.getFromLocalStorage(pubkeyHex);
+            const cachedRelays = await this.relayManager.getFromLocalStorage(pubkeyHex);
             if (cachedRelays) {
                 console.log("キャッシュからリレーリストを復元:", cachedRelays);
                 return {
@@ -64,7 +64,7 @@ export class RelayProfileService {
             }
         }
 
-        // リモートから取得（自動的にローカルストレージに保存される）
+        // リモートから取得（自動的にIndexedDBに保存される）
         const result = await this.relayManager.fetchUserRelays(pubkeyHex, { forceRemote });
         return result;
     }
@@ -80,13 +80,13 @@ export class RelayProfileService {
 
         // forceRemoteの場合はプロフィールキャッシュを削除
         if (forceRemote) {
-            this.profileManager.saveToLocalStorage(pubkeyHex, null);
+            await this.profileManager.saveToLocalStorage(pubkeyHex, null);
         }
 
         // RelayManagerからリレー情報を取得（ストレージアクセスはRelayManagerに委譲）
-        const { writeRelays, additionalRelays } = this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const { writeRelays, additionalRelays } = await this.relayManager.getRelayListsForProfile(pubkeyHex);
 
-        // プロフィール取得（自動的にローカルストレージに保存される）
+        // プロフィール取得（自動的にIndexedDBに保存される）
         const profile = await this.profileManager.fetchProfileData(pubkeyHex, {
             forceRemote,
             writeRelays,
@@ -108,7 +108,7 @@ export class RelayProfileService {
     ): Promise<ProfileData | null> {
         if (!pubkeyHex) return null;
 
-        const { writeRelays, additionalRelays } = this.relayManager.getRelayListsForProfile(pubkeyHex);
+        const { writeRelays, additionalRelays } = await this.relayManager.getRelayListsForProfile(pubkeyHex);
         const sanitizedOptionRelays = RelayConfigUtils.sanitizeExternalRelayUrls(options.additionalRelays, {
             limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT,
         });

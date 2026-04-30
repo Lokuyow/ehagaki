@@ -3,6 +3,7 @@ import { createRxBackwardReq } from 'rx-nostr';
 import { toNpub, toNprofile } from "./utils/nostrUtils";
 import type { ProfileManagerDeps, ProfileData } from './types';
 import { RelayConfigUtils } from './relayConfigUtils';
+import { DexieProfilesRepository, profilesRepository, type ProfilesRepository } from './storage/profilesRepository';
 import {
   addProfilePictureCacheBuster,
   addProfilePictureMarker,
@@ -71,15 +72,15 @@ export class ProfileDataFactory {
 // --- ストレージ操作の分離 ---
 export class ProfileStorage {
   constructor(
-    private localStorage: Storage,
     private console: Console,
-    private profileDataFactory: ProfileDataFactory
+    private profileDataFactory: ProfileDataFactory,
+    private repository: ProfilesRepository = profilesRepository
   ) { }
 
-  save(pubkeyHex: string, profile: ProfileData | null): void {
+  async save(pubkeyHex: string, profile: ProfileData | null): Promise<void> {
     try {
       if (profile === null) {
-        this.localStorage.removeItem(`nostr-profile-${pubkeyHex}`);
+        await this.repository.delete(pubkeyHex);
         return;
       }
       const sanitizedProfile = {
@@ -88,21 +89,19 @@ export class ProfileStorage {
           ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
           : ""
       };
-      this.localStorage.setItem(`nostr-profile-${pubkeyHex}`, JSON.stringify(sanitizedProfile));
-      this.console.log("プロフィール情報をローカルストレージに保存:", pubkeyHex);
+      await this.repository.put(pubkeyHex, sanitizedProfile);
+      this.console.log("プロフィール情報をIndexedDBに保存:", pubkeyHex);
     } catch (e) {
       this.console.error("プロフィール情報の保存に失敗:", e);
     }
   }
 
-  get(pubkeyHex: string): ProfileData | null {
+  async get(pubkeyHex: string): Promise<ProfileData | null> {
     try {
-      const profileString = this.localStorage.getItem(`nostr-profile-${pubkeyHex}`);
-      if (!profileString) return null;
+      const parsed = await this.repository.get(pubkeyHex);
+      if (!parsed) return null;
 
-      const parsed = JSON.parse(profileString);
-
-      // ローカルストレージから取得時は、保存されたデータをそのまま返す
+      // 保存済みデータは、生成済みのnpubとnprofileを再利用する
       // (npubとnprofileはすでに生成済みのため、再生成せずに使用)
       if (parsed.npub && parsed.nprofile) {
         const picture = typeof parsed.picture === 'string'
@@ -125,8 +124,8 @@ export class ProfileStorage {
     }
   }
 
-  clear(pubkeyHex: string): void {
-    this.save(pubkeyHex, null);
+  async clear(pubkeyHex: string): Promise<void> {
+    await this.save(pubkeyHex, null);
   }
 }
 
@@ -203,6 +202,10 @@ export class ProfileNetworkFetcher {
                   forceRemote: opts?.forceRemote
                 }
               );
+              profile.fetchedAt = Date.now();
+              profile.updatedAtFromEvent = typeof packet.event.created_at === 'number'
+                ? packet.event.created_at
+                : undefined;
               this.console.log("Kind 0からプロフィール情報を取得:", profile, "from relay:", packet.from);
               safeResolve(profile);
             } catch (e) {
@@ -223,6 +226,7 @@ export class ProfileNetworkFetcher {
                 forceRemote: opts?.forceRemote
               }
             );
+            defaultProfile.fetchedAt = Date.now();
             safeResolve(defaultProfile);
           }
         },
@@ -237,7 +241,8 @@ export class ProfileNetworkFetcher {
       rxReq.emit({
         authors: [pubkeyHex],
         kinds: [0],
-        until: Math.floor(Date.now() / 1000)
+        until: Math.floor(Date.now() / 1000),
+        limit: 1
       });
       rxReq.over();
     });
@@ -255,7 +260,7 @@ export class ProfileManager {
     deps: ProfileManagerDeps = {}
   ) {
     // デフォルト依存性の設定
-    const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
+    const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : undefined);
     const navigator = deps.navigator || (typeof window !== 'undefined' ? window.navigator : { onLine: true } as Navigator);
     const setTimeoutFn = deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms));
     const clearTimeoutFn = deps.clearTimeoutFn || ((id) => clearTimeout(id));
@@ -263,7 +268,10 @@ export class ProfileManager {
 
     // 依存関係の構築
     this.profileDataFactory = new ProfileDataFactory({ navigator });
-    this.storage = new ProfileStorage(localStorage, console, this.profileDataFactory);
+    const repository = localStorage
+      ? new DexieProfilesRepository(undefined, Date.now, () => localStorage)
+      : profilesRepository;
+    this.storage = new ProfileStorage(console, this.profileDataFactory, repository);
     this.networkFetcher = new ProfileNetworkFetcher(
       rxNostr,
       this.profileDataFactory,
@@ -274,11 +282,11 @@ export class ProfileManager {
   }
 
   // 外部APIは変更なし（後方互換性のため）
-  saveToLocalStorage(pubkeyHex: string, profile: ProfileData | null): void {
-    this.storage.save(pubkeyHex, profile);
+  async saveToLocalStorage(pubkeyHex: string, profile: ProfileData | null): Promise<void> {
+    await this.storage.save(pubkeyHex, profile);
   }
 
-  getFromLocalStorage(pubkeyHex: string): ProfileData | null {
+  async getFromLocalStorage(pubkeyHex: string): Promise<ProfileData | null> {
     return this.storage.get(pubkeyHex);
   }
 
@@ -291,7 +299,7 @@ export class ProfileManager {
 
     // キャッシュチェック
     if (!opts?.forceRemote) {
-      const cachedProfile = this.storage.get(pubkeyHex);
+      const cachedProfile = await this.storage.get(pubkeyHex);
       if (cachedProfile) {
         consoleObj.log("キャッシュからプロフィールを復元:", cachedProfile);
         return cachedProfile;
@@ -305,7 +313,7 @@ export class ProfileManager {
 
     // 取得できた場合はキャッシュに保存
     if (profile) {
-      this.storage.save(pubkeyHex, profile);
+      await this.storage.save(pubkeyHex, profile);
     }
 
     return profile;

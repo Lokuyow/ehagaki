@@ -1,4 +1,5 @@
-import { RelayConfigUtils, type RelayManager } from '../lib/relayManager';
+import type { RelayManager } from '../lib/relayManager';
+import { RelayConfigUtils } from '../lib/relayConfigUtils';
 import type { RelayConfig } from '../lib/types';
 
 // --- リレー設定管理 ---
@@ -43,16 +44,16 @@ export function setRelayManager(relayManager: RelayManager): void {
 }
 
 /**
- * localStorageからリレー設定を読み込んでストアに設定
+ * 保存済みリレー設定を読み込んでストアに設定
  */
-export function loadRelayConfigFromStorage(pubkeyHex: string): void {
+export async function loadRelayConfigFromStorage(pubkeyHex: string): Promise<void> {
     if (!relayManagerInstance || !pubkeyHex) {
         relayConfigStore.set(null);
         writeRelaysStore.set([]);
         return;
     }
 
-    const result = relayManagerInstance.loadRelayConfigForUI(pubkeyHex);
+    const result = await relayManagerInstance.loadRelayConfigForUI(pubkeyHex);
     if (!result) {
         relayConfigStore.set(null);
         writeRelaysStore.set([]);
@@ -64,14 +65,12 @@ export function loadRelayConfigFromStorage(pubkeyHex: string): void {
 }
 
 /**
- * リレー設定をlocalStorageに保存してストアを更新
+ * リレー設定をストアに反映
  */
-export function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig): void {
+export async function saveRelayConfigToStorage(pubkeyHex: string, config: RelayConfig): Promise<void> {
     if (!pubkeyHex) return;
 
-    const relayKey = `nostr-relays-${pubkeyHex}`;
     try {
-        localStorage.setItem(relayKey, JSON.stringify(config));
         relayConfigStore.set(config);
 
         const writeRelaysList = RelayConfigUtils.extractWriteRelays(config);

@@ -3,9 +3,9 @@ import { verifier } from "@rx-nostr/crypto";
 import { ProfileManager, ProfileUrlUtils } from "../profileManager";
 import { RelayManager } from "../relayManager";
 import { RelayProfileService } from "../relayProfileService";
-import { STORAGE_KEYS } from "../constants";
 import type { AccountManager } from "../accountManager";
 import type { ProfileData } from "../types";
+import { profilesRepository } from "../storage/profilesRepository";
 
 export interface NostrSessionBootstrap {
     rxNostr: ReturnType<typeof createRxNostr>;
@@ -47,7 +47,6 @@ interface SyncAccountStoresParams {
     accountManager: Pick<AccountManager, "getAccounts">;
     accountListStore: AccountListStoreLike;
     accountProfileCacheStore: AccountProfileCacheStoreLike;
-    localStorage: Storage;
 }
 
 interface CompletePostAuthBootstrapParams extends SyncAccountStoresParams, InitializeNostrSessionParams {
@@ -106,35 +105,27 @@ export function syncAccountStores({
     accountManager,
     accountListStore,
     accountProfileCacheStore,
-    localStorage,
-}: SyncAccountStoresParams): void {
+}: SyncAccountStoresParams): Promise<void> {
     const accounts = accountManager.getAccounts();
     accountListStore.set(accounts);
 
-    for (const account of accounts) {
-        try {
-            const profileData = localStorage.getItem(
-                STORAGE_KEYS.NOSTR_PROFILE + account.pubkeyHex,
-            );
-            if (!profileData) {
-                continue;
-            }
-
-            const profile = JSON.parse(profileData);
-            const picture =
-                typeof profile.picture === "string"
-                    ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
-                    : "";
-
-            accountProfileCacheStore.setProfile(account.pubkeyHex, {
-                name: profile.name || "",
-                displayName: profile.displayName || "",
-                picture,
-            });
-        } catch {
-            // ignore cache entry parse failures
+    return Promise.all(accounts.map(async (account) => {
+        const profile = await profilesRepository.get(account.pubkeyHex);
+        if (!profile) {
+            return;
         }
-    }
+
+        const picture =
+            typeof profile.picture === "string"
+                ? ProfileUrlUtils.ensureProfileMarker(profile.picture)
+                : "";
+
+        accountProfileCacheStore.setProfile(account.pubkeyHex, {
+            name: profile.name || "",
+            displayName: profile.displayName || "",
+            picture,
+        });
+    })).then(() => undefined);
 }
 
 export function applyProfileToStores({
@@ -187,7 +178,6 @@ export async function completePostAuthBootstrap({
     accountManager,
     accountListStore,
     accountProfileCacheStore,
-    localStorage,
 }: CompletePostAuthBootstrapParams): Promise<NostrSessionBootstrap> {
     isLoadingProfileStore.set(true);
     closeAuthDialogs();
@@ -213,11 +203,10 @@ export async function completePostAuthBootstrap({
         return session;
     } finally {
         isLoadingProfileStore.set(false);
-        syncAccountStores({
+        await syncAccountStores({
             accountManager,
             accountListStore,
             accountProfileCacheStore,
-            localStorage,
         });
     }
 }

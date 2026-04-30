@@ -1,4 +1,5 @@
 import { vi } from 'vitest';
+import "fake-indexeddb/auto";
 
 // 共通モックのインポートと設定
 import {

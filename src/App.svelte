@@ -431,20 +431,18 @@
       accountManager,
       accountListStore,
       accountProfileCacheStore,
-      localStorage,
     });
 
     rxNostr = session.rxNostr;
     relayProfileService = session.relayProfileService;
   }
 
-  /** アカウントリストストアをlocalStorageから同期 */
+  /** アカウントリストストアを保存済みプロフィールキャッシュから同期 */
   function refreshAccountList(): void {
-    syncAccountStores({
+    void syncAccountStores({
       accountManager,
       accountListStore,
       accountProfileCacheStore,
-      localStorage,
     });
   }
 
@@ -1035,19 +1033,6 @@
       isLoadingNip46 = false;
     }
   }
-
-  // 認証状態が変わったら自動的にリレー設定を読み込む
-  $effect(() => {
-    const pubkey = authState.value?.pubkey;
-    if (pubkey && authState.value?.isAuthenticated && relayProfileService) {
-      const result = relayProfileService
-        .getRelayManager()
-        .loadRelayConfigForUI(pubkey);
-      if (result) {
-        // TODO: 必要に応じてストアを更新
-      }
-    }
-  });
 
   $effect(() => {
     const pubkey = authState.value?.pubkey;

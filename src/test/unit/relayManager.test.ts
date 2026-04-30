@@ -8,6 +8,8 @@ import {
 import type { RelayConfig, RelayManagerDeps } from '../../lib/types';
 import type { RxNostr } from 'rx-nostr';
 import { MockStorage, createMockRxNostr } from '../helpers';
+import { EHagakiDB } from '../../lib/storage/ehagakiDb';
+import { DexieRelayConfigsRepository } from '../../lib/storage/relayConfigsRepository';
 
 describe('RelayConfigParser', () => {
     describe('parseKind10002Tags', () => {
@@ -131,6 +133,7 @@ describe('RelayStorage', () => {
     let mockLocalStorage: MockStorage;
     let mockConsole: Console;
     let mockRelayListUpdatedStore: RelayManagerDeps['relayListUpdatedStore'];
+    let repository: DexieRelayConfigsRepository;
 
     beforeEach(() => {
         mockLocalStorage = new MockStorage();
@@ -143,41 +146,46 @@ describe('RelayStorage', () => {
             value: 0,
             set: vi.fn()
         };
-        storage = new RelayStorage(mockLocalStorage, mockConsole, mockRelayListUpdatedStore);
+        repository = new DexieRelayConfigsRepository(
+            new EHagakiDB(`RelayStorage-test-${Date.now()}-${Math.random()}`),
+            () => 1234,
+            () => mockLocalStorage,
+        );
+        storage = new RelayStorage(mockConsole, mockRelayListUpdatedStore, undefined, repository);
     });
 
     describe('save', () => {
-        it('有効なリレー設定を保存する', () => {
+        it('有効なリレー設定を保存する', async () => {
             const config: RelayConfig = ['wss://relay1.example.com', 'wss://relay2.example.com'];
 
-            storage.save('pubkey123', config);
+            await storage.save('pubkey123', config);
 
-            expect(mockLocalStorage.getItem('nostr-relays-pubkey123')).toBeTruthy();
+            await expect(storage.get('pubkey123')).resolves.toEqual(config);
             expect(mockConsole.log).toHaveBeenCalledWith(
-                'リレーリストをローカルストレージに保存:',
+                'リレーリストをIndexedDBに保存:',
                 'pubkey123'
             );
             expect(mockRelayListUpdatedStore?.set).toHaveBeenCalledWith(1);
         });
 
-        it('nullを渡すとデータを削除する', () => {
-            mockLocalStorage.setItem('nostr-relays-pubkey123', 'existing-data');
+        it('nullを渡すとデータを削除する', async () => {
+            await storage.save('pubkey123', ['wss://relay.example.com']);
 
-            storage.save('pubkey123', null);
+            await storage.save('pubkey123', null);
 
-            expect(mockLocalStorage.getItem('nostr-relays-pubkey123')).toBeNull();
+            await expect(storage.get('pubkey123')).resolves.toBeNull();
             // 文字列結合形式に修正
             expect(mockConsole.log).toHaveBeenCalledWith(
                 'リレーリストを削除: pubkey123'
             );
         });
 
-        it('無効なリレー設定はスキップする', () => {
+        it('無効なリレー設定はスキップする', async () => {
             const invalidConfig = { invalid: 'config' } as any;
 
-            storage.save('pubkey123', invalidConfig);
+            await storage.save('pubkey123', invalidConfig);
 
-            expect(mockLocalStorage.getItem('nostr-relays-pubkey123')).toBeNull();
+            await expect(storage.get('pubkey123')).resolves.toBeNull();
             expect(mockConsole.warn).toHaveBeenCalledWith(
                 '無効なリレー設定のため保存をスキップ:',
                 invalidConfig
@@ -186,49 +194,45 @@ describe('RelayStorage', () => {
     });
 
     describe('get', () => {
-        it('有効なリレー設定を取得する', () => {
+        it('有効なリレー設定を取得する', async () => {
             const config: RelayConfig = ['wss://relay1.example.com'];
             mockLocalStorage.setItem('nostr-relays-pubkey123', JSON.stringify(config));
 
-            const result = storage.get('pubkey123');
+            const result = await storage.get('pubkey123');
 
             expect(result).toEqual(config);
         });
 
-        it('存在しないキーに対してnullを返す', () => {
-            const result = storage.get('nonexistent');
+        it('存在しないキーに対してnullを返す', async () => {
+            const result = await storage.get('nonexistent');
             expect(result).toBeNull();
         });
 
-        it('無効なJSONに対してnullを返しエラーをログ出力する', () => {
+        it('無効なJSONに対してnullを返す', async () => {
             mockLocalStorage.setItem('nostr-relays-pubkey123', 'invalid json');
 
-            const result = storage.get('pubkey123');
+            const result = await storage.get('pubkey123');
 
             expect(result).toBeNull();
-            expect(mockConsole.error).toHaveBeenCalledWith(
-                'リレーリストの取得に失敗:',
-                expect.any(Error)
-            );
         });
 
-        it('無効な設定形式に対してnullを返す', () => {
+        it('無効な設定形式に対してnullを返す', async () => {
             const invalidConfig = { invalid: 'format' };
             mockLocalStorage.setItem('nostr-relays-pubkey123', JSON.stringify(invalidConfig));
 
-            const result = storage.get('pubkey123');
+            const result = await storage.get('pubkey123');
 
             expect(result).toBeNull();
         });
     });
 
     describe('clear', () => {
-        it('指定されたpubkeyのデータをクリアする', () => {
-            mockLocalStorage.setItem('nostr-relays-pubkey123', 'data');
+        it('指定されたpubkeyのデータをクリアする', async () => {
+            await storage.save('pubkey123', ['wss://relay.example.com']);
 
-            storage.clear('pubkey123');
+            await storage.clear('pubkey123');
 
-            expect(mockLocalStorage.getItem('nostr-relays-pubkey123')).toBeNull();
+            await expect(storage.get('pubkey123')).resolves.toBeNull();
         });
     });
 });
@@ -430,17 +434,17 @@ describe('RelayManager統合テスト', () => {
     });
 
     describe('ローカルストレージ操作', () => {
-        it('リレー設定を保存・取得する', () => {
+        it('リレー設定を保存・取得する', async () => {
             const config: RelayConfig = ['wss://relay1.example.com', 'wss://relay2.example.com'];
 
-            manager.saveToLocalStorage('testpubkey', config);
-            const result = manager.getFromLocalStorage('testpubkey');
+            await manager.saveToLocalStorage('testpubkey', config);
+            const result = await manager.getFromLocalStorage('testpubkey');
 
             expect(result).toEqual(config);
         });
 
-        it('存在しないキーに対してnullを返す', () => {
-            const result = manager.getFromLocalStorage('nonexistent');
+        it('存在しないキーに対してnullを返す', async () => {
+            const result = await manager.getFromLocalStorage('nonexistent');
             expect(result).toBeNull();
         });
     });
@@ -468,35 +472,37 @@ describe('RelayManager統合テスト', () => {
     });
 
     describe('ローカルストレージからのリレー使用', () => {
-        it('保存されたリレーを使用してtrueを返す', () => {
+        it('保存されたリレーを使用してtrueを返す', async () => {
+            const pubkey = 'legacy-relay-pubkey';
             const config: RelayConfig = ['wss://relay1.example.com'];
-            mockStorage.setItem('nostr-relays-testpubkey', JSON.stringify(config));
+            mockStorage.setItem(`nostr-relays-${pubkey}`, JSON.stringify(config));
 
-            const result = manager.useRelaysFromLocalStorageIfExists('testpubkey');
+            const result = await manager.useRelaysFromLocalStorageIfExists(pubkey);
 
             expect(result).toBe(true);
             expect(mockRxNostr.setDefaultRelays).toHaveBeenCalledWith(config);
         });
 
-        it('保存されたリレーがない場合はfalseを返す', () => {
-            const result = manager.useRelaysFromLocalStorageIfExists('nonexistent');
+        it('保存されたリレーがない場合はfalseを返す', async () => {
+            const result = await manager.useRelaysFromLocalStorageIfExists('nonexistent');
 
             expect(result).toBe(false);
             expect(mockRxNostr.setDefaultRelays).not.toHaveBeenCalled();
         });
 
-        it('リレー設定エラー時は破損データを削除してfalseを返す', () => {
+        it('リレー設定エラー時は破損データを削除してfalseを返す', async () => {
+            const pubkey = 'invalid-relay-pubkey';
             const config: RelayConfig = ['wss://relay1.example.com'];
-            mockStorage.setItem('nostr-relays-testpubkey', JSON.stringify(config));
+            mockStorage.setItem(`nostr-relays-${pubkey}`, JSON.stringify(config));
 
             (mockRxNostr.setDefaultRelays as any) = vi.fn(() => { throw new Error('Invalid relay config'); });
 
-            const result = manager.useRelaysFromLocalStorageIfExists('testpubkey');
+            const result = await manager.useRelaysFromLocalStorageIfExists(pubkey);
 
             expect(result).toBe(false);
-            expect(mockStorage.getItem('nostr-relays-testpubkey')).toBeNull(); // 破損データ削除
+            expect(mockStorage.getItem(`nostr-relays-${pubkey}`)).toBeNull(); // 破損データ削除
             expect(mockDeps.console?.error).toHaveBeenCalledWith(
-                expect.stringContaining('ローカルストレージのリレー設定エラー:'),
+                expect.stringContaining('保存済みリレー設定エラー:'),
                 expect.any(Error)
             );
         });
@@ -504,10 +510,11 @@ describe('RelayManager統合テスト', () => {
 
     describe('ユーザーリレー取得', () => {
         it('ローカルストレージから復元する（forceRemote: false）', async () => {
+            const pubkey = 'fetch-cached-pubkey';
             const config: RelayConfig = ['wss://cached-relay.example.com'];
-            mockStorage.setItem('nostr-relays-testpubkey', JSON.stringify(config));
+            mockStorage.setItem(`nostr-relays-${pubkey}`, JSON.stringify(config));
 
-            const result = await manager.fetchUserRelays('testpubkey', { forceRemote: false });
+            const result = await manager.fetchUserRelays(pubkey, { forceRemote: false });
 
             expect(result.success).toBe(true);
             expect(result.source).toBe('localStorage');
@@ -555,7 +562,7 @@ describe('RelayManager統合テスト', () => {
 
             manager = new RelayManager(mockRxNostr, mockDeps);
 
-            const result = await manager.fetchUserRelays('testpubkey', { timeoutMs: 1 });
+            const result = await manager.fetchUserRelays('fallback-pubkey', { timeoutMs: 1 });
 
             expect(result.success).toBe(false); // 取得失敗
             expect(result.source).toBe('fallback');

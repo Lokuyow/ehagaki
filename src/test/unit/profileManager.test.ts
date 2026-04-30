@@ -10,6 +10,8 @@ import {
     getProfilePictureCacheKeyUrl,
     normalizeProfilePictureUrl,
 } from '../../lib/profilePictureUrlUtils';
+import { EHagakiDB } from '../../lib/storage/ehagakiDb';
+import { DexieProfilesRepository } from '../../lib/storage/profilesRepository';
 import type { ProfileManagerDeps } from '../../lib/types';
 import { MockStorage, createMockRxNostr } from '../helpers';
 
@@ -152,6 +154,7 @@ describe('ProfileStorage', () => {
     let mockLocalStorage: MockStorage;
     let mockConsole: Console;
     let factory: ProfileDataFactory;
+    let repository: DexieProfilesRepository;
 
     beforeEach(() => {
         mockLocalStorage = new MockStorage();
@@ -160,19 +163,28 @@ describe('ProfileStorage', () => {
             error: vi.fn()
         } as any;
         factory = new ProfileDataFactory();
-        storage = new ProfileStorage(mockLocalStorage, mockConsole, factory);
+        repository = new DexieProfilesRepository(
+            new EHagakiDB(`ProfileStorage-test-${Date.now()}-${Math.random()}`),
+            () => 1234,
+            () => mockLocalStorage,
+        );
+        storage = new ProfileStorage(mockConsole, factory, repository);
     });
 
-    it('プロフィールを保存する', () => {
+    it('プロフィールを保存する', async () => {
         const profile = { name: 'Test', displayName: '', picture: '', npub: 'npub123', nprofile: '' };
 
-        storage.save('pubkey123', profile);
+        await storage.save('pubkey123', profile);
 
-        expect(mockLocalStorage.getItem('nostr-profile-pubkey123')).toBeTruthy();
+        await expect(storage.get('pubkey123')).resolves.toEqual(expect.objectContaining({
+            name: 'Test',
+            displayName: '',
+            picture: '',
+        }));
         expect(mockConsole.log).toHaveBeenCalled();
     });
 
-    it('保存前にポリシー外の画像URLを除去する', () => {
+    it('保存前にポリシー外の画像URLを除去する', async () => {
         const profile = {
             name: 'Test',
             displayName: '',
@@ -181,24 +193,23 @@ describe('ProfileStorage', () => {
             nprofile: ''
         };
 
-        storage.save('pubkey123', profile);
+        await storage.save('pubkey123', profile);
 
-        const stored = JSON.parse(mockLocalStorage.getItem('nostr-profile-pubkey123') || '{}');
-        expect(stored.picture).toBe('');
+        await expect(storage.get('pubkey123')).resolves.toEqual(expect.objectContaining({ picture: '' }));
     });
 
-    it('プロフィールを取得する', () => {
+    it('プロフィールを取得する', async () => {
         const profile = { name: 'Test', picture: 'https://example.com/pic.jpg' };
         mockLocalStorage.setItem('nostr-profile-pubkey123', JSON.stringify(profile));
 
-        const result = storage.get('pubkey123');
+        const result = await storage.get('pubkey123');
 
         expect(result).toBeTruthy();
         expect(result?.name).toBe('Test');
         expect(result?.picture).toBe('https://example.com/pic.jpg?profile=true');
     });
 
-    it('新形式の保存データでもprofileマーカーを補完する', () => {
+    it('新形式の保存データでもprofileマーカーを補完する', async () => {
         const profile = {
             name: 'Stored User',
             picture: 'https://example.com/pic.jpg?cb=123',
@@ -207,12 +218,12 @@ describe('ProfileStorage', () => {
         };
         mockLocalStorage.setItem('nostr-profile-pubkey123', JSON.stringify(profile));
 
-        const result = storage.get('pubkey123');
+        const result = await storage.get('pubkey123');
 
         expect(result?.picture).toBe('https://example.com/pic.jpg?cb=123&profile=true');
     });
 
-    it('新形式でもポリシー外 URL を復元しない', () => {
+    it('新形式でもポリシー外 URL を復元しない', async () => {
         const profile = {
             name: 'Stored User',
             picture: 'https://192.168.0.10/pic.jpg?profile=true',
@@ -221,22 +232,22 @@ describe('ProfileStorage', () => {
         };
         mockLocalStorage.setItem('nostr-profile-pubkey123', JSON.stringify(profile));
 
-        const result = storage.get('pubkey123');
+        const result = await storage.get('pubkey123');
 
         expect(result?.picture).toBe('');
     });
 
-    it('存在しないプロフィールに対してnullを返す', () => {
-        const result = storage.get('nonexistent');
+    it('存在しないプロフィールに対してnullを返す', async () => {
+        const result = await storage.get('nonexistent');
         expect(result).toBeNull();
     });
 
-    it('プロフィールをクリアする', () => {
-        mockLocalStorage.setItem('nostr-profile-pubkey123', 'data');
+    it('プロフィールをクリアする', async () => {
+        await storage.save('pubkey123', { name: 'Test', displayName: '', picture: '', npub: 'npub123', nprofile: '' });
 
-        storage.clear('pubkey123');
+        await storage.clear('pubkey123');
 
-        expect(mockLocalStorage.getItem('nostr-profile-pubkey123')).toBeNull();
+        await expect(storage.get('pubkey123')).resolves.toBeNull();
     });
 });
 

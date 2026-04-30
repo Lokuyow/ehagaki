@@ -4,6 +4,7 @@ import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
 import { saveRelayConfigToStorage } from "../stores/relayStore.svelte";
 import { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
+import { DexieRelayConfigsRepository, relayConfigsRepository, type RelayConfigsRepository } from "./storage/relayConfigsRepository";
 
 // 後方互換性のためre-export
 export { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
@@ -11,28 +12,29 @@ export { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
 // --- ストレージ操作の分離 ---
 export class RelayStorage {
     constructor(
-        private localStorage: Storage,
         private console: Console,
         private relayListUpdatedStore?: RelayManagerDeps['relayListUpdatedStore'],
-        private pubkeyHex?: string // pubkeyを保持してストア更新に使用
+        private pubkeyHex?: string, // pubkeyを保持してストア更新に使用
+        private repository: RelayConfigsRepository = relayConfigsRepository
     ) { }
 
     setPubkey(pubkeyHex: string): void {
         this.pubkeyHex = pubkeyHex;
     }
 
-    save(pubkeyHex: string, relays: RelayConfig | null): void {
+    async save(pubkeyHex: string, relays: RelayConfig | null, options: {
+        source?: string;
+        updatedAtFromEvent?: number;
+    } = {}): Promise<void> {
         try {
-            const key = `nostr-relays-${pubkeyHex}`;
-
             if (relays === null) {
-                this.localStorage.removeItem(key);
+                await this.repository.delete(pubkeyHex);
                 this.console.log(`リレーリストを削除: ${pubkeyHex}`);
 
                 // ストアもクリア
                 if (typeof window !== 'undefined') {
                     try {
-                        saveRelayConfigToStorage(pubkeyHex, {} as RelayConfig);
+                        await saveRelayConfigToStorage(pubkeyHex, {} as RelayConfig);
                     } catch (e) {
                         // ストア更新失敗は無視
                     }
@@ -45,14 +47,17 @@ export class RelayStorage {
                 return;
             }
 
-            this.localStorage.setItem(key, JSON.stringify(relays));
+            await this.repository.put(pubkeyHex, relays, {
+                source: options.source,
+                updatedAtFromEvent: options.updatedAtFromEvent,
+            });
 
             // ストアを更新（ブラウザ環境の場合のみ）
             if (typeof window !== 'undefined') {
                 try {
-                    saveRelayConfigToStorage(pubkeyHex, relays);
+                    await saveRelayConfigToStorage(pubkeyHex, relays);
                 } catch (e) {
-                    // ストア更新失敗は無視（localStorage保存は成功）
+                    // ストア更新失敗は無視（IndexedDB保存は成功）
                     this.console.warn('ストアの更新に失敗:', e);
                 }
             }
@@ -62,29 +67,24 @@ export class RelayStorage {
                 this.relayListUpdatedStore.set(this.relayListUpdatedStore.value + 1);
             }
 
-            this.console.log("リレーリストをローカルストレージに保存:", pubkeyHex);
+            this.console.log("リレーリストをIndexedDBに保存:", pubkeyHex);
         } catch (e) {
             this.console.error("リレーリストの保存に失敗:", e);
         }
     }
 
-    get(pubkeyHex: string): RelayConfig | null {
+    async get(pubkeyHex: string): Promise<RelayConfig | null> {
         try {
-            const key = `nostr-relays-${pubkeyHex}`;
-            const relays = this.localStorage.getItem(key);
-
-            if (!relays) return null;
-
-            const parsed = JSON.parse(relays);
-            return RelayConfigParser.isValidRelayConfig(parsed) ? parsed : null;
+            const relays = await this.repository.get(pubkeyHex);
+            return relays?.config ?? null;
         } catch (e) {
             this.console.error("リレーリストの取得に失敗:", e);
             return null;
         }
     }
 
-    clear(pubkeyHex: string): void {
-        this.save(pubkeyHex, null);
+    async clear(pubkeyHex: string): Promise<void> {
+        await this.save(pubkeyHex, null);
     }
 }
 
@@ -139,7 +139,10 @@ export class RelayNetworkFetcher {
                                     safeResolve({
                                         success: true,
                                         relayConfig: relayConfigs,
-                                        source: 'kind10002'
+                                        source: 'kind10002',
+                                        updatedAtFromEvent: typeof packet.event.created_at === 'number'
+                                            ? packet.event.created_at
+                                            : undefined
                                     });
                                 }
                             } catch (e) {
@@ -165,7 +168,8 @@ export class RelayNetworkFetcher {
                 rxReq.emit({
                     authors: [pubkeyHex],
                     kinds: [10002],
-                    until: Math.floor(Date.now() / 1000)
+                    until: Math.floor(Date.now() / 1000),
+                    limit: 1
                 });
                 rxReq.over();
 
@@ -217,7 +221,10 @@ export class RelayNetworkFetcher {
                                 safeResolve({
                                     success: true,
                                     relayConfig: relayObj,
-                                    source: 'kind3'
+                                    source: 'kind3',
+                                    updatedAtFromEvent: typeof packet.event.created_at === 'number'
+                                        ? packet.event.created_at
+                                        : undefined
                                 });
                             }
                         }
@@ -240,7 +247,8 @@ export class RelayNetworkFetcher {
                 rxReq.emit({
                     authors: [pubkeyHex],
                     kinds: [3],
-                    until: Math.floor(Date.now() / 1000)
+                    until: Math.floor(Date.now() / 1000),
+                    limit: 1
                 });
                 rxReq.over();
 
@@ -263,7 +271,7 @@ export class RelayManager {
         deps: RelayManagerDeps = {}
     ) {
         // デフォルト依存性の設定
-        const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
+        const localStorage = deps.localStorage || (typeof window !== 'undefined' ? window.localStorage : undefined);
         const consoleImpl = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const setTimeoutFn = deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms));
         const clearTimeoutFn = deps.clearTimeoutFn || ((id) => clearTimeout(id));
@@ -272,16 +280,19 @@ export class RelayManager {
 
         // 依存関係の構築
         this.console = consoleImpl;
-        this.storage = new RelayStorage(localStorage, consoleImpl, relayListUpdatedStore);
+        const repository = localStorage
+            ? new DexieRelayConfigsRepository(undefined, Date.now, () => localStorage)
+            : relayConfigsRepository;
+        this.storage = new RelayStorage(consoleImpl, relayListUpdatedStore, undefined, repository);
         this.networkFetcher = new RelayNetworkFetcher(rxNostr, consoleImpl, setTimeoutFn, clearTimeoutFn);
     }
 
     // 外部APIは変更なし（後方互換性のため）
-    saveToLocalStorage(pubkeyHex: string, relays: RelayConfig): void {
-        this.storage.save(pubkeyHex, relays);
+    async saveToLocalStorage(pubkeyHex: string, relays: RelayConfig): Promise<void> {
+        await this.storage.save(pubkeyHex, relays);
     }
 
-    getFromLocalStorage(pubkeyHex: string): RelayConfig | null {
+    async getFromLocalStorage(pubkeyHex: string): Promise<RelayConfig | null> {
         return this.storage.get(pubkeyHex);
     }
 
@@ -297,16 +308,16 @@ export class RelayManager {
         }
     }
 
-    useRelaysFromLocalStorageIfExists(pubkeyHex: string): boolean {
-        const savedRelays = this.storage.get(pubkeyHex);
+    async useRelaysFromLocalStorageIfExists(pubkeyHex: string): Promise<boolean> {
+        const savedRelays = await this.storage.get(pubkeyHex);
         if (savedRelays) {
             try {
                 this.rxNostr.setDefaultRelays(savedRelays);
-                this.console.log("ローカルストレージのリレーリストを使用:", savedRelays);
+                this.console.log("保存済みリレーリストを使用:", savedRelays);
                 return true;
             } catch (error) {
-                this.console.error("ローカルストレージのリレー設定エラー:", error);
-                this.storage.clear(pubkeyHex); // 破損したデータを削除
+                this.console.error("保存済みリレー設定エラー:", error);
+                await this.storage.clear(pubkeyHex); // 破損したデータを削除
                 return false;
             }
         }
@@ -321,12 +332,12 @@ export class RelayManager {
 
         this.console.log(`リレー取得開始: ${pubkeyHex}`);
 
-        // forceRemoteがfalseまたは未指定ならローカルストレージ利用
+        // forceRemoteがfalseまたは未指定なら保存済みキャッシュ利用
         if (!opts.forceRemote) {
-            const cachedRelays = this.storage.get(pubkeyHex);
+            const cachedRelays = await this.storage.get(pubkeyHex);
             if (cachedRelays) {
                 this.rxNostr.setDefaultRelays(cachedRelays);
-                this.console.log("ローカルストレージからリレーを復元しました");
+                this.console.log("キャッシュからリレーを復元しました");
                 return {
                     success: true,
                     relayConfig: cachedRelays,
@@ -346,7 +357,10 @@ export class RelayManager {
 
         if (kind10002Result.success && kind10002Result.relayConfig) {
             this.rxNostr.setDefaultRelays(kind10002Result.relayConfig);
-            this.storage.save(pubkeyHex, kind10002Result.relayConfig);
+            await this.storage.save(pubkeyHex, kind10002Result.relayConfig, {
+                source: 'kind10002',
+                updatedAtFromEvent: kind10002Result.updatedAtFromEvent,
+            });
             this.console.log("Kind 10002からリレー取得成功");
             return {
                 success: true,
@@ -364,7 +378,10 @@ export class RelayManager {
 
         if (kind3Result.success && kind3Result.relayConfig) {
             this.rxNostr.setDefaultRelays(kind3Result.relayConfig);
-            this.storage.save(pubkeyHex, kind3Result.relayConfig);
+            await this.storage.save(pubkeyHex, kind3Result.relayConfig, {
+                source: 'kind3',
+                updatedAtFromEvent: kind3Result.updatedAtFromEvent,
+            });
             this.console.log("Kind 3からリレー取得成功");
             return {
                 success: true,
@@ -377,7 +394,7 @@ export class RelayManager {
         this.console.log("リモート取得失敗、フォールバックリレーを使用");
         this.rxNostr.setDefaultRelays(FALLBACK_RELAYS);
         this.console.log("フォールバックリレーを設定:", FALLBACK_RELAYS);
-        this.storage.save(pubkeyHex, FALLBACK_RELAYS);
+        await this.storage.save(pubkeyHex, FALLBACK_RELAYS, { source: 'fallback' });
         return {
             success: false,
             relayConfig: FALLBACK_RELAYS,
@@ -386,19 +403,19 @@ export class RelayManager {
     }
 
     /**
-     * ローカルストレージからリレー情報を取得し、プロフィール取得用のリレーリストを構築
+     * 保存済みリレー情報を取得し、プロフィール取得用のリレーリストを構築
      * @param pubkeyHex 公開鍵
      * @param bootstrapRelays マージするブートストラップリレー（デフォルト: BOOTSTRAP_RELAYS）
      * @returns writeリレーとマージされた全リレーのリスト
      */
-    getRelayListsForProfile(
+    async getRelayListsForProfile(
         pubkeyHex: string,
         bootstrapRelays: string[] = BOOTSTRAP_RELAYS
-    ): {
+    ): Promise<{
         writeRelays: string[];
         additionalRelays: string[];
-    } {
-        const relayConfig = this.storage.get(pubkeyHex);
+    }> {
+        const relayConfig = await this.storage.get(pubkeyHex);
         let writeRelays: string[] = [];
         let additionalRelays: string[] = [];
 
@@ -427,12 +444,12 @@ export class RelayManager {
 
     /**
      * UI用のリレー設定読み込みメソッド
-     * ローカルストレージからリレー設定を読み込み、writeリレーリストも返す
+     * 保存済みリレー設定を読み込み、writeリレーリストも返す
      * @param pubkeyHex 公開鍵
      * @returns リレー設定とwriteリレーのタプル、存在しない場合はnull
      */
-    loadRelayConfigForUI(pubkeyHex: string): { relayConfig: RelayConfig; writeRelays: string[] } | null {
-        const relayConfig = this.storage.get(pubkeyHex);
+    async loadRelayConfigForUI(pubkeyHex: string): Promise<{ relayConfig: RelayConfig; writeRelays: string[] } | null> {
+        const relayConfig = await this.storage.get(pubkeyHex);
         if (!relayConfig) {
             return null;
         }
