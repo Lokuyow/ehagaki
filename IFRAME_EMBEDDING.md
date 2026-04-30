@@ -310,7 +310,7 @@ iframe.contentWindow.postMessage({
 
 ### iframe 内 localStorage が使えない場合の親保存委譲
 
-iOS Safari など一部ブラウザでは、cross-origin iframe 内の localStorage が安定して使えないことがあります。その場合、親ページが `storage.*` メッセージに応答すると、eHagaki は設定と軽量履歴を親ページ側 localStorage に委譲できます。
+iOS Safari など一部ブラウザでは、cross-origin iframe 内の localStorage が安定して使えないことがあります。その場合、親ページが `storage.*` メッセージに応答すると、eHagaki は設定を親ページ側 localStorage に委譲できます。
 
 この仕組みは任意です。親ページが `storage.*` に対応していない場合、eHagaki は従来どおり iframe 内 localStorage だけを使います。
 
@@ -401,7 +401,6 @@ iframe.contentWindow.postMessage({
 - `settingsPreferenceMetadata`
 - `firstVisit`
 - `sharedMediaProcessed`
-- `hashtagHistory`
 
 親ページ側では、eHagaki のキーと衝突しないように prefix を付けて保存することを推奨します。
 
@@ -422,7 +421,6 @@ const ALLOWED_STORAGE_KEYS = new Set([
   'settingsPreferenceMetadata',
   'firstVisit',
   'sharedMediaProcessed',
-  'hashtagHistory',
 ]);
 
 function postToIframe(message) {

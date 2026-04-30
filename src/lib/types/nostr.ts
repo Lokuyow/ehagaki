@@ -141,6 +141,7 @@ export interface HashtagStore {
 export interface HashtagHistoryEntry {
     tag: string;
     lastUsed: number;
+    useCount?: number;
 }
 
 export interface PostManagerDeps {
@@ -178,7 +179,7 @@ export interface PostManagerDeps {
         notifyPostError: (error?: string | { code: string; message?: string }) => boolean;
     };
     hashtagPinStore?: { value: boolean };
-    saveHashtagsToHistoryFn?: (hashtags: string[]) => void;
+    saveHashtagsToHistoryFn?: (hashtags: string[]) => void | Promise<void>;
     channelContextState?: { value: ChannelContextState | null };
     replyQuoteState?: { value: ReplyQuoteComposerState };
     settingsStore?: { quoteNotificationEnabled: boolean };

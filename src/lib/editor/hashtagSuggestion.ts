@@ -7,7 +7,7 @@ import { createSuggestionRenderer } from './suggestionRenderer';
 /**
  * ハッシュタグサジェスト拡張
  *
- * '#' を入力するとローカルストレージの履歴からサジェスト候補をドロップダウン表示する。
+ * '#' を入力すると IndexedDB の履歴からサジェスト候補をドロップダウン表示する。
  * 候補選択で入力中の '#<query>' を '#<selected> ' に置換する。
  */
 export const HashtagSuggestion = Extension.create({

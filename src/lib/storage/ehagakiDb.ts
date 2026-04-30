@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 5;
+export const EHAGAKI_DB_VERSION = 6;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -97,6 +97,16 @@ export interface SharedMediaRecord {
     schemaVersion: number;
 }
 
+export interface HashtagHistoryRecord {
+    tagLower: string;
+    tag: string;
+    useCount: number;
+    lastUsed: number;
+    createdAt: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
@@ -105,6 +115,7 @@ export class EHagakiDB extends Dexie {
     profiles!: Table<ProfileRecord, string>;
     relayConfigs!: Table<RelayConfigRecord, string>;
     sharedMedia!: Table<SharedMediaRecord, string>;
+    hashtagHistory!: Table<HashtagHistoryRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -123,6 +134,7 @@ export class EHagakiDB extends Dexie {
             profiles: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
             relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
             sharedMedia: "id, createdAt, updatedAt, schemaVersion",
+            hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
         });
     }
 }

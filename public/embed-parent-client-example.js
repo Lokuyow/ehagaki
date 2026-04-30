@@ -100,7 +100,6 @@ const EMBED_STORAGE_KEYS = new Set([
     "settingsPreferenceMetadata",
     "firstVisit",
     "sharedMediaProcessed",
-    "hashtagHistory",
 ]);
 
 let lastPubkeyHex = null;

@@ -3,6 +3,7 @@ import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexieEmojisRepository } from "../../lib/storage/emojisRepository";
+import { DexieHashtagHistoryRepository } from "../../lib/storage/hashtagHistoryRepository";
 import { DexieProfilesRepository } from "../../lib/storage/profilesRepository";
 import { DexieRelayConfigsRepository } from "../../lib/storage/relayConfigsRepository";
 import { createCustomEmojiItem, EMOJIS_CACHE_SCHEMA_VERSION } from "../../lib/customEmoji";
@@ -32,6 +33,7 @@ describe("EHagakiDB", () => {
             "drafts",
             "emojiCacheMeta",
             "emojiItems",
+            "hashtagHistory",
             "meta",
             "profiles",
             "relayConfigs",
@@ -117,6 +119,23 @@ describe("EHagakiDB", () => {
             fetchedAt: 1234,
             updatedAtFromEvent: 900,
         });
+
+        db.close();
+    });
+
+    it("stores hashtag history with use counts", async () => {
+        const db = createTestDb();
+        const repository = new DexieHashtagHistoryRepository(db, () => 1234, () => ({
+            getItem: () => null,
+            removeItem: () => undefined,
+        }));
+
+        await repository.save(["Nostr"]);
+        await repository.save(["nostr"]);
+
+        await expect(repository.getAll()).resolves.toEqual([
+            { tag: "Nostr", lastUsed: 1234, useCount: 2 },
+        ]);
 
         db.close();
     });

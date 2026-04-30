@@ -138,7 +138,9 @@ export class PostManager {
     rqNotifyOptions?: ReplyQuoteNotifyOptions,
   ): PostResult {
     if (result.success) {
-      this.deps.saveHashtagsToHistoryFn?.(hashtags);
+      void Promise.resolve(this.deps.saveHashtagsToHistoryFn?.(hashtags)).catch((error) => {
+        this.deps.console?.warn?.("hashtag_history_save_failed", error);
+      });
       this.clearReplyQuoteAfterSuccess();
       this.deps.iframeMessageService?.notifyPostSuccess({
         ...rqNotifyOptions,
