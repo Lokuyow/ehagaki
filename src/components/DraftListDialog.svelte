@@ -101,6 +101,7 @@
     description={$_("draft.list_description") || "保存した下書きを選択して復元"}
     contentClass="draft-list-dialog"
     footerVariant="close-button"
+    initialFocus="content"
 >
     <div class="dialog-heading-container">
         <div class="dialog-heading-wrapper">

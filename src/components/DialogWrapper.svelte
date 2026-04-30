@@ -36,6 +36,7 @@
     }: Props = $props();
 
     let contentRef: HTMLElement | null = $state(null);
+    let shouldFocusContent = $derived(initialFocus === "content");
 
     function handleOpenChange(newOpen: boolean) {
         if (!newOpen) {
@@ -44,7 +45,7 @@
     }
 
     function handleOpenAutoFocus(e: Event) {
-        if (initialFocus !== "content") return;
+        if (!shouldFocusContent) return;
 
         e.preventDefault();
         contentRef?.focus({ preventScroll: true });
@@ -62,7 +63,7 @@
         <Dialog.Content
             bind:ref={contentRef}
             class="dialog {contentClass}"
-            tabindex={initialFocus === "content" ? -1 : undefined}
+            tabindex={shouldFocusContent ? -1 : undefined}
             preventScroll={false}
             onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
