@@ -249,6 +249,9 @@
   let postComponentRef: any = $state();
   let isLoggingOut = $state(false); // 追加: ログアウト中の状態管理
   let isSwitchingAccount = $state(false); // アカウント切替中フラグ
+  let showLastAccountLogoutConfirm = $state(false);
+  let pendingLastLogoutPubkey: string | null = $state(null);
+  let lastAccountLogoutError = $state("");
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
@@ -936,6 +939,47 @@
     }
   }
 
+  function requestLogoutAccount(pubkeyHex: string) {
+    const accounts = accountManager.getAccounts();
+    const isLastAccount =
+      accounts.length === 1 && accounts[0]?.pubkeyHex === pubkeyHex;
+
+    if (!isLastAccount) {
+      void logoutAccount(pubkeyHex);
+      return;
+    }
+
+    pendingLastLogoutPubkey = pubkeyHex;
+    lastAccountLogoutError = "";
+    showLastAccountLogoutConfirm = true;
+  }
+
+  function cancelLastAccountLogout() {
+    if (isLoggingOut) return;
+    showLastAccountLogoutConfirm = false;
+    pendingLastLogoutPubkey = null;
+    lastAccountLogoutError = "";
+  }
+
+  async function confirmLastAccountLogout() {
+    if (!pendingLastLogoutPubkey || isLoggingOut) return;
+
+    isLoggingOut = true;
+    lastAccountLogoutError = "";
+    try {
+      resetUploadDisplayState();
+      rxNostr = disposeNostrSession(rxNostr);
+      await authService.logoutLastAccount(pendingLastLogoutPubkey);
+      window.location.reload();
+    } catch (error) {
+      console.error("最後のアカウントのリセット中にエラー:", error);
+      lastAccountLogoutError =
+        error instanceof Error ? error.message : "reset_failed";
+    } finally {
+      isLoggingOut = false;
+    }
+  }
+
   /**
    * アカウント切替
    */
@@ -1549,7 +1593,7 @@
         <ProfileComponent
           show={showLogoutDialogStore.value}
           onClose={logoutDialog.close}
-          onLogout={logoutAccount}
+          onLogout={requestLogoutAccount}
           onSwitchAccount={switchAccount}
           onAddAccount={handleAddAccount}
           accounts={accountListStore.value}
@@ -1557,6 +1601,34 @@
           {isLoggingOut}
           {isSwitchingAccount}
         />
+      {/if}
+      {#if showLastAccountLogoutConfirm}
+        <ConfirmDialog
+          open={showLastAccountLogoutConfirm}
+          onOpenChange={(open) => {
+            if (!open) cancelLastAccountLogout();
+          }}
+          title={$_("logoutDialog.last_account_reset_confirmation")}
+          description={$_("logoutDialog.last_account_reset_warning")}
+          confirmLabel={$_("logoutDialog.logout")}
+          cancelLabel={$_("logoutDialog.cancel")}
+          confirmVariant="danger"
+          confirmDisabled={isLoggingOut}
+          closeOnConfirm={false}
+          onConfirm={confirmLastAccountLogout}
+          onCancel={cancelLastAccountLogout}
+        >
+          <div class="last-account-logout-confirm-content">
+            <div class="confirm-dialog-message">
+              {$_("logoutDialog.last_account_reset_warning")}
+            </div>
+            {#if lastAccountLogoutError}
+              <div class="last-account-logout-error">
+                {$_("logoutDialog.last_account_reset_error")}
+              </div>
+            {/if}
+          </div>
+        </ConfirmDialog>
       {/if}
       {#if showWelcomeDialogStore.value && WelcomeDialogComponent}
         <WelcomeDialogComponent
@@ -1604,6 +1676,18 @@
     flex-direction: column;
     height: var(--app-main-height);
     overflow: hidden;
+  }
+
+  .last-account-logout-confirm-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .last-account-logout-error {
+    color: var(--error-color, #d32f2f);
+    font-size: 0.9rem;
+    line-height: 1.5;
   }
 
   .transition-overlay {

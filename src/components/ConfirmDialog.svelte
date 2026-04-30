@@ -32,6 +32,8 @@
         children?: Snippet;
         /** ブラウザ履歴に追加するか（デフォルト: true） */
         addToHistory?: boolean;
+        /** 確認処理後に閉じるか（デフォルト: true） */
+        closeOnConfirm?: boolean;
     }
 
     let {
@@ -48,6 +50,7 @@
         contentClass = "confirm-dialog",
         children,
         addToHistory = true,
+        closeOnConfirm = true,
     }: Props = $props();
 
     // デフォルトのラベル（ローカライズ）
@@ -55,8 +58,8 @@
     const defaultCancelLabel = $derived(cancelLabel || $_("common.cancel"));
     const defaultTitle = $derived(title || $_("common.confirm"));
 
-    let isConfirming = false;
-    let isCancelling = false;
+    let isConfirming = $state(false);
+    let isCancelling = $state(false);
 
     function setOpen(newOpen: boolean) {
         if (open === newOpen) return;
@@ -97,7 +100,9 @@
         isConfirming = true;
         try {
             await onConfirm();
-            setOpen(false);
+            if (closeOnConfirm) {
+                setOpen(false);
+            }
         } finally {
             queueMicrotask(() => {
                 isConfirming = false;
@@ -148,7 +153,7 @@
                                 variant={confirmVariant}
                                 shape="square"
                                 onClick={handleConfirm}
-                                disabled={confirmDisabled}
+                                disabled={confirmDisabled || isConfirming}
                             >
                                 {defaultConfirmLabel}
                             </Button>
@@ -213,7 +218,7 @@
         text-align: center;
     }
 
-    .confirm-dialog-message {
+    :global(.confirm-dialog-message) {
         margin: 46px 0;
         color: var(--text);
         font-size: 1.2rem;

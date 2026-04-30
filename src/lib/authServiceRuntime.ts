@@ -19,6 +19,8 @@ export interface AuthServiceRuntime {
     nip07Service: Nip07AuthService;
     keyManager: AuthServiceKeyManager;
     localStorage: Storage;
+    indexedDB: IDBFactory;
+    caches: CacheStorage;
     navigator: Navigator;
     console: Console;
     nip46Svc: Nip46Service;
@@ -40,9 +42,21 @@ export function createAuthServiceRuntime(dependencies: AuthServiceDependencies =
     const windowObj = dependencies.window ?? (typeof window !== 'undefined' ? window : {} as Window);
     const navigator = dependencies.navigator ?? (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
     const consoleObj = dependencies.console ?? (typeof window !== 'undefined' ? window.console : {} as Console);
+    const indexedDB =
+        dependencies.indexedDB ??
+        windowObj.indexedDB ??
+        (globalThis as typeof globalThis & { indexedDB?: IDBFactory }).indexedDB ??
+        ({} as IDBFactory);
+    const caches =
+        dependencies.caches ??
+        windowObj.caches ??
+        (globalThis as typeof globalThis & { caches?: CacheStorage }).caches ??
+        ({} as CacheStorage);
 
     return {
         localStorage,
+        indexedDB,
+        caches,
         navigator,
         console: consoleObj,
         keyManager,

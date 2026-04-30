@@ -142,6 +142,25 @@ describe('ConfirmDialog', () => {
         expect(mockOnOpenChange).toHaveBeenCalledWith(false);
     });
 
+    it('closeOnConfirm=falseの場合、確認後に閉じない', async () => {
+        const mockOnOpenChange = vi.fn();
+
+        render(ConfirmDialog, {
+            props: {
+                open: true,
+                description: 'テストメッセージ',
+                onConfirm: mockOnConfirm,
+                onOpenChange: mockOnOpenChange,
+                closeOnConfirm: false
+            }
+        });
+
+        await fireEvent.click(screen.getByText('OK'));
+
+        expect(mockOnConfirm).toHaveBeenCalledTimes(1);
+        expect(mockOnOpenChange).not.toHaveBeenCalledWith(false);
+    });
+
     it('キャンセルボタンをクリックするとonCancelが呼ばれる', async () => {
         render(ConfirmDialog, {
             props: {

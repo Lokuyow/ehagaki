@@ -59,6 +59,8 @@ export interface PublicKeyData {
 export interface AuthServiceDependencies {
     keyManager?: KeyManagerInterface;
     localStorage?: Storage;
+    indexedDB?: IDBFactory;
+    caches?: CacheStorage;
     window?: Window;
     navigator?: Navigator;
     console?: Console;

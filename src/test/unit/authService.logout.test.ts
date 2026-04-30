@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { AuthServiceDependencies } from '../../lib/types';
 import './authServiceModuleMocks';
 
+vi.mock('../../lib/accountDataReset', () => ({
+    resetManagedAccountData: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { AuthService } from '../../lib/authService';
+import { resetManagedAccountData } from '../../lib/accountDataReset';
 import { createMockAccountManager, createMockDependencies } from './authServiceTestUtils';
 
 describe('AuthService.logoutAccount', () => {
@@ -87,5 +92,32 @@ describe('AuthService.logoutAccount', () => {
     it('accountManager未設定時もエラーにならない', () => {
         const service = new AuthService(mockDependencies);
         expect(() => service.logoutAccount('pubkey1')).not.toThrow();
+    });
+
+    it('最後のアカウントログアウトは await 可能な全体リセットを呼ぶ', async () => {
+        mockAccountManager.getAccountType.mockReturnValue('nsec');
+
+        await authService.logoutLastAccount('pubkey1');
+
+        expect(resetManagedAccountData).toHaveBeenCalledWith({
+            localStorage: mockDependencies.localStorage,
+            indexedDB: mockDependencies.indexedDB,
+            caches: mockDependencies.caches,
+            console: mockDependencies.console,
+        });
+        expect(mockAccountManager.cleanupAccountData).not.toHaveBeenCalled();
+        expect(mockAccountManager.removeAccount).not.toHaveBeenCalled();
+    });
+
+    it('最後の nip46 アカウントログアウトでは切断を await してから全体リセットする', async () => {
+        const { nip46Service } = await import('../../lib/nip46Service');
+        const { parentClientAuthService } = await import('../../lib/parentClientAuthService');
+        mockAccountManager.getAccountType.mockReturnValue('nip46');
+        vi.mocked(parentClientAuthService.isConnected).mockReturnValue(false);
+
+        await authService.logoutLastAccount('pubkey1');
+
+        expect(nip46Service.disconnect).toHaveBeenCalled();
+        expect(resetManagedAccountData).toHaveBeenCalled();
     });
 });

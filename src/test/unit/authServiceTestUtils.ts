@@ -6,6 +6,12 @@ export function createMockDependencies(): AuthServiceDependencies {
     return {
         keyManager: new MockKeyManager() as any,
         localStorage: new MockStorage(),
+        indexedDB: {
+            deleteDatabase: vi.fn(),
+        } as unknown as IDBFactory,
+        caches: {
+            delete: vi.fn(),
+        } as unknown as CacheStorage,
         window: {
             location: { pathname: '/' },
         } as Window,

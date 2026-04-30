@@ -59,6 +59,9 @@
   "logoutDialog": {
     "logout_confirmation": "Logout Confirmation",
     "logout_warning": "Are you sure you want to logout?",
+    "last_account_reset_confirmation": "Logout Last Account",
+    "last_account_reset_warning": "Logging out of the last account deletes authentication data, account data, profiles, relays, emojis, drafts, shared media, and related image caches saved by eHagaki.",
+    "last_account_reset_error": "Failed to delete saved data. Please try again later.",
     "logout": "Logout",
     "cancel": "Cancel"
   },

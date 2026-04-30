@@ -11,6 +11,7 @@ import {
 } from './authRestoreUtils';
 import { createAuthServiceRuntime, type AuthServiceRuntime } from './authServiceRuntime';
 import { ParentClientAuthService, type ParentClientConnectOptions } from './parentClientAuthService';
+import { resetManagedAccountData } from './accountDataReset';
 
 type ParentClientAuthOptions = Pick<ParentClientConnectOptions, 'silent' | 'timeoutMs'>;
 
@@ -170,6 +171,29 @@ export class AuthService {
             this.runtime.console.error('ログアウト処理中に予期しないエラー:', error);
             return null;
         }
+    }
+
+    async logoutLastAccount(
+        pubkeyHex: string,
+        options: { notifyParentClient?: boolean } = {},
+    ): Promise<void> {
+        const accountType = this.accountManager?.getAccountType(pubkeyHex);
+        const isRuntimeParentClientAccount =
+            this.runtime.parentClientSvc.isConnected()
+            && this.runtime.parentClientSvc.getUserPubkey() === pubkeyHex;
+
+        if (accountType === 'parentClient' || isRuntimeParentClientAccount) {
+            this.runtime.parentClientSvc.disconnect(options.notifyParentClient ?? true);
+        } else if (accountType === 'nip46') {
+            await this.runtime.nip46Svc.disconnect();
+        }
+
+        await resetManagedAccountData({
+            localStorage: this.runtime.localStorage,
+            indexedDB: this.runtime.indexedDB,
+            caches: this.runtime.caches,
+            console: this.runtime.console,
+        });
     }
 
     // --- 初期化 ---
