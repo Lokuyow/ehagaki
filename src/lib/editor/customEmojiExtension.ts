@@ -2,13 +2,16 @@ import { InputRule, Node, PasteRule, mergeAttributes } from '@tiptap/core';
 import { SvelteNodeViewRenderer } from 'svelte-tiptap';
 import SvelteCustomEmojiNode from '../../components/SvelteCustomEmojiNode.svelte';
 import {
-    findCustomEmojiByShortcode,
+    createCustomEmojiIdentityKey,
+    findUniqueCustomEmojiByShortcode,
     normalizeEmojiShortcode,
+    normalizeEmojiShortcodeForLookup,
     type CustomEmojiItem,
 } from '../customEmoji';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
 
 export interface CustomEmojiAttrs {
+    identityKey?: string;
     shortcode: string;
     src: string;
     setAddress?: string | null;
@@ -41,6 +44,24 @@ function parseShortcodeFromElement(element: HTMLElement): string {
     return normalizeShortcode(match?.[1] ?? '');
 }
 
+function parseIdentityKeyFromElement(element: HTMLElement): string {
+    const identityKey = element.getAttribute('data-identity-key') ?? '';
+    if (identityKey) {
+        return identityKey;
+    }
+
+    const shortcode = parseShortcodeFromElement(element);
+    const src = element.getAttribute('src') ?? '';
+    const setAddress = element.getAttribute('data-set-address') ?? null;
+    if (!shortcode || !src) return '';
+
+    return createCustomEmojiIdentityKey({
+        shortcodeLower: normalizeEmojiShortcodeForLookup(shortcode),
+        src,
+        setAddress,
+    });
+}
+
 const SHORTCODE_PATTERN = '[\\p{L}\\p{N}_+-]';
 const SHORTCODE_INPUT_REGEX = new RegExp(`:(${SHORTCODE_PATTERN}{1,64}):$`, 'u');
 const SHORTCODE_PASTE_REGEX = new RegExp(`:(${SHORTCODE_PATTERN}{1,64}):`, 'gu');
@@ -49,7 +70,7 @@ function findEmojiFromMatch(
     items: CustomEmojiItem[],
     match: ArrayLike<unknown>,
 ): CustomEmojiItem | null {
-    return findCustomEmojiByShortcode(items, match[1]);
+    return findUniqueCustomEmojiByShortcode(items, match[1]);
 }
 
 function findKnownEmojiPasteMatches(text: string, items: CustomEmojiItem[]) {
@@ -79,6 +100,10 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
 
     addAttributes() {
         return {
+            identityKey: {
+                default: '',
+                parseHTML: (element) => parseIdentityKeyFromElement(element as HTMLElement),
+            },
             shortcode: {
                 default: '',
                 parseHTML: (element) => parseShortcodeFromElement(element as HTMLElement),
@@ -105,11 +130,27 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
 
     renderHTML({ HTMLAttributes }) {
         const shortcode = normalizeShortcode(HTMLAttributes.shortcode ?? '');
-        const { shortcode: _shortcode, setAddress: _setAddress, ...restAttributes } = HTMLAttributes;
+        const setAddress = typeof HTMLAttributes.setAddress === 'string'
+            ? HTMLAttributes.setAddress
+            : typeof HTMLAttributes['data-set-address'] === 'string'
+                ? HTMLAttributes['data-set-address']
+                : null;
+        const identityKey = String(
+            HTMLAttributes.identityKey ||
+                (shortcode && HTMLAttributes.src
+                    ? createCustomEmojiIdentityKey({
+                        shortcodeLower: normalizeEmojiShortcodeForLookup(shortcode),
+                        src: String(HTMLAttributes.src),
+                        setAddress,
+                    })
+                    : ''),
+        );
+        const { identityKey: _identityKey, shortcode: _shortcode, setAddress: _setAddress, ...restAttributes } = HTMLAttributes;
         return [
             'img',
             mergeAttributes(restAttributes, {
                 'data-custom-emoji': 'true',
+                'data-identity-key': identityKey,
                 'data-shortcode': shortcode,
                 alt: shortcode ? `:${shortcode}:` : '',
                 class: 'custom-emoji-inline',
@@ -126,14 +167,21 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
                     if (!shortcode || !attrs.src) {
                         return false;
                     }
+                    const setAddress = attrs.setAddress ?? null;
+                    const identityKey = attrs.identityKey || createCustomEmojiIdentityKey({
+                        shortcodeLower: normalizeEmojiShortcodeForLookup(shortcode),
+                        src: attrs.src,
+                        setAddress,
+                    });
 
                     return chain()
                         .insertContent({
                             type: this.name,
                             attrs: {
+                                identityKey,
                                 shortcode,
                                 src: attrs.src,
-                                setAddress: attrs.setAddress ?? null,
+                                setAddress,
                             },
                         })
                         .run();
@@ -157,8 +205,9 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
                             range.to,
                             this.type.create({
                                 shortcode: normalizeShortcode(emoji.shortcode),
+                                identityKey: emoji.identityKey,
                                 src: emoji.src,
-                                setAddress: emoji.setAddress ?? null,
+                                setAddress: emoji.setAddress,
                             }),
                         )
                         .scrollIntoView();
@@ -182,8 +231,9 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
                         range.to,
                         this.type.create({
                             shortcode: normalizeShortcode(emoji.shortcode),
+                            identityKey: emoji.identityKey,
                             src: emoji.src,
-                            setAddress: emoji.setAddress ?? null,
+                            setAddress: emoji.setAddress,
                         }),
                     );
                 },

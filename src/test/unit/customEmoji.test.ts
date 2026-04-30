@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import {
     clampCustomEmojiPickerHeight,
+    createCustomEmojiItem,
     CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
     CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
     CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT,
@@ -27,11 +28,30 @@ import { CustomEmoji } from '../../lib/editor/customEmojiExtension';
 import { findCustomEmojiSuggestionMatch } from '../../lib/editor/customEmojiSuggestion';
 import { extractPostContentFromDoc } from '../../lib/utils/editorDocumentUtils';
 
+function emojiItem(
+    shortcode: string,
+    src: string,
+    options: Partial<Pick<CustomEmojiItem, 'setAddress' | 'sortIndex' | 'sourceType' | 'sourceAddress'>> = {},
+): CustomEmojiItem {
+    const item = createCustomEmojiItem({
+        shortcode,
+        src,
+        setAddress: options.setAddress ?? null,
+        sortIndex: options.sortIndex ?? 0,
+        sourceType: options.sourceType ?? 'kind10030',
+        sourceAddress: options.sourceAddress ?? null,
+    });
+    if (!item) {
+        throw new Error(`Invalid custom emoji fixture: ${shortcode}`);
+    }
+    return item;
+}
+
 const emojiItems: CustomEmojiItem[] = [
-    { shortcode: 'kubi', src: 'https://example.com/kubi.webp' },
-    { shortcode: 'kubi_spin', src: 'https://example.com/kubi-spin.webp' },
-    { shortcode: 'blobkubi', src: 'https://example.com/blobkubi.webp' },
-    { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
+    emojiItem('kubi', 'https://example.com/kubi.webp', { sortIndex: 0 }),
+    emojiItem('kubi_spin', 'https://example.com/kubi-spin.webp', { sortIndex: 1 }),
+    emojiItem('blobkubi', 'https://example.com/blobkubi.webp', { sortIndex: 2 }),
+    emojiItem('party', 'https://example.com/party.webp', { setAddress: '30030:pubkey:set', sortIndex: 3 }),
 ];
 
 function waitForRules(): Promise<void> {
@@ -210,12 +230,24 @@ describe('customEmoji', () => {
                     ['p', 'not-emoji'],
                 ],
                 '30030:pubkey:set',
-            ),
+            ).map(({ shortcode, shortcodeLower, src, setAddress, sourceType, sourceAddress, sortIndex }) => ({
+                shortcode,
+                shortcodeLower,
+                src,
+                setAddress,
+                sourceType,
+                sourceAddress,
+                sortIndex,
+            })),
         ).toEqual([
             {
                 shortcode: 'blobcat',
+                shortcodeLower: 'blobcat',
                 src: 'https://example.com/blobcat.webp',
                 setAddress: '30030:pubkey:set',
+                sourceType: 'kind10030',
+                sourceAddress: null,
+                sortIndex: 0,
             },
         ]);
     });
@@ -240,16 +272,18 @@ describe('customEmoji', () => {
         ).toEqual(['30030:pubkey:funny']);
     });
 
-    it('keeps first shortcode when merging emoji candidates', () => {
+    it('keeps same shortcode candidates when their identity differs', () => {
         expect(
             mergeCustomEmojiItems([
-                [{ shortcode: 'blobcat', src: 'https://example.com/a.webp' }],
-                [{ shortcode: 'blobcat', src: 'https://example.com/b.webp' }],
-                [{ shortcode: 'party', src: 'https://example.com/party.webp' }],
-            ]),
+                [emojiItem('blobcat', 'https://example.com/a.webp')],
+                [emojiItem('blobcat', 'https://example.com/b.webp')],
+                [emojiItem('blobcat', 'https://example.com/a.webp')],
+                [emojiItem('party', 'https://example.com/party.webp')],
+            ]).map(({ shortcode, src, sortIndex }) => ({ shortcode, src, sortIndex })),
         ).toEqual([
-            { shortcode: 'blobcat', src: 'https://example.com/a.webp' },
-            { shortcode: 'party', src: 'https://example.com/party.webp' },
+            { shortcode: 'blobcat', src: 'https://example.com/a.webp', sortIndex: 0 },
+            { shortcode: 'blobcat', src: 'https://example.com/b.webp', sortIndex: 1 },
+            { shortcode: 'party', src: 'https://example.com/party.webp', sortIndex: 2 },
         ]);
     });
 
@@ -305,25 +339,32 @@ describe('customEmoji', () => {
             get: async (pubkeyHex: string) => records.get(pubkeyHex) as any ?? null,
             put: async (pubkeyHex: string, items: unknown[]) => {
                 records.set(pubkeyHex, {
-                    pubkeyHex,
+                    meta: {
+                        pubkeyHex,
+                        fetchedAt: 1234,
+                        updatedAt: 1234,
+                        schemaVersion: 2,
+                    },
                     items,
-                    fetchedAt: 1234,
-                    updatedAt: 1234,
-                    schemaVersion: 1,
                 });
             },
         };
 
         await writeCachedCustomEmojiItems('pubkey', [
-            { shortcode: ':blobcat:', src: 'https://example.com/blobcat.webp' },
-            { shortcode: 'blobcat', src: 'https://example.com/other.webp' },
-            { shortcode: 'bad', src: 'notaurl' },
-            { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
-        ], repository);
+            emojiItem(':blobcat:', 'https://example.com/blobcat.webp', { sortIndex: 0 }),
+            emojiItem('blobcat', 'https://example.com/other.webp', { sortIndex: 1 }),
+            { shortcode: 'bad', src: 'notaurl' } as CustomEmojiItem,
+            emojiItem('party', 'https://example.com/party.webp', { setAddress: '30030:pubkey:set', sortIndex: 2 }),
+        ], repository as any);
 
         expect(records.has(getEmojisCacheKey('pubkey'))).toBe(true);
-        expect(await readCachedCustomEmojiItems('pubkey', repository)).toEqual([
+        expect((await readCachedCustomEmojiItems('pubkey', repository as any)).map(({ shortcode, src, setAddress }) => ({
+            shortcode,
+            src,
+            setAddress,
+        }))).toEqual([
             { shortcode: 'blobcat', src: 'https://example.com/blobcat.webp', setAddress: null },
+            { shortcode: 'blobcat', src: 'https://example.com/other.webp', setAddress: null },
             { shortcode: 'party', src: 'https://example.com/party.webp', setAddress: '30030:pubkey:set' },
         ]);
     });
@@ -331,11 +372,13 @@ describe('customEmoji', () => {
     it('ignores broken cached custom emoji metadata', async () => {
         const repository = {
             get: async () => ({
-                pubkeyHex: 'pubkey',
-                items: [{ shortcode: 'bad', src: 'notaurl' }],
-                fetchedAt: 1234,
-                updatedAt: 1234,
-                schemaVersion: 1,
+                meta: {
+                    pubkeyHex: 'pubkey',
+                    fetchedAt: 1234,
+                    updatedAt: 1234,
+                    schemaVersion: 2,
+                },
+                items: [{ shortcode: 'bad', src: 'notaurl' } as CustomEmojiItem],
             }),
         };
 
@@ -350,7 +393,7 @@ describe('customEmoji', () => {
             await waitForRules();
 
             const json = editor.getJSON();
-            expect(json.content?.[0].content).toEqual([
+            expect(json.content?.[0].content).toMatchObject([
                 { type: 'text', text: 'テスト' },
                 {
                     type: 'customEmoji',
@@ -378,6 +421,21 @@ describe('customEmoji', () => {
         }
     });
 
+    it('keeps ambiguous typed shortcode text unchanged', async () => {
+        const editor = createCustomEmojiEditor([
+            emojiItem('blobcat', 'https://example.com/blobcat-a.webp'),
+            emojiItem('blobcat', 'https://example.com/blobcat-b.webp'),
+        ]);
+        try {
+            editor.commands.insertContent('テスト:blobcat:', { applyInputRules: true });
+            await waitForRules();
+
+            expect(editor.getText()).toBe('テスト:blobcat:');
+        } finally {
+            editor.destroy();
+        }
+    });
+
     it('converts pasted shortcode text to multiple custom emoji nodes', () => {
         installClipboardEventPolyfill();
         const editor = createCustomEmojiEditor();
@@ -396,6 +454,47 @@ describe('customEmoji', () => {
         }
     });
 
+    it('keeps ambiguous pasted shortcode text unchanged', () => {
+        installClipboardEventPolyfill();
+        const editor = createCustomEmojiEditor([
+            emojiItem('blobcat', 'https://example.com/blobcat-a.webp'),
+            emojiItem('blobcat', 'https://example.com/blobcat-b.webp'),
+            emojiItem('party', 'https://example.com/party.webp'),
+        ]);
+        try {
+            editor.commands.insertContent('a :blobcat: b :party:', { applyPasteRules: true });
+
+            const extraction = extractPostContentFromDoc(editor.state.doc);
+            expect(extraction.content).toBe('a :blobcat: b :party:');
+            expect(extraction.emojiTags).toEqual([
+                ['emoji', 'party', 'https://example.com/party.webp'],
+            ]);
+            expect(editor.getJSON().content?.[0].content?.filter((node: any) => node.type === 'customEmoji')).toHaveLength(1);
+        } finally {
+            editor.destroy();
+        }
+    });
+
+    it('serializes same-shortcode selected emoji with their selected image urls', () => {
+        const first = emojiItem('blobcat', 'https://example.com/blobcat-a.webp');
+        const second = emojiItem('blobcat', 'https://example.com/blobcat-b.webp');
+        const editor = createCustomEmojiEditor([first, second]);
+        try {
+            editor.commands.insertCustomEmoji(first);
+            editor.commands.insertContent(' ');
+            editor.commands.insertCustomEmoji(second);
+
+            const extraction = extractPostContentFromDoc(editor.state.doc);
+            expect(extraction.content).toBe(':blobcat: :blobcat_2:');
+            expect(extraction.emojiTags).toEqual([
+                ['emoji', 'blobcat', 'https://example.com/blobcat-a.webp'],
+                ['emoji', 'blobcat_2', 'https://example.com/blobcat-b.webp'],
+            ]);
+        } finally {
+            editor.destroy();
+        }
+    });
+
     it('parses draft HTML custom emoji as customEmoji even when Image is registered first', () => {
         const editor = createImageBeforeCustomEmojiEditor();
         try {
@@ -405,7 +504,7 @@ describe('customEmoji', () => {
                 '</p>',
             ].join(''));
 
-            expect(editor.getJSON().content?.[0].content).toEqual([
+            expect(editor.getJSON().content?.[0].content).toMatchObject([
                 { type: 'text', text: 'text ' },
                 {
                     type: 'customEmoji',
@@ -430,7 +529,7 @@ describe('customEmoji', () => {
                 '</p>',
             ].join(''));
 
-            expect(editor.getJSON().content?.[0].content).toEqual([
+            expect(editor.getJSON().content?.[0].content).toMatchObject([
                 { type: 'text', text: 'legacy ' },
                 {
                     type: 'customEmoji',
@@ -458,7 +557,7 @@ describe('customEmoji', () => {
                 ['emoji', 'kubi', 'https://example.com/kubi.webp'],
                 ['emoji', 'party', 'https://example.com/party.webp', '30030:pubkey:set'],
             ]);
-            expect(editor.getJSON().content?.[0].content).toEqual([
+            expect(editor.getJSON().content?.[0].content).toMatchObject([
                 { type: 'text', text: 'a ' },
                 {
                     type: 'customEmoji',

@@ -45,11 +45,12 @@ describe('draftHtmlSanitizer', () => {
     it('カスタム絵文字の復元に必要な属性を保持する', () => {
         const sanitized = sanitizeDraftHtml([
             '<p>',
-            '<img src="https://example.com/emoji.webp" data-custom-emoji="true" data-shortcode="blobcat" data-set-address="30023:pubkey:set" alt=":blobcat:" class="custom-emoji-inline">',
+            '<img src="https://example.com/emoji.webp" data-custom-emoji="true" data-identity-key="blobcat%7Cemoji%7Cset" data-shortcode="blobcat" data-set-address="30023:pubkey:set" alt=":blobcat:" class="custom-emoji-inline">',
             '</p>',
         ].join(''));
 
         expect(sanitized).toContain('data-custom-emoji="true"');
+        expect(sanitized).toContain('data-identity-key="blobcat%7Cemoji%7Cset"');
         expect(sanitized).toContain('data-shortcode="blobcat"');
         expect(sanitized).toContain('data-set-address="30023:pubkey:set"');
         expect(sanitized).toContain('class="custom-emoji-inline"');

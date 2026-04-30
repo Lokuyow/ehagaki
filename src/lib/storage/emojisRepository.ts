@@ -1,10 +1,12 @@
-import { ehagakiDb, type EHagakiDB, type EmojisRecord } from "./ehagakiDb";
-import type { CustomEmojiItem } from "../customEmoji";
-
-const EMOJIS_SCHEMA_VERSION = 1;
+import { ehagakiDb, type EHagakiDB, type EmojiCacheMetaRecord } from "./ehagakiDb";
+import {
+    createCustomEmojiRecordId,
+    EMOJIS_CACHE_SCHEMA_VERSION,
+    type CustomEmojiItem,
+} from "../customEmoji";
 
 export interface EmojisRepository {
-    get(pubkeyHex: string): Promise<EmojisRecord | null>;
+    get(pubkeyHex: string): Promise<{ meta: EmojiCacheMetaRecord | null; items: CustomEmojiItem[] } | null>;
     put(pubkeyHex: string, items: CustomEmojiItem[]): Promise<void>;
     delete(pubkeyHex: string): Promise<void>;
 }
@@ -15,11 +17,33 @@ export class DexieEmojisRepository implements EmojisRepository {
         private now: () => number = Date.now,
     ) { }
 
-    async get(pubkeyHex: string): Promise<EmojisRecord | null> {
+    async get(pubkeyHex: string): Promise<{ meta: EmojiCacheMetaRecord | null; items: CustomEmojiItem[] } | null> {
         if (!pubkeyHex) return null;
 
         try {
-            return await this.db.emojis.get(pubkeyHex) ?? null;
+            const meta = await this.db.emojiCacheMeta.get(pubkeyHex) ?? null;
+            if (!meta || meta.schemaVersion !== EMOJIS_CACHE_SCHEMA_VERSION) {
+                return { meta, items: [] };
+            }
+
+            const records = await this.db.emojiItems
+                .where("pubkeyHex")
+                .equals(pubkeyHex)
+                .sortBy("sortIndex");
+
+            return {
+                meta,
+                items: records.map((record) => ({
+                    identityKey: record.identityKey,
+                    shortcode: record.shortcode,
+                    shortcodeLower: record.shortcodeLower,
+                    src: record.src,
+                    setAddress: record.setAddress,
+                    sortIndex: record.sortIndex,
+                    sourceType: record.sourceType,
+                    sourceAddress: record.sourceAddress,
+                })),
+            };
         } catch {
             return null;
         }
@@ -30,12 +54,30 @@ export class DexieEmojisRepository implements EmojisRepository {
 
         const timestamp = this.now();
         try {
-            await this.db.emojis.put({
-                pubkeyHex,
-                items,
-                fetchedAt: timestamp,
-                updatedAt: timestamp,
-                schemaVersion: EMOJIS_SCHEMA_VERSION,
+            await this.db.transaction("rw", this.db.emojiItems, this.db.emojiCacheMeta, async () => {
+                await this.db.emojiItems.where("pubkeyHex").equals(pubkeyHex).delete();
+                await this.db.emojiItems.bulkPut(
+                    items.map((item, index) => ({
+                        id: createCustomEmojiRecordId(pubkeyHex, item.identityKey),
+                        pubkeyHex,
+                        identityKey: item.identityKey,
+                        shortcode: item.shortcode,
+                        shortcodeLower: item.shortcodeLower,
+                        src: item.src,
+                        setAddress: item.setAddress,
+                        sortIndex: index,
+                        sourceType: item.sourceType,
+                        sourceAddress: item.sourceAddress,
+                        fetchedAt: timestamp,
+                        updatedAt: timestamp,
+                    })),
+                );
+                await this.db.emojiCacheMeta.put({
+                    pubkeyHex,
+                    fetchedAt: timestamp,
+                    updatedAt: timestamp,
+                    schemaVersion: EMOJIS_CACHE_SCHEMA_VERSION,
+                });
             });
         } catch {
             // Custom emoji metadata is a best-effort cache.
@@ -46,7 +88,10 @@ export class DexieEmojisRepository implements EmojisRepository {
         if (!pubkeyHex) return;
 
         try {
-            await this.db.emojis.delete(pubkeyHex);
+            await this.db.transaction("rw", this.db.emojiItems, this.db.emojiCacheMeta, async () => {
+                await this.db.emojiItems.where("pubkeyHex").equals(pubkeyHex).delete();
+                await this.db.emojiCacheMeta.delete(pubkeyHex);
+            });
         } catch {
             // Best-effort cache cleanup.
         }

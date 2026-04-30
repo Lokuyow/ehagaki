@@ -8,6 +8,7 @@ const ALLOWED_DRAFT_ATTR = [
     'class',
     'controls',
     'data-custom-emoji',
+    'data-identity-key',
     'data-set-address',
     'data-shortcode',
     'dim',

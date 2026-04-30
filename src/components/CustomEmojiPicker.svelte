@@ -62,7 +62,7 @@
         const query = search.trim().toLowerCase();
         if (!query) return items;
         return items.filter((item) =>
-            item.shortcode.toLowerCase().includes(query),
+            item.shortcodeLower.includes(query),
         );
     });
     let columnCount = $derived(
@@ -348,9 +348,9 @@
                                 class="emoji-grid"
                                 style={`transform: translateY(${virtualOffsetY}px); grid-template-columns: repeat(${columnCount}, minmax(0, 1fr)); grid-auto-rows: ${CUSTOM_EMOJI_GRID_CELL_SIZE}px;`}
                             >
-                                {#each visibleItems as emoji (emoji.shortcode)}
+                                {#each visibleItems as emoji (emoji.identityKey)}
                                     <Command.Item
-                                        value={emoji.shortcode}
+                                        value={emoji.identityKey}
                                         keywords={[emoji.shortcode]}
                                         class="emoji-item"
                                         onSelect={() => selectEmoji(emoji)}

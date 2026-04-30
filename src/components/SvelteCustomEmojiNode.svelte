@@ -17,6 +17,7 @@
 
     let { editor, node, selected, getPos }: Props = $props();
     let shortcode = $derived(String(node.attrs.shortcode ?? ""));
+    let identityKey = $derived(String(node.attrs.identityKey ?? ""));
     let label = $derived(shortcode ? `:${shortcode}:` : "Custom emoji");
     let dragElement: HTMLSpanElement | undefined = $state();
     let dragState = customEmojiDragState;
@@ -143,6 +144,7 @@
         <img
             class="custom-emoji-image"
             data-custom-emoji="true"
+            data-identity-key={identityKey}
             data-shortcode={shortcode}
             data-set-address={node.attrs.setAddress ?? undefined}
             src={node.attrs.src}

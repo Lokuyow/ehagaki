@@ -1,10 +1,17 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import type { EmojisRepository } from "./storage/emojisRepository";
 
+export type CustomEmojiSourceType = "kind10030" | "kind30030";
+
 export interface CustomEmojiItem {
+    identityKey: string;
     shortcode: string;
+    shortcodeLower: string;
     src: string;
-    setAddress?: string | null;
+    setAddress: string | null;
+    sortIndex: number;
+    sourceType: CustomEmojiSourceType;
+    sourceAddress: string | null;
 }
 
 export interface NostrEventLike {
@@ -31,27 +38,96 @@ export const CUSTOM_EMOJI_PICKER_CHROME_HEIGHT =
     CUSTOM_EMOJI_PICKER_SEARCH_ROW_BORDER_HEIGHT;
 export const CUSTOM_EMOJI_CACHE_URL_LIMIT = 300;
 export const CUSTOM_EMOJI_CACHE_BATCH_SIZE = 24;
-export const EMOJIS_CACHE_SCHEMA_VERSION = 1;
+export const EMOJIS_CACHE_SCHEMA_VERSION = 2;
 export const CUSTOM_EMOJI_SUGGESTION_LIMIT = 30;
 
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
 }
 
-function normalizeEmojiShortcodeForLookup(value: unknown): string {
+export function normalizeEmojiShortcodeForLookup(value: unknown): string {
     return normalizeEmojiShortcode(value).toLowerCase();
+}
+
+function normalizeSetAddress(value: unknown): string | null {
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function encodeIdentityPart(value: string): string {
+    return encodeURIComponent(value);
+}
+
+export function createCustomEmojiIdentityKey(params: {
+    shortcodeLower: string;
+    src: string;
+    setAddress?: string | null;
+}): string {
+    return [
+        params.shortcodeLower,
+        params.src,
+        params.setAddress ?? "",
+    ].map(encodeIdentityPart).join("|");
+}
+
+export function createCustomEmojiRecordId(pubkeyHex: string, identityKey: string): string {
+    return `${encodeIdentityPart(pubkeyHex)}|${identityKey}`;
+}
+
+export function createCustomEmojiItem(params: {
+    shortcode: unknown;
+    src: unknown;
+    setAddress?: unknown;
+    sortIndex: number;
+    sourceType?: CustomEmojiSourceType;
+    sourceAddress?: unknown;
+}): CustomEmojiItem | null {
+    const shortcode = normalizeEmojiShortcode(params.shortcode);
+    const shortcodeLower = normalizeEmojiShortcodeForLookup(shortcode);
+    if (!shortcode || !shortcodeLower || !isValidCustomEmojiUrl(params.src)) return null;
+
+    const setAddress = normalizeSetAddress(params.setAddress);
+    const sourceAddress = normalizeSetAddress(params.sourceAddress);
+    const sourceType = params.sourceType ?? "kind10030";
+
+    return {
+        identityKey: createCustomEmojiIdentityKey({
+            shortcodeLower,
+            src: params.src,
+            setAddress,
+        }),
+        shortcode,
+        shortcodeLower,
+        src: params.src,
+        setAddress,
+        sortIndex: Number.isFinite(params.sortIndex) ? Math.max(0, Math.floor(params.sortIndex)) : 0,
+        sourceType,
+        sourceAddress,
+    };
 }
 
 export function findCustomEmojiByShortcode(
     items: CustomEmojiItem[],
     shortcode: unknown,
 ): CustomEmojiItem | null {
-    const normalizedShortcode = normalizeEmojiShortcodeForLookup(shortcode);
-    if (!normalizedShortcode) return null;
+    return findCustomEmojiCandidatesByShortcode(items, shortcode)[0] ?? null;
+}
 
-    return items.find((item) =>
-        normalizeEmojiShortcodeForLookup(item.shortcode) === normalizedShortcode
-    ) ?? null;
+export function findCustomEmojiCandidatesByShortcode(
+    items: CustomEmojiItem[],
+    shortcode: unknown,
+): CustomEmojiItem[] {
+    const normalizedShortcode = normalizeEmojiShortcodeForLookup(shortcode);
+    if (!normalizedShortcode) return [];
+
+    return items.filter((item) => item.shortcodeLower === normalizedShortcode);
+}
+
+export function findUniqueCustomEmojiByShortcode(
+    items: CustomEmojiItem[],
+    shortcode: unknown,
+): CustomEmojiItem | null {
+    const candidates = findCustomEmojiCandidatesByShortcode(items, shortcode);
+    return candidates.length === 1 ? candidates[0] : null;
 }
 
 export function getCustomEmojiSuggestionItems(
@@ -66,11 +142,10 @@ export function getCustomEmojiSuggestionItems(
     const includesMatches: CustomEmojiItem[] = [];
 
     for (const item of items) {
-        const shortcode = normalizeEmojiShortcodeForLookup(item.shortcode);
-        if (!shortcode) continue;
-        if (shortcode.startsWith(normalizedQuery)) {
+        if (!item.shortcodeLower) continue;
+        if (item.shortcodeLower.startsWith(normalizedQuery)) {
             prefixMatches.push(item);
-        } else if (shortcode.includes(normalizedQuery)) {
+        } else if (item.shortcodeLower.includes(normalizedQuery)) {
             includesMatches.push(item);
         }
         if (prefixMatches.length >= limit) {
@@ -91,15 +166,56 @@ export function isValidCustomEmojiUrl(value: unknown): value is string {
     }
 }
 
-export function parseEmojiTags(tags: string[][], setAddress?: string | null): CustomEmojiItem[] {
-    return tags
-        .filter((tag) => tag[0] === "emoji")
-        .map((tag): CustomEmojiItem => ({
-            shortcode: normalizeEmojiShortcode(tag[1]),
+export interface ParseEmojiTagsOptions {
+    setAddress?: string | null;
+    sourceType?: CustomEmojiSourceType;
+    sourceAddress?: string | null;
+    startSortIndex?: number;
+}
+
+function normalizeParseEmojiTagsOptions(
+    options?: string | null | ParseEmojiTagsOptions,
+): Required<ParseEmojiTagsOptions> {
+    if (typeof options === "string" || options === null) {
+        return {
+            setAddress: options ?? null,
+            sourceType: "kind10030",
+            sourceAddress: null,
+            startSortIndex: 0,
+        };
+    }
+
+    return {
+        setAddress: options?.setAddress ?? null,
+        sourceType: options?.sourceType ?? "kind10030",
+        sourceAddress: options?.sourceAddress ?? null,
+        startSortIndex: options?.startSortIndex ?? 0,
+    };
+}
+
+export function parseEmojiTags(
+    tags: string[][],
+    options?: string | null | ParseEmojiTagsOptions,
+): CustomEmojiItem[] {
+    const normalizedOptions = normalizeParseEmojiTagsOptions(options);
+    const items: CustomEmojiItem[] = [];
+
+    for (const tag of tags) {
+        if (tag[0] !== "emoji") continue;
+        const item = createCustomEmojiItem({
+            shortcode: tag[1],
             src: tag[2],
-            setAddress: setAddress ?? tag[3] ?? null,
-        }))
-        .filter((item) => !!item.shortcode && isValidCustomEmojiUrl(item.src));
+            setAddress: normalizedOptions.setAddress ?? tag[3] ?? null,
+            sortIndex: normalizedOptions.startSortIndex + items.length,
+            sourceType: normalizedOptions.sourceType,
+            sourceAddress: normalizedOptions.sourceAddress,
+        });
+        if (item) {
+            items.push(item);
+        }
+    }
+
+    return items;
 }
 
 export function parseEmojiSetAddress(value: unknown): { kind: number; pubkey: string; identifier: string; address: string } | null {
@@ -133,26 +249,30 @@ export function mergeCustomEmojiItems(groups: CustomEmojiItem[][]): CustomEmojiI
 
     for (const group of groups) {
         for (const item of group) {
-            if (seen.has(item.shortcode)) continue;
-            seen.add(item.shortcode);
-            merged.push(item);
+            const normalizedItem = normalizeCustomEmojiItem(item, merged.length);
+            if (!normalizedItem || seen.has(normalizedItem.identityKey)) continue;
+            seen.add(normalizedItem.identityKey);
+            merged.push({
+                ...normalizedItem,
+                sortIndex: merged.length,
+            });
         }
     }
 
     return merged;
 }
 
-function normalizeCustomEmojiItem(value: unknown): CustomEmojiItem | null {
+function normalizeCustomEmojiItem(value: unknown, fallbackSortIndex = 0): CustomEmojiItem | null {
     if (!value || typeof value !== "object") return null;
     const item = value as Partial<CustomEmojiItem>;
-    const shortcode = normalizeEmojiShortcode(item.shortcode);
-    if (!shortcode || !isValidCustomEmojiUrl(item.src)) return null;
-
-    return {
-        shortcode,
+    return createCustomEmojiItem({
+        shortcode: item.shortcode,
         src: item.src,
-        setAddress: typeof item.setAddress === "string" && item.setAddress ? item.setAddress : null,
-    };
+        setAddress: item.setAddress,
+        sortIndex: typeof item.sortIndex === "number" ? item.sortIndex : fallbackSortIndex,
+        sourceType: item.sourceType,
+        sourceAddress: item.sourceAddress,
+    });
 }
 
 export function getEmojisCacheKey(pubkey: string): string {
@@ -173,13 +293,17 @@ export async function readCachedCustomEmojiItems(
     try {
         const cacheRepository = repository ?? await getDefaultEmojisRepository();
         const record = await cacheRepository.get(pubkey);
-        if (!record || record.schemaVersion !== EMOJIS_CACHE_SCHEMA_VERSION || !Array.isArray(record.items)) {
+        if (
+            !record?.meta ||
+            record.meta.schemaVersion !== EMOJIS_CACHE_SCHEMA_VERSION ||
+            !Array.isArray(record.items)
+        ) {
             return [];
         }
 
         return mergeCustomEmojiItems([
             record.items
-                .map((item) => normalizeCustomEmojiItem(item))
+                .map((item, index) => normalizeCustomEmojiItem(item, index))
                 .filter((item): item is CustomEmojiItem => !!item),
         ]);
     } catch {
@@ -196,7 +320,7 @@ export async function writeCachedCustomEmojiItems(
 
     const items = mergeCustomEmojiItems([
         nextItems
-            .map((item) => normalizeCustomEmojiItem(item))
+            .map((item, index) => normalizeCustomEmojiItem(item, index))
             .filter((item): item is CustomEmojiItem => !!item),
     ]);
 
@@ -278,7 +402,11 @@ export async function fetchCustomEmojiList(params: {
 
     if (!listEvent) return [];
 
-    const directItems = parseEmojiTags(listEvent.tags);
+    const directItems = parseEmojiTags(listEvent.tags, {
+        sourceType: "kind10030",
+        sourceAddress: null,
+        startSortIndex: 0,
+    });
     const addresses = getKind10030EmojiSetAddresses(listEvent);
     if (addresses.length === 0) {
         return mergeCustomEmojiItems([directItems]);
@@ -308,10 +436,20 @@ export async function fetchCustomEmojiList(params: {
         }
     }
 
-    return mergeCustomEmojiItems([
-        directItems,
-        ...addresses.map((address) => parseEmojiTags(eventsByAddress.get(address)?.tags ?? [], address)),
-    ]);
+    let nextSortIndex = directItems.length;
+    const groups = [directItems];
+    for (const address of addresses) {
+        const group = parseEmojiTags(eventsByAddress.get(address)?.tags ?? [], {
+            setAddress: address,
+            sourceType: "kind30030",
+            sourceAddress: address,
+            startSortIndex: nextSortIndex,
+        });
+        nextSortIndex += group.length;
+        groups.push(group);
+    }
+
+    return mergeCustomEmojiItems(groups);
 }
 
 export function readCustomEmojiPickerHeight(storage: Pick<Storage, "getItem">, viewportHeight?: number, maxHeight?: number): number {

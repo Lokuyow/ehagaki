@@ -110,9 +110,10 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                         .insertContent({
                             type: 'customEmoji',
                             attrs: {
+                                identityKey: props.identityKey,
                                 shortcode: normalizeEmojiShortcode(props.shortcode),
                                 src: props.src,
-                                setAddress: props.setAddress ?? null,
+                                setAddress: props.setAddress,
                             },
                         })
                         .run();

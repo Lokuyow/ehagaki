@@ -35,8 +35,8 @@
 <SuggestionCommandList
     bind:this={listComponent}
     {items}
-    getKey={(item) => item.shortcode}
-    getValue={(item) => item.shortcode}
+    getKey={(item) => item.identityKey}
+    getValue={(item) => item.identityKey}
     {onSelect}
     rootClass="custom-emoji-suggestion-command"
     itemClass="custom-emoji-suggestion-item"

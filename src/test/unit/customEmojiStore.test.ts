@@ -17,6 +17,19 @@ vi.mock("../../lib/customEmoji", () => ({
 import { customEmojiStore } from "../../stores/customEmojiStore.svelte";
 import type { CustomEmojiItem } from "../../lib/customEmoji";
 
+function createEmoji(shortcode: string, src: string, sortIndex = 0): CustomEmojiItem {
+    return {
+        identityKey: `${shortcode.toLowerCase()}|${src}|`,
+        shortcode,
+        shortcodeLower: shortcode.toLowerCase(),
+        src,
+        setAddress: null,
+        sortIndex,
+        sourceType: "kind10030",
+        sourceAddress: null,
+    };
+}
+
 function createDeferred<T>() {
     let resolve!: (value: T) => void;
     let reject!: (reason?: unknown) => void;
@@ -37,10 +50,10 @@ describe("customEmojiStore", () => {
 
     it("restores cached items before relay fetch finishes", async () => {
         const cachedItems: CustomEmojiItem[] = [
-            { shortcode: "cached", src: "https://example.com/cached.webp" },
+            createEmoji("cached", "https://example.com/cached.webp"),
         ];
         const fetchedItems: CustomEmojiItem[] = [
-            { shortcode: "fresh", src: "https://example.com/fresh.webp" },
+            createEmoji("fresh", "https://example.com/fresh.webp"),
         ];
         const fetchDeferred = createDeferred<CustomEmojiItem[]>();
         customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
@@ -63,7 +76,7 @@ describe("customEmojiStore", () => {
 
     it("prefetches cached items before the picker opens", async () => {
         const cachedItems: CustomEmojiItem[] = [
-            { shortcode: "cached", src: "https://example.com/cached.webp" },
+            createEmoji("cached", "https://example.com/cached.webp"),
         ];
         customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
 
@@ -75,10 +88,10 @@ describe("customEmojiStore", () => {
 
     it("keeps prefetched items visible and still fetches fresh items on first open", async () => {
         const cachedItems: CustomEmojiItem[] = [
-            { shortcode: "cached", src: "https://example.com/cached.webp" },
+            createEmoji("cached", "https://example.com/cached.webp"),
         ];
         const fetchedItems: CustomEmojiItem[] = [
-            { shortcode: "fresh", src: "https://example.com/fresh.webp" },
+            createEmoji("fresh", "https://example.com/fresh.webp"),
         ];
         customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
         customEmojiMocks.fetchCustomEmojiList.mockResolvedValue(fetchedItems);
@@ -93,7 +106,7 @@ describe("customEmojiStore", () => {
 
     it("does not read IndexedDB cache when force loading", async () => {
         const fetchedItems: CustomEmojiItem[] = [
-            { shortcode: "fresh", src: "https://example.com/fresh.webp" },
+            createEmoji("fresh", "https://example.com/fresh.webp"),
         ];
         customEmojiMocks.fetchCustomEmojiList.mockResolvedValue(fetchedItems);
 
@@ -105,7 +118,7 @@ describe("customEmojiStore", () => {
 
     it("writes fetched items to IndexedDB cache after a successful load", async () => {
         const fetchedItems: CustomEmojiItem[] = [
-            { shortcode: "party", src: "https://example.com/party.webp" },
+            createEmoji("party", "https://example.com/party.webp"),
         ];
         customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue([]);
         customEmojiMocks.fetchCustomEmojiList.mockResolvedValue(fetchedItems);
@@ -117,7 +130,7 @@ describe("customEmojiStore", () => {
 
     it("clears cached items when relay fetch succeeds with no emoji", async () => {
         const cachedItems: CustomEmojiItem[] = [
-            { shortcode: "cached", src: "https://example.com/cached.webp" },
+            createEmoji("cached", "https://example.com/cached.webp"),
         ];
         customEmojiMocks.readCachedCustomEmojiItems.mockResolvedValue(cachedItems);
         customEmojiMocks.fetchCustomEmojiList.mockResolvedValue([]);

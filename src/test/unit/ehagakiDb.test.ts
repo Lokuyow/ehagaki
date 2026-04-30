@@ -3,6 +3,7 @@ import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexieEmojisRepository } from "../../lib/storage/emojisRepository";
+import { createCustomEmojiItem, EMOJIS_CACHE_SCHEMA_VERSION } from "../../lib/customEmoji";
 
 const testDbNames = new Set<string>();
 
@@ -27,7 +28,8 @@ describe("EHagakiDB", () => {
         expect(db.name).toBeTypeOf("string");
         expect(db.tables.map((table) => table.name).sort()).toEqual([
             "drafts",
-            "emojis",
+            "emojiCacheMeta",
+            "emojiItems",
             "meta",
         ]);
 
@@ -37,17 +39,23 @@ describe("EHagakiDB", () => {
     it("stores NIP-51 emojis by pubkeyHex", async () => {
         const db = createTestDb();
         const repository = new DexieEmojisRepository(db, () => 1234);
+        const item = createCustomEmojiItem({
+            shortcode: "blobcat",
+            src: "https://example.com/blobcat.webp",
+            sortIndex: 0,
+        });
+        if (!item) throw new Error("Invalid emoji fixture");
 
-        await repository.put("pubkey", [
-            { shortcode: "blobcat", src: "https://example.com/blobcat.webp" },
-        ]);
+        await repository.put("pubkey", [item]);
 
         await expect(repository.get("pubkey")).resolves.toEqual({
-            pubkeyHex: "pubkey",
-            items: [{ shortcode: "blobcat", src: "https://example.com/blobcat.webp" }],
-            fetchedAt: 1234,
-            updatedAt: 1234,
-            schemaVersion: 1,
+            meta: {
+                pubkeyHex: "pubkey",
+                fetchedAt: 1234,
+                updatedAt: 1234,
+                schemaVersion: EMOJIS_CACHE_SCHEMA_VERSION,
+            },
+            items: [item],
         });
 
         db.close();

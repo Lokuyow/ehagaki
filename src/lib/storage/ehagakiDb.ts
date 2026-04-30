@@ -1,9 +1,9 @@
 import Dexie, { type Table } from "dexie";
-import type { CustomEmojiItem } from "../customEmoji";
+import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 2;
+export const EHAGAKI_DB_VERSION = 3;
 
 export interface MetaRecord {
     key: string;
@@ -11,9 +11,23 @@ export interface MetaRecord {
     updatedAt: number;
 }
 
-export interface EmojisRecord {
+export interface EmojiItemRecord {
+    id: string;
     pubkeyHex: string;
-    items: CustomEmojiItem[];
+    identityKey: string;
+    shortcode: string;
+    shortcodeLower: string;
+    src: string;
+    setAddress: string | null;
+    sortIndex: number;
+    sourceType: CustomEmojiSourceType;
+    sourceAddress: string | null;
+    fetchedAt: number;
+    updatedAt: number;
+}
+
+export interface EmojiCacheMetaRecord {
+    pubkeyHex: string;
     fetchedAt: number;
     updatedAt: number;
     schemaVersion: number;
@@ -35,7 +49,8 @@ export interface DraftRecord {
 
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
-    emojis!: Table<EmojisRecord, string>;
+    emojiItems!: Table<EmojiItemRecord, string>;
+    emojiCacheMeta!: Table<EmojiCacheMetaRecord, string>;
     drafts!: Table<DraftRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
@@ -48,7 +63,9 @@ export class EHagakiDB extends Dexie {
 
         this.version(EHAGAKI_DB_VERSION).stores({
             meta: "key, updatedAt",
-            emojis: "pubkeyHex, fetchedAt, updatedAt",
+            emojis: null,
+            emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
+            emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
         });
     }

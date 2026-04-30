@@ -1406,9 +1406,10 @@
 
   function handleCustomEmojiSelect(emoji: CustomEmojiItem): void {
     postComponentRef?.insertCustomEmoji?.({
+      identityKey: emoji.identityKey,
       shortcode: emoji.shortcode,
       src: emoji.src,
-      setAddress: emoji.setAddress ?? null,
+      setAddress: emoji.setAddress,
     });
   }
 </script>
