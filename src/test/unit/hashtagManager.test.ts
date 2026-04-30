@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 
-import { extractHashtagsFromContent, updateHashtagData } from '../../lib/tags/hashtagManager';
+import {
+	applyHashtagData,
+	buildHashtagData,
+	extractHashtagsFromContent,
+	updateHashtagData,
+} from '../../lib/tags/hashtagManager';
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 
 describe('hashtagManager', () => {
@@ -40,6 +45,38 @@ describe('hashtagManager', () => {
 	});
 
 	describe('updateHashtagData', () => {
+		it('buildHashtagData は store を変更せず投稿用データを生成する', () => {
+			const content = 'Mix #Vue #Svelte #Vue';
+			const result = buildHashtagData(content);
+
+			expect(result).toEqual({
+				content,
+				hashtags: ['Vue', 'Svelte'],
+				tags: [['t', 'vue'], ['t', 'svelte']],
+			});
+			expect(hashtagDataStore.content).toBe('');
+			expect(hashtagDataStore.hashtags).toEqual([]);
+			expect(hashtagDataStore.tags).toEqual([]);
+		});
+
+		it('applyHashtagData は渡された store だけを更新する', () => {
+			const store = {
+				content: '',
+				hashtags: [] as string[],
+				tags: [] as string[][],
+			};
+			const data = buildHashtagData('Hello #Nostr');
+
+			applyHashtagData(store, data);
+
+			expect(store).toEqual({
+				content: 'Hello #Nostr',
+				hashtags: ['Nostr'],
+				tags: [['t', 'nostr']],
+			});
+			expect(hashtagDataStore.content).toBe('');
+		});
+
 		it('ストアの content, hashtags, tags を実装どおりに更新する', () => {
 			const content = 'Mix #Vue #Svelte #日本語';
 			updateHashtagData(content);

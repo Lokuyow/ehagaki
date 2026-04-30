@@ -3,6 +3,7 @@ import { HASHTAG_REGEX } from '../constants';
 // ストアは tags.svelte.ts (Svelte rune ファイル) に移動
 import { hashtagDataStore } from '../../stores/tagsStore.svelte';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { HashtagData } from '../types';
 
 // 追加: ドキュメント走査でハッシュタグの位置情報を返す型とユーティリティ
 export type HashtagRange = { from: number; to: number; hashtag: string };
@@ -64,10 +65,7 @@ export function extractHashtagsFromDoc(doc: PMNode): string[] {
     return hashtags;
 }
 
-// ハッシュタグデータ更新関数（外部呼び出し用）
-// 引数は文字列（プレーンテキスト）または ProseMirror の doc を受け取れるようにする
-export function updateHashtagData(contentOrDoc: string | PMNode): void {
-    const prevHashtags: string[] = Array.isArray(hashtagDataStore.hashtags) ? [...hashtagDataStore.hashtags] : [];
+export function buildHashtagData(contentOrDoc: string | PMNode): HashtagData {
     let hashtags: string[];
     let content: string;
 
@@ -83,9 +81,23 @@ export function updateHashtagData(contentOrDoc: string | PMNode): void {
     // 投稿用の 't' タグは英字をすべて小文字にする（エディター表示は元のまま）
     const tags: [string, string][] = hashtags.map(hashtag => ['t', hashtag.toLowerCase()]);
 
-    hashtagDataStore.content = content;
-    hashtagDataStore.hashtags = hashtags;
-    hashtagDataStore.tags = tags;
+    return {
+        content,
+        hashtags,
+        tags,
+    };
+}
+
+export function applyHashtagData(store: HashtagData, data: HashtagData): void {
+    store.content = data.content;
+    store.hashtags = data.hashtags;
+    store.tags = data.tags;
+}
+
+// ハッシュタグデータ更新関数（外部呼び出し用）
+// 引数は文字列（プレーンテキスト）または ProseMirror の doc を受け取れるようにする
+export function updateHashtagData(contentOrDoc: string | PMNode): void {
+    applyHashtagData(hashtagDataStore, buildHashtagData(contentOrDoc));
 
     // 開発モードのみログ出力
     // const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env.DEV;
