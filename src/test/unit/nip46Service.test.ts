@@ -138,7 +138,7 @@ describe('Nip46Service', () => {
             expect(service.getSigner()).not.toBeNull();
             expect(mockSigner.sendRequest).toHaveBeenCalledWith(
                 'connect',
-                [mockBp.pubkey, 'test-secret', 'sign_event:1,sign_event:27235']
+                [mockBp.pubkey, 'test-secret', 'sign_event:1,sign_event:42,sign_event:27235']
             );
         });
 
