@@ -45,6 +45,7 @@
   import {
     setRelayManager,
     relayListUpdatedStore,
+    saveRelayConfigToStorage,
   } from "./stores/relayStore.svelte";
   import {
     sharedMediaStore,
@@ -404,6 +405,8 @@
         set: (value: number) => relayListUpdatedStore.set(value),
       },
       setRelayManager,
+      onRelayConfigSaved: (pubkeyHex, relayConfig) =>
+        saveRelayConfigToStorage(pubkeyHex, relayConfig ?? {}),
     });
 
     rxNostr = session.rxNostr;
@@ -425,6 +428,8 @@
         set: (value: number) => relayListUpdatedStore.set(value),
       },
       setRelayManager,
+      onRelayConfigSaved: (pubkeyHex, relayConfig) =>
+        saveRelayConfigToStorage(pubkeyHex, relayConfig ?? {}),
       profileDataStore,
       profileLoadedStore,
       isLoadingProfileStore,

@@ -4,7 +4,7 @@ import { ProfileManager, ProfileUrlUtils } from "../profileManager";
 import { RelayManager } from "../relayManager";
 import { RelayProfileService } from "../relayProfileService";
 import type { AccountManager } from "../accountManager";
-import type { ProfileData } from "../types";
+import type { ProfileData, RelayConfig } from "../types";
 import { profilesRepository } from "../storage/profilesRepository";
 
 export interface NostrSessionBootstrap {
@@ -41,6 +41,7 @@ interface InitializeNostrSessionParams {
     pubkeyHex?: string;
     relayListUpdatedStore: RelayListUpdatedStoreLike;
     setRelayManager: (relayManager: RelayManager) => void;
+    onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
 }
 
 interface SyncAccountStoresParams {
@@ -77,6 +78,7 @@ export async function initializeNostrSession({
     pubkeyHex,
     relayListUpdatedStore,
     setRelayManager,
+    onRelayConfigSaved,
 }: InitializeNostrSessionParams): Promise<NostrSessionBootstrap> {
     const rxNostr = createRxNostr({ verifier });
     const profileManager = new ProfileManager(rxNostr);
@@ -85,6 +87,7 @@ export async function initializeNostrSession({
             value: relayListUpdatedStore.value,
             set: (value: number) => relayListUpdatedStore.set(value),
         },
+        onRelayConfigSaved,
     });
     const relayProfileService = new RelayProfileService(
         rxNostr,
@@ -178,6 +181,7 @@ export async function completePostAuthBootstrap({
     accountManager,
     accountListStore,
     accountProfileCacheStore,
+    onRelayConfigSaved,
 }: CompletePostAuthBootstrapParams): Promise<NostrSessionBootstrap> {
     isLoadingProfileStore.set(true);
     closeAuthDialogs();
@@ -187,6 +191,7 @@ export async function completePostAuthBootstrap({
             pubkeyHex,
             relayListUpdatedStore,
             setRelayManager,
+            onRelayConfigSaved,
         });
         const profile = await session.relayProfileService.initializeForLogin(pubkeyHex);
 

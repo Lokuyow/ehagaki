@@ -106,6 +106,7 @@ export interface RelayManagerDeps {
     console?: Console;
     setTimeoutFn?: (fn: (...args: any[]) => void, ms?: number, ...args: any[]) => any;
     clearTimeoutFn?: (timeoutId: any) => void;
+    onRelayConfigSaved?: (pubkeyHex: string, relayConfig: RelayConfig | null) => void | Promise<void>;
     relayListUpdatedStore?: {
         value: number;
         set: (value: number) => void;

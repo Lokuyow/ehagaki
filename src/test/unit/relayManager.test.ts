@@ -168,6 +168,22 @@ describe('RelayStorage', () => {
             expect(mockRelayListUpdatedStore?.set).toHaveBeenCalledWith(1);
         });
 
+        it('保存後に注入された UI 更新 callback を呼ぶ', async () => {
+            const onRelayConfigSaved = vi.fn();
+            const callbackStorage = new RelayStorage(
+                mockConsole,
+                mockRelayListUpdatedStore,
+                undefined,
+                repository,
+                onRelayConfigSaved,
+            );
+            const config: RelayConfig = ['wss://relay1.example.com'];
+
+            await callbackStorage.save('pubkey123', config);
+
+            expect(onRelayConfigSaved).toHaveBeenCalledWith('pubkey123', config);
+        });
+
         it('nullを渡すとデータを削除する', async () => {
             await storage.save('pubkey123', ['wss://relay.example.com']);
 
@@ -178,6 +194,21 @@ describe('RelayStorage', () => {
             expect(mockConsole.log).toHaveBeenCalledWith(
                 'リレーリストを削除: pubkey123'
             );
+        });
+
+        it('null 保存時は UI 更新 callback に null を渡す', async () => {
+            const onRelayConfigSaved = vi.fn();
+            const callbackStorage = new RelayStorage(
+                mockConsole,
+                mockRelayListUpdatedStore,
+                undefined,
+                repository,
+                onRelayConfigSaved,
+            );
+
+            await callbackStorage.save('pubkey123', null);
+
+            expect(onRelayConfigSaved).toHaveBeenCalledWith('pubkey123', null);
         });
 
         it('無効なリレー設定はスキップする', async () => {

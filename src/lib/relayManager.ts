@@ -2,7 +2,6 @@ import { createRxBackwardReq } from "rx-nostr";
 import type { RxNostr } from "rx-nostr";
 import { BOOTSTRAP_RELAYS, FALLBACK_RELAYS } from "./constants";
 import type { RelayConfig, RelayManagerDeps, RelayFetchOptions, RelayFetchResult, UserRelaysFetchResult } from "./types";
-import { saveRelayConfigToStorage } from "../stores/relayStore.svelte";
 import { RelayConfigParser, RelayConfigUtils } from "./relayConfigUtils";
 import { DexieRelayConfigsRepository, relayConfigsRepository, type RelayConfigsRepository } from "./storage/relayConfigsRepository";
 
@@ -15,7 +14,8 @@ export class RelayStorage {
         private console: Console,
         private relayListUpdatedStore?: RelayManagerDeps['relayListUpdatedStore'],
         private pubkeyHex?: string, // pubkeyを保持してストア更新に使用
-        private repository: RelayConfigsRepository = relayConfigsRepository
+        private repository: RelayConfigsRepository = relayConfigsRepository,
+        private onRelayConfigSaved?: RelayManagerDeps['onRelayConfigSaved'],
     ) { }
 
     setPubkey(pubkeyHex: string): void {
@@ -31,10 +31,10 @@ export class RelayStorage {
                 await this.repository.delete(pubkeyHex);
                 this.console.log(`リレーリストを削除: ${pubkeyHex}`);
 
-                // ストアもクリア
-                if (typeof window !== 'undefined') {
+                // UI側のストア更新は呼び出し元から注入された callback に委譲する
+                if (this.onRelayConfigSaved) {
                     try {
-                        await saveRelayConfigToStorage(pubkeyHex, {} as RelayConfig);
+                        await this.onRelayConfigSaved(pubkeyHex, null);
                     } catch (e) {
                         // ストア更新失敗は無視
                     }
@@ -52,10 +52,10 @@ export class RelayStorage {
                 updatedAtFromEvent: options.updatedAtFromEvent,
             });
 
-            // ストアを更新（ブラウザ環境の場合のみ）
-            if (typeof window !== 'undefined') {
+            // UI側のストア更新は呼び出し元から注入された callback に委譲する
+            if (this.onRelayConfigSaved) {
                 try {
-                    await saveRelayConfigToStorage(pubkeyHex, relays);
+                    await this.onRelayConfigSaved(pubkeyHex, relays);
                 } catch (e) {
                     // ストア更新失敗は無視（IndexedDB保存は成功）
                     this.console.warn('ストアの更新に失敗:', e);
@@ -275,6 +275,7 @@ export class RelayManager {
         const consoleImpl = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
         const setTimeoutFn = deps.setTimeoutFn || ((fn, ms) => setTimeout(fn, ms));
         const clearTimeoutFn = deps.clearTimeoutFn || ((id) => clearTimeout(id));
+        const onRelayConfigSaved = deps.onRelayConfigSaved;
         const relayListUpdatedStore = deps.relayListUpdatedStore ||
             (typeof window !== 'undefined' ? { value: 0, set: (v: number) => { } } : undefined);
 
@@ -283,7 +284,13 @@ export class RelayManager {
         const repository = localStorage
             ? new DexieRelayConfigsRepository(undefined, Date.now, () => localStorage)
             : relayConfigsRepository;
-        this.storage = new RelayStorage(consoleImpl, relayListUpdatedStore, undefined, repository);
+        this.storage = new RelayStorage(
+            consoleImpl,
+            relayListUpdatedStore,
+            undefined,
+            repository,
+            onRelayConfigSaved,
+        );
         this.networkFetcher = new RelayNetworkFetcher(rxNostr, consoleImpl, setTimeoutFn, clearTimeoutFn);
     }
 
