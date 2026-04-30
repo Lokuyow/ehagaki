@@ -3,7 +3,8 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 4;
+export const EHAGAKI_DB_VERSION = 5;
+export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
     key: string;
@@ -74,6 +75,28 @@ export interface RelayConfigRecord {
     schemaVersion: number;
 }
 
+export interface SharedMediaFileRecord {
+    name: string;
+    type: string;
+    size: number;
+    lastModified: number;
+    arrayBuffer: ArrayBuffer;
+}
+
+export interface SharedMediaRecord {
+    id: string;
+    images: SharedMediaFileRecord[];
+    metadata?: Array<{
+        name?: string;
+        type?: string;
+        size?: number;
+        timestamp?: string;
+    }>;
+    createdAt: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
@@ -81,6 +104,7 @@ export class EHagakiDB extends Dexie {
     drafts!: Table<DraftRecord, string>;
     profiles!: Table<ProfileRecord, string>;
     relayConfigs!: Table<RelayConfigRecord, string>;
+    sharedMedia!: Table<SharedMediaRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -98,6 +122,7 @@ export class EHagakiDB extends Dexie {
             drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
             profiles: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
             relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
+            sharedMedia: "id, createdAt, updatedAt, schemaVersion",
         });
     }
 }

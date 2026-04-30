@@ -229,10 +229,6 @@ export const NSEC_FULL_PATTERN = /^nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{58}$/
 
 // 共有ハンドラー設定
 export const SHARE_HANDLER_CONFIG = {
-    INDEXEDDB_NAME: "share-handler-db",
-    INDEXEDDB_VERSION: 1,
-    STORE_NAME: "flags",
-    FLAG_KEY: "shared",
     REQUEST_TIMEOUT: 3000,
     SW_CONTROLLER_WAIT_TIMEOUT: 100
 } as const;

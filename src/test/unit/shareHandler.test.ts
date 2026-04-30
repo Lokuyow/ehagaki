@@ -15,6 +15,14 @@ vi.mock("../../lib/debug", () => ({
     showCompressedImagePreview: vi.fn()
 }));
 
+vi.mock("../../lib/storage/sharedMediaRepository", () => ({
+    sharedMediaRepository: {
+        deleteLatest: vi.fn().mockResolvedValue(undefined),
+    },
+}));
+
+const mockSharedMediaRepository = vi.mocked(await import("../../lib/storage/sharedMediaRepository"));
+
 // モック用ファイル生成
 function createMockFile(name = "test.jpg", type = "image/jpeg", size = 1234): File {
     return new File([new Uint8Array(size)], name, { type });
@@ -67,6 +75,7 @@ describe("ShareHandler", () => {
         // @ts-ignore
         handler["handleServiceWorkerMessage"](event);
         expect(mockSharedContentStore.updateSharedMediaStore).toHaveBeenCalledWith([file], [metadata]);
+        expect(mockSharedMediaRepository.sharedMediaRepository.deleteLatest).toHaveBeenCalled();
     });
 
     it("ServiceWorkerコントローラーが無い場合getSharedMediaFromServiceWorkerはnullを返す", async () => {

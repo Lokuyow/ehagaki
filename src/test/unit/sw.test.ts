@@ -21,6 +21,8 @@ interface ServiceWorkerModule {
     PROFILE_CACHE_NAME: string;
     INDEXEDDB_NAME: string;
     INDEXEDDB_VERSION: number;
+    SHARED_MEDIA_STORE_NAME: string;
+    SHARED_MEDIA_RECORD_ID: string;
 }
 
 // モック用のService Workerモジュールを作成
@@ -67,8 +69,10 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
     const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
     const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
-    const INDEXEDDB_NAME = 'eHagakiSharedData';
-    const INDEXEDDB_VERSION = 1;
+    const INDEXEDDB_NAME = 'eHagakiDB';
+    const INDEXEDDB_VERSION = 5;
+    const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
+    const SHARED_MEDIA_RECORD_ID = 'latest';
     const CUSTOM_EMOJI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
     const ServiceWorkerState = {
@@ -226,11 +230,11 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             });
         }
 
-        async saveSharedFlag() {
+        async putSharedMedia(record: any) {
             return this.executeOperation((db: any, resolve: any) => {
-                const tx = db.transaction(['flags'], 'readwrite');
-                const store = tx.objectStore('flags');
-                const putReq = store.put({ id: 'sharedMedia', timestamp: Date.now(), value: true });
+                const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
+                const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
+                const putReq = store.put(record);
                 // 即座にコールバックを実行
                 queueMicrotask(() => {
                     if (putReq.onsuccess) {
@@ -242,12 +246,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             });
         }
 
-        async clearSharedFlag() {
+        async clearSharedMedia() {
             try {
                 await this.executeOperation((db: any, resolve: any) => {
-                    const tx = db.transaction(['flags'], 'readwrite');
-                    const store = tx.objectStore('flags');
-                    const deleteReq = store.delete('sharedMedia');
+                    const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
+                    const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
+                    const deleteReq = store.delete(SHARED_MEDIA_RECORD_ID);
                     // 即座にコールバックを実行
                     queueMicrotask(() => {
                         if (deleteReq.onsuccess) {
@@ -503,7 +507,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
             if (sharedCache) {
                 ServiceWorkerState.clearSharedMediaCache();
-                this.indexedDBManager.clearSharedFlag();
+                this.indexedDBManager.clearSharedMedia();
             }
         }
     }
@@ -525,7 +529,6 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 }
 
                 ServiceWorkerState.setSharedMediaCache(extractedData);
-                await this.indexedDBManager.saveSharedFlag();
 
                 return await this.clientManager.redirectClient();
             } catch (error) {
@@ -618,7 +621,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         CUSTOM_EMOJI_CACHE_NAME,
         PROFILE_CACHE_NAME,
         INDEXEDDB_NAME,
-        INDEXEDDB_VERSION
+        INDEXEDDB_VERSION,
+        SHARED_MEDIA_STORE_NAME,
+        SHARED_MEDIA_RECORD_ID
     };
 };
 
@@ -706,9 +711,9 @@ describe('Service Worker Tests', () => {
     });
 
     describe('IndexedDBManager', () => {
-        it('should save shared flag', async () => {
+        it('should save shared media in the app database', async () => {
             const manager = new swModule.IndexedDBManager();
-            await manager.saveSharedFlag();
+            await manager.putSharedMedia({ id: swModule.SHARED_MEDIA_RECORD_ID, images: [] });
 
             expect(swModule.ServiceWorkerDependencies.indexedDB.open).toHaveBeenCalledWith(
                 swModule.INDEXEDDB_NAME,
@@ -716,9 +721,9 @@ describe('Service Worker Tests', () => {
             );
         }, 5000); // タイムアウトを5秒に短縮
 
-        it('should clear shared flag', async () => {
+        it('should clear shared media from the app database', async () => {
             const manager = new swModule.IndexedDBManager();
-            await manager.clearSharedFlag();
+            await manager.clearSharedMedia();
 
             expect(swModule.ServiceWorkerDependencies.indexedDB.open).toHaveBeenCalled();
         }, 5000); // タイムアウトを5秒に短縮

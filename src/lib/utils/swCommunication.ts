@@ -1,105 +1,6 @@
 import type { SharedMediaData } from "../types";
 import { SHARE_HANDLER_CONFIG } from '../constants';
-
-// =============================================================================
-// IndexedDB Utilities (Common Operations)
-// =============================================================================
-
-/**
- * IndexedDBを開いてストアを取得する共通関数
- */
-async function openIndexedDBStore(
-    dbName: string,
-    version: number,
-    storeName: string,
-    mode: IDBTransactionMode = 'readonly'
-): Promise<{ db: IDBDatabase; transaction: IDBTransaction; store: IDBObjectStore } | null> {
-    return new Promise((resolve) => {
-        try {
-            const request = indexedDB.open(dbName, version);
-
-            request.onupgradeneeded = (event) => {
-                const db = (event.target as IDBOpenDBRequest).result;
-                if (!db.objectStoreNames.contains(storeName)) {
-                    db.createObjectStore(storeName, { keyPath: 'id' });
-                }
-            };
-
-            request.onerror = () => resolve(null);
-
-            request.onsuccess = (event) => {
-                try {
-                    const db = (event.target as IDBOpenDBRequest).result;
-                    if (!db.objectStoreNames.contains(storeName)) {
-                        db.close();
-                        resolve(null);
-                        return;
-                    }
-
-                    const transaction = db.transaction([storeName], mode);
-                    const store = transaction.objectStore(storeName);
-                    resolve({ db, transaction, store });
-                } catch {
-                    resolve(null);
-                }
-            };
-        } catch {
-            resolve(null);
-        }
-    });
-}
-
-/**
- * IndexedDBからデータを取得する共通関数
- */
-async function getFromIndexedDB(
-    dbName: string,
-    version: number,
-    storeName: string,
-    key: string
-): Promise<any> {
-    const result = await openIndexedDBStore(dbName, version, storeName, 'readonly');
-    if (!result) return null;
-
-    const { db, store } = result;
-    return new Promise((resolve) => {
-        const getRequest = store.get(key);
-        getRequest.onsuccess = () => {
-            db.close();
-            resolve(getRequest.result);
-        };
-        getRequest.onerror = () => {
-            db.close();
-            resolve(null);
-        };
-    });
-}
-
-/**
- * IndexedDBからデータを削除する共通関数
- */
-async function deleteFromIndexedDB(
-    dbName: string,
-    version: number,
-    storeName: string,
-    key: string
-): Promise<boolean> {
-    const result = await openIndexedDBStore(dbName, version, storeName, 'readwrite');
-    if (!result) return false;
-
-    const { db, store } = result;
-    return new Promise((resolve) => {
-        const deleteRequest = store.delete(key);
-        deleteRequest.onsuccess = () => {
-            db.close();
-            resolve(true);
-        };
-        deleteRequest.onerror = () => {
-            db.close();
-            resolve(false);
-        };
-    });
-}
+import { sharedMediaRepository } from "../storage/sharedMediaRepository";
 
 /**
  * リクエストIDを生成
@@ -185,56 +86,6 @@ async function waitForServiceWorkerController(): Promise<void> {
 }
 
 /**
- * IndexedDBから共有メディアデータを取得・削除
- */
-async function getAndClearSharedMediaFromIndexedDB(): Promise<SharedMediaData | null> {
-    const result = await getFromIndexedDB(
-        SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
-        SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
-        SHARE_HANDLER_CONFIG.STORE_NAME,
-        'sharedMediaData'
-    );
-
-    if (result?.data) {
-        await deleteFromIndexedDB(
-            SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
-            SHARE_HANDLER_CONFIG.INDEXEDDB_VERSION,
-            SHARE_HANDLER_CONFIG.STORE_NAME,
-            'sharedMediaData'
-        );
-
-        // 複数メディア対応: images配列から File を再構築
-        const rawImages: Array<{ name?: string; type?: string; size?: number; arrayBuffer?: ArrayBuffer; _isFile?: boolean }> =
-            result.data.images ?? (result.data.image ? [result.data.image] : []);
-
-        if (rawImages.length > 0) {
-            const files = rawImages.map((img) => {
-                if (img.arrayBuffer && img._isFile) {
-                    return new File(
-                        [img.arrayBuffer],
-                        img.name || 'shared-media',
-                        { type: img.type || 'application/octet-stream' }
-                    );
-                }
-                return img as unknown as File;
-            });
-
-            const metadataArr = result.data.metadata ?? result.data.images?.map((img: { name?: string; type?: string; size?: number }) => ({
-                name: img.name,
-                type: img.type,
-                size: img.size
-            })) ?? [];
-
-            return {
-                images: files,
-                metadata: metadataArr
-            } as SharedMediaData;
-        }
-    }
-    return null;
-}
-
-/**
  * MessageChannelを使ってServiceWorkerから共有メディアを取得
  */
 async function requestSharedMediaWithMessageChannel(): Promise<SharedMediaData | null> {
@@ -272,7 +123,7 @@ export async function getSharedMediaWithFallback(): Promise<SharedMediaData | nu
         }
 
         try {
-            const dbResult = await getAndClearSharedMediaFromIndexedDB();
+            const dbResult = await sharedMediaRepository.getAndClearLatest();
             if (dbResult) {
                 console.log('Shared media retrieved via IndexedDB fallback');
                 return dbResult;

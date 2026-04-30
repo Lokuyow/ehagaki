@@ -1,5 +1,5 @@
 import Dexie from "dexie";
-import { SHARE_HANDLER_CONFIG, STORAGE_KEYS } from "./constants";
+import { STORAGE_KEYS } from "./constants";
 import { EHAGAKI_DB_NAME, ehagakiDb } from "./storage/ehagakiDb";
 
 const PROFILE_CACHE_NAMES = [
@@ -10,11 +10,6 @@ const PROFILE_CACHE_NAMES = [
 const CUSTOM_EMOJI_CACHE_NAMES = [
     "ehagaki-custom-emoji-images-v2",
     "ehagaki-custom-emoji-images",
-] as const;
-
-const SHARED_MEDIA_DB_NAMES = [
-    "eHagakiSharedData",
-    SHARE_HANDLER_CONFIG.INDEXEDDB_NAME,
 ] as const;
 
 const LOCAL_STORAGE_PREFIX_KEYS = [
@@ -34,15 +29,6 @@ export interface AccountDataResetDependencies {
     indexedDB?: IDBFactory;
     caches?: CacheStorage;
     console?: Pick<Console, "error">;
-}
-
-function deleteIndexedDB(indexedDBFactory: IDBFactory, databaseName: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        const request = indexedDBFactory.deleteDatabase(databaseName);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error ?? new Error(`Failed to delete IndexedDB: ${databaseName}`));
-        request.onblocked = () => reject(new Error(`IndexedDB deletion blocked: ${databaseName}`));
-    });
 }
 
 function removeManagedLocalStorageKeys(localStorage: Storage): void {
@@ -67,19 +53,12 @@ export async function resetManagedAccountData(
     deps: AccountDataResetDependencies = {},
 ): Promise<void> {
     const localStorage = deps.localStorage ?? globalThis.localStorage;
-    const indexedDBFactory = deps.indexedDB ?? globalThis.indexedDB;
     const cacheStorage = deps.caches ?? globalThis.caches;
 
     removeManagedLocalStorageKeys(localStorage);
 
     ehagakiDb.close();
     await Dexie.delete(EHAGAKI_DB_NAME);
-
-    await Promise.all(
-        SHARED_MEDIA_DB_NAMES.map((databaseName) =>
-            deleteIndexedDB(indexedDBFactory, databaseName),
-        ),
-    );
 
     await Promise.all(
         [...PROFILE_CACHE_NAMES, ...CUSTOM_EMOJI_CACHE_NAMES].map((cacheName) =>
@@ -93,6 +72,5 @@ export const accountDataResetInternals = {
     LOCAL_STORAGE_PREFIX_KEYS,
     PROFILE_CACHE_NAMES,
     CUSTOM_EMOJI_CACHE_NAMES,
-    SHARED_MEDIA_DB_NAMES,
     removeManagedLocalStorageKeys,
 };

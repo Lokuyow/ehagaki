@@ -5,6 +5,7 @@ import {
   getSharedMediaMetadata
 } from '../stores/sharedContentStore.svelte';
 import { FileUploadManager } from './fileUploadManager';
+import { sharedMediaRepository } from './storage/sharedMediaRepository';
 import type {
   SharedMediaData,
   SharedMediaMetadata,
@@ -33,6 +34,7 @@ export class ShareHandler {
 
     if (data?.images?.length) {
       updateSharedMediaStore(data.images, data.metadata);
+      void sharedMediaRepository.deleteLatest();
     }
   }
 

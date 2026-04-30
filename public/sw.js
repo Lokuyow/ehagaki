@@ -14,8 +14,11 @@ const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
 const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
-const INDEXEDDB_NAME = 'eHagakiSharedData';
-const INDEXEDDB_VERSION = 1;
+const INDEXEDDB_NAME = 'eHagakiDB';
+const INDEXEDDB_VERSION = 5;
+const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
+const SHARED_MEDIA_RECORD_ID = 'latest';
+const SHARED_MEDIA_SCHEMA_VERSION = 1;
 const CUSTOM_EMOJI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 
 // IndexedDB永続化時のファイルサイズ上限（100MB）
@@ -215,6 +218,62 @@ const Utilities = {
 // IndexedDB操作クラス
 // =============================================================================
 
+function createObjectStoreIfMissing(db, name, keyPath, indexes = []) {
+    if (db.objectStoreNames.contains(name)) return;
+
+    const store = db.createObjectStore(name, { keyPath });
+    indexes.forEach((index) => {
+        store.createIndex(index.name, index.keyPath);
+    });
+}
+
+function ensureCurrentEHagakiDbSchema(db) {
+    createObjectStoreIfMissing(db, 'meta', 'key', [
+        { name: 'updatedAt', keyPath: 'updatedAt' }
+    ]);
+    createObjectStoreIfMissing(db, 'emojiItems', 'id', [
+        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
+        { name: 'identityKey', keyPath: 'identityKey' },
+        { name: 'shortcodeLower', keyPath: 'shortcodeLower' },
+        { name: 'sortIndex', keyPath: 'sortIndex' },
+        { name: 'sourceType', keyPath: 'sourceType' },
+        { name: 'sourceAddress', keyPath: 'sourceAddress' },
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: '[pubkeyHex+sortIndex]', keyPath: ['pubkeyHex', 'sortIndex'] },
+        { name: '[pubkeyHex+identityKey]', keyPath: ['pubkeyHex', 'identityKey'] }
+    ]);
+    createObjectStoreIfMissing(db, 'emojiCacheMeta', 'pubkeyHex', [
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' }
+    ]);
+    createObjectStoreIfMissing(db, 'drafts', 'id', [
+        { name: 'scopeKey', keyPath: 'scopeKey' },
+        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'timestamp', keyPath: 'timestamp' },
+        { name: '[scopeKey+updatedAt]', keyPath: ['scopeKey', 'updatedAt'] }
+    ]);
+    createObjectStoreIfMissing(db, 'profiles', 'pubkeyHex', [
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'updatedAtFromEvent', keyPath: 'updatedAtFromEvent' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' }
+    ]);
+    createObjectStoreIfMissing(db, 'relayConfigs', 'pubkeyHex', [
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'updatedAtFromEvent', keyPath: 'updatedAtFromEvent' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' }
+    ]);
+    createObjectStoreIfMissing(db, SHARED_MEDIA_STORE_NAME, 'id', [
+        { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' }
+    ]);
+}
+
 class IndexedDBManager {
     constructor(dependencies = ServiceWorkerDependencies) {
         this.indexedDB = dependencies.indexedDB;
@@ -228,10 +287,7 @@ class IndexedDBManager {
                 const req = this.indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
 
                 req.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('flags')) {
-                        db.createObjectStore('flags', { keyPath: 'id' });
-                    }
+                    ensureCurrentEHagakiDbSchema(e.target.result);
                 };
 
                 req.onerror = () => reject(new Error('IndexedDB open failed'));
@@ -251,34 +307,38 @@ class IndexedDBManager {
         });
     }
 
-    // 共有フラグを保存
-    async saveSharedFlag() {
+    async putSharedMedia(record) {
         return this.executeOperation((db, resolve, reject) => {
-            const tx = db.transaction(['flags'], 'readwrite');
-            const store = tx.objectStore('flags');
-            store.put({ id: 'sharedMedia', timestamp: Date.now(), value: true }).onsuccess = () => {
+            if (!db.objectStoreNames.contains(SHARED_MEDIA_STORE_NAME)) {
+                db.close();
+                reject(new Error('Shared media store is not available'));
+                return;
+            }
+
+            const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
+            const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
+            store.put(record).onsuccess = () => {
                 db.close();
                 resolve();
             };
             tx.onerror = () => {
                 db.close();
-                reject(new Error('Failed to store shared flag'));
+                reject(new Error('Failed to persist shared media'));
             };
         });
     }
 
-    // 共有フラグを削除
-    async clearSharedFlag() {
+    async clearSharedMedia() {
         try {
             await this.executeOperation((db, resolve) => {
-                if (!db.objectStoreNames.contains('flags')) {
+                if (!db.objectStoreNames.contains(SHARED_MEDIA_STORE_NAME)) {
                     db.close();
                     resolve();
                     return;
                 }
-                const tx = db.transaction(['flags'], 'readwrite');
-                const store = tx.objectStore('flags');
-                store.delete('sharedMedia').onsuccess = () => {
+                const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
+                const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
+                store.delete(SHARED_MEDIA_RECORD_ID).onsuccess = () => {
                     db.close();
                     resolve();
                 };
@@ -699,59 +759,35 @@ class ClientManager {
 
     // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
     async persistSharedMediaToIndexedDB(sharedData, indexedDBManager) {
-        return indexedDBManager.executeOperation(async (db, resolve, reject) => {
-            try {
-                const mediaFiles = sharedData.images || (sharedData.image ? [sharedData.image] : []);
+        const mediaFiles = sharedData.images || (sharedData.image ? [sharedData.image] : []);
 
-                // 各メディアの ArrayBuffer を並列変換（サイズ上限超過はメタデータのみ保持）
-                const mediaDataList = await Promise.all(
-                    mediaFiles.map(async (file) => {
-                        const base = {
-                            name: file.name,
-                            type: file.type,
-                            size: file.size,
-                            _isFile: true
-                        };
-                        if (file instanceof File) {
-                            // サイズ上限チェック: MAX_INDEXEDDB_FILE_SIZE超のarrayBufferは保存しない
-                            if (file.size > MAX_INDEXEDDB_FILE_SIZE) {
-                                this.console.warn(`SW: File too large for IndexedDB persistence (${file.size} bytes), storing metadata only: ${file.name}`);
-                                return base;
-                            }
-                            try {
-                                const buffer = await file.arrayBuffer();
-                                return { ...base, arrayBuffer: buffer };
-                            } catch (e) {
-                                return base;
-                            }
-                        }
-                        return base;
-                    })
-                );
+        const mediaDataList = await Promise.all(
+            mediaFiles.map(async (file) => {
+                if (!(file instanceof File)) {
+                    throw new Error('Shared media item is not a File');
+                }
+                if (file.size > MAX_INDEXEDDB_FILE_SIZE) {
+                    throw new Error(`File too large for IndexedDB persistence: ${file.name}`);
+                }
 
-                const sharedMediaData = {
-                    id: 'sharedMediaData',
-                    timestamp: Date.now(),
-                    data: {
-                        images: mediaDataList,
-                        metadata: sharedData.metadata
-                    }
+                return {
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    lastModified: file.lastModified || Date.now(),
+                    arrayBuffer: await file.arrayBuffer()
                 };
+            })
+        );
 
-                const tx = db.transaction(['flags'], 'readwrite');
-                const store = tx.objectStore('flags');
-                store.put(sharedMediaData).onsuccess = () => {
-                    db.close();
-                    resolve();
-                };
-                tx.onerror = () => {
-                    db.close();
-                    reject(new Error('Failed to persist shared media data'));
-                };
-            } catch (error) {
-                db.close();
-                reject(error);
-            }
+        const timestamp = Date.now();
+        await indexedDBManager.putSharedMedia({
+            id: SHARED_MEDIA_RECORD_ID,
+            images: mediaDataList,
+            metadata: sharedData.metadata,
+            createdAt: timestamp,
+            updatedAt: timestamp,
+            schemaVersion: SHARED_MEDIA_SCHEMA_VERSION
         });
     }
 }
@@ -785,10 +821,10 @@ class MessageHandler {
             client.postMessage(msg);
         }
 
-        // メディア送信後すぐキャッシュとフラグをクリア
+        // メディア送信後すぐキャッシュと永続化レコードをクリア
         if (sharedCache) {
             ServiceWorkerState.clearSharedMediaCache();
-            this.indexedDBManager.clearSharedFlag();
+            this.indexedDBManager.clearSharedMedia();
         }
     }
 
@@ -861,15 +897,6 @@ class RequestHandler {
             });
 
             ServiceWorkerState.setSharedMediaCache(extractedData);
-
-            // IndexedDB保存を同期的に待つ
-            try {
-                await this.indexedDBManager.saveSharedFlag();
-                this.console.log('SW: Shared flag saved to IndexedDB');
-            } catch (dbError) {
-                this.console.error('SW: IndexedDB save error:', dbError);
-                // IndexedDBエラーでも続行
-            }
 
             return await this.clientManager.redirectClient();
         } catch (error) {
@@ -1072,6 +1099,8 @@ if (typeof module !== 'undefined' && module.exports) {
         CUSTOM_EMOJI_CACHE_NAME,
         PROFILE_CACHE_NAME,
         INDEXEDDB_NAME,
-        INDEXEDDB_VERSION
+        INDEXEDDB_VERSION,
+        SHARED_MEDIA_STORE_NAME,
+        SHARED_MEDIA_RECORD_ID
     };
 }
