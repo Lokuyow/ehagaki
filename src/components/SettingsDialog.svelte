@@ -595,6 +595,7 @@
     :global(.github-link-btn.circle) {
         width: 38px;
         height: 38px;
+        --btn-bg: var(--dialog);
 
         .github-icon {
             mask-image: url("/icons/github-mark.svg");
@@ -605,6 +606,7 @@
     :global(.help-btn.circle) {
         width: 38px;
         height: 38px;
+        --btn-bg: var(--dialog);
         :global(.help-icon) {
             mask-image: url("/icons/circle-question-solid-full.svg");
             width: 30px;
