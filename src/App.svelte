@@ -951,7 +951,14 @@
 
     pendingLastLogoutPubkey = pubkeyHex;
     lastAccountLogoutError = "";
-    showLastAccountLogoutConfirm = true;
+    showTransitionOverlay = true;
+    logoutDialog.close();
+    setTimeout(() => {
+      if (pendingLastLogoutPubkey === pubkeyHex) {
+        showLastAccountLogoutConfirm = true;
+      }
+      showTransitionOverlay = false;
+    }, 50);
   }
 
   function cancelLastAccountLogout() {
