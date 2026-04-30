@@ -183,7 +183,10 @@ export interface PostManagerDeps {
     saveHashtagsToHistoryFn?: (hashtags: string[]) => void | Promise<void>;
     channelContextState?: { value: ChannelContextState | null };
     replyQuoteState?: { value: ReplyQuoteComposerState };
-    settingsStore?: { quoteNotificationEnabled: boolean };
+    settingsStore?: {
+        clientTagEnabled?: boolean;
+        quoteNotificationEnabled: boolean;
+    };
     replyQuoteService?: {
         buildReplyTags: (state: ReplyQuoteState) => string[][];
         buildQuoteTags: (state: ReplyQuoteState, includePTags?: boolean) => string[][];

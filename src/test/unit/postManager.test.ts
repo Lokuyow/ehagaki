@@ -971,6 +971,40 @@ describe('PostManager統合テスト', () => {
         );
     });
 
+    it('getClientTagFn 未指定時は settingsStore.clientTagEnabled を使う', async () => {
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'relay1',
+                        ok: true,
+                        done: true,
+                        eventId: 'test-event-id',
+                        type: 'ok',
+                        message: ''
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            })
+        };
+        const depsWithoutClientTagFn = {
+            ...mockDeps,
+            getClientTagFn: undefined,
+            settingsStore: {
+                clientTagEnabled: false,
+                quoteNotificationEnabled: false,
+            },
+        };
+        manager = new PostManager(mockRxNostr, depsWithoutClientTagFn);
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await manager.submitPost('Test post content');
+        const sentEvent = vi.mocked(mockRxNostr.send).mock.calls[0][0] as any;
+
+        expect(result.success).toBe(true);
+        expect(sentEvent.tags.some((tag: string[]) => tag[0] === 'client')).toBe(false);
+    });
+
     it('channel context がある場合は kind 42 の channel message を送信する', async () => {
         const mockObservable = {
             subscribe: vi.fn((observer) => {

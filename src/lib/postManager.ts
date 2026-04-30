@@ -6,7 +6,7 @@ import { authState } from "../stores/authStore.svelte";
 import { mediaFreePlacementStore } from "../stores/uploadStore.svelte";
 import { hashtagDataStore, getHashtagDataSnapshot, contentWarningStore, contentWarningReasonStore, hashtagPinStore } from "../stores/tagsStore.svelte";
 import { createImetaTag } from "./tags/imetaTag";
-import { getClientTag } from "./tags/clientTag";
+import { buildClientTag } from "./tags/clientTag";
 import { extractContentWithImages, extractPostContentWithEmojiTags, type ExtractedPostContent } from "./utils/editorDocumentUtils";
 import { extractImageBlurhashMap, getMimeTypeFromUrl } from "../lib/tags/imetaTag";
 import { resetEditorState, resetPostStatus } from "../stores/editorStore.svelte";
@@ -52,7 +52,10 @@ export class PostManager {
     // デフォルト依存性の設定
     this.deps.console = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
     this.deps.createImetaTagFn = deps.createImetaTagFn || createImetaTag;
-    this.deps.getClientTagFn = deps.getClientTagFn || getClientTag;
+    this.deps.settingsStore = deps.settingsStore || settingsStore;
+    this.deps.getClientTagFn = deps.getClientTagFn || (() =>
+      buildClientTag(this.deps.settingsStore?.clientTagEnabled ?? true)
+    );
     this.deps.seckeySignerFn = deps.seckeySignerFn || seckeySigner; // ★追加
     this.deps.extractContentWithImagesFn = deps.extractContentWithImagesFn;
     this.deps.extractContentWithEmojiTagsFn = deps.extractContentWithEmojiTagsFn || (
