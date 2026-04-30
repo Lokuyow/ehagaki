@@ -14,6 +14,7 @@ import {
 } from '../lib/utils/settingsStorage';
 import { STORAGE_KEYS } from '../lib/constants';
 import { embedStorageService } from '../lib/embedStorageService';
+import { withSettingsPreferenceMetadata } from '../lib/embedStorageKeys';
 
 function getSystemDarkMode(): boolean {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -83,11 +84,12 @@ export const themeModeStore = {
         themeMode = nextMode;
         darkMode = nextDarkMode;
         applyTheme(nextDarkMode);
-        embedStorageService.persistLocalStorageKeys([
-            STORAGE_KEYS.THEME_MODE,
-            STORAGE_KEYS.DARK_MODE,
-            STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
-        ]);
+        embedStorageService.persistLocalStorageKeys(
+            withSettingsPreferenceMetadata([
+                STORAGE_KEYS.THEME_MODE,
+                STORAGE_KEYS.DARK_MODE,
+            ]),
+        );
     },
     reload: () => {
         const nextMode = getStoredThemeModePreference(localStorage);

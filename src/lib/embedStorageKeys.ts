@@ -1,6 +1,6 @@
 import { STORAGE_KEYS } from "./constants";
 
-export const EMBED_STORAGE_KEYS = [
+export const EMBED_SETTING_STORAGE_KEYS = [
     STORAGE_KEYS.LOCALE,
     STORAGE_KEYS.THEME_MODE,
     STORAGE_KEYS.DARK_MODE,
@@ -13,8 +13,16 @@ export const EMBED_STORAGE_KEYS = [
     STORAGE_KEYS.SHOW_MASCOT,
     STORAGE_KEYS.SHOW_FLAVOR_TEXT,
     STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
+] as const;
+
+export const EMBED_RUNTIME_STORAGE_KEYS = [
     STORAGE_KEYS.FIRST_VISIT,
     STORAGE_KEYS.SHARED_MEDIA_PROCESSED,
+] as const;
+
+export const EMBED_STORAGE_KEYS = [
+    ...EMBED_SETTING_STORAGE_KEYS,
+    ...EMBED_RUNTIME_STORAGE_KEYS,
 ] as const;
 
 const EMBED_STORAGE_KEY_SET = new Set<string>(EMBED_STORAGE_KEYS);
@@ -25,4 +33,11 @@ export function isAllowedEmbedStorageKey(key: string): boolean {
 
 export function filterAllowedEmbedStorageKeys(keys: string[]): string[] {
     return keys.filter(isAllowedEmbedStorageKey);
+}
+
+export function withSettingsPreferenceMetadata(keys: readonly string[]): string[] {
+    return Array.from(new Set([
+        ...keys,
+        STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
+    ]));
 }

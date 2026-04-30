@@ -32,6 +32,10 @@ import { themeModeStore } from "./themeStore.svelte";
 import { mediaFreePlacementStore } from "./uploadStore.svelte";
 import { STORAGE_KEYS } from "../lib/constants";
 import { embedStorageService } from "../lib/embedStorageService";
+import {
+    EMBED_SETTING_STORAGE_KEYS,
+    withSettingsPreferenceMetadata,
+} from "../lib/embedStorageKeys";
 
 interface SettingsState {
     locale: SupportedLocale;
@@ -71,10 +75,9 @@ function updateMediaPlacement(enabled: boolean): void {
 }
 
 function persistSettingsKeys(keys: string[]): void {
-    embedStorageService.persistLocalStorageKeys([
-        ...keys,
-        STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
-    ]);
+    embedStorageService.persistLocalStorageKeys(
+        withSettingsPreferenceMetadata(keys),
+    );
 }
 
 export const settingsStore = {
@@ -294,20 +297,7 @@ export const settingsStore = {
         }
 
         if (applied.length > 0) {
-            embedStorageService.persistLocalStorageKeys([
-                STORAGE_KEYS.LOCALE,
-                STORAGE_KEYS.THEME_MODE,
-                STORAGE_KEYS.DARK_MODE,
-                STORAGE_KEYS.UPLOAD_ENDPOINT,
-                STORAGE_KEYS.CLIENT_TAG_ENABLED,
-                STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED,
-                STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL,
-                STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL,
-                STORAGE_KEYS.MEDIA_FREE_PLACEMENT,
-                STORAGE_KEYS.SHOW_MASCOT,
-                STORAGE_KEYS.SHOW_FLAVOR_TEXT,
-                STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
-            ]);
+            embedStorageService.persistLocalStorageKeys([...EMBED_SETTING_STORAGE_KEYS]);
         }
 
         return applied;
