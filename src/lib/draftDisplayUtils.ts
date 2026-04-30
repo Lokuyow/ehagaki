@@ -1,13 +1,12 @@
 import DOMPurify from 'dompurify';
 import { nip19 } from 'nostr-tools';
 import { DRAFT_PREVIEW_LENGTH } from './constants';
-import { createSanitizedDraftContainer } from './draftHtmlSanitizer';
+import { extractDraftPreviewParts } from './draftPreviewUtils';
 import type {
     Draft,
     DraftChannelData,
     DraftReplyQuoteData,
     DraftReplyQuoteEntryData,
-    MediaGalleryItem,
 } from './types';
 
 export type DraftContextKind = 'channel' | 'reply' | 'quote';
@@ -105,53 +104,26 @@ function getQuoteEntries(data?: DraftReplyQuoteData): DraftReplyQuoteEntryData[]
     return data.mode === 'quote' ? [data] : [];
 }
 
-function getCustomEmojiShortcode(element: Element): string {
-    const shortcode = element.getAttribute('data-shortcode')?.trim();
-    if (shortcode) {
-        return shortcode.replace(/^:+|:+$/g, '');
-    }
-
-    const alt = element.getAttribute('alt')?.trim() ?? '';
-    const altMatch = alt.match(/^:([^:]+):$/);
-    return altMatch?.[1]?.trim() ?? '';
-}
-
-function replaceCustomEmojiWithShortcodeText(container: HTMLElement, documentObj: Document): void {
-    container
-        .querySelectorAll('img[data-custom-emoji], img.custom-emoji-inline[alt]')
-        .forEach((element) => {
-            const shortcode = getCustomEmojiShortcode(element);
-            if (shortcode) {
-                element.replaceWith(documentObj.createTextNode(`:${shortcode}:`));
-            }
-        });
-}
-
-function hasGalleryMedia(galleryItems: MediaGalleryItem[] | undefined, type: 'image' | 'video'): boolean {
-    return galleryItems?.some((item) => !item.isPlaceholder && item.type === type) ?? false;
-}
-
 function createBodyPreview(
     draft: Draft,
     labels: DraftContextLabels,
     documentObj: Document,
 ): string {
-    const container = createSanitizedDraftContainer(draft.content, documentObj);
-    replaceCustomEmojiWithShortcodeText(container, documentObj);
-
-    const hasEditorImage = container.querySelector('img:not([data-custom-emoji]):not(.custom-emoji-inline[alt])') !== null;
-    const hasEditorVideo = container.querySelector('video') !== null;
+    const previewParts = extractDraftPreviewParts(
+        draft.content,
+        draft.galleryItems,
+        documentObj,
+    );
+    const firstLine = previewParts.firstLine.trim();
     const mediaLabels: string[] = [];
 
-    if (hasEditorImage || hasGalleryMedia(draft.galleryItems, 'image')) {
+    if (previewParts.hasImage) {
         mediaLabels.push(labels.image);
     }
-    if (hasEditorVideo || hasGalleryMedia(draft.galleryItems, 'video')) {
+    if (previewParts.hasVideo) {
         mediaLabels.push(labels.video);
     }
 
-    const text = container.textContent || container.innerText || '';
-    const firstLine = text.split('\n').find((line) => line.trim())?.trim() ?? '';
     const mediaText = mediaLabels.join('');
 
     if (!firstLine) {

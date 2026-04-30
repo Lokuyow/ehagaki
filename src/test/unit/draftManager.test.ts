@@ -195,6 +195,14 @@ describe("draftManager", () => {
             expect(result).toContain("[動画]");
         });
 
+        it("エディタ本文内の画像と動画をプレビューに反映する", () => {
+            const result = generatePreview(
+                '<p>本文</p><img src="https://example.com/photo.jpg"><video src="https://example.com/video.mp4"></video>',
+            );
+
+            expect(result).toBe("本文 [画像][動画]");
+        });
+
         it("カスタム絵文字をショートコードとしてプレビューに表示する", () => {
             expect(
                 generatePreview(

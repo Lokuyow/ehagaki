@@ -131,4 +131,45 @@ describe('createDraftListDisplay', () => {
         expect(display.title).toBe('Hello [画像]');
         expect(display.contexts).toEqual([]);
     });
+
+    it('カスタム絵文字は画像扱いせず shortcode として bodyPreview に含める', () => {
+        const draft: Draft = {
+            id: 'draft-4',
+            content: '<p>Hello <img src="https://example.com/blobcat.webp" data-custom-emoji="true" data-shortcode="blobcat" alt=":blobcat:" class="custom-emoji-inline"></p>',
+            preview: 'Hello :blobcat:',
+            timestamp: 1,
+        };
+
+        const display = createDraftListDisplay(draft, labels, document);
+
+        expect(display.title).toBe('Hello :blobcat:');
+        expect(display.bodyPreview).toBe('Hello :blobcat:');
+    });
+
+    it('エディタ本文内の動画とギャラリーの placeholder ではない画像を bodyPreview に反映する', () => {
+        const draft: Draft = {
+            id: 'draft-5',
+            content: '<p>Hello</p><video src="https://example.com/video.mp4"></video>',
+            preview: 'Hello [画像][動画]',
+            timestamp: 1,
+            galleryItems: [
+                {
+                    id: 'placeholder-image',
+                    type: 'image',
+                    src: 'placeholder',
+                    isPlaceholder: true,
+                },
+                {
+                    id: 'image-1',
+                    type: 'image',
+                    src: 'https://example.com/a.jpg',
+                    isPlaceholder: false,
+                },
+            ],
+        };
+
+        const display = createDraftListDisplay(draft, labels, document);
+
+        expect(display.bodyPreview).toBe('Hello [画像][動画]');
+    });
 });

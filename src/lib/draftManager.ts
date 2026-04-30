@@ -1,8 +1,8 @@
 import type { Draft, DraftChannelData, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
-import { createSanitizedDraftContainer } from './draftHtmlSanitizer';
 import { draftsRepository, type DraftsRepositoryOptions } from './storage/draftsRepository';
+import { extractDraftPreviewParts } from './draftPreviewUtils';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
 
@@ -11,30 +11,6 @@ export type SaveDraftResult = {
     needsConfirmation: boolean;
     drafts: Draft[];
 };
-
-function getCustomEmojiShortcode(element: Element): string {
-    const shortcode = element.getAttribute('data-shortcode')?.trim();
-    if (shortcode) {
-        return shortcode.replace(/^:+|:+$/g, '');
-    }
-
-    const alt = element.getAttribute('alt')?.trim() ?? '';
-    const altMatch = alt.match(/^:([^:]+):$/);
-    return altMatch?.[1]?.trim() ?? '';
-}
-
-function replaceCustomEmojiWithShortcodeText(container: HTMLElement, documentObj: Document): void {
-    container
-        .querySelectorAll('img[data-custom-emoji], img.custom-emoji-inline[alt]')
-        .forEach((element) => {
-            const shortcode = getCustomEmojiShortcode(element);
-            if (!shortcode) {
-                return;
-            }
-
-            element.replaceWith(documentObj.createTextNode(`:${shortcode}:`));
-        });
-}
 
 function sortDrafts(a: Pick<Draft, "timestamp" | "pinned">, b: Pick<Draft, "timestamp" | "pinned">): number {
     if (!!a.pinned !== !!b.pinned) {
@@ -93,22 +69,11 @@ export async function loadDrafts(options: DraftsRepositoryOptions = {}): Promise
  * テキスト、画像、動画の有無を検出し、適切なプレビュー文字列を生成
  */
 export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): string {
-    // HTMLタグを除去してテキストのみを抽出
-    const tempDiv = createSanitizedDraftContainer(htmlContent, document);
-    replaceCustomEmojiWithShortcodeText(tempDiv, document);
-
-    // 画像と動画の有無をチェック（エディタ内 + ギャラリーアイテム）
-    const hasEditorImage = tempDiv.querySelector('img:not([data-custom-emoji]):not(.custom-emoji-inline[alt])') !== null;
-    const hasEditorVideo = tempDiv.querySelector('video') !== null;
-    const hasGalleryImage = galleryItems?.some(item => !item.isPlaceholder && item.type === 'image') ?? false;
-    const hasGalleryVideo = galleryItems?.some(item => !item.isPlaceholder && item.type === 'video') ?? false;
-    const hasImage = hasEditorImage || hasGalleryImage;
-    const hasVideo = hasEditorVideo || hasGalleryVideo;
-
-    // テキストコンテンツを取得し、改行で分割して最初の非空行を取得
-    const text = tempDiv.textContent || tempDiv.innerText || '';
-    const lines = text.split('\n').filter(line => line.trim());
-    const firstLine = lines[0] || '';
+    const { firstLine, hasImage, hasVideo } = extractDraftPreviewParts(
+        htmlContent,
+        galleryItems,
+        document,
+    );
 
     // ロケールと翻訳関数を取得
     const loc = (getStore(locale) as string) || 'en';
