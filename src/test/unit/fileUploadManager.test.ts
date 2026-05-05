@@ -214,7 +214,8 @@ function createMockDependencies(): FileUploadDependencies {
             serviceWorker: {
                 controller: null
             }
-        } as any
+        } as any,
+        setImageSizeInfoFromFileSize: vi.fn(),
     };
 }
 
@@ -454,7 +455,7 @@ describe('FileUploadManager', () => {
 
             await uploadManager.uploadFileWithCallbacks(file);
 
-            expect(setImageSizeInfoFromFileSize).toHaveBeenCalledWith(
+            expect(mockDependencies.setImageSizeInfoFromFileSize).toHaveBeenCalledWith(
                 expect.objectContaining({
                     originalSize: file.size,
                     compressedSize: file.size,
@@ -462,6 +463,45 @@ describe('FileUploadManager', () => {
                     compressedFilename: file.name,
                 })
             );
+        });
+
+        it('注入されたサイズ情報 callback を優先して呼ぶ', async () => {
+            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const injectedSetImageSizeInfo = vi.fn();
+            mockDependencies.setImageSizeInfoFromFileSize = injectedSetImageSizeInfo;
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
+            };
+
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({
+                    file,
+                    wasCompressed: false,
+                    wasSkipped: false
+                }),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                status: 'success',
+                nip94_event: {
+                    tags: [['url', 'https://example.com/image.jpg']]
+                }
+            }));
+
+            await uploadManager.uploadFileWithCallbacks(file);
+
+            expect(injectedSetImageSizeInfo).toHaveBeenCalledTimes(1);
+            expect(setImageSizeInfoFromFileSize).not.toHaveBeenCalled();
         });
 
         it('ネットワークエラーを適切に処理する', async () => {

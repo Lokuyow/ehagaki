@@ -14,6 +14,18 @@ interface AuthServiceKeyManager {
     loadFromStorage(pubkeyHex?: string): string | null;
 }
 
+function isAuthServiceKeyManager(
+    value: unknown,
+): value is AuthServiceKeyManager {
+    const candidate = value as Partial<AuthServiceKeyManager> | null;
+
+    return !!candidate
+        && typeof candidate.isValidNsec === 'function'
+        && typeof candidate.derivePublicKey === 'function'
+        && typeof candidate.saveToStorage === 'function'
+        && typeof candidate.loadFromStorage === 'function';
+}
+
 export interface AuthServiceRuntime {
     publicKeyState: PublicKeyState;
     nip07Service: Nip07AuthService;
@@ -34,11 +46,13 @@ export interface AuthServiceRuntime {
 export function createAuthServiceRuntime(dependencies: AuthServiceDependencies = {}): AuthServiceRuntime {
     const localStorage = dependencies.localStorage ?? (typeof window !== 'undefined' ? window.localStorage : {} as Storage);
     const clearAuthStateFn = dependencies.clearAuthState ?? clearAuthState;
-    const keyManager = (dependencies.keyManager ?? new KeyManager({
-        secretKeyStore: dependencies.secretKeyStore ?? secretKeyStore,
-        clearAuthStateFn,
-        localStorage,
-    })) as AuthServiceKeyManager;
+    const keyManager = isAuthServiceKeyManager(dependencies.keyManager)
+        ? dependencies.keyManager
+        : new KeyManager({
+            secretKeyStore: dependencies.secretKeyStore ?? secretKeyStore,
+            clearAuthStateFn,
+            localStorage,
+        });
     const windowObj = dependencies.window ?? (typeof window !== 'undefined' ? window : {} as Window);
     const navigator = dependencies.navigator ?? (typeof window !== 'undefined' ? window.navigator : {} as Navigator);
     const consoleObj = dependencies.console ?? (typeof window !== 'undefined' ? window.console : {} as Console);

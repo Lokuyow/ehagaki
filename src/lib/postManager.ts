@@ -51,8 +51,16 @@ export class PostManager {
 
     // デフォルト依存性の設定
     this.deps.console = deps.console || (typeof window !== 'undefined' ? window.console : {} as Console);
+    this.deps.authStateStore = deps.authStateStore || authState;
+    this.deps.hashtagStore = deps.hashtagStore || hashtagDataStore;
+    this.deps.mediaFreePlacementStore = deps.mediaFreePlacementStore || mediaFreePlacementStore;
+    this.deps.mediaGalleryStore = deps.mediaGalleryStore || mediaGalleryStore;
+    this.deps.contentWarningStore = deps.contentWarningStore || contentWarningStore;
+    this.deps.contentWarningReasonStore = deps.contentWarningReasonStore || contentWarningReasonStore;
+    this.deps.keyManager = deps.keyManager || keyManager;
     this.deps.createImetaTagFn = deps.createImetaTagFn || createImetaTag;
     this.deps.settingsStore = deps.settingsStore || settingsStore;
+    this.deps.replyQuoteState = deps.replyQuoteState || replyQuoteState;
     this.deps.getClientTagFn = deps.getClientTagFn || (() =>
       buildClientTag(this.deps.settingsStore?.clientTagEnabled ?? true)
     );
@@ -69,6 +77,7 @@ export class PostManager {
     this.deps.iframeMessageService = deps.iframeMessageService || iframeMessageService;
     this.deps.hashtagPinStore = deps.hashtagPinStore || hashtagPinStore;
     this.deps.saveHashtagsToHistoryFn = deps.saveHashtagsToHistoryFn || saveHashtagsToHistory;
+    this.deps.clearReplyQuoteFn = deps.clearReplyQuoteFn || clearReplyQuote;
   }
 
   setRxNostr(rxNostr: RxNostr) {
@@ -77,12 +86,11 @@ export class PostManager {
   }
 
   private clearReplyQuoteAfterSuccess(): void {
-    const clearFn = this.deps.clearReplyQuoteFn || clearReplyQuote;
-    clearFn();
+    this.deps.clearReplyQuoteFn?.();
   }
 
   private getReplyQuoteNotifyOptions(): ReplyQuoteNotifyOptions | undefined {
-    const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
+    const rqState = this.deps.replyQuoteState!.value;
     const quotedEventIds = Array.from(
       new Set(rqState.quotes.map((quote) => quote.eventId)),
     );
@@ -186,7 +194,7 @@ export class PostManager {
 
   // 外部APIは変更なし（後方互換性のため）
   validatePost(content: string): { valid: boolean; error?: string } {
-    const authStateStore = this.deps.authStateStore || { value: authState.value };
+    const authStateStore = this.deps.authStateStore!;
     return PostValidator.validatePost(
       content,
       authStateStore.value.isAuthenticated,
@@ -201,9 +209,7 @@ export class PostManager {
   ): Promise<PostResult> {
     // 末尾のメディアURL直後の改行を削除
     let processedContent = trimTrailingNewlineAfterMedia(content);
-    const quoteNotificationEnabled =
-      this.deps.settingsStore?.quoteNotificationEnabled
-      ?? settingsStore.quoteNotificationEnabled;
+    const quoteNotificationEnabled = this.deps.settingsStore!.quoteNotificationEnabled;
 
     // インラインのnostr: URIから引用タグを抽出（ストアベースのURI追加前に実行）
     const inlineQuoteTags = this.deps.replyQuoteService?.extractInlineQuoteTags?.(
@@ -216,7 +222,7 @@ export class PostManager {
       );
 
     // ストア由来の引用がある場合、文末にnostr: URIを追加
-    const rqStateForUri = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
+    const rqStateForUri = this.deps.replyQuoteState!.value;
     if (rqStateForUri.quotes.length > 0) {
       const rqService = this.deps.replyQuoteService || new ReplyQuoteService();
       const existingInlineQuoteEventIds = new Set(
@@ -248,20 +254,20 @@ export class PostManager {
 
     try {
       // 依存性から認証状態とストアを取得
-      const authStateStore = this.deps.authStateStore || { value: authState.value };
-      const hashtagStore = this.deps.hashtagStore || hashtagDataStore;
+      const authStateStore = this.deps.authStateStore!;
+      const hashtagStore = this.deps.hashtagStore!;
       const { hashtags, tags } = this.getHashtagArrays(hashtagStore);
-      const keyMgr = this.deps.keyManager || keyManager;
+      const keyMgr = this.deps.keyManager!;
       const windowObj = this.deps.window || (typeof window !== 'undefined' ? window : undefined);
 
       // Content Warning状態を取得
-      const contentWarningEnabled = contentWarningStore.value;
-      const contentWarningReason = contentWarningReasonStore.value;
+      const contentWarningEnabled = this.deps.contentWarningStore!.value;
+      const contentWarningReason = this.deps.contentWarningReasonStore!.value;
       const channelContext = this.deps.channelContextState?.value ?? null;
       const additionalWriteRelays = channelContext?.channelRelays;
 
       // リプライ/引用タグを構築
-      const rqState = this.deps.replyQuoteState?.value ?? replyQuoteState.value;
+      const rqState = this.deps.replyQuoteState!.value;
       let replyQuoteTags: string[][] | undefined;
       const rqNotifyOptions = this.getReplyQuoteNotifyOptions();
       if (rqState.reply || rqState.quotes.length > 0) {
@@ -498,7 +504,7 @@ export class PostManager {
   }
 
   private getHashtagArrays(store?: HashtagStore): { hashtags: string[]; tags: string[][] } {
-    const resolvedStore = store || hashtagDataStore;
+    const resolvedStore = store || this.deps.hashtagStore!;
 
     const snapshotFn = this.deps.hashtagSnapshotFn;
     if (snapshotFn) {
@@ -530,9 +536,9 @@ export class PostManager {
   // --- PostComponent 統合メソッド ---
   preparePostPayload(editor: TipTapEditor): ExtractedPostContent {
     const extraction = this.deps.extractContentWithEmojiTagsFn!(editor);
-    if (!mediaFreePlacementStore.value) {
+    if (!this.deps.mediaFreePlacementStore!.value) {
       // ギャラリーモード: エディタのテキスト + ギャラリーのメディアURL
-      const galleryUrls = mediaGalleryStore.getContentUrls();
+      const galleryUrls = this.deps.mediaGalleryStore!.getContentUrls();
       if (galleryUrls.length > 0) {
         const textPart = extraction.content.trim();
         return {
@@ -549,9 +555,9 @@ export class PostManager {
   }
 
   prepareImageBlurhashMap(editor: TipTapEditor, imageOxMap: Record<string, string>, imageXMap: Record<string, string>): Record<string, any> {
-    if (!mediaFreePlacementStore.value) {
+    if (!this.deps.mediaFreePlacementStore!.value) {
       // ギャラリーモード: ギャラリーのメタデータを使用
-      return mediaGalleryStore.getImageBlurhashMap();
+      return this.deps.mediaGalleryStore!.getImageBlurhashMap();
     }
     const rawImageBlurhashMap = this.deps.extractImageBlurhashMapFn!(editor);
     const imageBlurhashMap: Record<string, any> = {};
@@ -599,10 +605,10 @@ export class PostManager {
     this.applyEmptyStateToEditor(editor);
     this.deps.resetEditorStateFn?.();
     this.deps.resetPostStatusFn?.();
-    contentWarningStore.reset(); // Content Warningもリセット
-    contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
+    this.deps.contentWarningStore!.reset(); // Content Warningもリセット
+    this.deps.contentWarningReasonStore!.reset(); // Content Warning Reasonもリセット
     // ギャラリーモード: ギャラリーもリセット
-    mediaGalleryStore.clearAll();
+    this.deps.mediaGalleryStore!.clearAll();
     // リプライ/引用状態もクリア
     this.deps.clearReplyQuoteFn?.();
   }
@@ -610,17 +616,19 @@ export class PostManager {
   clearContentAfterSuccess(editor: TipTapEditor): void {
     // ピン留めON時: エディタクリア前にハッシュタグを保存
     const pinEnabled = this.deps.hashtagPinStore!.value;
-    const snapshot = pinEnabled ? getHashtagDataSnapshot() : null;
+    const hashtags = pinEnabled
+      ? this.getHashtagArrays(this.deps.hashtagStore).hashtags
+      : [];
 
     this.applyEmptyStateToEditor(editor);
-    contentWarningStore.reset(); // Content Warningもリセット
-    contentWarningReasonStore.reset(); // Content Warning Reasonもリセット
+    this.deps.contentWarningStore!.reset(); // Content Warningもリセット
+    this.deps.contentWarningReasonStore!.reset(); // Content Warning Reasonもリセット
     // ギャラリーモード: ギャラリーもクリア
-    mediaGalleryStore.clearAll();
+    this.deps.mediaGalleryStore!.clearAll();
 
     // ピン留めON+ハッシュタグがある場合: エディタにハッシュタグを復元
-    if (pinEnabled && snapshot && snapshot.hashtags.length > 0) {
-      const hashtagText = ' ' + snapshot.hashtags.map(h => '#' + h).join(' ');
+    if (pinEnabled && hashtags.length > 0) {
+      const hashtagText = ' ' + hashtags.map(h => '#' + h).join(' ');
       editor.commands.insertContent(hashtagText);
       editor.commands.focus('start');
     }

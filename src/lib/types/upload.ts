@@ -81,6 +81,7 @@ export interface FileUploadDependencies {
     window?: Window;
     navigator?: Navigator;
     isUploadAborted?: () => boolean;
+    setImageSizeInfoFromFileSize?: (sizeInfo: FileSizeInfo | null) => void;
 }
 
 export interface CompressionService {

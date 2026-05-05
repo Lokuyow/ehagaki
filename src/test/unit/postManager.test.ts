@@ -234,6 +234,25 @@ describe('PostManager editor state helpers', () => {
             extractImageBlurhashMapFn: vi.fn(),
             resetEditorStateFn: vi.fn(),
             resetPostStatusFn: vi.fn(),
+            mediaFreePlacementStore: { value: true },
+            mediaGalleryStore: {
+                getContentUrls: vi.fn().mockReturnValue([]),
+                getImageBlurhashMap: vi.fn().mockReturnValue({}),
+                clearAll: vi.fn(),
+            },
+            contentWarningStore: {
+                value: false,
+                reset: vi.fn(),
+            },
+            contentWarningReasonStore: {
+                value: '',
+                reset: vi.fn(),
+            },
+            hashtagStore: {
+                hashtags: [],
+                tags: [],
+            },
+            clearReplyQuoteFn: vi.fn(),
             console: {
                 log: vi.fn(),
                 error: vi.fn(),
@@ -253,6 +272,26 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockDeps.extractContentWithImagesFn).toHaveBeenCalledWith(mockEditor.editor);
             expect(result).toBe(expectedContent);
+        });
+
+        it('ギャラリーモードでは注入された mediaGalleryStore のURLを結合する', () => {
+            const mockEditor = createMockEditor();
+            mockDeps.mediaFreePlacementStore = { value: false };
+            mockDeps.mediaGalleryStore = {
+                getContentUrls: vi.fn().mockReturnValue([
+                    'https://example.com/a.jpg',
+                    'https://example.com/b.mp4',
+                ]),
+                getImageBlurhashMap: vi.fn(),
+                clearAll: vi.fn(),
+            };
+            (mockDeps.extractContentWithImagesFn as any).mockReturnValue('Hello');
+            manager = new PostManager(undefined, mockDeps);
+
+            const result = manager.preparePostContent(mockEditor.editor);
+
+            expect(mockDeps.mediaGalleryStore.getContentUrls).toHaveBeenCalled();
+            expect(result).toBe('Hello\nhttps://example.com/a.jpg\nhttps://example.com/b.mp4');
         });
     });
 
@@ -277,6 +316,30 @@ describe('PostManager editor state helpers', () => {
                 }
             });
         });
+
+        it('ギャラリーモードでは注入された mediaGalleryStore のblurhash mapを使う', () => {
+            const mockEditor = createMockEditor();
+            const galleryBlurhashMap = {
+                'https://example.com/gallery.jpg': {
+                    m: 'image/jpeg',
+                    blurhash: 'gallery-blurhash',
+                },
+            };
+
+            mockDeps.mediaFreePlacementStore = { value: false };
+            mockDeps.mediaGalleryStore = {
+                getContentUrls: vi.fn(),
+                getImageBlurhashMap: vi.fn().mockReturnValue(galleryBlurhashMap),
+                clearAll: vi.fn(),
+            };
+            manager = new PostManager(undefined, mockDeps);
+
+            const result = manager.prepareImageBlurhashMap(mockEditor.editor, {}, {});
+
+            expect(mockDeps.mediaGalleryStore.getImageBlurhashMap).toHaveBeenCalled();
+            expect(mockDeps.extractImageBlurhashMapFn).not.toHaveBeenCalled();
+            expect(result).toEqual(galleryBlurhashMap);
+        });
     });
 
     describe('resetPostContent', () => {
@@ -288,6 +351,10 @@ describe('PostManager editor state helpers', () => {
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockDeps.resetEditorStateFn).toHaveBeenCalled();
             expect(mockDeps.resetPostStatusFn).toHaveBeenCalled();
+            expect(mockDeps.contentWarningStore?.reset).toHaveBeenCalled();
+            expect(mockDeps.contentWarningReasonStore?.reset).toHaveBeenCalled();
+            expect(mockDeps.mediaGalleryStore?.clearAll).toHaveBeenCalled();
+            expect(mockDeps.clearReplyQuoteFn).toHaveBeenCalled();
         });
     });
 
@@ -299,12 +366,18 @@ describe('PostManager editor state helpers', () => {
 
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).not.toHaveBeenCalled();
+            expect(mockDeps.contentWarningStore?.reset).toHaveBeenCalled();
+            expect(mockDeps.contentWarningReasonStore?.reset).toHaveBeenCalled();
+            expect(mockDeps.mediaGalleryStore?.clearAll).toHaveBeenCalled();
         });
 
-        it('ピン留めON+ハッシュタグがある場合: クリア後にハッシュタグテキストを復元する', () => {
+        it('ピン留めON+注入された hashtagStore にハッシュタグがある場合: クリア後に復元する', () => {
             mockDeps.hashtagPinStore = { value: true };
+            mockDeps.hashtagStore = {
+                hashtags: ['test', 'hello'],
+                tags: [['t', 'test'], ['t', 'hello']],
+            };
             manager = new PostManager(undefined, mockDeps);
-            hashtagDataStore.hashtags = ['test', 'hello'];
 
             const mockEditor = createMockEditor();
             manager.clearContentAfterSuccess(mockEditor.editor);
@@ -312,8 +385,6 @@ describe('PostManager editor state helpers', () => {
             expect(mockEditor.clearContent).toHaveBeenCalled();
             expect(mockEditor.insertContent).toHaveBeenCalledWith(' #test #hello');
             expect(mockEditor.focus).toHaveBeenCalledWith('start');
-
-            hashtagDataStore.hashtags = [];
         });
 
         it('ピン留めON+ハッシュタグなしの場合: insertContentを呼ばない', () => {

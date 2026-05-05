@@ -50,6 +50,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     videoCompressionService?: CompressionService,
     mimeSupport?: MimeTypeSupportInterface
   ) {
+    this.dependencies.setImageSizeInfoFromFileSize ??= setImageSizeInfoFromFileSize;
     this.mimeSupport = mimeSupport || new MimeTypeSupport(dependencies.document);
     this.imageCompressionService = imageCompressionService || new ImageCompressionService(
       this.mimeSupport,
@@ -65,6 +66,14 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
   private isUploadAborted(): boolean {
     return this.dependencies.isUploadAborted?.() ?? isDefaultUploadAborted();
+  }
+
+  private updateImageSizeInfo(sizeInfo: FileUploadResponse['sizeInfo']): void {
+    if (!sizeInfo) {
+      return;
+    }
+
+    this.dependencies.setImageSizeInfoFromFileSize?.(sizeInfo);
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -434,7 +443,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       // 中止された場合はサイズ情報表示をスキップ
       if (result.success && result.sizeInfo && !result.aborted) {
-        setImageSizeInfoFromFileSize(result.sizeInfo);
+        this.updateImageSizeInfo(result.sizeInfo);
       }
       return result;
     } catch (error) {
@@ -473,7 +482,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     if (!this.isUploadAborted()) {
       const firstSuccess = results.find(r => r.success && r.sizeInfo);
       if (firstSuccess?.sizeInfo) {
-        setImageSizeInfoFromFileSize(firstSuccess.sizeInfo);
+        this.updateImageSizeInfo(firstSuccess.sizeInfo);
       }
     }
 

@@ -77,7 +77,7 @@ export interface AuthServiceDependencies {
 
 export interface KeyManagerInterface {
     getFromStore(): string | null;
-    loadFromStorage(): string | null;
+    loadFromStorage(pubkeyHex?: string): string | null;
     isWindowNostrAvailable(): boolean;
 }
 
@@ -150,6 +150,22 @@ export interface PostManagerDeps {
         value: AuthState;
     };
     hashtagStore?: HashtagStore;
+    mediaFreePlacementStore?: {
+        value: boolean;
+    };
+    mediaGalleryStore?: {
+        getContentUrls: () => string[];
+        getImageBlurhashMap: () => Record<string, any>;
+        clearAll: () => void;
+    };
+    contentWarningStore?: {
+        value: boolean;
+        reset: () => void;
+    };
+    contentWarningReasonStore?: {
+        value: string;
+        reset: () => void;
+    };
     hashtagSnapshotFn?: (store: HashtagStore) => HashtagData;
     keyManager?: KeyManagerInterface;
     window?: {
