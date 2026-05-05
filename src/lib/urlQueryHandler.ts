@@ -27,6 +27,14 @@ function parseChannelRelaysQuery(value: string | null): string[] {
     .filter((entry) => entry.length > 0);
 }
 
+function getCurrentUrlParams(): URLSearchParams | null {
+  if (typeof window === 'undefined' || !window.location) {
+    return null;
+  }
+
+  return new URLSearchParams(window.location.search);
+}
+
 function decodeEventPointerValue(
   value: string,
 ): {
@@ -144,9 +152,10 @@ export function getChannelFromEmbedPayload(
 }
 
 export function getContentFromUrlQuery(): string | null {
-  if (typeof window === 'undefined' || !window.location) return null;
+  const urlParams = getCurrentUrlParams();
 
-  const urlParams = new URLSearchParams(window.location.search);
+  if (!urlParams) return null;
+
   const content = urlParams.get('content');
 
   if (!content) return null;
@@ -165,9 +174,10 @@ export function getContentFromUrlQuery(): string | null {
  * ?reply=nevent1... / ?reply=note1... / ?quote=nevent1... / ?quote=note1...
  */
 export function getReplyQuoteFromUrlQuery(): ReplyQuoteQueryResult | null {
-  if (typeof window === 'undefined' || !window.location) return null;
+  const urlParams = getCurrentUrlParams();
 
-  const urlParams = new URLSearchParams(window.location.search);
+  if (!urlParams) return null;
+
   const replyValues = urlParams.getAll('reply');
   const quoteValues = urlParams.getAll('quote');
 
@@ -175,9 +185,10 @@ export function getReplyQuoteFromUrlQuery(): ReplyQuoteQueryResult | null {
 }
 
 export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
-  if (typeof window === 'undefined' || !window.location) return null;
+  const urlParams = getCurrentUrlParams();
 
-  const urlParams = new URLSearchParams(window.location.search);
+  if (!urlParams) return null;
+
   const reference = urlParams.get('channel');
 
   if (!reference) {
@@ -211,17 +222,15 @@ export function getChannelFromUrlQuery(): ChannelContextQueryTarget | null {
  * URLクエリパラメータにreplyまたはquoteが含まれているかチェック
  */
 export function hasReplyQuoteQueryParam(): boolean {
-  if (typeof window === 'undefined' || !window.location) return false;
+  const urlParams = getCurrentUrlParams();
 
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.has('reply') || urlParams.has('quote');
+  return !!urlParams && (urlParams.has('reply') || urlParams.has('quote'));
 }
 
 export function hasChannelQueryParam(): boolean {
-  if (typeof window === 'undefined' || !window.location) return false;
+  const urlParams = getCurrentUrlParams();
 
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.has('channel');
+  return !!urlParams && urlParams.has('channel');
 }
 
 /**
@@ -230,7 +239,9 @@ export function hasChannelQueryParam(): boolean {
 export function cleanupAllQueryParams(): void {
   if (typeof window === 'undefined' || !window.location) return;
 
-  const urlParams = new URLSearchParams(window.location.search);
+  const urlParams = getCurrentUrlParams();
+
+  if (!urlParams) return;
 
   let needsCleanup = false;
 
@@ -271,8 +282,7 @@ export function cleanupAllQueryParams(): void {
  * URLクエリパラメータにcontentが含まれているかチェック
  */
 export function hasContentQueryParam(): boolean {
-  if (typeof window === 'undefined' || !window.location) return false;
+  const urlParams = getCurrentUrlParams();
 
-  const urlParams = new URLSearchParams(window.location.search);
-  return urlParams.has('content');
+  return !!urlParams && urlParams.has('content');
 }

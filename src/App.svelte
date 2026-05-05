@@ -160,6 +160,7 @@
   type WelcomeDialogComponent = typeof import("./components/WelcomeDialog.svelte").default;
   type DraftListDialogComponent = typeof import("./components/DraftListDialog.svelte").default;
   type CustomEmojiPickerComponent = typeof import("./components/CustomEmojiPicker.svelte").default;
+  type ComponentImporter<T> = () => Promise<{ default: T }>;
 
   let PostComponent: PostComponent | null = $state(null);
   let LoginDialogComponent: LoginDialogComponent | null = $state(null);
@@ -169,60 +170,74 @@
   let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null = $state(null);
 
-  const postComponentModulePromise: Promise<PostComponent> = import(
-    "./components/PostComponent.svelte"
-  ).then((module) => module.default);
-  let loginDialogModulePromise: Promise<LoginDialogComponent> | null = null;
-  let profileModulePromise: Promise<ProfileComponent> | null = null;
-  let settingsDialogModulePromise: Promise<SettingsDialogComponent> | null = null;
-  let welcomeDialogModulePromise: Promise<WelcomeDialogComponent> | null = null;
-  let draftListDialogModulePromise: Promise<DraftListDialogComponent> | null = null;
-  let customEmojiPickerModulePromise: Promise<CustomEmojiPickerComponent> | null = null;
+  function createComponentLoader<T>(
+    importer: ComponentImporter<T>,
+    options: { eager?: boolean } = {},
+  ): () => Promise<T> {
+    let modulePromise: Promise<T> | null = options.eager
+      ? importer().then((module) => module.default)
+      : null;
+
+    return async () => {
+      modulePromise ??= importer().then((module) => module.default);
+      return modulePromise;
+    };
+  }
+
+  const loadPostComponentModule = createComponentLoader<PostComponent>(
+    () => import("./components/PostComponent.svelte"),
+    { eager: true },
+  );
+  const loadLoginDialogModule =
+    createComponentLoader<LoginDialogComponent>(() =>
+      import("./components/LoginDialog.svelte"),
+    );
+  const loadProfileComponentModule = createComponentLoader<ProfileComponent>(
+    () => import("./components/ProfileComponent.svelte"),
+  );
+  const loadSettingsDialogModule =
+    createComponentLoader<SettingsDialogComponent>(() =>
+      import("./components/SettingsDialog.svelte"),
+    );
+  const loadWelcomeDialogModule =
+    createComponentLoader<WelcomeDialogComponent>(() =>
+      import("./components/WelcomeDialog.svelte"),
+    );
+  const loadDraftListDialogModule =
+    createComponentLoader<DraftListDialogComponent>(() =>
+      import("./components/DraftListDialog.svelte"),
+    );
+  const loadCustomEmojiPickerModule =
+    createComponentLoader<CustomEmojiPickerComponent>(() =>
+      import("./components/CustomEmojiPicker.svelte"),
+    );
 
   async function loadPostComponent(): Promise<void> {
-    PostComponent = await postComponentModulePromise;
+    PostComponent = await loadPostComponentModule();
   }
 
   async function loadLoginDialog(): Promise<void> {
-    loginDialogModulePromise ??= import("./components/LoginDialog.svelte").then(
-      (module) => module.default,
-    );
-    LoginDialogComponent = await loginDialogModulePromise;
+    LoginDialogComponent = await loadLoginDialogModule();
   }
 
   async function loadProfileDialog(): Promise<void> {
-    profileModulePromise ??= import("./components/ProfileComponent.svelte").then(
-      (module) => module.default,
-    );
-    ProfileComponent = await profileModulePromise;
+    ProfileComponent = await loadProfileComponentModule();
   }
 
   async function loadSettingsDialog(): Promise<void> {
-    settingsDialogModulePromise ??= import(
-      "./components/SettingsDialog.svelte"
-    ).then((module) => module.default);
-    SettingsDialogComponent = await settingsDialogModulePromise;
+    SettingsDialogComponent = await loadSettingsDialogModule();
   }
 
   async function loadWelcomeDialog(): Promise<void> {
-    welcomeDialogModulePromise ??= import(
-      "./components/WelcomeDialog.svelte"
-    ).then((module) => module.default);
-    WelcomeDialogComponent = await welcomeDialogModulePromise;
+    WelcomeDialogComponent = await loadWelcomeDialogModule();
   }
 
   async function loadDraftListDialog(): Promise<void> {
-    draftListDialogModulePromise ??= import(
-      "./components/DraftListDialog.svelte"
-    ).then((module) => module.default);
-    DraftListDialogComponent = await draftListDialogModulePromise;
+    DraftListDialogComponent = await loadDraftListDialogModule();
   }
 
   async function loadCustomEmojiPicker(): Promise<void> {
-    customEmojiPickerModulePromise ??= import(
-      "./components/CustomEmojiPicker.svelte"
-    ).then((module) => module.default);
-    CustomEmojiPickerComponent = await customEmojiPickerModulePromise;
+    CustomEmojiPickerComponent = await loadCustomEmojiPickerModule();
   }
 
   // --- 秘密鍵入力・保存・認証 ---
