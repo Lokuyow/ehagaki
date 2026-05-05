@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from "./constants";
+import { getParentClientSessionStorageKey } from "./authStorageKeys";
 import {
     EMBED_MESSAGE_NAMESPACE,
     EMBED_MESSAGE_VERSION,
@@ -133,6 +133,30 @@ function isValidParentOrigin(value: unknown): value is string {
     }
 }
 
+function normalizeParentClientSession(value: unknown): ParentClientSessionData | null {
+    if (!isRecord(value)) {
+        return null;
+    }
+
+    const capabilities = isStringArray(value.capabilities)
+        ? dedupeCapabilities(value.capabilities)
+        : [];
+    if (
+        value.version !== 1
+        || !isHex64(value.pubkeyHex)
+        || !isValidParentOrigin(value.parentOrigin)
+        || capabilities.length === 0
+        || !capabilities.includes('signEvent')
+    ) {
+        return null;
+    }
+
+    return {
+        ...(value as unknown as ParentClientSessionData),
+        capabilities,
+    };
+}
+
 function parseOptionalPubkeyHex(payload: unknown): string | null | undefined {
     if (payload === undefined) {
         return undefined;
@@ -255,29 +279,10 @@ export class ParentClientAuthService {
         pubkeyHex: string,
     ): ParentClientSessionData | null {
         try {
-            const stored = localStorage.getItem(
-                STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex,
-            );
+            const stored = localStorage.getItem(getParentClientSessionStorageKey(pubkeyHex));
             if (!stored) return null;
 
-            const parsed = JSON.parse(stored) as ParentClientSessionData;
-            const capabilities = isStringArray(parsed?.capabilities)
-                ? dedupeCapabilities(parsed.capabilities)
-                : [];
-            if (
-                parsed?.version !== 1
-                || !isHex64(parsed.pubkeyHex)
-                || !isValidParentOrigin(parsed.parentOrigin)
-                || capabilities.length === 0
-                || !capabilities.includes('signEvent')
-            ) {
-                return null;
-            }
-
-            return {
-                ...parsed,
-                capabilities,
-            };
+            return normalizeParentClientSession(JSON.parse(stored));
         } catch {
             return null;
         }
@@ -287,16 +292,11 @@ export class ParentClientAuthService {
         localStorage: Storage,
         session: ParentClientSessionData,
     ): void {
-        localStorage.setItem(
-            STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + session.pubkeyHex,
-            JSON.stringify(session),
-        );
+        localStorage.setItem(getParentClientSessionStorageKey(session.pubkeyHex), JSON.stringify(session));
     }
 
     static clearSession(localStorage: Storage, pubkeyHex: string): void {
-        localStorage.removeItem(
-            STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex,
-        );
+        localStorage.removeItem(getParentClientSessionStorageKey(pubkeyHex));
     }
 
     initialize(options: {

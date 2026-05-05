@@ -1,6 +1,6 @@
 import type { PublicKeyData, KeyManagerDeps, KeyManagerError } from "./types";
 import { isValidNsec, derivePublicKeyFromNsec, toNpub } from './utils/nostrUtils';
-import { STORAGE_KEYS } from './constants';
+import { getNsecStorageKey } from './authStorageKeys';
 import { secretKeyStore } from '../stores/authStore.svelte';
 
 // --- 純粋関数（テストしやすい） ---
@@ -32,12 +32,6 @@ export class KeyStorage {
         private secretKeyStore: { value: string | null; set: (value: string | null) => void }
     ) { }
 
-    private getStorageKey(pubkeyHex?: string): string {
-        return pubkeyHex
-            ? STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkeyHex
-            : STORAGE_KEYS.NOSTR_SECRET_KEY_LEGACY;
-    }
-
     saveToStorage(key: string, pubkeyHex?: string): { success: boolean; error?: KeyManagerError } {
         if (!key?.trim()) {
             return {
@@ -47,7 +41,7 @@ export class KeyStorage {
         }
         try {
             const trimmedKey = key.trim();
-            this.localStorage.setItem(this.getStorageKey(pubkeyHex), trimmedKey);
+            this.localStorage.setItem(getNsecStorageKey(pubkeyHex), trimmedKey);
             this.secretKeyStore.set(trimmedKey);
             return { success: true };
         } catch (error) {
@@ -69,7 +63,7 @@ export class KeyStorage {
         }
 
         try {
-            const key = this.localStorage.getItem(this.getStorageKey(pubkeyHex));
+            const key = this.localStorage.getItem(getNsecStorageKey(pubkeyHex));
             if (key) {
                 this.secretKeyStore.set(key);
             }
@@ -86,7 +80,7 @@ export class KeyStorage {
 
     hasStoredKey(pubkeyHex?: string): boolean {
         try {
-            return !!this.localStorage.getItem(this.getStorageKey(pubkeyHex));
+            return !!this.localStorage.getItem(getNsecStorageKey(pubkeyHex));
         } catch (error) {
             this.console.error("ストレージアクセスエラー:", error);
             return false;
@@ -95,7 +89,7 @@ export class KeyStorage {
 
     removeFromStorage(pubkeyHex: string): void {
         try {
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkeyHex);
+            this.localStorage.removeItem(getNsecStorageKey(pubkeyHex));
         } catch (error) {
             this.console.error("鍵の削除に失敗:", error);
         }

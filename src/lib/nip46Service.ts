@@ -3,7 +3,7 @@ import { SimplePool, useWebSocketImplementation } from 'nostr-tools/pool';
 import { bytesToHex, hexToBytes } from 'nostr-tools/utils';
 import { generateSecretKey } from 'nostr-tools/pure';
 import type { Nip46SessionData } from './types';
-import { STORAGE_KEYS } from './constants';
+import { getNip46SessionStorageKey } from './authStorageKeys';
 
 export { BUNKER_REGEX };
 
@@ -424,17 +424,11 @@ export class Nip46Service {
             relays: this.bunkerSigner.bp.relays,
             userPubkey: this.userPubkey,
         };
-        const key = pubkeyHex
-            ? STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkeyHex
-            : STORAGE_KEYS.NOSTR_NIP46_SESSION_LEGACY;
-        storage.setItem(key, JSON.stringify(session));
+        storage.setItem(getNip46SessionStorageKey(pubkeyHex), JSON.stringify(session));
     }
 
     static loadSession(storage: Storage, pubkeyHex?: string): Nip46SessionData | null {
-        const key = pubkeyHex
-            ? STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkeyHex
-            : STORAGE_KEYS.NOSTR_NIP46_SESSION_LEGACY;
-        const data = storage.getItem(key);
+        const data = storage.getItem(getNip46SessionStorageKey(pubkeyHex));
         if (!data) return null;
         try {
             return JSON.parse(data) as Nip46SessionData;
@@ -444,10 +438,7 @@ export class Nip46Service {
     }
 
     static clearSession(storage: Storage, pubkeyHex?: string): void {
-        const key = pubkeyHex
-            ? STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkeyHex
-            : STORAGE_KEYS.NOSTR_NIP46_SESSION_LEGACY;
-        storage.removeItem(key);
+        storage.removeItem(getNip46SessionStorageKey(pubkeyHex));
     }
 }
 

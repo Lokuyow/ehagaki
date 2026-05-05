@@ -1,5 +1,10 @@
 import type { StoredAccount } from './types';
 import { STORAGE_KEYS } from './constants';
+import {
+    getNip46SessionStorageKey,
+    getNsecStorageKey,
+    getParentClientSessionStorageKey,
+} from './authStorageKeys';
 import { profilesRepository } from './storage/profilesRepository';
 import { relayConfigsRepository } from './storage/relayConfigsRepository';
 
@@ -118,7 +123,7 @@ export class AccountManager {
             // nsecからpubkeyHexを特定するため、既存のprofileデータを探す
             const nsecPubkey = this.findPubkeyForLegacyNsec();
             if (nsecPubkey) {
-                this.localStorage.setItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + nsecPubkey, legacyNsec);
+                this.localStorage.setItem(getNsecStorageKey(nsecPubkey), legacyNsec);
                 accounts.push({ pubkeyHex: nsecPubkey, type: 'nsec', addedAt: Date.now() });
                 activePubkey = nsecPubkey;
             }
@@ -141,7 +146,7 @@ export class AccountManager {
             try {
                 const session = JSON.parse(legacyNip46);
                 if (session?.userPubkey) {
-                    this.localStorage.setItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + session.userPubkey, legacyNip46);
+                    this.localStorage.setItem(getNip46SessionStorageKey(session.userPubkey), legacyNip46);
                     if (!accounts.some(a => a.pubkeyHex === session.userPubkey)) {
                         accounts.push({ pubkeyHex: session.userPubkey, type: 'nip46', addedAt: Date.now() });
                         if (!activePubkey) activePubkey = session.userPubkey;
@@ -166,21 +171,22 @@ export class AccountManager {
      */
     private findPubkeyForLegacyNsec(): string | null {
         try {
-            for (let i = 0; i < this.localStorage.length; i++) {
-                const key = this.localStorage.key(i);
-                if (key?.startsWith(STORAGE_KEYS.NOSTR_PROFILE)) {
-                    return key.substring(STORAGE_KEYS.NOSTR_PROFILE.length);
-                }
-            }
-            // profileがない場合、リレーキーから探す
-            for (let i = 0; i < this.localStorage.length; i++) {
-                const key = this.localStorage.key(i);
-                if (key?.startsWith(STORAGE_KEYS.NOSTR_RELAYS)) {
-                    return key.substring(STORAGE_KEYS.NOSTR_RELAYS.length);
-                }
-            }
+            return (
+                this.findFirstStorageKeySuffix(STORAGE_KEYS.NOSTR_PROFILE)
+                ?? this.findFirstStorageKeySuffix(STORAGE_KEYS.NOSTR_RELAYS)
+            );
         } catch {
             // localStorageアクセスエラー
+        }
+        return null;
+    }
+
+    private findFirstStorageKeySuffix(prefix: string): string | null {
+        for (let i = 0; i < this.localStorage.length; i++) {
+            const key = this.localStorage.key(i);
+            if (key?.startsWith(prefix)) {
+                return key.substring(prefix.length);
+            }
         }
         return null;
     }
@@ -206,9 +212,9 @@ export class AccountManager {
      */
     cleanupAccountData(pubkeyHex: string): void {
         try {
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_SECRET_KEY_PREFIX + pubkeyHex);
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_NIP46_SESSION_PREFIX + pubkeyHex);
-            this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PARENT_CLIENT_SESSION_PREFIX + pubkeyHex);
+            this.localStorage.removeItem(getNsecStorageKey(pubkeyHex));
+            this.localStorage.removeItem(getNip46SessionStorageKey(pubkeyHex));
+            this.localStorage.removeItem(getParentClientSessionStorageKey(pubkeyHex));
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_RELAYS + pubkeyHex);
             this.localStorage.removeItem(STORAGE_KEYS.NOSTR_PROFILE + pubkeyHex);
             void profilesRepository.delete(pubkeyHex);
