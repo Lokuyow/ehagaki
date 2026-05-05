@@ -1,5 +1,9 @@
 import type { CompressionService, MimeTypeSupportInterface } from './types';
-import { COMPRESSION_OPTIONS_MAP } from './constants';
+import {
+    COMPRESSION_OPTIONS_MAP,
+    DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS,
+    type ExtremeAspectCompressionSettings,
+} from './constants';
 import { renameByMimeType } from './utils/fileUtils';
 import { getImageCompressionLevelPreference } from './utils/settingsStorage';
 import { showCompressedImagePreview } from './debug';
@@ -17,6 +21,103 @@ const IMAGE_COMPRESSION_TARGET_RATIO_MAP: Partial<Record<ImageCompressionLevel, 
     medium: 0.75,
     high: 0.6,
 };
+
+interface ImageDimensions {
+    width: number;
+    height: number;
+}
+
+export interface ExtremeAspectResizeResult {
+    maxWidthOrHeight: number;
+    targetWidth: number;
+    targetHeight: number;
+    wasAdjusted: boolean;
+}
+
+function calculateScaledDimensions(
+    width: number,
+    height: number,
+    scale: number,
+): { targetWidth: number; targetHeight: number } {
+    return {
+        targetWidth: Math.max(1, Math.floor(width * scale)),
+        targetHeight: Math.max(1, Math.floor(height * scale)),
+    };
+}
+
+export function calculateExtremeAspectMaxWidthOrHeight({
+    width,
+    height,
+    maxWidthOrHeight,
+    settings = DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS,
+}: {
+    width: number;
+    height: number;
+    maxWidthOrHeight: number;
+    settings?: ExtremeAspectCompressionSettings;
+}): ExtremeAspectResizeResult {
+    const baseMaxWidthOrHeight = Math.max(1, Math.floor(maxWidthOrHeight));
+    const hasValidDimensions =
+        Number.isFinite(width) &&
+        Number.isFinite(height) &&
+        width > 0 &&
+        height > 0;
+    const baseScale = hasValidDimensions
+        ? Math.min(1, baseMaxWidthOrHeight / Math.max(width, height))
+        : 1;
+    const fallbackResult = {
+        maxWidthOrHeight: baseMaxWidthOrHeight,
+        ...calculateScaledDimensions(
+            hasValidDimensions ? width : 1,
+            hasValidDimensions ? height : 1,
+            baseScale,
+        ),
+        wasAdjusted: false,
+    };
+
+    if (
+        !settings.enabled ||
+        !hasValidDimensions ||
+        !Number.isFinite(maxWidthOrHeight) ||
+        maxWidthOrHeight <= 0 ||
+        settings.aspectRatioThreshold <= 0 ||
+        settings.minShortEdge <= 0 ||
+        settings.maxMegapixels <= 0
+    ) {
+        return fallbackResult;
+    }
+
+    const longEdge = Math.max(width, height);
+    const shortEdge = Math.min(width, height);
+    const aspectRatio = longEdge / shortEdge;
+    const baseShortEdge = Math.floor(shortEdge * baseScale);
+
+    if (
+        aspectRatio < settings.aspectRatioThreshold ||
+        baseShortEdge >= settings.minShortEdge
+    ) {
+        return fallbackResult;
+    }
+
+    const targetShortEdge = Math.min(settings.minShortEdge, shortEdge);
+    const shortEdgeScale = targetShortEdge / shortEdge;
+    const maxPixels = settings.maxMegapixels * 1_000_000;
+    const megapixelScale = Math.sqrt(maxPixels / (width * height));
+    const adjustedScale = Math.min(shortEdgeScale, megapixelScale, 1);
+    const { targetWidth, targetHeight } = calculateScaledDimensions(
+        width,
+        height,
+        adjustedScale,
+    );
+    const adjustedMaxWidthOrHeight = Math.max(targetWidth, targetHeight);
+
+    return {
+        maxWidthOrHeight: adjustedMaxWidthOrHeight,
+        targetWidth,
+        targetHeight,
+        wasAdjusted: adjustedMaxWidthOrHeight !== baseMaxWidthOrHeight,
+    };
+}
 
 async function loadImageCompression() {
     if (!imageCompressionModulePromise) {
@@ -106,6 +207,53 @@ export class ImageCompressionService implements CompressionService {
         return { canvas, context };
     }
 
+    private async loadImageDimensions(file: Blob): Promise<ImageDimensions | null> {
+        if (typeof URL.createObjectURL !== "function" || typeof window.Image !== "function") {
+            return null;
+        }
+
+        const url = URL.createObjectURL(file);
+
+        try {
+            return await new Promise<ImageDimensions | null>((resolve) => {
+                const img = new window.Image();
+                img.onload = () => {
+                    const width = img.naturalWidth || img.width;
+                    const height = img.naturalHeight || img.height;
+                    resolve(width > 0 && height > 0 ? { width, height } : null);
+                };
+                img.onerror = () => resolve(null);
+                img.src = url;
+            });
+        } finally {
+            URL.revokeObjectURL?.(url);
+        }
+    }
+
+    private async applyExtremeAspectProtection(
+        file: File,
+        options: Record<string, unknown>,
+    ): Promise<Record<string, unknown>> {
+        const maxWidthOrHeight = options.maxWidthOrHeight;
+        if (typeof maxWidthOrHeight !== "number") {
+            return options;
+        }
+
+        const dimensions = await this.loadImageDimensions(file);
+        if (!dimensions) {
+            return options;
+        }
+
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            ...dimensions,
+            maxWidthOrHeight,
+        });
+
+        return result.wasAdjusted
+            ? { ...options, maxWidthOrHeight: result.maxWidthOrHeight }
+            : options;
+    }
+
     private async loadImageData(file: Blob): Promise<ImageData> {
         const url = URL.createObjectURL(file);
 
@@ -165,9 +313,10 @@ export class ImageCompressionService implements CompressionService {
         const maxSizeMB = this.getTargetMaxSizeMB(file.size, level);
 
         const requestedTargetMime = (options.fileType as string) || file.type;
+        const compressionOptions = await this.applyExtremeAspectProtection(file, options);
 
         let usedOptions: Record<string, unknown> = {
-            ...options,
+            ...compressionOptions,
             ...(maxSizeMB ? { maxSizeMB } : {}),
             alwaysKeepResolution: true,
             onProgress: (progress: number) => {

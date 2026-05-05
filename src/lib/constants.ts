@@ -17,6 +17,21 @@ export const FALLBACK_RELAYS = [
 // --- fileUploadManager用定数 ---
 export const DEFAULT_API_URL = "https://nostr.build/api/v2/upload/files";
 export const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1GB
+
+export type ExtremeAspectCompressionSettings = {
+    enabled: boolean;
+    aspectRatioThreshold: number;
+    minShortEdge: number;
+    maxMegapixels: number;
+};
+
+export const DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS: ExtremeAspectCompressionSettings = {
+    enabled: true,
+    aspectRatioThreshold: 3,
+    minShortEdge: 320,
+    maxMegapixels: 8,
+};
+
 export const COMPRESSION_OPTIONS_MAP = {
     none: {
         skip: true

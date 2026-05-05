@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ImageCompressionService } from '../../lib/imageCompressionService';
+import {
+    calculateExtremeAspectMaxWidthOrHeight,
+    ImageCompressionService,
+} from '../../lib/imageCompressionService';
 import type { MimeTypeSupportInterface } from '../../lib/types';
 import { MockStorage } from '../helpers';
 
@@ -46,12 +49,135 @@ function createTestFile(name: string, type: string, sizeBytes: number): File {
     return new File([content], name, { type });
 }
 
+describe('calculateExtremeAspectMaxWidthOrHeight', () => {
+    it('縦長画像では短辺を保護するためmaxWidthOrHeightを引き上げる', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 2000,
+            height: 10000,
+            maxWidthOrHeight: 1024,
+            settings: {
+                enabled: true,
+                aspectRatioThreshold: 3,
+                minShortEdge: 320,
+                maxMegapixels: 8,
+            },
+        });
+
+        expect(result).toEqual({
+            maxWidthOrHeight: 1600,
+            targetWidth: 320,
+            targetHeight: 1600,
+            wasAdjusted: true,
+        });
+    });
+
+    it('横長画像では短辺を保護するためmaxWidthOrHeightを引き上げる', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 10000,
+            height: 2000,
+            maxWidthOrHeight: 1024,
+            settings: {
+                enabled: true,
+                aspectRatioThreshold: 3,
+                minShortEdge: 320,
+                maxMegapixels: 8,
+            },
+        });
+
+        expect(result).toEqual({
+            maxWidthOrHeight: 1600,
+            targetWidth: 1600,
+            targetHeight: 320,
+            wasAdjusted: true,
+        });
+    });
+
+    it('短辺保護よりmaxMegapixels上限を優先する', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 1000,
+            height: 30000,
+            maxWidthOrHeight: 1024,
+            settings: {
+                enabled: true,
+                aspectRatioThreshold: 3,
+                minShortEdge: 960,
+                maxMegapixels: 12,
+            },
+        });
+
+        expect(result.targetWidth).toBeLessThan(960);
+        expect(result.targetWidth * result.targetHeight).toBeLessThanOrEqual(12_000_000);
+        expect(result.maxWidthOrHeight).toBe(result.targetHeight);
+        expect(result.wasAdjusted).toBe(true);
+    });
+
+    it('通常比率画像では従来のmaxWidthOrHeightを維持する', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 4000,
+            height: 3000,
+            maxWidthOrHeight: 1024,
+        });
+
+        expect(result.maxWidthOrHeight).toBe(1024);
+        expect(result.wasAdjusted).toBe(false);
+    });
+
+    it('aspectRatioThreshold未満では発動しない', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 2990,
+            height: 1000,
+            maxWidthOrHeight: 1024,
+            settings: {
+                enabled: true,
+                aspectRatioThreshold: 3,
+                minShortEdge: 320,
+                maxMegapixels: 8,
+            },
+        });
+
+        expect(result.maxWidthOrHeight).toBe(1024);
+        expect(result.wasAdjusted).toBe(false);
+    });
+
+    it('enabled=falseでは従来のmaxWidthOrHeightを維持する', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 2000,
+            height: 10000,
+            maxWidthOrHeight: 1024,
+            settings: {
+                enabled: false,
+                aspectRatioThreshold: 3,
+                minShortEdge: 320,
+                maxMegapixels: 8,
+            },
+        });
+
+        expect(result.maxWidthOrHeight).toBe(1024);
+        expect(result.wasAdjusted).toBe(false);
+    });
+
+    it('元画像の短辺より大きくアップスケールしない', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 500,
+            height: 10000,
+            maxWidthOrHeight: 1024,
+        });
+
+        expect(result.targetWidth).toBe(320);
+        expect(result.maxWidthOrHeight).toBe(6400);
+        expect(result.wasAdjusted).toBe(true);
+    });
+});
+
 describe('ImageCompressionService', () => {
     let service: ImageCompressionService;
     let mockMimeSupport: MimeTypeSupportInterface;
     let mockStorage: MockStorage;
     let imageCompressionMock: ReturnType<typeof vi.fn>;
     let webpEncodeMock: ReturnType<typeof vi.fn>;
+    let mockImageNaturalWidth: number;
+    let mockImageNaturalHeight: number;
+    let mockImageShouldError: boolean;
 
     beforeEach(async () => {
         vi.clearAllMocks();
@@ -59,6 +185,9 @@ describe('ImageCompressionService', () => {
         mockStorage = new MockStorage();
         mockStorage.setItem('imageQualityLevel', 'medium');
         service = new ImageCompressionService(mockMimeSupport, mockStorage);
+        mockImageNaturalWidth = 32;
+        mockImageNaturalHeight = 24;
+        mockImageShouldError = false;
 
         // browser-image-compressionモックを取得
         const mod = await import('browser-image-compression');
@@ -74,14 +203,19 @@ describe('ImageCompressionService', () => {
         });
 
         class MockImage {
-            public naturalWidth = 32;
-            public naturalHeight = 24;
-            public width = 32;
-            public height = 24;
+            public naturalWidth = mockImageNaturalWidth;
+            public naturalHeight = mockImageNaturalHeight;
+            public width = mockImageNaturalWidth;
+            public height = mockImageNaturalHeight;
             public onload: (() => void) | null = null;
             public onerror: (() => void) | null = null;
 
             set src(_value: string) {
+                if (mockImageShouldError) {
+                    this.onerror?.();
+                    return;
+                }
+
                 this.onload?.();
             }
         }
@@ -205,6 +339,7 @@ describe('ImageCompressionService', () => {
                 expect(result.wasCompressed).toBe(false);
                 expect(result.wasSkipped).toBe(true);
                 expect(imageCompressionMock).not.toHaveBeenCalled();
+                expect(URL.createObjectURL).not.toHaveBeenCalled();
             });
         });
 
@@ -263,6 +398,64 @@ describe('ImageCompressionService', () => {
                 expect(callArgs[1].alwaysKeepResolution).toBe(true);
                 expect(result.wasCompressed).toBe(true);
                 expect(result.file.size).toBeLessThan(file.size);
+            });
+
+            it('極端な縦長画像では補正後のmaxWidthOrHeightを渡す', async () => {
+                mockImageNaturalWidth = 2000;
+                mockImageNaturalHeight = 10000;
+                const file = createTestFile('long-chat.jpg', 'image/jpeg', 500000);
+                const compressedContent = new Uint8Array(100000);
+                const compressedFile = new File([compressedContent], 'long-chat.webp', { type: 'image/webp' });
+                imageCompressionMock.mockResolvedValue(compressedFile);
+
+                const result = await service.compress(file);
+
+                const callArgs = imageCompressionMock.mock.calls[0];
+                expect(callArgs[1].maxWidthOrHeight).toBe(1600);
+                expect(callArgs[1].maxSizeMB).toBeCloseTo((500000 * 0.75) / (1024 * 1024));
+                expect(callArgs[1].alwaysKeepResolution).toBe(true);
+                expect(result.wasCompressed).toBe(true);
+            });
+
+            it('極端な横長画像では補正後のmaxWidthOrHeightを渡す', async () => {
+                mockImageNaturalWidth = 10000;
+                mockImageNaturalHeight = 2000;
+                const file = createTestFile('wide-note.jpg', 'image/jpeg', 500000);
+                const compressedContent = new Uint8Array(100000);
+                const compressedFile = new File([compressedContent], 'wide-note.webp', { type: 'image/webp' });
+                imageCompressionMock.mockResolvedValue(compressedFile);
+
+                await service.compress(file);
+
+                const callArgs = imageCompressionMock.mock.calls[0];
+                expect(callArgs[1].maxWidthOrHeight).toBe(1600);
+            });
+
+            it('通常比率画像では従来のmaxWidthOrHeightを渡す', async () => {
+                mockImageNaturalWidth = 4000;
+                mockImageNaturalHeight = 3000;
+                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const compressedContent = new Uint8Array(100000);
+                const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
+                imageCompressionMock.mockResolvedValue(compressedFile);
+
+                await service.compress(file);
+
+                const callArgs = imageCompressionMock.mock.calls[0];
+                expect(callArgs[1].maxWidthOrHeight).toBe(1024);
+            });
+
+            it('画像サイズを取得できない場合は従来のmaxWidthOrHeightを渡す', async () => {
+                mockImageShouldError = true;
+                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const compressedContent = new Uint8Array(100000);
+                const compressedFile = new File([compressedContent], 'photo.webp', { type: 'image/webp' });
+                imageCompressionMock.mockResolvedValue(compressedFile);
+
+                await service.compress(file);
+
+                const callArgs = imageCompressionMock.mock.calls[0];
+                expect(callArgs[1].maxWidthOrHeight).toBe(1024);
             });
 
             it('圧縮後Blobの実際のMIMEタイプを優先する', async () => {
