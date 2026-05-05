@@ -2,7 +2,14 @@ import {
     getProfilePictureCacheKeyUrl,
     normalizeProfilePictureUrl,
 } from "../src/lib/profilePictureUrlUtils";
+import {
+    createBaseCacheLookupEntries,
+    getLegacyCachesToDelete,
+    getDuplicateProfileCacheRequests,
+    matchCacheByPriority,
+} from "../src/lib/swCacheUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
+import { buildSharedMediaIndexedDbRecord } from "../src/lib/swSharedMediaPersistence";
 import {
     createCorsRequest,
     createServiceWorkerRedirectResponse,
@@ -272,17 +279,13 @@ class CacheManager {
     async cleanupOldCaches() {
         try {
             const cacheNames = await this.caches.keys();
+            const cachesToDelete = getLegacyCachesToDelete(cacheNames, {
+                legacyPrecachePrefix: LEGACY_PRECACHE_PREFIX,
+                legacyProfileCacheNames: LEGACY_PROFILE_CACHE_NAMES,
+                legacyCustomEmojiCacheNames: LEGACY_CUSTOM_EMOJI_CACHE_NAMES,
+            });
             await Promise.all(
-                cacheNames.map(name => {
-                    if (
-                        name.startsWith(LEGACY_PRECACHE_PREFIX) ||
-                        LEGACY_PROFILE_CACHE_NAMES.includes(name) ||
-                        LEGACY_CUSTOM_EMOJI_CACHE_NAMES.includes(name)
-                    ) {
-                        return this.caches.delete(name);
-                    }
-                    return undefined;
-                })
+                cachesToDelete.map((name) => this.caches.delete(name))
             );
         } catch (error) {
             this.console.error('キャッシュクリーンアップエラー:', error);
@@ -298,28 +301,28 @@ class CacheManager {
                 return null;
             }
 
-            // キャッシュキーは fetch時と同じ生成方法（cors モードのベースRequest）で検索する
-            const baseRequest = Utilities.createCorsRequest(baseUrl);
+            const cachedMatch = await matchCacheByPriority(
+                cache,
+                createBaseCacheLookupEntries(
+                    baseUrl,
+                    request,
+                    Utilities.createCorsRequest,
+                ),
+            );
 
-            // まずベースURLで検索
-            const cachedBase = await cache.match(baseRequest);
-            if (cachedBase) {
+            if (cachedMatch?.source === 'base-cors') {
                 this.console.log('プロフィール画像をキャッシュから返却（ベースURL）:', baseUrl);
-                return cachedBase;
+                return cachedMatch.response;
             }
 
-            const opaqueBaseRequest = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
-            const cachedOpaqueBase = await cache.match(opaqueBaseRequest);
-            if (cachedOpaqueBase) {
+            if (cachedMatch?.source === 'base-no-cors') {
                 this.console.log('プロフィール画像をopaqueキャッシュから返却（ベースURL）:', baseUrl);
-                return cachedOpaqueBase;
+                return cachedMatch.response;
             }
 
-            // 互換性のため、元のリクエストでも検索
-            const cached = await cache.match(request);
-            if (cached) {
+            if (cachedMatch?.source === 'original') {
                 this.console.log('プロフィール画像をキャッシュから返却（元URL）:', request.url);
-                return cached;
+                return cachedMatch.response;
             }
 
             return null; // キャッシュにない場合はnullを返す
@@ -408,22 +411,17 @@ class CacheManager {
             const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
             const baseUrl = Utilities.getBaseUrl(request.url);
             if (baseUrl) {
-                const cacheKey = Utilities.createCorsRequest(baseUrl);
-                const cachedBase = await cache.match(cacheKey);
-                if (cachedBase) {
-                    return cachedBase;
+                const cachedMatch = await matchCacheByPriority(
+                    cache,
+                    createBaseCacheLookupEntries(
+                        baseUrl,
+                        request,
+                        Utilities.createCorsRequest,
+                    ),
+                );
+                if (cachedMatch) {
+                    return cachedMatch.response;
                 }
-
-                const opaqueCacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
-                const cachedOpaqueBase = await cache.match(opaqueCacheKey);
-                if (cachedOpaqueBase) {
-                    return cachedOpaqueBase;
-                }
-            }
-
-            const cached = await cache.match(request);
-            if (cached) {
-                return cached;
             }
         } catch (error) {
             this.console.warn('カスタム絵文字キャッシュ取得に失敗:', error);
@@ -509,41 +507,17 @@ class CacheManager {
         try {
             const cache = await this.caches.open(PROFILE_CACHE_NAME);
             const keys = await cache.keys();
-
-            const baseUrls = new Set();
-            const duplicateKeys = [];
-
-            // ベースURLとクエリ付きURLを識別
-            keys.forEach(request => {
-                const url = new URL(request.url);
-                const baseUrl = Utilities.getBaseUrl(request.url);
-                if (!baseUrl) {
-                    return;
-                }
-
-                if (url.search) {
-                    // クエリパラメータ付きのURLは重複候補
-                    duplicateKeys.push(request);
-                } else {
-                    // ベースURLを記録
-                    baseUrls.add(baseUrl);
-                }
-            });
+            const duplicateKeys = getDuplicateProfileCacheRequests(
+                keys,
+                Utilities.getBaseUrl,
+            );
 
             // 重複するキャッシュエントリを削除
             let deletedCount = 0;
             for (const duplicateKey of duplicateKeys) {
-                const baseUrl = Utilities.getBaseUrl(duplicateKey.url);
-                if (!baseUrl) {
-                    continue;
-                }
-
-                // ベースURLが既にキャッシュされている場合、クエリ付きを削除
-                if (baseUrls.has(baseUrl)) {
-                    await cache.delete(duplicateKey);
-                    deletedCount++;
-                    this.console.log('重複キャッシュを削除:', duplicateKey.url);
-                }
+                await cache.delete(duplicateKey);
+                deletedCount++;
+                this.console.log('重複キャッシュを削除:', duplicateKey.url);
             }
 
             this.console.log(`重複プロフィールキャッシュクリーンアップ完了: ${deletedCount}件削除`);
@@ -662,36 +636,14 @@ class ClientManager {
 
     // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
     async persistSharedMediaToIndexedDB(sharedData, indexedDBManager) {
-        const mediaFiles = sharedData.images || (sharedData.image ? [sharedData.image] : []);
-
-        const mediaDataList = await Promise.all(
-            mediaFiles.map(async (file) => {
-                if (!(file instanceof File)) {
-                    throw new Error('Shared media item is not a File');
-                }
-                if (file.size > MAX_INDEXEDDB_FILE_SIZE) {
-                    throw new Error(`File too large for IndexedDB persistence: ${file.name}`);
-                }
-
-                return {
-                    name: file.name,
-                    type: file.type,
-                    size: file.size,
-                    lastModified: file.lastModified || Date.now(),
-                    arrayBuffer: await file.arrayBuffer()
-                };
-            })
-        );
-
-        const timestamp = Date.now();
-        await indexedDBManager.putSharedMedia({
-            id: SHARED_MEDIA_RECORD_ID,
-            images: mediaDataList,
-            metadata: sharedData.metadata,
-            createdAt: timestamp,
-            updatedAt: timestamp,
-            schemaVersion: SHARED_MEDIA_SCHEMA_VERSION
+        const record = await buildSharedMediaIndexedDbRecord({
+            sharedData,
+            maxFileSize: MAX_INDEXEDDB_FILE_SIZE,
+            recordId: SHARED_MEDIA_RECORD_ID,
+            schemaVersion: SHARED_MEDIA_SCHEMA_VERSION,
         });
+
+        await indexedDBManager.putSharedMedia(record);
     }
 }
 
