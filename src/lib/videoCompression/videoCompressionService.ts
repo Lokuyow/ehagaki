@@ -1,4 +1,4 @@
-import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../constants';
+import { DEFAULT_COMPRESSION_LEVEL, STORAGE_KEYS, VIDEO_COMPRESSION_OPTIONS_MAP } from '../constants';
 import type { VideoCompressionResult, VideoCompressionLevel } from '../types';
 import type { MediaBunnyCompression } from './mediabunnyCompression';
 import type { FFmpegCompression } from './ffmpegCompression';
@@ -111,7 +111,10 @@ export class VideoCompressionService {
      * 圧縮設定の取得
      */
     private getCompressionOptions(): any {
-        const level = (this.localStorage.getItem('videoCompressionLevel') || 'medium') as VideoCompressionLevel;
+        const level = (
+            this.localStorage.getItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL)
+            || DEFAULT_COMPRESSION_LEVEL
+        ) as VideoCompressionLevel;
         const opt = VIDEO_COMPRESSION_OPTIONS_MAP[level];
 
         if (typeof opt === 'object' && opt && 'skip' in opt && opt.skip) {

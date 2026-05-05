@@ -42,6 +42,7 @@ import {
 } from "./editor/placeholderManager";
 import { buildUploadFailureMessage } from "./uploadResultUtils";
 import { isDefaultUploadAborted, resetDefaultUploadAbort } from "./uploadAbortUtils";
+import { STORAGE_KEYS } from "./constants";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -368,7 +369,7 @@ export async function uploadHelper({
 }: UploadHelperParams): Promise<UploadHelperResult> {
     const fileArray = Array.from(files);
     const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
-    const endpoint = dependencies.localStorage.getItem("uploadEndpoint") || "";
+    const endpoint = dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT) || "";
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
