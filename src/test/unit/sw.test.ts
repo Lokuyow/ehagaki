@@ -12,9 +12,18 @@ import {
     cacheCustomEmojiImagesBatch,
     cacheOpaqueCustomEmojiImage,
 } from '../../lib/swCustomEmojiCacheUtils';
+import {
+    focusAndNotifySharedClient,
+    openNewSharedClientWindow,
+    redirectToAvailableSharedClient,
+} from '../../lib/swClientUtils';
 import { resolveCustomEmojiImageRequestResponse } from '../../lib/swCustomEmojiRequestUtils';
 import { dispatchServiceWorkerMessageRoute } from '../../lib/swMessageDispatchUtils';
 import { findProfileImageCacheMatch } from '../../lib/swProfileImageCacheUtils';
+import {
+    fetchAndCacheOpaqueProfileImageResponse,
+    fetchAndCacheProfileImageResponse,
+} from '../../lib/swProfileImageFetchUtils';
 import { resolveProfileImageRequestResult } from '../../lib/swProfileImageRequestUtils';
 import {
     cleanupServiceWorkerDuplicateProfileCache,
@@ -24,6 +33,12 @@ import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
 import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
 import { resolveUploadRequestOutcome } from '../../lib/swUploadRequestUtils';
+import {
+    createCorsRequest,
+    createServiceWorkerRedirectResponse,
+    createTransparentImageResponse,
+    extractSharedMediaFromFormData,
+} from '../../lib/swUtilities';
 
 // Service Workerのモジュール型定義
 interface ServiceWorkerModule {
@@ -114,34 +129,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         setTimeout: mockSelf.setTimeout
     };
 
-    const TRANSPARENT_PNG_DATA = new Uint8Array([
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A
-    ]);
-
     const Utilities = {
         createTransparentImageResponse(statusCode = 200) {
-            return new Response(TRANSPARENT_PNG_DATA, {
-                status: statusCode,
-                statusText: statusCode === 200 ? 'OK' : 'Error',
-                headers: {
-                    'Content-Type': 'image/png',
-                    'Cache-Control': statusCode === 200 ? 'max-age=31536000' : 'no-cache',
-                    'Access-Control-Allow-Origin': '*'
-                }
-            });
+            return createTransparentImageResponse(statusCode);
         },
 
         createCorsRequest(url: string, options = {}) {
-            return new Request(url, {
-                method: 'GET',
-                headers: new Headers({
-                    'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-                    ...(options as any).headers
-                }),
-                mode: 'cors',
-                credentials: 'omit',
-                ...options
-            });
+            return createCorsRequest(url, options);
         },
 
         getBaseUrl(url: string) {
@@ -151,12 +145,11 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         },
 
         createRedirectResponse(path: string = '/', error: string | null = null, location = ServiceWorkerDependencies.location) {
-            const url = new URL(path, location.origin);
-            if (error) {
-                url.searchParams.set('shared', 'true');
-                url.searchParams.set('error', error);
-            }
-            return Response.redirect(url.href, 303);
+            return createServiceWorkerRedirectResponse({
+                path,
+                error,
+                location,
+            });
         },
 
         isUploadRequest(request: Request, url: URL) {
@@ -196,21 +189,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         },
 
         async extractMediaFromFormData(formData: FormData) {
-            const mediaFiles = formData.getAll('media');
-            if (!mediaFiles || mediaFiles.length === 0) return null;
-
-            const validFiles = mediaFiles.filter((f): f is File => f instanceof File && f.size > 0);
-            if (validFiles.length === 0) return null;
-
-            return {
-                images: validFiles,
-                metadata: validFiles.map(f => ({
-                    name: f.name,
-                    type: f.type,
-                    size: f.size,
-                    timestamp: new Date().toISOString()
-                }))
-            };
+            return await extractSharedMediaFromFormData(formData);
         }
     };
 
@@ -346,50 +325,29 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         }
 
         async fetchAndCacheOpaqueProfileImage(baseUrl: string) {
-            const request = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
-            const response = await this.dependencies.fetch(request);
-            if (!response || response.type !== 'opaque') {
-                return null;
-            }
-
-            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
-            await cache.put(request, response.clone ? response.clone() : response);
-            return response;
+            return await fetchAndCacheOpaqueProfileImageResponse({
+                baseUrl,
+                cacheStorage: this.dependencies.caches,
+                cacheName: PROFILE_CACHE_NAME,
+                fetchRequest: (request) => this.dependencies.fetch(request),
+                createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+                logger: this.dependencies.console,
+            });
         }
 
         async fetchAndCacheProfileImage(request: Request) {
-            let baseUrl: string | null = null;
-            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
-            baseUrl = Utilities.getBaseUrl(request.url);
-            if (!normalizedUrl || !baseUrl) {
-                return null;
-            }
-
-            const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
-            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'cors' });
-
-            const cachedResponse = await cache.match(baseRequest);
-            if (cachedResponse) {
-                return cachedResponse;
-            }
-
-            let networkResponse;
-            try {
-                networkResponse = await this.dependencies.fetch(baseRequest);
-            } catch {
-                return this.fetchAndCacheOpaqueProfileImage(baseUrl);
-            }
-
-            if (networkResponse && networkResponse.ok && networkResponse.type !== 'opaque') {
-                try {
-                    const toPut = (typeof networkResponse.clone === 'function') ? networkResponse.clone() : networkResponse;
-                    await cache.put(baseRequest, toPut);
-                } catch (err) {
-                    // テスト環境や一部実装で put が失敗しても続行
-                    this.dependencies.console && this.dependencies.console.warn && this.dependencies.console.warn('cache.put failed', err);
-                }
-            }
-            return networkResponse;
+            return await fetchAndCacheProfileImageResponse({
+                request,
+                isOnline: this.dependencies.navigator?.onLine,
+                normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
+                getBaseUrl: Utilities.getBaseUrl,
+                createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+                fetchRequest: (targetRequest) => this.dependencies.fetch(targetRequest),
+                cacheStorage: this.dependencies.caches,
+                cacheName: PROFILE_CACHE_NAME,
+                fetchOpaqueProfileImage: (baseUrl) => this.fetchAndCacheOpaqueProfileImage(baseUrl),
+                logger: this.dependencies.console,
+            });
         }
 
         async handleCustomEmojiImageRequest(request: Request) {
@@ -436,45 +394,52 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         constructor(public dependencies = ServiceWorkerDependencies) { }
 
         async redirectClient() {
-            // 実際にclients.matchAllを呼び出す
-            const clients = await this.dependencies.clients.matchAll({ type: 'window', includeUncontrolled: true });
-
-            if (clients.length > 0) {
-                return await this.focusAndNotifyClient(clients[0]);
-            } else {
-                return await this.openNewClient();
-            }
+            return await redirectToAvailableSharedClient({
+                clientSet: this.dependencies.clients,
+                focusAndNotifyClient: (client) => this.focusAndNotifyClient(client),
+                openNewClient: () => this.openNewClient(),
+                logger: this.dependencies.console,
+                createErrorRedirectResponse: () =>
+                    Utilities.createRedirectResponse('/', 'client-error', this.dependencies.location),
+            });
         }
 
         async focusAndNotifyClient(client: any) {
-            await client.focus();
             const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
-            // メッセージ送信のシミュレート
-            for (let retry = 0; retry < 3; retry++) {
-                this.dependencies.setTimeout(() => {
-                    client.postMessage({
-                        type: 'SHARED_MEDIA',
-                        data: sharedCache,
-                        timestamp: Date.now(),
-                        retry
-                    });
-                }, retry * 1000);
-            }
-            return Utilities.createRedirectResponse('/', 'success', this.dependencies.location);
+            return await focusAndNotifySharedClient({
+                client,
+                sharedCache,
+                persistSharedMedia: async (cache) => {
+                    const indexedDBManager = new IndexedDBManager();
+                    await this.persistSharedMediaToIndexedDB(cache, indexedDBManager);
+                },
+                logger: this.dependencies.console,
+                createRedirectResponse: () =>
+                    Utilities.createRedirectResponse('/', 'success', this.dependencies.location),
+            });
         }
 
         async openNewClient() {
-            const windowClient = { id: 'new-client' };
-            this.dependencies.clients.openWindow.mockResolvedValue(windowClient);
+            const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
-            // 実際にclients.openWindowを呼び出す
-            await this.dependencies.clients.openWindow('/?shared=true');
+            return await openNewSharedClientWindow({
+                sharedCache,
+                persistSharedMedia: async (cache) => {
+                    const indexedDBManager = new IndexedDBManager();
+                    await this.persistSharedMediaToIndexedDB(cache, indexedDBManager);
+                },
+                logger: this.dependencies.console,
+                basePath: '/',
+                origin: this.dependencies.location.origin,
+                openWindow: (url) => this.dependencies.clients.openWindow(url),
+                createRedirectResponse: () =>
+                    Utilities.createRedirectResponse('/', null, this.dependencies.location),
+            });
+        }
 
-            if (windowClient) {
-                return new Response('', { status: 200, headers: { 'Content-Type': 'text/plain' } });
-            }
-            return Utilities.createRedirectResponse('/', 'window-error', this.dependencies.location);
+        async persistSharedMediaToIndexedDB(sharedData: any, indexedDBManager: any) {
+            await indexedDBManager.putSharedMedia(sharedData);
         }
     }
 
@@ -540,8 +505,8 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
                 handleProfileImageCache: (profileRequest) =>
                     this.cacheManager.handleProfileImageCache(profileRequest),
-                fetchAndCacheProfileImage: (profileRequest) =>
-                    this.cacheManager.fetchAndCacheProfileImage(profileRequest),
+                fetchAndCacheProfileImage: async (profileRequest) =>
+                    await this.cacheManager.fetchAndCacheProfileImage(profileRequest) as Response | null,
                 createTransparentImageResponse: Utilities.createTransparentImageResponse,
             });
 
@@ -847,7 +812,7 @@ describe('Service Worker Tests', () => {
 
             const response = await manager.fetchAndCacheProfileImage(request);
 
-            expect(response).toEqual(expect.objectContaining({ type: 'opaque' }));
+            expect(response).toBeNull();
             expect(mockCache.put).not.toHaveBeenCalled();
         });
 
@@ -1046,11 +1011,23 @@ describe('Service Worker Tests', () => {
 
     describe('ClientManager', () => {
         it('should redirect client when clients exist', async () => {
+            const client = { id: 'client-1', focus: vi.fn(), postMessage: vi.fn() };
+            swModule.ServiceWorkerDependencies.clients.matchAll.mockResolvedValue([client]);
+            swModule.ServiceWorkerState.setSharedMediaCache({ image: 'test' });
+
             const manager = new swModule.ClientManager();
             const response = await manager.redirectClient();
 
             expect(swModule.ServiceWorkerDependencies.clients.matchAll).toHaveBeenCalled();
-            expect(response).toBeDefined();
+            expect(client.focus).toHaveBeenCalledTimes(1);
+            expect(client.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'SHARED_MEDIA',
+                    data: { image: 'test' },
+                    requestId: expect.stringMatching(/^sw-/),
+                }),
+            );
+            expect(response.status).toBe(303);
         });
 
         it('should open new client when no clients exist', async () => {
@@ -1060,8 +1037,10 @@ describe('Service Worker Tests', () => {
             const manager = new swModule.ClientManager();
             const response = await manager.redirectClient();
 
-            expect(swModule.ServiceWorkerDependencies.clients.openWindow).toHaveBeenCalled();
-            expect(response.status).toBe(200);
+            expect(swModule.ServiceWorkerDependencies.clients.openWindow).toHaveBeenCalledWith(
+                'https://example.com/?shared=true',
+            );
+            expect(response.status).toBe(303);
         });
     });
 

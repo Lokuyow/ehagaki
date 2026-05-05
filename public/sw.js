@@ -3,13 +3,12 @@ import {
     normalizeProfilePictureUrl,
 } from "../src/lib/profilePictureUrlUtils";
 import {
-    createBaseCacheLookupEntries,
     getLegacyCachesToDelete,
-    matchCacheByPriority,
 } from "../src/lib/swCacheUtils";
 import {
-    createSharedClientUrl,
-    persistSharedMediaIfPresent,
+    focusAndNotifySharedClient,
+    openNewSharedClientWindow,
+    redirectToAvailableSharedClient,
 } from "../src/lib/swClientUtils";
 import {
     cacheCustomEmojiImagesBatch,
@@ -46,13 +45,14 @@ import {
 import { resolveProfileImageRequestResult } from "../src/lib/swProfileImageRequestUtils";
 import { findProfileImageCacheMatch } from "../src/lib/swProfileImageCacheUtils";
 import {
+    fetchAndCacheOpaqueProfileImageResponse,
+    fetchAndCacheProfileImageResponse,
+} from "../src/lib/swProfileImageFetchUtils";
+import {
     cleanupServiceWorkerDuplicateProfileCache,
     clearServiceWorkerProfileCache,
 } from "../src/lib/swProfileCacheActionUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
-import {
-    createClientSharedMediaNotification,
-} from "../src/lib/swMessageUtils";
 import { postServiceWorkerSharedMediaResponse } from "../src/lib/swSharedMediaResponseUtils";
 import { buildSharedMediaIndexedDbRecord } from "../src/lib/swSharedMediaPersistence";
 import {
@@ -376,77 +376,30 @@ class CacheManager {
     }
 
     async fetchAndCacheOpaqueProfileImage(baseUrl) {
-        const profileFetchRequest = Utilities.createCorsRequest(baseUrl, {
-            mode: 'no-cors',
-            cache: 'reload'
+        return await fetchAndCacheOpaqueProfileImageResponse({
+            baseUrl,
+            cacheStorage: this.caches,
+            cacheName: PROFILE_CACHE_NAME,
+            fetchRequest: (request) => this.fetch(request),
+            createRequest: Utilities.createCorsRequest,
+            logger: this.console,
         });
-        const response = await this.fetch(profileFetchRequest);
-        if (!response || response.type !== 'opaque') {
-            return null;
-        }
-
-        const cache = await this.caches.open(PROFILE_CACHE_NAME);
-        const cacheKey = Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' });
-        try {
-            await cache.put(cacheKey, response.clone());
-            this.console.log('プロフィール画像をopaqueキャッシュに保存完了:', baseUrl);
-        } catch (cacheError) {
-            this.console.warn('プロフィール画像のopaqueキャッシュ保存に失敗:', cacheError, baseUrl);
-        }
-
-        return response;
     }
 
     // プロフィール画像をネットワークから取得してキャッシュ
     async fetchAndCacheProfileImage(request) {
-        // ネットワーク取得はオフライン時はスキップ
-        if (ServiceWorkerDependencies.navigator && ServiceWorkerDependencies.navigator.onLine === false) return null;
-
-        let baseUrl = null;
-        try {
-            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
-            baseUrl = Utilities.getBaseUrl(request.url);
-            if (!normalizedUrl || !baseUrl) {
-                this.console.warn('プロフィール画像 URL を拒否:', request.url);
-                return null;
-            }
-
-            const profileFetchRequest = Utilities.createCorsRequest(baseUrl, {
-                mode: 'cors',
-                cache: 'reload'
-            });
-
-            this.console.log('プロフィール画像をネットワークから取得中:', baseUrl);
-            const response = await this.fetch(profileFetchRequest);
-
-            if (response && response.ok && response.type !== 'opaque') {
-                const cache = await this.caches.open(PROFILE_CACHE_NAME);
-
-                // キャッシュキーは同じ生成ルールで作成（cors のベースRequest）
-                const cacheKey = Utilities.createCorsRequest(baseUrl);
-
-                try {
-                    // レスポンスをクローンしてキャッシュに保存
-                    await cache.put(cacheKey, response.clone());
-                    this.console.log('プロフィール画像をキャッシュに保存完了:', baseUrl);
-                } catch (cacheError) {
-                    // 一部ブラウザや opaque レスポンスでキャッシュに失敗する場合があるので警告のみ
-                    this.console.warn('プロフィール画像のキャッシュ保存に失敗:', cacheError, baseUrl);
-                }
-
-                // オリジナルのレスポンスを返す
-                return response;
-            } else {
-                this.console.warn('プロフィール画像の取得に失敗または非OKレスポンス:', response && response.type, response && response.status, response && response.statusText);
-            }
-        } catch (networkError) {
-            this.console.log('プロフィール画像のネットワークエラー:', networkError && networkError.message);
-            if (baseUrl) {
-                return this.fetchAndCacheOpaqueProfileImage(baseUrl);
-            }
-        }
-
-        return null;
+        return await fetchAndCacheProfileImageResponse({
+            request,
+            isOnline: ServiceWorkerDependencies.navigator?.onLine,
+            normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
+            getBaseUrl: Utilities.getBaseUrl,
+            createRequest: Utilities.createCorsRequest,
+            fetchRequest: (targetRequest) => this.fetch(targetRequest),
+            cacheStorage: this.caches,
+            cacheName: PROFILE_CACHE_NAME,
+            fetchOpaqueProfileImage: (baseUrl) => this.fetchAndCacheOpaqueProfileImage(baseUrl),
+            logger: this.console,
+        });
     }
 
     async handleCustomEmojiImageRequest(request) {
@@ -524,98 +477,48 @@ class ClientManager {
 
     // クライアントリダイレクト
     async redirectClient() {
-        try {
-            const clients = await this.clients.matchAll({ type: 'window', includeUncontrolled: true });
-            if (clients.length > 0) {
-                return await this.focusAndNotifyClient(clients[0]);
-            } else {
-                return await this.openNewClient();
-            }
-        } catch (error) {
-            this.console.error('クライアント処理エラー:', error);
-            return Utilities.createRedirectResponse(undefined, 'client-error', this.location);
-        }
+        return await redirectToAvailableSharedClient({
+            clientSet: this.clients,
+            focusAndNotifyClient: (client) => this.focusAndNotifyClient(client),
+            openNewClient: () => this.openNewClient(),
+            logger: this.console,
+            createErrorRedirectResponse: () =>
+                Utilities.createRedirectResponse(undefined, 'client-error', this.location),
+        });
     }
 
     // 新しいクライアントウィンドウを開いて共有データを渡す
     async openNewClient() {
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
-        // IndexedDBに共有データを永続化（新しいウィンドウからの取得用）
-        await persistSharedMediaIfPresent({
+        return await openNewSharedClientWindow({
             sharedCache,
-            persist: async (cache) => {
+            persistSharedMedia: async (cache) => {
                 const indexedDBManager = new IndexedDBManager();
                 await this.persistSharedMediaToIndexedDB(cache, indexedDBManager);
             },
-            onPersisted: () => {
-                this.console.log('SW: Shared media persisted to IndexedDB for new client');
-            },
-            onError: (dbError) => {
-                this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
-            },
+            logger: this.console,
+            basePath: BASE_PATH,
+            origin: this.location.origin,
+            openWindow: (url) => this.clients.openWindow(url),
+            createRedirectResponse: () => Utilities.createRedirectResponse(),
         });
-
-        // ?shared=true 付きでアプリを新規ウィンドウで開く
-        const url = createSharedClientUrl(BASE_PATH, this.location.origin);
-        try {
-            await this.clients.openWindow(url);
-            this.console.log('SW: New client window opened:', url);
-        } catch (openError) {
-            this.console.warn('SW: Failed to open new window:', openError);
-        }
-
-        // createRedirectResponseはfetchイベントのレスポンスとして必要
-        return Utilities.createRedirectResponse();
     }
 
     // 既存クライアント通知の改善
     async focusAndNotifyClient(client) {
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
-        // 共有データをIndexedDBに永続化（focus/メッセージ送信の成否に関係なく必ず先に実行）
-        await persistSharedMediaIfPresent({
+        return await focusAndNotifySharedClient({
+            client,
             sharedCache,
-            persist: async (cache) => {
+            persistSharedMedia: async (cache) => {
                 const indexedDBManager = new IndexedDBManager();
                 await this.persistSharedMediaToIndexedDB(cache, indexedDBManager);
             },
-            onPersisted: () => {
-                this.console.log('SW: Shared media persisted to IndexedDB for fallback');
-            },
-            onError: (dbError) => {
-                this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
-            },
+            logger: this.console,
+            createRedirectResponse: () => Utilities.createRedirectResponse(),
         });
-
-        // フォーカス試行（Androidバックグラウンド時は失敗しうるが、エラーにしない）
-        try {
-            await client.focus();
-        } catch (focusError) {
-            this.console.warn('SW: Client focus failed (may be backgrounded):', focusError);
-        }
-
-        this.console.log('SW: Attempting to notify client', {
-            hasClient: !!client,
-            hasPostMessage: typeof client.postMessage === 'function',
-            hasSharedCache: !!sharedCache,
-            clientId: client.id || 'unknown'
-        });
-
-        // メッセージ送信（失敗してもエラーにしない）
-        if (client && typeof client.postMessage === 'function') {
-            try {
-                const message = createClientSharedMediaNotification(sharedCache);
-                client.postMessage(message);
-                this.console.log('SW: Message sent to client successfully');
-            } catch (messageError) {
-                this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
-            }
-        }
-
-        // メッセージ送信の成否に関係なく、リダイレクトは成功とする
-        // IndexedDBに保存されているため、クライアント側でフォールバック取得可能
-        return Utilities.createRedirectResponse();
     }
 
     // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
