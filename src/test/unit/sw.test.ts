@@ -3,6 +3,12 @@ import {
     getProfilePictureCacheKeyUrl,
     normalizeProfilePictureUrl,
 } from '../../lib/profilePictureUrlUtils';
+import { dispatchServiceWorkerFetchRoute } from '../../lib/swFetchDispatchUtils';
+import { dispatchServiceWorkerMessageRoute } from '../../lib/swMessageDispatchUtils';
+import { resolveProfileImageRequestResult } from '../../lib/swProfileImageRequestUtils';
+import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
+import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
+import { resolveUploadRequestOutcome } from '../../lib/swUploadRequestUtils';
 
 // Service Workerのモジュール型定義
 interface ServiceWorkerModule {
@@ -129,7 +135,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             });
         },
 
-        createRedirectResponse(path: string, error: string | null = null, location = ServiceWorkerDependencies.location) {
+        createRedirectResponse(path: string = '/', error: string | null = null, location = ServiceWorkerDependencies.location) {
             const url = new URL(path, location.origin);
             if (error) {
                 url.searchParams.set('shared', 'true');
@@ -524,31 +530,31 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 const formData = await request.formData();
                 const extractedData = await Utilities.extractMediaFromFormData(formData);
 
-                if (!extractedData) {
-                    return Utilities.createRedirectResponse('/', 'no-image');
-                }
-
-                ServiceWorkerState.setSharedMediaCache(extractedData);
-
-                return await this.clientManager.redirectClient();
+                return await resolveUploadRequestOutcome({
+                    extractedData,
+                    location: ServiceWorkerDependencies.location,
+                    redirectClient: () => this.clientManager.redirectClient(),
+                    createRedirectResponse: Utilities.createRedirectResponse,
+                    setSharedMediaCache: (sharedMedia) =>
+                        ServiceWorkerState.setSharedMediaCache(sharedMedia),
+                });
             } catch (error) {
                 return Utilities.createRedirectResponse('/', 'processing-error');
             }
         }
 
         async handleProfileImageRequest(request: Request) {
-            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
-            if (!normalizedUrl) {
-                return Utilities.createTransparentImageResponse();
-            }
+            const result = await resolveProfileImageRequestResult({
+                request,
+                normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
+                handleProfileImageCache: (profileRequest) =>
+                    this.cacheManager.handleProfileImageCache(profileRequest),
+                fetchAndCacheProfileImage: (profileRequest) =>
+                    this.cacheManager.fetchAndCacheProfileImage(profileRequest),
+                createTransparentImageResponse: Utilities.createTransparentImageResponse,
+            });
 
-            const cached = await this.cacheManager.handleProfileImageCache(request);
-            if (cached) {
-                return cached;
-            }
-
-            const networkResponse = await this.cacheManager.fetchAndCacheProfileImage(request);
-            return networkResponse || Utilities.createTransparentImageResponse();
+            return result.response;
         }
     }
 
@@ -574,35 +580,48 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
         async handleFetch(event: any) {
             const url = new URL(event.request.url);
+            const route = resolveServiceWorkerFetchRoute({
+                request: event.request,
+                url,
+                currentOrigin: ServiceWorkerDependencies.location.origin,
+                isUploadRequest: Utilities.isUploadRequest,
+                isProfileImageRequest: Utilities.isProfileImageRequest,
+            });
 
-            if (Utilities.isUploadRequest(event.request, url) && url.origin === ServiceWorkerDependencies.location.origin) {
-                return await this.requestHandler.handleUploadRequest(event.request);
-            } else if (Utilities.isProfileImageRequest(event.request)) {
-                return await this.requestHandler.handleProfileImageRequest(event.request);
-            } else if (event.request.method === 'GET' && event.request.destination === 'image') {
-                return await this.cacheManager.handleCustomEmojiImageRequest(event.request);
-            }
-
-            return undefined;
+            return await dispatchServiceWorkerFetchRoute({
+                route,
+                uploadHandler: () => this.requestHandler.handleUploadRequest(event.request),
+                profileImageHandler: () => this.requestHandler.handleProfileImageRequest(event.request),
+                customEmojiImageHandler: () => this.cacheManager.handleCustomEmojiImageRequest(event.request),
+            });
         }
 
         async handleMessage(event: any) {
-            const { type, action } = event.data || {};
+            const route = resolveServiceWorkerMessageRoute(event.data);
 
-            if (type === 'SKIP_WAITING') {
-                ServiceWorkerDependencies.console.log('SW received SKIP_WAITING, updating...');
-                mockSelf.skipWaiting();
-            } else if (type === 'GET_VERSION') {
-                event.ports?.[0]?.postMessage({ version: SW_VERSION });
-            } else if (action === 'getSharedMedia') {
-                this.messageHandler.respondSharedMedia(event);
-            } else if (action === 'clearProfileCache') {
-                const result = await this.cacheManager.clearProfileCache();
-                event.ports?.[0]?.postMessage(result);
-            } else if (action === 'cacheCustomEmojiImages') {
-                const result = await this.cacheManager.cacheCustomEmojiImages(event.data?.urls);
-                event.ports?.[0]?.postMessage(result);
-            }
+            await dispatchServiceWorkerMessageRoute({
+                route,
+                messageHandlers: {
+                    SKIP_WAITING: () => {
+                        ServiceWorkerDependencies.console.log('SW received SKIP_WAITING, updating...');
+                        mockSelf.skipWaiting();
+                    },
+                    GET_VERSION: () => {
+                        event.ports?.[0]?.postMessage({ version: SW_VERSION });
+                    },
+                },
+                actionHandlers: {
+                    getSharedMedia: () => this.messageHandler.respondSharedMedia(event),
+                    clearProfileCache: async () => {
+                        const result = await this.cacheManager.clearProfileCache();
+                        event.ports?.[0]?.postMessage(result);
+                    },
+                    cacheCustomEmojiImages: async () => {
+                        const result = await this.cacheManager.cacheCustomEmojiImages(event.data?.urls);
+                        event.ports?.[0]?.postMessage(result);
+                    },
+                },
+            });
         }
     }
 

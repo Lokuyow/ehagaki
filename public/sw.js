@@ -18,6 +18,8 @@ import {
     postMessageEventResponse,
     postPortEventResponse,
 } from "../src/lib/swEventResponseUtils";
+import { dispatchServiceWorkerFetchRoute } from "../src/lib/swFetchDispatchUtils";
+import { dispatchServiceWorkerMessageRoute } from "../src/lib/swMessageDispatchUtils";
 import {
     createActivateEventListener,
     createFetchEventListener,
@@ -770,7 +772,8 @@ class RequestHandler {
                     location: this.location,
                     redirectClient: () => this.clientManager.redirectClient(),
                     createRedirectResponse: Utilities.createRedirectResponse,
-                    setSharedMediaCache: ServiceWorkerState.setSharedMediaCache,
+                    setSharedMediaCache: (sharedMedia) =>
+                        ServiceWorkerState.setSharedMediaCache(sharedMedia),
                 });
             }
 
@@ -784,7 +787,8 @@ class RequestHandler {
                 location: this.location,
                 redirectClient: () => this.clientManager.redirectClient(),
                 createRedirectResponse: Utilities.createRedirectResponse,
-                setSharedMediaCache: ServiceWorkerState.setSharedMediaCache,
+                setSharedMediaCache: (sharedMedia) =>
+                    ServiceWorkerState.setSharedMediaCache(sharedMedia),
             });
         } catch (error) {
             this.console.error('SW: Upload processing error:', error);
@@ -875,21 +879,20 @@ class ServiceWorkerCore {
 
         if (route === 'upload') {
             ServiceWorkerDependencies.console.log('SW: 内部アップロードリクエストを処理', url.href);
-            return await this.requestHandler.handleUploadRequest(event.request);
         }
 
         if (route === 'profile-image') {
             if (url.origin !== ServiceWorkerDependencies.location.origin) {
                 ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
             }
-            return await this.requestHandler.handleProfileImageRequest(event.request);
         }
 
-        if (route === 'custom-emoji-image') {
-            return await this.cacheManager.handleCustomEmojiImageRequest(event.request);
-        }
-
-        return undefined;
+        return await dispatchServiceWorkerFetchRoute({
+            route,
+            uploadHandler: () => this.requestHandler.handleUploadRequest(event.request),
+            profileImageHandler: () => this.requestHandler.handleProfileImageRequest(event.request),
+            customEmojiImageHandler: () => this.cacheManager.handleCustomEmojiImageRequest(event.request),
+        });
     }
 
     // メッセージイベント処理
@@ -938,12 +941,11 @@ class ServiceWorkerCore {
         };
 
         const route = resolveServiceWorkerMessageRoute(event.data);
-
-        if (route?.kind === 'type' && messageHandlers[route.name]) {
-            await messageHandlers[route.name]();
-        } else if (route?.kind === 'action' && actionHandlers[route.name]) {
-            await actionHandlers[route.name]();
-        }
+        await dispatchServiceWorkerMessageRoute({
+            route,
+            messageHandlers,
+            actionHandlers,
+        });
     }
 }
 
