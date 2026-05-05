@@ -33,9 +33,9 @@ import { mediaFreePlacementStore } from "./uploadStore.svelte";
 import { STORAGE_KEYS } from "../lib/constants";
 import { embedStorageService } from "../lib/embedStorageService";
 import {
-    EMBED_SETTING_STORAGE_KEYS,
-    withSettingsPreferenceMetadata,
-} from "../lib/embedStorageKeys";
+    persistAllEmbedSettingKeys,
+    persistChangedEmbedSettingKeys,
+} from "../lib/embedSettingsPersistence";
 
 interface SettingsState {
     locale: SupportedLocale;
@@ -47,6 +47,14 @@ interface SettingsState {
     mediaFreePlacement: boolean;
     showMascot: boolean;
     showFlavorText: boolean;
+}
+
+type DirectSettingKey = Exclude<keyof SettingsState, "locale">;
+
+interface DirectSettingDescriptor<K extends DirectSettingKey> {
+    storageKeys: readonly string[];
+    apply: (value: SettingsState[K], source: PreferenceSource) => SettingsState[K];
+    afterApply?: (value: SettingsState[K]) => void;
 }
 
 function readSettingsState(): SettingsState {
@@ -74,10 +82,129 @@ function updateMediaPlacement(enabled: boolean): void {
     mediaFreePlacementStore.set(enabled);
 }
 
-function persistSettingsKeys(keys: string[]): void {
-    embedStorageService.persistLocalStorageKeys(
-        withSettingsPreferenceMetadata(keys),
-    );
+const directSettingDescriptors: {
+    [K in DirectSettingKey]: DirectSettingDescriptor<K>;
+} = {
+    uploadEndpoint: {
+        storageKeys: [STORAGE_KEYS.UPLOAD_ENDPOINT],
+        apply: (value: string, source: PreferenceSource) =>
+            setUploadEndpointPreference(localStorage, value, source),
+    },
+    clientTagEnabled: {
+        storageKeys: [STORAGE_KEYS.CLIENT_TAG_ENABLED],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setClientTagEnabledPreference(localStorage, value, source),
+    },
+    quoteNotificationEnabled: {
+        storageKeys: [STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setQuoteNotificationEnabledPreference(localStorage, value, source),
+    },
+    imageCompressionLevel: {
+        storageKeys: [STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL],
+        apply: (value: string, source: PreferenceSource) =>
+            setImageCompressionLevelPreference(localStorage, value, source),
+    },
+    videoCompressionLevel: {
+        storageKeys: [STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL],
+        apply: (value: string, source: PreferenceSource) =>
+            setVideoCompressionLevelPreference(localStorage, value, source),
+    },
+    mediaFreePlacement: {
+        storageKeys: [STORAGE_KEYS.MEDIA_FREE_PLACEMENT],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setMediaFreePlacementPreference(localStorage, value, source),
+        afterApply: updateMediaPlacement,
+    },
+    showMascot: {
+        storageKeys: [STORAGE_KEYS.SHOW_MASCOT],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setShowMascotPreference(localStorage, value, source),
+    },
+    showFlavorText: {
+        storageKeys: [STORAGE_KEYS.SHOW_FLAVOR_TEXT],
+        apply: (value: boolean, source: PreferenceSource) =>
+            setShowFlavorTextPreference(localStorage, value, source),
+    },
+};
+
+const parentDirectSettingKeys: DirectSettingKey[] = [
+    "uploadEndpoint",
+    "imageCompressionLevel",
+    "videoCompressionLevel",
+    "clientTagEnabled",
+    "quoteNotificationEnabled",
+    "mediaFreePlacement",
+    "showMascot",
+    "showFlavorText",
+];
+
+function persistDirectSettingKey(key: DirectSettingKey): void {
+    persistChangedEmbedSettingKeys(directSettingDescriptors[key].storageKeys);
+}
+
+function getDirectSettingDescriptor<K extends DirectSettingKey>(
+    key: K,
+): DirectSettingDescriptor<K> {
+    return directSettingDescriptors[key] as DirectSettingDescriptor<K>;
+}
+
+function applyLocaleSetting(
+    value: string,
+    {
+        source = "user",
+        refreshUploadEndpoint = true,
+        syncDocumentLang = false,
+    }: {
+        source?: PreferenceSource;
+        refreshUploadEndpoint?: boolean;
+        syncDocumentLang?: boolean;
+    } = {},
+): SupportedLocale {
+    const hadStoredEndpoint = hasStoredUploadEndpoint(localStorage);
+    const nextLocale = setLocalePreference(localStorage, value, source);
+    settingsState.locale = nextLocale;
+
+    if (!hadStoredEndpoint && refreshUploadEndpoint) {
+        settingsState.uploadEndpoint = ensureUploadEndpointPreference(
+            localStorage,
+            nextLocale,
+        );
+    }
+
+    if (syncDocumentLang) {
+        document.documentElement.lang = nextLocale;
+    }
+
+    i18nLocale.set(nextLocale);
+    return nextLocale;
+}
+
+function applyDirectSetting<K extends DirectSettingKey>(
+    key: K,
+    value: SettingsState[K],
+    source: PreferenceSource = "user",
+): SettingsState[K] {
+    const descriptor = getDirectSettingDescriptor(key);
+    const nextValue = descriptor.apply(value, source);
+    (settingsState as SettingsState)[key] = nextValue;
+    descriptor.afterApply?.(nextValue);
+    return nextValue;
+}
+
+function applyParentDirectSetting<K extends DirectSettingKey>(
+    payload: EmbedSettingsSetPayload,
+    key: K,
+    source: PreferenceSource,
+    applied: string[],
+): void {
+    const value = payload[key];
+    if (value === undefined) {
+        return;
+    }
+
+    applyDirectSetting(key, value as SettingsState[K], source);
+    applied.push(key);
 }
 
 export const settingsStore = {
@@ -96,19 +223,11 @@ export const settingsStore = {
     },
 
     set locale(value: string) {
-        const hadStoredEndpoint = hasStoredUploadEndpoint(localStorage);
-        const nextLocale = setLocalePreference(localStorage, value);
-        settingsState.locale = nextLocale;
-
-        if (!hadStoredEndpoint) {
-            settingsState.uploadEndpoint = ensureUploadEndpointPreference(
-                localStorage,
-                nextLocale,
-            );
-        }
-
-        i18nLocale.set(nextLocale);
-        persistSettingsKeys([STORAGE_KEYS.LOCALE, STORAGE_KEYS.UPLOAD_ENDPOINT]);
+        applyLocaleSetting(value);
+        persistChangedEmbedSettingKeys([
+            STORAGE_KEYS.LOCALE,
+            STORAGE_KEYS.UPLOAD_ENDPOINT,
+        ]);
     },
 
     get uploadEndpoint(): string {
@@ -116,8 +235,8 @@ export const settingsStore = {
     },
 
     set uploadEndpoint(value: string) {
-        settingsState.uploadEndpoint = setUploadEndpointPreference(localStorage, value);
-        persistSettingsKeys([STORAGE_KEYS.UPLOAD_ENDPOINT]);
+        applyDirectSetting("uploadEndpoint", value);
+        persistDirectSettingKey("uploadEndpoint");
     },
 
     get clientTagEnabled(): boolean {
@@ -125,8 +244,8 @@ export const settingsStore = {
     },
 
     set clientTagEnabled(value: boolean) {
-        settingsState.clientTagEnabled = setClientTagEnabledPreference(localStorage, value);
-        persistSettingsKeys([STORAGE_KEYS.CLIENT_TAG_ENABLED]);
+        applyDirectSetting("clientTagEnabled", value);
+        persistDirectSettingKey("clientTagEnabled");
     },
 
     get quoteNotificationEnabled(): boolean {
@@ -134,11 +253,8 @@ export const settingsStore = {
     },
 
     set quoteNotificationEnabled(value: boolean) {
-        settingsState.quoteNotificationEnabled = setQuoteNotificationEnabledPreference(
-            localStorage,
-            value,
-        );
-        persistSettingsKeys([STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED]);
+        applyDirectSetting("quoteNotificationEnabled", value);
+        persistDirectSettingKey("quoteNotificationEnabled");
     },
 
     get imageCompressionLevel(): string {
@@ -146,11 +262,8 @@ export const settingsStore = {
     },
 
     set imageCompressionLevel(value: string) {
-        settingsState.imageCompressionLevel = setImageCompressionLevelPreference(
-            localStorage,
-            value,
-        );
-        persistSettingsKeys([STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL]);
+        applyDirectSetting("imageCompressionLevel", value);
+        persistDirectSettingKey("imageCompressionLevel");
     },
 
     get videoCompressionLevel(): string {
@@ -158,11 +271,8 @@ export const settingsStore = {
     },
 
     set videoCompressionLevel(value: string) {
-        settingsState.videoCompressionLevel = setVideoCompressionLevelPreference(
-            localStorage,
-            value,
-        );
-        persistSettingsKeys([STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL]);
+        applyDirectSetting("videoCompressionLevel", value);
+        persistDirectSettingKey("videoCompressionLevel");
     },
 
     get mediaFreePlacement(): boolean {
@@ -170,9 +280,8 @@ export const settingsStore = {
     },
 
     set mediaFreePlacement(value: boolean) {
-        settingsState.mediaFreePlacement = setMediaFreePlacementPreference(localStorage, value);
-        updateMediaPlacement(settingsState.mediaFreePlacement);
-        persistSettingsKeys([STORAGE_KEYS.MEDIA_FREE_PLACEMENT]);
+        applyDirectSetting("mediaFreePlacement", value);
+        persistDirectSettingKey("mediaFreePlacement");
     },
 
     get showMascot(): boolean {
@@ -180,8 +289,8 @@ export const settingsStore = {
     },
 
     set showMascot(value: boolean) {
-        settingsState.showMascot = setShowMascotPreference(localStorage, value);
-        persistSettingsKeys([STORAGE_KEYS.SHOW_MASCOT]);
+        applyDirectSetting("showMascot", value);
+        persistDirectSettingKey("showMascot");
     },
 
     get showFlavorText(): boolean {
@@ -189,11 +298,8 @@ export const settingsStore = {
     },
 
     set showFlavorText(value: boolean) {
-        settingsState.showFlavorText = setShowFlavorTextPreference(
-            localStorage,
-            value,
-        );
-        persistSettingsKeys([STORAGE_KEYS.SHOW_FLAVOR_TEXT]);
+        applyDirectSetting("showFlavorText", value);
+        persistDirectSettingKey("showFlavorText");
     },
 
     applyParentSettings(
@@ -203,19 +309,12 @@ export const settingsStore = {
         const applied: string[] = [];
 
         if (payload.locale !== undefined) {
-            const hadStoredEndpoint = hasStoredUploadEndpoint(localStorage);
-            const nextLocale = setLocalePreference(localStorage, payload.locale, source);
-            settingsState.locale = nextLocale;
-            document.documentElement.lang = nextLocale;
-            i18nLocale.set(nextLocale);
+            applyLocaleSetting(payload.locale, {
+                source,
+                refreshUploadEndpoint: payload.uploadEndpoint === undefined,
+                syncDocumentLang: true,
+            });
             applied.push("locale");
-
-            if (!hadStoredEndpoint && payload.uploadEndpoint === undefined) {
-                settingsState.uploadEndpoint = ensureUploadEndpointPreference(
-                    localStorage,
-                    nextLocale,
-                );
-            }
         }
 
         if (payload.themeMode !== undefined) {
@@ -223,81 +322,12 @@ export const settingsStore = {
             applied.push("themeMode");
         }
 
-        if (payload.uploadEndpoint !== undefined) {
-            settingsState.uploadEndpoint = setUploadEndpointPreference(
-                localStorage,
-                payload.uploadEndpoint,
-                source,
-            );
-            applied.push("uploadEndpoint");
-        }
-
-        if (payload.imageCompressionLevel !== undefined) {
-            settingsState.imageCompressionLevel = setImageCompressionLevelPreference(
-                localStorage,
-                payload.imageCompressionLevel,
-                source,
-            );
-            applied.push("imageCompressionLevel");
-        }
-
-        if (payload.videoCompressionLevel !== undefined) {
-            settingsState.videoCompressionLevel = setVideoCompressionLevelPreference(
-                localStorage,
-                payload.videoCompressionLevel,
-                source,
-            );
-            applied.push("videoCompressionLevel");
-        }
-
-        if (payload.clientTagEnabled !== undefined) {
-            settingsState.clientTagEnabled = setClientTagEnabledPreference(
-                localStorage,
-                payload.clientTagEnabled,
-                source,
-            );
-            applied.push("clientTagEnabled");
-        }
-
-        if (payload.quoteNotificationEnabled !== undefined) {
-            settingsState.quoteNotificationEnabled = setQuoteNotificationEnabledPreference(
-                localStorage,
-                payload.quoteNotificationEnabled,
-                source,
-            );
-            applied.push("quoteNotificationEnabled");
-        }
-
-        if (payload.mediaFreePlacement !== undefined) {
-            settingsState.mediaFreePlacement = setMediaFreePlacementPreference(
-                localStorage,
-                payload.mediaFreePlacement,
-                source,
-            );
-            updateMediaPlacement(settingsState.mediaFreePlacement);
-            applied.push("mediaFreePlacement");
-        }
-
-        if (payload.showMascot !== undefined) {
-            settingsState.showMascot = setShowMascotPreference(
-                localStorage,
-                payload.showMascot,
-                source,
-            );
-            applied.push("showMascot");
-        }
-
-        if (payload.showFlavorText !== undefined) {
-            settingsState.showFlavorText = setShowFlavorTextPreference(
-                localStorage,
-                payload.showFlavorText,
-                source,
-            );
-            applied.push("showFlavorText");
-        }
+        parentDirectSettingKeys.forEach((key) => {
+            applyParentDirectSetting(payload, key, source, applied);
+        });
 
         if (applied.length > 0) {
-            embedStorageService.persistLocalStorageKeys([...EMBED_SETTING_STORAGE_KEYS]);
+            persistAllEmbedSettingKeys();
         }
 
         return applied;
