@@ -4,10 +4,15 @@ import {
     normalizeProfilePictureUrl,
 } from '../../lib/profilePictureUrlUtils';
 import { dispatchServiceWorkerFetchRoute } from '../../lib/swFetchDispatchUtils';
+import {
+    createServiceWorkerActionHandlers,
+    createServiceWorkerTypeMessageHandlers,
+} from '../../lib/swMessageHandlerFactories';
 import { dispatchServiceWorkerMessageRoute } from '../../lib/swMessageDispatchUtils';
 import { resolveProfileImageRequestResult } from '../../lib/swProfileImageRequestUtils';
 import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
+import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
 import { resolveUploadRequestOutcome } from '../../lib/swUploadRequestUtils';
 
 // Service Workerのモジュール型定義
@@ -312,6 +317,10 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             }
         }
 
+        async cleanupDuplicateProfileCache() {
+            return { success: true, deletedCount: 0 };
+        }
+
         async handleProfileImageCache(request: Request) {
             const baseUrl = Utilities.getBaseUrl(request.url);
             if (!baseUrl) {
@@ -410,12 +419,12 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
             return true;
         }
 
-        async cacheCustomEmojiImages(urls: string[]) {
+        async cacheCustomEmojiImages(urls: string[] | undefined) {
             const cache = await this.dependencies.caches.open(CUSTOM_EMOJI_CACHE_NAME);
             let cached = 0;
             let failed = 0;
 
-            for (const rawUrl of [...new Set(urls)].slice(0, 300)) {
+            for (const rawUrl of [...new Set(urls ?? [])].slice(0, 300)) {
                 let baseUrl: string | null = null;
                 try {
                     baseUrl = Utilities.getBaseUrl(rawUrl);
@@ -494,27 +503,30 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         constructor(public indexedDBManager = new IndexedDBManager()) { }
 
         respondSharedMedia(event: any) {
-            const client = event.source;
-            const requestId = event.data.requestId || null;
             const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
-            const msg = {
-                type: 'SHARED_MEDIA',
-                data: sharedCache,
-                requestId,
-                timestamp: Date.now()
-            };
+            postServiceWorkerSharedMediaResponse({
+                event,
+                sharedMedia: sharedCache,
+                clearAfterSend: true,
+                clearSharedMediaCache: () => ServiceWorkerState.clearSharedMediaCache(),
+                clearPersistedSharedMedia: () => this.indexedDBManager.clearSharedMedia(),
+            });
+        }
 
-            if (event.ports?.[0]) {
-                event.ports[0].postMessage(msg);
-            } else if (client) {
-                client.postMessage(msg);
+        respondSharedMediaForce(event: any) {
+            const sharedCache = ServiceWorkerState.getSharedMediaCache();
+
+            if (!sharedCache) {
+                ServiceWorkerDependencies.console.log('SW: No shared cache, client should try IndexedDB fallback');
             }
 
-            if (sharedCache) {
-                ServiceWorkerState.clearSharedMediaCache();
-                this.indexedDBManager.clearSharedMedia();
-            }
+            postServiceWorkerSharedMediaResponse({
+                event,
+                sharedMedia: sharedCache,
+                fallbackRequired: !sharedCache,
+                clearSharedMediaCache: () => ServiceWorkerState.clearSharedMediaCache(),
+            });
         }
     }
 
@@ -601,26 +613,17 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
 
             await dispatchServiceWorkerMessageRoute({
                 route,
-                messageHandlers: {
-                    SKIP_WAITING: () => {
-                        ServiceWorkerDependencies.console.log('SW received SKIP_WAITING, updating...');
-                        mockSelf.skipWaiting();
-                    },
-                    GET_VERSION: () => {
-                        event.ports?.[0]?.postMessage({ version: SW_VERSION });
-                    },
-                },
-                actionHandlers: {
-                    getSharedMedia: () => this.messageHandler.respondSharedMedia(event),
-                    clearProfileCache: async () => {
-                        const result = await this.cacheManager.clearProfileCache();
-                        event.ports?.[0]?.postMessage(result);
-                    },
-                    cacheCustomEmojiImages: async () => {
-                        const result = await this.cacheManager.cacheCustomEmojiImages(event.data?.urls);
-                        event.ports?.[0]?.postMessage(result);
-                    },
-                },
+                messageHandlers: createServiceWorkerTypeMessageHandlers({
+                    event,
+                    version: SW_VERSION,
+                    skipWaiting: () => mockSelf.skipWaiting(),
+                    logger: ServiceWorkerDependencies.console,
+                }),
+                actionHandlers: createServiceWorkerActionHandlers({
+                    event,
+                    messageHandler: this.messageHandler,
+                    cacheManager: this.cacheManager,
+                }),
             });
         }
     }
@@ -1046,6 +1049,29 @@ describe('Service Worker Tests', () => {
             );
             expect(swModule.ServiceWorkerState.getSharedMediaCache()).toBeNull();
         });
+
+        it('should respond shared media force without clearing cache', () => {
+            const testData = { image: 'force-test' };
+            swModule.ServiceWorkerState.setSharedMediaCache(testData);
+
+            const handler = new swModule.MessageHandler();
+            const mockEvent = {
+                source: { postMessage: vi.fn() },
+                data: { requestId: 'force-123' },
+                ports: null,
+            };
+
+            handler.respondSharedMediaForce(mockEvent);
+
+            expect(mockEvent.source.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'SHARED_MEDIA',
+                    data: testData,
+                    requestId: 'force-123',
+                }),
+            );
+            expect(swModule.ServiceWorkerState.getSharedMediaCache()).toEqual(testData);
+        });
     });
 
     describe('RequestHandler', () => {
@@ -1203,6 +1229,67 @@ describe('Service Worker Tests', () => {
 
             expect(mockPort.postMessage).toHaveBeenCalledWith({
                 version: swModule.SW_VERSION
+            });
+        });
+
+        it('should handle message event for PING_TEST via source', async () => {
+            const core = new swModule.ServiceWorkerCore();
+            const mockSource = { postMessage: vi.fn() };
+            const mockEvent = {
+                data: { type: 'PING_TEST' },
+                ports: null,
+                source: mockSource,
+            };
+
+            await core.handleMessage(mockEvent);
+
+            expect(mockSource.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'PONG',
+                    version: swModule.SW_VERSION,
+                }),
+            );
+            expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
+                'SW: PING_TEST responded via source',
+            );
+        });
+
+        it('should handle action message event for getSharedMediaForce', async () => {
+            const core = new swModule.ServiceWorkerCore();
+            const mockPort = { postMessage: vi.fn() };
+            const mockEvent = {
+                data: { action: 'getSharedMediaForce', requestId: 'force-1' },
+                ports: [mockPort],
+            };
+
+            await core.handleMessage(mockEvent);
+
+            expect(mockPort.postMessage).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    type: 'SHARED_MEDIA',
+                    data: null,
+                    requestId: 'force-1',
+                    fallbackRequired: true,
+                }),
+            );
+            expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
+                'SW: No shared cache, client should try IndexedDB fallback',
+            );
+        });
+
+        it('should handle action message event for cleanupDuplicateProfileCache', async () => {
+            const core = new swModule.ServiceWorkerCore();
+            const mockPort = { postMessage: vi.fn() };
+            const mockEvent = {
+                data: { action: 'cleanupDuplicateProfileCache' },
+                ports: [mockPort],
+            };
+
+            await core.handleMessage(mockEvent);
+
+            expect(mockPort.postMessage).toHaveBeenCalledWith({
+                success: true,
+                deletedCount: 0,
             });
         });
     });

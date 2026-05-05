@@ -19,6 +19,10 @@ import {
     postPortEventResponse,
 } from "../src/lib/swEventResponseUtils";
 import { dispatchServiceWorkerFetchRoute } from "../src/lib/swFetchDispatchUtils";
+import {
+    createServiceWorkerActionHandlers,
+    createServiceWorkerTypeMessageHandlers,
+} from "../src/lib/swMessageHandlerFactories";
 import { dispatchServiceWorkerMessageRoute } from "../src/lib/swMessageDispatchUtils";
 import {
     createActivateEventListener,
@@ -39,9 +43,8 @@ import { resolveProfileImageRequestResult } from "../src/lib/swProfileImageReque
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
     createClientSharedMediaNotification,
-    createSharedMediaMessage,
-    postSharedMediaMessage,
 } from "../src/lib/swMessageUtils";
+import { postServiceWorkerSharedMediaResponse } from "../src/lib/swSharedMediaResponseUtils";
 import { buildSharedMediaIndexedDbRecord } from "../src/lib/swSharedMediaPersistence";
 import {
     createCorsRequest,
@@ -694,22 +697,16 @@ class MessageHandler {
     }
 
     postSharedMediaResponse(event, { fallbackRequired = false, clearAfterSend = false } = {}) {
-        const requestId = event.data.requestId || null;
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
-        const msg = createSharedMediaMessage({
-            data: sharedCache,
-            requestId,
+
+        return postServiceWorkerSharedMediaResponse({
+            event,
+            sharedMedia: sharedCache,
             fallbackRequired,
+            clearAfterSend,
+            clearSharedMediaCache: () => ServiceWorkerState.clearSharedMediaCache(),
+            clearPersistedSharedMedia: () => this.indexedDBManager.clearSharedMedia(),
         });
-
-        postSharedMediaMessage(event, msg);
-
-        if (clearAfterSend && sharedCache) {
-            ServiceWorkerState.clearSharedMediaCache();
-            this.indexedDBManager.clearSharedMedia();
-        }
-
-        return sharedCache;
     }
 
     // 共有メディアリクエスト応答
@@ -897,54 +894,25 @@ class ServiceWorkerCore {
 
     // メッセージイベント処理
     async handleMessage(event) {
-        const messageHandlers = {
-            'SKIP_WAITING': () => {
-                ServiceWorkerDependencies.console.log('SW received SKIP_WAITING, updating...');
-                self.skipWaiting();
-            },
-            'GET_VERSION': () => {
-                postPortEventResponse(event, createVersionResponse(SW_VERSION));
-            },
-            'PING_TEST': () => {
-                // Service Worker通信テスト用
-                const response = createPingTestResponse(SW_VERSION);
-                try {
-                    const channel = postMessageEventResponse(event, response);
-                    if (channel === 'port') {
-                        ServiceWorkerDependencies.console.log('SW: PING_TEST responded via MessageChannel');
-                    } else if (channel === 'source') {
-                        ServiceWorkerDependencies.console.log('SW: PING_TEST responded via source');
-                    } else {
-                        ServiceWorkerDependencies.console.warn('SW: PING_TEST no response channel available');
-                    }
-                } catch (error) {
-                    ServiceWorkerDependencies.console.error('SW: PING_TEST response error:', error);
-                }
-            }
-        };
-
-        const actionHandlers = {
-            'getSharedMedia': () => this.messageHandler.respondSharedMedia(event),
-            'getSharedMediaForce': () => this.messageHandler.respondSharedMediaForce(event),
-            'clearProfileCache': async () => {
-                const result = await this.cacheManager.clearProfileCache();
-                postPortEventResponse(event, result);
-            },
-            'cleanupDuplicateProfileCache': async () => {
-                const result = await this.cacheManager.cleanupDuplicateProfileCache();
-                postPortEventResponse(event, result);
-            },
-            'cacheCustomEmojiImages': async () => {
-                const result = await this.cacheManager.cacheCustomEmojiImages(event.data?.urls);
-                postPortEventResponse(event, result);
-            }
-        };
-
         const route = resolveServiceWorkerMessageRoute(event.data);
         await dispatchServiceWorkerMessageRoute({
             route,
-            messageHandlers,
-            actionHandlers,
+            messageHandlers: createServiceWorkerTypeMessageHandlers({
+                event,
+                version: SW_VERSION,
+                skipWaiting: () => self.skipWaiting(),
+                logger: ServiceWorkerDependencies.console,
+                createVersion: createVersionResponse,
+                createPingTest: createPingTestResponse,
+                postPortResponse: postPortEventResponse,
+                postMessageResponse: postMessageEventResponse,
+            }),
+            actionHandlers: createServiceWorkerActionHandlers({
+                event,
+                messageHandler: this.messageHandler,
+                cacheManager: this.cacheManager,
+                postPortResponse: postPortEventResponse,
+            }),
         });
     }
 }
