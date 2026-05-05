@@ -1,8 +1,9 @@
 import type { Draft, DraftChannelData, DraftReplyQuoteData } from './types';
 import type { MediaGalleryItem } from './types';
-import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
+import { STORAGE_KEYS, MAX_DRAFTS } from './constants';
 import { draftsRepository, type DraftsRepositoryOptions } from './storage/draftsRepository';
-import { extractDraftPreviewParts } from './draftPreviewUtils';
+import { createPersistedDraft } from './draftPersistenceUtils';
+import { generateDraftPreview } from './draftPreviewUtils';
 import { compareDraftsByDisplayOrder } from './draftSortUtils';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
@@ -61,93 +62,7 @@ export async function loadDrafts(options: DraftsRepositoryOptions = {}): Promise
  * HTMLコンテンツからプレビューテキストを生成
  * テキスト、画像、動画の有無を検出し、適切なプレビュー文字列を生成
  */
-export function generatePreview(htmlContent: string, galleryItems?: MediaGalleryItem[], replyQuoteData?: DraftReplyQuoteData, channelData?: DraftChannelData): string {
-    const { firstLine, hasImage, hasVideo } = extractDraftPreviewParts(
-        htmlContent,
-        galleryItems,
-        document,
-    );
-
-    // ロケールと翻訳関数を取得
-    const loc = (getStore(locale) as string) || 'en';
-    const t = getStore(_) as (id: string | { id: string }, values?: Record<string, any>) => string;
-
-    // メディアラベルを取得
-    let imageLabel = '[画像]';
-    let videoLabel = '[動画]';
-    try {
-        imageLabel = t('draft.media.image') || (loc.startsWith('ja') ? '[画像]' : '[Image]');
-        videoLabel = t('draft.media.video') || (loc.startsWith('ja') ? '[動画]' : '[Video]');
-    } catch {
-        // 翻訳が取得できない場合はデフォルト値を使用
-        imageLabel = loc.startsWith('ja') ? '[画像]' : '[Image]';
-        videoLabel = loc.startsWith('ja') ? '[動画]' : '[Video]';
-    }
-
-    // リプライ・引用ラベルを取得
-    let replyLabel = '[リプライ]';
-    let quoteLabel = '[引用]';
-    try {
-        replyLabel = t('draft.media.reply') || (loc.startsWith('ja') ? '[リプライ]' : '[Reply]');
-        quoteLabel = t('draft.media.quote') || (loc.startsWith('ja') ? '[引用]' : '[Quote]');
-    } catch {
-        replyLabel = loc.startsWith('ja') ? '[リプライ]' : '[Reply]';
-        quoteLabel = loc.startsWith('ja') ? '[引用]' : '[Quote]';
-    }
-
-    // メディアラベルを構築
-    const mediaLabels: string[] = [];
-    const hasReply = !!replyQuoteData
-        && ('reply' in replyQuoteData ? !!replyQuoteData.reply : replyQuoteData.mode === 'reply');
-    const quoteCount = !replyQuoteData
-        ? 0
-        : 'quotes' in replyQuoteData
-            ? replyQuoteData.quotes.length
-            : replyQuoteData.mode === 'quote'
-                ? 1
-                : 0;
-    if (hasReply) mediaLabels.push(replyLabel);
-    if (quoteCount > 0) mediaLabels.push(quoteLabel);
-    if (channelData?.name) mediaLabels.push(`#${channelData.name}`);
-    if (hasImage) mediaLabels.push(imageLabel);
-    if (hasVideo) mediaLabels.push(videoLabel);
-    const mediaText = mediaLabels.join('');
-
-    // テキストがある場合
-    if (firstLine) {
-        // テキスト + メディアラベルの組み合わせ
-        if (mediaText) {
-            const combined = `${firstLine} ${mediaText}`;
-            if (combined.length > DRAFT_PREVIEW_LENGTH) {
-                // テキストを切り詰めてメディアラベルを追加
-                const maxTextLength = DRAFT_PREVIEW_LENGTH - mediaText.length - 2; // スペースと省略記号分
-                if (maxTextLength > 0) {
-                    return `${firstLine.substring(0, maxTextLength)}… ${mediaText}`;
-                }
-                // メディアラベルのみ表示
-                return mediaText;
-            }
-            return combined;
-        }
-        // テキストのみの場合
-        if (firstLine.length > DRAFT_PREVIEW_LENGTH) {
-            return firstLine.substring(0, DRAFT_PREVIEW_LENGTH) + '…';
-        }
-        return firstLine;
-    }
-
-    // テキストがない場合はメディアラベルのみ
-    if (mediaText) {
-        return mediaText;
-    }
-
-    // テキストもメディアもない場合
-    try {
-        return t('draft.no_content') || (loc.startsWith('ja') ? '(内容なし)' : '(No content)');
-    } catch {
-        return loc.startsWith('ja') ? '(内容なし)' : '(No content)';
-    }
-}
+export const generatePreview = generateDraftPreview;
 
 /**
  * ユニークIDを生成
@@ -177,15 +92,15 @@ export async function saveDraft(
             }
 
             const timestamp = Date.now();
-            const newDraft: Draft = {
+            const newDraft = createPersistedDraft({
                 id: generateId(),
-                content: htmlContent,
-                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                htmlContent,
                 timestamp,
-                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
-                channelData: channelData || undefined,
-                replyQuoteData: replyQuoteData || undefined,
-            };
+                galleryItems,
+                replyQuoteData,
+                channelData,
+                buildPreview: generatePreview,
+            });
 
             await draftsRepository.put({
                 ...newDraft,
@@ -205,15 +120,15 @@ export async function saveDraft(
                 return { success: false, needsConfirmation: true, drafts };
             }
 
-            const newDraft: Draft = {
+            const newDraft = createPersistedDraft({
                 id: generateId(),
-                content: htmlContent,
-                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                htmlContent,
                 timestamp: Date.now(),
-                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
-                channelData: channelData || undefined,
-                replyQuoteData: replyQuoteData || undefined,
-            };
+                galleryItems,
+                replyQuoteData,
+                channelData,
+                buildPreview: generatePreview,
+            });
 
             const updatedDrafts = [newDraft, ...drafts];
             saveDraftsToStorage(updatedDrafts);
@@ -241,15 +156,15 @@ export async function saveDraftWithReplaceOldest(
             const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
             const oldestDraft = drafts[MAX_DRAFTS - 1];
 
-            const newDraft: Draft = {
+            const newDraft = createPersistedDraft({
                 id: generateId(),
-                content: htmlContent,
-                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                htmlContent,
                 timestamp: Date.now(),
-                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
-                channelData: channelData || undefined,
-                replyQuoteData: replyQuoteData || undefined,
-            };
+                galleryItems,
+                replyQuoteData,
+                channelData,
+                buildPreview: generatePreview,
+            });
 
             if (oldestDraft) {
                 await draftsRepository.delete(oldestDraft.id);
@@ -265,15 +180,15 @@ export async function saveDraftWithReplaceOldest(
             const drafts = loadDraftsFromStorage();
             const remainingDrafts = drafts.slice(0, MAX_DRAFTS - 1);
 
-            const newDraft: Draft = {
+            const newDraft = createPersistedDraft({
                 id: generateId(),
-                content: htmlContent,
-                preview: generatePreview(htmlContent, galleryItems, replyQuoteData, channelData),
+                htmlContent,
                 timestamp: Date.now(),
-                galleryItems: galleryItems && galleryItems.length > 0 ? galleryItems : undefined,
-                channelData: channelData || undefined,
-                replyQuoteData: replyQuoteData || undefined,
-            };
+                galleryItems,
+                replyQuoteData,
+                channelData,
+                buildPreview: generatePreview,
+            });
 
             const updatedDrafts = [newDraft, ...remainingDrafts];
             saveDraftsToStorage(updatedDrafts);
