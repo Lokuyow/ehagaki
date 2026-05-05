@@ -19,6 +19,13 @@ import {
     postPortEventResponse,
 } from "../src/lib/swEventResponseUtils";
 import {
+    createActivateEventListener,
+    createFetchEventListener,
+    createInstallEventListener,
+    createMessageEventListener,
+    registerServiceWorkerEventListeners,
+} from "../src/lib/swListenerUtils";
+import {
     resolveServiceWorkerFetchRoute,
     resolveServiceWorkerMessageRoute,
 } from "../src/lib/swRoutingUtils";
@@ -26,6 +33,7 @@ import {
     resolveUploadRequestOutcome,
     summarizeExtractedSharedMedia,
 } from "../src/lib/swUploadRequestUtils";
+import { resolveProfileImageRequestResult } from "../src/lib/swProfileImageRequestUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
     createClientSharedMediaNotification,
@@ -789,29 +797,33 @@ class RequestHandler {
         try {
             this.console.log('プロフィール画像リクエスト処理開始:', request.url);
 
-            const normalizedUrl = Utilities.normalizeProfileImageUrl(request.url);
-            if (!normalizedUrl) {
+            const result = await resolveProfileImageRequestResult({
+                request,
+                normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
+                handleProfileImageCache: (profileRequest) =>
+                    this.cacheManager.handleProfileImageCache(profileRequest),
+                fetchAndCacheProfileImage: (profileRequest) =>
+                    this.cacheManager.fetchAndCacheProfileImage(profileRequest),
+                createTransparentImageResponse: Utilities.createTransparentImageResponse,
+            });
+
+            if (result.source === 'policy-blocked') {
                 this.console.warn('プロフィール画像 URL がポリシー外のため transparent image を返却:', request.url);
-                return Utilities.createTransparentImageResponse();
+                return result.response;
             }
 
-            // まずキャッシュから検索
-            const cached = await this.cacheManager.handleProfileImageCache(request);
-            if (cached) {
+            if (result.source === 'cache') {
                 this.console.log('プロフィール画像をキャッシュから返却:', request.url);
-                return cached;
+                return result.response;
             }
 
-            // キャッシュにない場合、ネットワークから取得してキャッシュ
-            const networkResponse = await this.cacheManager.fetchAndCacheProfileImage(request);
-            if (networkResponse) {
+            if (result.source === 'network') {
                 this.console.log('プロフィール画像をネットワークから返却:', request.url);
-                return networkResponse;
+                return result.response;
             }
 
-            // すべて失敗した場合はフォールバック画像
             this.console.log('フォールバック画像を返却:', request.url);
-            return Utilities.createTransparentImageResponse();
+            return result.response;
 
         } catch (error) {
             this.console.error('プロフィール画像処理エラー:', error);
@@ -867,6 +879,9 @@ class ServiceWorkerCore {
         }
 
         if (route === 'profile-image') {
+            if (url.origin !== ServiceWorkerDependencies.location.origin) {
+                ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
+            }
             return await this.requestHandler.handleProfileImageRequest(event.request);
         }
 
@@ -938,43 +953,24 @@ class ServiceWorkerCore {
 
 const serviceWorkerCore = new ServiceWorkerCore();
 
-// installイベント（skipWaitingは手動制御）
-self.addEventListener('install', (event) => {
-    event.waitUntil(serviceWorkerCore.handleInstall(event));
-});
-
-// activateイベント
-self.addEventListener('activate', (event) => {
-    event.waitUntil(serviceWorkerCore.handleActivate(event));
-});
-
-// fetchイベント
-self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
-    const route = resolveServiceWorkerFetchRoute({
-        request: event.request,
-        url,
+registerServiceWorkerEventListeners({
+    serviceWorkerGlobal: self,
+    installListener: createInstallEventListener((event) =>
+        serviceWorkerCore.handleInstall(event),
+    ),
+    activateListener: createActivateEventListener((event) =>
+        serviceWorkerCore.handleActivate(event),
+    ),
+    fetchListener: createFetchEventListener({
+        handleFetch: (event) => serviceWorkerCore.handleFetch(event),
         currentOrigin: self.location.origin,
         isUploadRequest: Utilities.isUploadRequest,
         isProfileImageRequest: Utilities.isProfileImageRequest,
-    });
-
-    // 通常の同一オリジンGETはWorkbox precache/runtime routeに任せる
-    if (route === 'upload') {
-        event.respondWith(serviceWorkerCore.requestHandler.handleUploadRequest(event.request));
-    } else if (route === 'profile-image') {
-        if (url.origin !== self.location.origin) {
-            ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
-        }
-        event.respondWith(serviceWorkerCore.requestHandler.handleProfileImageRequest(event.request));
-    } else if (route === 'custom-emoji-image') {
-        event.respondWith(serviceWorkerCore.cacheManager.handleCustomEmojiImageRequest(event.request));
-    }
-});
-
-// messageイベント
-self.addEventListener('message', (event) => {
-    serviceWorkerCore.handleMessage(event);
+        resolveServiceWorkerFetchRoute,
+    }),
+    messageListener: createMessageEventListener((event) =>
+        serviceWorkerCore.handleMessage(event),
+    ),
 });
 
 // テスト用エクスポート（実際のService Workerでは使用されない）
