@@ -2,6 +2,12 @@ import {
     getProfilePictureCacheKeyUrl,
     normalizeProfilePictureUrl,
 } from "../src/lib/profilePictureUrlUtils";
+import {
+    createCorsRequest,
+    createServiceWorkerRedirectResponse,
+    createTransparentImageResponse,
+    extractSharedMediaFromFormData,
+} from "../src/lib/swUtilities";
 import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
 import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
@@ -93,46 +99,15 @@ const ServiceWorkerDependencies = {
 // ユーティリティ関数群（純粋関数）
 // =============================================================================
 
-// 透明な1x1ピクセルPNG画像データ
-const TRANSPARENT_PNG_DATA = new Uint8Array([
-    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D,
-    0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-    0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
-    0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
-    0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
-]);
-
 const Utilities = {
     // 透明画像レスポンスを生成
     createTransparentImageResponse(statusCode = 200) {
-        return new Response(TRANSPARENT_PNG_DATA, {
-            status: statusCode,
-            statusText: statusCode === 200 ? 'OK' : 'Error',
-            headers: {
-                'Content-Type': 'image/png',
-                'Cache-Control': statusCode === 200 ? 'max-age=31536000' : 'no-cache',
-                'Access-Control-Allow-Origin': '*'
-            }
-        });
+        return createTransparentImageResponse(statusCode);
     },
 
     // 共通のHTTPリクエスト作成
     createCorsRequest(url, options = {}) {
-        const mode = options.mode || 'cors';
-        const headers = new Headers({
-            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-            ...(options.headers || {})
-        });
-        return new Request(url, {
-            method: 'GET',
-            headers,
-            mode,
-            credentials: 'omit',
-            cache: options.cache || 'default',
-            redirect: 'follow',
-            ...options
-        });
+        return createCorsRequest(url, options);
     },
 
     // URLからベースURL（クエリパラメータなし）を取得
@@ -144,14 +119,12 @@ const Utilities = {
 
     // リダイレクトレスポンス
     createRedirectResponse(path = BASE_PATH, error = null, location = ServiceWorkerDependencies.location, { shared = true } = {}) {
-        const url = new URL(path, location.origin);
-        if (shared) {
-            url.searchParams.set('shared', 'true');
-        }
-        if (error) {
-            url.searchParams.set('error', error);
-        }
-        return Response.redirect(url.href, 303);
+        return createServiceWorkerRedirectResponse({
+            path,
+            error,
+            location,
+            shared,
+        });
     },
 
     // アップロードリクエスト判定（内部のWeb Share Targetのみ）
@@ -195,22 +168,7 @@ const Utilities = {
 
     // 共有メディアデータから FormData を抽出（複数メディア対応）
     async extractMediaFromFormData(formData) {
-        const mediaFiles = formData.getAll('media');
-        if (!mediaFiles || mediaFiles.length === 0) return null;
-
-        // File以外の値（文字列等）を除外
-        const validFiles = mediaFiles.filter(f => f instanceof File && f.size > 0);
-        if (validFiles.length === 0) return null;
-
-        return {
-            images: validFiles,
-            metadata: validFiles.map(f => ({
-                name: f.name,
-                type: f.type,
-                size: f.size,
-                timestamp: new Date().toISOString()
-            }))
-        };
+        return extractSharedMediaFromFormData(formData);
     }
 };
 

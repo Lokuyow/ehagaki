@@ -137,6 +137,10 @@
     buildPatchedReplyQuoteQuery,
   } from "./lib/embedComposerContextPatch";
   import {
+    applyEmbedComposerContent,
+    buildEmbedComposerContextPatch,
+  } from "./lib/embedComposerContextApply";
+  import {
     createDialogVisibilityHandlers,
     createDraftLimitConfirmHandlers,
   } from "./lib/appDialogUtils";
@@ -597,34 +601,22 @@
     });
   }
 
-  function applyRemoteComposerContent(
-    content: string | null | undefined,
-  ): void {
-    if (content === undefined) {
-      return;
-    }
-
-    if (content === null) {
-      clearUrlQueryContentStore();
-      postComponentRef?.resetPostContent?.();
-      return;
-    }
-
-    if (postComponentRef?.insertTextContent) {
-      postComponentRef.insertTextContent(content);
-      clearUrlQueryContentStore();
-      return;
-    }
-
-    updateUrlQueryContentStore(content);
-  }
-
   async function applyRemoteComposerSetContext(
     payload: EmbedComposerSetContextPayload,
   ): Promise<void> {
-    applyRemoteComposerContent(payload.content);
+    applyEmbedComposerContent(payload.content, {
+      clearUrlQueryContentStore,
+      updateUrlQueryContentStore,
+      resetPostContent: () => postComponentRef?.resetPostContent?.(),
+      insertTextContent: postComponentRef?.insertTextContent
+        ? (content: string) => postComponentRef?.insertTextContent?.(content)
+        : undefined,
+    });
 
-    const channelContext = buildPatchedChannelContext(payload);
+    const { channelContext, replyQuoteQuery } = buildEmbedComposerContextPatch(
+      payload,
+      replyQuoteState.value,
+    );
 
     if (channelContext !== undefined) {
       if (channelContext === null) {
@@ -636,11 +628,6 @@
         });
       }
     }
-
-    const replyQuoteQuery = buildPatchedReplyQuoteQuery(
-      payload,
-      replyQuoteState.value,
-    );
 
     if (replyQuoteQuery === undefined) {
       return;

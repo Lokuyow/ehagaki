@@ -43,6 +43,7 @@ import {
 import { buildUploadFailureMessage } from "./uploadResultUtils";
 import { isDefaultUploadAborted, resetDefaultUploadAbort } from "./uploadAbortUtils";
 import { STORAGE_KEYS } from "./constants";
+import { generateDevImetaTags } from './uploadImetaUtils';
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -554,26 +555,13 @@ export async function uploadHelper({
     // dev: imetaタグ出力
     if (devMode && currentEditor) {
         try {
-            const rawImageBlurhashMap = dependencies.extractImageBlurhashMap(currentEditor);
-            const urls = new Set<string>([...Object.keys(rawImageBlurhashMap), ...Object.keys(imageServerBlurhashMap)]);
-            await Promise.all(
-                Array.from(urls).map(async (url) => {
-                    if (!imageXMap[url]) {
-                        const x = await dependencies.calculateImageHash(url);
-                        if (x) imageXMap[url] = x;
-                    }
-                }),
-            );
-            const imetaTags = await Promise.all(
-                Array.from(urls).map(async (url) => {
-                    const blurhash = imageServerBlurhashMap[url] ?? rawImageBlurhashMap[url];
-                    const m = dependencies.getMimeTypeFromUrl(url);
-                    const ox = imageOxMap[url];
-                    const x = imageXMap[url];
-                    const tag = await dependencies.createImetaTag({ url, m, blurhash, ox, x });
-                    return tag.join(" ");
-                }),
-            );
+            await generateDevImetaTags({
+                editor: currentEditor,
+                imageServerBlurhashMap,
+                imageOxMap,
+                imageXMap,
+                dependencies,
+            });
         } catch (e) {
             console.warn(`${modeLabel} [dev] imetaタグ生成失敗`, e);
         }
