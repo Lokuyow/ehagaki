@@ -1,4 +1,6 @@
 import { nip19 } from 'nostr-tools';
+import { buildManagedRestoreCandidates } from './authManagedRestoreUtils';
+import { restoreManagedSessionAccount } from './authManagedSessionRestoreUtils';
 import { Nip46Service as Nip46Storage } from './nip46Service';
 import { ParentClientAuthService as ParentClientStorage } from './parentClientAuthService';
 import type { PublicKeyState } from './keyManager.svelte';
@@ -162,32 +164,30 @@ export async function restoreManagedNip46Account(
     pubkeyHex: string,
     dependencies: ManagedAuthRestoreDependencies,
 ): Promise<RestoreResult> {
-    const session = Nip46Storage.loadSession(dependencies.localStorage, pubkeyHex);
-    if (!session) return { hasAuth: false };
-
-    try {
-        await dependencies.nip46Svc.reconnect(session);
-        return applyPublicKeyAuth('nip46', pubkeyHex, dependencies);
-    } catch (error) {
-        dependencies.console.error('NIP-46アカウント復元エラー:', error);
-        return { hasAuth: false };
-    }
+    return restoreManagedSessionAccount({
+        pubkeyHex,
+        loadSession: (targetPubkeyHex) =>
+            Nip46Storage.loadSession(dependencies.localStorage, targetPubkeyHex),
+        reconnect: (session) => dependencies.nip46Svc.reconnect(session),
+        applyAuth: (targetPubkeyHex) =>
+            applyPublicKeyAuth('nip46', targetPubkeyHex, dependencies),
+        onError: (error) => dependencies.console.error('NIP-46アカウント復元エラー:', error),
+    });
 }
 
 export async function restoreManagedParentClientAccount(
     pubkeyHex: string,
     dependencies: ManagedAuthRestoreDependencies,
 ): Promise<RestoreResult> {
-    const session = ParentClientStorage.loadSession(dependencies.localStorage, pubkeyHex);
-    if (!session) return { hasAuth: false };
-
-    try {
-        await dependencies.parentClientSvc.reconnect(session);
-        return applyPublicKeyAuth('parentClient', pubkeyHex, dependencies);
-    } catch (error) {
-        dependencies.console.error('親クライアント連携アカウント復元エラー:', error);
-        return { hasAuth: false };
-    }
+    return restoreManagedSessionAccount({
+        pubkeyHex,
+        loadSession: (targetPubkeyHex) =>
+            ParentClientStorage.loadSession(dependencies.localStorage, targetPubkeyHex),
+        reconnect: (session) => dependencies.parentClientSvc.reconnect(session),
+        applyAuth: (targetPubkeyHex) =>
+            applyPublicKeyAuth('parentClient', targetPubkeyHex, dependencies),
+        onError: (error) => dependencies.console.error('親クライアント連携アカウント復元エラー:', error),
+    });
 }
 
 const managedRestoreStrategies: Record<
@@ -296,22 +296,20 @@ export async function runManagedAuthRestore(
 ): Promise<RestoreResult> {
     const activePubkey = dependencies.accountManager.getActiveAccountPubkey();
 
-    if (activePubkey) {
-        const accountType = dependencies.accountManager.getAccountType(activePubkey);
-        if (accountType && accountType !== 'parentClient') {
-            const activeResult = await dependencies.restoreAccount(activePubkey, accountType);
-            if (activeResult.hasAuth) return activeResult;
-        }
-    }
+    const candidates = buildManagedRestoreCandidates({
+        activePubkey,
+        activeType: activePubkey
+            ? dependencies.accountManager.getAccountType(activePubkey)
+            : null,
+        accounts: dependencies.accountManager.getAccounts(),
+    });
 
-    const accounts = dependencies.accountManager.getAccounts();
-    for (const account of accounts) {
-        if (account.pubkeyHex === activePubkey) continue;
-        if (account.type === 'parentClient') continue;
-
-        const result = await dependencies.restoreAccount(account.pubkeyHex, account.type);
+    for (const candidate of candidates) {
+        const result = await dependencies.restoreAccount(candidate.pubkeyHex, candidate.type);
         if (result.hasAuth) {
-            dependencies.accountManager.setActiveAccount(account.pubkeyHex);
+            if (candidate.activateOnSuccess) {
+                dependencies.accountManager.setActiveAccount(candidate.pubkeyHex);
+            }
             return result;
         }
     }
