@@ -12,6 +12,20 @@ import {
     createSharedClientUrl,
     persistSharedMediaIfPresent,
 } from "../src/lib/swClientUtils";
+import {
+    createPingTestResponse,
+    createVersionResponse,
+    postMessageEventResponse,
+    postPortEventResponse,
+} from "../src/lib/swEventResponseUtils";
+import {
+    resolveServiceWorkerFetchRoute,
+    resolveServiceWorkerMessageRoute,
+} from "../src/lib/swRoutingUtils";
+import {
+    resolveUploadRequestOutcome,
+    summarizeExtractedSharedMedia,
+} from "../src/lib/swUploadRequestUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
     createClientSharedMediaNotification,
@@ -743,19 +757,27 @@ class RequestHandler {
 
             if (!extractedData) {
                 this.console.warn('SW: No media data found in FormData');
-                return Utilities.createRedirectResponse(undefined, 'no-image', this.location);
+                return await resolveUploadRequestOutcome({
+                    extractedData,
+                    location: this.location,
+                    redirectClient: () => this.clientManager.redirectClient(),
+                    createRedirectResponse: Utilities.createRedirectResponse,
+                    setSharedMediaCache: ServiceWorkerState.setSharedMediaCache,
+                });
             }
 
-            this.console.log('SW: Media data extracted successfully', {
-                hasImages: !!extractedData.images,
-                imageCount: extractedData.images?.length,
-                firstImageType: extractedData.images?.[0]?.type,
-                firstImageSize: extractedData.images?.[0]?.size
+            this.console.log(
+                'SW: Media data extracted successfully',
+                summarizeExtractedSharedMedia(extractedData),
+            );
+
+            return await resolveUploadRequestOutcome({
+                extractedData,
+                location: this.location,
+                redirectClient: () => this.clientManager.redirectClient(),
+                createRedirectResponse: Utilities.createRedirectResponse,
+                setSharedMediaCache: ServiceWorkerState.setSharedMediaCache,
             });
-
-            ServiceWorkerState.setSharedMediaCache(extractedData);
-
-            return await this.clientManager.redirectClient();
         } catch (error) {
             this.console.error('SW: Upload processing error:', error);
             return Utilities.createRedirectResponse(undefined, 'processing-error', this.location);
@@ -831,15 +853,25 @@ class ServiceWorkerCore {
     // フェッチイベント処理を修正
     async handleFetch(event) {
         const url = new URL(event.request.url);
+        const route = resolveServiceWorkerFetchRoute({
+            request: event.request,
+            url,
+            currentOrigin: ServiceWorkerDependencies.location.origin,
+            isUploadRequest: Utilities.isUploadRequest,
+            isProfileImageRequest: Utilities.isProfileImageRequest,
+        });
 
-        // 同一オリジンのリクエストのみ処理（外部リクエストはここに来ない）
-        if (Utilities.isUploadRequest(event.request, url)) {
+        if (route === 'upload') {
             ServiceWorkerDependencies.console.log('SW: 内部アップロードリクエストを処理', url.href);
             return await this.requestHandler.handleUploadRequest(event.request);
         }
-        // プロフィール画像リクエスト
-        else if (Utilities.isProfileImageRequest(event.request)) {
+
+        if (route === 'profile-image') {
             return await this.requestHandler.handleProfileImageRequest(event.request);
+        }
+
+        if (route === 'custom-emoji-image') {
+            return await this.cacheManager.handleCustomEmojiImageRequest(event.request);
         }
 
         return undefined;
@@ -853,17 +885,16 @@ class ServiceWorkerCore {
                 self.skipWaiting();
             },
             'GET_VERSION': () => {
-                event.ports?.[0]?.postMessage({ version: SW_VERSION });
+                postPortEventResponse(event, createVersionResponse(SW_VERSION));
             },
             'PING_TEST': () => {
                 // Service Worker通信テスト用
-                const response = { type: 'PONG', timestamp: Date.now(), version: SW_VERSION };
+                const response = createPingTestResponse(SW_VERSION);
                 try {
-                    if (event.ports?.[0]) {
-                        event.ports[0].postMessage(response);
+                    const channel = postMessageEventResponse(event, response);
+                    if (channel === 'port') {
                         ServiceWorkerDependencies.console.log('SW: PING_TEST responded via MessageChannel');
-                    } else if (event.source) {
-                        event.source.postMessage(response);
+                    } else if (channel === 'source') {
                         ServiceWorkerDependencies.console.log('SW: PING_TEST responded via source');
                     } else {
                         ServiceWorkerDependencies.console.warn('SW: PING_TEST no response channel available');
@@ -879,24 +910,24 @@ class ServiceWorkerCore {
             'getSharedMediaForce': () => this.messageHandler.respondSharedMediaForce(event),
             'clearProfileCache': async () => {
                 const result = await this.cacheManager.clearProfileCache();
-                event.ports?.[0]?.postMessage(result);
+                postPortEventResponse(event, result);
             },
             'cleanupDuplicateProfileCache': async () => {
                 const result = await this.cacheManager.cleanupDuplicateProfileCache();
-                event.ports?.[0]?.postMessage(result);
+                postPortEventResponse(event, result);
             },
             'cacheCustomEmojiImages': async () => {
                 const result = await this.cacheManager.cacheCustomEmojiImages(event.data?.urls);
-                event.ports?.[0]?.postMessage(result);
+                postPortEventResponse(event, result);
             }
         };
 
-        const { type, action } = event.data || {};
+        const route = resolveServiceWorkerMessageRoute(event.data);
 
-        if (type && messageHandlers[type]) {
-            messageHandlers[type]();
-        } else if (action && actionHandlers[action]) {
-            await actionHandlers[action]();
+        if (route?.kind === 'type' && messageHandlers[route.name]) {
+            await messageHandlers[route.name]();
+        } else if (route?.kind === 'action' && actionHandlers[route.name]) {
+            await actionHandlers[route.name]();
         }
     }
 }
@@ -920,16 +951,23 @@ self.addEventListener('activate', (event) => {
 // fetchイベント
 self.addEventListener('fetch', (event) => {
     const url = new URL(event.request.url);
+    const route = resolveServiceWorkerFetchRoute({
+        request: event.request,
+        url,
+        currentOrigin: self.location.origin,
+        isUploadRequest: Utilities.isUploadRequest,
+        isProfileImageRequest: Utilities.isProfileImageRequest,
+    });
 
     // 通常の同一オリジンGETはWorkbox precache/runtime routeに任せる
-    if (url.origin === self.location.origin && Utilities.isUploadRequest(event.request, url)) {
+    if (route === 'upload') {
         event.respondWith(serviceWorkerCore.requestHandler.handleUploadRequest(event.request));
-    } else if (Utilities.isProfileImageRequest(event.request)) {
+    } else if (route === 'profile-image') {
         if (url.origin !== self.location.origin) {
             ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
         }
         event.respondWith(serviceWorkerCore.requestHandler.handleProfileImageRequest(event.request));
-    } else if (event.request.method === 'GET' && event.request.destination === 'image') {
+    } else if (route === 'custom-emoji-image') {
         event.respondWith(serviceWorkerCore.cacheManager.handleCustomEmojiImageRequest(event.request));
     }
 });
