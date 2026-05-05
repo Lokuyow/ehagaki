@@ -15,19 +15,13 @@ import {
     cacheOpaqueCustomEmojiImage,
 } from "../src/lib/swCustomEmojiCacheUtils";
 import { resolveCustomEmojiImageRequestResponse } from "../src/lib/swCustomEmojiRequestUtils";
-import {
-    createPingTestResponse,
-    createVersionResponse,
-    postMessageEventResponse,
-    postPortEventResponse,
-} from "../src/lib/swEventResponseUtils";
 import { dispatchServiceWorkerFetchRoute } from "../src/lib/swFetchDispatchUtils";
 import { logServiceWorkerFetchRoute } from "../src/lib/swFetchRouteLogUtils";
 import {
-    createServiceWorkerActionHandlers,
-    createServiceWorkerTypeMessageHandlers,
-} from "../src/lib/swMessageHandlerFactories";
-import { dispatchServiceWorkerMessageRoute } from "../src/lib/swMessageDispatchUtils";
+    processServiceWorkerActivate,
+    processServiceWorkerInstall,
+} from "../src/lib/swLifecycleUtils";
+import { processServiceWorkerMessageEvent } from "../src/lib/swMessageDispatchUtils";
 import {
     createActivateEventListener,
     createFetchEventListener,
@@ -35,18 +29,13 @@ import {
     createMessageEventListener,
     registerServiceWorkerEventListeners,
 } from "../src/lib/swListenerUtils";
-import {
-    resolveServiceWorkerFetchRoute,
-    resolveServiceWorkerMessageRoute,
-} from "../src/lib/swRoutingUtils";
+import { resolveServiceWorkerFetchRoute } from "../src/lib/swRoutingUtils";
 import {
     processServiceWorkerUploadRequest,
-    resolveUploadRequestOutcome,
     summarizeExtractedSharedMedia,
 } from "../src/lib/swUploadRequestUtils";
 import {
     processServiceWorkerProfileImageRequest,
-    resolveProfileImageRequestResult,
 } from "../src/lib/swProfileImageRequestUtils";
 import { findProfileImageCacheMatch } from "../src/lib/swProfileImageCacheUtils";
 import {
@@ -623,15 +612,20 @@ class ServiceWorkerCore {
 
     // インストールイベント処理
     async handleInstall(event) {
-        ServiceWorkerDependencies.console.log('SW installing...', SW_VERSION);
-        ServiceWorkerDependencies.console.log('SW installed, waiting for user action');
+        await processServiceWorkerInstall({
+            logger: ServiceWorkerDependencies.console,
+            version: SW_VERSION,
+        });
     }
 
     // アクティベートイベント処理
     async handleActivate(event) {
-        ServiceWorkerDependencies.console.log('SW activating...', SW_VERSION);
-        await this.cacheManager.cleanupOldCaches();
-        await ServiceWorkerDependencies.clients.claim();
+        await processServiceWorkerActivate({
+            logger: ServiceWorkerDependencies.console,
+            version: SW_VERSION,
+            cleanupOldCaches: () => this.cacheManager.cleanupOldCaches(),
+            claimClients: () => ServiceWorkerDependencies.clients.claim(),
+        });
     }
 
     // フェッチイベント処理を修正
@@ -663,25 +657,13 @@ class ServiceWorkerCore {
 
     // メッセージイベント処理
     async handleMessage(event) {
-        const route = resolveServiceWorkerMessageRoute(event.data);
-        await dispatchServiceWorkerMessageRoute({
-            route,
-            messageHandlers: createServiceWorkerTypeMessageHandlers({
-                event,
-                version: SW_VERSION,
-                skipWaiting: () => self.skipWaiting(),
-                logger: ServiceWorkerDependencies.console,
-                createVersion: createVersionResponse,
-                createPingTest: createPingTestResponse,
-                postPortResponse: postPortEventResponse,
-                postMessageResponse: postMessageEventResponse,
-            }),
-            actionHandlers: createServiceWorkerActionHandlers({
-                event,
-                messageHandler: this.messageHandler,
-                cacheManager: this.cacheManager,
-                postPortResponse: postPortEventResponse,
-            }),
+        await processServiceWorkerMessageEvent({
+            event,
+            version: SW_VERSION,
+            skipWaiting: () => self.skipWaiting(),
+            logger: ServiceWorkerDependencies.console,
+            messageHandler: this.messageHandler,
+            cacheManager: this.cacheManager,
         });
     }
 }

@@ -6,9 +6,10 @@ import {
 import { dispatchServiceWorkerFetchRoute } from '../../lib/swFetchDispatchUtils';
 import { logServiceWorkerFetchRoute } from '../../lib/swFetchRouteLogUtils';
 import {
-    createServiceWorkerActionHandlers,
-    createServiceWorkerTypeMessageHandlers,
-} from '../../lib/swMessageHandlerFactories';
+    processServiceWorkerActivate,
+    processServiceWorkerInstall,
+} from '../../lib/swLifecycleUtils';
+import { processServiceWorkerMessageEvent } from '../../lib/swMessageDispatchUtils';
 import {
     cacheCustomEmojiImagesBatch,
     cacheOpaqueCustomEmojiImage,
@@ -19,7 +20,6 @@ import {
     redirectToAvailableSharedClient,
 } from '../../lib/swClientUtils';
 import { resolveCustomEmojiImageRequestResponse } from '../../lib/swCustomEmojiRequestUtils';
-import { dispatchServiceWorkerMessageRoute } from '../../lib/swMessageDispatchUtils';
 import { findProfileImageCacheMatch } from '../../lib/swProfileImageCacheUtils';
 import {
     fetchAndCacheOpaqueProfileImageResponse,
@@ -27,7 +27,6 @@ import {
 } from '../../lib/swProfileImageFetchUtils';
 import {
     processServiceWorkerProfileImageRequest,
-    resolveProfileImageRequestResult,
 } from '../../lib/swProfileImageRequestUtils';
 import {
     cleanupServiceWorkerDuplicateProfileCache,
@@ -39,12 +38,10 @@ import {
     executeServiceWorkerIndexedDbOperation,
 } from '../../lib/swIndexedDbOperationUtils';
 import { ensureCurrentEHagakiDbSchema } from '../../lib/swIndexedDbSchema';
-import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
 import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
 import { persistSharedMediaIndexedDbRecord } from '../../lib/swSharedMediaPersistence';
 import {
-    resolveUploadRequestOutcome,
     summarizeExtractedSharedMedia,
 } from '../../lib/swUploadRequestUtils';
 import {
@@ -541,14 +538,19 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         ) { }
 
         async handleInstall(event: any) {
-            ServiceWorkerDependencies.console.log('SW installing...', SW_VERSION);
-            ServiceWorkerDependencies.console.log('SW installed, waiting for user action');
+            await processServiceWorkerInstall({
+                logger: ServiceWorkerDependencies.console,
+                version: SW_VERSION,
+            });
         }
 
         async handleActivate(event: any) {
-            ServiceWorkerDependencies.console.log('SW activating...', SW_VERSION);
-            await this.cacheManager.cleanupOldCaches();
-            await ServiceWorkerDependencies.clients.claim();
+            await processServiceWorkerActivate({
+                logger: ServiceWorkerDependencies.console,
+                version: SW_VERSION,
+                cleanupOldCaches: () => this.cacheManager.cleanupOldCaches(),
+                claimClients: () => ServiceWorkerDependencies.clients.claim(),
+            });
         }
 
         async handleFetch(event: any) {
@@ -578,21 +580,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         }
 
         async handleMessage(event: any) {
-            const route = resolveServiceWorkerMessageRoute(event.data);
-
-            await dispatchServiceWorkerMessageRoute({
-                route,
-                messageHandlers: createServiceWorkerTypeMessageHandlers({
-                    event,
-                    version: SW_VERSION,
-                    skipWaiting: () => mockSelf.skipWaiting(),
-                    logger: ServiceWorkerDependencies.console,
-                }),
-                actionHandlers: createServiceWorkerActionHandlers({
-                    event,
-                    messageHandler: this.messageHandler,
-                    cacheManager: this.cacheManager,
-                }),
+            await processServiceWorkerMessageEvent({
+                event,
+                version: SW_VERSION,
+                skipWaiting: () => mockSelf.skipWaiting(),
+                logger: ServiceWorkerDependencies.console,
+                messageHandler: this.messageHandler,
+                cacheManager: this.cacheManager,
             });
         }
     }
