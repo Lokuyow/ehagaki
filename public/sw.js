@@ -2,6 +2,7 @@ import {
     getProfilePictureCacheKeyUrl,
     normalizeProfilePictureUrl,
 } from "../src/lib/profilePictureUrlUtils";
+import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
     createCorsRequest,
     createServiceWorkerRedirectResponse,
@@ -176,68 +177,6 @@ const Utilities = {
 // IndexedDB操作クラス
 // =============================================================================
 
-function createObjectStoreIfMissing(db, name, keyPath, indexes = []) {
-    if (db.objectStoreNames.contains(name)) return;
-
-    const store = db.createObjectStore(name, { keyPath });
-    indexes.forEach((index) => {
-        store.createIndex(index.name, index.keyPath);
-    });
-}
-
-function ensureCurrentEHagakiDbSchema(db) {
-    createObjectStoreIfMissing(db, 'meta', 'key', [
-        { name: 'updatedAt', keyPath: 'updatedAt' }
-    ]);
-    createObjectStoreIfMissing(db, 'emojiItems', 'id', [
-        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
-        { name: 'identityKey', keyPath: 'identityKey' },
-        { name: 'shortcodeLower', keyPath: 'shortcodeLower' },
-        { name: 'sortIndex', keyPath: 'sortIndex' },
-        { name: 'sourceType', keyPath: 'sourceType' },
-        { name: 'sourceAddress', keyPath: 'sourceAddress' },
-        { name: 'fetchedAt', keyPath: 'fetchedAt' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: '[pubkeyHex+sortIndex]', keyPath: ['pubkeyHex', 'sortIndex'] },
-        { name: '[pubkeyHex+identityKey]', keyPath: ['pubkeyHex', 'identityKey'] }
-    ]);
-    createObjectStoreIfMissing(db, 'emojiCacheMeta', 'pubkeyHex', [
-        { name: 'fetchedAt', keyPath: 'fetchedAt' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: 'schemaVersion', keyPath: 'schemaVersion' }
-    ]);
-    createObjectStoreIfMissing(db, 'drafts', 'id', [
-        { name: 'scopeKey', keyPath: 'scopeKey' },
-        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: 'timestamp', keyPath: 'timestamp' },
-        { name: '[scopeKey+updatedAt]', keyPath: ['scopeKey', 'updatedAt'] }
-    ]);
-    createObjectStoreIfMissing(db, 'profiles', 'pubkeyHex', [
-        { name: 'fetchedAt', keyPath: 'fetchedAt' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: 'updatedAtFromEvent', keyPath: 'updatedAtFromEvent' },
-        { name: 'schemaVersion', keyPath: 'schemaVersion' }
-    ]);
-    createObjectStoreIfMissing(db, 'relayConfigs', 'pubkeyHex', [
-        { name: 'fetchedAt', keyPath: 'fetchedAt' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: 'updatedAtFromEvent', keyPath: 'updatedAtFromEvent' },
-        { name: 'schemaVersion', keyPath: 'schemaVersion' }
-    ]);
-    createObjectStoreIfMissing(db, SHARED_MEDIA_STORE_NAME, 'id', [
-        { name: 'createdAt', keyPath: 'createdAt' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: 'schemaVersion', keyPath: 'schemaVersion' }
-    ]);
-    createObjectStoreIfMissing(db, 'hashtagHistory', 'tagLower', [
-        { name: 'useCount', keyPath: 'useCount' },
-        { name: 'lastUsed', keyPath: 'lastUsed' },
-        { name: 'updatedAt', keyPath: 'updatedAt' },
-        { name: 'schemaVersion', keyPath: 'schemaVersion' }
-    ]);
-}
-
 class IndexedDBManager {
     constructor(dependencies = ServiceWorkerDependencies) {
         this.indexedDB = dependencies.indexedDB;
@@ -251,7 +190,7 @@ class IndexedDBManager {
                 const req = this.indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
 
                 req.onupgradeneeded = (e) => {
-                    ensureCurrentEHagakiDbSchema(e.target.result);
+                    ensureCurrentEHagakiDbSchema(e.target.result, SHARED_MEDIA_STORE_NAME);
                 };
 
                 req.onerror = () => reject(new Error('IndexedDB open failed'));

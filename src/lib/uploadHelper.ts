@@ -7,13 +7,9 @@ import { NostrAuthService } from "./nostrAuthService";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import {
     mediaFreePlacementStore,
-    videoCompressionProgressStore,
-    imageCompressionProgressStore,
-    setUploadProgress,
     setVideoCompressionService,
     setImageCompressionService,
 } from '../stores/uploadStore.svelte';
-import { removeAllPlaceholders } from './utils/editorNodeActions';
 import { extractImageBlurhashMap, getMimeTypeFromUrl, calculateImageHash, createImetaTag } from "./tags/imetaTag";
 import { imageSizeMapStore } from "../stores/tagsStore.svelte";
 import { processFilesForUpload, prepareMetadataList, getImageDimensions } from "./utils/fileUtils";
@@ -38,12 +34,21 @@ import {
     replacePlaceholdersWithResults,
     insertPlaceholdersIntoGallery,
     replacePlaceholdersInGallery,
-    removeAllGalleryPlaceholders,
 } from "./editor/placeholderManager";
 import { buildUploadFailureMessage } from "./uploadResultUtils";
 import { isDefaultUploadAborted, resetDefaultUploadAbort } from "./uploadAbortUtils";
 import { STORAGE_KEYS } from "./constants";
 import { generateDevImetaTags } from './uploadImetaUtils';
+import {
+    createAbortCheckpointChecker,
+    createGalleryCleanupContext,
+    handleAbortedUpload,
+} from './uploadAbortHandling';
+import {
+    createManagedUploadCallbacks,
+    createUploadProgress,
+    notifyUploadProgress,
+} from './uploadProgressUtils';
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -206,137 +211,6 @@ async function replaceUploadedPlaceholders(params: {
     };
 }
 
-function createUploadProgress(
-    total: number,
-    overrides: Partial<UploadProgress> = {},
-): UploadProgress {
-    return {
-        total,
-        completed: 0,
-        failed: 0,
-        aborted: 0,
-        inProgress: false,
-        ...overrides,
-    };
-}
-
-function notifyUploadProgress(
-    uploadCallbacks: UploadInfoCallbacks | undefined,
-    progress: UploadProgress,
-): void {
-    uploadCallbacks?.onProgress?.(progress);
-}
-
-function createManagedUploadCallbacks(
-    uploadCallbacks?: UploadInfoCallbacks,
-): UploadInfoCallbacks {
-    return {
-        onProgress: (progress: UploadProgress) => {
-            setUploadProgress(progress);
-            uploadCallbacks?.onProgress?.(progress);
-        },
-        onVideoCompressionProgress: (progress: number) => {
-            videoCompressionProgressStore.set(progress);
-            uploadCallbacks?.onVideoCompressionProgress?.(progress);
-        },
-        onImageCompressionProgress: (progress: number) => {
-            imageCompressionProgressStore.set(progress);
-            uploadCallbacks?.onImageCompressionProgress?.(progress);
-        },
-    };
-}
-
-type ImageSizeMapStore = UploadHelperDependencies["imageSizeMapStore"];
-
-interface GalleryCleanupContext {
-    imageSizeMapStore: ImageSizeMapStore;
-}
-
-interface UploadAbortContext {
-    fileArray: File[];
-    currentEditor: TipTapEditor | null;
-    updateUploadState: (isUploading: boolean, errorMessage?: string) => void;
-    uploadCallbacks?: UploadInfoCallbacks;
-    devMode: boolean;
-    galleryCleanup?: GalleryCleanupContext;
-}
-
-interface AbortCheckpointParams {
-    placeholderMap: PlaceholderEntry[];
-    cleanupPlaceholders: boolean;
-}
-
-function cleanupUploadPlaceholders(
-    context: Pick<UploadAbortContext, "currentEditor" | "devMode" | "galleryCleanup">,
-    placeholderMap: PlaceholderEntry[],
-): void {
-    if (context.galleryCleanup) {
-        removeAllGalleryPlaceholders(
-            placeholderMap,
-            context.galleryCleanup.imageSizeMapStore,
-        );
-        return;
-    }
-
-    if (context.currentEditor) {
-        removeAllPlaceholders(context.currentEditor, context.devMode);
-    }
-}
-
-// 中止チェック用のヘルパー関数
-function handleAbortedUpload(
-    context: UploadAbortContext,
-    { placeholderMap, cleanupPlaceholders }: AbortCheckpointParams,
-): UploadHelperResult {
-    context.updateUploadState(false);
-
-    if (cleanupPlaceholders) {
-        cleanupUploadPlaceholders(context, placeholderMap);
-    }
-
-    notifyUploadProgress(
-        context.uploadCallbacks,
-        createUploadProgress(context.fileArray.length, {
-            aborted: context.fileArray.length,
-        }),
-    );
-
-    return {
-        placeholderMap: cleanupPlaceholders ? [] : placeholderMap,
-        results: null,
-        imageOxMap: {},
-        imageXMap: {},
-        failedResults: [],
-        errorMessage: "Upload aborted by user",
-    };
-}
-
-function createGalleryCleanupContext(
-    galleryMode: boolean,
-    imageSizeMapStore: ImageSizeMapStore,
-): GalleryCleanupContext | undefined {
-    return galleryMode ? { imageSizeMapStore } : undefined;
-}
-
-function createAbortCheckpointChecker({
-    isUploadAborted = isDefaultUploadAborted,
-    ...context
-}: UploadAbortContext & { isUploadAborted?: () => boolean }) {
-    return ({
-        placeholderMap,
-        cleanupPlaceholders,
-    }: AbortCheckpointParams): UploadHelperResult | null => {
-        if (!isUploadAborted()) {
-            return null;
-        }
-
-        return handleAbortedUpload(context, {
-            placeholderMap,
-            cleanupPlaceholders,
-        });
-    };
-}
-
 // デフォルトの依存関係
 const createDefaultDependencies = (): UploadHelperDependencies => ({
     localStorage: window.localStorage,
@@ -397,8 +271,15 @@ export async function uploadHelper({
                     fileArray,
                     currentEditor,
                     updateUploadState,
-                    uploadCallbacks: managedUploadCallbacks,
                     devMode,
+                    notifyAbortProgress: (fileCount) => {
+                        notifyUploadProgress(
+                            managedUploadCallbacks,
+                            createUploadProgress(fileCount, {
+                                aborted: fileCount,
+                            }),
+                        );
+                    },
                 },
                 {
                     placeholderMap: [],
@@ -420,10 +301,17 @@ export async function uploadHelper({
         fileArray,
         currentEditor,
         updateUploadState,
-        uploadCallbacks: managedUploadCallbacks,
         devMode,
         galleryCleanup,
         isUploadAborted: dependencies.isUploadAborted,
+        notifyAbortProgress: (fileCount) => {
+            notifyUploadProgress(
+                managedUploadCallbacks,
+                createUploadProgress(fileCount, {
+                    aborted: fileCount,
+                }),
+            );
+        },
     });
 
     // 中止チェック（ファイル処理後）
