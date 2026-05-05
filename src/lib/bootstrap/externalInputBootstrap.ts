@@ -16,6 +16,8 @@ import {
     testServiceWorkerCommunication,
     getSharedMediaWithFallback,
 } from "../utils/swCommunication";
+import { processExternalChannelContextQuery } from './externalChannelContextBootstrapUtils';
+import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
 import type { RelayProfileService } from "../relayProfileService";
 import type { ChannelContextQueryTarget, ReplyQuoteQueryResult } from "../types";
 
@@ -181,22 +183,6 @@ function sanitizeChannelContextQuery(
     };
 }
 
-function hasProvidedChannelMetadata(
-    channelContextQuery: ChannelContextQueryTarget,
-): boolean {
-    return !!(
-        channelContextQuery.name
-        || channelContextQuery.about
-        || channelContextQuery.picture
-    );
-}
-
-function hasProvidedChannelRelays(
-    channelContextQuery: ChannelContextQueryTarget,
-): boolean {
-    return (channelContextQuery.channelRelays?.length ?? 0) > 0;
-}
-
 export async function applyChannelContextQuery({
     channelContextQuery,
     rxNostr,
@@ -206,46 +192,12 @@ export async function applyChannelContextQuery({
     const sanitizedChannelContextQuery = sanitizeChannelContextQuery(
         channelContextQuery,
     );
-
-    const baseContext = {
-        eventId: sanitizedChannelContextQuery.eventId,
-        relayHints: sanitizedChannelContextQuery.relayHints,
-        ...(sanitizedChannelContextQuery.channelRelays?.length
-            ? { channelRelays: sanitizedChannelContextQuery.channelRelays }
-            : {}),
-        name: sanitizedChannelContextQuery.name ?? null,
-        about: sanitizedChannelContextQuery.about ?? null,
-        picture: sanitizedChannelContextQuery.picture ?? null,
-    };
-
-    const metadataProvided = hasProvidedChannelMetadata(
-        sanitizedChannelContextQuery,
-    );
-    const channelRelaysProvided = hasProvidedChannelRelays(
-        sanitizedChannelContextQuery,
-    );
-
-    if (!rxNostr || channelRelaysProvided || metadataProvided) {
-        setChannelContext(baseContext);
-        return;
-    }
-
-    setChannelContext({
-        ...baseContext,
-        isMetadataLoading: true,
-    });
-
-    const channelContextService = new ChannelContextService();
-    const resolvedChannelContext = await channelContextService.resolveChannelContext(
-        sanitizedChannelContextQuery,
+    await processExternalChannelContextQuery({
+        channelContextQuery: sanitizedChannelContextQuery,
+        channelContextService: new ChannelContextService(),
         rxNostr,
         relayConfig,
-    );
-    setChannelContext({
-        ...resolvedChannelContext,
-        name: sanitizedChannelContextQuery.name ?? resolvedChannelContext.name,
-        about: sanitizedChannelContextQuery.about ?? resolvedChannelContext.about,
-        picture: sanitizedChannelContextQuery.picture ?? resolvedChannelContext.picture,
+        setChannelContext,
     });
 }
 
@@ -337,36 +289,18 @@ export async function applyReplyQuoteQuery({
 
     const rqService = new ReplyQuoteService();
     await Promise.allSettled(
-        references.map(async (reference) => {
-            const event = await rqService.fetchReferencedEvent(
-                reference.eventId,
-                reference.relayHints,
+        references.map((reference) =>
+            processReplyQuoteReference({
+                reference,
+                replyQuoteService: rqService,
+                relayProfileService,
                 rxNostr,
                 relayConfig,
-            );
-
-            if (!event) {
-                setReplyQuoteError(reference.eventId, "Event not found");
-                return;
-            }
-
-            const threadInfo = rqService.extractThreadInfo(event);
-            updateReferencedEvent(reference.eventId, event, threadInfo);
-
-            if (event.pubkey && relayProfileService) {
-                const profile = await relayProfileService.fetchProfileRealtime(event.pubkey, {
-                    additionalRelays: reference.relayHints,
-                });
-                if (!profile) {
-                    return;
-                }
-
-                const displayName = profile.displayName || profile.name;
-                if (displayName) {
-                    updateAuthorDisplayName(reference.eventId, displayName);
-                }
-            }
-        }),
+                updateReferencedEvent,
+                updateAuthorDisplayName,
+                setReplyQuoteError,
+            }),
+        ),
     );
 }
 
