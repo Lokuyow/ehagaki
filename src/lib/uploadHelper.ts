@@ -6,7 +6,6 @@ import { MimeTypeSupport } from "./mimeTypeSupport";
 import { NostrAuthService } from "./nostrAuthService";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import {
-    uploadAbortFlagStore,
     mediaFreePlacementStore,
     videoCompressionProgressStore,
     imageCompressionProgressStore,
@@ -42,7 +41,7 @@ import {
     removeAllGalleryPlaceholders,
 } from "./editor/placeholderManager";
 import { buildUploadFailureMessage } from "./uploadResultUtils";
-import { isDefaultUploadAborted } from "./uploadAbortUtils";
+import { isDefaultUploadAborted, resetDefaultUploadAbort } from "./uploadAbortUtils";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -382,7 +381,7 @@ export async function uploadHelper({
     );
 
     // 中止フラグをリセット
-    uploadAbortFlagStore.reset();
+    resetDefaultUploadAbort();
 
     // ファイル処理
     let fileProcessingResults;
