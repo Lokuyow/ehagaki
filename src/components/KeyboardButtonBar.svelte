@@ -206,7 +206,7 @@
     }
 </script>
 
-<div class="footer-button-bar">
+<div class="footer-button-bar" data-long-pressing={showProgressRing}>
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
         class="button-container"
@@ -534,6 +534,10 @@
         :global(.selected .hashtag-pin-group .thumbtack-icon) {
             --svg: var(--theme);
         }
+    }
+
+    .footer-button-bar[data-long-pressing="true"] {
+        z-index: 100;
     }
 
     .button-container {
