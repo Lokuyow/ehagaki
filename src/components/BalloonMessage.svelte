@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { BalloonMessageType } from "../lib/types";
+    import { sanitizeHtmlAllowingWbr } from "../lib/utils/htmlSanitizer";
 
     interface Props {
         type?: BalloonMessageType;
@@ -8,21 +9,7 @@
 
     let { type = "success", message = "" }: Props = $props();
 
-    // <wbr>のみを許可するサニタイズ：テキストをHTMLエスケープしてから<wbr>だけ復元する
-    function sanitizeForWbr(text: string): string {
-        return text
-            .split("<wbr>")
-            .map((part) =>
-                part
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;")
-                    .replace(/"/g, "&quot;"),
-            )
-            .join("<wbr>");
-    }
-
-    let safeMessage = $derived(sanitizeForWbr(message));
+    let safeMessage = $derived(sanitizeHtmlAllowingWbr(message));
 </script>
 
 <div class="balloon-message-wrapper {type}">

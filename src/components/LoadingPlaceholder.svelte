@@ -1,5 +1,6 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { sanitizeHtmlAllowingWbr } from "../lib/utils/htmlSanitizer";
     interface Props {
         text?: string | boolean;
         showLoader?: boolean;
@@ -21,21 +22,7 @@
               : "",
     );
 
-    // <wbr>のみを許可するサニタイズ
-    function sanitizeForWbr(text: string): string {
-        return text
-            .split("<wbr>")
-            .map((part) =>
-                part
-                    .replace(/&/g, "&amp;")
-                    .replace(/</g, "&lt;")
-                    .replace(/>/g, "&gt;")
-                    .replace(/"/g, "&quot;"),
-            )
-            .join("<wbr>");
-    }
-
-    let safeDisplayText = $derived(sanitizeForWbr(displayText));
+    let safeDisplayText = $derived(sanitizeHtmlAllowingWbr(displayText));
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>

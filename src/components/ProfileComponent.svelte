@@ -12,11 +12,12 @@
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import type { StoredAccount } from "../lib/types";
     import { toNpub } from "../lib/utils/nostrUtils";
+    import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     function formatNpubShort(pubkeyHex: string): string {
         try {
             const npub = toNpub(pubkeyHex);
-            return npub.slice(0, 9) + "..." + npub.slice(-4);
+            return shortenMiddle(npub, 9, 4);
         } catch {
             return "";
         }

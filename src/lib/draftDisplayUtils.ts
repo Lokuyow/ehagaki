@@ -1,7 +1,8 @@
-import DOMPurify from 'dompurify';
 import { nip19 } from 'nostr-tools';
 import { DRAFT_PREVIEW_LENGTH } from './constants';
 import { extractDraftPreviewParts } from './draftPreviewUtils';
+import { sanitizePlainText } from './utils/domSanitizer';
+import { shortenMiddle } from './utils/textDisplayUtils';
 import type {
     Draft,
     DraftChannelData,
@@ -37,10 +38,7 @@ function sanitizeText(value: string | null | undefined): string {
         return '';
     }
 
-    return DOMPurify.sanitize(value, {
-        ALLOWED_TAGS: [],
-        ALLOWED_ATTR: [],
-    }).trim();
+    return sanitizePlainText(value).trim();
 }
 
 function shortenIdentifier(value: string): string {
@@ -48,7 +46,7 @@ function shortenIdentifier(value: string): string {
         return value;
     }
 
-    return `${value.slice(0, 10)}...${value.slice(-4)}`;
+    return shortenMiddle(value, 10, 4);
 }
 
 function formatPubkey(pubkey: string | null): string {
@@ -58,7 +56,7 @@ function formatPubkey(pubkey: string | null): string {
 
     try {
         const npub = nip19.npubEncode(pubkey);
-        return `${npub.slice(0, 12)}...${npub.slice(-4)}`;
+        return shortenMiddle(npub, 12, 4);
     } catch {
         return shortenIdentifier(pubkey);
     }

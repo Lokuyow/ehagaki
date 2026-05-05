@@ -1,11 +1,12 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
     import { Tooltip } from "bits-ui";
-    import DOMPurify from "dompurify";
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
     import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
+    import { sanitizePlainText } from "../lib/utils/domSanitizer";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     interface Props {
         reference: ReplyQuoteState;
@@ -38,17 +39,13 @@
         if (!reference.authorPubkey) return "";
         if (reference.authorDisplayName) return reference.authorDisplayName;
         const npub = nip19.npubEncode(reference.authorPubkey);
-        return npub.slice(0, 12) + "..." + npub.slice(-4);
+        return shortenMiddle(npub, 12, 4);
     });
 
     let sanitizedContent = $derived.by(() => {
         if (!reference.referencedEvent?.content) return "";
         const raw = reference.referencedEvent.content;
-        const clean = DOMPurify.sanitize(raw, {
-            ALLOWED_TAGS: [],
-            ALLOWED_ATTR: [],
-        });
-        return clean;
+        return sanitizePlainText(raw);
     });
 
     let canToggleExpand = $derived(!!sanitizedContent);
