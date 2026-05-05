@@ -11,11 +11,15 @@ import {
     normalizeEmojiShortcode,
     normalizeEmojiShortcodeForLookup,
 } from '../customEmoji';
+import { stripCustomEmojiImeBoundaries } from '../editor/customEmojiImeBoundary';
 
 export function isDocumentEmpty(doc: PMNode): boolean {
     if (doc.childCount === 1) {
         const firstChild = doc.firstChild;
-        return firstChild?.type.name === 'paragraph' && firstChild.content.size === 0;
+        const textContent = firstChild?.textContent ?? '';
+        return firstChild?.type.name === 'paragraph' &&
+            stripCustomEmojiImeBoundaries(textContent).trim().length === 0 &&
+            firstChild.content.size === textContent.length;
     }
     return doc.childCount === 0;
 }
@@ -271,7 +275,7 @@ function extractInlineFragmentsWithEmoji(node: PMNode): InlinePostFragment[] {
 
     iterateChildNodes(node, (child) => {
         if (child.isText) {
-            parts.push({ type: 'text', text: child.text ?? '' });
+            parts.push({ type: 'text', text: stripCustomEmojiImeBoundaries(child.text ?? '') });
             return;
         }
 
@@ -280,7 +284,7 @@ function extractInlineFragmentsWithEmoji(node: PMNode): InlinePostFragment[] {
             return;
         }
 
-        parts.push({ type: 'text', text: child.textContent ?? '' });
+        parts.push({ type: 'text', text: stripCustomEmojiImeBoundaries(child.textContent ?? '') });
     });
 
     return parts;
@@ -444,7 +448,7 @@ export function extractPostContentFromDoc(doc: PMNode): ExtractedPostContent {
             if (node.type.name === 'paragraph') {
                 blocks.push({
                     type: 'inline',
-                    parts: [{ type: 'text', text: node.textContent }],
+                    parts: [{ type: 'text', text: stripCustomEmojiImeBoundaries(node.textContent) }],
                 });
             } else if (node.type.name === 'image' || node.type.name === 'video') {
                 const src = node.attrs?.src;

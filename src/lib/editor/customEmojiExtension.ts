@@ -9,6 +9,7 @@ import {
     type CustomEmojiItem,
 } from '../customEmoji';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
+import { CUSTOM_EMOJI_IME_BOUNDARY } from './customEmojiImeBoundary';
 
 export interface CustomEmojiAttrs {
     identityKey?: string;
@@ -81,6 +82,38 @@ function findKnownEmojiPasteMatches(text: string, items: CustomEmojiItem[]) {
             text: match[0],
             replaceWith: String(match[1] ?? ''),
         }));
+}
+
+function createCustomEmojiContent(
+    nodeName: string,
+    attrs: CustomEmojiAttrs,
+) {
+    const shortcode = normalizeShortcode(attrs.shortcode);
+    if (!shortcode || !attrs.src) {
+        return null;
+    }
+    const setAddress = attrs.setAddress ?? null;
+    const identityKey = attrs.identityKey || createCustomEmojiIdentityKey({
+        shortcodeLower: normalizeEmojiShortcodeForLookup(shortcode),
+        src: attrs.src,
+        setAddress,
+    });
+
+    return [
+        {
+            type: nodeName,
+            attrs: {
+                identityKey,
+                shortcode,
+                src: attrs.src,
+                setAddress,
+            },
+        },
+        {
+            type: 'text',
+            text: CUSTOM_EMOJI_IME_BOUNDARY,
+        },
+    ];
 }
 
 export const CustomEmoji = Node.create<CustomEmojiOptions>({
@@ -163,27 +196,13 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
             insertCustomEmoji:
                 (attrs) =>
                 ({ chain }) => {
-                    const shortcode = normalizeShortcode(attrs.shortcode);
-                    if (!shortcode || !attrs.src) {
+                    const content = createCustomEmojiContent(this.name, attrs);
+                    if (!content) {
                         return false;
                     }
-                    const setAddress = attrs.setAddress ?? null;
-                    const identityKey = attrs.identityKey || createCustomEmojiIdentityKey({
-                        shortcodeLower: normalizeEmojiShortcodeForLookup(shortcode),
-                        src: attrs.src,
-                        setAddress,
-                    });
 
                     return chain()
-                        .insertContent({
-                            type: this.name,
-                            attrs: {
-                                identityKey,
-                                shortcode,
-                                src: attrs.src,
-                                setAddress,
-                            },
-                        })
+                        .insertContent(content)
                         .run();
                 },
         };
@@ -199,17 +218,16 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
                         return null;
                     }
 
+                    const boundary = state.schema.text(CUSTOM_EMOJI_IME_BOUNDARY);
+                    const emojiNode = this.type.create({
+                        shortcode: normalizeShortcode(emoji.shortcode),
+                        identityKey: emoji.identityKey,
+                        src: emoji.src,
+                        setAddress: emoji.setAddress,
+                    });
+
                     state.tr
-                        .replaceWith(
-                            range.from,
-                            range.to,
-                            this.type.create({
-                                shortcode: normalizeShortcode(emoji.shortcode),
-                                identityKey: emoji.identityKey,
-                                src: emoji.src,
-                                setAddress: emoji.setAddress,
-                            }),
-                        )
+                        .replaceWith(range.from, range.to, [emojiNode, boundary])
                         .scrollIntoView();
                 },
             }),
@@ -226,16 +244,15 @@ export const CustomEmoji = Node.create<CustomEmojiOptions>({
                         return null;
                     }
 
-                    state.tr.replaceWith(
-                        range.from,
-                        range.to,
-                        this.type.create({
-                            shortcode: normalizeShortcode(emoji.shortcode),
-                            identityKey: emoji.identityKey,
-                            src: emoji.src,
-                            setAddress: emoji.setAddress,
-                        }),
-                    );
+                    const boundary = state.schema.text(CUSTOM_EMOJI_IME_BOUNDARY);
+                    const emojiNode = this.type.create({
+                        shortcode: normalizeShortcode(emoji.shortcode),
+                        identityKey: emoji.identityKey,
+                        src: emoji.src,
+                        setAddress: emoji.setAddress,
+                    });
+
+                    state.tr.replaceWith(range.from, range.to, [emojiNode, boundary]);
                 },
             }),
         ];

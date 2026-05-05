@@ -25,6 +25,7 @@ import {
 } from '../../lib/customEmoji';
 import type { CustomEmojiItem } from '../../lib/customEmoji';
 import { CustomEmoji } from '../../lib/editor/customEmojiExtension';
+import { CUSTOM_EMOJI_IME_BOUNDARY } from '../../lib/editor/customEmojiImeBoundary';
 import { findCustomEmojiSuggestionMatch } from '../../lib/editor/customEmojiSuggestion';
 import { extractPostContentFromDoc } from '../../lib/utils/editorDocumentUtils';
 
@@ -403,7 +404,9 @@ describe('customEmoji', () => {
                         setAddress: null,
                     },
                 },
+                { type: 'text', text: CUSTOM_EMOJI_IME_BOUNDARY },
             ]);
+            expect(extractPostContentFromDoc(editor.state.doc).content).toBe('テスト:kubi:');
         } finally {
             editor.destroy();
         }
@@ -567,7 +570,7 @@ describe('customEmoji', () => {
                         setAddress: null,
                     },
                 },
-                { type: 'text', text: ' b :missing: c ' },
+                { type: 'text', text: `${CUSTOM_EMOJI_IME_BOUNDARY} b :missing: c ` },
                 {
                     type: 'customEmoji',
                     attrs: {
@@ -576,6 +579,7 @@ describe('customEmoji', () => {
                         setAddress: '30030:pubkey:set',
                     },
                 },
+                { type: 'text', text: CUSTOM_EMOJI_IME_BOUNDARY },
             ]);
         } finally {
             editor.destroy();

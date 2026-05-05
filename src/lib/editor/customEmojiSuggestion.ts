@@ -9,6 +9,7 @@ import {
 } from '../customEmoji';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
 import { createSuggestionRenderer } from './suggestionRenderer';
+import { CUSTOM_EMOJI_IME_BOUNDARY } from './customEmojiImeBoundary';
 
 export interface CustomEmojiSuggestionOptions {
     getItems: () => CustomEmojiItem[];
@@ -107,15 +108,21 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                         .chain()
                         .focus()
                         .deleteRange(range)
-                        .insertContent({
-                            type: 'customEmoji',
-                            attrs: {
-                                identityKey: props.identityKey,
-                                shortcode: normalizeEmojiShortcode(props.shortcode),
-                                src: props.src,
-                                setAddress: props.setAddress,
+                        .insertContent([
+                            {
+                                type: 'customEmoji',
+                                attrs: {
+                                    identityKey: props.identityKey,
+                                    shortcode: normalizeEmojiShortcode(props.shortcode),
+                                    src: props.src,
+                                    setAddress: props.setAddress,
+                                },
                             },
-                        })
+                            {
+                                type: 'text',
+                                text: CUSTOM_EMOJI_IME_BOUNDARY,
+                            },
+                        ])
                         .run();
                 },
             }),
