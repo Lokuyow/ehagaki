@@ -53,8 +53,13 @@ import {
     clearServiceWorkerProfileCache,
 } from "../src/lib/swProfileCacheActionUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
+import {
+    createClearSharedMediaDbOperation,
+    createPutSharedMediaDbOperation,
+    executeServiceWorkerIndexedDbOperation,
+} from "../src/lib/swIndexedDbOperationUtils";
 import { postServiceWorkerSharedMediaResponse } from "../src/lib/swSharedMediaResponseUtils";
-import { buildSharedMediaIndexedDbRecord } from "../src/lib/swSharedMediaPersistence";
+import { persistSharedMediaIndexedDbRecord } from "../src/lib/swSharedMediaPersistence";
 import {
     createCorsRequest,
     createServiceWorkerRedirectResponse,
@@ -237,71 +242,34 @@ class IndexedDBManager {
 
     // IndexedDB操作の共通処理
     async executeOperation(operation) {
-        return new Promise((resolve, reject) => {
-            try {
-                const req = this.indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
-
-                req.onupgradeneeded = (e) => {
-                    ensureCurrentEHagakiDbSchema(e.target.result, SHARED_MEDIA_STORE_NAME);
-                };
-
-                req.onerror = () => reject(new Error('IndexedDB open failed'));
-
-                req.onsuccess = (e) => {
-                    const db = e.target.result;
-                    try {
-                        operation(db, resolve, reject);
-                    } catch (error) {
-                        db.close();
-                        reject(error);
-                    }
-                };
-            } catch (error) {
-                reject(error);
-            }
+        return await executeServiceWorkerIndexedDbOperation({
+            indexedDb: this.indexedDB,
+            dbName: INDEXEDDB_NAME,
+            dbVersion: INDEXEDDB_VERSION,
+            onUpgradeNeeded: (db) => {
+                ensureCurrentEHagakiDbSchema(db, SHARED_MEDIA_STORE_NAME);
+            },
+            operation,
         });
     }
 
     async putSharedMedia(record) {
-        return this.executeOperation((db, resolve, reject) => {
-            if (!db.objectStoreNames.contains(SHARED_MEDIA_STORE_NAME)) {
-                db.close();
-                reject(new Error('Shared media store is not available'));
-                return;
-            }
-
-            const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
-            const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
-            store.put(record).onsuccess = () => {
-                db.close();
-                resolve();
-            };
-            tx.onerror = () => {
-                db.close();
-                reject(new Error('Failed to persist shared media'));
-            };
-        });
+        return await this.executeOperation(
+            createPutSharedMediaDbOperation({
+                storeName: SHARED_MEDIA_STORE_NAME,
+                record,
+            }),
+        );
     }
 
     async clearSharedMedia() {
         try {
-            await this.executeOperation((db, resolve) => {
-                if (!db.objectStoreNames.contains(SHARED_MEDIA_STORE_NAME)) {
-                    db.close();
-                    resolve();
-                    return;
-                }
-                const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
-                const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
-                store.delete(SHARED_MEDIA_RECORD_ID).onsuccess = () => {
-                    db.close();
-                    resolve();
-                };
-                tx.onerror = () => {
-                    db.close();
-                    resolve(); // エラーでも正常終了扱い
-                };
-            });
+            await this.executeOperation(
+                createClearSharedMediaDbOperation({
+                    storeName: SHARED_MEDIA_STORE_NAME,
+                    recordId: SHARED_MEDIA_RECORD_ID,
+                }),
+            );
         } catch (error) {
             // エラーは無視
             this.console.error('IndexedDB error:', error);
@@ -523,14 +491,13 @@ class ClientManager {
 
     // IndexedDBに共有メディアデータを永続化（複数メディア対応、サイズ上限付き）
     async persistSharedMediaToIndexedDB(sharedData, indexedDBManager) {
-        const record = await buildSharedMediaIndexedDbRecord({
+        await persistSharedMediaIndexedDbRecord({
             sharedData,
+            indexedDBManager,
             maxFileSize: MAX_INDEXEDDB_FILE_SIZE,
             recordId: SHARED_MEDIA_RECORD_ID,
             schemaVersion: SHARED_MEDIA_SCHEMA_VERSION,
         });
-
-        await indexedDBManager.putSharedMedia(record);
     }
 }
 

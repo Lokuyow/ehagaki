@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildSharedMediaIndexedDbRecord } from '../../lib/swSharedMediaPersistence';
+import {
+    buildSharedMediaIndexedDbRecord,
+    persistSharedMediaIndexedDbRecord,
+} from '../../lib/swSharedMediaPersistence';
 
 function attachArrayBuffer(file: File, contents: string): File {
     Object.defineProperty(file, 'arrayBuffer', {
@@ -90,5 +93,36 @@ describe('swSharedMediaPersistence', () => {
                 schemaVersion: 1,
             }),
         ).rejects.toThrow('File too large for IndexedDB persistence: large.png');
+    });
+
+    it('IndexedDB record を組み立てて永続化できる', async () => {
+        const file = attachArrayBuffer(
+            new File(['abc'], 'persist.png', { type: 'image/png', lastModified: 111 }),
+            'abc',
+        );
+        const indexedDBManager = {
+            putSharedMedia: async () => { },
+        };
+        const putSharedMedia = vi.spyOn(indexedDBManager, 'putSharedMedia');
+
+        const result = await persistSharedMediaIndexedDbRecord({
+            sharedData: {
+                images: [file],
+                metadata: [{ name: 'persist.png' }],
+            },
+            indexedDBManager,
+            maxFileSize: 1024,
+            recordId: 'latest',
+            schemaVersion: 1,
+            now: () => 100,
+        });
+
+        expect(result).toMatchObject({
+            id: 'latest',
+            schemaVersion: 1,
+            createdAt: 100,
+            updatedAt: 100,
+        });
+        expect(putSharedMedia).toHaveBeenCalledWith(result);
     });
 });

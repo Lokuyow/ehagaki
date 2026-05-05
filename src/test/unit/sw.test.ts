@@ -29,9 +29,16 @@ import {
     cleanupServiceWorkerDuplicateProfileCache,
     clearServiceWorkerProfileCache,
 } from '../../lib/swProfileCacheActionUtils';
+import {
+    createClearSharedMediaDbOperation,
+    createPutSharedMediaDbOperation,
+    executeServiceWorkerIndexedDbOperation,
+} from '../../lib/swIndexedDbOperationUtils';
+import { ensureCurrentEHagakiDbSchema } from '../../lib/swIndexedDbSchema';
 import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
 import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
+import { persistSharedMediaIndexedDbRecord } from '../../lib/swSharedMediaPersistence';
 import { resolveUploadRequestOutcome } from '../../lib/swUploadRequestUtils';
 import {
     createCorsRequest,
@@ -109,7 +116,9 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     const INDEXEDDB_VERSION = 1;
     const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
     const SHARED_MEDIA_RECORD_ID = 'latest';
+    const SHARED_MEDIA_SCHEMA_VERSION = 1;
     const CUSTOM_EMOJI_MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+    const MAX_INDEXEDDB_FILE_SIZE = 100 * 1024 * 1024;
 
     const ServiceWorkerState = {
         sharedMediaCache: null,
@@ -197,70 +206,69 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         constructor(public dependencies = ServiceWorkerDependencies) { }
 
         async executeOperation(operation: any) {
-            // 実際にindexedDB.openを呼び出す
-            this.dependencies.indexedDB.open(INDEXEDDB_NAME, INDEXEDDB_VERSION);
-
-            return new Promise((resolve, reject) => {
-                const mockReq = {
-                    onupgradeneeded: null as any,
-                    onerror: null as any,
-                    onsuccess: null as any,
-                    result: {
-                        objectStoreNames: { contains: vi.fn().mockReturnValue(true) },
-                        createObjectStore: vi.fn(),
-                        transaction: vi.fn().mockReturnValue({
-                            objectStore: vi.fn().mockReturnValue({
-                                put: vi.fn().mockReturnValue({ onsuccess: null }),
-                                delete: vi.fn().mockReturnValue({ onsuccess: null })
-                            }),
-                            onerror: null
-                        }),
-                        close: vi.fn()
-                    }
-                };
-
-                // 即座にコールバックを実行してタイムアウトを防ぐ
+            const mockRequest = {
+                onupgradeneeded: null as any,
+                onerror: null as any,
+                onsuccess: null as any,
+            };
+            const createStoreRequest = () => {
+                const request = { onsuccess: null as (() => void) | null };
                 queueMicrotask(() => {
-                    try {
-                        operation(mockReq.result, resolve, reject);
-                    } catch (error) {
-                        reject(error);
-                    }
+                    request.onsuccess?.();
                 });
+                return request;
+            };
+            const mockDb = {
+                objectStoreNames: { contains: vi.fn().mockReturnValue(true) },
+                createObjectStore: vi.fn(),
+                transaction: vi.fn().mockReturnValue({
+                    objectStore: vi.fn().mockReturnValue({
+                        put: vi.fn().mockImplementation(() => createStoreRequest()),
+                        delete: vi.fn().mockImplementation(() => createStoreRequest()),
+                    }),
+                    onerror: null,
+                }),
+                close: vi.fn(),
+            };
+
+            queueMicrotask(() => {
+                mockRequest.onupgradeneeded?.({ target: { result: mockDb } });
+                mockRequest.onsuccess?.({ target: { result: mockDb } });
+            });
+
+            return await executeServiceWorkerIndexedDbOperation({
+                indexedDb: {
+                    open: (dbName: string, dbVersion: number) => {
+                        this.dependencies.indexedDB.open(dbName, dbVersion);
+                        return mockRequest;
+                    },
+                },
+                dbName: INDEXEDDB_NAME,
+                dbVersion: INDEXEDDB_VERSION,
+                onUpgradeNeeded: (db: any) => {
+                    ensureCurrentEHagakiDbSchema(db, SHARED_MEDIA_STORE_NAME);
+                },
+                operation,
             });
         }
 
         async putSharedMedia(record: any) {
-            return this.executeOperation((db: any, resolve: any) => {
-                const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
-                const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
-                const putReq = store.put(record);
-                // 即座にコールバックを実行
-                queueMicrotask(() => {
-                    if (putReq.onsuccess) {
-                        putReq.onsuccess({} as any);
-                    }
-                    db.close();
-                    resolve();
-                });
-            });
+            return await this.executeOperation(
+                createPutSharedMediaDbOperation({
+                    storeName: SHARED_MEDIA_STORE_NAME,
+                    record,
+                }),
+            );
         }
 
         async clearSharedMedia() {
             try {
-                await this.executeOperation((db: any, resolve: any) => {
-                    const tx = db.transaction([SHARED_MEDIA_STORE_NAME], 'readwrite');
-                    const store = tx.objectStore(SHARED_MEDIA_STORE_NAME);
-                    const deleteReq = store.delete(SHARED_MEDIA_RECORD_ID);
-                    // 即座にコールバックを実行
-                    queueMicrotask(() => {
-                        if (deleteReq.onsuccess) {
-                            deleteReq.onsuccess({} as any);
-                        }
-                        db.close();
-                        resolve();
-                    });
-                });
+                await this.executeOperation(
+                    createClearSharedMediaDbOperation({
+                        storeName: SHARED_MEDIA_STORE_NAME,
+                        recordId: SHARED_MEDIA_RECORD_ID,
+                    }),
+                );
             } catch (error) {
                 this.dependencies.console.error('IndexedDB error:', error);
             }
@@ -439,7 +447,13 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         }
 
         async persistSharedMediaToIndexedDB(sharedData: any, indexedDBManager: any) {
-            await indexedDBManager.putSharedMedia(sharedData);
+            await persistSharedMediaIndexedDbRecord({
+                sharedData,
+                indexedDBManager,
+                maxFileSize: MAX_INDEXEDDB_FILE_SIZE,
+                recordId: SHARED_MEDIA_RECORD_ID,
+                schemaVersion: SHARED_MEDIA_SCHEMA_VERSION,
+            });
         }
     }
 
@@ -1013,7 +1027,12 @@ describe('Service Worker Tests', () => {
         it('should redirect client when clients exist', async () => {
             const client = { id: 'client-1', focus: vi.fn(), postMessage: vi.fn() };
             swModule.ServiceWorkerDependencies.clients.matchAll.mockResolvedValue([client]);
-            swModule.ServiceWorkerState.setSharedMediaCache({ image: 'test' });
+            const file = new File(['test'], 'test.jpg', { type: 'image/jpeg' });
+            Object.defineProperty(file, 'arrayBuffer', {
+                value: async () => new TextEncoder().encode('test').buffer,
+                configurable: true,
+            });
+            swModule.ServiceWorkerState.setSharedMediaCache({ images: [file] });
 
             const manager = new swModule.ClientManager();
             const response = await manager.redirectClient();
@@ -1023,9 +1042,13 @@ describe('Service Worker Tests', () => {
             expect(client.postMessage).toHaveBeenCalledWith(
                 expect.objectContaining({
                     type: 'SHARED_MEDIA',
-                    data: { image: 'test' },
+                    data: { images: [file] },
                     requestId: expect.stringMatching(/^sw-/),
                 }),
+            );
+            expect(swModule.ServiceWorkerDependencies.indexedDB.open).toHaveBeenCalledWith(
+                swModule.INDEXEDDB_NAME,
+                swModule.INDEXEDDB_VERSION,
             );
             expect(response.status).toBe(303);
         });

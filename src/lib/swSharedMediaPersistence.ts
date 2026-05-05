@@ -19,6 +19,10 @@ export interface SharedMediaIndexedDbRecord {
     schemaVersion: number;
 }
 
+export interface SharedMediaIndexedDbWriter {
+    putSharedMedia: (record: SharedMediaIndexedDbRecord) => Promise<void>;
+}
+
 export async function buildSharedMediaIndexedDbRecord({
     sharedData,
     maxFileSize,
@@ -62,4 +66,31 @@ export async function buildSharedMediaIndexedDbRecord({
         updatedAt: timestamp,
         schemaVersion,
     };
+}
+
+export async function persistSharedMediaIndexedDbRecord({
+    sharedData,
+    indexedDBManager,
+    maxFileSize,
+    recordId,
+    schemaVersion,
+    now,
+}: {
+    sharedData: SharedMediaInput;
+    indexedDBManager: SharedMediaIndexedDbWriter;
+    maxFileSize: number;
+    recordId: string;
+    schemaVersion: number;
+    now?: () => number;
+}): Promise<SharedMediaIndexedDbRecord> {
+    const record = await buildSharedMediaIndexedDbRecord({
+        sharedData,
+        maxFileSize,
+        recordId,
+        schemaVersion,
+        now,
+    });
+
+    await indexedDBManager.putSharedMedia(record);
+    return record;
 }
