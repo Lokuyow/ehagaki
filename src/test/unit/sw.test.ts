@@ -8,8 +8,18 @@ import {
     createServiceWorkerActionHandlers,
     createServiceWorkerTypeMessageHandlers,
 } from '../../lib/swMessageHandlerFactories';
+import {
+    cacheCustomEmojiImagesBatch,
+    cacheOpaqueCustomEmojiImage,
+} from '../../lib/swCustomEmojiCacheUtils';
+import { resolveCustomEmojiImageRequestResponse } from '../../lib/swCustomEmojiRequestUtils';
 import { dispatchServiceWorkerMessageRoute } from '../../lib/swMessageDispatchUtils';
+import { findProfileImageCacheMatch } from '../../lib/swProfileImageCacheUtils';
 import { resolveProfileImageRequestResult } from '../../lib/swProfileImageRequestUtils';
+import {
+    cleanupServiceWorkerDuplicateProfileCache,
+    clearServiceWorkerProfileCache,
+} from '../../lib/swProfileCacheActionUtils';
 import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
 import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
@@ -307,41 +317,32 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         }
 
         async clearProfileCache() {
-            try {
-                const deleted = await this.dependencies.caches.delete(PROFILE_CACHE_NAME);
-                this.dependencies.console.log('プロフィール画像キャッシュクリア:', deleted);
-                return { success: true };
-            } catch (err: any) {
-                this.dependencies.console.error('プロフィールキャッシュクリアエラー:', err);
-                return { success: false, error: err.message };
-            }
+            return await clearServiceWorkerProfileCache({
+                cacheStorage: this.dependencies.caches,
+                cacheName: PROFILE_CACHE_NAME,
+                logger: this.dependencies.console,
+            });
         }
 
         async cleanupDuplicateProfileCache() {
-            return { success: true, deletedCount: 0 };
+            return await cleanupServiceWorkerDuplicateProfileCache({
+                cacheStorage: this.dependencies.caches,
+                cacheName: PROFILE_CACHE_NAME,
+                logger: this.dependencies.console,
+                getBaseUrl: Utilities.getBaseUrl,
+            });
         }
 
         async handleProfileImageCache(request: Request) {
-            const baseUrl = Utilities.getBaseUrl(request.url);
-            if (!baseUrl) {
-                return null;
-            }
-
             const cache = await this.dependencies.caches.open(PROFILE_CACHE_NAME);
-            const baseRequest = new Request(baseUrl, { method: 'GET', mode: 'cors' });
+            const cachedMatch = await findProfileImageCacheMatch({
+                request,
+                cache,
+                getBaseUrl: Utilities.getBaseUrl,
+                createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+            });
 
-            const cachedBase = await cache.match(baseRequest);
-            if (cachedBase) {
-                return cachedBase;
-            }
-
-            const cachedOpaqueBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'no-cors' }));
-            if (cachedOpaqueBase) {
-                return cachedOpaqueBase;
-            }
-
-            const cached = await cache.match(request);
-            return cached || null;
+            return cachedMatch?.response ?? null;
         }
 
         async fetchAndCacheOpaqueProfileImage(baseUrl: string) {
@@ -392,64 +393,42 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         }
 
         async handleCustomEmojiImageRequest(request: Request) {
-            const cache = await this.dependencies.caches.open(CUSTOM_EMOJI_CACHE_NAME);
-            const baseUrl = Utilities.getBaseUrl(request.url);
-            if (baseUrl) {
-                const cachedBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'cors' }));
-                if (cachedBase) return cachedBase;
-
-                const cachedOpaqueBase = await cache.match(new Request(baseUrl, { method: 'GET', mode: 'no-cors' }));
-                if (cachedOpaqueBase) return cachedOpaqueBase;
+            try {
+                const cache = await this.dependencies.caches.open(CUSTOM_EMOJI_CACHE_NAME);
+                return await resolveCustomEmojiImageRequestResponse({
+                    request,
+                    cache,
+                    getBaseUrl: Utilities.getBaseUrl,
+                    createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+                    fetchRequest: (targetRequest) => this.dependencies.fetch(targetRequest),
+                });
+            } catch {
+                return this.dependencies.fetch(request);
             }
-
-            const cached = await cache.match(request);
-            if (cached) return cached;
-
-            return this.dependencies.fetch(request);
         }
 
         async cacheOpaqueCustomEmojiImage(cache: any, baseUrl: string) {
-            const request = new Request(baseUrl, { method: 'GET', mode: 'no-cors' });
-            const response = await this.dependencies.fetch(request);
-            if (!response || response.type !== 'opaque') {
-                return false;
-            }
-
-            await cache.put(request, response.clone ? response.clone() : response);
-            return true;
+            return await cacheOpaqueCustomEmojiImage({
+                cache,
+                baseUrl,
+                fetchRequest: (request) => this.dependencies.fetch(request),
+                createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+            });
         }
 
         async cacheCustomEmojiImages(urls: string[] | undefined) {
-            const cache = await this.dependencies.caches.open(CUSTOM_EMOJI_CACHE_NAME);
-            let cached = 0;
-            let failed = 0;
-
-            for (const rawUrl of [...new Set(urls ?? [])].slice(0, 300)) {
-                let baseUrl: string | null = null;
-                try {
-                    baseUrl = Utilities.getBaseUrl(rawUrl);
-                    if (!baseUrl) {
-                        failed++;
-                        continue;
-                    }
-                    const request = new Request(baseUrl, { method: 'GET', mode: 'cors' });
-                    const response = await this.dependencies.fetch(request);
-                    if (await Utilities.isCacheableCustomEmojiResponse(response)) {
-                        await cache.put(request, response.clone ? response.clone() : response);
-                        cached++;
-                    } else {
-                        failed++;
-                    }
-                } catch {
-                    if (baseUrl && await this.cacheOpaqueCustomEmojiImage(cache, baseUrl)) {
-                        cached++;
-                    } else {
-                        failed++;
-                    }
-                }
-            }
-
-            return { success: true, cached, failed };
+            return await cacheCustomEmojiImagesBatch({
+                urls,
+                cacheStorage: this.dependencies.caches,
+                cacheName: CUSTOM_EMOJI_CACHE_NAME,
+                fetchRequest: (request) => this.dependencies.fetch(request),
+                createRequest: (url, options) => new Request(url, { method: 'GET', ...options }),
+                getBaseUrl: Utilities.getBaseUrl,
+                isCacheableCustomEmojiResponse: (response) =>
+                    Utilities.isCacheableCustomEmojiResponse(response),
+                cacheOpaqueImage: (cache, baseUrl) => this.cacheOpaqueCustomEmojiImage(cache, baseUrl),
+                logger: this.dependencies.console,
+            });
         }
     }
 
@@ -775,6 +754,48 @@ describe('Service Worker Tests', () => {
             expect(swModule.ServiceWorkerDependencies.caches.delete).toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
         });
 
+        it('should prefer cached base profile image responses', async () => {
+            const manager = new swModule.CacheManager();
+            const cachedResponse = new Response('cached-base-profile');
+            const mockCache = {
+                match: vi.fn(async (request: Request) => {
+                    if (request.mode === 'cors' && request.url === 'https://example.com/profile.jpg') {
+                        return cachedResponse;
+                    }
+
+                    return null;
+                }),
+                put: vi.fn(),
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+
+            const response = await manager.handleProfileImageCache(
+                new Request('https://example.com/profile.jpg?profile=true'),
+            );
+
+            expect(response).toBe(cachedResponse);
+            expect(mockCache.match).toHaveBeenCalledTimes(1);
+        });
+
+        it('should clean up duplicate profile cache entries', async () => {
+            const manager = new swModule.CacheManager();
+            const queryRequest = new Request('https://example.com/profile.jpg?profile=true');
+            const baseRequest = new Request('https://example.com/profile.jpg');
+            const otherQueryRequest = new Request('https://example.com/other.jpg?profile=true');
+            const mockCache = {
+                keys: vi.fn().mockResolvedValue([baseRequest, queryRequest, otherQueryRequest]),
+                delete: vi.fn().mockResolvedValue(true),
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+
+            const result = await manager.cleanupDuplicateProfileCache();
+
+            expect(result).toEqual({ success: true, deletedCount: 1 });
+            expect(swModule.ServiceWorkerDependencies.caches.open).toHaveBeenCalledWith(swModule.PROFILE_CACHE_NAME);
+            expect(mockCache.delete).toHaveBeenCalledTimes(1);
+            expect(mockCache.delete).toHaveBeenCalledWith(queryRequest);
+        });
+
         it('should fetch and cache profile image from network', async () => {
             const manager = new swModule.CacheManager();
             const request = new Request('https://example.com/profile.jpg?profile=true');
@@ -985,6 +1006,24 @@ describe('Service Worker Tests', () => {
 
             expect(result).toEqual({ success: true, cached: 0, failed: 1 });
             expect(mockCache.put).not.toHaveBeenCalled();
+        });
+
+        it('should fetch custom emoji image when cache misses', async () => {
+            const manager = new swModule.CacheManager();
+            const networkResponse = new Response('emoji-network');
+            const mockCache = {
+                match: vi.fn().mockResolvedValue(null),
+                put: vi.fn(),
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
+            swModule.ServiceWorkerDependencies.fetch.mockResolvedValue(networkResponse);
+
+            const response = await manager.handleCustomEmojiImageRequest(
+                new Request('https://example.com/emoji.webp?size=small'),
+            );
+
+            expect(response).toBe(networkResponse);
+            expect(swModule.ServiceWorkerDependencies.fetch).toHaveBeenCalledTimes(1);
         });
 
         it('should return cached custom emoji image before network', async () => {
@@ -1280,6 +1319,13 @@ describe('Service Worker Tests', () => {
         it('should handle action message event for cleanupDuplicateProfileCache', async () => {
             const core = new swModule.ServiceWorkerCore();
             const mockPort = { postMessage: vi.fn() };
+            const baseRequest = new Request('https://example.com/profile.jpg');
+            const queryRequest = new Request('https://example.com/profile.jpg?profile=true');
+            const mockCache = {
+                keys: vi.fn().mockResolvedValue([baseRequest, queryRequest]),
+                delete: vi.fn().mockResolvedValue(true),
+            };
+            swModule.ServiceWorkerDependencies.caches.open.mockResolvedValue(mockCache);
             const mockEvent = {
                 data: { action: 'cleanupDuplicateProfileCache' },
                 ports: [mockPort],
@@ -1289,7 +1335,7 @@ describe('Service Worker Tests', () => {
 
             expect(mockPort.postMessage).toHaveBeenCalledWith({
                 success: true,
-                deletedCount: 0,
+                deletedCount: 1,
             });
         });
     });

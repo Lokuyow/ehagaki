@@ -5,13 +5,17 @@ import {
 import {
     createBaseCacheLookupEntries,
     getLegacyCachesToDelete,
-    getDuplicateProfileCacheRequests,
     matchCacheByPriority,
 } from "../src/lib/swCacheUtils";
 import {
     createSharedClientUrl,
     persistSharedMediaIfPresent,
 } from "../src/lib/swClientUtils";
+import {
+    cacheCustomEmojiImagesBatch,
+    cacheOpaqueCustomEmojiImage,
+} from "../src/lib/swCustomEmojiCacheUtils";
+import { resolveCustomEmojiImageRequestResponse } from "../src/lib/swCustomEmojiRequestUtils";
 import {
     createPingTestResponse,
     createVersionResponse,
@@ -40,6 +44,11 @@ import {
     summarizeExtractedSharedMedia,
 } from "../src/lib/swUploadRequestUtils";
 import { resolveProfileImageRequestResult } from "../src/lib/swProfileImageRequestUtils";
+import { findProfileImageCacheMatch } from "../src/lib/swProfileImageCacheUtils";
+import {
+    cleanupServiceWorkerDuplicateProfileCache,
+    clearServiceWorkerProfileCache,
+} from "../src/lib/swProfileCacheActionUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
 import {
     createClientSharedMediaNotification,
@@ -337,14 +346,12 @@ class CacheManager {
                 return null;
             }
 
-            const cachedMatch = await matchCacheByPriority(
+            const cachedMatch = await findProfileImageCacheMatch({
+                request,
                 cache,
-                createBaseCacheLookupEntries(
-                    baseUrl,
-                    request,
-                    Utilities.createCorsRequest,
-                ),
-            );
+                getBaseUrl: Utilities.getBaseUrl,
+                createRequest: Utilities.createCorsRequest,
+            });
 
             if (cachedMatch?.source === 'base-cors') {
                 this.console.log('プロフィール画像をキャッシュから返却（ベースURL）:', baseUrl);
@@ -445,20 +452,13 @@ class CacheManager {
     async handleCustomEmojiImageRequest(request) {
         try {
             const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
-            const baseUrl = Utilities.getBaseUrl(request.url);
-            if (baseUrl) {
-                const cachedMatch = await matchCacheByPriority(
-                    cache,
-                    createBaseCacheLookupEntries(
-                        baseUrl,
-                        request,
-                        Utilities.createCorsRequest,
-                    ),
-                );
-                if (cachedMatch) {
-                    return cachedMatch.response;
-                }
-            }
+            return await resolveCustomEmojiImageRequestResponse({
+                request,
+                cache,
+                getBaseUrl: Utilities.getBaseUrl,
+                createRequest: Utilities.createCorsRequest,
+                fetchRequest: (targetRequest) => this.fetch(targetRequest),
+            });
         } catch (error) {
             this.console.warn('カスタム絵文字キャッシュ取得に失敗:', error);
         }
@@ -467,101 +467,46 @@ class CacheManager {
     }
 
     async cacheOpaqueCustomEmojiImage(cache, baseUrl) {
-        const request = Utilities.createCorsRequest(baseUrl, {
-            mode: 'no-cors',
-            cache: 'reload'
+        return await cacheOpaqueCustomEmojiImage({
+            cache,
+            baseUrl,
+            fetchRequest: (request) => this.fetch(request),
+            createRequest: Utilities.createCorsRequest,
         });
-        const response = await this.fetch(request);
-        if (!response || response.type !== 'opaque') {
-            return false;
-        }
-
-        await cache.put(Utilities.createCorsRequest(baseUrl, { mode: 'no-cors' }), response.clone());
-        return true;
     }
 
     async cacheCustomEmojiImages(urls) {
-        if (!Array.isArray(urls) || urls.length === 0) {
-            return { success: true, cached: 0, failed: 0 };
-        }
-
-        const cache = await this.caches.open(CUSTOM_EMOJI_CACHE_NAME);
-        let cached = 0;
-        let failed = 0;
-
-        for (const rawUrl of [...new Set(urls)].slice(0, 300)) {
-            let baseUrl = null;
-            try {
-                baseUrl = Utilities.getBaseUrl(rawUrl);
-                if (!baseUrl) {
-                    failed++;
-                    continue;
-                }
-
-                const request = Utilities.createCorsRequest(baseUrl, {
-                    mode: 'cors',
-                    cache: 'reload'
-                });
-                const response = await this.fetch(request);
-                if (await Utilities.isCacheableCustomEmojiResponse(response)) {
-                    await cache.put(Utilities.createCorsRequest(baseUrl), response.clone());
-                    cached++;
-                } else {
-                    failed++;
-                }
-            } catch (error) {
-                try {
-                    if (baseUrl && await this.cacheOpaqueCustomEmojiImage(cache, baseUrl)) {
-                        cached++;
-                    } else {
-                        failed++;
-                    }
-                } catch (opaqueError) {
-                    failed++;
-                    this.console.warn('カスタム絵文字画像のopaqueキャッシュ保存に失敗:', opaqueError, rawUrl);
-                }
-            }
-        }
-
-        return { success: true, cached, failed };
+        return await cacheCustomEmojiImagesBatch({
+            urls,
+            cacheStorage: this.caches,
+            cacheName: CUSTOM_EMOJI_CACHE_NAME,
+            fetchRequest: (request) => this.fetch(request),
+            createRequest: Utilities.createCorsRequest,
+            getBaseUrl: Utilities.getBaseUrl,
+            isCacheableCustomEmojiResponse: (response) =>
+                Utilities.isCacheableCustomEmojiResponse(response),
+            cacheOpaqueImage: (cache, baseUrl) => this.cacheOpaqueCustomEmojiImage(cache, baseUrl),
+            logger: this.console,
+        });
     }
 
     // プロフィール画像キャッシュをクリア
     async clearProfileCache() {
-        try {
-            const deleted = await this.caches.delete(PROFILE_CACHE_NAME);
-            this.console.log('プロフィール画像キャッシュクリア:', deleted);
-            return { success: true };
-        } catch (err) {
-            this.console.error('プロフィールキャッシュクリアエラー:', err);
-            return { success: false, error: err.message };
-        }
+        return await clearServiceWorkerProfileCache({
+            cacheStorage: this.caches,
+            cacheName: PROFILE_CACHE_NAME,
+            logger: this.console,
+        });
     }
 
     // 重複プロフィール画像キャッシュのクリーンアップ
     async cleanupDuplicateProfileCache() {
-        try {
-            const cache = await this.caches.open(PROFILE_CACHE_NAME);
-            const keys = await cache.keys();
-            const duplicateKeys = getDuplicateProfileCacheRequests(
-                keys,
-                Utilities.getBaseUrl,
-            );
-
-            // 重複するキャッシュエントリを削除
-            let deletedCount = 0;
-            for (const duplicateKey of duplicateKeys) {
-                await cache.delete(duplicateKey);
-                deletedCount++;
-                this.console.log('重複キャッシュを削除:', duplicateKey.url);
-            }
-
-            this.console.log(`重複プロフィールキャッシュクリーンアップ完了: ${deletedCount}件削除`);
-            return { success: true, deletedCount };
-        } catch (error) {
-            this.console.error('重複キャッシュクリーンアップエラー:', error);
-            return { success: false, error: error.message };
-        }
+        return await cleanupServiceWorkerDuplicateProfileCache({
+            cacheStorage: this.caches,
+            cacheName: PROFILE_CACHE_NAME,
+            logger: this.console,
+            getBaseUrl: Utilities.getBaseUrl,
+        });
     }
 }
 
