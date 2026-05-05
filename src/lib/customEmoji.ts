@@ -1,5 +1,15 @@
 import { createRxBackwardReq, type RxNostr } from "rx-nostr";
 import type { EmojisRepository } from "./storage/emojisRepository";
+import {
+    prepareCachedEmojiItems,
+    restoreCachedEmojiItems,
+} from "./customEmojiCachePersistenceUtils";
+import { buildCustomEmojiListFromFetchedEvents } from "./customEmojiFetchUtils";
+import {
+    clampCustomEmojiPickerPersistenceHeight,
+    readPersistedPickerHeight,
+    writePersistedPickerHeight,
+} from "./customEmojiPickerPersistenceUtils";
 
 export type CustomEmojiSourceType = "kind10030" | "kind30030";
 
@@ -293,19 +303,12 @@ export async function readCachedCustomEmojiItems(
     try {
         const cacheRepository = repository ?? await getDefaultEmojisRepository();
         const record = await cacheRepository.get(pubkey);
-        if (
-            !record?.meta ||
-            record.meta.schemaVersion !== EMOJIS_CACHE_SCHEMA_VERSION ||
-            !Array.isArray(record.items)
-        ) {
-            return [];
-        }
-
-        return mergeCustomEmojiItems([
-            record.items
-                .map((item, index) => normalizeCustomEmojiItem(item, index))
-                .filter((item): item is CustomEmojiItem => !!item),
-        ]);
+        return restoreCachedEmojiItems({
+            record,
+            schemaVersion: EMOJIS_CACHE_SCHEMA_VERSION,
+            normalizeItem: normalizeCustomEmojiItem,
+            mergeItems: mergeCustomEmojiItems,
+        });
     } catch {
         return [];
     }
@@ -318,11 +321,11 @@ export async function writeCachedCustomEmojiItems(
 ): Promise<void> {
     if (!pubkey) return;
 
-    const items = mergeCustomEmojiItems([
-        nextItems
-            .map((item, index) => normalizeCustomEmojiItem(item, index))
-            .filter((item): item is CustomEmojiItem => !!item),
-    ]);
+    const items = prepareCachedEmojiItems({
+        items: nextItems,
+        normalizeItem: normalizeCustomEmojiItem,
+        mergeItems: mergeCustomEmojiItems,
+    });
 
     try {
         const cacheRepository = repository ?? await getDefaultEmojisRepository();
@@ -401,15 +404,16 @@ export async function fetchCustomEmojiList(params: {
     );
 
     if (!listEvent) return [];
-
-    const directItems = parseEmojiTags(listEvent.tags, {
-        sourceType: "kind10030",
-        sourceAddress: null,
-        startSortIndex: 0,
-    });
     const addresses = getKind10030EmojiSetAddresses(listEvent);
     if (addresses.length === 0) {
-        return mergeCustomEmojiItems([directItems]);
+        return buildCustomEmojiListFromFetchedEvents({
+            listEvent,
+            setEvents: [],
+            parseEmojiTags,
+            getKind10030EmojiSetAddresses,
+            parseEmojiSetAddress,
+            mergeCustomEmojiItems: mergeCustomEmojiItems,
+        });
     }
 
     const parsedAddresses = addresses
@@ -424,53 +428,44 @@ export async function fetchCustomEmojiList(params: {
             until,
         },
     });
-    const eventsByAddress = new Map<string, NostrEventLike>();
 
-    for (const event of setEvents) {
-        const identifier = event.tags.find((tag) => tag[0] === "d")?.[1];
-        if (!event.pubkey || !identifier) continue;
-        const address = `30030:${event.pubkey}:${identifier}`;
-        const existing = eventsByAddress.get(address);
-        if (!existing || (event.created_at ?? 0) > (existing.created_at ?? 0)) {
-            eventsByAddress.set(address, event);
-        }
-    }
-
-    let nextSortIndex = directItems.length;
-    const groups = [directItems];
-    for (const address of addresses) {
-        const group = parseEmojiTags(eventsByAddress.get(address)?.tags ?? [], {
-            setAddress: address,
-            sourceType: "kind30030",
-            sourceAddress: address,
-            startSortIndex: nextSortIndex,
-        });
-        nextSortIndex += group.length;
-        groups.push(group);
-    }
-
-    return mergeCustomEmojiItems(groups);
+    return buildCustomEmojiListFromFetchedEvents({
+        listEvent,
+        setEvents,
+        parseEmojiTags,
+        getKind10030EmojiSetAddresses,
+        parseEmojiSetAddress,
+        mergeCustomEmojiItems: mergeCustomEmojiItems,
+    });
 }
 
 export function readCustomEmojiPickerHeight(storage: Pick<Storage, "getItem">, viewportHeight?: number, maxHeight?: number): number {
-    const storedValue = storage.getItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY);
-    const raw = storedValue === null ? NaN : Number(storedValue);
-    return clampCustomEmojiPickerHeight(Number.isFinite(raw) ? raw : CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT, viewportHeight, maxHeight);
+    return readPersistedPickerHeight({
+        storage,
+        storageKey: CUSTOM_EMOJI_PICKER_HEIGHT_KEY,
+        defaultHeight: CUSTOM_EMOJI_PICKER_DEFAULT_HEIGHT,
+        clampHeight: (value) =>
+            clampCustomEmojiPickerHeight(value, viewportHeight, maxHeight),
+    });
 }
 
 export function clampCustomEmojiPickerHeight(value: number, viewportHeight = typeof window !== "undefined" ? (window.visualViewport?.height ?? window.innerHeight) : 800, maxHeight?: number): number {
-    const viewportMax = Math.floor(viewportHeight * 0.6);
-    const max = Math.max(
-        CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
-        Number.isFinite(maxHeight) ? Math.floor(maxHeight as number) : viewportMax,
-    );
-    return Math.min(max, Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, Math.round(value)));
+    return clampCustomEmojiPickerPersistenceHeight({
+        value,
+        minHeight: CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
+        viewportHeight,
+        maxHeight,
+    });
 }
 
 export function writeCustomEmojiPickerHeight(storage: Pick<Storage, "setItem">, value: number, viewportHeight?: number, maxHeight?: number): number {
-    const height = clampCustomEmojiPickerHeight(value, viewportHeight, maxHeight);
-    storage.setItem(CUSTOM_EMOJI_PICKER_HEIGHT_KEY, String(height));
-    return height;
+    return writePersistedPickerHeight({
+        storage,
+        storageKey: CUSTOM_EMOJI_PICKER_HEIGHT_KEY,
+        value,
+        clampHeight: (nextValue) =>
+            clampCustomEmojiPickerHeight(nextValue, viewportHeight, maxHeight),
+    });
 }
 
 export function getCustomEmojiCacheBatches(
