@@ -18,6 +18,10 @@ const IMAGE_COMPRESSION_TARGET_RATIO_MAP: Partial<Record<ImageCompressionLevel, 
     high: 0.6,
 };
 
+function isDefaultUploadAborted(): boolean {
+    return uploadAbortFlagStore.value;
+}
+
 async function loadImageCompression() {
     if (!imageCompressionModulePromise) {
         imageCompressionModulePromise = import("browser-image-compression");
@@ -33,7 +37,8 @@ export class ImageCompressionService implements CompressionService {
 
     constructor(
         private mimeSupport: MimeTypeSupportInterface,
-        private localStorage: Storage
+        private localStorage: Storage,
+        private isUploadAborted: () => boolean = isDefaultUploadAborted,
     ) { }
 
     /**
@@ -150,7 +155,7 @@ export class ImageCompressionService implements CompressionService {
     }
 
     async compress(file: File): Promise<{ file: File; wasCompressed: boolean; wasSkipped?: boolean; aborted?: boolean }> {
-        if (uploadAbortFlagStore.value) {
+        if (this.isUploadAborted()) {
             return { file, wasCompressed: false, aborted: true };
         }
 
@@ -183,7 +188,7 @@ export class ImageCompressionService implements CompressionService {
             }
         }
 
-        if (uploadAbortFlagStore.value) {
+        if (this.isUploadAborted()) {
             return { file, wasCompressed: false, aborted: true };
         }
 
@@ -198,7 +203,7 @@ export class ImageCompressionService implements CompressionService {
             const compressed = await imageCompression(file, usedOptions as Parameters<typeof imageCompression>[1]);
             const compressedBlob = compressed as Blob;
 
-            if (uploadAbortFlagStore.value) {
+            if (this.isUploadAborted()) {
                 if (this.onProgress) {
                     this.onProgress(0);
                 }
@@ -224,7 +229,7 @@ export class ImageCompressionService implements CompressionService {
             showCompressedImagePreview(outFile);
             return { file: outFile, wasCompressed: true };
         } catch (error) {
-            if (uploadAbortFlagStore.value) {
+            if (this.isUploadAborted()) {
                 if (this.onProgress) {
                     this.onProgress(0);
                 }

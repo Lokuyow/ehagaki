@@ -1,13 +1,18 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getMimeTypeFromUrl, extractImageBlurhashMap, createImetaTag } from '../../lib/tags/imetaTag';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { getMimeTypeFromUrl, extractImageBlurhashMap, createImetaTag, generateBlurhash } from '../../lib/tags/imetaTag';
 
 /**
  * imetaTag ユニットテスト
  *
  * NIP-92 imetaタグ生成ユーティリティのテスト。
  * テスト可能な純粋関数・ロジック部分を検証する。
- * Canvas依存の generateBlurhash / calculateImageHash は統合テスト向きのため除外。
+ * Canvas依存の generateBlurhash 正常系 / calculateImageHash は統合テスト向きのため除外。
  */
+
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+});
 
 describe('getMimeTypeFromUrl', () => {
     describe('正常系', () => {
@@ -229,6 +234,53 @@ describe('extractImageBlurhashMap', () => {
             };
             expect(extractImageBlurhashMap(mockEditor)).toEqual({});
         });
+    });
+});
+
+describe('generateBlurhash', () => {
+    it('画像読み込み前の中止判定でnullを返す', async () => {
+        const imageSpy = vi.spyOn(window, 'Image');
+        const file = new File(['image'], 'photo.png', { type: 'image/png' });
+
+        await expect(generateBlurhash(file, () => true)).resolves.toBeNull();
+
+        expect(imageSpy).not.toHaveBeenCalled();
+    });
+
+    it('画像読み込み後の中止判定でcanvas処理に進まない', async () => {
+        const createObjectURL = vi.fn(() => 'blob:mock-image');
+        const revokeObjectURL = vi.fn();
+        const isUploadAborted = vi.fn()
+            .mockReturnValueOnce(false)
+            .mockReturnValueOnce(true);
+        const createElementSpy = vi.spyOn(document, 'createElement');
+
+        vi.stubGlobal('URL', {
+            createObjectURL,
+            revokeObjectURL
+        });
+
+        vi.spyOn(window, 'Image').mockImplementation(() => {
+            const mockImage = {
+                width: 32,
+                height: 24,
+                onload: null as (() => void) | null,
+                onerror: null as ((event?: unknown) => void) | null,
+                set src(_value: string) {
+                    this.onload?.();
+                }
+            };
+            return mockImage as unknown as HTMLImageElement;
+        });
+
+        const file = new File(['image'], 'photo.png', { type: 'image/png' });
+
+        await expect(generateBlurhash(file, isUploadAborted)).resolves.toBeNull();
+
+        expect(isUploadAborted).toHaveBeenCalledTimes(2);
+        expect(createObjectURL).toHaveBeenCalledWith(file);
+        expect(revokeObjectURL).toHaveBeenCalledWith('blob:mock-image');
+        expect(createElementSpy).not.toHaveBeenCalledWith('canvas');
     });
 });
 

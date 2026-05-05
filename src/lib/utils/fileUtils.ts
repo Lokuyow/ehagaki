@@ -6,12 +6,20 @@ import { calculateImageDisplaySize } from './mediaNodeUtils';
 // File Upload Utilities
 // =============================================================================
 
+function isDefaultUploadAborted(): boolean {
+    return uploadAbortFlagStore.value;
+}
+
 /**
  * 画像のSHA-256ハッシュ計算
  */
-export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = window.crypto.subtle): Promise<string> {
+export async function calculateSHA256Hex(
+    file: File,
+    crypto: SubtleCrypto = window.crypto.subtle,
+    isUploadAborted: () => boolean = isDefaultUploadAborted,
+): Promise<string> {
     // 中止フラグをチェック（計算開始前のみ）
-    if (uploadAbortFlagStore.value) {
+    if (isUploadAborted()) {
         throw new Error('Upload aborted by user');
     }
 
@@ -25,10 +33,11 @@ export async function calculateSHA256Hex(file: File, crypto: SubtleCrypto = wind
 
 async function tryCalculateSHA256Hex(
     file: File,
-    crypto: SubtleCrypto
+    crypto: SubtleCrypto,
+    isUploadAborted: () => boolean,
 ): Promise<string | undefined> {
     try {
-        return await calculateSHA256Hex(file, crypto);
+        return await calculateSHA256Hex(file, crypto, isUploadAborted);
     } catch {
         return undefined;
     }
@@ -97,9 +106,10 @@ export async function processFilesForUpload(
     dependencies: UploadHelperDependencies
 ): Promise<Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }>> {
     const results: Array<{ file: File; index: number; ox?: string; dimensions?: ImageDimensions }> = [];
+    const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
 
     // 処理前に1度だけ中止チェック
-    if (uploadAbortFlagStore.value) {
+    if (isUploadAborted()) {
         throw new Error('Upload aborted by user');
     }
 
@@ -109,7 +119,7 @@ export async function processFilesForUpload(
 
         const [oxResult, dimensionsResult] = await Promise.all([
             // ox計算
-            tryCalculateSHA256Hex(file, dependencies.crypto),
+            tryCalculateSHA256Hex(file, dependencies.crypto, isUploadAborted),
             // サイズ計算
             dependencies.getImageDimensions(file)
         ]);

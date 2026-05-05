@@ -19,6 +19,10 @@ export function devWarn(context: string, ...args: any[]): void {
     }
 }
 
+function isDefaultUploadAborted(): boolean {
+    return uploadAbortFlagStore.value;
+}
+
 /**
  * 圧縮後のファイルを生成・検証
  */
@@ -55,9 +59,10 @@ export function createCompressedFile(
 export function checkAbort(
     file: File,
     context: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    isUploadAborted: () => boolean = isDefaultUploadAborted,
 ): VideoCompressionResult | null {
-    if (uploadAbortFlagStore.value) {
+    if (isUploadAborted()) {
         devLog(context, 'Compression aborted');
         if (onProgress) {
             onProgress(0);

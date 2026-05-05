@@ -395,6 +395,19 @@ describe('ImageCompressionService', () => {
         });
 
         describe('中止フラグ', () => {
+            it('注入された中止判定で圧縮開始前にaborted=trueを返す', async () => {
+                const isUploadAborted = vi.fn(() => true);
+                service = new ImageCompressionService(mockMimeSupport, mockStorage, isUploadAborted);
+
+                const file = createTestFile('photo.jpg', 'image/jpeg', 500000);
+                const result = await service.compress(file);
+
+                expect(result.aborted).toBe(true);
+                expect(result.wasCompressed).toBe(false);
+                expect(isUploadAborted).toHaveBeenCalled();
+                expect(imageCompressionMock).not.toHaveBeenCalled();
+            });
+
             it('圧縮開始前に中止フラグが立っている場合はaborted=trueを返す', async () => {
                 // uploadAbortFlagStoreはsetup.tsでモックされている
                 const { uploadAbortFlagStore } = await import('../../stores/uploadStore.svelte');

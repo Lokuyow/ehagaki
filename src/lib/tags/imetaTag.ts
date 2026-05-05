@@ -8,6 +8,10 @@ export interface ImetaField extends Partial<Record<string, any>> {
     [key: string]: any;
 }
 
+function isDefaultUploadAborted(): boolean {
+    return uploadAbortFlagStore.value;
+}
+
 /**
  * NIP-94のgenerateEventTemplateを利用してimetaタグを生成（dimがなければ画像から取得して必ず含める）
  * @param fields imetaタグに含めるフィールド
@@ -69,10 +73,13 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
  * @param file 画像ファイル
  * @returns blurhash文字列 or null
  */
-export async function generateBlurhash(file: File): Promise<string | null> {
+export async function generateBlurhash(
+    file: File,
+    isUploadAborted: () => boolean = isDefaultUploadAborted,
+): Promise<string | null> {
     try {
         // 中止フラグをチェック
-        if (uploadAbortFlagStore.value) {
+        if (isUploadAborted()) {
             return null;
         }
 
@@ -91,7 +98,7 @@ export async function generateBlurhash(file: File): Promise<string | null> {
         });
 
         // 画像読み込み後に中止チェック
-        if (uploadAbortFlagStore.value) {
+        if (isUploadAborted()) {
             return null;
         }
 
@@ -132,9 +139,11 @@ export async function createPlaceholderUrl(file: File): Promise<string | null> {
  * @param file 画像ファイル
  * @returns blurhash文字列 or null
  */
-export async function generateBlurhashForFile(file: File): Promise<string | null> {
-    const devMode = import.meta.env?.MODE === "development";
-    const hash = await generateBlurhash(file);
+export async function generateBlurhashForFile(
+    file: File,
+    isUploadAborted?: () => boolean,
+): Promise<string | null> {
+    const hash = await generateBlurhash(file, isUploadAborted);
     return hash;
 }
 

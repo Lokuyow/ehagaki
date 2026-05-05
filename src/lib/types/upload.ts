@@ -138,6 +138,7 @@ export interface UploadHelperDependencies {
         mime?: MimeTypeSupportInterface
     ) => FileUploadManagerInterface;
     getImageDimensions: (file: File) => Promise<ImageDimensions | null>;
+    isUploadAborted?: () => boolean;
     extractImageBlurhashMap: (editor: TipTapEditor) => Record<string, string>;
     calculateImageHash: (url: string) => Promise<string | null>;
     getMimeTypeFromUrl: (url: string) => string;

@@ -213,6 +213,25 @@ describe('File Processing Utilities', () => {
         expect(digestMock).toHaveBeenCalled();
         expect(getImageDimensionsMock).toHaveBeenCalledWith(file);
     });
+
+    it('should use injected abort checker before processing files', async () => {
+        const digestMock = vi.fn();
+        const getImageDimensionsMock = vi.fn();
+        const dependencies = createDependencies({
+            crypto: { digest: digestMock } as unknown as SubtleCrypto,
+            getImageDimensions: getImageDimensionsMock,
+            isUploadAborted: vi.fn(() => true)
+        });
+        const file = {
+            name: 'aborted-photo.png',
+            type: 'image/png',
+            arrayBuffer: vi.fn()
+        } as unknown as File;
+
+        await expect(processFilesForUpload([file], dependencies)).rejects.toThrow('Upload aborted by user');
+        expect(digestMock).not.toHaveBeenCalled();
+        expect(getImageDimensionsMock).not.toHaveBeenCalled();
+    });
 });
 
 describe('Nostr Key Utilities', () => {
