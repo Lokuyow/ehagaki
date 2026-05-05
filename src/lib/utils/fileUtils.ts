@@ -1,14 +1,10 @@
-import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import type { ImageDimensions, UploadHelperDependencies } from "../types";
+import { isDefaultUploadAborted } from '../uploadAbortUtils';
 import { calculateImageDisplaySize } from './mediaNodeUtils';
 
 // =============================================================================
 // File Upload Utilities
 // =============================================================================
-
-function isDefaultUploadAborted(): boolean {
-    return uploadAbortFlagStore.value;
-}
 
 /**
  * 画像のSHA-256ハッシュ計算

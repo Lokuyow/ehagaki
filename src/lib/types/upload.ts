@@ -80,6 +80,7 @@ export interface FileUploadDependencies {
     document?: Document;
     window?: Window;
     navigator?: Navigator;
+    isUploadAborted?: () => boolean;
 }
 
 export interface CompressionService {

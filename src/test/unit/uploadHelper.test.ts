@@ -480,6 +480,34 @@ describe("uploadHelper", () => {
             expect(updateUploadState).toHaveBeenCalledWith(false);
         });
 
+        it("uses injected abort checker for upload checkpoints", async () => {
+            const file = new File(["content"], "test.png", { type: "image/png" });
+            const showUploadError = vi.fn();
+            const updateUploadState = vi.fn();
+            const isUploadAborted = vi.fn()
+                .mockReturnValueOnce(false)
+                .mockReturnValueOnce(false)
+                .mockReturnValueOnce(true);
+
+            const result = await uploadHelper({
+                files: [file],
+                currentEditor,
+                showUploadError,
+                updateUploadState,
+                devMode: false,
+                dependencies: {
+                    ...mockDependencies,
+                    isUploadAborted,
+                },
+            });
+
+            expect(result.results).toBeNull();
+            expect(result.errorMessage).toBe("Upload aborted by user");
+            expect(isUploadAborted).toHaveBeenCalled();
+            expect(updateUploadState).toHaveBeenCalledWith(false);
+            expect(updateUploadState).not.toHaveBeenCalledWith(true, "");
+        });
+
         it("handles validation errors", async () => {
             const invalidFile = new File(["content"], "test.txt", { type: "text/plain" });
             const showUploadError = vi.fn();

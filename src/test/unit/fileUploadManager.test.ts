@@ -293,6 +293,39 @@ describe('FileUploadManager', () => {
     });
 
     describe('ファイルアップロード', () => {
+        it('注入された中止判定で圧縮と送信に進まずabortedを返す', async () => {
+            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            const isUploadAborted = vi.fn(() => true);
+            mockDependencies.isUploadAborted = isUploadAborted;
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
+            };
+            const mockCompressionService = {
+                compress: vi.fn(),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+
+            const result = await uploadManager.uploadFile(file);
+
+            expect(result).toEqual({
+                success: false,
+                error: 'Upload aborted by user',
+                aborted: true
+            });
+            expect(isUploadAborted).toHaveBeenCalled();
+            expect(mockCompressionService.compress).not.toHaveBeenCalled();
+            expect(mockAuthService.buildAuthHeader).not.toHaveBeenCalled();
+            expect(mockFetch).not.toHaveBeenCalled();
+        });
+
         it('成功時に正しいレスポンスを返す', async () => {
             const file = createMockFile('test.jpg', 'image/jpeg', 1000); // 1KB
 

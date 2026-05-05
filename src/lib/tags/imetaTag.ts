@@ -1,15 +1,11 @@
 // imeta.ts
 // NIP-92 imetaタグ生成ユーティリティ
-import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
+import { isDefaultUploadAborted } from '../uploadAbortUtils';
 
 export interface ImetaField extends Partial<Record<string, any>> {
     url: string;
     x?: string; // アップロード後画像のSHA-256ハッシュ
     [key: string]: any;
-}
-
-function isDefaultUploadAborted(): boolean {
-    return uploadAbortFlagStore.value;
 }
 
 /**

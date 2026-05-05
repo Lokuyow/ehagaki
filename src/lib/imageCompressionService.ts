@@ -1,9 +1,9 @@
 import type { CompressionService, MimeTypeSupportInterface } from './types';
 import { COMPRESSION_OPTIONS_MAP } from './constants';
-import { uploadAbortFlagStore } from '../stores/uploadStore.svelte';
 import { renameByMimeType } from './utils/fileUtils';
 import { getImageCompressionLevelPreference } from './utils/settingsStorage';
 import { showCompressedImagePreview } from './debug';
+import { isDefaultUploadAborted } from './uploadAbortUtils';
 
 type ImageCompressionLevel = keyof typeof COMPRESSION_OPTIONS_MAP;
 
@@ -17,10 +17,6 @@ const IMAGE_COMPRESSION_TARGET_RATIO_MAP: Partial<Record<ImageCompressionLevel, 
     medium: 0.75,
     high: 0.6,
 };
-
-function isDefaultUploadAborted(): boolean {
-    return uploadAbortFlagStore.value;
-}
 
 async function loadImageCompression() {
     if (!imageCompressionModulePromise) {

@@ -1,5 +1,5 @@
 import type { VideoCompressionResult } from '../types';
-import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
+import { isDefaultUploadAborted } from '../uploadAbortUtils';
 
 /**
  * 開発環境でのログ出力用ヘルパー
@@ -17,10 +17,6 @@ export function devWarn(context: string, ...args: any[]): void {
     if (import.meta.env.DEV) {
         console.warn(`[${context}]`, ...args);
     }
-}
-
-function isDefaultUploadAborted(): boolean {
-    return uploadAbortFlagStore.value;
 }
 
 /**

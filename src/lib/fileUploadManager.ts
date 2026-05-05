@@ -1,6 +1,6 @@
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
 import { calculateSHA256Hex } from "./utils/fileUtils";
-import { setImageSizeInfoFromFileSize, uploadAbortFlagStore } from "../stores/uploadStore.svelte";
+import { setImageSizeInfoFromFileSize } from "../stores/uploadStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
   FileUploadResponse,
@@ -27,6 +27,7 @@ import { MimeTypeSupport } from './mimeTypeSupport';
 import { ImageCompressionService } from './imageCompressionService';
 import { NostrAuthService } from './nostrAuthService';
 import { isValidUploadEndpoint, normalizeLocale } from './utils/settingsStorage';
+import { isDefaultUploadAborted } from './uploadAbortUtils';
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -50,9 +51,20 @@ export class FileUploadManager implements FileUploadManagerInterface {
     mimeSupport?: MimeTypeSupportInterface
   ) {
     this.mimeSupport = mimeSupport || new MimeTypeSupport(dependencies.document);
-    this.imageCompressionService = imageCompressionService || new ImageCompressionService(this.mimeSupport, dependencies.localStorage);
-    this.videoCompressionService = videoCompressionService || new VideoCompressionService(dependencies.localStorage);
+    this.imageCompressionService = imageCompressionService || new ImageCompressionService(
+      this.mimeSupport,
+      dependencies.localStorage,
+      this.isUploadAborted.bind(this)
+    );
+    this.videoCompressionService = videoCompressionService || new VideoCompressionService(
+      dependencies.localStorage,
+      this.isUploadAborted.bind(this)
+    );
     this.authService = authService || new NostrAuthService();
+  }
+
+  private isUploadAborted(): boolean {
+    return this.dependencies.isUploadAborted?.() ?? isDefaultUploadAborted();
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -77,7 +89,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
   }
 
   async generateBlurhashForFile(file: File): Promise<string | null> {
-    return await generateBlurhashForFile(file);
+    return await generateBlurhashForFile(file, this.isUploadAborted.bind(this));
   }
 
   async createPlaceholderUrl(file: File): Promise<string | null> {
@@ -115,7 +127,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
     while (true) {
       // ポーリング中の中止チェック
-      if (uploadAbortFlagStore.value) {
+      if (this.isUploadAborted()) {
         throw new Error('Upload aborted by user');
       }
 
@@ -170,7 +182,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       let ox: string | undefined = undefined;
       try {
-        ox = await calculateSHA256Hex(file, this.dependencies.crypto);
+        ox = await calculateSHA256Hex(file, this.dependencies.crypto, this.isUploadAborted.bind(this));
       } catch (e) {
         ox = undefined;
       }
@@ -178,7 +190,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
       const originalSize = file.size;
 
       // 圧縮開始前に中止チェック
-      if (uploadAbortFlagStore.value) {
+      if (this.isUploadAborted()) {
         if (devMode) console.log('[FileUploadManager] Upload aborted before compression');
         return { success: false, error: 'Upload aborted by user', aborted: true };
       }
@@ -248,7 +260,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
       });
 
       // 重要な処理前後のみ中止チェック
-      if (uploadAbortFlagStore.value) {
+      if (this.isUploadAborted()) {
         return {
           success: false,
           error: 'Upload aborted by user',
@@ -283,7 +295,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
           data = await this.pollUploadStatus(data.processing_url, processingAuthToken);
 
           // ポーリング後の中止チェック
-          if (uploadAbortFlagStore.value) {
+          if (this.isUploadAborted()) {
             return {
               success: false,
               error: 'Upload aborted by user',
@@ -318,7 +330,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
       };
     } catch (error) {
       // エラーハンドリング時の中止チェック
-      if (uploadAbortFlagStore.value) {
+      if (this.isUploadAborted()) {
         return {
           success: false,
           error: 'Upload aborted by user',
@@ -369,7 +381,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     // 順次実行に変更し、中止時は即座に終了
     for (let index = 0; index < files.length; index++) {
       // 中止フラグチェック
-      if (uploadAbortFlagStore.value) {
+      if (this.isUploadAborted()) {
         // 残りのファイルをabortedとしてマーク
         for (let i = index; i < files.length; i++) {
           results[i] = { success: false, aborted: true };
@@ -458,7 +470,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
     );
 
     // 中止された場合はサイズ情報表示をスキップ
-    if (!uploadAbortFlagStore.value) {
+    if (!this.isUploadAborted()) {
       const firstSuccess = results.find(r => r.success && r.sizeInfo);
       if (firstSuccess?.sizeInfo) {
         setImageSizeInfoFromFileSize(firstSuccess.sizeInfo);

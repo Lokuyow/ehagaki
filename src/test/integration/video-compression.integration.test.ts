@@ -297,6 +297,25 @@ describe('Video Compression Integration Tests', () => {
     });
 
     describe('中止機能', () => {
+        it('注入された中止判定で圧縮開始前にaborted=trueを返す', async () => {
+            const isUploadAborted = vi.fn(() => true);
+            const progressCallback = vi.fn();
+            service = new VideoCompressionService(storage, isUploadAborted);
+            service.setProgressCallback(progressCallback);
+
+            const video = createTestVideoFile(500 * 1024);
+            const result = await service.compress(video);
+
+            expect(result).toEqual({
+                file: video,
+                wasCompressed: false,
+                wasSkipped: true,
+                aborted: true
+            });
+            expect(isUploadAborted).toHaveBeenCalled();
+            expect(progressCallback).toHaveBeenCalledWith(0);
+        });
+
         it('abort()メソッドが正常に実行される', () => {
             expect(() => service.abort()).not.toThrow();
         });

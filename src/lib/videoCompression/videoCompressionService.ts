@@ -1,8 +1,8 @@
-import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from '../constants';
 import type { VideoCompressionResult, VideoCompressionLevel } from '../types';
 import type { MediaBunnyCompression } from './mediabunnyCompression';
 import type { FFmpegCompression } from './ffmpegCompression';
+import { isDefaultUploadAborted } from '../uploadAbortUtils';
 import {
     devLog,
     shouldSkipCompression,
@@ -22,7 +22,10 @@ export class VideoCompressionService {
     private initPromise: Promise<void> | null = null;
     private onProgress?: (progress: number) => void;
 
-    constructor(private localStorage: Storage) { }
+    constructor(
+        private localStorage: Storage,
+        private isUploadAborted: () => boolean = isDefaultUploadAborted,
+    ) { }
 
     /**
      * 圧縮エンジンの遅延初期化
@@ -163,7 +166,7 @@ export class VideoCompressionService {
         }
 
         // 中止チェック
-        if (uploadAbortFlagStore.value) {
+        if (this.isUploadAborted()) {
             devLog(this.context, 'Compression aborted');
             if (this.onProgress) {
                 this.onProgress(0);

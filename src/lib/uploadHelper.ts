@@ -42,10 +42,13 @@ import {
     removeAllGalleryPlaceholders,
 } from "./editor/placeholderManager";
 import { buildUploadFailureMessage } from "./uploadResultUtils";
+import { isDefaultUploadAborted } from "./uploadAbortUtils";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
 ): FileUploadManagerInterface {
+    const isUploadAborted = dependencies.isUploadAborted ?? isDefaultUploadAborted;
+
     if (
         dependencies.FileUploadManager ===
         (FileUploadManager as unknown as UploadHelperDependencies["FileUploadManager"])
@@ -56,9 +59,11 @@ function createFileUploadManager(
         const imageCompressionService = new ImageCompressionService(
             mimeSupport,
             dependencies.localStorage,
+            isUploadAborted,
         );
         const videoCompressionService = new VideoCompressionService(
             dependencies.localStorage,
+            isUploadAborted,
         );
 
         setImageCompressionService(imageCompressionService);
@@ -72,6 +77,7 @@ function createFileUploadManager(
                 document: typeof document === "undefined" ? undefined : document,
                 window: typeof window === "undefined" ? undefined : window,
                 navigator: typeof navigator === "undefined" ? undefined : navigator,
+                isUploadAborted,
             },
             new NostrAuthService(),
             imageCompressionService,
@@ -312,13 +318,14 @@ function createGalleryCleanupContext(
 }
 
 function createAbortCheckpointChecker({
+    isUploadAborted = isDefaultUploadAborted,
     ...context
-}: UploadAbortContext) {
+}: UploadAbortContext & { isUploadAborted?: () => boolean }) {
     return ({
         placeholderMap,
         cleanupPlaceholders,
     }: AbortCheckpointParams): UploadHelperResult | null => {
-        if (!uploadAbortFlagStore.value) {
+        if (!isUploadAborted()) {
             return null;
         }
 
@@ -342,6 +349,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
         mime?: MimeTypeSupportInterface
     ) => FileUploadManagerInterface,
     getImageDimensions,
+    isUploadAborted: isDefaultUploadAborted,
     extractImageBlurhashMap,
     calculateImageHash,
     getMimeTypeFromUrl,
@@ -414,6 +422,7 @@ export async function uploadHelper({
         uploadCallbacks: managedUploadCallbacks,
         devMode,
         galleryCleanup,
+        isUploadAborted: dependencies.isUploadAborted,
     });
 
     // 中止チェック（ファイル処理後）
