@@ -3,6 +3,7 @@ import type { MediaGalleryItem } from './types';
 import { STORAGE_KEYS, MAX_DRAFTS, DRAFT_PREVIEW_LENGTH } from './constants';
 import { draftsRepository, type DraftsRepositoryOptions } from './storage/draftsRepository';
 import { extractDraftPreviewParts } from './draftPreviewUtils';
+import { compareDraftsByDisplayOrder } from './draftSortUtils';
 import { get as getStore } from 'svelte/store';
 import { locale, _ } from 'svelte-i18n';
 
@@ -11,14 +12,6 @@ export type SaveDraftResult = {
     needsConfirmation: boolean;
     drafts: Draft[];
 };
-
-function sortDrafts(a: Pick<Draft, "timestamp" | "pinned">, b: Pick<Draft, "timestamp" | "pinned">): number {
-    if (!!a.pinned !== !!b.pinned) {
-        return a.pinned ? -1 : 1;
-    }
-
-    return b.timestamp - a.timestamp;
-}
 
 /**
  * 下書きをlocalStorageから読み込む
@@ -30,7 +23,7 @@ function loadDraftsFromStorage(): Draft[] {
     try {
         const drafts = JSON.parse(draftsJson) as Draft[];
         // タイムスタンプの降順でソート（新しいものが先頭）
-        return drafts.sort(sortDrafts);
+        return drafts.sort(compareDraftsByDisplayOrder);
     } catch {
         return [];
     }
@@ -202,7 +195,7 @@ export async function saveDraft(
             return {
                 success: true,
                 needsConfirmation: false,
-                drafts: [newDraft, ...drafts].sort(sortDrafts),
+                drafts: [newDraft, ...drafts].sort(compareDraftsByDisplayOrder),
             };
         },
         () => {
@@ -225,7 +218,7 @@ export async function saveDraft(
             const updatedDrafts = [newDraft, ...drafts];
             saveDraftsToStorage(updatedDrafts);
 
-            return { success: true, needsConfirmation: false, drafts: updatedDrafts.sort(sortDrafts) };
+            return { success: true, needsConfirmation: false, drafts: updatedDrafts.sort(compareDraftsByDisplayOrder) };
         },
     );
 }
@@ -266,7 +259,7 @@ export async function saveDraftWithReplaceOldest(
                 pubkeyHex: options.pubkeyHex ?? null,
             });
 
-            return [newDraft, ...remainingDrafts].sort(sortDrafts);
+            return [newDraft, ...remainingDrafts].sort(compareDraftsByDisplayOrder);
         },
         () => {
             const drafts = loadDraftsFromStorage();
@@ -285,7 +278,7 @@ export async function saveDraftWithReplaceOldest(
             const updatedDrafts = [newDraft, ...remainingDrafts];
             saveDraftsToStorage(updatedDrafts);
 
-            return updatedDrafts.sort(sortDrafts);
+            return updatedDrafts.sort(compareDraftsByDisplayOrder);
         },
     );
 }
@@ -307,7 +300,7 @@ export async function toggleDraftPinned(
             const drafts = loadDraftsFromStorage();
             const updatedDrafts = drafts
                 .map((draft) => draft.id === id ? { ...draft, pinned: pinned || undefined } : draft)
-                .sort(sortDrafts);
+                .sort(compareDraftsByDisplayOrder);
             saveDraftsToStorage(updatedDrafts);
             return updatedDrafts;
         },

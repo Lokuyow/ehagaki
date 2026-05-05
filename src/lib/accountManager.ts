@@ -32,6 +32,14 @@ export class AccountManager {
         this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACCOUNTS, JSON.stringify(accounts));
     }
 
+    private saveActiveAccountPubkey(pubkeyHex: string): void {
+        this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, pubkeyHex);
+    }
+
+    private clearActiveAccountPubkey(): void {
+        this.localStorage.removeItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT);
+    }
+
     getActiveAccountPubkey(): string | null {
         return this.localStorage.getItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT) || null;
     }
@@ -39,7 +47,7 @@ export class AccountManager {
     setActiveAccount(pubkeyHex: string): void {
         const accounts = this.getAccounts();
         if (!accounts.some(a => a.pubkeyHex === pubkeyHex)) return;
-        this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, pubkeyHex);
+        this.saveActiveAccountPubkey(pubkeyHex);
     }
 
     addAccount(pubkeyHex: string, type: StoredAccount['type']): void {
@@ -53,7 +61,7 @@ export class AccountManager {
             accounts.push({ pubkeyHex, type, addedAt: Date.now() });
             this.saveAccounts(accounts);
         }
-        this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, pubkeyHex);
+        this.saveActiveAccountPubkey(pubkeyHex);
     }
 
     /**
@@ -74,10 +82,10 @@ export class AccountManager {
             // アクティブアカウントが削除された → 次のアカウントを選択
             if (accounts.length > 0) {
                 const nextAccount = accounts[0];
-                this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, nextAccount.pubkeyHex);
+                this.saveActiveAccountPubkey(nextAccount.pubkeyHex);
                 return nextAccount.pubkeyHex;
             } else {
-                this.localStorage.removeItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT);
+                this.clearActiveAccountPubkey();
                 return null;
             }
         }
@@ -148,7 +156,7 @@ export class AccountManager {
         // アカウントリストを保存
         this.saveAccounts(accounts);
         if (activePubkey) {
-            this.localStorage.setItem(STORAGE_KEYS.NOSTR_ACTIVE_ACCOUNT, activePubkey);
+            this.saveActiveAccountPubkey(activePubkey);
         }
     }
 

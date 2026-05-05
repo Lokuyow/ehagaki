@@ -1,4 +1,5 @@
 import { MAX_DRAFTS, STORAGE_KEYS } from "../constants";
+import { compareDraftsByDisplayOrder } from "../draftSortUtils";
 import type { Draft, DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
 import { ehagakiDb, type DraftRecord, type EHagakiDB } from "./ehagakiDb";
 
@@ -44,18 +45,10 @@ function readLegacyDraftsFromLocalStorage(storage: Pick<Storage, "getItem"> = lo
         if (!Array.isArray(drafts)) return [];
         return drafts
             .filter((draft): draft is Draft => typeof draft?.id === "string")
-            .sort(sortDrafts);
+            .sort(compareDraftsByDisplayOrder);
     } catch {
         return [];
     }
-}
-
-function sortDrafts(a: Pick<Draft, "timestamp" | "pinned">, b: Pick<Draft, "timestamp" | "pinned">): number {
-    if (!!a.pinned !== !!b.pinned) {
-        return a.pinned ? -1 : 1;
-    }
-
-    return b.timestamp - a.timestamp;
 }
 
 function toDraft(record: DraftRecord): Draft {
@@ -107,7 +100,7 @@ export class DexieDraftsRepository implements DraftsRepository {
             .toArray();
 
         return records
-            .sort(sortDrafts)
+            .sort(compareDraftsByDisplayOrder)
             .map(toDraft);
     }
 
