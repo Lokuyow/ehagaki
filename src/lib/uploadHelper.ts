@@ -481,7 +481,8 @@ export async function uploadHelper({
     await generateBlurhashes(
         placeholderMap,
         dependencies.FileUploadManager,
-        devMode
+        devMode,
+        dependencies.isUploadAborted,
     );
 
     // 中止チェック（Blurhash生成後）

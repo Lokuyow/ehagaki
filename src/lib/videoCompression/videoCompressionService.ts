@@ -42,11 +42,12 @@ export class VideoCompressionService {
                 import('./ffmpegCompression'),
                 import('./mediabunnyCompression'),
             ]);
-            this.ffmpegCompression = new FFmpegCls();
+            this.ffmpegCompression = new FFmpegCls(this.isUploadAborted);
             this.mediabunnyCompression = new MBCls(
                 this.parseAudioBitrate.bind(this),
                 this.ffmpegCompression.mergeVideoAndAudioWithFFmpeg.bind(this.ffmpegCompression),
-                this.ffmpegCompression.compressWithFFmpeg.bind(this.ffmpegCompression)
+                this.ffmpegCompression.compressWithFFmpeg.bind(this.ffmpegCompression),
+                this.isUploadAborted,
             );
             // 進捗コールバックを再設定
             if (this.onProgress) {

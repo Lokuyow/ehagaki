@@ -1,4 +1,5 @@
 import type { VideoCompressionResult } from '../types';
+import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
 import { checkAbort, devLog } from './compressionUtils';
 
 /**
@@ -9,7 +10,10 @@ export abstract class BaseCompression {
     protected onProgress?: (progress: number) => void;
     protected readonly context: string;
 
-    constructor(context: string) {
+    constructor(
+        context: string,
+        private isUploadAborted: UploadAbortChecker = isDefaultUploadAborted,
+    ) {
         this.context = context;
     }
 
@@ -24,7 +28,11 @@ export abstract class BaseCompression {
      * 中止フラグをチェック
      */
     protected checkAbort(file: File): VideoCompressionResult | null {
-        return checkAbort(file, this.context, this.onProgress);
+        return checkAbort(file, this.context, this.onProgress, this.isUploadAborted);
+    }
+
+    protected isAborted(): boolean {
+        return this.isUploadAborted();
     }
 
     /**

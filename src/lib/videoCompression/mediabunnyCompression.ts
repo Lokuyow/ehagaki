@@ -16,6 +16,7 @@ import {
     type Quality,
 } from 'mediabunny';
 import type { VideoCompressionResult } from '../types';
+import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
 import { BaseCompression } from './baseCompression';
 import { createCompressedFile, devLog, devWarn } from './compressionUtils';
 
@@ -132,9 +133,10 @@ export class MediaBunnyCompression extends BaseCompression {
     constructor(
         private parseAudioBitrate: (audioBitrate: any) => number | null,
         private mergeVideoAndAudioWithFFmpeg: (videoBlob: Blob, originalFile: File) => Promise<Blob | null>,
-        private compressWithFFmpeg: (file: File, options: any) => Promise<VideoCompressionResult>
+        private compressWithFFmpeg: (file: File, options: any) => Promise<VideoCompressionResult>,
+        isUploadAborted: UploadAbortChecker = isDefaultUploadAborted,
     ) {
-        super('MediaBunnyCompression');
+        super('MediaBunnyCompression', isUploadAborted);
     }
 
     /**

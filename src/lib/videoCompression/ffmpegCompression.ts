@@ -1,7 +1,7 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
-import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import type { VideoCompressionResult } from '../types';
+import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
 import { BaseCompression } from './baseCompression';
 import { createCompressedFile, devLog, devWarn } from './compressionUtils';
 
@@ -14,8 +14,8 @@ export class FFmpegCompression extends BaseCompression {
     private loadPromise: Promise<void> | null = null;
     private isCompressing = false;
 
-    constructor() {
-        super('FFmpegCompression');
+    constructor(isUploadAborted: UploadAbortChecker = isDefaultUploadAborted) {
+        super('FFmpegCompression', isUploadAborted);
     }
 
     /**
@@ -100,7 +100,7 @@ export class FFmpegCompression extends BaseCompression {
         };
 
         try {
-            if (uploadAbortFlagStore.value) {
+            if (this.isAborted()) {
                 this.log('Abort detected before audio mux');
                 return null;
             }
@@ -132,7 +132,7 @@ export class FFmpegCompression extends BaseCompression {
             this.isCompressing = true;
             await ffmpegInstance.exec(args);
 
-            if (uploadAbortFlagStore.value) {
+            if (this.isAborted()) {
                 this.log('Abort detected during audio mux');
                 await runCleanup(ffmpegInstance);
                 return null;
@@ -144,7 +144,7 @@ export class FFmpegCompression extends BaseCompression {
             await runCleanup(ffmpegInstance);
             return mergedBlob;
         } catch (error) {
-            if (uploadAbortFlagStore.value) {
+            if (this.isAborted()) {
                 this.log('Audio mux aborted, returning null');
             } else {
                 devWarn(this.context, 'Failed to mux audio with FFmpeg copy:', error);
@@ -230,7 +230,7 @@ export class FFmpegCompression extends BaseCompression {
                 await this.ffmpeg.exec(args);
             } catch (error) {
                 // 中止による終了の場合はエラーログを出さない
-                if (uploadAbortFlagStore.value) {
+                if (this.isAborted()) {
                     this.log('Compression aborted during execution');
                 } else {
                     console.error('[FFmpegCompression] FFmpeg execution error:', error);
@@ -241,7 +241,7 @@ export class FFmpegCompression extends BaseCompression {
             }
 
             // 中止チェック（exec後の主要ポイントのみ）
-            if (uploadAbortFlagStore.value) {
+            if (this.isAborted()) {
                 this.log('Cleaning up after abort');
                 try {
                     await this.ffmpeg.deleteFile(inputName);
@@ -264,7 +264,7 @@ export class FFmpegCompression extends BaseCompression {
             this.isCompressing = false;
 
             // 中止による終了の場合
-            if (uploadAbortFlagStore.value) {
+            if (this.isAborted()) {
                 this.log('Compression aborted, using original file');
                 return { file, wasCompressed: false, wasSkipped: true, aborted: true };
             }

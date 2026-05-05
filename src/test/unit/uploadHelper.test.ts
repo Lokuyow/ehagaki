@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { performFileUpload, uploadHelper } from "../../lib/uploadHelper";
-import { insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
+import { generateBlurhashes, insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
 import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/fileUtils";
 import {
     setUploadProgress,
@@ -14,7 +14,8 @@ import type {
     FileUploadDependencies,
     AuthService,
     CompressionService,
-    MimeTypeSupportInterface
+    MimeTypeSupportInterface,
+    PlaceholderEntry,
 } from "../../lib/types";
 import { NodeSelection } from "prosemirror-state";
 
@@ -377,6 +378,29 @@ describe("uploadHelper", () => {
                 content_type: "image/png",
                 no_transform: "true"
             });
+        });
+    });
+
+    describe("generateBlurhashes", () => {
+        it("uses injected abort checker before creating a file upload manager", async () => {
+            const FileUploadManager = vi.fn(() => ({
+                validateImageFile: vi.fn(),
+                validateMediaFile: vi.fn(),
+                generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                uploadFileWithCallbacks: vi.fn(),
+                uploadMultipleFilesWithCallbacks: vi.fn(),
+            })) as unknown as new () => FileUploadManagerInterface;
+            const placeholderMap: PlaceholderEntry[] = [
+                {
+                    file: new File(["content"], "test.png", { type: "image/png" }),
+                    placeholderId: "placeholder-1",
+                },
+            ];
+
+            await generateBlurhashes(placeholderMap, FileUploadManager, false, () => true);
+
+            expect(FileUploadManager).not.toHaveBeenCalled();
+            expect(placeholderMap[0].blurhash).toBeUndefined();
         });
     });
 

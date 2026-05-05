@@ -3,9 +3,9 @@ import { NodeSelection } from '@tiptap/pm/state';
 import type { PlaceholderEntry, FileUploadResponse, ImageDimensions, MediaGalleryItem, FileUploadManagerInterface } from '../types';
 import { findAndExecuteOnNode, removePlaceholderNode } from '../utils/editorNodeActions';
 import { generateSimpleUUID } from '../utils/appUtils';
-import { uploadAbortFlagStore } from '../../stores/uploadStore.svelte';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 import { buildUploadFailureMessage } from '../uploadResultUtils';
+import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
 
 // ============================================================
 // 共通プライベートヘルパー
@@ -318,9 +318,10 @@ async function processReplacementResults(
 export async function generateBlurhashes(
     placeholderMap: PlaceholderEntry[],
     FileUploadManager: new () => FileUploadManagerInterface,
-    devMode: boolean = false
+    devMode: boolean = false,
+    isUploadAborted: UploadAbortChecker = isDefaultUploadAborted,
 ): Promise<void> {
-    if (uploadAbortFlagStore.value) {
+    if (isUploadAborted()) {
         if (devMode) console.log('[generateBlurhashes] Aborted before blurhash generation');
         return;
     }
@@ -328,7 +329,7 @@ export async function generateBlurhashes(
     const fileUploadManager = new FileUploadManager();
 
     const promises = placeholderMap.map(async (item) => {
-        if (uploadAbortFlagStore.value) {
+        if (isUploadAborted()) {
             if (devMode) console.log('[generateBlurhashes] Aborted during blurhash generation');
             return;
         }
@@ -336,7 +337,7 @@ export async function generateBlurhashes(
         try {
             const blurhash = await fileUploadManager.generateBlurhashForFile(item.file);
 
-            if (uploadAbortFlagStore.value) {
+            if (isUploadAborted()) {
                 if (devMode) console.log('[generateBlurhashes] Aborted after blurhash generation');
                 return;
             }
