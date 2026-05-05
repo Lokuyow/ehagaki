@@ -52,12 +52,12 @@
                         <tr>
                             <td>{$_("settingsDialog.quality_high")}</td>
                             <td
-                                >{COMPRESSION_OPTIONS_MAP.low
+                                >{COMPRESSION_OPTIONS_MAP.high
                                     .maxWidthOrHeight}px</td
                             >
                             <td
                                 >{Math.round(
-                                    COMPRESSION_OPTIONS_MAP.low.initialQuality *
+                                    COMPRESSION_OPTIONS_MAP.high.initialQuality *
                                         100,
                                 )}%</td
                             >
@@ -78,12 +78,12 @@
                         <tr>
                             <td>{$_("settingsDialog.quality_low")}</td>
                             <td
-                                >{COMPRESSION_OPTIONS_MAP.high
+                                >{COMPRESSION_OPTIONS_MAP.low
                                     .maxWidthOrHeight}px</td
                             >
                             <td
                                 >{Math.round(
-                                    COMPRESSION_OPTIONS_MAP.high
+                                    COMPRESSION_OPTIONS_MAP.low
                                         .initialQuality * 100,
                                 )}%</td
                             >
@@ -136,7 +136,7 @@
                         <tr>
                             <td>{$_("settingsDialog.quality_high")}</td>
                             <td
-                                >{VIDEO_COMPRESSION_OPTIONS_MAP.low
+                                >{VIDEO_COMPRESSION_OPTIONS_MAP.high
                                     .maxSize}px</td
                             >
                         </tr>
@@ -150,7 +150,7 @@
                         <tr>
                             <td>{$_("settingsDialog.quality_low")}</td>
                             <td
-                                >{VIDEO_COMPRESSION_OPTIONS_MAP.high
+                                >{VIDEO_COMPRESSION_OPTIONS_MAP.low
                                     .maxSize}px</td
                             >
                         </tr>

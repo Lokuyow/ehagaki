@@ -39,6 +39,20 @@ function isSettingsSetPayload(value: unknown): value is EmbedSettingsSetPayload 
     }
 
     if (
+        payload.imageQualityLevel !== undefined
+        && !COMPRESSION_LEVELS.has(String(payload.imageQualityLevel))
+    ) {
+        return false;
+    }
+
+    if (
+        payload.videoQualityLevel !== undefined
+        && !COMPRESSION_LEVELS.has(String(payload.videoQualityLevel))
+    ) {
+        return false;
+    }
+
+    if (
         payload.imageCompressionLevel !== undefined
         && !COMPRESSION_LEVELS.has(String(payload.imageCompressionLevel))
     ) {

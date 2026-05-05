@@ -25,8 +25,8 @@ export type ManagedPreferenceKey =
     | "uploadEndpoint"
     | "clientTagEnabled"
     | "quoteNotificationEnabled"
-    | "imageCompressionLevel"
-    | "videoCompressionLevel"
+    | "imageQualityLevel"
+    | "videoQualityLevel"
     | "mediaFreePlacement"
     | "darkMode"
     | "showMascot"
@@ -134,6 +134,57 @@ export function getPreferenceSource(
     return readPreferenceMetadata(storage).sources?.[key] ?? "default";
 }
 
+function toCurrentQualityLevel(value: string | null | undefined): string | null {
+    return normalizeCompressionLevelPreference(value);
+}
+
+export function normalizeLegacyCompressionLevelPreference(
+    value: string | null | undefined,
+): string | null {
+    const normalizedValue = normalizeCompressionLevelPreference(value);
+    if (normalizedValue === "low") {
+        return "high";
+    }
+    if (normalizedValue === "high") {
+        return "low";
+    }
+    return normalizedValue;
+}
+
+function migrateLegacyQualityLevelPreference(
+    storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
+    currentKey: string,
+    legacyKey: string,
+    metadataKey: ManagedPreferenceKey,
+): string | null {
+    const storedValue = toCurrentQualityLevel(storage.getItem(currentKey));
+    if (storedValue) {
+        return storedValue;
+    }
+
+    const legacyValue = normalizeLegacyCompressionLevelPreference(storage.getItem(legacyKey));
+    if (!legacyValue) {
+        return null;
+    }
+
+    storage.setItem(currentKey, legacyValue);
+    if (storage.removeItem) {
+        storage.removeItem(legacyKey);
+    }
+
+    const metadata = readPreferenceMetadata(storage);
+    const legacyMetadataKey = metadataKey === "imageQualityLevel"
+        ? "imageCompressionLevel"
+        : "videoCompressionLevel";
+    const legacySource = (metadata.sources as Record<string, PreferenceSource> | undefined)
+        ?.[legacyMetadataKey];
+    if (legacySource && !metadata.sources?.[metadataKey]) {
+        setPreferenceSource(storage, metadataKey, legacySource);
+    }
+
+    return legacyValue;
+}
+
 export function setPreferenceSource(
     storage: ReadWriteStorage,
     key: ManagedPreferenceKey,
@@ -231,21 +282,29 @@ export function getQuoteNotificationEnabledPreference(storage: ReadWriteStorage)
 }
 
 export function getImageCompressionLevelPreference(
-    storage: Pick<Storage, "getItem"> | StorageAdapter,
+    storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
     selectedCompression?: string,
 ): string {
-    return normalizeCompressionLevelPreference(storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL))
-        ?? normalizeCompressionLevelPreference(selectedCompression)
+    return migrateLegacyQualityLevelPreference(
+        storage,
+        STORAGE_KEYS.IMAGE_QUALITY_LEVEL,
+        STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL,
+        "imageQualityLevel",
+    )
+        ?? toCurrentQualityLevel(selectedCompression)
         ?? DEFAULT_COMPRESSION_LEVEL;
 }
 
 export function getVideoCompressionLevelPreference(storage: ReadWriteStorage): string {
-    const storedValue = normalizeCompressionLevelPreference(
-        storage.getItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL),
+    const storedValue = migrateLegacyQualityLevelPreference(
+        storage,
+        STORAGE_KEYS.VIDEO_QUALITY_LEVEL,
+        STORAGE_KEYS.LEGACY_VIDEO_COMPRESSION_LEVEL,
+        "videoQualityLevel",
     );
 
-    if (storage.getItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL) === "skip") {
-        storage.setItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL, "none");
+    if (storage.getItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL) === "skip") {
+        storage.setItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL, "none");
         return "none";
     }
 
@@ -253,7 +312,7 @@ export function getVideoCompressionLevelPreference(storage: ReadWriteStorage): s
         return storedValue;
     }
 
-    storage.setItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL, DEFAULT_COMPRESSION_LEVEL);
+    storage.setItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL, DEFAULT_COMPRESSION_LEVEL);
     return DEFAULT_COMPRESSION_LEVEL;
 }
 
@@ -360,9 +419,9 @@ export function setImageCompressionLevelPreference(
     value: string,
     source: PreferenceSource = "user",
 ): string {
-    const normalizedValue = normalizeCompressionLevelPreference(value) ?? DEFAULT_COMPRESSION_LEVEL;
-    storage.setItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL, normalizedValue);
-    setPreferenceSource(storage, "imageCompressionLevel", source);
+    const normalizedValue = toCurrentQualityLevel(value) ?? DEFAULT_COMPRESSION_LEVEL;
+    storage.setItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL, normalizedValue);
+    setPreferenceSource(storage, "imageQualityLevel", source);
     return normalizedValue;
 }
 
@@ -371,9 +430,9 @@ export function setVideoCompressionLevelPreference(
     value: string,
     source: PreferenceSource = "user",
 ): string {
-    const normalizedValue = normalizeCompressionLevelPreference(value) ?? DEFAULT_COMPRESSION_LEVEL;
-    storage.setItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL, normalizedValue);
-    setPreferenceSource(storage, "videoCompressionLevel", source);
+    const normalizedValue = toCurrentQualityLevel(value) ?? DEFAULT_COMPRESSION_LEVEL;
+    storage.setItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL, normalizedValue);
+    setPreferenceSource(storage, "videoQualityLevel", source);
     return normalizedValue;
 }
 

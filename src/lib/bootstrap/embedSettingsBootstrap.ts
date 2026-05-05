@@ -3,6 +3,7 @@ import {
     getEffectiveLocale,
     isValidUploadEndpoint,
     normalizeCompressionLevelPreference,
+    normalizeLegacyCompressionLevelPreference,
     normalizeLocale,
     setClientTagEnabledPreference,
     setImageCompressionLevelPreference,
@@ -22,6 +23,8 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "embedLocale",
     "embedTheme",
     "embedUploadEndpoint",
+    "embedImageQuality",
+    "embedVideoQuality",
     "embedImageCompression",
     "embedVideoCompression",
     "embedClientTag",
@@ -32,6 +35,8 @@ export const EMBED_SETTINGS_QUERY_KEYS = [
     "defaultLocale",
     "defaultTheme",
     "defaultUploadEndpoint",
+    "defaultImageQuality",
+    "defaultVideoQuality",
     "defaultImageCompression",
     "defaultVideoCompression",
     "defaultClientTag",
@@ -75,8 +80,8 @@ interface ParsedEmbedSettings {
     locale?: SupportedLocale;
     themeMode?: ThemeMode;
     uploadEndpoint?: string;
-    imageCompressionLevel?: string;
-    videoCompressionLevel?: string;
+    imageQualityLevel?: string;
+    videoQualityLevel?: string;
     clientTagEnabled?: boolean;
     quoteNotificationEnabled?: boolean;
     mediaFreePlacement?: boolean;
@@ -98,8 +103,8 @@ const PARSED_SETTINGS_KEYS: ParsedSettingsKey[] = [
     "locale",
     "themeMode",
     "uploadEndpoint",
-    "imageCompressionLevel",
-    "videoCompressionLevel",
+    "imageQualityLevel",
+    "videoQualityLevel",
     "clientTagEnabled",
     "quoteNotificationEnabled",
     "mediaFreePlacement",
@@ -159,14 +164,22 @@ function parseSettingsFromParams(
         uploadEndpoint: isValidUploadEndpoint(uploadEndpoint)
             ? uploadEndpoint
             : undefined,
-        imageCompressionLevel:
+        imageQualityLevel:
             normalizeCompressionLevelPreference(
+                params.get(`${prefix}ImageQuality`),
+            )
+            ?? normalizeLegacyCompressionLevelPreference(
                 params.get(`${prefix}ImageCompression`),
-            ) ?? undefined,
-        videoCompressionLevel:
+            )
+            ?? undefined,
+        videoQualityLevel:
             normalizeCompressionLevelPreference(
+                params.get(`${prefix}VideoQuality`),
+            )
+            ?? normalizeLegacyCompressionLevelPreference(
                 params.get(`${prefix}VideoCompression`),
-            ) ?? undefined,
+            )
+            ?? undefined,
         clientTagEnabled: parseBooleanParam(params.get(`${prefix}ClientTag`)),
         quoteNotificationEnabled: parseBooleanParam(
             params.get(`${prefix}QuoteNotification`),
@@ -234,14 +247,20 @@ function isPreferenceStored(storage: Storage, key: ParsedSettingsKey): boolean {
                 || storage.getItem(STORAGE_KEYS.DARK_MODE) !== null;
         case "uploadEndpoint":
             return isValidUploadEndpoint(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT));
-        case "imageCompressionLevel":
+        case "imageQualityLevel":
             return normalizeCompressionLevelPreference(
-                storage.getItem(STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL),
-            ) !== null;
-        case "videoCompressionLevel":
+                storage.getItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL),
+            ) !== null
+                || normalizeLegacyCompressionLevelPreference(
+                    storage.getItem(STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL),
+                ) !== null;
+        case "videoQualityLevel":
             return normalizeCompressionLevelPreference(
-                storage.getItem(STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL),
-            ) !== null;
+                storage.getItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL),
+            ) !== null
+                || normalizeLegacyCompressionLevelPreference(
+                    storage.getItem(STORAGE_KEYS.LEGACY_VIDEO_COMPRESSION_LEVEL),
+                ) !== null;
         case "clientTagEnabled":
             return storage.getItem(STORAGE_KEYS.CLIENT_TAG_ENABLED) !== null;
         case "quoteNotificationEnabled":
@@ -275,10 +294,10 @@ function applySetting(
         case "uploadEndpoint":
             setUploadEndpointPreference(storage, value as string, source);
             return true;
-        case "imageCompressionLevel":
+        case "imageQualityLevel":
             setImageCompressionLevelPreference(storage, value as string, source);
             return true;
-        case "videoCompressionLevel":
+        case "videoQualityLevel":
             setVideoCompressionLevelPreference(storage, value as string, source);
             return true;
         case "clientTagEnabled":

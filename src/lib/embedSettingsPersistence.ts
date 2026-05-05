@@ -1,6 +1,7 @@
 import { embedStorageService } from './embedStorageService';
 import {
     EMBED_SETTING_STORAGE_KEYS,
+    LEGACY_EMBED_SETTING_STORAGE_KEYS,
     withSettingsPreferenceMetadata,
 } from './embedStorageKeys';
 
@@ -11,5 +12,8 @@ export function persistChangedEmbedSettingKeys(keys: readonly string[]): void {
 }
 
 export function persistAllEmbedSettingKeys(): void {
-    embedStorageService.persistLocalStorageKeys([...EMBED_SETTING_STORAGE_KEYS]);
+    embedStorageService.persistLocalStorageKeys([
+        ...EMBED_SETTING_STORAGE_KEYS,
+        ...LEGACY_EMBED_SETTING_STORAGE_KEYS,
+    ]);
 }

@@ -57,7 +57,7 @@ describe('ImageCompressionService', () => {
         vi.clearAllMocks();
         mockMimeSupport = createMockMimeSupport();
         mockStorage = new MockStorage();
-        mockStorage.setItem('imageCompressionLevel', 'medium');
+        mockStorage.setItem('imageQualityLevel', 'medium');
         service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
         // browser-image-compressionモックを取得
@@ -116,25 +116,25 @@ describe('ImageCompressionService', () => {
 
     describe('hasCompressionSettings', () => {
         it('圧縮レベルがnone以外の場合はtrueを返す', () => {
-            mockStorage.setItem('imageCompressionLevel', 'medium');
+            mockStorage.setItem('imageQualityLevel', 'medium');
             service = new ImageCompressionService(mockMimeSupport, mockStorage);
             expect(service.hasCompressionSettings()).toBe(true);
         });
 
         it('圧縮レベルがlowの場合はtrueを返す', () => {
-            mockStorage.setItem('imageCompressionLevel', 'low');
+            mockStorage.setItem('imageQualityLevel', 'low');
             service = new ImageCompressionService(mockMimeSupport, mockStorage);
             expect(service.hasCompressionSettings()).toBe(true);
         });
 
         it('圧縮レベルがhighの場合はtrueを返す', () => {
-            mockStorage.setItem('imageCompressionLevel', 'high');
+            mockStorage.setItem('imageQualityLevel', 'high');
             service = new ImageCompressionService(mockMimeSupport, mockStorage);
             expect(service.hasCompressionSettings()).toBe(true);
         });
 
         it('圧縮レベルがnoneの場合はfalseを返す', () => {
-            mockStorage.setItem('imageCompressionLevel', 'none');
+            mockStorage.setItem('imageQualityLevel', 'none');
             service = new ImageCompressionService(mockMimeSupport, mockStorage);
             expect(service.hasCompressionSettings()).toBe(false);
         });
@@ -196,7 +196,7 @@ describe('ImageCompressionService', () => {
 
         describe('圧縮設定がnoneの場合', () => {
             it('圧縮をスキップする', async () => {
-                mockStorage.setItem('imageCompressionLevel', 'none');
+                mockStorage.setItem('imageQualityLevel', 'none');
                 service = new ImageCompressionService(mockMimeSupport, mockStorage);
 
                 const file = createTestFile('photo.jpg', 'image/jpeg', 500000);

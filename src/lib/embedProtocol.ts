@@ -69,7 +69,11 @@ export interface EmbedSettingsSetPayload {
     locale?: "ja" | "en";
     themeMode?: "system" | "light" | "dark";
     uploadEndpoint?: string;
+    imageQualityLevel?: "none" | "low" | "medium" | "high";
+    videoQualityLevel?: "none" | "low" | "medium" | "high";
+    /** @deprecated Use imageQualityLevel. Legacy values are interpreted by old UI meaning. */
     imageCompressionLevel?: "none" | "low" | "medium" | "high";
+    /** @deprecated Use videoQualityLevel. Legacy values are interpreted by old UI meaning. */
     videoCompressionLevel?: "none" | "low" | "medium" | "high";
     clientTagEnabled?: boolean;
     quoteNotificationEnabled?: boolean;

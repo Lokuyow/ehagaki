@@ -308,13 +308,13 @@
         <!-- 画像・動画圧縮設定セクション -->
         <SettingsCompressionSection
             {compressionPairs}
-            selectedCompression={settingsStore.imageCompressionLevel}
+            selectedCompression={settingsStore.imageQualityLevel}
             onCompressionChange={(value) =>
-                (settingsStore.imageCompressionLevel = value)}
+                (settingsStore.imageQualityLevel = value)}
             {videoCompressionPairs}
-            selectedVideoCompression={settingsStore.videoCompressionLevel}
+            selectedVideoCompression={settingsStore.videoQualityLevel}
             onVideoCompressionChange={(value) =>
-                (settingsStore.videoCompressionLevel = value)}
+                (settingsStore.videoQualityLevel = value)}
         />
 
         <!-- アップロード先設定セクション -->

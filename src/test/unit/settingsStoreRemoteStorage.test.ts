@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { STORAGE_KEYS } from '../../lib/constants';
-import { EMBED_SETTING_STORAGE_KEYS } from '../../lib/embedStorageKeys';
+import {
+    EMBED_SETTING_STORAGE_KEYS,
+    LEGACY_EMBED_SETTING_STORAGE_KEYS,
+} from '../../lib/embedStorageKeys';
 import { getPreferenceSource } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
 
@@ -116,6 +119,9 @@ describe('settings/theme stores remote storage persistence', () => {
         expect(getPreferenceSource(storage, 'showMascot')).toBe('parentForced');
         expect(getPreferenceSource(storage, 'showFlavorText')).toBe('parentForced');
         expect(globalThis.document.documentElement.lang).toBe('en');
-        expect(persistSpy).toHaveBeenLastCalledWith([...EMBED_SETTING_STORAGE_KEYS]);
+        expect(persistSpy).toHaveBeenLastCalledWith([
+            ...EMBED_SETTING_STORAGE_KEYS,
+            ...LEGACY_EMBED_SETTING_STORAGE_KEYS,
+        ]);
     });
 });

@@ -5,11 +5,13 @@ import {
     getStoredThemeModePreference,
     getQuoteNotificationEnabledPreference,
     getPreferenceSource,
+    getImageCompressionLevelPreference,
     hasAppliedEmbedBootstrap,
     markEmbedBootstrapApplied,
     setDarkModePreference,
     setThemeModePreference,
     setLocalePreference,
+    setImageCompressionLevelPreference,
     setQuoteNotificationEnabledPreference,
 } from '../../lib/utils/settingsStorage';
 import { MockStorage } from '../helpers';
@@ -116,6 +118,24 @@ describe('settingsStorage preference metadata', () => {
 
         expect(storage.getItem(STORAGE_KEYS.QUOTE_NOTIFICATION_ENABLED)).toBe('false');
         expect(getPreferenceSource(storage, 'quoteNotificationEnabled')).toBe('user');
+    });
+
+    it('画像品質設定は新キーへ保存して source を記録する', () => {
+        setImageCompressionLevelPreference(storage, 'high', 'parentBootstrap');
+
+        expect(storage.getItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL)).toBe('high');
+        expect(storage.getItem(STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL)).toBeNull();
+        expect(getPreferenceSource(storage, 'imageQualityLevel')).toBe(
+            'parentBootstrap',
+        );
+    });
+
+    it('legacy 画像圧縮設定は UI 品質の意味を維持して新キーへ移行する', () => {
+        storage.setItem(STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL, 'low');
+
+        expect(getImageCompressionLevelPreference(storage)).toBe('high');
+        expect(storage.getItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL)).toBe('high');
+        expect(storage.getItem(STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL)).toBeNull();
     });
 
 });

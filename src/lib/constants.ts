@@ -21,7 +21,7 @@ export const COMPRESSION_OPTIONS_MAP = {
     none: {
         skip: true
     },
-    low: {
+    high: {
         maxWidthOrHeight: 2048,
         fileType: "image/webp" as const,
         initialQuality: 0.95,
@@ -33,7 +33,7 @@ export const COMPRESSION_OPTIONS_MAP = {
         initialQuality: 0.80,
         useWebWorker: true,
     },
-    high: {
+    low: {
         maxWidthOrHeight: 800,
         fileType: "image/webp" as const,
         initialQuality: 0.50,
@@ -43,7 +43,7 @@ export const COMPRESSION_OPTIONS_MAP = {
 
 export const VIDEO_COMPRESSION_OPTIONS_MAP = {
     none: { skip: true },
-    low: {
+    high: {
         crf: 20,
         preset: 'superfast',
         maxSize: 1280,
@@ -62,7 +62,7 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
         mediabunnyVideoQualityFactor: 1,   // QUALITY_MEDIUM
         mediabunnyAudioQualityFactor: 1,   // QUALITY_MEDIUM
     },
-    high: {
+    low: {
         crf: 28,
         preset: 'medium',
         maxSize: 320,
@@ -103,8 +103,10 @@ export const STORAGE_KEYS = {
     UPLOAD_ENDPOINT: "uploadEndpoint",
     CLIENT_TAG_ENABLED: "clientTagEnabled",
     QUOTE_NOTIFICATION_ENABLED: "quoteNotificationEnabled",
-    IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
-    VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
+    IMAGE_QUALITY_LEVEL: "imageQualityLevel",
+    VIDEO_QUALITY_LEVEL: "videoQualityLevel",
+    LEGACY_IMAGE_COMPRESSION_LEVEL: "imageCompressionLevel",
+    LEGACY_VIDEO_COMPRESSION_LEVEL: "videoCompressionLevel",
     SHOW_MASCOT: "showMascot",
     SHOW_FLAVOR_TEXT: "showFlavorText",
     SETTINGS_PREFERENCE_METADATA: "settingsPreferenceMetadata",
@@ -156,9 +158,9 @@ export function getDefaultEndpoint(locale: string | null | undefined): string {
 export function getCompressionLevels($_: (key: string) => string | undefined) {
     return [
         { label: $_("settingsDialog.quality_lossless"), value: "none" },
-        { label: $_("settingsDialog.quality_high"), value: "low" },
+        { label: $_("settingsDialog.quality_high"), value: "high" },
         { label: $_("settingsDialog.quality_medium"), value: "medium" },
-        { label: $_("settingsDialog.quality_low"), value: "high" },
+        { label: $_("settingsDialog.quality_low"), value: "low" },
     ];
 }
 

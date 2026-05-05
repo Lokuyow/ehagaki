@@ -81,8 +81,8 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('各圧縮レベルに必要なプロパティが存在する', () => {
-            // low
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toMatchObject({
+            // high
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toMatchObject({
                 crf: 20,
                 preset: 'superfast',
                 maxSize: 1280,
@@ -98,8 +98,8 @@ describe('Video Compression Integration Tests', () => {
                 audioSampleRate: 44100,
             });
 
-            // high
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high).toMatchObject({
+            // low
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low).toMatchObject({
                 crf: 28,
                 preset: 'medium',
                 maxSize: 320,
@@ -109,15 +109,15 @@ describe('Video Compression Integration Tests', () => {
             });
         });
 
-        it('maxSizeが適切に設定されている（低→中→高の順で小さくなる）', () => {
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize).toBe(1280);
+        it('maxSizeが適切に設定されている（高→中→低の順で小さくなる）', () => {
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.maxSize).toBe(1280);
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.maxSize).toBe(640);
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.maxSize).toBe(320);
-            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize).toBeGreaterThan(
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize).toBe(320);
+            expect(VIDEO_COMPRESSION_OPTIONS_MAP.high.maxSize).toBeGreaterThan(
                 VIDEO_COMPRESSION_OPTIONS_MAP.medium.maxSize
             );
             expect(VIDEO_COMPRESSION_OPTIONS_MAP.medium.maxSize).toBeGreaterThan(
-                VIDEO_COMPRESSION_OPTIONS_MAP.high.maxSize
+                VIDEO_COMPRESSION_OPTIONS_MAP.low.maxSize
             );
         });
     });
@@ -142,7 +142,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('圧縮レベルがnoneの場合はスキップされる', async () => {
-            storage.setItem('videoCompressionLevel', 'none');
+            storage.setItem('videoQualityLevel', 'none');
             const video = createTestVideoFile(500 * 1024);
             const result = await service.compress(video);
 
@@ -158,7 +158,7 @@ describe('Video Compression Integration Tests', () => {
 
     describe('圧縮レベル別の動作検証', () => {
         it('lowレベルの圧縮設定が適用される', async () => {
-            storage.setItem('videoCompressionLevel', 'low');
+            storage.setItem('videoQualityLevel', 'low');
             expect(service.hasCompressionSettings()).toBe(true);
 
             const video = createTestVideoFile(500 * 1024);
@@ -171,7 +171,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('mediumレベルの圧縮設定が適用される', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
             expect(service.hasCompressionSettings()).toBe(true);
 
             const video = createTestVideoFile(500 * 1024);
@@ -183,7 +183,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('highレベルの圧縮設定が適用される', async () => {
-            storage.setItem('videoCompressionLevel', 'high');
+            storage.setItem('videoQualityLevel', 'high');
             expect(service.hasCompressionSettings()).toBe(true);
 
             const video = createTestVideoFile(500 * 1024);
@@ -197,7 +197,7 @@ describe('Video Compression Integration Tests', () => {
 
     describe('ファイル名の処理', () => {
         it('圧縮後のファイル名に_compressedが付加される（拡張子あり）', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
             const video = createTestVideoFile(500 * 1024, 'my-video.mp4');
 
             // MediaBunnyが使用できない環境ではFFmpegにフォールバック
@@ -211,7 +211,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('拡張子なしのファイル名も正しく処理される', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
             const video = createTestVideoFile(500 * 1024, 'video');
 
             const result = await service.compress(video);
@@ -225,7 +225,7 @@ describe('Video Compression Integration Tests', () => {
 
     describe('エラーハンドリング', () => {
         it('圧縮エラーが発生しても元のファイルが返される', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             // 不正なファイルを作成
             const invalidVideo = new File(['invalid'], 'invalid.mp4', { type: 'video/mp4' });
@@ -239,7 +239,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('複数回の圧縮処理が正しく動作する', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             const video1 = createTestVideoFile(300 * 1024, 'video1.mp4');
             const video2 = createTestVideoFile(300 * 1024, 'video2.mp4');
@@ -256,7 +256,7 @@ describe('Video Compression Integration Tests', () => {
 
     describe('リソース管理', () => {
         it('cleanupが正常に実行される', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             const video = createTestVideoFile(300 * 1024);
             await service.compress(video);
@@ -265,7 +265,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('cleanup後も圧縮処理が実行可能', async () => {
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             const video1 = createTestVideoFile(300 * 1024);
             await service.compress(video1);
@@ -334,7 +334,7 @@ describe('Video Compression Integration Tests', () => {
         });
 
         it('noneが設定されている場合はfalseを返す', () => {
-            storage.setItem('videoCompressionLevel', 'none');
+            storage.setItem('videoQualityLevel', 'none');
             expect(service.hasCompressionSettings()).toBe(false);
         });
 
@@ -342,7 +342,7 @@ describe('Video Compression Integration Tests', () => {
             const levels: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high'];
 
             levels.forEach(level => {
-                storage.setItem('videoCompressionLevel', level);
+                storage.setItem('videoQualityLevel', level);
                 expect(service.hasCompressionSettings()).toBe(true);
             });
         });
@@ -385,7 +385,7 @@ describe('Video Compression Integration Tests', () => {
             delete (globalThis as any).VideoDecoder;
             delete (globalThis as any).AudioEncoder;
 
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             // 新しいサービスインスタンスを作成（WebCodecsチェックをリセット）
             const testService = new VideoCompressionService(storage);
@@ -403,7 +403,7 @@ describe('Video Compression Integration Tests', () => {
             // AudioEncoderのみ削除（VideoEncoder/VideoDecoderは維持）
             delete (globalThis as any).AudioEncoder;
 
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             // 新しいサービスインスタンスを作成
             const testService = new VideoCompressionService(storage);
@@ -422,7 +422,7 @@ describe('Video Compression Integration Tests', () => {
             // VideoEncoder/VideoDecoder/AudioEncoderがすべて存在する状態
             // （テスト環境によってはモックが必要だが、基本的には既存の状態を維持）
 
-            storage.setItem('videoCompressionLevel', 'medium');
+            storage.setItem('videoQualityLevel', 'medium');
 
             const testService = new VideoCompressionService(storage);
             const video = createTestVideoFile(500 * 1024, 'full-webcodecs-support.mp4');

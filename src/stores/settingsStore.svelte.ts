@@ -12,6 +12,7 @@ import {
     getUploadEndpointPreference,
     getVideoCompressionLevelPreference,
     hasStoredUploadEndpoint,
+    normalizeLegacyCompressionLevelPreference,
     setClientTagEnabledPreference,
     setImageCompressionLevelPreference,
     setLocalePreference,
@@ -42,8 +43,8 @@ interface SettingsState {
     uploadEndpoint: string;
     clientTagEnabled: boolean;
     quoteNotificationEnabled: boolean;
-    imageCompressionLevel: string;
-    videoCompressionLevel: string;
+    imageQualityLevel: string;
+    videoQualityLevel: string;
     mediaFreePlacement: boolean;
     showMascot: boolean;
     showFlavorText: boolean;
@@ -66,8 +67,8 @@ function readSettingsState(): SettingsState {
         uploadEndpoint,
         clientTagEnabled: getClientTagEnabledPreference(localStorage),
         quoteNotificationEnabled: getQuoteNotificationEnabledPreference(localStorage),
-        imageCompressionLevel: getImageCompressionLevelPreference(localStorage),
-        videoCompressionLevel: getVideoCompressionLevelPreference(localStorage),
+        imageQualityLevel: getImageCompressionLevelPreference(localStorage),
+        videoQualityLevel: getVideoCompressionLevelPreference(localStorage),
         mediaFreePlacement: getMediaFreePlacementPreference(localStorage),
         showMascot: getShowMascotPreference(localStorage),
         showFlavorText: getShowFlavorTextPreference(localStorage),
@@ -100,13 +101,19 @@ const directSettingDescriptors: {
         apply: (value: boolean, source: PreferenceSource) =>
             setQuoteNotificationEnabledPreference(localStorage, value, source),
     },
-    imageCompressionLevel: {
-        storageKeys: [STORAGE_KEYS.IMAGE_COMPRESSION_LEVEL],
+    imageQualityLevel: {
+        storageKeys: [
+            STORAGE_KEYS.IMAGE_QUALITY_LEVEL,
+            STORAGE_KEYS.LEGACY_IMAGE_COMPRESSION_LEVEL,
+        ],
         apply: (value: string, source: PreferenceSource) =>
             setImageCompressionLevelPreference(localStorage, value, source),
     },
-    videoCompressionLevel: {
-        storageKeys: [STORAGE_KEYS.VIDEO_COMPRESSION_LEVEL],
+    videoQualityLevel: {
+        storageKeys: [
+            STORAGE_KEYS.VIDEO_QUALITY_LEVEL,
+            STORAGE_KEYS.LEGACY_VIDEO_COMPRESSION_LEVEL,
+        ],
         apply: (value: string, source: PreferenceSource) =>
             setVideoCompressionLevelPreference(localStorage, value, source),
     },
@@ -130,8 +137,8 @@ const directSettingDescriptors: {
 
 const parentDirectSettingKeys: DirectSettingKey[] = [
     "uploadEndpoint",
-    "imageCompressionLevel",
-    "videoCompressionLevel",
+    "imageQualityLevel",
+    "videoQualityLevel",
     "clientTagEnabled",
     "quoteNotificationEnabled",
     "mediaFreePlacement",
@@ -257,22 +264,22 @@ export const settingsStore = {
         persistDirectSettingKey("quoteNotificationEnabled");
     },
 
-    get imageCompressionLevel(): string {
-        return settingsState.imageCompressionLevel;
+    get imageQualityLevel(): string {
+        return settingsState.imageQualityLevel;
     },
 
-    set imageCompressionLevel(value: string) {
-        applyDirectSetting("imageCompressionLevel", value);
-        persistDirectSettingKey("imageCompressionLevel");
+    set imageQualityLevel(value: string) {
+        applyDirectSetting("imageQualityLevel", value);
+        persistDirectSettingKey("imageQualityLevel");
     },
 
-    get videoCompressionLevel(): string {
-        return settingsState.videoCompressionLevel;
+    get videoQualityLevel(): string {
+        return settingsState.videoQualityLevel;
     },
 
-    set videoCompressionLevel(value: string) {
-        applyDirectSetting("videoCompressionLevel", value);
-        persistDirectSettingKey("videoCompressionLevel");
+    set videoQualityLevel(value: string) {
+        applyDirectSetting("videoQualityLevel", value);
+        persistDirectSettingKey("videoQualityLevel");
     },
 
     get mediaFreePlacement(): boolean {
@@ -320,6 +327,32 @@ export const settingsStore = {
         if (payload.themeMode !== undefined) {
             themeModeStore.set(payload.themeMode, source);
             applied.push("themeMode");
+        }
+
+        if (
+            payload.imageQualityLevel === undefined
+            && payload.imageCompressionLevel !== undefined
+        ) {
+            payload = {
+                ...payload,
+                imageQualityLevel:
+                    normalizeLegacyCompressionLevelPreference(
+                        payload.imageCompressionLevel,
+                    ) as EmbedSettingsSetPayload["imageQualityLevel"],
+            };
+        }
+
+        if (
+            payload.videoQualityLevel === undefined
+            && payload.videoCompressionLevel !== undefined
+        ) {
+            payload = {
+                ...payload,
+                videoQualityLevel:
+                    normalizeLegacyCompressionLevelPreference(
+                        payload.videoCompressionLevel,
+                    ) as EmbedSettingsSetPayload["videoQualityLevel"],
+            };
         }
 
         parentDirectSettingKeys.forEach((key) => {

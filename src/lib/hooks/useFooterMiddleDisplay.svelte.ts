@@ -48,7 +48,7 @@ export function useFooterMiddleDisplay(
     let imageCompressionProgress = $derived(
         imageCompressionProgressStore.value,
     );
-    let videoCompressionLevel = $derived(settingsStore.videoCompressionLevel);
+    let videoCompressionLevel = $derived(settingsStore.videoQualityLevel);
     let imageSizeInfo = $derived(imageSizeInfoStore.value.info);
     let imageSizeInfoVisible = $derived(imageSizeInfoStore.value.visible);
 
@@ -102,11 +102,11 @@ export function useFooterMiddleDisplay(
             case "none":
                 return translate("settingsDialog.quality_lossless");
             case "low":
-                return translate("footerInfoDisplay.videoQualityLevel.high");
+                return translate("footerInfoDisplay.videoQualityLevel.low");
             case "medium":
                 return translate("footerInfoDisplay.videoQualityLevel.medium");
             case "high":
-                return translate("footerInfoDisplay.videoQualityLevel.low");
+                return translate("footerInfoDisplay.videoQualityLevel.high");
             default:
                 return translate("footerInfoDisplay.videoQualityLevel.medium");
         }

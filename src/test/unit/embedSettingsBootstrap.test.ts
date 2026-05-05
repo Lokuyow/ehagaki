@@ -117,6 +117,42 @@ describe('embedSettingsBootstrap', () => {
         expect(getPreferenceSource(storage, 'darkMode')).toBe('parentForced');
     });
 
+    it('embedImageQuality は UI 品質の意味で保存する', () => {
+        const context = createBootstrapContext(
+            '?embedImageQuality=high&embedVideoQuality=low',
+        );
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.appliedSettings).toEqual([
+            'imageQualityLevel',
+            'videoQualityLevel',
+        ]);
+        expect(storage.getItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL)).toBe('high');
+        expect(storage.getItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL)).toBe('low');
+        expect(getPreferenceSource(storage, 'imageQualityLevel')).toBe('parentForced');
+        expect(getPreferenceSource(storage, 'videoQualityLevel')).toBe('parentForced');
+    });
+
+    it('legacy embedImageCompression は旧 UI 表示の意味を維持して移行する', () => {
+        const context = createBootstrapContext(
+            '?embedImageCompression=low&embedVideoCompression=high',
+        );
+
+        applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(storage.getItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL)).toBe('high');
+        expect(storage.getItem(STORAGE_KEYS.VIDEO_QUALITY_LEVEL)).toBe('low');
+    });
+
     it('query cleanup は embed~/default~ だけを消して他の query を残す', () => {
         const context = createBootstrapContext(
             '?parentOrigin=https%3A%2F%2Fparent.example.com&content=hello&defaultTheme=dark&embedShowMascot=false',

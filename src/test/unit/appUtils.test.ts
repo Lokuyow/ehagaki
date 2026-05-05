@@ -391,7 +391,7 @@ describe('Settings Utilities', () => {
                     case 'locale': return 'ja';
                     case 'uploadEndpoint': return 'https://example.com';
                     case 'clientTagEnabled': return 'false';
-                    case 'imageCompressionLevel': return 'high';
+                    case 'imageQualityLevel': return 'high';
                     default: return null;
                 }
             });

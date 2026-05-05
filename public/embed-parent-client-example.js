@@ -92,6 +92,8 @@ const EMBED_STORAGE_KEYS = new Set([
     "uploadEndpoint",
     "clientTagEnabled",
     "quoteNotificationEnabled",
+    "imageQualityLevel",
+    "videoQualityLevel",
     "imageCompressionLevel",
     "videoCompressionLevel",
     "mediaFreePlacement",
