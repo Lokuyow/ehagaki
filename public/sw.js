@@ -8,7 +8,16 @@ import {
     getDuplicateProfileCacheRequests,
     matchCacheByPriority,
 } from "../src/lib/swCacheUtils";
+import {
+    createSharedClientUrl,
+    persistSharedMediaIfPresent,
+} from "../src/lib/swClientUtils";
 import { ensureCurrentEHagakiDbSchema } from "../src/lib/swIndexedDbSchema";
+import {
+    createClientSharedMediaNotification,
+    createSharedMediaMessage,
+    postSharedMediaMessage,
+} from "../src/lib/swMessageUtils";
 import { buildSharedMediaIndexedDbRecord } from "../src/lib/swSharedMediaPersistence";
 import {
     createCorsRequest,
@@ -561,22 +570,25 @@ class ClientManager {
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
         // IndexedDBに共有データを永続化（新しいウィンドウからの取得用）
-        if (sharedCache) {
-            try {
+        await persistSharedMediaIfPresent({
+            sharedCache,
+            persist: async (cache) => {
                 const indexedDBManager = new IndexedDBManager();
-                await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                await this.persistSharedMediaToIndexedDB(cache, indexedDBManager);
+            },
+            onPersisted: () => {
                 this.console.log('SW: Shared media persisted to IndexedDB for new client');
-            } catch (dbError) {
+            },
+            onError: (dbError) => {
                 this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
-            }
-        }
+            },
+        });
 
         // ?shared=true 付きでアプリを新規ウィンドウで開く
-        const url = new URL(BASE_PATH, this.location.origin);
-        url.searchParams.set('shared', 'true');
+        const url = createSharedClientUrl(BASE_PATH, this.location.origin);
         try {
-            await this.clients.openWindow(url.href);
-            this.console.log('SW: New client window opened:', url.href);
+            await this.clients.openWindow(url);
+            this.console.log('SW: New client window opened:', url);
         } catch (openError) {
             this.console.warn('SW: Failed to open new window:', openError);
         }
@@ -590,15 +602,19 @@ class ClientManager {
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
         // 共有データをIndexedDBに永続化（focus/メッセージ送信の成否に関係なく必ず先に実行）
-        if (sharedCache) {
-            try {
+        await persistSharedMediaIfPresent({
+            sharedCache,
+            persist: async (cache) => {
                 const indexedDBManager = new IndexedDBManager();
-                await this.persistSharedMediaToIndexedDB(sharedCache, indexedDBManager);
+                await this.persistSharedMediaToIndexedDB(cache, indexedDBManager);
+            },
+            onPersisted: () => {
                 this.console.log('SW: Shared media persisted to IndexedDB for fallback');
-            } catch (dbError) {
+            },
+            onError: (dbError) => {
                 this.console.warn('SW: Failed to persist shared media to IndexedDB:', dbError);
-            }
-        }
+            },
+        });
 
         // フォーカス試行（Androidバックグラウンド時は失敗しうるが、エラーにしない）
         try {
@@ -617,12 +633,8 @@ class ClientManager {
         // メッセージ送信（失敗してもエラーにしない）
         if (client && typeof client.postMessage === 'function') {
             try {
-                client.postMessage({
-                    type: 'SHARED_MEDIA',
-                    data: sharedCache,
-                    timestamp: Date.now(),
-                    requestId: `sw-${Date.now()}`
-                });
+                const message = createClientSharedMediaNotification(sharedCache);
+                client.postMessage(message);
                 this.console.log('SW: Message sent to client successfully');
             } catch (messageError) {
                 this.console.warn('SW: Failed to send message to client (will rely on IndexedDB fallback):', messageError);
@@ -657,36 +669,36 @@ class MessageHandler {
         this.console = dependencies.console;
     }
 
-    // 共有メディアリクエスト応答
-    respondSharedMedia(event) {
-        const client = event.source;
+    postSharedMediaResponse(event, { fallbackRequired = false, clearAfterSend = false } = {}) {
         const requestId = event.data.requestId || null;
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
-
-        const msg = {
-            type: 'SHARED_MEDIA',
+        const msg = createSharedMediaMessage({
             data: sharedCache,
             requestId,
-            timestamp: Date.now()
-        };
+            fallbackRequired,
+        });
 
-        if (event.ports?.[0]) {
-            event.ports[0].postMessage(msg);
-        } else if (client) {
-            client.postMessage(msg);
-        }
+        postSharedMediaMessage(event, msg);
 
-        // メディア送信後すぐキャッシュと永続化レコードをクリア
-        if (sharedCache) {
+        if (clearAfterSend && sharedCache) {
             ServiceWorkerState.clearSharedMediaCache();
             this.indexedDBManager.clearSharedMedia();
         }
+
+        return sharedCache;
+    }
+
+    // 共有メディアリクエスト応答
+    respondSharedMedia(event) {
+        this.postSharedMediaResponse(event, {
+            clearAfterSend: true,
+        });
+
+        // メディア送信後すぐキャッシュと永続化レコードをクリア
     }
 
     // 強制的な共有メディア取得リクエスト（フォールバック用）
     respondSharedMediaForce(event) {
-        const client = event.source;
-        const requestId = event.data.requestId || null;
         const sharedCache = ServiceWorkerState.getSharedMediaCache();
 
         // キャッシュがない場合でもIndexedDBから取得を試みる
@@ -694,19 +706,9 @@ class MessageHandler {
             this.console.log('SW: No shared cache, client should try IndexedDB fallback');
         }
 
-        const msg = {
-            type: 'SHARED_MEDIA',
-            data: sharedCache,
-            requestId,
-            timestamp: Date.now(),
-            fallbackRequired: !sharedCache
-        };
-
-        if (event.ports?.[0]) {
-            event.ports[0].postMessage(msg);
-        } else if (client) {
-            client.postMessage(msg);
-        }
+        this.postSharedMediaResponse(event, {
+            fallbackRequired: !sharedCache,
+        });
 
         // 強制取得ではメディア送信後もキャッシュをクリアしない
         // （複数回の取得試行に対応）
