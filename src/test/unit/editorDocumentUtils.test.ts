@@ -24,27 +24,15 @@ describe('editorDocumentUtils', () => {
                 firstChild: {
                     type: { name: 'paragraph' },
                     content: { size: 0 },
-                    textContent: '',
                 },
             };
             expect(isDocumentEmpty(emptyDoc as unknown as PMNode)).toBe(true);
-
-            const imeBoundaryOnlyDoc = {
-                childCount: 1,
-                firstChild: {
-                    type: { name: 'paragraph' },
-                    content: { size: 1 },
-                    textContent: '\u200B',
-                },
-            };
-            expect(isDocumentEmpty(imeBoundaryOnlyDoc as unknown as PMNode)).toBe(true);
 
             const nonEmptyDoc = {
                 childCount: 1,
                 firstChild: {
                     type: { name: 'paragraph' },
                     content: { size: 5 },
-                    textContent: 'Hello',
                 },
             };
             expect(isDocumentEmpty(nonEmptyDoc as unknown as PMNode)).toBe(false);

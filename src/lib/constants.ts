@@ -75,7 +75,7 @@ export const VIDEO_COMPRESSION_OPTIONS_MAP = {
     },
 } as const;
 
-export const HASHTAG_REGEX = /(?:^|[\s\n\u3000\u200B])#([^\s\n\u3000\u200B#]+)/g;
+export const HASHTAG_REGEX = /(?:^|[\s\n\u3000])#([^\s\n\u3000#]+)/g;
 
 export const ALLOWED_PROTOCOLS = ['http:', 'https:'];
 export const ALLOWED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];

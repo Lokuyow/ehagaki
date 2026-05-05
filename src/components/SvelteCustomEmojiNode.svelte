@@ -157,12 +157,13 @@
 <style>
     :global(.custom-emoji-wrapper),
     :global(.custom-emoji-wrapper[data-node-view-wrapper]) {
-        display: inline-flex;
+        display: inline-block;
         width: auto;
         height: 1.6em;
         margin: 0;
         vertical-align: -0.44em;
         border-radius: 4px;
+        line-height: 0;
     }
 
     :global(.custom-emoji-wrapper.is-selected) {
