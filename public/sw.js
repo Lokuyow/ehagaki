@@ -22,6 +22,7 @@ import {
     postPortEventResponse,
 } from "../src/lib/swEventResponseUtils";
 import { dispatchServiceWorkerFetchRoute } from "../src/lib/swFetchDispatchUtils";
+import { logServiceWorkerFetchRoute } from "../src/lib/swFetchRouteLogUtils";
 import {
     createServiceWorkerActionHandlers,
     createServiceWorkerTypeMessageHandlers,
@@ -39,10 +40,14 @@ import {
     resolveServiceWorkerMessageRoute,
 } from "../src/lib/swRoutingUtils";
 import {
+    processServiceWorkerUploadRequest,
     resolveUploadRequestOutcome,
     summarizeExtractedSharedMedia,
 } from "../src/lib/swUploadRequestUtils";
-import { resolveProfileImageRequestResult } from "../src/lib/swProfileImageRequestUtils";
+import {
+    processServiceWorkerProfileImageRequest,
+    resolveProfileImageRequestResult,
+} from "../src/lib/swProfileImageRequestUtils";
 import { findProfileImageCacheMatch } from "../src/lib/swProfileImageCacheUtils";
 import {
     fetchAndCacheOpaqueProfileImageResponse,
@@ -571,80 +576,31 @@ class RequestHandler {
 
     // アップロードリクエスト処理
     async handleUploadRequest(request) {
-        try {
-            this.console.log('SW: Processing upload request', request.url);
-
-            const formData = await request.formData();
-            const extractedData = await Utilities.extractMediaFromFormData(formData);
-
-            if (!extractedData) {
-                this.console.warn('SW: No media data found in FormData');
-                return await resolveUploadRequestOutcome({
-                    extractedData,
-                    location: this.location,
-                    redirectClient: () => this.clientManager.redirectClient(),
-                    createRedirectResponse: Utilities.createRedirectResponse,
-                    setSharedMediaCache: (sharedMedia) =>
-                        ServiceWorkerState.setSharedMediaCache(sharedMedia),
-                });
-            }
-
-            this.console.log(
-                'SW: Media data extracted successfully',
-                summarizeExtractedSharedMedia(extractedData),
-            );
-
-            return await resolveUploadRequestOutcome({
-                extractedData,
-                location: this.location,
-                redirectClient: () => this.clientManager.redirectClient(),
-                createRedirectResponse: Utilities.createRedirectResponse,
-                setSharedMediaCache: (sharedMedia) =>
-                    ServiceWorkerState.setSharedMediaCache(sharedMedia),
-            });
-        } catch (error) {
-            this.console.error('SW: Upload processing error:', error);
-            return Utilities.createRedirectResponse(undefined, 'processing-error', this.location);
-        }
+        return await processServiceWorkerUploadRequest({
+            request,
+            location: this.location,
+            logger: this.console,
+            extractMediaFromFormData: (formData) => Utilities.extractMediaFromFormData(formData),
+            redirectClient: () => this.clientManager.redirectClient(),
+            createRedirectResponse: Utilities.createRedirectResponse,
+            setSharedMediaCache: (sharedMedia) =>
+                ServiceWorkerState.setSharedMediaCache(sharedMedia),
+            summarizeExtractedData: summarizeExtractedSharedMedia,
+        });
     }
 
     // プロフィール画像リクエスト処理
     async handleProfileImageRequest(request) {
-        try {
-            this.console.log('プロフィール画像リクエスト処理開始:', request.url);
-
-            const result = await resolveProfileImageRequestResult({
-                request,
-                normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
-                handleProfileImageCache: (profileRequest) =>
-                    this.cacheManager.handleProfileImageCache(profileRequest),
-                fetchAndCacheProfileImage: (profileRequest) =>
-                    this.cacheManager.fetchAndCacheProfileImage(profileRequest),
-                createTransparentImageResponse: Utilities.createTransparentImageResponse,
-            });
-
-            if (result.source === 'policy-blocked') {
-                this.console.warn('プロフィール画像 URL がポリシー外のため transparent image を返却:', request.url);
-                return result.response;
-            }
-
-            if (result.source === 'cache') {
-                this.console.log('プロフィール画像をキャッシュから返却:', request.url);
-                return result.response;
-            }
-
-            if (result.source === 'network') {
-                this.console.log('プロフィール画像をネットワークから返却:', request.url);
-                return result.response;
-            }
-
-            this.console.log('フォールバック画像を返却:', request.url);
-            return result.response;
-
-        } catch (error) {
-            this.console.error('プロフィール画像処理エラー:', error);
-            return Utilities.createTransparentImageResponse(404);
-        }
+        return await processServiceWorkerProfileImageRequest({
+            request,
+            logger: this.console,
+            normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
+            handleProfileImageCache: (profileRequest) =>
+                this.cacheManager.handleProfileImageCache(profileRequest),
+            fetchAndCacheProfileImage: (profileRequest) =>
+                this.cacheManager.fetchAndCacheProfileImage(profileRequest),
+            createTransparentImageResponse: Utilities.createTransparentImageResponse,
+        });
     }
 }
 
@@ -689,15 +645,13 @@ class ServiceWorkerCore {
             isProfileImageRequest: Utilities.isProfileImageRequest,
         });
 
-        if (route === 'upload') {
-            ServiceWorkerDependencies.console.log('SW: 内部アップロードリクエストを処理', url.href);
-        }
-
-        if (route === 'profile-image') {
-            if (url.origin !== ServiceWorkerDependencies.location.origin) {
-                ServiceWorkerDependencies.console.log('SW: 外部プロフィール画像リクエストを処理:', event.request.url);
-            }
-        }
+        logServiceWorkerFetchRoute({
+            route,
+            url,
+            requestUrl: event.request.url,
+            currentOrigin: ServiceWorkerDependencies.location.origin,
+            logger: ServiceWorkerDependencies.console,
+        });
 
         return await dispatchServiceWorkerFetchRoute({
             route,

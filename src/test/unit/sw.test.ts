@@ -4,6 +4,7 @@ import {
     normalizeProfilePictureUrl,
 } from '../../lib/profilePictureUrlUtils';
 import { dispatchServiceWorkerFetchRoute } from '../../lib/swFetchDispatchUtils';
+import { logServiceWorkerFetchRoute } from '../../lib/swFetchRouteLogUtils';
 import {
     createServiceWorkerActionHandlers,
     createServiceWorkerTypeMessageHandlers,
@@ -24,7 +25,10 @@ import {
     fetchAndCacheOpaqueProfileImageResponse,
     fetchAndCacheProfileImageResponse,
 } from '../../lib/swProfileImageFetchUtils';
-import { resolveProfileImageRequestResult } from '../../lib/swProfileImageRequestUtils';
+import {
+    processServiceWorkerProfileImageRequest,
+    resolveProfileImageRequestResult,
+} from '../../lib/swProfileImageRequestUtils';
 import {
     cleanupServiceWorkerDuplicateProfileCache,
     clearServiceWorkerProfileCache,
@@ -39,13 +43,17 @@ import { resolveServiceWorkerMessageRoute } from '../../lib/swRoutingUtils';
 import { resolveServiceWorkerFetchRoute } from '../../lib/swRoutingUtils';
 import { postServiceWorkerSharedMediaResponse } from '../../lib/swSharedMediaResponseUtils';
 import { persistSharedMediaIndexedDbRecord } from '../../lib/swSharedMediaPersistence';
-import { resolveUploadRequestOutcome } from '../../lib/swUploadRequestUtils';
+import {
+    resolveUploadRequestOutcome,
+    summarizeExtractedSharedMedia,
+} from '../../lib/swUploadRequestUtils';
 import {
     createCorsRequest,
     createServiceWorkerRedirectResponse,
     createTransparentImageResponse,
     extractSharedMediaFromFormData,
 } from '../../lib/swUtilities';
+import { processServiceWorkerUploadRequest } from '../../lib/swUploadRequestUtils';
 
 // Service Workerのモジュール型定義
 interface ServiceWorkerModule {
@@ -496,26 +504,23 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
         ) { }
 
         async handleUploadRequest(request: Request) {
-            try {
-                const formData = await request.formData();
-                const extractedData = await Utilities.extractMediaFromFormData(formData);
-
-                return await resolveUploadRequestOutcome({
-                    extractedData,
-                    location: ServiceWorkerDependencies.location,
-                    redirectClient: () => this.clientManager.redirectClient(),
-                    createRedirectResponse: Utilities.createRedirectResponse,
-                    setSharedMediaCache: (sharedMedia) =>
-                        ServiceWorkerState.setSharedMediaCache(sharedMedia),
-                });
-            } catch (error) {
-                return Utilities.createRedirectResponse('/', 'processing-error');
-            }
+            return await processServiceWorkerUploadRequest({
+                request,
+                location: ServiceWorkerDependencies.location,
+                logger: ServiceWorkerDependencies.console,
+                extractMediaFromFormData: (formData) => Utilities.extractMediaFromFormData(formData),
+                redirectClient: () => this.clientManager.redirectClient(),
+                createRedirectResponse: Utilities.createRedirectResponse,
+                setSharedMediaCache: (sharedMedia) =>
+                    ServiceWorkerState.setSharedMediaCache(sharedMedia),
+                summarizeExtractedData: summarizeExtractedSharedMedia,
+            });
         }
 
         async handleProfileImageRequest(request: Request) {
-            const result = await resolveProfileImageRequestResult({
+            return await processServiceWorkerProfileImageRequest({
                 request,
+                logger: ServiceWorkerDependencies.console,
                 normalizeProfileImageUrl: Utilities.normalizeProfileImageUrl,
                 handleProfileImageCache: (profileRequest) =>
                     this.cacheManager.handleProfileImageCache(profileRequest),
@@ -523,8 +528,6 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                     await this.cacheManager.fetchAndCacheProfileImage(profileRequest) as Response | null,
                 createTransparentImageResponse: Utilities.createTransparentImageResponse,
             });
-
-            return result.response;
         }
     }
 
@@ -556,6 +559,14 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
                 currentOrigin: ServiceWorkerDependencies.location.origin,
                 isUploadRequest: Utilities.isUploadRequest,
                 isProfileImageRequest: Utilities.isProfileImageRequest,
+            });
+
+            logServiceWorkerFetchRoute({
+                route,
+                url,
+                requestUrl: event.request.url,
+                currentOrigin: ServiceWorkerDependencies.location.origin,
+                logger: ServiceWorkerDependencies.console,
             });
 
             return await dispatchServiceWorkerFetchRoute({
@@ -1170,6 +1181,14 @@ describe('Service Worker Tests', () => {
 
             expect(response.status).toBe(200);
             expect(response.headers.get('Content-Type')).toBe('image/jpeg');
+            expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
+                'プロフィール画像リクエスト処理開始:',
+                'https://example.com/image.jpg?profile=true',
+            );
+            expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
+                'プロフィール画像をネットワークから返却:',
+                'https://example.com/image.jpg?profile=true',
+            );
         });
 
         it('should return transparent image for policy-blocked profile image request', async () => {
@@ -1181,6 +1200,10 @@ describe('Service Worker Tests', () => {
             expect(response.status).toBe(200);
             expect(response.headers.get('Content-Type')).toBe('image/png');
             expect(swModule.ServiceWorkerDependencies.fetch).not.toHaveBeenCalled();
+            expect(swModule.ServiceWorkerDependencies.console.warn).toHaveBeenCalledWith(
+                'プロフィール画像 URL がポリシー外のため transparent image を返却:',
+                'https://192.168.0.20/image.jpg?profile=true',
+            );
         });
     });
 
@@ -1220,6 +1243,10 @@ describe('Service Worker Tests', () => {
             const response = await core.handleFetch(mockEvent);
 
             expect(response).toBeDefined();
+            expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
+                'SW: 内部アップロードリクエストを処理',
+                'https://example.com/upload',
+            );
         });
 
         it('should handle fetch event for external profile image', async () => {
@@ -1230,6 +1257,10 @@ describe('Service Worker Tests', () => {
             const response = await core.handleFetch(mockEvent);
 
             expect(response).toBeDefined();
+            expect(swModule.ServiceWorkerDependencies.console.log).toHaveBeenCalledWith(
+                'SW: 外部プロフィール画像リクエストを処理:',
+                'https://external.com/profile.jpg?profile=true',
+            );
         });
 
         it('should leave normal same-origin GET requests to Workbox routes', async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import {
+    processServiceWorkerUploadRequest,
     resolveUploadRequestOutcome,
     summarizeExtractedSharedMedia,
 } from '../../lib/swUploadRequestUtils';
@@ -59,5 +60,70 @@ describe('swUploadRequestUtils', () => {
         expect(result).toBe(redirectResponse);
         expect(setSharedMediaCache).toHaveBeenCalledWith(media);
         expect(redirectClient).toHaveBeenCalledOnce();
+    });
+
+    it('processServiceWorkerUploadRequest は media がない時に warning を出して no-image redirect を返す', async () => {
+        const request = {
+            url: 'https://example.com/upload',
+            formData: vi.fn(async () => new FormData()),
+        };
+        const logger = {
+            log: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+        };
+        const createRedirectResponse = vi.fn(() => new Response(null, { status: 303 }));
+
+        const result = await processServiceWorkerUploadRequest({
+            request,
+            location: { origin: 'https://example.com' } as Location,
+            logger,
+            extractMediaFromFormData: vi.fn(async () => null),
+            redirectClient: vi.fn(),
+            createRedirectResponse,
+            setSharedMediaCache: vi.fn(),
+        });
+
+        expect(result.status).toBe(303);
+        expect(logger.log).toHaveBeenCalledWith('SW: Processing upload request', 'https://example.com/upload');
+        expect(logger.warn).toHaveBeenCalledWith('SW: No media data found in FormData');
+        expect(createRedirectResponse).toHaveBeenCalledWith(
+            undefined,
+            'no-image',
+            { origin: 'https://example.com' },
+        );
+    });
+
+    it('processServiceWorkerUploadRequest は error 時に processing-error redirect を返す', async () => {
+        const error = new Error('broken formdata');
+        const logger = {
+            log: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+        };
+        const createRedirectResponse = vi.fn(() => new Response(null, { status: 303 }));
+
+        const result = await processServiceWorkerUploadRequest({
+            request: {
+                url: 'https://example.com/upload',
+                formData: vi.fn(async () => {
+                    throw error;
+                }),
+            },
+            location: { origin: 'https://example.com' } as Location,
+            logger,
+            extractMediaFromFormData: vi.fn(),
+            redirectClient: vi.fn(),
+            createRedirectResponse,
+            setSharedMediaCache: vi.fn(),
+        });
+
+        expect(result.status).toBe(303);
+        expect(logger.error).toHaveBeenCalledWith('SW: Upload processing error:', error);
+        expect(createRedirectResponse).toHaveBeenCalledWith(
+            undefined,
+            'processing-error',
+            { origin: 'https://example.com' },
+        );
     });
 });
