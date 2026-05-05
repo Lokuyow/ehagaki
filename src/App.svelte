@@ -13,7 +13,10 @@
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
   import { embedSettingsService } from "./lib/embedSettingsService";
-  import { embedStorageService, EMBED_STORAGE_KEYS } from "./lib/embedStorageService";
+  import {
+    embedStorageService,
+    EMBED_STORAGE_KEYS,
+  } from "./lib/embedStorageService";
   import HeaderComponent from "./components/HeaderComponent.svelte";
   import FooterComponent from "./components/FooterComponent.svelte";
   import KeyboardButtonBar from "./components/KeyboardButtonBar.svelte";
@@ -66,11 +69,7 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type {
-    AuthResult,
-    Draft,
-    MediaGalleryItem,
-  } from "./lib/types";
+  import type { AuthResult, Draft, MediaGalleryItem } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -157,13 +156,20 @@
   } from "./lib/customEmoji";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
 
-  type PostComponent = typeof import("./components/PostComponent.svelte").default;
-  type LoginDialogComponent = typeof import("./components/LoginDialog.svelte").default;
-  type ProfileComponent = typeof import("./components/ProfileComponent.svelte").default;
-  type SettingsDialogComponent = typeof import("./components/SettingsDialog.svelte").default;
-  type WelcomeDialogComponent = typeof import("./components/WelcomeDialog.svelte").default;
-  type DraftListDialogComponent = typeof import("./components/DraftListDialog.svelte").default;
-  type CustomEmojiPickerComponent = typeof import("./components/CustomEmojiPicker.svelte").default;
+  type PostComponent =
+    typeof import("./components/PostComponent.svelte").default;
+  type LoginDialogComponent =
+    typeof import("./components/LoginDialog.svelte").default;
+  type ProfileComponent =
+    typeof import("./components/ProfileComponent.svelte").default;
+  type SettingsDialogComponent =
+    typeof import("./components/SettingsDialog.svelte").default;
+  type WelcomeDialogComponent =
+    typeof import("./components/WelcomeDialog.svelte").default;
+  type DraftListDialogComponent =
+    typeof import("./components/DraftListDialog.svelte").default;
+  type CustomEmojiPickerComponent =
+    typeof import("./components/CustomEmojiPicker.svelte").default;
   type ComponentImporter<T> = () => Promise<{ default: T }>;
 
   let PostComponent: PostComponent | null = $state(null);
@@ -172,7 +178,8 @@
   let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
   let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
-  let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null = $state(null);
+  let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
+    $state(null);
 
   function createComponentLoader<T>(
     importer: ComponentImporter<T>,
@@ -192,28 +199,26 @@
     () => import("./components/PostComponent.svelte"),
     { eager: true },
   );
-  const loadLoginDialogModule =
-    createComponentLoader<LoginDialogComponent>(() =>
-      import("./components/LoginDialog.svelte"),
-    );
+  const loadLoginDialogModule = createComponentLoader<LoginDialogComponent>(
+    () => import("./components/LoginDialog.svelte"),
+  );
   const loadProfileComponentModule = createComponentLoader<ProfileComponent>(
     () => import("./components/ProfileComponent.svelte"),
   );
   const loadSettingsDialogModule =
-    createComponentLoader<SettingsDialogComponent>(() =>
-      import("./components/SettingsDialog.svelte"),
+    createComponentLoader<SettingsDialogComponent>(
+      () => import("./components/SettingsDialog.svelte"),
     );
-  const loadWelcomeDialogModule =
-    createComponentLoader<WelcomeDialogComponent>(() =>
-      import("./components/WelcomeDialog.svelte"),
-    );
+  const loadWelcomeDialogModule = createComponentLoader<WelcomeDialogComponent>(
+    () => import("./components/WelcomeDialog.svelte"),
+  );
   const loadDraftListDialogModule =
-    createComponentLoader<DraftListDialogComponent>(() =>
-      import("./components/DraftListDialog.svelte"),
+    createComponentLoader<DraftListDialogComponent>(
+      () => import("./components/DraftListDialog.svelte"),
     );
   const loadCustomEmojiPickerModule =
-    createComponentLoader<CustomEmojiPickerComponent>(() =>
-      import("./components/CustomEmojiPicker.svelte"),
+    createComponentLoader<CustomEmojiPickerComponent>(
+      () => import("./components/CustomEmojiPicker.svelte"),
     );
 
   async function loadPostComponent(): Promise<void> {
@@ -337,10 +342,21 @@
   const draftLimitConfirm = createDraftLimitConfirmHandlers({
     pendingDraftContentStore,
     showDraftLimitConfirmStore,
-    saveDraftWithReplaceOldest: async (content, galleryItems, replyQuoteData, channelData) => {
-      await saveDraftWithReplaceOldest(content, galleryItems, replyQuoteData, channelData, {
-        pubkeyHex: authState.value?.pubkey ?? null,
-      });
+    saveDraftWithReplaceOldest: async (
+      content,
+      galleryItems,
+      replyQuoteData,
+      channelData,
+    ) => {
+      await saveDraftWithReplaceOldest(
+        content,
+        galleryItems,
+        replyQuoteData,
+        channelData,
+        {
+          pubkeyHex: authState.value?.pubkey ?? null,
+        },
+      );
     },
   });
 
@@ -677,7 +693,10 @@
     requestId: string,
   ): void {
     try {
-      const applied = settingsStore.applyParentSettings(payload, "parentForced");
+      const applied = settingsStore.applyParentSettings(
+        payload,
+        "parentForced",
+      );
       iframeMessageService.notifySettingsApplied(applied, requestId);
     } catch (error) {
       console.error("settings.set の適用に失敗:", error);
@@ -694,7 +713,9 @@
   async function initializeEmbedStorageSync(): Promise<void> {
     try {
       const result = await embedStorageService.get([...EMBED_STORAGE_KEYS]);
-      const applied = embedStorageService.applySnapshotToLocalStorage(result.values);
+      const applied = embedStorageService.applySnapshotToLocalStorage(
+        result.values,
+      );
       if (applied.length > 0) {
         settingsStore.applyStoredSnapshot();
       }
@@ -1109,7 +1130,9 @@
     embedSettingsService.initialize({
       locationSearch: window.location.search,
     });
-    if (embedStorageService.initialize({ locationSearch: window.location.search })) {
+    if (
+      embedStorageService.initialize({ locationSearch: window.location.search })
+    ) {
       void initializeEmbedStorageSync();
     }
 
@@ -1431,7 +1454,8 @@
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
-                      onMoveCaretLeft={() => postComponentRef?.moveCaretLeft?.()}
+                      onMoveCaretLeft={() =>
+                        postComponentRef?.moveCaretLeft?.()}
                       onMoveCaretRight={() =>
                         postComponentRef?.moveCaretRight?.()}
                       onDeleteBackward={() =>
@@ -1463,8 +1487,7 @@
         onUploadImage={() => postComponentRef?.openFileDialog()}
         onPostButtonTap={() => balloon.showTips()}
         {customEmojiPickerOpen}
-        onCustomEmojiPickerOpenChange={(open) =>
-          (customEmojiPickerOpen = open)}
+        onCustomEmojiPickerOpenChange={(open) => (customEmojiPickerOpen = open)}
       />
       <FooterComponent
         {isAuthenticated}
