@@ -16,7 +16,10 @@
     } from "../lib/customEmoji";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
-    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import {
+        preserveKeyboardForScrollableTouch,
+        preventKeyboardFocusChange,
+    } from "../lib/utils/keyboardFocusUtils";
 
     const VIRTUAL_OVERSCAN_ROWS = 3;
     const CUSTOM_EMOJI_GRID_TOP_PADDING = 8;
@@ -355,7 +358,7 @@
                                         class="emoji-item"
                                         onSelect={() => selectEmoji(emoji)}
                                         onmousedown={preventKeyboardFocusChange}
-                                        ontouchstart={preventKeyboardFocusChange}
+                                        ontouchstart={preserveKeyboardForScrollableTouch}
                                     >
                                         <img
                                             src={emoji.src}

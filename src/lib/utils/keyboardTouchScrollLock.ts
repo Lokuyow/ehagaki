@@ -27,16 +27,18 @@ export function resolveTouchScrollElements(
     }
 
     const elements: HTMLElement[] = [];
-    const editorElement = target.closest(".tiptap-editor") as HTMLElement | null;
-    if (editorElement) {
-        elements.push(editorElement);
-    }
-
-    const composerScrollElement = target.closest(
+    const scrollSelectors = [
+        ".custom-emoji-scroll-viewport",
+        ".suggestion-command-viewport",
+        ".tiptap-editor",
         ".composer-scroll-region",
-    ) as HTMLElement | null;
-    if (composerScrollElement && composerScrollElement !== editorElement) {
-        elements.push(composerScrollElement);
+    ];
+
+    for (const selector of scrollSelectors) {
+        const element = target.closest(selector) as HTMLElement | null;
+        if (element && !elements.includes(element)) {
+            elements.push(element);
+        }
     }
 
     return elements;

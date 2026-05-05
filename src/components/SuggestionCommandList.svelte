@@ -2,7 +2,10 @@
     import type { Snippet } from "svelte";
     import { tick } from "svelte";
     import { Command, ScrollArea } from "bits-ui";
-    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
+    import {
+        preserveKeyboardForScrollableTouch,
+        preventKeyboardFocusChange,
+    } from "../lib/utils/keyboardFocusUtils";
 
     interface Props {
         items: T[];
@@ -106,7 +109,7 @@
                                 selectedIndex = i;
                             }}
                             onmousedown={preventKeyboardFocusChange}
-                            ontouchstart={preventKeyboardFocusChange}
+                            ontouchstart={preserveKeyboardForScrollableTouch}
                         >
                             {@render children(item, i, i === selectedIndex)}
                         </Command.Item>

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     focusEditorWithoutKeyboardForCurrentTap,
     isIosTouchDevice,
+    preserveKeyboardForScrollableTouch,
 } from '../../lib/utils/keyboardFocusUtils';
 
 function setNavigatorValue(name: keyof Navigator, value: unknown): void {
@@ -80,6 +81,37 @@ describe('focusEditorWithoutKeyboardForCurrentTap', () => {
         expect(isIosTouchDevice()).toBe(true);
         expect(didFocus).toBe(false);
         expect(document.activeElement).toBe(button);
+        expect(editorElement.hasAttribute('inputmode')).toBe(false);
+    });
+});
+
+describe('preserveKeyboardForScrollableTouch', () => {
+    afterEach(() => {
+        vi.useRealTimers();
+        document.body.innerHTML = '';
+        document.documentElement.style.removeProperty('--keyboard-height');
+    });
+
+    it('touchstart のデフォルトスクロールを止めずに editor inputmode を一時抑制する', () => {
+        vi.useFakeTimers();
+        document.documentElement.style.setProperty('--keyboard-height', '0px');
+        const editorElement = document.createElement('div');
+        editorElement.className = 'tiptap-editor';
+        editorElement.tabIndex = 0;
+        document.body.append(editorElement);
+        editorElement.focus();
+        const preventDefault = vi.fn();
+
+        preserveKeyboardForScrollableTouch({
+            type: 'touchstart',
+            preventDefault,
+        } as unknown as Event);
+
+        expect(preventDefault).not.toHaveBeenCalled();
+        expect(editorElement.getAttribute('inputmode')).toBe('none');
+
+        vi.advanceTimersByTime(400);
+
         expect(editorElement.hasAttribute('inputmode')).toBe(false);
     });
 });

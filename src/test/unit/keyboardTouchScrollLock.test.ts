@@ -49,6 +49,31 @@ describe('keyboardTouchScrollLock', () => {
         ]);
     });
 
+    it('custom emoji picker と suggestion viewport を composer より優先して解決する', () => {
+        const composerScrollRegion = document.createElement('div');
+        composerScrollRegion.className = 'composer-scroll-region';
+        const pickerViewport = document.createElement('div');
+        pickerViewport.className = 'custom-emoji-scroll-viewport';
+        const pickerInner = document.createElement('button');
+        pickerViewport.append(pickerInner);
+        composerScrollRegion.append(pickerViewport);
+
+        const suggestionViewport = document.createElement('div');
+        suggestionViewport.className = 'suggestion-command-viewport';
+        const suggestionInner = document.createElement('button');
+        suggestionViewport.append(suggestionInner);
+
+        document.body.append(composerScrollRegion, suggestionViewport);
+
+        expect(resolveTouchScrollElements(pickerInner)).toEqual([
+            pickerViewport,
+            composerScrollRegion,
+        ]);
+        expect(resolveTouchScrollElements(suggestionInner)).toEqual([
+            suggestionViewport,
+        ]);
+    });
+
     it('スクロール可否を方向付きで判定する', () => {
         const element = document.createElement('div');
         defineScrollMetrics(element, {
@@ -174,6 +199,98 @@ describe('keyboardTouchScrollLock', () => {
         const inner = document.createElement('div');
         composerScrollRegion.append(inner);
         document.body.append(composerScrollRegion);
+        const preventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: inner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: inner,
+            touches: [{ clientY: 80 }],
+            changedTouches: [{ clientY: 80 }],
+            preventDefault,
+        } as unknown as TouchEvent);
+
+        expect(preventDefault).not.toHaveBeenCalled();
+
+        lock.dispose();
+    });
+
+    it('custom emoji picker viewport がスクロールできる場合は touchmove を許可する', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const lock = createKeyboardTouchScrollLock(document);
+
+        lock.sync(true);
+
+        const touchStartHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchstart',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchmove',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+
+        const composerScrollRegion = document.createElement('div');
+        composerScrollRegion.className = 'composer-scroll-region';
+        defineScrollMetrics(composerScrollRegion, {
+            scrollHeight: 600,
+            clientHeight: 200,
+            scrollTop: 0,
+        });
+        const pickerViewport = document.createElement('div');
+        pickerViewport.className = 'custom-emoji-scroll-viewport';
+        defineScrollMetrics(pickerViewport, {
+            scrollHeight: 900,
+            clientHeight: 240,
+            scrollTop: 120,
+        });
+        const inner = document.createElement('button');
+        pickerViewport.append(inner);
+        composerScrollRegion.append(pickerViewport);
+        document.body.append(composerScrollRegion);
+        const preventDefault = vi.fn();
+
+        touchStartHandler?.({
+            target: inner,
+            touches: [{ clientY: 100 }],
+            changedTouches: [{ clientY: 100 }],
+        } as unknown as TouchEvent);
+        touchMoveHandler?.({
+            target: inner,
+            touches: [{ clientY: 80 }],
+            changedTouches: [{ clientY: 80 }],
+            preventDefault,
+        } as unknown as TouchEvent);
+
+        expect(preventDefault).not.toHaveBeenCalled();
+
+        lock.dispose();
+    });
+
+    it('suggestion viewport が body 直下でスクロールできる場合は touchmove を許可する', () => {
+        const addEventListenerSpy = vi.spyOn(document, 'addEventListener');
+        const lock = createKeyboardTouchScrollLock(document);
+
+        lock.sync(true);
+
+        const touchStartHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchstart',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+        const touchMoveHandler = addEventListenerSpy.mock.calls.find(
+            ([type]) => type === 'touchmove',
+        )?.[1] as ((event: TouchEvent) => void) | undefined;
+
+        const suggestionViewport = document.createElement('div');
+        suggestionViewport.className = 'suggestion-command-viewport';
+        defineScrollMetrics(suggestionViewport, {
+            scrollHeight: 520,
+            clientHeight: 160,
+            scrollTop: 80,
+        });
+        const inner = document.createElement('button');
+        suggestionViewport.append(inner);
+        document.body.append(suggestionViewport);
         const preventDefault = vi.fn();
 
         touchStartHandler?.({

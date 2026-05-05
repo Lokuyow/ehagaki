@@ -57,6 +57,10 @@ export function preventKeyboardFocusChange(event: Event): void {
     suppressEditorKeyboardForCurrentTap(event);
 }
 
+export function preserveKeyboardForScrollableTouch(event: Event): void {
+    suppressEditorKeyboardForCurrentTap(event);
+}
+
 export function isIosTouchDevice(): boolean {
     if (typeof navigator === "undefined") {
         return false;
