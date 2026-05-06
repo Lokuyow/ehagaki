@@ -110,4 +110,58 @@ describe("BlossomUploadAdapter", () => {
             }),
         );
     });
+
+    it("infers supported MIME types from a bounded set of BUD-06 HEAD probes", async () => {
+        const adapter = new BlossomUploadAdapter();
+        const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+            const headers = init?.headers as Record<string, string>;
+            const contentType = headers["X-Content-Type"];
+
+            if (contentType === "video/mp4") {
+                return new Response(null, { status: 415 });
+            }
+            return new Response(null, { status: 200 });
+        });
+        const authService = {
+            buildAuthHeader: vi.fn(),
+            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
+        };
+
+        const result = await adapter.testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService,
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.capabilities?.supportedMimeTypes).toContain("image/png");
+        expect(result.capabilities?.supportedMimeTypes).toContain("image/jpeg");
+        expect(result.capabilities?.supportedMimeTypes).toContain("image/svg+xml");
+        expect(result.capabilities?.supportedMimeTypes).toContain("audio/mp3");
+        expect(result.capabilities?.supportedMimeTypes).not.toContain("video/mp4");
+        expect(result.capabilities?.maxUploadSize).toBeNull();
+        expect(fetchMock).toHaveBeenCalledTimes(1 + 11);
+    });
+
+    it("uses explicit upload size headers when a Blossom server exposes them", async () => {
+        const adapter = new BlossomUploadAdapter();
+        const fetchMock = vi.fn(async () => new Response(null, {
+            status: 200,
+            headers: {
+                "X-Max-Upload-Size": String(10 * 1024 * 1024),
+            },
+        }));
+        const authService = {
+            buildAuthHeader: vi.fn(),
+            buildBlossomAuthorizationHeader: vi.fn(async () => "Nostr mock-token"),
+        };
+
+        const result = await adapter.testConnection({
+            destination: createDestination(),
+            fetch: fetchMock as unknown as typeof fetch,
+            authService,
+        });
+
+        expect(result.capabilities?.maxUploadSize).toBe(10 * 1024 * 1024);
+    });
 });

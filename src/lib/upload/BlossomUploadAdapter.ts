@@ -17,6 +17,20 @@ function getUploadUrl(destination: UploadDestination): string {
     return `${normalizeBlossomServerUrl(destination)}/upload`;
 }
 
+const BLOSSOM_MIME_PROBE_TYPES = [
+    "image/png",
+    "image/jpeg",
+    "image/webp",
+    "image/gif",
+    "image/svg+xml",
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+];
+
 function descriptorToNip94(data: any, file: File, sha256: string = ""): Record<string, string> {
     return {
         url: String(data?.url ?? ""),
@@ -130,9 +144,71 @@ function createBlossomClient(
     return client;
 }
 
+function isUploadRequirementAccepted(status: number): boolean {
+    return status >= 200 && status < 300;
+}
+
+async function probeBlossomUploadRequirement(params: {
+    destination: UploadDestination;
+    fetch: typeof fetch;
+    authService?: UploadAdapterUploadParams["authService"];
+    sha256: string;
+    contentType: string;
+    contentLength: number;
+}): Promise<Response | null> {
+    const headers: Record<string, string> = {
+        "X-SHA-256": params.sha256,
+        "X-Content-Type": params.contentType,
+        "X-Content-Length": String(params.contentLength),
+    };
+
+    const authorization = await params.authService?.buildBlossomAuthorizationHeader?.({
+        serverUrl: normalizeBlossomServerUrl(params.destination),
+        method: "upload",
+        sha256: params.sha256,
+        contentType: params.contentType,
+        contentLength: params.contentLength,
+    });
+    if (authorization) headers.Authorization = authorization;
+
+    try {
+        return await params.fetch(getUploadUrl(params.destination), {
+            method: "HEAD",
+            headers,
+        });
+    } catch {
+        return null;
+    }
+}
+
+async function probeSupportedMimeTypes(params: {
+    destination: UploadDestination;
+    fetch: typeof fetch;
+    authService?: UploadAdapterUploadParams["authService"];
+    sha256: string;
+    contentLength: number;
+}): Promise<string[]> {
+    const supportedMimeTypes: string[] = [];
+
+    for (const contentType of BLOSSOM_MIME_PROBE_TYPES) {
+        const response = await probeBlossomUploadRequirement({
+            ...params,
+            contentType,
+        });
+
+        if (!response) break;
+        if (isUploadRequirementAccepted(response.status)) {
+            supportedMimeTypes.push(contentType);
+        }
+    }
+
+    return supportedMimeTypes;
+}
+
 function buildBlossomCapabilities(
     response: Response,
     destination: UploadDestination,
+    inferredCapabilities?: Partial<Pick<UploadDestinationCapabilities, "maxUploadSize" | "supportedMimeTypes">>,
 ): UploadDestinationCapabilities {
     const maxUploadSize = Number(response.headers.get("X-Max-Upload-Size"))
         || Number(response.headers.get("Max-Upload-Size"))
@@ -143,11 +219,13 @@ function buildBlossomCapabilities(
         || response.headers.get("Accept");
     const supportedMimeTypes = mimeHeader
         ? mimeHeader.split(",").map((item) => item.trim()).filter(Boolean)
-        : destination.capabilities.supportedMimeTypes;
+        : inferredCapabilities?.supportedMimeTypes?.length
+            ? inferredCapabilities.supportedMimeTypes
+            : destination.capabilities.supportedMimeTypes;
 
     return {
         ...destination.capabilities,
-        maxUploadSize,
+        maxUploadSize: inferredCapabilities?.maxUploadSize ?? maxUploadSize,
         supportedMimeTypes,
         supportsDelete: true,
         supportsList: true,
@@ -197,32 +275,42 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 type: "image/png",
             });
         const sha256 = await calculateSHA256Hex(sampleFile);
-        const headers: Record<string, string> = {
-            "X-SHA-256": sha256,
-            "X-Content-Type": sampleFile.type || "text/plain",
-            "X-Content-Length": String(sampleFile.size),
-        };
-
-        const authorization = await params.authService?.buildBlossomAuthorizationHeader?.({
-            serverUrl: normalizeBlossomServerUrl(params.destination),
-            method: "upload",
+        const response = await probeBlossomUploadRequirement({
+            destination: params.destination,
+            fetch: params.fetch,
+            authService: params.authService,
             sha256,
-            contentType: sampleFile.type,
+            contentType: sampleFile.type || "image/png",
             contentLength: sampleFile.size,
         });
-        if (authorization) headers.Authorization = authorization;
 
-        const response = await params.fetch(getUploadUrl(params.destination), {
-            method: "HEAD",
-            headers,
-        });
+        if (!response) {
+            return {
+                success: false,
+                message: "Blossom connection test failed",
+                capabilities: buildBlossomCapabilities(new Response(null, { status: 599 }), params.destination),
+            };
+        }
+
+        const canInferCapabilities = isUploadRequirementAccepted(response.status);
+        const inferredCapabilities = canInferCapabilities
+            ? {
+                supportedMimeTypes: await probeSupportedMimeTypes({
+                    destination: params.destination,
+                    fetch: params.fetch,
+                    authService: params.authService,
+                    sha256,
+                    contentLength: sampleFile.size,
+                }),
+            }
+            : undefined;
 
         if (response.ok || response.status === 401 || response.status === 403) {
             return {
                 success: response.ok,
                 status: response.status,
                 message: response.ok ? undefined : "Authentication is required or was rejected",
-                capabilities: buildBlossomCapabilities(response, params.destination),
+                capabilities: buildBlossomCapabilities(response, params.destination, inferredCapabilities),
             };
         }
 
@@ -230,7 +318,7 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
             success: false,
             status: response.status,
             message: response.headers.get("X-Reason") ?? `Blossom connection test failed: ${response.status}`,
-            capabilities: buildBlossomCapabilities(response, params.destination),
+            capabilities: buildBlossomCapabilities(response, params.destination, inferredCapabilities),
         };
     }
 }
