@@ -58,7 +58,7 @@
     /* --- Variant Styles --- */
     .default {
         background-color: var(--btn-bg);
-        padding: 12px 16px 12px 16px;
+        padding: 10px 14px 10px 14px;
         gap: 8px;
 
         :global(.svg-icon) {
