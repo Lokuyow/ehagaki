@@ -248,7 +248,6 @@
         search;
         open;
         items.length;
-        recentItems.length;
         scrollTop = 0;
         pickerElement
             ?.querySelector<HTMLElement>(".custom-emoji-scroll-viewport")
