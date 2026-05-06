@@ -207,7 +207,9 @@
         }
     }
 
-    async function deleteDestination(destination: UploadDestination): Promise<void> {
+    async function deleteDestination(
+        destination: UploadDestination,
+    ): Promise<void> {
         if (editingTargetId === destination.id) {
             editing = false;
             editingTargetId = null;
@@ -291,11 +293,7 @@
             >
                 {$_("settingsDialog.uploadDestinationSave") || "保存"}
             </Button>
-            <Button
-                variant="default"
-                shape="rounded"
-                onClick={cancelEdit}
-            >
+            <Button variant="default" shape="rounded" onClick={cancelEdit}>
                 {$_("postComponent.cancel") || "キャンセル"}
             </Button>
         </div>
@@ -332,81 +330,93 @@
             {#each destinationState.destinations as destination}
                 <div class="destination-row">
                     <div class="destination-main">
-                        <div class="destination-title">
-                            <span>{destination.name}</span>
-                            {#if destination.isDefault}
-                                <span class="badge"
-                                    >{$_(
-                                        "settingsDialog.uploadDestinationDefault",
-                                    ) || "既定"}</span
-                                >
-                            {/if}
-                            {#if !destination.enabled}
-                                <span class="badge muted"
-                                    >{$_(
-                                        "settingsDialog.uploadDestinationDisabled",
-                                    ) || "無効"}</span
-                                >
-                            {/if}
+                        <div class="destination-content">
+                            <div class="destination-title">
+                                <span>{destination.name}</span>
+                                {#if destination.isDefault}
+                                    <span class="badge"
+                                        >{$_(
+                                            "settingsDialog.uploadDestinationDefault",
+                                        ) || "既定"}</span
+                                    >
+                                {/if}
+                                {#if !destination.enabled}
+                                    <span class="badge muted"
+                                        >{$_(
+                                            "settingsDialog.uploadDestinationDisabled",
+                                        ) || "無効"}</span
+                                    >
+                                {/if}
+                            </div>
+                            <div class="destination-meta">
+                                {destination.protocol} / {destination.presetId ||
+                                    "custom"} / {formatMaxSize(
+                                    destination.capabilities.maxUploadSize,
+                                )}
+                            </div>
+                            <div class="destination-meta mime-meta">
+                                <span>{getMimeSummary(destination)}</span>
+                                {#if canExpandMimeTypes(destination)}
+                                    <button
+                                        type="button"
+                                        class="mime-toggle"
+                                        onclick={() =>
+                                            toggleMimeTypes(destination.id)}
+                                    >
+                                        {expandedMimeDestinations[
+                                            destination.id
+                                        ]
+                                            ? $_(
+                                                  "settingsDialog.uploadDestinationMimeCollapse",
+                                              ) || "折りたたむ"
+                                            : $_(
+                                                  "settingsDialog.uploadDestinationMimeExpand",
+                                              ) || "すべて表示"}
+                                    </button>
+                                {/if}
+                            </div>
                         </div>
-                        <div class="destination-meta">
-                            {destination.protocol} / {destination.presetId ||
-                                "custom"} / {formatMaxSize(
-                                destination.capabilities.maxUploadSize,
-                            )}
-                        </div>
-                        <div class="destination-meta mime-meta">
-                            <span>{getMimeSummary(destination)}</span>
-                            {#if canExpandMimeTypes(destination)}
-                                <button
-                                    type="button"
-                                    class="mime-toggle"
-                                    onclick={() =>
-                                        toggleMimeTypes(destination.id)}
-                                >
-                                    {expandedMimeDestinations[destination.id]
-                                        ? $_(
-                                              "settingsDialog.uploadDestinationMimeCollapse",
-                                          ) || "折りたたむ"
-                                        : $_(
-                                              "settingsDialog.uploadDestinationMimeExpand",
-                                          ) || "すべて表示"}
-                                </button>
-                            {/if}
+                        <div class="destination-order-actions">
+                            <Button
+                                variant="default"
+                                shape="rounded"
+                                className="destination-order-button"
+                                ariaLabel={$_(
+                                    "settingsDialog.uploadDestinationMoveUp",
+                                ) || "Up"}
+                                onClick={() =>
+                                    uploadDestinationStore.move(
+                                        destination.id,
+                                        "up",
+                                        pubkeyHex,
+                                    )}
+                                disabled={destinationState.destinations[0]
+                                    ?.id === destination.id}
+                            >
+                                <span class="arrow-up-icon svg-icon"></span>
+                            </Button>
+                            <Button
+                                variant="default"
+                                shape="rounded"
+                                className="destination-order-button"
+                                ariaLabel={$_(
+                                    "settingsDialog.uploadDestinationMoveDown",
+                                ) || "Down"}
+                                onClick={() =>
+                                    uploadDestinationStore.move(
+                                        destination.id,
+                                        "down",
+                                        pubkeyHex,
+                                    )}
+                                disabled={destinationState.destinations[
+                                    destinationState.destinations.length - 1
+                                ]?.id === destination.id}
+                            >
+                                <span class="arrow-down-icon svg-icon"></span>
+                            </Button>
                         </div>
                     </div>
                     <div class="destination-actions">
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() =>
-                                uploadDestinationStore.move(
-                                    destination.id,
-                                    "up",
-                                    pubkeyHex,
-                                )}
-                            disabled={destinationState.destinations[0]?.id ===
-                                destination.id}
-                        >
-                            {$_("settingsDialog.uploadDestinationMoveUp") ||
-                                "Up"}
-                        </Button>
-                        <Button
-                            variant="default"
-                            shape="rounded"
-                            onClick={() =>
-                                uploadDestinationStore.move(
-                                    destination.id,
-                                    "down",
-                                    pubkeyHex,
-                                )}
-                            disabled={destinationState.destinations[
-                                destinationState.destinations.length - 1
-                            ]?.id === destination.id}
-                        >
-                            {$_("settingsDialog.uploadDestinationMoveDown") ||
-                                "Down"}
-                        </Button>
                         <Button
                             variant="default"
                             shape="rounded"
@@ -473,20 +483,27 @@
                 {@render destinationForm()}
             {:else if !editing}
                 <div class="panel-actions">
-                    <Button variant="default" shape="rounded" onClick={startAdd}>
+                    <Button
+                        variant="default"
+                        shape="rounded"
+                        onClick={startAdd}
+                    >
                         {$_("settingsDialog.uploadDestinationAdd") || "追加"}
                     </Button>
                     <Button
                         variant="default"
                         shape="rounded"
                         onClick={fetchBud03}
-                        disabled={!canUseBud03 || destinationState.bud03Fetching}
+                        disabled={!canUseBud03 ||
+                            destinationState.bud03Fetching}
                     >
                         {destinationState.bud03Fetching
-                            ? $_("settingsDialog.uploadDestinationBud03Fetching") ||
-                              "BUD-03 取得中"
-                            : $_("settingsDialog.uploadDestinationBud03Fetch") ||
-                              "BUD-03 から取得"}
+                            ? $_(
+                                  "settingsDialog.uploadDestinationBud03Fetching",
+                              ) || "BUD-03 取得中"
+                            : $_(
+                                  "settingsDialog.uploadDestinationBud03Fetch",
+                              ) || "BUD-03 から取得"}
                     </Button>
                     <Button
                         variant="primary"
@@ -501,14 +518,18 @@
                             )}
                     >
                         {destinationState.bud03Publishing
-                            ? $_("settingsDialog.uploadDestinationBud03Publishing") ||
-                              "BUD-03 publish 中"
-                            : $_("settingsDialog.uploadDestinationBud03Publish") ||
-                              "BUD-03 へ publish"}
+                            ? $_(
+                                  "settingsDialog.uploadDestinationBud03Publishing",
+                              ) || "BUD-03 publish 中"
+                            : $_(
+                                  "settingsDialog.uploadDestinationBud03Publish",
+                              ) || "BUD-03 へ publish"}
                     </Button>
                 </div>
                 {#if destinationState.bud03Status}
-                    <div class="test-result">{destinationState.bud03Status}</div>
+                    <div class="test-result">
+                        {destinationState.bud03Status}
+                    </div>
                 {/if}
             {/if}
         </div>
@@ -568,6 +589,48 @@
         flex-wrap: wrap;
         gap: 6px;
         font-weight: 600;
+    }
+
+    .destination-main {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+    }
+
+    .destination-content {
+        min-width: 0;
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .destination-order-actions {
+        display: flex;
+        flex-shrink: 0;
+        gap: 4px;
+
+        :global(.destination-order-button) {
+            width: 34px;
+            height: 34px;
+            min-width: 34px;
+            min-height: 34px;
+            padding: 0;
+        }
+    }
+
+    :global(.destination-order-button .svg-icon) {
+        width: 16px;
+        height: 16px;
+    }
+
+    .arrow-up-icon {
+        mask-image: url("/icons/arrow-up-solid-full.svg");
+    }
+
+    .arrow-down-icon {
+        mask-image: url("/icons/arrow-down-solid-full.svg");
     }
 
     .badge {
