@@ -6,6 +6,9 @@ const EMBED_NAMESPACE = "ehagaki.embed";
 const EMBED_VERSION = 1;
 const PARENT_SESSION_STORAGE_KEY = "ehagaki.parent-client-sample.session";
 const PARENT_EMBED_STORAGE_PREFIX = "ehagaki.embed.storage.v1:";
+const PARENT_EMBED_INDEXEDDB_NAME = "ehagaki-parent-embed-storage-v1";
+const PARENT_EMBED_INDEXEDDB_VERSION = 1;
+const PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE = "snapshots";
 const TIMELINE_RELAYS = ["wss://nos.lol"];
 const TIMELINE_EVENT_LIMIT = 24;
 const TIMELINE_QUERY_MAX_WAIT_MS = 4000;
@@ -22,6 +25,8 @@ const INBOUND_TYPES = new Set([
     "storage.get",
     "storage.set",
     "storage.remove",
+    "idb.getSnapshot",
+    "idb.setSnapshot",
     "post.success",
     "post.error",
 ]);
@@ -104,6 +109,10 @@ const EMBED_STORAGE_KEYS = new Set([
     "sharedMediaProcessed",
 ]);
 
+const EMBED_INDEXEDDB_STORES = new Set([
+    "uploadDestinations",
+]);
+
 let lastPubkeyHex = null;
 let activeParentSession = null;
 let isIframeReady = false;
@@ -153,6 +162,73 @@ function getParentStoredEmbedValue(key) {
     }
 
     return window.localStorage.getItem(getParentEmbedStorageKey(key));
+}
+
+function isAllowedEmbedIndexedDbStore(store) {
+    return EMBED_INDEXEDDB_STORES.has(store);
+}
+
+function getParentEmbedIndexedDbSnapshotKey(store, scopeKey) {
+    return `${store}:${scopeKey}`;
+}
+
+function openParentEmbedIndexedDb() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open(
+            PARENT_EMBED_INDEXEDDB_NAME,
+            PARENT_EMBED_INDEXEDDB_VERSION,
+        );
+
+        request.onupgradeneeded = () => {
+            const db = request.result;
+            if (!db.objectStoreNames.contains(PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE)) {
+                const store = db.createObjectStore(
+                    PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE,
+                    { keyPath: "key" },
+                );
+                store.createIndex("store", "store");
+                store.createIndex("scopeKey", "scopeKey");
+                store.createIndex("updatedAt", "updatedAt");
+            }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
+    });
+}
+
+async function readParentEmbedIndexedDbSnapshot(storeName, scopeKey) {
+    const db = await openParentEmbedIndexedDb();
+    try {
+        return await new Promise((resolve, reject) => {
+            const transaction = db.transaction(PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE, "readonly");
+            const store = transaction.objectStore(PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE);
+            const request = store.get(getParentEmbedIndexedDbSnapshotKey(storeName, scopeKey));
+            request.onsuccess = () => resolve(request.result?.records);
+            request.onerror = () => reject(request.error ?? new Error("IndexedDB read failed"));
+        });
+    } finally {
+        db.close();
+    }
+}
+
+async function writeParentEmbedIndexedDbSnapshot(storeName, scopeKey, records) {
+    const db = await openParentEmbedIndexedDb();
+    try {
+        await new Promise((resolve, reject) => {
+            const transaction = db.transaction(PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE, "readwrite");
+            transaction.oncomplete = () => resolve();
+            transaction.onerror = () => reject(transaction.error ?? new Error("IndexedDB write failed"));
+            transaction.objectStore(PARENT_EMBED_INDEXEDDB_SNAPSHOT_STORE).put({
+                key: getParentEmbedIndexedDbSnapshotKey(storeName, scopeKey),
+                store: storeName,
+                scopeKey,
+                records,
+                updatedAt: Date.now(),
+            });
+        });
+    } finally {
+        db.close();
+    }
 }
 
 function isStringMatrix(value) {
@@ -1402,6 +1478,10 @@ function requiresRequestId(type) {
         "storage.remove",
         "storage.result",
         "storage.error",
+        "idb.getSnapshot",
+        "idb.setSnapshot",
+        "idb.result",
+        "idb.error",
         "composer.contextApplied",
         "composer.contextError",
     ].includes(type);
@@ -1642,6 +1722,73 @@ function validateStorageRemovePayload(payload) {
     return validateEmbedStorageKeys(payload.keys, "storage.remove payload.keys");
 }
 
+function validateUploadDestinationRecord(record) {
+    if (!isRecord(record)) {
+        return "uploadDestination record must be an object";
+    }
+    if (!isNonEmptyString(record.id)) {
+        return "uploadDestination record.id must be a non-empty string";
+    }
+    if (record.pubkeyHex !== null && record.pubkeyHex !== undefined && typeof record.pubkeyHex !== "string") {
+        return "uploadDestination record.pubkeyHex must be a string or null";
+    }
+    if (!isNonEmptyString(record.scopeKey)) {
+        return "uploadDestination record.scopeKey must be a non-empty string";
+    }
+    if (!isNonEmptyString(record.name) || !isNonEmptyString(record.protocol) || typeof record.serverUrl !== "string") {
+        return "uploadDestination record must include name, protocol, and serverUrl";
+    }
+    if (typeof record.isDefault !== "boolean" || typeof record.enabled !== "boolean") {
+        return "uploadDestination record.isDefault and enabled must be booleans";
+    }
+    if (typeof record.createdAt !== "number" || typeof record.updatedAt !== "number") {
+        return "uploadDestination record timestamps must be numbers";
+    }
+    if (!isRecord(record.capabilities) || !Array.isArray(record.capabilities.supportedMimeTypes)) {
+        return "uploadDestination record.capabilities is invalid";
+    }
+    if (!isRecord(record.auth) || typeof record.auth.type !== "string") {
+        return "uploadDestination record.auth.type must be a string";
+    }
+    if (record.schemaVersion !== 1) {
+        return "uploadDestination record.schemaVersion must be 1";
+    }
+    return null;
+}
+
+function validateIndexedDbStorePayload(payload, typeLabel) {
+    if (!isRecord(payload)) {
+        return `${typeLabel} payload must be an object`;
+    }
+    if (!isAllowedEmbedIndexedDbStore(payload.store)) {
+        return `${typeLabel} payload.store is unsupported`;
+    }
+    if (!isNonEmptyString(payload.scopeKey)) {
+        return `${typeLabel} payload.scopeKey must be a non-empty string`;
+    }
+    return null;
+}
+
+function validateIndexedDbGetSnapshotPayload(payload) {
+    return validateIndexedDbStorePayload(payload, "idb.getSnapshot");
+}
+
+function validateIndexedDbSetSnapshotPayload(payload) {
+    const baseError = validateIndexedDbStorePayload(payload, "idb.setSnapshot");
+    if (baseError) return baseError;
+    if (!Array.isArray(payload.records)) {
+        return "idb.setSnapshot payload.records must be an array";
+    }
+    for (const record of payload.records) {
+        const recordError = validateUploadDestinationRecord(record);
+        if (recordError) return recordError;
+        if (record.scopeKey !== payload.scopeKey) {
+            return "idb.setSnapshot payload.records contains a different scopeKey";
+        }
+    }
+    return null;
+}
+
 function validateComposerContextUpdatedPayload(payload) {
     if (!isRecord(payload)) {
         return "composer.contextUpdated payload must be an object";
@@ -1720,6 +1867,10 @@ function validateEnvelope(data) {
             return validateStorageSetPayload(data.payload);
         case "storage.remove":
             return validateStorageRemovePayload(data.payload);
+        case "idb.getSnapshot":
+            return validateIndexedDbGetSnapshotPayload(data.payload);
+        case "idb.setSnapshot":
+            return validateIndexedDbSetSnapshotPayload(data.payload);
         case "composer.contextUpdated":
             return validateComposerContextUpdatedPayload(data.payload);
         case "post.success":
@@ -1929,6 +2080,53 @@ function handleStorageRequest(message) {
     }
 }
 
+async function handleIndexedDbSnapshotRequest(message) {
+    const { store, scopeKey } = message.payload;
+
+    try {
+        if (message.type === "idb.getSnapshot") {
+            const records = await readParentEmbedIndexedDbSnapshot(store, scopeKey);
+            postToIframe(
+                "idb.result",
+                {
+                    timestamp: Date.now(),
+                    store,
+                    scopeKey,
+                    ...(Array.isArray(records) ? { records } : {}),
+                },
+                message.requestId,
+            );
+            return;
+        }
+
+        if (message.type === "idb.setSnapshot") {
+            await writeParentEmbedIndexedDbSnapshot(store, scopeKey, message.payload.records);
+            postToIframe(
+                "idb.result",
+                {
+                    timestamp: Date.now(),
+                    store,
+                    scopeKey,
+                    applied: true,
+                },
+                message.requestId,
+            );
+        }
+    } catch (error) {
+        postToIframe(
+            "idb.error",
+            {
+                timestamp: Date.now(),
+                store,
+                scopeKey,
+                code: "idb_parent_failed",
+                message: error instanceof Error ? error.message : String(error),
+            },
+            message.requestId,
+        );
+    }
+}
+
 async function handleEmbedMessage(event) {
     if (event.source !== iframe.contentWindow) {
         return;
@@ -1964,6 +2162,10 @@ async function handleEmbedMessage(event) {
         case "storage.set":
         case "storage.remove":
             handleStorageRequest(message);
+            break;
+        case "idb.getSnapshot":
+        case "idb.setSnapshot":
+            await handleIndexedDbSnapshotRequest(message);
             break;
         case "composer.contextApplied": {
             const actionLabel = consumeComposerRequestAction(message.requestId);

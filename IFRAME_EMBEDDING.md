@@ -305,11 +305,11 @@ iframe.contentWindow.postMessage({
 
 - `settings.set` の `requestId` は必須です
 - payload は部分更新です。指定できるキーは `locale`, `themeMode`, `uploadEndpoint`, `imageQualityLevel`, `videoQualityLevel`, `clientTagEnabled`, `quoteNotificationEnabled`, `mediaFreePlacement`, `showMascot`, `showFlavorText` です。旧 `imageCompressionLevel` / `videoCompressionLevel` も互換用に受け付けます
-- 適用された値は iframe 内 eHagaki の localStorage に保存されます
+- 適用された値は iframe 内 eHagaki の localStorage に保存されます。アップロード先の一覧・既定値は現在 `eHagakiDB.uploadDestinations` 側で管理されます
 - 成功時は `settings.applied`、失敗時は `settings.error` が同じ `requestId` で返ります
 - `settings.applied` の payload は `{ timestamp, applied }`、`settings.error` の payload は `{ timestamp, code, message? }` です
 
-### iframe 内 localStorage が使えない場合の親保存委譲
+### iframe 内 storage が使えない場合の親保存委譲
 
 iOS Safari など一部ブラウザでは、cross-origin iframe 内の localStorage が安定して使えないことがあります。その場合、親ページが `storage.*` メッセージに応答すると、eHagaki は設定を親ページ側 localStorage に委譲できます。
 
@@ -391,7 +391,7 @@ iframe.contentWindow.postMessage({
 - `locale`
 - `themeMode`
 - `darkMode`
-- `uploadEndpoint`
+- `uploadEndpoint`（旧アップロード先設定。新しいアップロード先一覧は IndexedDB 委譲の `uploadDestinations` を使います）
 - `clientTagEnabled`
 - `quoteNotificationEnabled`
 - `imageQualityLevel`
@@ -413,7 +413,7 @@ const ALLOWED_STORAGE_KEYS = new Set([
   'locale',
   'themeMode',
   'darkMode',
-  'uploadEndpoint',
+  'uploadEndpoint', // legacy upload destination preference
   'clientTagEnabled',
   'quoteNotificationEnabled',
   'imageQualityLevel',
@@ -491,7 +491,85 @@ window.addEventListener('message', (event) => {
 
 初回描画のテーマや言語のちらつきを抑えたい場合は、親ページに保存済みの `themeMode` / `locale` を iframe URL の `defaultTheme` / `defaultLocale` にも反映してください。起動後に `storage.get` の結果が返ると、iframe 側の設定ストアも親保存値へ同期されます。
 
-既存の [public/embed-parent-client-example.html](public/embed-parent-client-example.html) は、この親保存委譲にも対応しています。
+#### IndexedDB 設定の親保存委譲
+
+アップロード先の一覧・既定値は `eHagakiDB.uploadDestinations` に保存されます。親ページが `idb.*` メッセージに応答すると、iframe 側はこの store の snapshot を親ページ側 IndexedDB に委譲できます。
+
+現在の IndexedDB 委譲対象は `uploadDestinations` だけです。下書き、共有メディア、custom emoji、profile / relay cache など他 store は対象外です。
+
+子 iframe から親ページへ送られる request は次の 2 種類です。
+
+```js
+// uploadDestinations snapshot の読み込み
+{
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'idb.getSnapshot',
+  requestId: 'idb-1',
+  payload: {
+    store: 'uploadDestinations',
+    scopeKey: '__ehagaki_global__'
+  }
+}
+
+// uploadDestinations snapshot の保存
+{
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'idb.setSnapshot',
+  requestId: 'idb-2',
+  payload: {
+    store: 'uploadDestinations',
+    scopeKey: '__ehagaki_global__',
+    records: [
+      {
+        id: '...',
+        pubkeyHex: null,
+        scopeKey: '__ehagaki_global__',
+        name: 'blossom.band',
+        protocol: 'blossom',
+        serverUrl: 'https://blossom.band',
+        presetId: 'blossom-band',
+        isDefault: true,
+        enabled: true,
+        createdAt: 1710000000000,
+        updatedAt: 1710000000000,
+        capabilities: {
+          maxUploadSize: null,
+          supportedMimeTypes: [],
+          supportsDelete: true,
+          supportsList: true,
+          supportsMirror: false,
+          supportsMediaOptimization: false,
+          authRequired: true,
+          source: 'preset'
+        },
+        auth: { type: 'blossom-bud11' },
+        schemaVersion: 1
+      }
+    ]
+  }
+}
+```
+
+親ページは同じ `requestId` で `idb.result` または `idb.error` を返してください。親側に snapshot がまだない場合、`idb.result` の `records` を省略します。iframe 側は local IndexedDB の内容を作成・読み込み後、親へ `idb.setSnapshot` で mirror します。
+
+```js
+iframe.contentWindow.postMessage({
+  namespace: 'ehagaki.embed',
+  version: 1,
+  type: 'idb.result',
+  requestId: 'idb-1',
+  payload: {
+    timestamp: Date.now(),
+    store: 'uploadDestinations',
+    scopeKey: '__ehagaki_global__',
+    records: []
+  }
+}, 'https://lokuyow.github.io');
+```
+
+既存の [public/embed-parent-client-example.html](public/embed-parent-client-example.html) は、localStorage 委譲と `uploadDestinations` の IndexedDB 委譲に対応しています。
 
 ### 都度生成 iframe の設定注入
 

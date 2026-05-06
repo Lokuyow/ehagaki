@@ -3,7 +3,11 @@ import Dexie from "dexie";
 import { afterEach, describe, expect, it } from "vitest";
 import { STORAGE_KEYS } from "../../lib/constants";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
-import { DexieUploadDestinationsRepository } from "../../lib/storage/uploadDestinationsRepository";
+import {
+    DexieUploadDestinationsRepository,
+    type UploadDestinationsParentSync,
+} from "../../lib/storage/uploadDestinationsRepository";
+import { UPLOAD_DESTINATION_GLOBAL_SCOPE } from "../../lib/upload/uploadDestinationPresets";
 import { MockStorage } from "../helpers";
 
 const testDbNames = new Set<string>();
@@ -201,6 +205,143 @@ describe("uploadDestinationsRepository", () => {
         expect(promoted.isDefault).toBe(true);
         expect(destinations.find((destination) => destination.id === "blossom-band")?.isDefault).toBe(true);
         expect(destinations.find((destination) => destination.id === legacyDefault.id)?.isDefault).toBe(false);
+
+        db.close();
+    });
+
+    it("applies a parent uploadDestinations snapshot before local fallback", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://nostr.build/api/v2/nip96/upload");
+        const parentRecord = {
+            id: "parent-blossom",
+            pubkeyHex: null,
+            scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE,
+            name: "Parent Blossom",
+            protocol: "blossom" as const,
+            serverUrl: "https://blossom.band",
+            presetId: "blossom-band" as const,
+            isDefault: true,
+            enabled: true,
+            createdAt: 2000,
+            updatedAt: 2000,
+            capabilities: {
+                maxUploadSize: null,
+                supportedMimeTypes: [],
+                supportsDelete: true,
+                supportsList: true,
+                supportsMirror: false,
+                supportsMediaOptimization: false,
+                authRequired: true,
+                source: "preset" as const,
+            },
+            auth: { type: "blossom-bud11" as const },
+            schemaVersion: 1 as const,
+        };
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => [parentRecord],
+            setSnapshot: async () => undefined,
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            parentSync,
+        );
+
+        const destination = await repository.getDefault(null);
+        const stored = await db.uploadDestinations.toArray();
+
+        expect(destination.id).toBe("parent-blossom");
+        expect(stored).toHaveLength(1);
+        expect(stored[0].id).toBe("parent-blossom");
+
+        db.close();
+    });
+
+    it("mirrors local uploadDestinations to parent when parent has no snapshot", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const pushedSnapshots: string[][] = [];
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => null,
+            setSnapshot: async (_scopeKey, records) => {
+                pushedSnapshots.push(records.map((record) => record.id));
+            },
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            parentSync,
+        );
+
+        const destination = await repository.getDefault(null);
+
+        expect(pushedSnapshots).toContainEqual([destination.id]);
+
+        db.close();
+    });
+
+    it("mirrors parent snapshot after put, delete, and setDefault", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const pushedSnapshots: string[][] = [];
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => null,
+            setSnapshot: async (_scopeKey, records) => {
+                pushedSnapshots.push(records.map((record) => record.id).sort());
+            },
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            parentSync,
+        );
+        const first = await repository.getDefault(null);
+
+        await repository.put({
+            ...first,
+            id: "second",
+            name: "Second",
+            serverUrl: "https://example.com/second",
+            resolvedUploadUrl: "https://example.com/second",
+            isDefault: false,
+            createdAt: 1235,
+            updatedAt: 1235,
+        });
+        await repository.setDefault("second", null);
+        await repository.delete(first.id);
+
+        expect(pushedSnapshots).toContainEqual([first.id, "second"].sort());
+        expect(pushedSnapshots.at(-1)).toEqual(["second"]);
+
+        db.close();
+    });
+
+    it("continues local IndexedDB behavior when parent sync fails", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => {
+                throw new Error("parent unavailable");
+            },
+            setSnapshot: async () => {
+                throw new Error("parent unavailable");
+            },
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            parentSync,
+        );
+
+        const destination = await repository.getDefault(null);
+
+        expect(destination.isDefault).toBe(true);
+        await expect(db.uploadDestinations.toArray()).resolves.toHaveLength(1);
 
         db.close();
     });

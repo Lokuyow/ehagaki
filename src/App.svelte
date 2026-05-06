@@ -12,6 +12,7 @@
   import { nip46Service } from "./lib/nip46Service";
   import { parentClientAuthService } from "./lib/parentClientAuthService";
   import { embedComposerContextService } from "./lib/embedComposerContextService";
+  import { embedIndexedDbService } from "./lib/embedIndexedDbService";
   import { embedSettingsService } from "./lib/embedSettingsService";
   import {
     embedStorageService,
@@ -1135,6 +1136,7 @@
     ) {
       void initializeEmbedStorageSync();
     }
+    embedIndexedDbService.initialize({ locationSearch: window.location.search });
 
     const cleanupParentClientLoginHandler =
       parentClientAuthService.onRemoteLogin((pubkeyHex) => {

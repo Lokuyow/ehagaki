@@ -16,6 +16,10 @@ export type EmbedMessageType =
     | "storage.remove"
     | "storage.result"
     | "storage.error"
+    | "idb.getSnapshot"
+    | "idb.setSnapshot"
+    | "idb.result"
+    | "idb.error"
     | "composer.setContext"
     | "composer.contextApplied"
     | "composer.contextError"
@@ -114,6 +118,33 @@ export interface EmbedStorageErrorPayload extends EmbedErrorPayload {
     timestamp: number;
 }
 
+export type EmbedIndexedDbStoreName = "uploadDestinations";
+
+export interface EmbedIndexedDbGetSnapshotPayload {
+    store: EmbedIndexedDbStoreName;
+    scopeKey: string;
+}
+
+export interface EmbedIndexedDbSetSnapshotPayload {
+    store: EmbedIndexedDbStoreName;
+    scopeKey: string;
+    records: unknown[];
+}
+
+export interface EmbedIndexedDbResultPayload {
+    timestamp: number;
+    store: EmbedIndexedDbStoreName;
+    scopeKey: string;
+    records?: unknown[];
+    applied?: boolean;
+}
+
+export interface EmbedIndexedDbErrorPayload extends EmbedErrorPayload {
+    timestamp: number;
+    store?: EmbedIndexedDbStoreName;
+    scopeKey?: string;
+}
+
 export interface EmbedComposerContextAppliedPayload {
     timestamp: number;
 }
@@ -156,6 +187,10 @@ const EMBED_REQUEST_ID_REQUIRED_TYPES = new Set<EmbedMessageType>([
     "storage.remove",
     "storage.result",
     "storage.error",
+    "idb.getSnapshot",
+    "idb.setSnapshot",
+    "idb.result",
+    "idb.error",
     "composer.setContext",
     "composer.contextApplied",
     "composer.contextError",

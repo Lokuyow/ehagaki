@@ -1,5 +1,6 @@
 import { STORAGE_KEYS } from "../constants";
 import type { UploadDestination, UploadDestinationCapabilities } from "../types";
+import { embedIndexedDbService } from "../embedIndexedDbService";
 import { ehagakiDb, type EHagakiDB, type UploadDestinationRecord } from "./ehagakiDb";
 import {
     UPLOAD_DESTINATION_GLOBAL_SCOPE,
@@ -17,6 +18,21 @@ export interface UploadDestinationsRepository {
     delete(id: string): Promise<void>;
     setDefault(id: string, pubkeyHex?: string | null): Promise<void>;
 }
+
+export interface UploadDestinationsParentSync {
+    getSnapshot(scopeKey: string): Promise<UploadDestinationRecord[] | null>;
+    setSnapshot(scopeKey: string, records: UploadDestinationRecord[]): Promise<void>;
+}
+
+export const uploadDestinationsParentSync: UploadDestinationsParentSync = {
+    async getSnapshot(scopeKey: string): Promise<UploadDestinationRecord[] | null> {
+        return embedIndexedDbService.getUploadDestinationsSnapshot(scopeKey);
+    },
+
+    async setSnapshot(scopeKey: string, records: UploadDestinationRecord[]): Promise<void> {
+        await embedIndexedDbService.setUploadDestinationsSnapshot(scopeKey, records);
+    },
+};
 
 function toPlainRawValue(raw: unknown): unknown {
     if (raw === undefined) return undefined;
@@ -108,19 +124,25 @@ function getPreferredBlossomBandDestination(
 }
 
 export class DexieUploadDestinationsRepository implements UploadDestinationsRepository {
+    private syncedParentScopes = new Set<string>();
+    private parentMissingScopes = new Set<string>();
+
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
         private getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => localStorage,
+        private parentSync: UploadDestinationsParentSync | null = uploadDestinationsParentSync,
     ) { }
 
     async getAll(pubkeyHex: string | null = null): Promise<UploadDestination[]> {
+        await this.loadParentSnapshot(pubkeyHex);
         await this.ensureLegacyUploadEndpointMigrated(pubkeyHex);
         const scopeKey = getScopeKey(pubkeyHex);
         const records = await this.db.uploadDestinations
             .where("scopeKey")
             .equals(scopeKey)
             .toArray();
+        await this.persistParentSnapshotIfMissing(scopeKey, records);
         return records.map(toDestination).sort(sortDestinations);
     }
 
@@ -170,6 +192,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             }
             await this.db.uploadDestinations.put(toRecord(nextDestination));
         });
+        await this.persistParentSnapshot(getScopeKey(nextDestination.pubkeyHex));
     }
 
     async delete(id: string): Promise<void> {
@@ -188,6 +211,8 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
                 await this.setDefault(nextDefault.id, existing.pubkeyHex);
             }
         }
+
+        await this.persistParentSnapshot(existing.scopeKey);
     }
 
     async setDefault(id: string, pubkeyHex: string | null = null): Promise<void> {
@@ -209,6 +234,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
                 }),
             ));
         });
+        await this.persistParentSnapshot(scopeKey);
     }
 
     private async clearDefault(pubkeyHex: string | null): Promise<void> {
@@ -266,6 +292,68 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             value: true,
             updatedAt: this.now(),
         });
+    }
+
+    private async loadParentSnapshot(pubkeyHex: string | null): Promise<void> {
+        if (!this.parentSync) return;
+
+        const scopeKey = getScopeKey(pubkeyHex);
+        if (this.syncedParentScopes.has(scopeKey)) return;
+
+        this.syncedParentScopes.add(scopeKey);
+        try {
+            const snapshot = await this.parentSync.getSnapshot(scopeKey);
+            if (snapshot === null) {
+                this.parentMissingScopes.add(scopeKey);
+                return;
+            }
+
+            const records = snapshot
+                .filter((record) => record.scopeKey === scopeKey)
+                .map((record) => toRecord(toDestination(record)));
+
+            await this.db.transaction("rw", this.db.uploadDestinations, async () => {
+                await this.db.uploadDestinations
+                    .where("scopeKey")
+                    .equals(scopeKey)
+                    .delete();
+                if (records.length > 0) {
+                    await this.db.uploadDestinations.bulkPut(records);
+                }
+            });
+        } catch {
+            this.syncedParentScopes.delete(scopeKey);
+        }
+    }
+
+    private async persistParentSnapshotIfMissing(
+        scopeKey: string,
+        records: UploadDestinationRecord[],
+    ): Promise<void> {
+        if (!this.parentMissingScopes.has(scopeKey)) return;
+
+        await this.persistParentSnapshot(scopeKey, records);
+        this.parentMissingScopes.delete(scopeKey);
+    }
+
+    private async persistParentSnapshot(
+        scopeKey: string,
+        records?: UploadDestinationRecord[],
+    ): Promise<void> {
+        if (!this.parentSync) return;
+
+        try {
+            const snapshot = records
+                ?? await this.db.uploadDestinations
+                    .where("scopeKey")
+                    .equals(scopeKey)
+                    .toArray();
+            await this.parentSync.setSnapshot(scopeKey, snapshot.map((record) =>
+                toRecord(toDestination(record)),
+            ));
+        } catch {
+            // 親 IndexedDB 委譲は任意。local IndexedDB の保存成功を優先する。
+        }
     }
 }
 
