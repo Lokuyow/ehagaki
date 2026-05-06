@@ -82,7 +82,7 @@ function toDestination(record: UploadDestinationRecord): UploadDestination {
 function sortDestinations(a: UploadDestination, b: UploadDestination): number {
     if (a.isDefault !== b.isDefault) return a.isDefault ? -1 : 1;
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-    if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt;
+    if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
     return a.name.localeCompare(b.name);
 }
 

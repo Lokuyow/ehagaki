@@ -63,6 +63,84 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("appends newly added destinations after existing destinations", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const first = await repository.getDefault(null);
+
+        await repository.put({
+            ...first,
+            id: "second",
+            name: "Second",
+            serverUrl: "https://example.com/second",
+            resolvedUploadUrl: "https://example.com/second",
+            isDefault: false,
+            createdAt: 1235,
+            updatedAt: 1235,
+        });
+
+        await repository.put({
+            ...first,
+            id: "third",
+            name: "Third",
+            serverUrl: "https://example.com/third",
+            resolvedUploadUrl: "https://example.com/third",
+            isDefault: false,
+            createdAt: 1236,
+            updatedAt: 1236,
+        });
+
+        const destinations = await repository.getAll(null);
+
+        expect(destinations.map((destination) => destination.id)).toEqual([
+            first.id,
+            "second",
+            "third",
+        ]);
+
+        db.close();
+    });
+
+    it("keeps a selected default at the top without moving newly added non-default destinations upward", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const first = await repository.getDefault(null);
+
+        await repository.put({
+            ...first,
+            id: "second",
+            name: "Second",
+            serverUrl: "https://example.com/second",
+            resolvedUploadUrl: "https://example.com/second",
+            isDefault: true,
+            createdAt: 1235,
+            updatedAt: 1235,
+        });
+
+        await repository.put({
+            ...first,
+            id: "third",
+            name: "Third",
+            serverUrl: "https://example.com/third",
+            resolvedUploadUrl: "https://example.com/third",
+            isDefault: false,
+            createdAt: 1236,
+            updatedAt: 1236,
+        });
+
+        const destinations = await repository.getAll(null);
+
+        expect(destinations.map((destination) => destination.id)).toEqual([
+            "second",
+            first.id,
+            "third",
+        ]);
+
+        db.close();
+    });
+
     it("stores plain records even when state-proxied nested values are passed", async () => {
         const db = createTestDb();
         const storage = new MockStorage();
