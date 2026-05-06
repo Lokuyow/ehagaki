@@ -24,9 +24,17 @@ export interface UploadDestinationPreset {
     capabilities: UploadDestinationCapabilities;
 }
 
+const NIP96_PRESET_IDS: Record<string, UploadPresetId> = {
+    "nostr.build": "nostr-build",
+    "share.yabu.me": "share-yabu-me",
+    "nostpic.com": "nostpic-com",
+    "nostrcheck.me": "nostrcheck-me",
+    "files.sovbit.host": "files-sovbit-host",
+};
+
 export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
     ...uploadEndpoints.map((endpoint) => ({
-        id: endpoint.label === "nostr.build" ? "nostr-build" as const : "custom" as const,
+        id: NIP96_PRESET_IDS[endpoint.label] ?? "custom",
         name: endpoint.label,
         protocol: "nip96" as const,
         serverUrl: endpoint.url,

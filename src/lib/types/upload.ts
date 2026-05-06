@@ -50,7 +50,15 @@ export interface FileUploadResponse {
 }
 
 export type UploadProtocol = "blossom" | "nip96" | "custom-http";
-export type UploadPresetId = "nostr-build" | "blossom-band" | "self-hosted" | "custom";
+export type UploadPresetId =
+    | "nostr-build"
+    | "share-yabu-me"
+    | "nostpic-com"
+    | "nostrcheck-me"
+    | "files-sovbit-host"
+    | "blossom-band"
+    | "self-hosted"
+    | "custom";
 export type UploadAuthType = "blossom-bud11" | "nip98" | "none" | "custom";
 export type UploadCapabilitiesSource = "preset" | "protocol-discovery" | "test" | "manual";
 
