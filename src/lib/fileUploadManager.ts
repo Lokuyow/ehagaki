@@ -226,10 +226,10 @@ export class FileUploadManager implements FileUploadManagerInterface {
 
       const normalizedNip94 = uploadResult.success
         ? {
-            ...(uploadResult.nip94 ?? {}),
-            size: String(uploadFile.size),
-            ...(uploadDimensions ? { dim: `${uploadDimensions.width}x${uploadDimensions.height}` } : {}),
-          }
+          ...(uploadResult.nip94 ?? {}),
+          size: String(uploadFile.size),
+          ...(uploadDimensions ? { dim: `${uploadDimensions.width}x${uploadDimensions.height}` } : {}),
+        }
         : uploadResult.nip94;
 
       return {

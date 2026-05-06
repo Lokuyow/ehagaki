@@ -426,7 +426,8 @@
 
     revealToolbarCaret();
     const { state, view } = currentEditor;
-    const currentPos = direction < 0 ? state.selection.from : state.selection.to;
+    const currentPos =
+      direction < 0 ? state.selection.from : state.selection.to;
     const nextPos = Math.max(
       0,
       Math.min(state.doc.content.size, currentPos + direction),
@@ -468,7 +469,7 @@
 
     if (nodeBefore) {
       const deleteSize = nodeBefore.isText
-        ? Array.from(nodeBefore.text ?? "").at(-1)?.length ?? 0
+        ? (Array.from(nodeBefore.text ?? "").at(-1)?.length ?? 0)
         : nodeBefore.nodeSize;
 
       if (deleteSize > 0) {

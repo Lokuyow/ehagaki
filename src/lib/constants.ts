@@ -166,7 +166,7 @@ export const uploadEndpoints = [
 export function getDefaultEndpoint(locale: string | null | undefined): string {
     return locale === "ja"
         ? "https://share.yabu.me/api/v2/media"
-    : "https://nostrcheck.me/api/v2/media";
+        : "https://nostrcheck.me/api/v2/media";
 }
 
 // 圧縮設定候補を返す関数(i18n対応)
