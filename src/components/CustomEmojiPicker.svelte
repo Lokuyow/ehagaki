@@ -72,20 +72,18 @@
     let filteredItems = $derived.by(() => {
         const query = search.trim().toLowerCase();
         if (!query) return items;
-        return items.filter((item) =>
-            item.shortcodeLower.includes(query),
-        );
+        return items.filter((item) => item.shortcodeLower.includes(query));
     });
-    let showRecentItems = $derived(search.trim().length === 0 && recentItems.length > 0);
+    let showRecentItems = $derived(
+        search.trim().length === 0 && recentItems.length > 0,
+    );
     let columnCount = $derived(
         Math.max(1, Math.floor(pickerWidth / CUSTOM_EMOJI_GRID_CELL_SIZE)),
     );
     let recentDisplayLimit = $derived(
         getRecentCustomEmojiDisplayLimit(columnCount),
     );
-    let visibleRecentItems = $derived(
-        recentItems.slice(0, recentDisplayLimit),
-    );
+    let visibleRecentItems = $derived(recentItems.slice(0, recentDisplayLimit));
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
     let effectivePickerHeight = $derived(
         Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, pickerHeight),
@@ -102,8 +100,7 @@
                 Math.floor(
                     Math.max(0, scrollTop - recentSectionHeight) /
                         CUSTOM_EMOJI_GRID_CELL_SIZE,
-                ) -
-                    VIRTUAL_OVERSCAN_ROWS,
+                ) - VIRTUAL_OVERSCAN_ROWS,
             ),
         ),
     );
@@ -370,10 +367,10 @@
                                 <div class="recent-custom-emoji-title">
                                     {$_("customEmoji.recent")}
                                 </div>
-                                    <div
-                                        class="recent-custom-emoji-grid"
-                                        style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
-                                    >
+                                <div
+                                    class="recent-custom-emoji-grid"
+                                    style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                                >
                                     {#each visibleRecentItems as emoji (emoji.identityKey)}
                                         <Command.Item
                                             value={`recent:${emoji.identityKey}`}
@@ -670,7 +667,7 @@
 
     .emoji-grid {
         position: absolute;
-        top: 8px;
+        top: 4px;
         left: 4px;
         right: 4px;
         display: grid;
@@ -678,12 +675,12 @@
     }
 
     .recent-custom-emoji-section {
-        padding: 8px 4px 10px;
+        padding: 4px;
         border-bottom: 1px solid var(--border);
     }
 
     .recent-custom-emoji-title {
-        padding: 0 6px 6px;
+        padding: 0 6px;
         color: var(--text-muted, var(--text));
         font-size: 0.78rem;
         font-weight: 700;
