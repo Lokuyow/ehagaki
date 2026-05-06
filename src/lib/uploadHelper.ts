@@ -38,7 +38,6 @@ import {
 } from "./editor/placeholderManager";
 import { buildUploadFailureMessage } from "./uploadResultUtils";
 import { isDefaultUploadAborted, resetDefaultUploadAbort } from "./uploadAbortUtils";
-import { STORAGE_KEYS } from "./constants";
 import { generateDevImetaTags } from './uploadImetaUtils';
 import {
     createAbortCheckpointChecker,
@@ -281,9 +280,7 @@ export async function uploadHelper({
     const fileArray = Array.from(files);
     const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
     const uploadDestination = await dependencies.resolveUploadDestination?.();
-    const endpoint = getDestinationUploadEndpoint(uploadDestination)
-        || dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)
-        || "";
+    const endpoint = getDestinationUploadEndpoint(uploadDestination) || "";
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 

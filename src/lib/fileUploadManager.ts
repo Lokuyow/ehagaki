@@ -26,7 +26,7 @@ import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { MimeTypeSupport } from './mimeTypeSupport';
 import { ImageCompressionService } from './imageCompressionService';
 import { NostrAuthService } from './nostrAuthService';
-import { isValidUploadEndpoint, normalizeLocale } from './utils/settingsStorage';
+import { normalizeLocale } from './utils/settingsStorage';
 import { isDefaultUploadAborted } from './uploadAbortUtils';
 import { getUploadAdapter } from "./upload/uploadAdapterRegistry";
 import { createLegacyUploadDestination } from "./upload/uploadDestinationPresets";
@@ -108,11 +108,6 @@ export class FileUploadManager implements FileUploadManagerInterface {
   }
 
   private getUploadEndpoint(apiUrl: string): string {
-    const stored = this.dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
-    if (isValidUploadEndpoint(stored)) {
-      return stored;
-    }
-
     const normalizedApiUrl = apiUrl?.trim();
     if (normalizedApiUrl && normalizedApiUrl !== DEFAULT_API_URL) {
       return normalizedApiUrl;

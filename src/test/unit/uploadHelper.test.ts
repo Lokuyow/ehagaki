@@ -80,6 +80,31 @@ vi.mock("svelte", () => ({
 
 // モックの依存関係を作成
 const createMockDependencies = (): UploadHelperDependencies => {
+    const defaultUploadDestination: UploadDestination = {
+        id: "test-nip96",
+        pubkeyHex: null,
+        name: "Test NIP-96",
+        protocol: "nip96",
+        serverUrl: "https://endpoint",
+        resolvedUploadUrl: "https://endpoint",
+        presetId: "custom",
+        isDefault: true,
+        enabled: true,
+        createdAt: 1,
+        updatedAt: 1,
+        capabilities: {
+            maxUploadSize: null,
+            supportedMimeTypes: [],
+            supportsDelete: false,
+            supportsList: false,
+            supportsMirror: false,
+            supportsMediaOptimization: false,
+            authRequired: true,
+            source: "manual",
+        },
+        auth: { type: "nip98" },
+        schemaVersion: 1,
+    };
     const mockFileUploadManager: FileUploadManagerInterface = {
         validateImageFile: vi.fn((file: File): FileValidationResult => {
             return file.type.startsWith('image/')
@@ -144,7 +169,8 @@ const createMockDependencies = (): UploadHelperDependencies => {
         createImetaTag: vi.fn(async () => ["imeta-tag"]),
         imageSizeMapStore: {
             update: vi.fn()
-        }
+        },
+        resolveUploadDestination: vi.fn(async () => defaultUploadDestination),
     };
 };
 
@@ -730,7 +756,8 @@ describe("uploadHelper", () => {
                     media_type: undefined,
                     content_type: "image/png",
                     no_transform: "true"
-                }
+                },
+                expect.objectContaining({ id: "test-nip96" }),
             );
             expect(mockFileUploadManager.uploadMultipleFilesWithCallbacks).not.toHaveBeenCalled();
 
@@ -813,7 +840,8 @@ describe("uploadHelper", () => {
                         content_type: "image/png",
                         no_transform: "true"
                     }
-                ]
+                ],
+                expect.objectContaining({ id: "test-nip96" }),
             );
             expect(mockFileUploadManager.uploadFileWithCallbacks).not.toHaveBeenCalled();
 
