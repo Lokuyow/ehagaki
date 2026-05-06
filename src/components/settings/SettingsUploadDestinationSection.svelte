@@ -24,6 +24,7 @@
 
     let expanded = $state(false);
     let editing = $state(false);
+    let editingTargetId: string | null = $state(null);
     let form = $state({ ...emptyForm });
     let deleteTarget: UploadDestination | null = $state(null);
     let testingId: string | null = $state(null);
@@ -69,6 +70,7 @@
     function startAdd(): void {
         form = { ...emptyForm };
         editing = true;
+        editingTargetId = null;
         expanded = true;
     }
 
@@ -83,6 +85,7 @@
             isDefault: destination.isDefault,
         };
         editing = true;
+        editingTargetId = destination.id;
         expanded = true;
     }
 
@@ -140,6 +143,7 @@
 
         await uploadDestinationStore.save(destination);
         editing = false;
+        editingTargetId = null;
     }
 
     async function testDestination(destination: UploadDestination): Promise<void> {
@@ -151,6 +155,59 @@
         }
     }
 </script>
+
+{#snippet destinationForm()}
+    <div class="destination-form">
+        <label>
+            <span>{$_("settingsDialog.uploadDestinationPreset") || "プリセット"}</span>
+            <select value={form.presetId} onchange={(event) => applyPreset((event.currentTarget as HTMLSelectElement).value as UploadPresetId)}>
+                <option value="custom">custom</option>
+                {#each presetOptions as preset}
+                    <option value={preset.id}>{preset.name}</option>
+                {/each}
+            </select>
+        </label>
+        <label>
+            <span>{$_("settingsDialog.uploadDestinationProtocol") || "Protocol"}</span>
+            <select bind:value={form.protocol}>
+                <option value="blossom">Blossom</option>
+                <option value="nip96">NIP-96 legacy</option>
+                <option value="custom-http">Custom HTTP</option>
+            </select>
+        </label>
+        <label>
+            <span>{$_("settingsDialog.uploadDestinationName") || "名前"}</span>
+            <input bind:value={form.name} />
+        </label>
+        <label>
+            <span>URL</span>
+            <input bind:value={form.serverUrl} inputmode="url" />
+        </label>
+        <label class="checkbox-row">
+            <input type="checkbox" bind:checked={form.enabled} />
+            <span>{$_("settingsDialog.uploadDestinationEnabled") || "有効"}</span>
+        </label>
+        <label class="checkbox-row">
+            <input type="checkbox" bind:checked={form.isDefault} />
+            <span>{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span>
+        </label>
+        <div class="form-actions">
+            <Button variant="primary" shape="rounded" onClick={saveForm} disabled={!form.name.trim() || !form.serverUrl.trim()}>
+                {$_("settingsDialog.uploadDestinationSave") || "保存"}
+            </Button>
+            <Button
+                variant="default"
+                shape="rounded"
+                onClick={() => {
+                    editing = false;
+                    editingTargetId = null;
+                }}
+            >
+                {$_("postComponent.cancel") || "キャンセル"}
+            </Button>
+        </div>
+    </div>
+{/snippet}
 
 <div class="setting-section upload-destination-section">
     <div class="setting-row">
@@ -229,53 +286,15 @@
                         </div>
                     {/if}
                 </div>
+
+                {#if editing && editingTargetId === destination.id}
+                    {@render destinationForm()}
+                {/if}
             {/each}
 
-            {#if editing}
-                <div class="destination-form">
-                    <label>
-                        <span>{$_("settingsDialog.uploadDestinationPreset") || "プリセット"}</span>
-                        <select value={form.presetId} onchange={(event) => applyPreset((event.currentTarget as HTMLSelectElement).value as UploadPresetId)}>
-                            <option value="custom">custom</option>
-                            {#each presetOptions as preset}
-                                <option value={preset.id}>{preset.name}</option>
-                            {/each}
-                        </select>
-                    </label>
-                    <label>
-                        <span>{$_("settingsDialog.uploadDestinationProtocol") || "Protocol"}</span>
-                        <select bind:value={form.protocol}>
-                            <option value="blossom">Blossom</option>
-                            <option value="nip96">NIP-96 legacy</option>
-                            <option value="custom-http">Custom HTTP</option>
-                        </select>
-                    </label>
-                    <label>
-                        <span>{$_("settingsDialog.uploadDestinationName") || "名前"}</span>
-                        <input bind:value={form.name} />
-                    </label>
-                    <label>
-                        <span>URL</span>
-                        <input bind:value={form.serverUrl} inputmode="url" />
-                    </label>
-                    <label class="checkbox-row">
-                        <input type="checkbox" bind:checked={form.enabled} />
-                        <span>{$_("settingsDialog.uploadDestinationEnabled") || "有効"}</span>
-                    </label>
-                    <label class="checkbox-row">
-                        <input type="checkbox" bind:checked={form.isDefault} />
-                        <span>{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span>
-                    </label>
-                    <div class="form-actions">
-                        <Button variant="primary" shape="rounded" onClick={saveForm} disabled={!form.name.trim() || !form.serverUrl.trim()}>
-                            {$_("settingsDialog.uploadDestinationSave") || "保存"}
-                        </Button>
-                        <Button variant="default" shape="rounded" onClick={() => (editing = false)}>
-                            {$_("postComponent.cancel") || "キャンセル"}
-                        </Button>
-                    </div>
-                </div>
-            {:else}
+            {#if editing && !editingTargetId}
+                {@render destinationForm()}
+            {:else if !editing}
                 <Button variant="default" shape="rounded" onClick={startAdd}>
                     {$_("settingsDialog.uploadDestinationAdd") || "追加"}
                 </Button>
