@@ -28,7 +28,7 @@ describe("recentCustomEmojiStore", () => {
 
         await recentCustomEmojiStore.load({ pubkey: "pubkey", repository });
 
-        expect(repository.getRecent).toHaveBeenCalledWith("pubkey", 16);
+        expect(repository.getRecent).toHaveBeenCalledWith("pubkey", 100);
         expect(recentCustomEmojiStore.items).toEqual(items);
         expect(recentCustomEmojiStore.loading).toBe(false);
     });

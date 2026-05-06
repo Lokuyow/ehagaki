@@ -2,7 +2,6 @@ import {
     createRecentCustomEmojiRecord,
     createRecentCustomEmojiRecordId,
     MAX_RECENT_CUSTOM_EMOJI_HISTORY,
-    RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT,
     sortRecentCustomEmojiRecords,
     toRecentCustomEmojiItem,
     type CustomEmojiSelection,
@@ -23,7 +22,7 @@ export class DexieRecentCustomEmojisRepository implements RecentCustomEmojisRepo
 
     async getRecent(
         pubkeyHex: string,
-        limit = RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT,
+        limit = MAX_RECENT_CUSTOM_EMOJI_HISTORY,
     ): Promise<RecentCustomEmojiItem[]> {
         if (!pubkeyHex || limit <= 0) return [];
 

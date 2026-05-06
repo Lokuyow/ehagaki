@@ -4,8 +4,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     createRecentCustomEmojiRecord,
     createRecentCustomEmojiRecordId,
+    getRecentCustomEmojiDisplayLimit,
     MAX_RECENT_CUSTOM_EMOJI_HISTORY,
-    RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT,
 } from "../../lib/recentCustomEmoji";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexieRecentCustomEmojisRepository } from "../../lib/storage/recentCustomEmojisRepository";
@@ -107,8 +107,14 @@ describe("recentCustomEmoji", () => {
         ]);
     });
 
-    it("returns display recent items in lastUsedAt descending order with default limit 16", async () => {
-        for (let index = 1; index <= RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT + 1; index += 1) {
+    it("calculates the display limit from the current column count as two rows", () => {
+        expect(getRecentCustomEmojiDisplayLimit(4)).toBe(8);
+        expect(getRecentCustomEmojiDisplayLimit(20)).toBe(40);
+        expect(getRecentCustomEmojiDisplayLimit(20.8)).toBe(40);
+    });
+
+    it("returns recent items in lastUsedAt descending order up to the history limit by default", async () => {
+        for (let index = 1; index <= MAX_RECENT_CUSTOM_EMOJI_HISTORY + 1; index += 1) {
             nowValue = index * 1000;
             await repository.recordUse("pubkey", {
                 shortcode: `emoji${index}`,
@@ -117,8 +123,8 @@ describe("recentCustomEmoji", () => {
         }
 
         const recent = await repository.getRecent("pubkey");
-        expect(recent).toHaveLength(RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT);
-        expect(recent[0].shortcode).toBe("emoji17");
+        expect(recent).toHaveLength(MAX_RECENT_CUSTOM_EMOJI_HISTORY);
+        expect(recent[0].shortcode).toBe("emoji101");
         expect(recent.at(-1)?.shortcode).toBe("emoji2");
     });
 

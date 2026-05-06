@@ -6,7 +6,7 @@ import {
 } from "./customEmoji";
 import type { RecentCustomEmojiRecord } from "./storage/ehagakiDb";
 
-export const RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT = 16;
+export const RECENT_CUSTOM_EMOJI_DISPLAY_ROWS = 2;
 export const MAX_RECENT_CUSTOM_EMOJI_HISTORY = 100;
 export const RECENT_CUSTOM_EMOJI_SCHEMA_VERSION = 1;
 
@@ -122,4 +122,11 @@ export function sortRecentCustomEmojiRecords(
 ): number {
     if (right.lastUsedAt !== left.lastUsedAt) return right.lastUsedAt - left.lastUsedAt;
     return left.shortcodeLower.localeCompare(right.shortcodeLower);
+}
+
+export function getRecentCustomEmojiDisplayLimit(
+    columnCount: number,
+    rowCount = RECENT_CUSTOM_EMOJI_DISPLAY_ROWS,
+): number {
+    return Math.max(0, Math.floor(columnCount) * Math.max(0, Math.floor(rowCount)));
 }

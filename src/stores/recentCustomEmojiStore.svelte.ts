@@ -1,5 +1,5 @@
 import {
-    RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT,
+    MAX_RECENT_CUSTOM_EMOJI_HISTORY,
     type CustomEmojiSelection,
     type RecentCustomEmojiItem,
 } from "../lib/recentCustomEmoji";
@@ -48,7 +48,7 @@ export const recentCustomEmojiStore = {
             const repository = params.repository ?? await getDefaultRepository();
             const nextItems = await repository.getRecent(
                 pubkey,
-                params.limit ?? RECENT_CUSTOM_EMOJI_DISPLAY_LIMIT,
+                params.limit ?? MAX_RECENT_CUSTOM_EMOJI_HISTORY,
             );
             if (activePubkey === pubkey) {
                 items = nextItems;

@@ -18,6 +18,7 @@
         CustomEmojiSelection,
         RecentCustomEmojiItem,
     } from "../lib/recentCustomEmoji";
+    import { getRecentCustomEmojiDisplayLimit } from "../lib/recentCustomEmoji";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import {
@@ -78,6 +79,12 @@
     let showRecentItems = $derived(search.trim().length === 0 && recentItems.length > 0);
     let columnCount = $derived(
         Math.max(1, Math.floor(pickerWidth / CUSTOM_EMOJI_GRID_CELL_SIZE)),
+    );
+    let recentDisplayLimit = $derived(
+        getRecentCustomEmojiDisplayLimit(columnCount),
+    );
+    let visibleRecentItems = $derived(
+        recentItems.slice(0, recentDisplayLimit),
     );
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
     let effectivePickerHeight = $derived(
@@ -364,8 +371,11 @@
                                 <div class="recent-custom-emoji-title">
                                     {$_("customEmoji.recent")}
                                 </div>
-                                <div class="recent-custom-emoji-grid">
-                                    {#each recentItems as emoji (emoji.identityKey)}
+                                    <div
+                                        class="recent-custom-emoji-grid"
+                                        style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                                    >
+                                    {#each visibleRecentItems as emoji (emoji.identityKey)}
                                         <Command.Item
                                             value={`recent:${emoji.identityKey}`}
                                             keywords={[emoji.shortcode]}
@@ -682,7 +692,6 @@
 
     .recent-custom-emoji-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
         grid-auto-rows: 40px;
         justify-items: center;
     }
