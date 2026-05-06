@@ -102,7 +102,7 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
-    it("keeps a selected default at the top without moving newly added non-default destinations upward", async () => {
+    it("keeps destination order when changing the default destination", async () => {
         const db = createTestDb();
         const storage = new MockStorage();
         const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
@@ -114,7 +114,7 @@ describe("uploadDestinationsRepository", () => {
             name: "Second",
             serverUrl: "https://example.com/second",
             resolvedUploadUrl: "https://example.com/second",
-            isDefault: true,
+            isDefault: false,
             createdAt: 1235,
             updatedAt: 1235,
         });
@@ -130,13 +130,15 @@ describe("uploadDestinationsRepository", () => {
             updatedAt: 1236,
         });
 
+        await repository.setDefault("third", null);
         const destinations = await repository.getAll(null);
 
         expect(destinations.map((destination) => destination.id)).toEqual([
-            "second",
             first.id,
+            "second",
             "third",
         ]);
+        expect(destinations.find((destination) => destination.id === "third")?.isDefault).toBe(true);
 
         db.close();
     });
