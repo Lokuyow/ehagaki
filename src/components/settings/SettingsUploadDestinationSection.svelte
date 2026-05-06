@@ -2,7 +2,6 @@
     import { onMount } from "svelte";
     import { _ } from "svelte-i18n";
     import Button from "../Button.svelte";
-    import ConfirmDialog from "../ConfirmDialog.svelte";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
     import type {
         UploadDestination,
@@ -30,7 +29,6 @@
     let editing = $state(false);
     let editingTargetId: string | null = $state(null);
     let form = $state({ ...emptyForm });
-    let deleteTarget: UploadDestination | null = $state(null);
     let testingId: string | null = $state(null);
     let expandedMimeDestinations = $state<Record<string, boolean>>({});
     let destinationState = $derived(uploadDestinationStore.value);
@@ -178,6 +176,14 @@
         } finally {
             testingId = null;
         }
+    }
+
+    async function deleteDestination(destination: UploadDestination): Promise<void> {
+        if (editingTargetId === destination.id) {
+            editing = false;
+            editingTargetId = null;
+        }
+        await uploadDestinationStore.delete(destination.id, null);
     }
 </script>
 
@@ -367,7 +373,7 @@
                         <Button
                             variant="default"
                             shape="rounded"
-                            onClick={() => (deleteTarget = destination)}
+                            onClick={() => deleteDestination(destination)}
                             disabled={destinationState.destinations.length <= 1}
                         >
                             {$_("settingsDialog.uploadDestinationDelete") ||
@@ -402,22 +408,6 @@
         </div>
     {/if}
 </div>
-
-<ConfirmDialog
-    open={!!deleteTarget}
-    title={$_("settingsDialog.uploadDestinationDelete") || "削除"}
-    description={$_("settingsDialog.uploadDestinationDeleteConfirm") ||
-        "このアップロード先を削除します。"}
-    confirmLabel={$_("settingsDialog.uploadDestinationDelete") || "削除"}
-    cancelLabel={$_("postComponent.cancel") || "キャンセル"}
-    confirmVariant="danger"
-    onConfirm={async () => {
-        if (!deleteTarget) return;
-        await uploadDestinationStore.delete(deleteTarget.id, null);
-        deleteTarget = null;
-    }}
-    onCancel={() => (deleteTarget = null)}
-/>
 
 <style>
     .upload-destination-section {

@@ -106,7 +106,6 @@
     "uploadDestinationSetDefault": "既定",
     "uploadDestinationEdit": "編集",
     "uploadDestinationDelete": "削除",
-    "uploadDestinationDeleteConfirm": "このアップロード先を削除します。",
     "uploadDestinationPreset": "プリセット",
     "uploadDestinationProtocol": "Protocol",
     "uploadDestinationName": "名前",

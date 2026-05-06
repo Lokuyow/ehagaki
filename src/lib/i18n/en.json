@@ -106,7 +106,6 @@
     "uploadDestinationSetDefault": "Default",
     "uploadDestinationEdit": "Edit",
     "uploadDestinationDelete": "Delete",
-    "uploadDestinationDeleteConfirm": "Delete this upload destination.",
     "uploadDestinationPreset": "Preset",
     "uploadDestinationProtocol": "Protocol",
     "uploadDestinationName": "Name",
