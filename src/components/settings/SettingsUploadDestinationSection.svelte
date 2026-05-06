@@ -81,7 +81,16 @@
         expanded = true;
     }
 
+    function cancelEdit(): void {
+        editing = false;
+        editingTargetId = null;
+    }
+
     function startEdit(destination: UploadDestination): void {
+        if (editingTargetId === destination.id) {
+            cancelEdit();
+            return;
+        }
         form = {
             id: destination.id,
             name: destination.name,
@@ -255,10 +264,7 @@
             <Button
                 variant="default"
                 shape="rounded"
-                onClick={() => {
-                    editing = false;
-                    editingTargetId = null;
-                }}
+                onClick={cancelEdit}
             >
                 {$_("postComponent.cancel") || "キャンセル"}
             </Button>
