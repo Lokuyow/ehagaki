@@ -152,11 +152,10 @@
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
-  import {
-    CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
-    type CustomEmojiItem,
-  } from "./lib/customEmoji";
+  import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
+  import type { CustomEmojiSelection } from "./lib/recentCustomEmoji";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
+  import { recentCustomEmojiStore } from "./stores/recentCustomEmojiStore.svelte";
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -1037,6 +1036,7 @@
     }
 
     void customEmojiStore.prefetchCache({ pubkey });
+    void recentCustomEmojiStore.load({ pubkey });
   });
 
   $effect(() => {
@@ -1388,13 +1388,21 @@
     });
   }
 
-  function handleCustomEmojiSelect(emoji: CustomEmojiItem): void {
+  function recordCustomEmojiUse(emoji: CustomEmojiSelection): void {
+    const pubkey = authState.value?.pubkey;
+    if (!pubkey) return;
+
+    void recentCustomEmojiStore.recordUse({ pubkey, emoji });
+  }
+
+  function handleCustomEmojiSelect(emoji: CustomEmojiSelection): void {
     postComponentRef?.insertCustomEmoji?.({
       identityKey: emoji.identityKey,
       shortcode: emoji.shortcode,
       src: emoji.src,
       setAddress: emoji.setAddress,
     });
+    recordCustomEmojiUse(emoji);
   }
 </script>
 
@@ -1452,6 +1460,7 @@
                     availableComposerHeight={postAvailableComposerHeight}
                     minEditorHeight={postEditorMinHeight}
                     onPostSuccess={handlePostSuccess}
+                    onCustomEmojiSelect={recordCustomEmojiUse}
                   />
                 {/if}
                 {#if customEmojiPickerOpen && CustomEmojiPickerComponent}
@@ -1465,6 +1474,7 @@
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
+                      recentItems={recentCustomEmojiStore.items}
                       onMoveCaretLeft={() =>
                         postComponentRef?.moveCaretLeft?.()}
                       onMoveCaretRight={() =>

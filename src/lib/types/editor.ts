@@ -2,6 +2,7 @@
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { MediaGalleryItem } from "./media";
+import type { CustomEmojiSelection } from "../recentCustomEmoji";
 
 // Post and Editor types
 export interface PostStatus {
@@ -91,6 +92,7 @@ export interface InitializeEditorParams {
     currentEditor: TipTapEditor | null;
     hasStoredKey: boolean;
     submitPost: () => Promise<void>;
+    onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
     uploadFiles: (files: File[] | FileList) => void;
     eventCallbacks: EditorEventCallbacks;
 }

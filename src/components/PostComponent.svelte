@@ -30,6 +30,7 @@
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import type { CustomEmojiAttrs } from "../lib/editor";
+  import type { CustomEmojiSelection } from "../lib/recentCustomEmoji";
   import { containsSecretKey } from "../lib/utils/nostrUtils";
   import {
     collectFullscreenMediaItems,
@@ -77,6 +78,7 @@
     onPostSuccess?: () => void;
     availableComposerHeight?: number;
     minEditorHeight?: number;
+    onCustomEmojiSelect?: (emoji: CustomEmojiSelection) => void;
   }
 
   let {
@@ -85,6 +87,7 @@
     onPostSuccess,
     availableComposerHeight = POST_EDITOR_MIN_HEIGHT,
     minEditorHeight = POST_EDITOR_MIN_HEIGHT,
+    onCustomEmojiSelect,
   }: Props = $props();
   let editor: any = $state(null);
   let currentEditor: TipTapEditor | null = $state(null);
@@ -266,6 +269,7 @@
       currentEditor,
       hasStoredKey,
       submitPost,
+      onCustomEmojiSelect,
       uploadFiles: (files: File[] | FileList) => {
         void uploadHandlers.performUpload(files);
       },

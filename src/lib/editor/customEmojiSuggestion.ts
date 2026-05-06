@@ -7,12 +7,14 @@ import {
     normalizeEmojiShortcode,
     type CustomEmojiItem,
 } from '../customEmoji';
+import type { CustomEmojiSelection } from '../recentCustomEmoji';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
 import { createSuggestionRenderer } from './suggestionRenderer';
 
 export interface CustomEmojiSuggestionOptions {
     getItems: () => CustomEmojiItem[];
     limit: number;
+    onSelectEmoji?: (emoji: CustomEmojiSelection) => void;
 }
 
 const CUSTOM_EMOJI_SUGGESTION_PLUGIN_KEY = new PluginKey('customEmojiSuggestion');
@@ -71,6 +73,7 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
         return {
             getItems: () => customEmojiStore.items,
             limit: 30,
+            onSelectEmoji: undefined,
         };
     },
 
@@ -103,7 +106,7 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                 }),
 
                 command: ({ editor, range, props }: { editor: any; range: any; props: CustomEmojiItem }) => {
-                    editor
+                    const inserted = editor
                         .chain()
                         .focus()
                         .deleteRange(range)
@@ -117,6 +120,9 @@ export const CustomEmojiSuggestion = Extension.create<CustomEmojiSuggestionOptio
                             },
                         })
                         .run();
+                    if (inserted) {
+                        this.options.onSelectEmoji?.(props);
+                    }
                 },
             }),
         ];

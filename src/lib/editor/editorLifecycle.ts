@@ -13,6 +13,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
         editorContainerEl,
         hasStoredKey,
         submitPost,
+        onCustomEmojiSelect,
         uploadFiles,
         eventCallbacks
     } = params;
@@ -24,6 +25,7 @@ export function initializeEditor(params: InitializeEditorParams): InitializeEdit
     const editor = createTiptapEditorStore({
         placeholderText,
         onSubmitPost: submitPost,
+        onCustomEmojiSelect,
         onCreate: (editorInstance: TipTapEditor | null) => {
             currentEditorStore.set(editorInstance);
         }

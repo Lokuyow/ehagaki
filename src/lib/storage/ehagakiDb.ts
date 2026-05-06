@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 2;
+export const EHAGAKI_DB_VERSION = 3;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -107,6 +107,20 @@ export interface HashtagHistoryRecord {
     schemaVersion: number;
 }
 
+export interface RecentCustomEmojiRecord {
+    id: string;
+    pubkeyHex: string;
+    shortcode: string;
+    shortcodeLower: string;
+    src: string;
+    setAddress: string | null;
+    lastUsedAt: number;
+    count: number;
+    createdAt: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export interface UploadDestinationRecord extends UploadDestination {
     scopeKey: string;
 }
@@ -120,6 +134,7 @@ export class EHagakiDB extends Dexie {
     relayConfigs!: Table<RelayConfigRecord, string>;
     sharedMedia!: Table<SharedMediaRecord, string>;
     hashtagHistory!: Table<HashtagHistoryRecord, string>;
+    recentCustomEmojis!: Table<RecentCustomEmojiRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
@@ -134,6 +149,7 @@ export class EHagakiDB extends Dexie {
             relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
             sharedMedia: "id, createdAt, updatedAt, schemaVersion",
             hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
+            recentCustomEmojis: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
         });
     }

@@ -14,6 +14,10 @@
         writeCustomEmojiPickerHeight,
         type CustomEmojiItem,
     } from "../lib/customEmoji";
+    import type {
+        CustomEmojiSelection,
+        RecentCustomEmojiItem,
+    } from "../lib/recentCustomEmoji";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import {
@@ -29,7 +33,8 @@
         pubkey?: string | null;
         open?: boolean;
         maxHeight?: number | null;
-        onSelect?: (emoji: CustomEmojiItem) => void;
+        recentItems?: RecentCustomEmojiItem[];
+        onSelect?: (emoji: CustomEmojiSelection) => void;
         onMoveCaretLeft?: () => void;
         onMoveCaretRight?: () => void;
         onDeleteBackward?: () => void;
@@ -41,6 +46,7 @@
         pubkey,
         open = false,
         maxHeight = null,
+        recentItems = [],
         onSelect,
         onMoveCaretLeft,
         onMoveCaretRight,
@@ -56,6 +62,7 @@
     let renderItemsFrameId: number | null = null;
     let layoutFrameId: number | null = null;
     let pickerElement: HTMLDivElement | null = null;
+    let recentSectionHeight = $state(0);
     let lastLoadRxNostr: RxNostr | null | undefined = undefined;
     let lastLoadPubkey: string | null | undefined = undefined;
 
@@ -68,6 +75,7 @@
             item.shortcodeLower.includes(query),
         );
     });
+    let showRecentItems = $derived(search.trim().length === 0 && recentItems.length > 0);
     let columnCount = $derived(
         Math.max(1, Math.floor(pickerWidth / CUSTOM_EMOJI_GRID_CELL_SIZE)),
     );
@@ -84,7 +92,10 @@
             0,
             Math.min(
                 Math.max(0, totalRowCount - visibleRowCount),
-                Math.floor(scrollTop / CUSTOM_EMOJI_GRID_CELL_SIZE) -
+                Math.floor(
+                    Math.max(0, scrollTop - recentSectionHeight) /
+                        CUSTOM_EMOJI_GRID_CELL_SIZE,
+                ) -
                     VIRTUAL_OVERSCAN_ROWS,
             ),
         ),
@@ -230,6 +241,7 @@
         search;
         open;
         items.length;
+        recentItems.length;
         scrollTop = 0;
         pickerElement
             ?.querySelector<HTMLElement>(".custom-emoji-scroll-viewport")
@@ -245,7 +257,7 @@
         );
     });
 
-    function selectEmoji(emoji: CustomEmojiItem): void {
+    function selectEmoji(emoji: CustomEmojiSelection): void {
         onSelect?.(emoji);
     }
 
@@ -338,11 +350,46 @@
                                 customClass="custom-emoji-loading"
                             />
                         </Command.Loading>
-                    {:else if filteredItems.length === 0}
+                    {:else if filteredItems.length === 0 && !showRecentItems}
                         <Command.Empty class="custom-emoji-message">
                             {$_("customEmoji.empty")}
                         </Command.Empty>
                     {:else}
+                        {#if showRecentItems}
+                            <section
+                                class="recent-custom-emoji-section"
+                                bind:clientHeight={recentSectionHeight}
+                                aria-label={$_("customEmoji.recent")}
+                            >
+                                <div class="recent-custom-emoji-title">
+                                    {$_("customEmoji.recent")}
+                                </div>
+                                <div class="recent-custom-emoji-grid">
+                                    {#each recentItems as emoji (emoji.identityKey)}
+                                        <Command.Item
+                                            value={`recent:${emoji.identityKey}`}
+                                            keywords={[emoji.shortcode]}
+                                            class="emoji-item recent-emoji-item"
+                                            onSelect={() => selectEmoji(emoji)}
+                                            onmousedown={preventKeyboardFocusChange}
+                                            ontouchstart={preserveKeyboardForScrollableTouch}
+                                        >
+                                            <img
+                                                src={emoji.src}
+                                                alt={`:${emoji.shortcode}:`}
+                                                title={`:${emoji.shortcode}:`}
+                                                class="emoji-image"
+                                                draggable="false"
+                                                loading="lazy"
+                                                decoding="async"
+                                            />
+                                        </Command.Item>
+                                    {/each}
+                                </div>
+                            </section>
+                        {:else}
+                            <div bind:clientHeight={recentSectionHeight}></div>
+                        {/if}
                         <div
                             class="emoji-virtual-list"
                             style={`height: ${virtualListHeight}px;`}
@@ -618,6 +665,25 @@
         left: 4px;
         right: 4px;
         display: grid;
+        justify-items: center;
+    }
+
+    .recent-custom-emoji-section {
+        padding: 8px 4px 10px;
+        border-bottom: 1px solid var(--border);
+    }
+
+    .recent-custom-emoji-title {
+        padding: 0 6px 6px;
+        color: var(--text-muted, var(--text));
+        font-size: 0.78rem;
+        font-weight: 700;
+    }
+
+    .recent-custom-emoji-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(40px, 1fr));
+        grid-auto-rows: 40px;
         justify-items: center;
     }
 

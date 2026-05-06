@@ -199,6 +199,7 @@
   "customEmoji": {
     "search_label": "カスタム絵文字検索",
     "search_placeholder": "絵文字を検索",
+    "recent": "最近使ったカスタム絵文字",
     "loading": "絵文字を読み込み中...",
     "empty": "絵文字がありません",
     "resize": "絵文字ピッカーの高さを変更",
