@@ -1618,6 +1618,7 @@
           onClose={settingsDialog.close}
           onRefreshRelaysAndProfile={handleRefreshRelaysAndProfile}
           onOpenWelcomeDialog={welcomeDialog.open}
+          {rxNostr}
         />
       {/if}
     </main>

@@ -7,6 +7,8 @@ const mockRepository = vi.hoisted(() => ({
     put: vi.fn(),
     delete: vi.fn(),
     setDefault: vi.fn(),
+    move: vi.fn(),
+    replaceBlossomServers: vi.fn(),
 }));
 
 vi.mock("../../lib/storage/uploadDestinationsRepository", () => ({

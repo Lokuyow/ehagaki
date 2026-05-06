@@ -44,6 +44,7 @@
         onClose,
         onRefreshRelaysAndProfile = () => {},
         onOpenWelcomeDialog = undefined,
+        rxNostr = null,
     }: SettingsDialogProps = $props();
 
     // ダイアログを閉じるハンドラ
@@ -314,7 +315,7 @@
                 (settingsStore.videoQualityLevel = value)}
         />
 
-        <SettingsUploadDestinationSection />
+        <SettingsUploadDestinationSection {rxNostr} />
 
         <!-- テーマ設定セクション -->
         <div class="setting-section">

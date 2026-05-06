@@ -98,6 +98,7 @@ function isUploadDestinationRecord(value: unknown): value is UploadDestinationRe
         && (record.presetId === undefined || typeof record.presetId === "string")
         && typeof record.isDefault === "boolean"
         && typeof record.enabled === "boolean"
+        && (record.sortIndex === undefined || typeof record.sortIndex === "number")
         && typeof record.createdAt === "number"
         && typeof record.updatedAt === "number"
         && isValidCapabilities(record.capabilities)

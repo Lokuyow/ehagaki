@@ -8,6 +8,7 @@ import {
     createLegacyUploadDestination,
     getPreferredDefaultUploadPresetIds,
     getScopeKey,
+    normalizeServerUrl,
 } from "../upload/uploadDestinationPresets";
 import { getEffectiveLocale } from "../utils/settingsStorage";
 
@@ -19,6 +20,8 @@ export interface UploadDestinationsRepository {
     put(destination: UploadDestination): Promise<void>;
     delete(id: string): Promise<void>;
     setDefault(id: string, pubkeyHex?: string | null): Promise<void>;
+    move(id: string, direction: "up" | "down", pubkeyHex?: string | null): Promise<void>;
+    replaceBlossomServers(pubkeyHex: string, servers: string[]): Promise<UploadDestination[]>;
     applyUploadEndpointPreference(params: {
         endpoint: string;
         mode: "forced" | "default";
@@ -78,6 +81,7 @@ function toPlainDestination(destination: UploadDestination): UploadDestination {
         ...(destination.presetId ? { presetId: destination.presetId } : {}),
         isDefault: Boolean(destination.isDefault),
         enabled: Boolean(destination.enabled),
+        ...(destination.sortIndex !== undefined ? { sortIndex: destination.sortIndex } : {}),
         createdAt: destination.createdAt,
         updatedAt: destination.updatedAt,
         capabilities: toPlainCapabilities(destination.capabilities),
@@ -104,6 +108,9 @@ function toDestination(record: UploadDestinationRecord): UploadDestination {
 
 function sortDestinations(a: UploadDestination, b: UploadDestination): number {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+    const leftSort = a.sortIndex ?? a.createdAt;
+    const rightSort = b.sortIndex ?? b.createdAt;
+    if (leftSort !== rightSort) return leftSort - rightSort;
     if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
     return a.name.localeCompare(b.name);
 }
@@ -157,6 +164,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
     async getAll(pubkeyHex: string | null = null): Promise<UploadDestination[]> {
         await this.loadParentSnapshot(pubkeyHex);
+        await this.ensureUserScopeInitialized(pubkeyHex);
         await this.ensureLegacyUploadEndpointMigrated(pubkeyHex);
         const scopeKey = getScopeKey(pubkeyHex);
         const records = await this.db.uploadDestinations
@@ -236,6 +244,99 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         }
 
         await this.persistParentSnapshot(existing.scopeKey);
+    }
+
+    async move(id: string, direction: "up" | "down", pubkeyHex: string | null = null): Promise<void> {
+        const scopeKey = getScopeKey(pubkeyHex);
+        const records = await this.db.uploadDestinations
+            .where("scopeKey")
+            .equals(scopeKey)
+            .toArray();
+        const sorted = records.map(toDestination).sort(sortDestinations);
+        const index = sorted.findIndex((destination) => destination.id === id);
+        const targetIndex = direction === "up" ? index - 1 : index + 1;
+        if (index < 0 || targetIndex < 0 || targetIndex >= sorted.length) return;
+
+        const next = [...sorted];
+        [next[index], next[targetIndex]] = [next[targetIndex], next[index]];
+        const timestamp = this.now();
+
+        await this.db.transaction("rw", this.db.uploadDestinations, async () => {
+            await Promise.all(next.map((destination, sortIndex) =>
+                this.db.uploadDestinations.put(toRecord({
+                    ...destination,
+                    sortIndex,
+                    updatedAt: destination.id === id ? timestamp : destination.updatedAt,
+                })),
+            ));
+        });
+        await this.persistParentSnapshot(scopeKey);
+    }
+
+    async replaceBlossomServers(pubkeyHex: string, servers: string[]): Promise<UploadDestination[]> {
+        const scopeKey = getScopeKey(pubkeyHex);
+        await this.loadParentSnapshot(pubkeyHex);
+        await this.ensureUserScopeInitialized(pubkeyHex);
+
+        const records = await this.db.uploadDestinations
+            .where("scopeKey")
+            .equals(scopeKey)
+            .toArray();
+        const existing = records.map(toDestination).sort(sortDestinations);
+        const nonBlossom = existing.filter((destination) => destination.protocol !== "blossom");
+        const existingBlossomByUrl = new Map(
+            existing
+                .filter((destination) => destination.protocol === "blossom")
+                .map((destination) => [normalizeServerUrl(destination.serverUrl), destination]),
+        );
+        const defaultWasBlossom = existing.some((destination) =>
+            destination.protocol === "blossom" && destination.isDefault,
+        );
+        const hasNonBlossomDefault = nonBlossom.some((destination) => destination.isDefault);
+        const timestamp = this.now();
+        const uniqueServers = [
+            ...new Set(servers.map(normalizeServerUrl).filter((server): server is string => Boolean(server))),
+        ];
+
+        const blossomDestinations = uniqueServers.map((serverUrl, index) => {
+            const existingDestination = existingBlossomByUrl.get(serverUrl);
+            return {
+                ...(existingDestination ?? this.createBud03BlossomDestination({
+                    pubkeyHex,
+                    serverUrl,
+                    now: timestamp,
+                    index,
+                })),
+                pubkeyHex,
+                protocol: "blossom" as const,
+                serverUrl,
+                enabled: true,
+                isDefault: hasNonBlossomDefault ? false : defaultWasBlossom ? index === 0 : false,
+                sortIndex: index,
+                updatedAt: timestamp,
+            };
+        });
+
+        const nextDestinations: UploadDestination[] = [...blossomDestinations, ...nonBlossom.map((destination, index) => ({
+            ...destination,
+            sortIndex: blossomDestinations.length + index,
+        }))];
+        if (!nextDestinations.some((destination) => destination.isDefault)) {
+            const firstEnabled = nextDestinations.find((destination) => destination.enabled);
+            if (firstEnabled) firstEnabled.isDefault = true;
+        }
+
+        await this.db.transaction("rw", this.db.uploadDestinations, async () => {
+            await this.db.uploadDestinations
+                .where("scopeKey")
+                .equals(scopeKey)
+                .delete();
+            if (nextDestinations.length > 0) {
+                await this.db.uploadDestinations.bulkPut(nextDestinations.map(toRecord));
+            }
+        });
+        await this.persistParentSnapshot(scopeKey);
+        return nextDestinations.sort(sortDestinations);
     }
 
     async setDefault(id: string, pubkeyHex: string | null = null): Promise<void> {
@@ -352,6 +453,96 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
                 updatedAt: this.now(),
             });
         });
+    }
+
+    private async ensureUserScopeInitialized(pubkeyHex: string | null): Promise<void> {
+        if (!pubkeyHex) return;
+
+        const scopeKey = getScopeKey(pubkeyHex);
+        const existing = await this.db.uploadDestinations
+            .where("scopeKey")
+            .equals(scopeKey)
+            .count();
+        if (existing > 0) {
+            await this.markLegacyUploadEndpointMigrated(scopeKey);
+            return;
+        }
+
+        await this.ensureLegacyUploadEndpointMigrated(null);
+        const globalRecords = await this.db.uploadDestinations
+            .where("scopeKey")
+            .equals(UPLOAD_DESTINATION_GLOBAL_SCOPE)
+            .toArray();
+        if (globalRecords.length === 0) return;
+
+        const timestamp = this.now();
+        const scopedRecords = globalRecords
+            .map(toDestination)
+            .sort(sortDestinations)
+            .map((destination, index) => toRecord({
+                ...destination,
+                id: this.createScopedDestinationId(pubkeyHex, destination.id),
+                pubkeyHex,
+                sortIndex: destination.sortIndex ?? index,
+                updatedAt: timestamp,
+            }));
+
+        await this.db.transaction("rw", this.db.uploadDestinations, this.db.meta, async () => {
+            await this.db.uploadDestinations.bulkPut(scopedRecords);
+            await this.db.meta.put({
+                key: this.getLegacyUploadEndpointMigrationKey(scopeKey),
+                value: true,
+                updatedAt: timestamp,
+            });
+        });
+        await this.persistParentSnapshot(scopeKey, scopedRecords);
+    }
+
+    private createScopedDestinationId(pubkeyHex: string, id: string): string {
+        return `${pubkeyHex.slice(0, 16)}-${id}`;
+    }
+
+    private createBud03BlossomDestination(params: {
+        pubkeyHex: string;
+        serverUrl: string;
+        now: number;
+        index: number;
+    }): UploadDestination {
+        const host = (() => {
+            try {
+                return new URL(params.serverUrl).host;
+            } catch {
+                return params.serverUrl;
+            }
+        })();
+
+        return {
+            id: this.createScopedDestinationId(params.pubkeyHex, `bud03-${params.index}-${host}`),
+            pubkeyHex: params.pubkeyHex,
+            name: host,
+            protocol: "blossom",
+            serverUrl: params.serverUrl,
+            presetId: "custom",
+            isDefault: false,
+            enabled: true,
+            sortIndex: params.index,
+            createdAt: params.now,
+            updatedAt: params.now,
+            capabilities: {
+                maxUploadSize: null,
+                supportedMimeTypes: [],
+                supportsDelete: false,
+                supportsList: false,
+                supportsMirror: false,
+                supportsMediaOptimization: false,
+                authRequired: true,
+                source: "preset",
+            },
+            auth: {
+                type: "blossom-bud11",
+            },
+            schemaVersion: 1,
+        };
     }
 
     private getLegacyUploadEndpointMigrationKey(scopeKey: string): string {

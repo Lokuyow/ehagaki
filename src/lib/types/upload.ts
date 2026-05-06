@@ -92,6 +92,7 @@ export interface UploadDestination {
     presetId?: UploadPresetId;
     isDefault: boolean;
     enabled: boolean;
+    sortIndex?: number;
     createdAt: number;
     updatedAt: number;
     capabilities: UploadDestinationCapabilities;

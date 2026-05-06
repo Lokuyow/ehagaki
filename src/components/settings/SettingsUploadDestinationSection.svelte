@@ -1,8 +1,10 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { _ } from "svelte-i18n";
+    import type { RxNostr } from "rx-nostr";
     import Button from "../Button.svelte";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
+    import { authState } from "../../stores/authStore.svelte";
     import type {
         UploadDestination,
         UploadProtocol,
@@ -14,6 +16,12 @@
         createUploadDestinationFromPreset,
         normalizeServerUrl,
     } from "../../lib/upload/uploadDestinationPresets";
+
+    interface Props {
+        rxNostr?: RxNostr | null;
+    }
+
+    let { rxNostr = null }: Props = $props();
 
     const emptyForm = {
         id: "",
@@ -32,12 +40,24 @@
     let testingId: string | null = $state(null);
     let expandedMimeDestinations = $state<Record<string, boolean>>({});
     let destinationState = $derived(uploadDestinationStore.value);
+    let currentScope = $state<string | null>(null);
+    let pubkeyHex = $derived(
+        authState.value.isAuthenticated ? authState.value.pubkey || null : null,
+    );
+    let canUseBud03 = $derived(Boolean(rxNostr && pubkeyHex));
     const presetOptions = UPLOAD_DESTINATION_PRESETS.filter(
         (preset) => preset.id !== "custom",
     );
 
     onMount(() => {
-        void uploadDestinationStore.load(null);
+        currentScope = pubkeyHex;
+        void uploadDestinationStore.load(currentScope);
+    });
+
+    $effect(() => {
+        if (currentScope === pubkeyHex) return;
+        currentScope = pubkeyHex;
+        void uploadDestinationStore.load(currentScope);
     });
 
     function formatMaxSize(bytes: number | null): string {
@@ -134,7 +154,7 @@
                 ? {
                       ...createUploadDestinationFromPreset({
                           preset,
-                          pubkeyHex: null,
+                          pubkeyHex,
                           isDefault:
                               form.isDefault ||
                               destinationState.destinations.length === 0,
@@ -156,7 +176,7 @@
                                   serverUrl: form.serverUrl,
                                   capabilities: DEFAULT_UPLOAD_CAPABILITIES,
                               },
-                              pubkeyHex: null,
+                              pubkeyHex,
                               isDefault:
                                   form.isDefault ||
                                   destinationState.destinations.length === 0,
@@ -192,7 +212,17 @@
             editing = false;
             editingTargetId = null;
         }
-        await uploadDestinationStore.delete(destination.id, null);
+        await uploadDestinationStore.delete(destination.id, pubkeyHex);
+    }
+
+    async function fetchBud03(): Promise<void> {
+        if (!rxNostr || !pubkeyHex) return;
+        await uploadDestinationStore.fetchBud03(rxNostr, pubkeyHex);
+    }
+
+    async function publishBud03(): Promise<void> {
+        if (!rxNostr || !pubkeyHex) return;
+        await uploadDestinationStore.publishBud03(rxNostr, pubkeyHex);
     }
 </script>
 
@@ -349,6 +379,37 @@
                         <Button
                             variant="default"
                             shape="rounded"
+                            onClick={() =>
+                                uploadDestinationStore.move(
+                                    destination.id,
+                                    "up",
+                                    pubkeyHex,
+                                )}
+                            disabled={destinationState.destinations[0]?.id ===
+                                destination.id}
+                        >
+                            {$_("settingsDialog.uploadDestinationMoveUp") ||
+                                "Up"}
+                        </Button>
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() =>
+                                uploadDestinationStore.move(
+                                    destination.id,
+                                    "down",
+                                    pubkeyHex,
+                                )}
+                            disabled={destinationState.destinations[
+                                destinationState.destinations.length - 1
+                            ]?.id === destination.id}
+                        >
+                            {$_("settingsDialog.uploadDestinationMoveDown") ||
+                                "Down"}
+                        </Button>
+                        <Button
+                            variant="default"
+                            shape="rounded"
                             onClick={() => testDestination(destination)}
                             disabled={testingId === destination.id}
                         >
@@ -365,7 +426,7 @@
                             onClick={() =>
                                 uploadDestinationStore.setDefault(
                                     destination.id,
-                                    null,
+                                    pubkeyHex,
                                 )}
                             disabled={destination.isDefault}
                         >
@@ -411,9 +472,44 @@
             {#if editing && !editingTargetId}
                 {@render destinationForm()}
             {:else if !editing}
-                <Button variant="default" shape="rounded" onClick={startAdd}>
-                    {$_("settingsDialog.uploadDestinationAdd") || "追加"}
-                </Button>
+                <div class="panel-actions">
+                    <Button variant="default" shape="rounded" onClick={startAdd}>
+                        {$_("settingsDialog.uploadDestinationAdd") || "追加"}
+                    </Button>
+                    <Button
+                        variant="default"
+                        shape="rounded"
+                        onClick={fetchBud03}
+                        disabled={!canUseBud03 || destinationState.bud03Fetching}
+                    >
+                        {destinationState.bud03Fetching
+                            ? $_("settingsDialog.uploadDestinationBud03Fetching") ||
+                              "BUD-03 取得中"
+                            : $_("settingsDialog.uploadDestinationBud03Fetch") ||
+                              "BUD-03 から取得"}
+                    </Button>
+                    <Button
+                        variant="primary"
+                        shape="rounded"
+                        onClick={publishBud03}
+                        disabled={!canUseBud03 ||
+                            destinationState.bud03Publishing ||
+                            !destinationState.destinations.some(
+                                (destination) =>
+                                    destination.protocol === "blossom" &&
+                                    destination.enabled,
+                            )}
+                    >
+                        {destinationState.bud03Publishing
+                            ? $_("settingsDialog.uploadDestinationBud03Publishing") ||
+                              "BUD-03 publish 中"
+                            : $_("settingsDialog.uploadDestinationBud03Publish") ||
+                              "BUD-03 へ publish"}
+                    </Button>
+                </div>
+                {#if destinationState.bud03Status}
+                    <div class="test-result">{destinationState.bud03Status}</div>
+                {/if}
             {/if}
         </div>
     {/if}
@@ -487,7 +583,8 @@
     }
 
     .destination-actions,
-    .form-actions {
+    .form-actions,
+    .panel-actions {
         display: flex;
         flex-wrap: wrap;
         gap: 6px;

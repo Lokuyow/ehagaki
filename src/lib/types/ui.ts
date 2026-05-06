@@ -1,4 +1,5 @@
 // --- UI, Component, BalloonMessage, ServiceWorker, Adapter関連型定義 ---
+import type { RxNostr } from "rx-nostr";
 
 // UI and Component types
 export interface SettingsDialogProps {
@@ -6,6 +7,7 @@ export interface SettingsDialogProps {
     onClose: () => void;
     onRefreshRelaysAndProfile?: () => void;
     onOpenWelcomeDialog?: () => void;
+    rxNostr?: RxNostr | null;
 }
 
 export interface CompressionLevel {

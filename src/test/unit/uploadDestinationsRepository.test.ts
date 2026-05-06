@@ -143,6 +143,62 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("copies global upload destinations into a user scope on first authenticated load", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const globalDestination = await repository.getDefault(null);
+
+        const scopedDestinations = await repository.getAll("pubkey-1");
+
+        expect(scopedDestinations).toHaveLength(1);
+        expect(scopedDestinations[0]).toEqual(expect.objectContaining({
+            pubkeyHex: "pubkey-1",
+            protocol: globalDestination.protocol,
+            serverUrl: globalDestination.serverUrl,
+            isDefault: true,
+        }));
+        expect(scopedDestinations[0].id).not.toBe(globalDestination.id);
+
+        db.close();
+    });
+
+    it("replaces only Blossom destinations from BUD-03 servers", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const first = await repository.getDefault("pubkey-1");
+
+        await repository.put({
+            ...first,
+            id: "nip96-destination",
+            protocol: "nip96",
+            name: "NIP-96",
+            serverUrl: "https://example.com/nip96",
+            resolvedUploadUrl: "https://example.com/nip96",
+            presetId: "custom",
+            auth: { type: "nip98" },
+            isDefault: false,
+            createdAt: 1235,
+            updatedAt: 1235,
+        });
+
+        const destinations = await repository.replaceBlossomServers("pubkey-1", [
+            "https://new-one.example.com/",
+            "https://new-two.example.com",
+        ]);
+
+        expect(destinations.map((destination) => destination.serverUrl)).toEqual([
+            "https://new-one.example.com",
+            "https://new-two.example.com",
+            "https://example.com/nip96",
+        ]);
+        expect(destinations.filter((destination) => destination.protocol === "blossom")).toHaveLength(2);
+        expect(destinations.find((destination) => destination.id === "nip96-destination")).toBeTruthy();
+
+        db.close();
+    });
+
     it("keeps destination order when changing the default destination", async () => {
         const db = createTestDb();
         const storage = new MockStorage();

@@ -21,7 +21,7 @@ function base64Encode(value: string): string {
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
-    private async getSigner(): Promise<Signer> {
+    async getEventSigner(): Promise<Signer> {
         const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
         if (storedKey) {
             return {
@@ -91,7 +91,7 @@ export class NostrAuthService implements AuthService {
     }
 
     private async getSignFunction(): Promise<(event: any) => Promise<any>> {
-        const signer = await this.getSigner();
+        const signer = await this.getEventSigner();
         return async (event) => await signer.signEvent(event);
     }
 
@@ -102,7 +102,7 @@ export class NostrAuthService implements AuthService {
     }
 
     async getBlossomSigner(): Promise<Signer> {
-        return await this.getSigner();
+        return await this.getEventSigner();
     }
 
     async buildBlossomAuthorizationHeader(params: {
@@ -116,7 +116,7 @@ export class NostrAuthService implements AuthService {
         void params.contentType;
         void params.contentLength;
 
-        const signer = await this.getSigner();
+        const signer = await this.getEventSigner();
         const now = Math.floor(Date.now() / 1000);
         const tags = [
             ["expiration", String(now + 60)],
