@@ -86,6 +86,28 @@ function sortDestinations(a: UploadDestination, b: UploadDestination): number {
     return a.name.localeCompare(b.name);
 }
 
+function getPreferredBlossomBandDestination(
+    destinations: UploadDestination[],
+    currentDefault: UploadDestination,
+): UploadDestination | null {
+    if (
+        currentDefault.protocol !== "nip96"
+        || currentDefault.createdAt !== currentDefault.updatedAt
+    ) {
+        return null;
+    }
+
+    const blossomBandDestinations = destinations
+        .filter((destination) =>
+            destination.enabled
+            && destination.presetId === "blossom-band"
+            && destination.updatedAt > currentDefault.updatedAt,
+        )
+        .sort((a, b) => b.updatedAt - a.updatedAt);
+
+    return blossomBandDestinations[0] ?? null;
+}
+
 export class DexieUploadDestinationsRepository implements UploadDestinationsRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
@@ -108,7 +130,18 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         const defaultDestination = destinations.find((destination) =>
             destination.enabled && destination.isDefault,
         );
-        if (defaultDestination) return defaultDestination;
+        if (defaultDestination) {
+            const preferredBlossomBand = getPreferredBlossomBandDestination(
+                destinations,
+                defaultDestination,
+            );
+            if (preferredBlossomBand) {
+                await this.setDefault(preferredBlossomBand.id, pubkeyHex);
+                return { ...preferredBlossomBand, isDefault: true };
+            }
+
+            return defaultDestination;
+        }
 
         const firstEnabled = destinations.find((destination) => destination.enabled);
         if (firstEnabled) {

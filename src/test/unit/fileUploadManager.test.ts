@@ -6,7 +6,8 @@ import type {
     FileUploadDependencies,
     CompressionService,
     AuthService,
-    SharedMediaData
+    SharedMediaData,
+    UploadDestination
 } from '../../lib/types';
 
 vi.mock("../../lib/utils/fileSizeUtils", () => ({
@@ -420,6 +421,87 @@ describe('FileUploadManager', () => {
                 expect.objectContaining({ method: 'POST' })
             );
             expect(mockDependencies.localStorage.getItem('uploadEndpoint')).toBe('https://share.yabu.me/api/v2/media');
+        });
+
+        it('destination が指定された場合は legacy uploadEndpoint を読まず Blossom adapter で送信する', async () => {
+            const file = createMockFile('test.jpg', 'image/jpeg', 1000);
+            mockDependencies.localStorage.setItem('uploadEndpoint', 'https://nostr.build/api/v2/nip96/upload');
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token'),
+                buildBlossomAuthorizationHeader: vi.fn().mockResolvedValue('Nostr mock-token'),
+            };
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({
+                    file,
+                    wasCompressed: false,
+                    wasSkipped: false
+                }),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+            const destination: UploadDestination = {
+                id: 'blossom-band',
+                pubkeyHex: null,
+                name: 'blossom.band',
+                protocol: 'blossom',
+                serverUrl: 'https://npub1example.blossom.band',
+                presetId: 'blossom-band',
+                isDefault: true,
+                enabled: true,
+                createdAt: 1,
+                updatedAt: 1,
+                capabilities: {
+                    maxUploadSize: null,
+                    supportedMimeTypes: [],
+                    supportsDelete: true,
+                    supportsList: true,
+                    supportsMirror: false,
+                    supportsMediaOptimization: false,
+                    authRequired: true,
+                    source: 'preset',
+                },
+                auth: { type: 'blossom-bud11' },
+                schemaVersion: 1,
+            };
+
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                url: 'https://blossom.band/mockhash.jpg',
+                sha256: 'mockhash',
+                size: file.size,
+                type: file.type,
+            }));
+
+            const result = await uploadManager.uploadFile(
+                file,
+                'https://nostr.build/api/v2/nip96/upload',
+                false,
+                undefined,
+                undefined,
+                destination,
+            );
+
+            expect(result.success).toBe(true);
+            expect(mockAuthService.buildAuthHeader).not.toHaveBeenCalled();
+            expect(mockAuthService.buildBlossomAuthorizationHeader).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    serverUrl: 'https://npub1example.blossom.band',
+                    method: 'upload',
+                    sha256: 'mockhash',
+                }),
+            );
+            expect(mockFetch).toHaveBeenCalledWith(
+                'https://npub1example.blossom.band/upload',
+                expect.objectContaining({
+                    method: 'PUT',
+                }),
+            );
         });
 
         it('uploadFileWithCallbacks 成功時にサイズ情報表示 action を呼び出す', async () => {

@@ -116,7 +116,9 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
         sampleFile?: File;
     }): Promise<UploadConnectionTestResult> {
         const sampleFile = params.sampleFile
-            ?? new File(["ehagaki"], "ehagaki-upload-test.txt", { type: "text/plain" });
+            ?? new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "ehagaki-upload-test.png", {
+                type: "image/png",
+            });
         const sha256 = await calculateSHA256Hex(sampleFile);
         const headers: Record<string, string> = {
             "X-SHA-256": sha256,

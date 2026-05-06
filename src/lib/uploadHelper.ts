@@ -51,6 +51,8 @@ import {
     notifyUploadProgress,
 } from './uploadProgressUtils';
 import { uploadDestinationsRepository } from "./storage/uploadDestinationsRepository";
+import { authState } from "../stores/authStore.svelte";
+import { resolveUploadDestinationForUse } from "./upload/uploadDestinationResolver";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -95,6 +97,14 @@ function createFileUploadManager(
     }
 
     return new dependencies.FileUploadManager();
+}
+
+function getDestinationUploadEndpoint(destination: UploadDestination | undefined): string | undefined {
+    if (!destination) return undefined;
+    if (destination.protocol === "nip96") {
+        return destination.resolvedUploadUrl || destination.serverUrl;
+    }
+    return destination.serverUrl;
 }
 
 async function uploadValidFiles(
@@ -249,7 +259,13 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     getMimeTypeFromUrl,
     createImetaTag: async (params: any) => await createImetaTag(params),
     imageSizeMapStore,
-    resolveUploadDestination: () => uploadDestinationsRepository.getDefault(null),
+    resolveUploadDestination: async () => resolveUploadDestinationForUse(
+        await uploadDestinationsRepository.getDefault(null),
+        {
+            pubkeyHex: authState.value.pubkey || null,
+            npub: authState.value.npub || null,
+        },
+    ),
 });
 
 export async function uploadHelper({
@@ -265,8 +281,7 @@ export async function uploadHelper({
     const fileArray = Array.from(files);
     const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
     const uploadDestination = await dependencies.resolveUploadDestination?.();
-    const endpoint = uploadDestination?.resolvedUploadUrl
-        || uploadDestination?.serverUrl
+    const endpoint = getDestinationUploadEndpoint(uploadDestination)
         || dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)
         || "";
     const imageOxMap: Record<string, string> = {};

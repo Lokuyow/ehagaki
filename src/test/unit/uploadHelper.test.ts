@@ -16,6 +16,7 @@ import type {
     CompressionService,
     MimeTypeSupportInterface,
     PlaceholderEntry,
+    UploadDestination,
 } from "../../lib/types";
 import { NodeSelection } from "prosemirror-state";
 
@@ -502,6 +503,83 @@ describe("uploadHelper", () => {
             expect(result.errorMessage).toBe("");
             expect(updateUploadState).toHaveBeenCalledWith(true, "");
             expect(updateUploadState).toHaveBeenCalledWith(false);
+        });
+
+        it("forwards a resolved blossom destination instead of falling back to the legacy upload endpoint", async () => {
+            const file = new File(["content"], "test.png", { type: "image/png" });
+            const showUploadError = vi.fn();
+            const updateUploadState = vi.fn();
+            const destination: UploadDestination = {
+                id: "blossom-band",
+                pubkeyHex: null,
+                name: "blossom.band",
+                protocol: "blossom",
+                serverUrl: "https://npub1example.blossom.band",
+                presetId: "blossom-band",
+                isDefault: true,
+                enabled: true,
+                createdAt: 1,
+                updatedAt: 1,
+                capabilities: {
+                    maxUploadSize: null,
+                    supportedMimeTypes: [],
+                    supportsDelete: true,
+                    supportsList: true,
+                    supportsMirror: false,
+                    supportsMediaOptimization: false,
+                    authRequired: true,
+                    source: "preset",
+                },
+                auth: { type: "blossom-bud11" },
+                schemaVersion: 1,
+            };
+            const mockFileUploadManager: FileUploadManagerInterface = {
+                validateImageFile: vi.fn(() => ({ isValid: true })),
+                validateMediaFile: vi.fn(() => ({ isValid: true })),
+                generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                uploadFileWithCallbacks: vi.fn(async () => ({
+                    success: true,
+                    url: "https://npub1example.blossom.band/mockhash.png",
+                })),
+                uploadMultipleFilesWithCallbacks: vi.fn(),
+            };
+            const customDependencies: UploadHelperDependencies = {
+                ...mockDependencies,
+                localStorage: {
+                    ...mockDependencies.localStorage,
+                    getItem: vi.fn(() => "https://nostr.build/api/v2/nip96/upload"),
+                } as Storage,
+                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface,
+                resolveUploadDestination: vi.fn(async () => destination),
+            };
+
+            const result = await uploadHelper({
+                files: [file],
+                currentEditor,
+                showUploadError,
+                updateUploadState,
+                devMode: false,
+                dependencies: customDependencies,
+            });
+
+            expect(result.results).toHaveLength(1);
+            expect(mockFileUploadManager.uploadFileWithCallbacks).toHaveBeenCalledWith(
+                file,
+                "https://npub1example.blossom.band",
+                expect.objectContaining({
+                    onProgress: expect.any(Function),
+                    onVideoCompressionProgress: expect.any(Function),
+                    onImageCompressionProgress: expect.any(Function),
+                }),
+                false,
+                expect.objectContaining({
+                    content_type: "image/png",
+                    no_transform: "true",
+                }),
+                destination,
+            );
+            expect(mockFileUploadManager.uploadMultipleFilesWithCallbacks).not.toHaveBeenCalled();
+            expect(showUploadError).not.toHaveBeenCalled();
         });
 
         it("uses injected abort checker for upload checkpoints", async () => {

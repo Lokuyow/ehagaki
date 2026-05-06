@@ -17,7 +17,12 @@ vi.mock('nostr-tools/nip98', () => ({
 // @rx-nostr/crypto の seckeySigner をモック
 vi.mock('@rx-nostr/crypto', () => ({
     seckeySigner: vi.fn().mockReturnValue({
-        signEvent: vi.fn().mockResolvedValue({ id: 'seckey-signed', sig: 'sig' }),
+        signEvent: vi.fn().mockImplementation(async (event) => ({
+            ...event,
+            id: 'seckey-signed',
+            pubkey: 'pubkey',
+            sig: 'sig',
+        })),
     }),
 }));
 
@@ -235,6 +240,43 @@ describe('NostrAuthService', () => {
 
             vi.mocked(parentClientAuthService.isConnected).mockReturnValue(false);
             vi.mocked(parentClientAuthService.getSigner).mockReturnValue(null);
+        });
+    });
+
+    describe('buildBlossomAuthorizationHeader', () => {
+        function decodeNostrHeader(header: string): any {
+            const token = header.replace(/^Nostr\s+/, '');
+            const base64 = token.replace(/-/g, '+').replace(/_/g, '/');
+            const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
+            return JSON.parse(atob(padded));
+        }
+
+        it('BUD-11 形式の Base64URL token と domain-only server tag を返す', async () => {
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
+
+            const result = await service.buildBlossomAuthorizationHeader({
+                serverUrl: 'https://npub1example.blossom.band',
+                method: 'upload',
+                sha256: 'a'.repeat(64),
+                contentType: 'image/png',
+                contentLength: 123,
+            });
+
+            expect(result).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
+            expect(result).not.toContain('=');
+
+            const event = decodeNostrHeader(result);
+
+            expect(event.kind).toBe(24242);
+            expect(event.content).toBe('Upload Blob');
+            expect(event.tags).toContainEqual(['t', 'upload']);
+            expect(event.tags).toContainEqual(['server', 'npub1example.blossom.band']);
+            expect(event.tags).toContainEqual(['x', 'a'.repeat(64)]);
+            expect(event.tags.some((tag: string[]) => tag[0] === 'm')).toBe(false);
+            expect(event.tags.some((tag: string[]) => tag[0] === 'size')).toBe(false);
+
+            vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });
     });
 });

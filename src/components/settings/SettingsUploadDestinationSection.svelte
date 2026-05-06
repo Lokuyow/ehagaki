@@ -4,7 +4,11 @@
     import Button from "../Button.svelte";
     import ConfirmDialog from "../ConfirmDialog.svelte";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
-    import type { UploadDestination, UploadProtocol, UploadPresetId } from "../../lib/types";
+    import type {
+        UploadDestination,
+        UploadProtocol,
+        UploadPresetId,
+    } from "../../lib/types";
     import {
         DEFAULT_UPLOAD_CAPABILITIES,
         UPLOAD_DESTINATION_PRESETS,
@@ -19,7 +23,7 @@
         serverUrl: "",
         presetId: "custom" as UploadPresetId,
         enabled: true,
-        isDefault: false,
+        isDefault: true,
     };
 
     let expanded = $state(false);
@@ -30,14 +34,17 @@
     let testingId: string | null = $state(null);
     let expandedMimeDestinations = $state<Record<string, boolean>>({});
     let destinationState = $derived(uploadDestinationStore.value);
-    const presetOptions = UPLOAD_DESTINATION_PRESETS.filter((preset) => preset.id !== "custom");
+    const presetOptions = UPLOAD_DESTINATION_PRESETS.filter(
+        (preset) => preset.id !== "custom",
+    );
 
     onMount(() => {
         void uploadDestinationStore.load(null);
     });
 
     function formatMaxSize(bytes: number | null): string {
-        if (!bytes) return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
+        if (!bytes)
+            return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
         const units = ["B", "KB", "MB", "GB"];
         let value = bytes;
         let unitIndex = 0;
@@ -50,8 +57,10 @@
 
     function getMimeSummary(destination: UploadDestination): string {
         const mimeTypes = destination.capabilities.supportedMimeTypes;
-        if (!mimeTypes.length) return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
-        if (expandedMimeDestinations[destination.id]) return mimeTypes.join(", ");
+        if (!mimeTypes.length)
+            return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
+        if (expandedMimeDestinations[destination.id])
+            return mimeTypes.join(", ");
         if (mimeTypes.length <= 3) return mimeTypes.join(", ");
         return `${mimeTypes.slice(0, 3).join(", ")} +${mimeTypes.length - 3}`;
     }
@@ -96,7 +105,9 @@
             form.serverUrl = "";
             return;
         }
-        const preset = UPLOAD_DESTINATION_PRESETS.find((item) => item.id === presetId);
+        const preset = UPLOAD_DESTINATION_PRESETS.find(
+            (item) => item.id === presetId,
+        );
         if (!preset) return;
         form.name = preset.name;
         form.protocol = preset.protocol;
@@ -105,48 +116,62 @@
 
     async function saveForm(): Promise<void> {
         const timestamp = Date.now();
-        const preset = UPLOAD_DESTINATION_PRESETS.find((item) => item.id === form.presetId);
-        const existing = destinationState.destinations.find((destination) => destination.id === form.id);
-        const destination: UploadDestination = preset && !existing
-            ? {
-                ...createUploadDestinationFromPreset({
-                    preset,
-                    pubkeyHex: null,
-                    isDefault: form.isDefault || destinationState.destinations.length === 0,
-                    now: timestamp,
-                }),
-                name: form.name.trim() || preset.name,
-                serverUrl: normalizeServerUrl(form.serverUrl || preset.serverUrl),
-                enabled: form.enabled,
-            }
-            : {
-                ...(existing ?? createUploadDestinationFromPreset({
-                    preset: preset ?? {
-                        id: "custom",
-                        name: form.name || "Custom",
-                        protocol: form.protocol,
-                        serverUrl: form.serverUrl,
-                        capabilities: DEFAULT_UPLOAD_CAPABILITIES,
-                    },
-                    pubkeyHex: null,
-                    isDefault: form.isDefault || destinationState.destinations.length === 0,
-                    now: timestamp,
-                })),
-                name: form.name.trim(),
-                protocol: form.protocol,
-                serverUrl: normalizeServerUrl(form.serverUrl),
-                presetId: form.presetId,
-                enabled: form.enabled,
-                isDefault: form.isDefault,
-                updatedAt: timestamp,
-            };
+        const preset = UPLOAD_DESTINATION_PRESETS.find(
+            (item) => item.id === form.presetId,
+        );
+        const existing = destinationState.destinations.find(
+            (destination) => destination.id === form.id,
+        );
+        const destination: UploadDestination =
+            preset && !existing
+                ? {
+                      ...createUploadDestinationFromPreset({
+                          preset,
+                          pubkeyHex: null,
+                          isDefault:
+                              form.isDefault ||
+                              destinationState.destinations.length === 0,
+                          now: timestamp,
+                      }),
+                      name: form.name.trim() || preset.name,
+                      serverUrl: normalizeServerUrl(
+                          form.serverUrl || preset.serverUrl,
+                      ),
+                      enabled: form.enabled,
+                  }
+                : {
+                      ...(existing ??
+                          createUploadDestinationFromPreset({
+                              preset: preset ?? {
+                                  id: "custom",
+                                  name: form.name || "Custom",
+                                  protocol: form.protocol,
+                                  serverUrl: form.serverUrl,
+                                  capabilities: DEFAULT_UPLOAD_CAPABILITIES,
+                              },
+                              pubkeyHex: null,
+                              isDefault:
+                                  form.isDefault ||
+                                  destinationState.destinations.length === 0,
+                              now: timestamp,
+                          })),
+                      name: form.name.trim(),
+                      protocol: form.protocol,
+                      serverUrl: normalizeServerUrl(form.serverUrl),
+                      presetId: form.presetId,
+                      enabled: form.enabled,
+                      isDefault: form.isDefault,
+                      updatedAt: timestamp,
+                  };
 
         await uploadDestinationStore.save(destination);
         editing = false;
         editingTargetId = null;
     }
 
-    async function testDestination(destination: UploadDestination): Promise<void> {
+    async function testDestination(
+        destination: UploadDestination,
+    ): Promise<void> {
         testingId = destination.id;
         try {
             await uploadDestinationStore.test(destination);
@@ -159,8 +184,18 @@
 {#snippet destinationForm()}
     <div class="destination-form">
         <label>
-            <span>{$_("settingsDialog.uploadDestinationPreset") || "プリセット"}</span>
-            <select value={form.presetId} onchange={(event) => applyPreset((event.currentTarget as HTMLSelectElement).value as UploadPresetId)}>
+            <span
+                >{$_("settingsDialog.uploadDestinationPreset") ||
+                    "プリセット"}</span
+            >
+            <select
+                value={form.presetId}
+                onchange={(event) =>
+                    applyPreset(
+                        (event.currentTarget as HTMLSelectElement)
+                            .value as UploadPresetId,
+                    )}
+            >
                 <option value="custom">custom</option>
                 {#each presetOptions as preset}
                     <option value={preset.id}>{preset.name}</option>
@@ -168,7 +203,10 @@
             </select>
         </label>
         <label>
-            <span>{$_("settingsDialog.uploadDestinationProtocol") || "Protocol"}</span>
+            <span
+                >{$_("settingsDialog.uploadDestinationProtocol") ||
+                    "Protocol"}</span
+            >
             <select bind:value={form.protocol}>
                 <option value="blossom">Blossom</option>
                 <option value="nip96">NIP-96 legacy</option>
@@ -185,14 +223,23 @@
         </label>
         <label class="checkbox-row">
             <input type="checkbox" bind:checked={form.enabled} />
-            <span>{$_("settingsDialog.uploadDestinationEnabled") || "有効"}</span>
+            <span
+                >{$_("settingsDialog.uploadDestinationEnabled") || "有効"}</span
+            >
         </label>
         <label class="checkbox-row">
             <input type="checkbox" bind:checked={form.isDefault} />
-            <span>{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span>
+            <span
+                >{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span
+            >
         </label>
         <div class="form-actions">
-            <Button variant="primary" shape="rounded" onClick={saveForm} disabled={!form.name.trim() || !form.serverUrl.trim()}>
+            <Button
+                variant="primary"
+                shape="rounded"
+                onClick={saveForm}
+                disabled={!form.name.trim() || !form.serverUrl.trim()}
+            >
                 {$_("settingsDialog.uploadDestinationSave") || "保存"}
             </Button>
             <Button
@@ -216,7 +263,9 @@
                 {$_("settingsDialog.upload_destination") || "アップロード先"}
             </span>
             <span class="upload-summary">
-                {destinationState.defaultDestination?.name || $_("settingsDialog.uploadDestinationNone") || "未設定"}
+                {destinationState.defaultDestination?.name ||
+                    $_("settingsDialog.uploadDestinationNone") ||
+                    "未設定"}
             </span>
         </div>
         <div class="setting-control">
@@ -240,14 +289,25 @@
                         <div class="destination-title">
                             <span>{destination.name}</span>
                             {#if destination.isDefault}
-                                <span class="badge">{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span>
+                                <span class="badge"
+                                    >{$_(
+                                        "settingsDialog.uploadDestinationDefault",
+                                    ) || "既定"}</span
+                                >
                             {/if}
                             {#if !destination.enabled}
-                                <span class="badge muted">{$_("settingsDialog.uploadDestinationDisabled") || "無効"}</span>
+                                <span class="badge muted"
+                                    >{$_(
+                                        "settingsDialog.uploadDestinationDisabled",
+                                    ) || "無効"}</span
+                                >
                             {/if}
                         </div>
                         <div class="destination-meta">
-                            {destination.protocol} / {destination.presetId || "custom"} / {formatMaxSize(destination.capabilities.maxUploadSize)}
+                            {destination.protocol} / {destination.presetId ||
+                                "custom"} / {formatMaxSize(
+                                destination.capabilities.maxUploadSize,
+                            )}
                         </div>
                         <div class="destination-meta mime-meta">
                             <span>{getMimeSummary(destination)}</span>
@@ -255,34 +315,74 @@
                                 <button
                                     type="button"
                                     class="mime-toggle"
-                                    onclick={() => toggleMimeTypes(destination.id)}
+                                    onclick={() =>
+                                        toggleMimeTypes(destination.id)}
                                 >
                                     {expandedMimeDestinations[destination.id]
-                                        ? $_("settingsDialog.uploadDestinationMimeCollapse") || "折りたたむ"
-                                        : $_("settingsDialog.uploadDestinationMimeExpand") || "すべて表示"}
+                                        ? $_(
+                                              "settingsDialog.uploadDestinationMimeCollapse",
+                                          ) || "折りたたむ"
+                                        : $_(
+                                              "settingsDialog.uploadDestinationMimeExpand",
+                                          ) || "すべて表示"}
                                 </button>
                             {/if}
                         </div>
                     </div>
                     <div class="destination-actions">
-                        <Button variant="default" shape="rounded" onClick={() => testDestination(destination)} disabled={testingId === destination.id}>
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() => testDestination(destination)}
+                            disabled={testingId === destination.id}
+                        >
                             {testingId === destination.id
-                                ? $_("settingsDialog.uploadDestinationTesting") || "確認中"
-                                : $_("settingsDialog.uploadDestinationTest") || "接続テスト"}
+                                ? $_(
+                                      "settingsDialog.uploadDestinationTesting",
+                                  ) || "確認中"
+                                : $_("settingsDialog.uploadDestinationTest") ||
+                                  "接続テスト"}
                         </Button>
-                        <Button variant="default" shape="rounded" onClick={() => uploadDestinationStore.setDefault(destination.id, null)} disabled={destination.isDefault}>
-                            {$_("settingsDialog.uploadDestinationSetDefault") || "既定"}
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() =>
+                                uploadDestinationStore.setDefault(
+                                    destination.id,
+                                    null,
+                                )}
+                            disabled={destination.isDefault}
+                        >
+                            {$_("settingsDialog.uploadDestinationSetDefault") ||
+                                "既定"}
                         </Button>
-                        <Button variant="default" shape="rounded" onClick={() => startEdit(destination)}>
-                            {$_("settingsDialog.uploadDestinationEdit") || "編集"}
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() => startEdit(destination)}
+                        >
+                            {$_("settingsDialog.uploadDestinationEdit") ||
+                                "編集"}
                         </Button>
-                        <Button variant="default" shape="rounded" onClick={() => (deleteTarget = destination)} disabled={destinationState.destinations.length <= 1}>
-                            {$_("settingsDialog.uploadDestinationDelete") || "削除"}
+                        <Button
+                            variant="default"
+                            shape="rounded"
+                            onClick={() => (deleteTarget = destination)}
+                            disabled={destinationState.destinations.length <= 1}
+                        >
+                            {$_("settingsDialog.uploadDestinationDelete") ||
+                                "削除"}
                         </Button>
                     </div>
                     {#if destinationState.testResults[destination.id]?.message}
-                        <div class:error={!destinationState.testResults[destination.id].success} class="test-result">
-                            {destinationState.testResults[destination.id].message}
+                        <div
+                            class:error={!destinationState.testResults[
+                                destination.id
+                            ].success}
+                            class="test-result"
+                        >
+                            {destinationState.testResults[destination.id]
+                                .message}
                         </div>
                     {/if}
                 </div>
@@ -306,7 +406,8 @@
 <ConfirmDialog
     open={!!deleteTarget}
     title={$_("settingsDialog.uploadDestinationDelete") || "削除"}
-    description={$_("settingsDialog.uploadDestinationDeleteConfirm") || "このアップロード先を削除します。"}
+    description={$_("settingsDialog.uploadDestinationDeleteConfirm") ||
+        "このアップロード先を削除します。"}
     confirmLabel={$_("settingsDialog.uploadDestinationDelete") || "削除"}
     cancelLabel={$_("postComponent.cancel") || "キャンセル"}
     confirmVariant="danger"

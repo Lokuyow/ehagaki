@@ -1,6 +1,8 @@
 import type { UploadConnectionTestResult, UploadDestination } from "../lib/types";
 import { uploadDestinationsRepository } from "../lib/storage/uploadDestinationsRepository";
 import { testUploadDestinationConnection } from "../lib/upload/uploadDestinationConnectionTest";
+import { resolveUploadDestinationForUse } from "../lib/upload/uploadDestinationResolver";
+import { authState } from "./authStore.svelte";
 
 interface UploadDestinationState {
     destinations: UploadDestination[];
@@ -59,7 +61,10 @@ export const uploadDestinationStore = {
     },
 
     async test(destination: UploadDestination): Promise<UploadConnectionTestResult> {
-        const result = await testUploadDestinationConnection(destination);
+        const result = await testUploadDestinationConnection(resolveUploadDestinationForUse(destination, {
+            pubkeyHex: authState.value.pubkey || null,
+            npub: authState.value.npub || null,
+        }));
         uploadDestinationState.testResults = {
             ...uploadDestinationState.testResults,
             [destination.id]: result,

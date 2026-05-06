@@ -160,4 +160,46 @@ describe("uploadDestinationsRepository", () => {
 
         db.close();
     });
+
+    it("promotes a later-added blossom.band destination over an untouched migrated legacy default", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://nostr.build/api/v2/nip96/upload");
+        const nowValues = [1234, 1235, 1236, 1237];
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => nowValues.shift() ?? 9999,
+            () => storage,
+        );
+        const legacyDefault = await repository.getDefault(null);
+
+        await repository.put({
+            ...legacyDefault,
+            id: "blossom-band",
+            name: "blossom.band",
+            protocol: "blossom",
+            serverUrl: "https://blossom.band",
+            resolvedUploadUrl: undefined,
+            presetId: "blossom-band",
+            isDefault: false,
+            createdAt: 1235,
+            updatedAt: 1235,
+            capabilities: {
+                ...legacyDefault.capabilities,
+                supportsDelete: true,
+                supportsList: true,
+            },
+            auth: { type: "blossom-bud11" },
+        });
+
+        const promoted = await repository.getDefault(null);
+        const destinations = await repository.getAll(null);
+
+        expect(promoted.id).toBe("blossom-band");
+        expect(promoted.isDefault).toBe(true);
+        expect(destinations.find((destination) => destination.id === "blossom-band")?.isDefault).toBe(true);
+        expect(destinations.find((destination) => destination.id === legacyDefault.id)?.isDefault).toBe(false);
+
+        db.close();
+    });
 });

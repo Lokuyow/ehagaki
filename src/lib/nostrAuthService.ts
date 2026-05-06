@@ -10,6 +10,28 @@ const NIP46_RECONNECT_WAIT_MS = 10000;
 /** NIP-46再接続のポーリング間隔(ms) */
 const NIP46_RECONNECT_POLL_MS = 200;
 
+function getServerDomain(serverUrl: string): string {
+    try {
+        return new URL(serverUrl).hostname.toLowerCase();
+    } catch {
+        return serverUrl
+            .replace(/^https?:\/\//i, "")
+            .split("/")[0]
+            .toLowerCase();
+    }
+}
+
+function base64UrlEncode(value: string): string {
+    const binary = encodeURIComponent(value).replace(
+        /%([0-9A-F]{2})/g,
+        (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)),
+    );
+    return btoa(binary)
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
+}
+
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
     private async getSignFunction(): Promise<(event: any) => Promise<any>> {
@@ -65,19 +87,17 @@ export class NostrAuthService implements AuthService {
         const tags = [
             ["t", params.method],
             ["expiration", String(expiration)],
-            ["server", params.serverUrl],
+            ["server", getServerDomain(params.serverUrl)],
         ];
         if (params.sha256) tags.push(["x", params.sha256]);
-        if (params.contentType) tags.push(["m", params.contentType]);
-        if (params.contentLength !== undefined) tags.push(["size", String(params.contentLength)]);
 
         const event = await signFunc({
             kind: 24242,
             created_at: Math.floor(Date.now() / 1000),
-            content: "",
+            content: params.method === "upload" ? "Upload Blob" : `Authorize ${params.method}`,
             tags,
         });
-        return `Nostr ${btoa(JSON.stringify(event))}`;
+        return `Nostr ${base64UrlEncode(JSON.stringify(event))}`;
     }
 
     /**

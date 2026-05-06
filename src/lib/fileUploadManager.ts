@@ -201,7 +201,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
         wasSkipped
       );
 
-      const finalUrl = this.getUploadEndpoint(apiUrl);
+      const finalUrl = destination ? "" : this.getUploadEndpoint(apiUrl);
       const uploadDestination = destination ?? createLegacyUploadDestination({
         endpoint: finalUrl,
         locale: this.dependencies.localStorage.getItem(STORAGE_KEYS.LOCALE),
