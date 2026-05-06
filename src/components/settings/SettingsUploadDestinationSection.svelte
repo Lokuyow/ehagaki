@@ -27,6 +27,7 @@
     let form = $state({ ...emptyForm });
     let deleteTarget: UploadDestination | null = $state(null);
     let testingId: string | null = $state(null);
+    let expandedMimeDestinations = $state<Record<string, boolean>>({});
     let destinationState = $derived(uploadDestinationStore.value);
     const presetOptions = UPLOAD_DESTINATION_PRESETS.filter((preset) => preset.id !== "custom");
 
@@ -49,8 +50,20 @@
     function getMimeSummary(destination: UploadDestination): string {
         const mimeTypes = destination.capabilities.supportedMimeTypes;
         if (!mimeTypes.length) return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
+        if (expandedMimeDestinations[destination.id]) return mimeTypes.join(", ");
         if (mimeTypes.length <= 3) return mimeTypes.join(", ");
         return `${mimeTypes.slice(0, 3).join(", ")} +${mimeTypes.length - 3}`;
+    }
+
+    function canExpandMimeTypes(destination: UploadDestination): boolean {
+        return destination.capabilities.supportedMimeTypes.length > 3;
+    }
+
+    function toggleMimeTypes(destinationId: string): void {
+        expandedMimeDestinations = {
+            ...expandedMimeDestinations,
+            [destinationId]: !expandedMimeDestinations[destinationId],
+        };
     }
 
     function startAdd(): void {
@@ -174,7 +187,20 @@
                         <div class="destination-meta">
                             {destination.protocol} / {destination.presetId || "custom"} / {formatMaxSize(destination.capabilities.maxUploadSize)}
                         </div>
-                        <div class="destination-meta">{getMimeSummary(destination)}</div>
+                        <div class="destination-meta mime-meta">
+                            <span>{getMimeSummary(destination)}</span>
+                            {#if canExpandMimeTypes(destination)}
+                                <button
+                                    type="button"
+                                    class="mime-toggle"
+                                    onclick={() => toggleMimeTypes(destination.id)}
+                                >
+                                    {expandedMimeDestinations[destination.id]
+                                        ? $_("settingsDialog.uploadDestinationMimeCollapse") || "折りたたむ"
+                                        : $_("settingsDialog.uploadDestinationMimeExpand") || "すべて表示"}
+                                </button>
+                            {/if}
+                        </div>
                     </div>
                     <div class="destination-actions">
                         <Button variant="default" shape="rounded" onClick={() => testDestination(destination)} disabled={testingId === destination.id}>
@@ -279,6 +305,24 @@
     .destination-meta {
         color: var(--text-light);
         font-size: 0.875rem;
+    }
+
+    .mime-meta {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 6px;
+        overflow-wrap: anywhere;
+    }
+
+    .mime-toggle {
+        border: none;
+        background: transparent;
+        color: var(--link-color, var(--primary-color));
+        cursor: pointer;
+        font: inherit;
+        padding: 0;
+        text-decoration: underline;
     }
 
     .upload-panel {

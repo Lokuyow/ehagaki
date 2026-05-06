@@ -113,6 +113,8 @@
     "uploadDestinationEnabled": "Enabled",
     "uploadDestinationSave": "Save",
     "uploadDestinationAdd": "Add",
+    "uploadDestinationMimeExpand": "Show all",
+    "uploadDestinationMimeCollapse": "Collapse",
     "change": "Change",
     "relay_list": "Relay list",
     "toggle_relay_list": "Toggle relay list",

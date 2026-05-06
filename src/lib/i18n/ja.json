@@ -113,6 +113,8 @@
     "uploadDestinationEnabled": "有効",
     "uploadDestinationSave": "保存",
     "uploadDestinationAdd": "追加",
+    "uploadDestinationMimeExpand": "すべて表示",
+    "uploadDestinationMimeCollapse": "折りたたむ",
     "change": "変更",
     "relay_list": "リレーリスト",
     "toggle_relay_list": "リレーリストの表示切替",
