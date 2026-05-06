@@ -155,9 +155,9 @@ export const SW_UPDATE_TIMEOUT = 1000;
 export const RELAY_LIST_REFRESH_DELAY = 0;
 
 export const uploadEndpoints = [
-    { label: "share.yabu.me", url: "https://share.yabu.me/api/v2/media" },
+    { label: "share.yabu.me(NIP-96)", url: "https://share.yabu.me/api/v2/media" },
     { label: "nostpic.com", url: "https://nostpic.com/api/v2/media" },
-    { label: "nostrcheck.me", url: "https://nostrcheck.me/api/v2/media" },
+    { label: "nostrcheck.me(NIP-96)", url: "https://nostrcheck.me/api/v2/media" },
     { label: "files.sovbit.host", url: "https://files.sovbit.host/api/v2/media" },
     { label: "nostr.build", url: "https://nostr.build/api/v2/nip96/upload" },
 ];
@@ -166,7 +166,7 @@ export const uploadEndpoints = [
 export function getDefaultEndpoint(locale: string | null | undefined): string {
     return locale === "ja"
         ? "https://share.yabu.me/api/v2/media"
-        : "https://nostrcheck.me/api/v2/media";
+    : "https://nostrcheck.me/api/v2/media";
 }
 
 // 圧縮設定候補を返す関数(i18n対応)

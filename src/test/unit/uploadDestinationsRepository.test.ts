@@ -42,6 +42,22 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("uses the locale-specific Blossom preset when no legacy uploadEndpoint exists", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.LOCALE, "ja");
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+
+        const destination = await repository.getDefault(null);
+
+        expect(destination.protocol).toBe("blossom");
+        expect(destination.presetId).toBe("share-yabu-me-blossom");
+        expect(destination.serverUrl).toBe("https://share.yabu.me/api/v2/media");
+        expect(destination.isDefault).toBe(true);
+
+        db.close();
+    });
+
     it("keeps only one default destination per scope", async () => {
         const db = createTestDb();
         const storage = new MockStorage();

@@ -6,7 +6,7 @@ describe("uploadDestinationPresets", () => {
         expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 id: "share-yabu-me",
-                name: "share.yabu.me",
+                name: "share.yabu.me(NIP-96)",
                 protocol: "nip96",
                 resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
             }),
@@ -18,7 +18,7 @@ describe("uploadDestinationPresets", () => {
             }),
             expect.objectContaining({
                 id: "nostrcheck-me",
-                name: "nostrcheck.me",
+                name: "nostrcheck.me(NIP-96)",
                 protocol: "nip96",
                 resolvedUploadUrl: "https://nostrcheck.me/api/v2/media",
             }),
@@ -34,6 +34,12 @@ describe("uploadDestinationPresets", () => {
     it("includes generic Blossom presets for alternate Blossom servers", () => {
         expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
             expect.objectContaining({
+                id: "share-yabu-me-blossom",
+                name: "share.yabu.me(blossom)",
+                protocol: "blossom",
+                serverUrl: "https://share.yabu.me/api/v2/media",
+            }),
+            expect.objectContaining({
                 id: "blossom-band",
                 name: "blossom.band",
                 protocol: "blossom",
@@ -41,7 +47,7 @@ describe("uploadDestinationPresets", () => {
             }),
             expect.objectContaining({
                 id: "cdn-nostrcheck-me",
-                name: "cdn.nostrcheck.me",
+                name: "nostrcheck.me(blossom)",
                 protocol: "blossom",
                 serverUrl: "https://cdn.nostrcheck.me",
             }),
@@ -56,12 +62,6 @@ describe("uploadDestinationPresets", () => {
                 name: "blossom.primal.net",
                 protocol: "blossom",
                 serverUrl: "https://blossom.primal.net",
-            }),
-            expect.objectContaining({
-                id: "cdn-satellite-earth",
-                name: "cdn.satellite.earth",
-                protocol: "blossom",
-                serverUrl: "https://cdn.satellite.earth",
             }),
         ]));
     });

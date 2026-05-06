@@ -28,9 +28,11 @@ export interface MediaGalleryItem {
     ox?: string;
     x?: string;
     dimensions?: ImageDimensions;
+    size?: number;
     mimeType?: string;
     alt?: string;
     dim?: string;
+    uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
 }
 
 export interface SharedMediaMetadata {

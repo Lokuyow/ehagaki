@@ -275,7 +275,9 @@ export function moveEditorMediaToGallery(params: {
             ox: params.imageOxMap[src] ?? undefined,
             x: params.imageXMap[src] ?? undefined,
             dim: node.attrs.dim ?? undefined,
+            size: typeof node.attrs.size === 'number' ? node.attrs.size : undefined,
             alt: node.attrs.alt ?? undefined,
+            uploadProtocol: node.attrs.uploadProtocol ?? undefined,
         });
     });
 
@@ -322,6 +324,8 @@ export function moveGalleryMediaToEditor(params: {
                 alt: item.alt ?? 'Image',
                 blurhash: item.blurhash ?? null,
                 dim: item.dim ?? null,
+                size: item.size ?? null,
+                uploadProtocol: item.uploadProtocol ?? null,
             });
             transaction = transaction.insert(insertPos, imageNode);
             insertPos += imageNode.nodeSize;

@@ -15,8 +15,10 @@ const ALLOWED_DRAFT_ATTR = [
     'href',
     'id',
     'isplaceholder',
+    'size',
     'src',
     'target',
+    'uploadprotocol',
 ];
 
 function unwrapElement(element: Element): void {

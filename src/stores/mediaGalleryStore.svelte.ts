@@ -41,8 +41,8 @@ export const mediaGalleryStore = {
     },
 
     /** 投稿用の imeta メタデータマップを返す（画像のみ） */
-    getImageBlurhashMap: (): Record<string, { m: string; blurhash?: string; ox?: string; x?: string; dim?: string; alt?: string }> => {
-        const result: Record<string, { m: string; blurhash?: string; ox?: string; x?: string; dim?: string; alt?: string }> = {};
+    getImageBlurhashMap: (): Record<string, { m: string; blurhash?: string; ox?: string; x?: string; dim?: string; alt?: string; size?: number; uploadProtocol?: 'blossom' | 'nip96' | 'custom-http' }> => {
+        const result: Record<string, { m: string; blurhash?: string; ox?: string; x?: string; dim?: string; alt?: string; size?: number; uploadProtocol?: 'blossom' | 'nip96' | 'custom-http' }> = {};
         for (const item of mediaGalleryItems) {
             if (!item.isPlaceholder && item.src && item.type === 'image') {
                 result[item.src] = {
@@ -52,6 +52,8 @@ export const mediaGalleryStore = {
                     x: item.x,
                     dim: item.dim,
                     alt: item.alt,
+                    size: item.size,
+                    uploadProtocol: item.uploadProtocol,
                 };
             }
         }

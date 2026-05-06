@@ -90,6 +90,11 @@ function createMockEditor(options?: { paragraphCount?: number; placeholder?: str
     const editor = {
         chain,
         commands,
+        state: {
+            doc: {
+                descendants: vi.fn(),
+            },
+        },
         view: {
             dom,
         },
@@ -303,6 +308,19 @@ describe('PostManager editor state helpers', () => {
             const rawBlurhashMap = { 'https://example.com/image.jpg': 'blurhash123' };
 
             (mockDeps.extractImageBlurhashMapFn as any).mockReturnValue(rawBlurhashMap);
+            mockEditor.editor.state.doc.descendants.mockImplementation((callback: (node: any) => void) => {
+                callback({
+                    type: { name: 'image' },
+                    attrs: {
+                        src: 'https://example.com/image.jpg',
+                        dim: '640x480',
+                        alt: 'sample',
+                        size: 1234,
+                        uploadProtocol: 'blossom',
+                        isPlaceholder: false,
+                    },
+                });
+            });
 
             const result = manager.prepareImageBlurhashMap(mockEditor.editor, imageOxMap, imageXMap);
 
@@ -311,6 +329,10 @@ describe('PostManager editor state helpers', () => {
                 'https://example.com/image.jpg': {
                     m: 'image/jpeg',
                     blurhash: 'blurhash123',
+                    dim: '640x480',
+                    alt: 'sample',
+                    size: 1234,
+                    uploadProtocol: 'blossom',
                     ox: '100',
                     x: '200',
                 }

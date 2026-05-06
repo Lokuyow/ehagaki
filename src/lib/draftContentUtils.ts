@@ -145,9 +145,11 @@ function buildDraftGalleryItem(item: MediaGalleryItem): MediaGalleryItem {
         ...(item.ox ? { ox: item.ox } : {}),
         ...(item.x ? { x: item.x } : {}),
         ...(item.dimensions ? { dimensions: { ...item.dimensions } } : {}),
+        ...(item.size ? { size: item.size } : {}),
         ...(item.mimeType ? { mimeType: item.mimeType } : {}),
         ...(item.alt ? { alt: item.alt } : {}),
         ...(item.dim ? { dim: item.dim } : {}),
+        ...(item.uploadProtocol ? { uploadProtocol: item.uploadProtocol } : {}),
     };
 }
 
@@ -216,6 +218,13 @@ export function extractMediaToGalleryHtml({
             blurhash: img.getAttribute('blurhash') ?? undefined,
             alt: img.getAttribute('alt') ?? undefined,
             dim: img.getAttribute('dim') ?? undefined,
+            size: (() => {
+                const raw = img.getAttribute('size');
+                if (!raw) return undefined;
+                const parsed = Number(raw);
+                return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+            })(),
+            uploadProtocol: (img.getAttribute('uploadprotocol') ?? undefined) as MediaGalleryItem['uploadProtocol'],
         });
         removeMediaElement(img, tempDiv);
     });

@@ -27,6 +27,8 @@ type ImageImetaMap = Record<string, {
   blurhash?: string;
   dim?: string;
   alt?: string;
+  size?: number;
+  uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
   [key: string]: any;
 }>;
 
@@ -559,12 +561,40 @@ export class PostManager {
       // ギャラリーモード: ギャラリーのメタデータを使用
       return this.deps.mediaGalleryStore!.getImageBlurhashMap();
     }
+
+    const imageAttributeMap: Record<string, {
+      dim?: string;
+      alt?: string;
+      size?: number;
+      uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
+    }> = {};
+    editor?.state?.doc?.descendants?.((node: any) => {
+      if (node.type?.name !== 'image' || !node.attrs?.src || node.attrs?.isPlaceholder) {
+        return;
+      }
+
+      const rawSize = typeof node.attrs.size === 'number'
+        ? node.attrs.size
+        : Number(node.attrs.size);
+
+      imageAttributeMap[node.attrs.src] = {
+        dim: node.attrs.dim ?? undefined,
+        alt: node.attrs.alt ?? undefined,
+        size: Number.isFinite(rawSize) && rawSize > 0 ? rawSize : undefined,
+        uploadProtocol: node.attrs.uploadProtocol ?? undefined,
+      };
+    });
+
     const rawImageBlurhashMap = this.deps.extractImageBlurhashMapFn!(editor);
     const imageBlurhashMap: Record<string, any> = {};
     for (const [url, blurhash] of Object.entries(rawImageBlurhashMap)) {
       imageBlurhashMap[url] = {
         m: getMimeTypeFromUrl(url),
         blurhash,
+        dim: imageAttributeMap[url]?.dim,
+        alt: imageAttributeMap[url]?.alt,
+        size: imageAttributeMap[url]?.size,
+        uploadProtocol: imageAttributeMap[url]?.uploadProtocol,
         ox: imageOxMap[url],
         x: imageXMap[url],
       };

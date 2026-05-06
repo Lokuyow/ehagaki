@@ -500,6 +500,12 @@ describe('FileUploadManager', () => {
             );
 
             expect(result.success).toBe(true);
+            expect(result.uploadProtocol).toBe('blossom');
+            expect(result.nip94).toEqual(expect.objectContaining({
+                size: String(file.size),
+                dim: '100x200',
+            }));
+            expect(result.dimensions).toEqual(expect.objectContaining({ width: 100, height: 200 }));
             expect(mockAuthService.buildAuthHeader).not.toHaveBeenCalled();
             expect(mockAuthService.getBlossomSigner).toHaveBeenCalledTimes(1);
             expect(mockFetch).toHaveBeenCalledWith(
@@ -508,6 +514,48 @@ describe('FileUploadManager', () => {
                     method: 'PUT',
                 }),
             );
+        });
+
+        it('圧縮後画像サイズを nip94 metadata に反映する', async () => {
+            const originalFile = createMockFile('test.jpg', 'image/jpeg', 5000);
+            const compressedFile = createMockFile('test.webp', 'image/webp', 2000);
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
+            };
+
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({
+                    file: compressedFile,
+                    wasCompressed: true,
+                    wasSkipped: false
+                }),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                status: 'success',
+                nip94_event: {
+                    tags: [['url', 'https://example.com/image.webp']]
+                }
+            }));
+
+            const result = await uploadManager.uploadFile(originalFile);
+
+            expect(result.success).toBe(true);
+            expect(result.nip94).toEqual(expect.objectContaining({
+                size: String(compressedFile.size),
+                dim: '100x200',
+            }));
+            expect(result.dimensions).toEqual(expect.objectContaining({ width: 100, height: 200 }));
         });
 
         it('uploadFileWithCallbacks 成功時にサイズ情報表示 action を呼び出す', async () => {

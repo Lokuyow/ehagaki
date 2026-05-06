@@ -46,7 +46,7 @@ export async function createImetaTag(fields: ImetaField): Promise<string[]> {
         fallback: fields.fallback,
     };
     if (fields.x) nip94Params.x = fields.x;
-    if (fields.ox) nip94Params.ox = fields.ox;
+    if (fields.ox && fields.uploadProtocol !== 'blossom') nip94Params.ox = fields.ox;
     const nip94Event = (await import("nostr-tools/nip94")).generateEventTemplate(nip94Params as any);
     // imetaタグはNIP-94のタグをスペース区切りのkey value形式に変換
     const imeta: string[] = [

@@ -344,6 +344,29 @@ describe('createImetaTag', () => {
 
             expect(result.some(tag => tag === 'ox originalhash123')).toBe(true);
         });
+
+        it('sizeフィールドが含まれる場合タグに追加される', async () => {
+            const result = await createImetaTag({
+                url: 'https://example.com/photo.jpg',
+                m: 'image/jpeg',
+                dim: '800x600',
+                size: 12345,
+            });
+
+            expect(result.some(tag => tag === 'size 12345')).toBe(true);
+        });
+
+        it('Blossom 画像では ox を含めない', async () => {
+            const result = await createImetaTag({
+                url: 'https://example.com/photo.jpg',
+                m: 'image/jpeg',
+                dim: '800x600',
+                ox: 'originalhash123',
+                uploadProtocol: 'blossom',
+            });
+
+            expect(result.some(tag => tag.startsWith('ox '))).toBe(false);
+        });
     });
 
     describe('異常系', () => {

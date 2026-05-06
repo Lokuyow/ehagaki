@@ -388,6 +388,8 @@
           alt: item.alt ?? "Image",
           blurhash: item.blurhash ?? null,
           dim: item.dim ?? null,
+          size: item.size ?? null,
+          uploadProtocol: item.uploadProtocol ?? null,
         });
         transaction = transaction.insert(insertPos, imageNode);
         insertPos += imageNode.nodeSize;

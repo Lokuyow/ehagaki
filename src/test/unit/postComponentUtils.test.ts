@@ -298,7 +298,9 @@ describe('moveEditorMediaToGallery', () => {
             ox: 'ox-a',
             x: 'x-a',
             dim: '100x100',
+            size: undefined,
             alt: 'a',
+            uploadProtocol: undefined,
         });
         expect(addGalleryItem).toHaveBeenNthCalledWith(2, {
             id: 'item-2',
@@ -309,7 +311,9 @@ describe('moveEditorMediaToGallery', () => {
             ox: undefined,
             x: undefined,
             dim: undefined,
+            size: undefined,
             alt: undefined,
+            uploadProtocol: undefined,
         });
         expect(deleteMock).toHaveBeenNthCalledWith(1, 4, 5);
         expect(deleteMock).toHaveBeenNthCalledWith(2, 2, 3);
@@ -357,7 +361,9 @@ describe('moveGalleryMediaToEditor', () => {
                     ox: 'ox-a',
                     x: 'x-a',
                     dim: '100x100',
+                    size: 1234,
                     alt: 'a',
+                    uploadProtocol: 'blossom',
                 },
                 {
                     id: 'item-2',
@@ -380,6 +386,10 @@ describe('moveGalleryMediaToEditor', () => {
             hadItems: true,
         });
         expect(insertMock).toHaveBeenCalledTimes(2);
+        expect((currentEditor.state.schema.nodes.image.create as any).mock.calls[0][0]).toEqual(expect.objectContaining({
+            size: 1234,
+            uploadProtocol: 'blossom',
+        }));
         expect(dispatch).toHaveBeenCalledOnce();
     });
 });

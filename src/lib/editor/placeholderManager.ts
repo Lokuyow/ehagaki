@@ -6,6 +6,7 @@ import { generateSimpleUUID } from '../utils/appUtils';
 import { mediaGalleryStore } from '../../stores/mediaGalleryStore.svelte';
 import { buildUploadFailureMessage } from '../uploadResultUtils';
 import { isDefaultUploadAborted, type UploadAbortChecker } from '../uploadAbortUtils';
+import { calculateImageDisplaySize, parseDimString } from '../utils/mediaNodeUtils';
 
 // ============================================================
 // 共通プライベートヘルパー
@@ -85,7 +86,40 @@ function extractNip94Metadata(nip94: Record<string, any>) {
         oxFromServer: nip94['ox'] ?? nip94['o'] ?? undefined as string | undefined,
         xFromServer: nip94['x'] ?? undefined as string | undefined,
         dimFromServer: nip94['dim'] ?? undefined as string | undefined,
+        sizeFromServer: nip94['size'] ?? undefined as string | number | undefined,
     };
+}
+
+function parseImageSize(size: string | number | undefined): number | undefined {
+    if (typeof size === 'number' && Number.isFinite(size) && size > 0) {
+        return size;
+    }
+
+    if (typeof size === 'string') {
+        const parsed = Number(size);
+        if (Number.isFinite(parsed) && parsed > 0) {
+            return parsed;
+        }
+    }
+
+    return undefined;
+}
+
+function resolveImageDimensions(
+    result: FileUploadResponse,
+    dimFromServer: string | undefined,
+    matched: PlaceholderEntry,
+): ImageDimensions | undefined {
+    if (result.dimensions) {
+        return result.dimensions;
+    }
+
+    const parsed = parseDimString(dimFromServer);
+    if (parsed) {
+        return calculateImageDisplaySize(parsed.width, parsed.height);
+    }
+
+    return matched.dimensions;
 }
 
 function resolveImageReplacementMetadata(
@@ -98,18 +132,25 @@ function resolveImageReplacementMetadata(
     blurhash?: string;
     ox?: string;
     dim?: string;
+    dimensions?: ImageDimensions;
+    size?: number;
+    uploadProtocol?: FileUploadResponse['uploadProtocol'];
 } {
-    const { serverBlurhash, oxFromServer, xFromServer, dimFromServer } = extractNip94Metadata(result.nip94 || {});
+    const { serverBlurhash, oxFromServer, xFromServer, dimFromServer, sizeFromServer } = extractNip94Metadata(result.nip94 || {});
+    const dimensions = resolveImageDimensions(result, dimFromServer, matched);
 
     return {
         serverBlurhash,
         oxFromServer,
         xFromServer,
         blurhash: serverBlurhash ?? matched.blurhash,
-        ox: oxFromServer ?? matched.ox,
-        dim: dimFromServer ?? (matched.dimensions
-            ? `${matched.dimensions.width}x${matched.dimensions.height}`
+        ox: result.uploadProtocol === 'blossom' ? undefined : (oxFromServer ?? matched.ox),
+        dim: dimFromServer ?? (dimensions
+            ? `${dimensions.width}x${dimensions.height}`
             : undefined),
+        dimensions,
+        size: parseImageSize(sizeFromServer) ?? result.sizeInfo?.compressedSize,
+        uploadProtocol: result.uploadProtocol,
     };
 }
 
@@ -126,13 +167,14 @@ async function finalizeImageReplacement(
     updateImageSizeMapEntry(
         imageSizeMapStore,
         matched.placeholderId,
-        matched.dimensions ? url : undefined,
-        matched.dimensions,
+        metadata.dimensions ? url : undefined,
+        metadata.dimensions,
     );
 
     return recordOxAndXMaps(
         url,
         matched,
+        metadata.uploadProtocol,
         metadata.oxFromServer,
         metadata.xFromServer,
         imageOxMap,
@@ -149,6 +191,7 @@ async function finalizeImageReplacement(
 async function recordOxAndXMaps(
     url: string,
     matched: PlaceholderEntry,
+    uploadProtocol: FileUploadResponse['uploadProtocol'],
     oxFromServer: string | undefined,
     xFromServer: string | undefined,
     imageOxMap: Record<string, string>,
@@ -156,10 +199,14 @@ async function recordOxAndXMaps(
     calculateImageHash: (url: string) => Promise<string | null>,
     devMode: boolean
 ): Promise<string | undefined> {
-    if (oxFromServer) {
-        imageOxMap[url] = oxFromServer;
-    } else if (matched.ox) {
-        imageOxMap[url] = matched.ox;
+    if (uploadProtocol !== 'blossom') {
+        if (oxFromServer) {
+            imageOxMap[url] = oxFromServer;
+        } else if (matched.ox) {
+            imageOxMap[url] = matched.ox;
+        }
+    } else {
+        delete imageOxMap[url];
     }
 
     if (xFromServer) {
@@ -514,6 +561,8 @@ export async function replacePlaceholdersWithResults(
                             if (imageMetadata.dim) {
                                 newAttrs.dim = imageMetadata.dim;
                             }
+                            newAttrs.size = imageMetadata.size ?? null;
+                            newAttrs.uploadProtocol = imageMetadata.uploadProtocol ?? null;
                             const tr = currentEditor!.state.tr.setNodeMarkup(pos, undefined, newAttrs);
                             currentEditor!.view.dispatch(tr);
                         },
@@ -628,6 +677,9 @@ export async function replacePlaceholdersInGallery(
                         mimeType,
                         ox: imageMetadata.ox,
                         dim: imageMetadata.dim,
+                        dimensions: imageMetadata.dimensions,
+                        size: imageMetadata.size,
+                        uploadProtocol: imageMetadata.uploadProtocol,
                     });
 
                     const x = await finalizeImageReplacement(

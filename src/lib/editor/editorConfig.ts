@@ -244,6 +244,8 @@ export function createEditorStore(options: EditorConfigOptions) {
                         blurhash: { default: null },
                         isPlaceholder: { default: null },
                         dim: { default: null },
+                        size: { default: null },
+                        uploadProtocol: { default: null },
                         alt: { default: null },
                     };
                 },

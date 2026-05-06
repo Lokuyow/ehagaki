@@ -1,5 +1,5 @@
 import { createFileSizeInfo } from "./utils/fileSizeUtils";
-import { calculateSHA256Hex } from "./utils/fileUtils";
+import { calculateSHA256Hex, getImageDimensions } from "./utils/fileUtils";
 import { setImageSizeInfoFromFileSize } from "../stores/uploadStore.svelte";
 import { VideoCompressionService } from "./videoCompression/videoCompressionService";
 import type {
@@ -180,6 +180,10 @@ export class FileUploadManager implements FileUploadManagerInterface {
         return { success: false, error: 'Upload aborted by user', aborted: true };
       }
 
+      const uploadDimensions = !isVideo
+        ? await getImageDimensions(uploadFile)
+        : null;
+
       const compressedSize = uploadFile.size;
 
       // 型安全にアクセス
@@ -220,8 +224,19 @@ export class FileUploadManager implements FileUploadManagerInterface {
         };
       }
 
+      const normalizedNip94 = uploadResult.success
+        ? {
+            ...(uploadResult.nip94 ?? {}),
+            size: String(uploadFile.size),
+            ...(uploadDimensions ? { dim: `${uploadDimensions.width}x${uploadDimensions.height}` } : {}),
+          }
+        : uploadResult.nip94;
+
       return {
         ...uploadResult,
+        ...(normalizedNip94 ? { nip94: normalizedNip94 } : {}),
+        ...(uploadDimensions ? { dimensions: uploadDimensions } : {}),
+        uploadProtocol: uploadDestination.protocol,
         sizeInfo
       };
     } catch (error) {

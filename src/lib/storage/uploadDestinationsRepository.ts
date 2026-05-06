@@ -6,6 +6,7 @@ import {
     UPLOAD_DESTINATION_GLOBAL_SCOPE,
     UPLOAD_DESTINATION_SCHEMA_VERSION,
     createLegacyUploadDestination,
+    getPreferredDefaultUploadPresetIds,
     getScopeKey,
 } from "../upload/uploadDestinationPresets";
 
@@ -107,16 +108,14 @@ function sortDestinations(a: UploadDestination, b: UploadDestination): number {
 }
 
 function isDestinationForEndpoint(destination: UploadDestination, endpoint: string): boolean {
-    return destination.protocol === "nip96"
-        && (
-            destination.resolvedUploadUrl === endpoint
-            || destination.serverUrl === endpoint
-        );
+    return destination.resolvedUploadUrl === endpoint
+        || destination.serverUrl === endpoint;
 }
 
-function getPreferredBlossomBandDestination(
+function getPreferredBlossomDestination(
     destinations: UploadDestination[],
     currentDefault: UploadDestination,
+    locale: string | null | undefined,
 ): UploadDestination | null {
     if (
         currentDefault.protocol !== "nip96"
@@ -125,15 +124,21 @@ function getPreferredBlossomBandDestination(
         return null;
     }
 
-    const blossomBandDestinations = destinations
-        .filter((destination) =>
-            destination.enabled
-            && destination.presetId === "blossom-band"
-            && destination.updatedAt > currentDefault.updatedAt,
-        )
-        .sort((a, b) => b.updatedAt - a.updatedAt);
+    for (const presetId of getPreferredDefaultUploadPresetIds(locale)) {
+        const matchingDestinations = destinations
+            .filter((destination) =>
+                destination.enabled
+                && destination.presetId === presetId
+                && destination.updatedAt > currentDefault.updatedAt,
+            )
+            .sort((a, b) => b.updatedAt - a.updatedAt);
 
-    return blossomBandDestinations[0] ?? null;
+        if (matchingDestinations[0]) {
+            return matchingDestinations[0];
+        }
+    }
+
+    return null;
 }
 
 export class DexieUploadDestinationsRepository implements UploadDestinationsRepository {
@@ -161,17 +166,19 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
     async getDefault(pubkeyHex: string | null = null): Promise<UploadDestination> {
         const destinations = await this.getAll(pubkeyHex);
+        const locale = this.getStorage().getItem(STORAGE_KEYS.LOCALE);
         const defaultDestination = destinations.find((destination) =>
             destination.enabled && destination.isDefault,
         );
         if (defaultDestination) {
-            const preferredBlossomBand = getPreferredBlossomBandDestination(
+            const preferredBlossom = getPreferredBlossomDestination(
                 destinations,
                 defaultDestination,
+                locale,
             );
-            if (preferredBlossomBand) {
-                await this.setDefault(preferredBlossomBand.id, pubkeyHex);
-                return { ...preferredBlossomBand, isDefault: true };
+            if (preferredBlossom) {
+                await this.setDefault(preferredBlossom.id, pubkeyHex);
+                return { ...preferredBlossom, isDefault: true };
             }
 
             return defaultDestination;

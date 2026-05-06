@@ -25,16 +25,33 @@ export interface UploadDestinationPreset {
 }
 
 const NIP96_PRESET_IDS: Record<string, UploadPresetId> = {
-    "nostr.build": "nostr-build",
-    "share.yabu.me": "share-yabu-me",
-    "nostpic.com": "nostpic-com",
-    "nostrcheck.me": "nostrcheck-me",
-    "files.sovbit.host": "files-sovbit-host",
+    "https://nostr.build/api/v2/nip96/upload": "nostr-build",
+    "https://share.yabu.me/api/v2/media": "share-yabu-me",
+    "https://nostpic.com/api/v2/media": "nostpic-com",
+    "https://nostrcheck.me/api/v2/media": "nostrcheck-me",
+    "https://files.sovbit.host/api/v2/media": "files-sovbit-host",
 };
+
+export function getPreferredDefaultUploadPresetIds(locale: string | null | undefined): UploadPresetId[] {
+    return locale === "ja"
+        ? ["share-yabu-me-blossom", "blossom-band"]
+        : ["blossom-band", "share-yabu-me-blossom"];
+}
+
+function getDefaultUploadDestinationPreset(locale: string | null | undefined): UploadDestinationPreset | null {
+    for (const presetId of getPreferredDefaultUploadPresetIds(locale)) {
+        const preset = UPLOAD_DESTINATION_PRESETS.find((candidate) => candidate.id === presetId);
+        if (preset) {
+            return preset;
+        }
+    }
+
+    return UPLOAD_DESTINATION_PRESETS[0] ?? null;
+}
 
 export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
     ...uploadEndpoints.map((endpoint) => ({
-        id: NIP96_PRESET_IDS[endpoint.label] ?? "custom",
+        id: NIP96_PRESET_IDS[endpoint.url] ?? "custom",
         name: endpoint.label,
         protocol: "nip96" as const,
         serverUrl: endpoint.url,
@@ -45,6 +62,15 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
             source: "preset" as const,
         },
     })),
+    {
+        id: "share-yabu-me-blossom",
+        name: "share.yabu.me(blossom)",
+        protocol: "blossom",
+        serverUrl: "https://share.yabu.me/api/v2/media",
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+        },
+    },
     {
         id: "blossom-band",
         name: "blossom.band",
@@ -58,7 +84,7 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
     },
     {
         id: "cdn-nostrcheck-me",
-        name: "cdn.nostrcheck.me",
+        name: "nostrcheck.me(blossom)",
         protocol: "blossom",
         serverUrl: "https://cdn.nostrcheck.me",
         capabilities: {
@@ -79,15 +105,6 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
         name: "blossom.primal.net",
         protocol: "blossom",
         serverUrl: "https://blossom.primal.net",
-        capabilities: {
-            ...DEFAULT_UPLOAD_CAPABILITIES,
-        },
-    },
-    {
-        id: "cdn-satellite-earth",
-        name: "cdn.satellite.earth",
-        protocol: "blossom",
-        serverUrl: "https://cdn.satellite.earth",
         capabilities: {
             ...DEFAULT_UPLOAD_CAPABILITIES,
         },
@@ -121,8 +138,11 @@ export function normalizeServerUrl(url: string): string {
 
 export function findUploadPresetByEndpoint(endpoint: string | null | undefined): UploadDestinationPreset | null {
     if (!endpoint) return null;
+    const normalizedEndpoint = normalizeServerUrl(endpoint);
+
     return UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        preset.protocol === "nip96" && preset.resolvedUploadUrl === endpoint,
+        preset.resolvedUploadUrl === endpoint
+        || normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
     ) ?? null;
 }
 
@@ -161,8 +181,10 @@ export function createLegacyUploadDestination(params: {
     pubkeyHex?: string | null;
     now?: number;
 }): UploadDestination {
-    const endpoint = params.endpoint || getDefaultEndpoint(params.locale);
-    const preset = findUploadPresetByEndpoint(endpoint);
+    const endpoint = params.endpoint.trim();
+    const preset = endpoint
+        ? findUploadPresetByEndpoint(endpoint)
+        : getDefaultUploadDestinationPreset(params.locale);
     if (preset) {
         return createUploadDestinationFromPreset({
             preset,
@@ -172,14 +194,15 @@ export function createLegacyUploadDestination(params: {
         });
     }
 
+    const fallbackEndpoint = endpoint || getDefaultEndpoint(params.locale);
     const timestamp = params.now ?? Date.now();
     return {
         id: createUploadDestinationId(),
         pubkeyHex: params.pubkeyHex ?? null,
         name: "Custom NIP-96",
         protocol: "nip96",
-        serverUrl: normalizeServerUrl(endpoint),
-        resolvedUploadUrl: endpoint,
+        serverUrl: normalizeServerUrl(fallbackEndpoint),
+        resolvedUploadUrl: fallbackEndpoint,
         presetId: "custom",
         isDefault: true,
         enabled: true,
