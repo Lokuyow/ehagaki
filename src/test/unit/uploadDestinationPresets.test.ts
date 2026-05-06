@@ -31,7 +31,7 @@ describe("uploadDestinationPresets", () => {
         ]));
     });
 
-    it("includes generic Blossom presets from lumilumi for isolation testing", () => {
+    it("includes generic Blossom presets for alternate Blossom servers", () => {
         expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 id: "blossom-band",

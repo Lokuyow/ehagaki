@@ -73,7 +73,7 @@ describe("uploadDestinationResolver", () => {
         expect(destination).not.toHaveProperty("resolvedUploadUrl");
     });
 
-    it("keeps generic Blossom destinations unchanged for non-blossom.band isolation", () => {
+    it("keeps generic Blossom destinations unchanged", () => {
         const destination = resolveUploadDestinationForUse(createGenericBlossomDestination(), { pubkeyHex });
 
         expect(destination.serverUrl).toBe("https://nostr.download");
