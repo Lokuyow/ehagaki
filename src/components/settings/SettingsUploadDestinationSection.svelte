@@ -227,18 +227,22 @@
             <span>URL</span>
             <input bind:value={form.serverUrl} inputmode="url" />
         </label>
-        <label class="checkbox-row">
-            <input type="checkbox" bind:checked={form.enabled} />
-            <span
-                >{$_("settingsDialog.uploadDestinationEnabled") || "有効"}</span
-            >
-        </label>
-        <label class="checkbox-row">
-            <input type="checkbox" bind:checked={form.isDefault} />
-            <span
-                >{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span
-            >
-        </label>
+        <div class="checkbox-group">
+            <label class="checkbox-row">
+                <input type="checkbox" bind:checked={form.enabled} />
+                <span
+                    >{$_("settingsDialog.uploadDestinationEnabled") ||
+                        "有効"}</span
+                >
+            </label>
+            <label class="checkbox-row">
+                <input type="checkbox" bind:checked={form.isDefault} />
+                <span
+                    >{$_("settingsDialog.uploadDestinationDefault") ||
+                        "既定"}</span
+                >
+            </label>
+        </div>
         <div class="form-actions">
             <Button
                 variant="primary"
@@ -499,9 +503,27 @@
         font-size: 0.875rem;
     }
 
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
     .checkbox-row {
         flex-direction: row;
         align-items: center;
+        gap: 8px;
+        min-height: 32px;
+    }
+
+    .checkbox-row input[type="checkbox"] {
+        width: 24px;
+        height: 24px;
+        min-height: 24px;
+        margin: 0;
+        padding: 0;
+        accent-color: var(--primary-color);
     }
 
     input,
