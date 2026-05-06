@@ -8,7 +8,6 @@ import {
     DEFAULT_SHOW_MASCOT,
     STORAGE_KEYS,
     VALID_COMPRESSION_LEVELS,
-    getDefaultEndpoint,
     uploadEndpoints,
 } from "../constants";
 
@@ -22,7 +21,6 @@ export type PreferenceSource =
 export type ThemeMode = "system" | "light" | "dark";
 export type ManagedPreferenceKey =
     | "locale"
-    | "uploadEndpoint"
     | "clientTagEnabled"
     | "quoteNotificationEnabled"
     | "imageQualityLevel"
@@ -228,43 +226,6 @@ export function getEffectiveLocale(
     return getStoredLocalePreference(storage) ?? normalizeLocale(navigator.language);
 }
 
-export function isValidUploadEndpoint(endpoint: string | null | undefined): endpoint is string {
-    return !!endpoint && uploadEndpoints.some((candidate) => candidate.url === endpoint);
-}
-
-export function hasStoredUploadEndpoint(
-    storage: Pick<Storage, "getItem"> | StorageAdapter,
-): boolean {
-    return isValidUploadEndpoint(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT));
-}
-
-export function getUploadEndpointPreference(
-    storage: Pick<Storage, "getItem"> | StorageAdapter,
-    locale: string | null | undefined,
-    selectedEndpoint?: string,
-): string {
-    const storedEndpoint = storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
-    if (isValidUploadEndpoint(storedEndpoint)) {
-        return storedEndpoint;
-    }
-
-    if (isValidUploadEndpoint(selectedEndpoint)) {
-        return selectedEndpoint;
-    }
-
-    return getDefaultEndpoint(locale);
-}
-
-export function ensureUploadEndpointPreference(
-    storage: ReadWriteStorage,
-    locale: string | null | undefined,
-    selectedEndpoint?: string,
-): string {
-    const endpoint = getUploadEndpointPreference(storage, locale, selectedEndpoint);
-    storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, endpoint);
-    return endpoint;
-}
-
 export function getClientTagEnabledPreference(storage: ReadWriteStorage): boolean {
     return getStoredBooleanPreference(
         storage,
@@ -389,6 +350,10 @@ export function getStoredThemeModePreference(storage: MutableStorage): ThemeMode
     return "system";
 }
 
+export function isValidUploadEndpoint(endpoint: string | null | undefined): endpoint is string {
+    return !!endpoint && uploadEndpoints.some((candidate) => candidate.url === endpoint);
+}
+
 export function setLocalePreference(
     storage: ReadWriteStorage,
     locale: string,
@@ -398,20 +363,6 @@ export function setLocalePreference(
     storage.setItem(STORAGE_KEYS.LOCALE, normalizedLocale);
     setPreferenceSource(storage, "locale", source);
     return normalizedLocale;
-}
-
-export function setUploadEndpointPreference(
-    storage: ReadWriteStorage,
-    endpoint: string,
-    source: PreferenceSource = "user",
-): string {
-    const nextEndpoint = isValidUploadEndpoint(endpoint)
-        ? endpoint
-        : getDefaultEndpoint("ja");
-
-    storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, nextEndpoint);
-    setPreferenceSource(storage, "uploadEndpoint", source);
-    return nextEndpoint;
 }
 
 export function setImageCompressionLevelPreference(

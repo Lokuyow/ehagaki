@@ -2,16 +2,13 @@ import { locale as i18nLocale } from "svelte-i18n";
 import type { EmbedSettingsSetPayload } from "../lib/embedProtocol";
 import {
     getClientTagEnabledPreference,
-    ensureUploadEndpointPreference,
     getEffectiveLocale,
     getImageCompressionLevelPreference,
     getMediaFreePlacementPreference,
     getQuoteNotificationEnabledPreference,
     getShowFlavorTextPreference,
     getShowMascotPreference,
-    getUploadEndpointPreference,
     getVideoCompressionLevelPreference,
-    hasStoredUploadEndpoint,
     normalizeLegacyCompressionLevelPreference,
     setClientTagEnabledPreference,
     setImageCompressionLevelPreference,
@@ -20,7 +17,6 @@ import {
     setQuoteNotificationEnabledPreference,
     setShowFlavorTextPreference,
     setShowMascotPreference,
-    setUploadEndpointPreference,
     setVideoCompressionLevelPreference,
     consumeFirstVisit,
     isSharedMediaProcessed as readSharedMediaProcessed,
@@ -40,7 +36,6 @@ import {
 
 interface SettingsState {
     locale: SupportedLocale;
-    uploadEndpoint: string;
     clientTagEnabled: boolean;
     quoteNotificationEnabled: boolean;
     imageQualityLevel: string;
@@ -60,11 +55,9 @@ interface DirectSettingDescriptor<K extends DirectSettingKey> {
 
 function readSettingsState(): SettingsState {
     const effectiveLocale = getEffectiveLocale(localStorage, navigator);
-    const uploadEndpoint = ensureUploadEndpointPreference(localStorage, effectiveLocale);
 
     return {
         locale: effectiveLocale,
-        uploadEndpoint,
         clientTagEnabled: getClientTagEnabledPreference(localStorage),
         quoteNotificationEnabled: getQuoteNotificationEnabledPreference(localStorage),
         imageQualityLevel: getImageCompressionLevelPreference(localStorage),
@@ -86,11 +79,6 @@ function updateMediaPlacement(enabled: boolean): void {
 const directSettingDescriptors: {
     [K in DirectSettingKey]: DirectSettingDescriptor<K>;
 } = {
-    uploadEndpoint: {
-        storageKeys: [STORAGE_KEYS.UPLOAD_ENDPOINT],
-        apply: (value: string, source: PreferenceSource) =>
-            setUploadEndpointPreference(localStorage, value, source),
-    },
     clientTagEnabled: {
         storageKeys: [STORAGE_KEYS.CLIENT_TAG_ENABLED],
         apply: (value: boolean, source: PreferenceSource) =>
@@ -159,24 +147,14 @@ function applyLocaleSetting(
     value: string,
     {
         source = "user",
-        refreshUploadEndpoint = true,
         syncDocumentLang = false,
     }: {
         source?: PreferenceSource;
-        refreshUploadEndpoint?: boolean;
         syncDocumentLang?: boolean;
     } = {},
 ): SupportedLocale {
-    const hadStoredEndpoint = hasStoredUploadEndpoint(localStorage);
     const nextLocale = setLocalePreference(localStorage, value, source);
     settingsState.locale = nextLocale;
-
-    if (!hadStoredEndpoint && refreshUploadEndpoint) {
-        settingsState.uploadEndpoint = ensureUploadEndpointPreference(
-            localStorage,
-            nextLocale,
-        );
-    }
 
     if (syncDocumentLang) {
         document.documentElement.lang = nextLocale;
@@ -231,15 +209,6 @@ export const settingsStore = {
     set locale(value: string) {
         applyLocaleSetting(value);
         persistChangedEmbedSettingKeys([STORAGE_KEYS.LOCALE]);
-    },
-
-    get uploadEndpoint(): string {
-        return settingsState.uploadEndpoint;
-    },
-
-    set uploadEndpoint(value: string) {
-        applyDirectSetting("uploadEndpoint", value);
-        persistDirectSettingKey("uploadEndpoint");
     },
 
     get clientTagEnabled(): boolean {
@@ -314,7 +283,6 @@ export const settingsStore = {
         if (payload.locale !== undefined) {
             applyLocaleSetting(payload.locale, {
                 source,
-                refreshUploadEndpoint: payload.uploadEndpoint === undefined,
                 syncDocumentLang: true,
             });
             applied.push("locale");

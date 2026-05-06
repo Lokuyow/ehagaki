@@ -366,14 +366,12 @@ describe('Settings Utilities', () => {
                 navigator: mockNavigator
             });
 
-            expect(result.endpoint).toBe('https://nostrcheck.me/api/v2/media');
             expect(result.compression).toBe('medium');
             expect(result.clientTagEnabled).toBe(true);
-            expect(mockStorage.setItem).toHaveBeenCalledWith('uploadEndpoint', 'https://nostrcheck.me/api/v2/media');
             expect(mockStorage.setItem).toHaveBeenCalledWith('clientTagEnabled', 'true');
         });
 
-        it('should use Japanese locale when browser is Japanese', () => {
+        it('should not initialize legacy uploadEndpoint from browser locale', () => {
             mockNavigator.language = 'ja-JP';
             (mockStorage.getItem as any).mockReturnValue(null);
 
@@ -382,14 +380,16 @@ describe('Settings Utilities', () => {
                 navigator: mockNavigator
             });
 
-            expect(mockStorage.setItem).toHaveBeenCalledWith('uploadEndpoint', 'https://share.yabu.me/api/v2/media');
+            expect(mockStorage.setItem).not.toHaveBeenCalledWith(
+                'uploadEndpoint',
+                expect.any(String),
+            );
         });
 
         it('should use stored values when available', () => {
             (mockStorage.getItem as any).mockImplementation((key: string) => {
                 switch (key) {
                     case 'locale': return 'ja';
-                    case 'uploadEndpoint': return 'https://example.com';
                     case 'clientTagEnabled': return 'false';
                     case 'imageQualityLevel': return 'high';
                     default: return null;
@@ -407,7 +407,6 @@ describe('Settings Utilities', () => {
 
         it('should use provided override values', () => {
             const result = initializeSettingsValues({
-                selectedEndpoint: 'https://override.com',
                 selectedCompression: 'low',
                 storage: mockStorage,
                 navigator: mockNavigator

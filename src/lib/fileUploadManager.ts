@@ -125,7 +125,6 @@ export class FileUploadManager implements FileUploadManagerInterface {
       ),
     );
 
-    this.dependencies.localStorage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, fallbackEndpoint);
     return fallbackEndpoint;
   }
 

@@ -88,8 +88,6 @@ describe('settings/theme stores remote storage persistence', () => {
             .mockImplementation(() => { });
         const { settingsStore } = await import('../../stores/settingsStore.svelte');
 
-        storage.removeItem(STORAGE_KEYS.UPLOAD_ENDPOINT);
-
         const applied = settingsStore.applyParentSettings(
             {
                 locale: 'en',
@@ -107,9 +105,7 @@ describe('settings/theme stores remote storage persistence', () => {
             'showFlavorText',
         ]);
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBe('en');
-        expect(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)).toBe(
-            'https://nostrcheck.me/api/v2/media',
-        );
+        expect(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)).toBeNull();
         expect(storage.getItem(STORAGE_KEYS.MEDIA_FREE_PLACEMENT)).toBe('true');
         expect(storage.getItem(STORAGE_KEYS.SHOW_MASCOT)).toBe('false');
         expect(storage.getItem(STORAGE_KEYS.SHOW_FLAVOR_TEXT)).toBe('false');

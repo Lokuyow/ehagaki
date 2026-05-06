@@ -372,7 +372,7 @@ describe('FileUploadManager', () => {
             );
         });
 
-        it('保存済みアップロード先がない場合はロケール既定の送信先を使う', async () => {
+        it('保存済みアップロード先がない場合はロケール既定の送信先を使うが localStorage へは書き戻さない', async () => {
             const file = createMockFile('test.jpg', 'image/jpeg', 1000);
 
             mockDependencies.navigator = {
@@ -420,7 +420,7 @@ describe('FileUploadManager', () => {
                 'https://share.yabu.me/api/v2/media',
                 expect.objectContaining({ method: 'POST' })
             );
-            expect(mockDependencies.localStorage.getItem('uploadEndpoint')).toBe('https://share.yabu.me/api/v2/media');
+            expect(mockDependencies.localStorage.getItem('uploadEndpoint')).toBeNull();
         });
 
         it('destination が指定された場合は legacy uploadEndpoint を読まず Blossom adapter で送信する', async () => {

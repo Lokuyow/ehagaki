@@ -5,9 +5,7 @@ import type {
   TimeoutAdapter,
 } from "../types";
 import {
-  ensureUploadEndpointPreference,
   getClientTagEnabledPreference,
-  getEffectiveLocale,
   getImageCompressionLevelPreference,
 } from './settingsStorage';
 
@@ -69,26 +67,20 @@ export function generateSimpleUUID(): string {
  */
 export function initializeSettingsValues(
   options: {
-    selectedEndpoint?: string;
     selectedCompression?: string;
     storage?: StorageAdapter;
     navigator?: NavigatorAdapter;
   } = {}
 ) {
   const {
-    selectedEndpoint,
     selectedCompression,
     storage = defaultStorageAdapter,
-    navigator: nav = defaultNavigatorAdapter
   } = options;
 
-  const effectiveLocale = getEffectiveLocale(storage, nav);
-  const endpoint = ensureUploadEndpointPreference(storage, effectiveLocale, selectedEndpoint);
   const clientTagEnabled = getClientTagEnabledPreference(storage);
   const compression = getImageCompressionLevelPreference(storage, selectedCompression);
 
   return {
-    endpoint,
     clientTagEnabled,
     compression
   };
