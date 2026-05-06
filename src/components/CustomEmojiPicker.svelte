@@ -680,7 +680,7 @@
     }
 
     .recent-custom-emoji-title {
-        padding: 0 6px;
+        padding: 0 6px 2px;
         color: var(--text-muted, var(--text));
         font-size: 0.78rem;
         font-weight: 700;
