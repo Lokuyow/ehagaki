@@ -83,9 +83,14 @@ const mockState = vi.hoisted(() => {
     const remoteLoginCleanup = vi.fn();
     const remoteLogoutCleanup = vi.fn();
     const remoteComposerSetContextCleanup = vi.fn();
+    const remoteSettingsSetCleanup = vi.fn();
+    const remoteSettingsErrorCleanup = vi.fn();
     const notifyComposerContextApplied = vi.fn();
     const notifyComposerContextError = vi.fn();
     const notifyComposerContextUpdated = vi.fn();
+    const notifySettingsApplied = vi.fn();
+    const notifySettingsError = vi.fn();
+    const applyUploadEndpointPreference = vi.fn(async () => null);
     const syncAccountStores = vi.fn();
     const accountManager = {
         addAccount: vi.fn(),
@@ -115,9 +120,14 @@ const mockState = vi.hoisted(() => {
         remoteLoginCleanup,
         remoteLogoutCleanup,
         remoteComposerSetContextCleanup,
+        remoteSettingsSetCleanup,
+        remoteSettingsErrorCleanup,
         notifyComposerContextApplied,
         notifyComposerContextError,
         notifyComposerContextUpdated,
+        notifySettingsApplied,
+        notifySettingsError,
+        applyUploadEndpointPreference,
         syncAccountStores,
         accountManager,
         bootstrapParams: null as {
@@ -137,6 +147,7 @@ const mockState = vi.hoisted(() => {
         parentRemoteLoginListener: null as ((pubkeyHex: string | null) => void) | null,
         parentRemoteLogoutListener: null as ((pubkeyHex: string | null) => void) | null,
         composerRemoteSetContextListener: null as ((payload: { reply?: string | null; quotes?: string[] | null; content?: string | null }, requestId: string) => void) | null,
+        settingsRemoteSetListener: null as ((payload: { locale?: string; uploadEndpoint?: string }, requestId: string) => void) | null,
     };
 });
 
@@ -222,11 +233,30 @@ vi.mock('../../lib/embedComposerContextService', () => ({
     },
 }));
 
+vi.mock('../../lib/embedSettingsService', () => ({
+    embedSettingsService: {
+        initialize: vi.fn(() => true),
+        onRemoteSetSettings: vi.fn((listener: (payload: { locale?: string; uploadEndpoint?: string }, requestId: string) => void) => {
+            mockState.settingsRemoteSetListener = listener;
+            return mockState.remoteSettingsSetCleanup;
+        }),
+        onRemoteSettingsError: vi.fn(() => mockState.remoteSettingsErrorCleanup),
+    },
+}));
+
+vi.mock('../../lib/storage/uploadDestinationsRepository', () => ({
+    uploadDestinationsRepository: {
+        applyUploadEndpointPreference: mockState.applyUploadEndpointPreference,
+    },
+}));
+
 vi.mock('../../lib/iframeMessageService', () => ({
     iframeMessageService: {
         notifyComposerContextApplied: mockState.notifyComposerContextApplied,
         notifyComposerContextError: mockState.notifyComposerContextError,
         notifyComposerContextUpdated: mockState.notifyComposerContextUpdated,
+        notifySettingsApplied: mockState.notifySettingsApplied,
+        notifySettingsError: mockState.notifySettingsError,
     },
 }));
 
@@ -310,6 +340,10 @@ describe('App parentClient integration', () => {
         mockState.notifyComposerContextApplied.mockClear();
         mockState.notifyComposerContextError.mockClear();
         mockState.notifyComposerContextUpdated.mockClear();
+        mockState.notifySettingsApplied.mockClear();
+        mockState.notifySettingsError.mockClear();
+        mockState.applyUploadEndpointPreference.mockClear();
+        mockState.settingsRemoteSetListener = null;
         mockState.syncAccountStores.mockClear();
     });
 
@@ -659,6 +693,34 @@ describe('App parentClient integration', () => {
         expect(mockState.applyReplyQuoteQuery).not.toHaveBeenCalled();
         expect(mockState.notifyComposerContextApplied).toHaveBeenCalledWith(requestId);
         expect(mockState.notifyComposerContextError).not.toHaveBeenCalled();
+    });
+
+    it('remote settings.set の uploadEndpoint は IndexedDB destination を更新して ack に含める', async () => {
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.settingsRemoteSetListener).toBeTruthy();
+        });
+
+        mockState.settingsRemoteSetListener?.(
+            {
+                uploadEndpoint: 'https://nostr.build/api/v2/nip96/upload',
+            },
+            'settings-request-upload',
+        );
+
+        await waitFor(() => {
+            expect(mockState.applyUploadEndpointPreference).toHaveBeenCalledWith({
+                endpoint: 'https://nostr.build/api/v2/nip96/upload',
+                mode: 'forced',
+                pubkeyHex: null,
+            });
+        });
+        expect(mockState.notifySettingsApplied).toHaveBeenCalledWith(
+            ['uploadEndpoint'],
+            'settings-request-upload',
+        );
+        expect(mockState.notifySettingsError).not.toHaveBeenCalled();
     });
 
     it('channel を含む remote composer.setContext は channel context を適用して ack を返す', async () => {

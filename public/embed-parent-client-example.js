@@ -94,7 +94,6 @@ const EMBED_STORAGE_KEYS = new Set([
     "locale",
     "themeMode",
     "darkMode",
-    "uploadEndpoint",
     "clientTagEnabled",
     "quoteNotificationEnabled",
     "imageQualityLevel",

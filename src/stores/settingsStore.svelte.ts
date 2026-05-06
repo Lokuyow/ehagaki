@@ -136,7 +136,6 @@ const directSettingDescriptors: {
 };
 
 const parentDirectSettingKeys: DirectSettingKey[] = [
-    "uploadEndpoint",
     "imageQualityLevel",
     "videoQualityLevel",
     "clientTagEnabled",
@@ -231,10 +230,7 @@ export const settingsStore = {
 
     set locale(value: string) {
         applyLocaleSetting(value);
-        persistChangedEmbedSettingKeys([
-            STORAGE_KEYS.LOCALE,
-            STORAGE_KEYS.UPLOAD_ENDPOINT,
-        ]);
+        persistChangedEmbedSettingKeys([STORAGE_KEYS.LOCALE]);
     },
 
     get uploadEndpoint(): string {

@@ -14,6 +14,7 @@
   import { embedComposerContextService } from "./lib/embedComposerContextService";
   import { embedIndexedDbService } from "./lib/embedIndexedDbService";
   import { embedSettingsService } from "./lib/embedSettingsService";
+  import { uploadDestinationsRepository } from "./lib/storage/uploadDestinationsRepository";
   import {
     embedStorageService,
     EMBED_STORAGE_KEYS,
@@ -689,15 +690,23 @@
     }
   }
 
-  function handleRemoteSettingsSet(
+  async function handleRemoteSettingsSet(
     payload: EmbedSettingsSetPayload,
     requestId: string,
-  ): void {
+  ): Promise<void> {
     try {
       const applied = settingsStore.applyParentSettings(
         payload,
         "parentForced",
       );
+      if (payload.uploadEndpoint !== undefined) {
+        await uploadDestinationsRepository.applyUploadEndpointPreference({
+          endpoint: payload.uploadEndpoint,
+          mode: "forced",
+          pubkeyHex: null,
+        });
+        applied.push("uploadEndpoint");
+      }
       iframeMessageService.notifySettingsApplied(applied, requestId);
     } catch (error) {
       console.error("settings.set の適用に失敗:", error);
@@ -1155,7 +1164,7 @@
 
     const cleanupRemoteSettingsSetHandler =
       embedSettingsService.onRemoteSetSettings((payload, requestId) => {
-        handleRemoteSettingsSet(payload, requestId);
+        void handleRemoteSettingsSet(payload, requestId);
       });
 
     const cleanupRemoteSettingsErrorHandler =

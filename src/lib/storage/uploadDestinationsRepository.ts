@@ -17,6 +17,11 @@ export interface UploadDestinationsRepository {
     put(destination: UploadDestination): Promise<void>;
     delete(id: string): Promise<void>;
     setDefault(id: string, pubkeyHex?: string | null): Promise<void>;
+    applyUploadEndpointPreference(params: {
+        endpoint: string;
+        mode: "forced" | "default";
+        pubkeyHex?: string | null;
+    }): Promise<UploadDestination | null>;
 }
 
 export interface UploadDestinationsParentSync {
@@ -99,6 +104,14 @@ function sortDestinations(a: UploadDestination, b: UploadDestination): number {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
     if (a.createdAt !== b.createdAt) return a.createdAt - b.createdAt;
     return a.name.localeCompare(b.name);
+}
+
+function isDestinationForEndpoint(destination: UploadDestination, endpoint: string): boolean {
+    return destination.protocol === "nip96"
+        && (
+            destination.resolvedUploadUrl === endpoint
+            || destination.serverUrl === endpoint
+        );
 }
 
 function getPreferredBlossomBandDestination(
@@ -237,6 +250,52 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         await this.persistParentSnapshot(scopeKey);
     }
 
+    async applyUploadEndpointPreference({
+        endpoint,
+        mode,
+        pubkeyHex = null,
+    }: {
+        endpoint: string;
+        mode: "forced" | "default";
+        pubkeyHex?: string | null;
+    }): Promise<UploadDestination | null> {
+        const scopeKey = getScopeKey(pubkeyHex);
+        await this.loadParentSnapshot(pubkeyHex);
+
+        const records = await this.db.uploadDestinations
+            .where("scopeKey")
+            .equals(scopeKey)
+            .toArray();
+
+        if (mode === "default" && records.some((record) => record.enabled)) {
+            await this.persistParentSnapshotIfMissing(scopeKey, records);
+            return records.find((record) => record.enabled && record.isDefault)
+                ?? records.find((record) => record.enabled)
+                ?? null;
+        }
+
+        const existing = records
+            .map(toDestination)
+            .find((destination) => isDestinationForEndpoint(destination, endpoint));
+
+        if (existing) {
+            await this.setDefault(existing.id, pubkeyHex);
+            await this.markLegacyUploadEndpointMigrated(scopeKey);
+            return { ...existing, isDefault: true, enabled: true };
+        }
+
+        const destination = createLegacyUploadDestination({
+            endpoint,
+            locale: this.getStorage().getItem(STORAGE_KEYS.LOCALE),
+            pubkeyHex,
+            now: this.now(),
+        });
+
+        await this.put(destination);
+        await this.markLegacyUploadEndpointMigrated(scopeKey);
+        return destination;
+    }
+
     private async clearDefault(pubkeyHex: string | null): Promise<void> {
         const scopeKey = getScopeKey(pubkeyHex);
         const records = await this.db.uploadDestinations
@@ -255,8 +314,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
     private async ensureLegacyUploadEndpointMigrated(pubkeyHex: string | null): Promise<void> {
         const scopeKey = getScopeKey(pubkeyHex);
-        const migrationKey = `${LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY}.${scopeKey}`;
-        const migrated = await this.db.meta.get(migrationKey);
+        const migrated = await this.db.meta.get(this.getLegacyUploadEndpointMigrationKey(scopeKey));
         if (migrated?.value === true) return;
 
         const existing = await this.db.uploadDestinations
@@ -264,7 +322,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
             .equals(scopeKey)
             .count();
         if (existing > 0) {
-            await this.markMigrated(migrationKey);
+            await this.markLegacyUploadEndpointMigrated(scopeKey);
             return;
         }
 
@@ -279,16 +337,20 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         await this.db.transaction("rw", this.db.uploadDestinations, this.db.meta, async () => {
             await this.db.uploadDestinations.put(toRecord(destination));
             await this.db.meta.put({
-                key: migrationKey,
+                key: this.getLegacyUploadEndpointMigrationKey(scopeKey),
                 value: true,
                 updatedAt: this.now(),
             });
         });
     }
 
-    private async markMigrated(key: string): Promise<void> {
+    private getLegacyUploadEndpointMigrationKey(scopeKey: string): string {
+        return `${LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY}.${scopeKey}`;
+    }
+
+    private async markLegacyUploadEndpointMigrated(scopeKey: string): Promise<void> {
         await this.db.meta.put({
-            key,
+            key: this.getLegacyUploadEndpointMigrationKey(scopeKey),
             value: true,
             updatedAt: this.now(),
         });

@@ -13,7 +13,6 @@ import {
     setShowFlavorTextPreference,
     setShowMascotPreference,
     setThemeModePreference,
-    setUploadEndpointPreference,
     setVideoCompressionLevelPreference,
     type SupportedLocale,
     type ThemeMode,
@@ -76,7 +75,7 @@ interface EmbedSettingsBootstrapOptions {
     locationSearch?: string;
 }
 
-interface ParsedEmbedSettings {
+export interface ParsedEmbedSettings {
     locale?: SupportedLocale;
     themeMode?: ThemeMode;
     uploadEndpoint?: string;
@@ -90,19 +89,25 @@ interface ParsedEmbedSettings {
 }
 
 type ParsedSettingsKey = keyof ParsedEmbedSettings;
+type PersistedParsedSettingsKey = Exclude<ParsedSettingsKey, "uploadEndpoint">;
+
+export interface EmbedUploadEndpointBootstrapPreference {
+    endpoint: string;
+    mode: "forced" | "default";
+}
 
 interface EmbedSettingsBootstrapResult {
     hasQueryParams: boolean;
     applied: boolean;
-    appliedSettings: ParsedSettingsKey[];
+    appliedSettings: PersistedParsedSettingsKey[];
     parsedSettings: ParsedEmbedSettings;
     parsedDefaultSettings: ParsedEmbedSettings;
+    uploadEndpointPreference: EmbedUploadEndpointBootstrapPreference | null;
 }
 
-const PARSED_SETTINGS_KEYS: ParsedSettingsKey[] = [
+const PERSISTED_PARSED_SETTINGS_KEYS: PersistedParsedSettingsKey[] = [
     "locale",
     "themeMode",
-    "uploadEndpoint",
     "imageQualityLevel",
     "videoQualityLevel",
     "clientTagEnabled",
@@ -237,7 +242,7 @@ function applyDocumentLanguage(
     documentObj.documentElement.lang = getEffectiveLocale(storage, navigatorObj);
 }
 
-function isPreferenceStored(storage: Storage, key: ParsedSettingsKey): boolean {
+function isPreferenceStored(storage: Storage, key: PersistedParsedSettingsKey): boolean {
     switch (key) {
         case "locale":
             return storage.getItem(STORAGE_KEYS.LOCALE) === "ja"
@@ -245,8 +250,6 @@ function isPreferenceStored(storage: Storage, key: ParsedSettingsKey): boolean {
         case "themeMode":
             return storage.getItem(STORAGE_KEYS.THEME_MODE) !== null
                 || storage.getItem(STORAGE_KEYS.DARK_MODE) !== null;
-        case "uploadEndpoint":
-            return isValidUploadEndpoint(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT));
         case "imageQualityLevel":
             return normalizeCompressionLevelPreference(
                 storage.getItem(STORAGE_KEYS.IMAGE_QUALITY_LEVEL),
@@ -276,7 +279,7 @@ function isPreferenceStored(storage: Storage, key: ParsedSettingsKey): boolean {
 
 function applySetting(
     storage: Storage,
-    key: ParsedSettingsKey,
+    key: PersistedParsedSettingsKey,
     value: ParsedEmbedSettings[ParsedSettingsKey],
     source: "parentForced" | "parentDefault",
 ): boolean {
@@ -290,9 +293,6 @@ function applySetting(
             return true;
         case "themeMode":
             setThemeModePreference(storage, value as ThemeMode, source);
-            return true;
-        case "uploadEndpoint":
-            setUploadEndpointPreference(storage, value as string, source);
             return true;
         case "imageQualityLevel":
             setImageCompressionLevelPreference(storage, value as string, source);
@@ -328,6 +328,18 @@ export function applyEmbedSettingsBootstrap({
     const hasQueryParams = hasEmbedSettingsQuery(locationSearch);
     const parsedSettings = parseEmbedSettings(locationSearch);
     const parsedDefaultSettings = parseDefaultSettings(locationSearch);
+    const uploadEndpointPreference =
+        parsedSettings.uploadEndpoint !== undefined
+            ? {
+                endpoint: parsedSettings.uploadEndpoint,
+                mode: "forced" as const,
+            }
+            : parsedDefaultSettings.uploadEndpoint !== undefined
+                ? {
+                    endpoint: parsedDefaultSettings.uploadEndpoint,
+                    mode: "default" as const,
+                }
+                : null;
 
     if (!hasQueryParams) {
         applyDocumentLanguage(storage, navigatorObj, documentObj);
@@ -337,12 +349,13 @@ export function applyEmbedSettingsBootstrap({
             appliedSettings: [],
             parsedSettings,
             parsedDefaultSettings,
+            uploadEndpointPreference,
         };
     }
 
-    const appliedSettings: ParsedSettingsKey[] = [];
+    const appliedSettings: PersistedParsedSettingsKey[] = [];
 
-    for (const key of PARSED_SETTINGS_KEYS) {
+    for (const key of PERSISTED_PARSED_SETTINGS_KEYS) {
         if (applySetting(storage, key, parsedSettings[key], "parentForced")) {
             appliedSettings.push(key);
             continue;
@@ -365,5 +378,6 @@ export function applyEmbedSettingsBootstrap({
         appliedSettings,
         parsedSettings,
         parsedDefaultSettings,
+        uploadEndpointPreference,
     };
 }

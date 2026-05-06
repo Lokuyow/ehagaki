@@ -117,6 +117,44 @@ describe('embedSettingsBootstrap', () => {
         expect(getPreferenceSource(storage, 'darkMode')).toBe('parentForced');
     });
 
+    it('uploadEndpoint query は localStorage に書かず IndexedDB bootstrap 用に返す', () => {
+        const context = createBootstrapContext(
+            '?embedUploadEndpoint=https%3A%2F%2Fnostr.build%2Fapi%2Fv2%2Fnip96%2Fupload&defaultUploadEndpoint=https%3A%2F%2Fshare.yabu.me%2Fapi%2Fv2%2Fmedia',
+        );
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.applied).toBe(false);
+        expect(result.appliedSettings).toEqual([]);
+        expect(result.uploadEndpointPreference).toEqual({
+            endpoint: 'https://nostr.build/api/v2/nip96/upload',
+            mode: 'forced',
+        });
+        expect(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)).toBeNull();
+    });
+
+    it('defaultUploadEndpoint は IndexedDB bootstrap 用の default preference として返す', () => {
+        const context = createBootstrapContext(
+            '?defaultUploadEndpoint=https%3A%2F%2Fshare.yabu.me%2Fapi%2Fv2%2Fmedia',
+        );
+
+        const result = applyEmbedSettingsBootstrap({
+            storage,
+            ...context,
+            locationSearch: context.windowObj.location.search,
+        });
+
+        expect(result.uploadEndpointPreference).toEqual({
+            endpoint: 'https://share.yabu.me/api/v2/media',
+            mode: 'default',
+        });
+        expect(storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)).toBeNull();
+    });
+
     it('embedImageQuality は UI 品質の意味で保存する', () => {
         const context = createBootstrapContext(
             '?embedImageQuality=high&embedVideoQuality=low',

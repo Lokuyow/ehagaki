@@ -345,4 +345,124 @@ describe("uploadDestinationsRepository", () => {
 
         db.close();
     });
+
+    it("forced upload endpoint preference creates and defaults an IndexedDB destination", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const pushedSnapshots: string[][] = [];
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => null,
+            setSnapshot: async (_scopeKey, records) => {
+                pushedSnapshots.push(records.map((record) => record.id));
+            },
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            parentSync,
+        );
+
+        const destination = await repository.applyUploadEndpointPreference({
+            endpoint: "https://nostr.build/api/v2/nip96/upload",
+            mode: "forced",
+            pubkeyHex: null,
+        });
+
+        expect(destination?.presetId).toBe("nostr-build");
+        expect(destination?.isDefault).toBe(true);
+        expect(await repository.getDefault(null)).toEqual(expect.objectContaining({
+            id: destination?.id,
+            isDefault: true,
+        }));
+        expect(pushedSnapshots.at(-1)).toContain(destination?.id);
+
+        db.close();
+    });
+
+    it("default upload endpoint preference does not override an existing destination", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => null,
+            setSnapshot: async () => undefined,
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            parentSync,
+        );
+        const existing = await repository.getDefault(null);
+
+        const result = await repository.applyUploadEndpointPreference({
+            endpoint: "https://nostr.build/api/v2/nip96/upload",
+            mode: "default",
+            pubkeyHex: null,
+        });
+        const destinations = await repository.getAll(null);
+
+        expect(result?.id).toBe(existing.id);
+        expect(destinations).toHaveLength(1);
+        expect(destinations[0].id).toBe(existing.id);
+
+        db.close();
+    });
+
+    it("forced upload endpoint preference wins over a parent snapshot and mirrors the result", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const pushedSnapshots: string[][] = [];
+        const parentRecord = {
+            id: "parent-blossom",
+            pubkeyHex: null,
+            scopeKey: UPLOAD_DESTINATION_GLOBAL_SCOPE,
+            name: "Parent Blossom",
+            protocol: "blossom" as const,
+            serverUrl: "https://blossom.band",
+            presetId: "blossom-band" as const,
+            isDefault: true,
+            enabled: true,
+            createdAt: 2000,
+            updatedAt: 2000,
+            capabilities: {
+                maxUploadSize: null,
+                supportedMimeTypes: [],
+                supportsDelete: true,
+                supportsList: true,
+                supportsMirror: false,
+                supportsMediaOptimization: false,
+                authRequired: true,
+                source: "preset" as const,
+            },
+            auth: { type: "blossom-bud11" as const },
+            schemaVersion: 1 as const,
+        };
+        const parentSync: UploadDestinationsParentSync = {
+            getSnapshot: async () => [parentRecord],
+            setSnapshot: async (_scopeKey, records) => {
+                pushedSnapshots.push(records.map((record) => record.id).sort());
+            },
+        };
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 3000,
+            () => storage,
+            parentSync,
+        );
+
+        const destination = await repository.applyUploadEndpointPreference({
+            endpoint: "https://nostr.build/api/v2/nip96/upload",
+            mode: "forced",
+            pubkeyHex: null,
+        });
+        const destinations = await repository.getAll(null);
+
+        expect(destination?.presetId).toBe("nostr-build");
+        expect(destinations.find((item) => item.id === destination?.id)?.isDefault).toBe(true);
+        expect(destinations.find((item) => item.id === "parent-blossom")?.isDefault).toBe(false);
+        expect(pushedSnapshots.at(-1)).toEqual(["parent-blossom", destination?.id].sort());
+
+        db.close();
+    });
 });

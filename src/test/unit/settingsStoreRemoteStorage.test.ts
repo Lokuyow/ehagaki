@@ -61,7 +61,6 @@ describe('settings/theme stores remote storage persistence', () => {
         expect(storage.getItem(STORAGE_KEYS.LOCALE)).toBe('en');
         expect(persistSpy).toHaveBeenCalledWith([
             STORAGE_KEYS.LOCALE,
-            STORAGE_KEYS.UPLOAD_ENDPOINT,
             STORAGE_KEYS.SETTINGS_PREFERENCE_METADATA,
         ]);
     });
