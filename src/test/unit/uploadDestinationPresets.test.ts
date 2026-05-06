@@ -1,7 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { UPLOAD_DESTINATION_PRESETS } from "../../lib/upload/uploadDestinationPresets";
+import {
+    UPLOAD_DESTINATION_PRESETS,
+    createLegacyUploadDestination,
+    findUploadPresetByEndpoint,
+} from "../../lib/upload/uploadDestinationPresets";
 
 describe("uploadDestinationPresets", () => {
+    it("exposes presets in the configured order for the settings dialog", () => {
+        expect(UPLOAD_DESTINATION_PRESETS.map((preset) => preset.id)).toEqual([
+            "share-yabu-me-blossom",
+            "share-yabu-me",
+            "cdn-nostrcheck-me",
+            "nostrcheck-me",
+            "blossom-band",
+            "nostr-download",
+            "blossom-primal-net",
+            "nostr-build",
+            "nostpic-com",
+            "files-sovbit-host",
+        ]);
+    });
+
     it("includes configured NIP-96 upload endpoints as service presets", () => {
         expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
             expect.objectContaining({
@@ -64,5 +83,12 @@ describe("uploadDestinationPresets", () => {
                 serverUrl: "https://blossom.primal.net",
             }),
         ]));
+    });
+
+    it("prefers the NIP-96 preset when a Blossom preset shares the same server URL", () => {
+        expect(findUploadPresetByEndpoint("https://share.yabu.me/api/v2/media")?.id).toBe("share-yabu-me");
+        expect(createLegacyUploadDestination({
+            endpoint: "https://share.yabu.me/api/v2/media",
+        }).presetId).toBe("share-yabu-me");
     });
 });

@@ -1,5 +1,5 @@
 import { STORAGE_KEYS } from "../constants";
-import type { UploadDestination, UploadDestinationCapabilities } from "../types";
+import type { NavigatorAdapter, UploadDestination, UploadDestinationCapabilities } from "../types";
 import { embedIndexedDbService } from "../embedIndexedDbService";
 import { ehagakiDb, type EHagakiDB, type UploadDestinationRecord } from "./ehagakiDb";
 import {
@@ -9,6 +9,7 @@ import {
     getPreferredDefaultUploadPresetIds,
     getScopeKey,
 } from "../upload/uploadDestinationPresets";
+import { getEffectiveLocale } from "../utils/settingsStorage";
 
 const LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY = "migrated.localStorage.uploadEndpoint.v1";
 
@@ -150,6 +151,8 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         private now: () => number = Date.now,
         private getStorage: () => Pick<Storage, "getItem" | "setItem" | "removeItem"> = () => localStorage,
         private parentSync: UploadDestinationsParentSync | null = uploadDestinationsParentSync,
+        private getNavigator: () => NavigatorAdapter = () =>
+            (typeof navigator !== "undefined" ? navigator : { language: "en" }),
     ) { }
 
     async getAll(pubkeyHex: string | null = null): Promise<UploadDestination[]> {
@@ -166,7 +169,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
     async getDefault(pubkeyHex: string | null = null): Promise<UploadDestination> {
         const destinations = await this.getAll(pubkeyHex);
-        const locale = this.getStorage().getItem(STORAGE_KEYS.LOCALE);
+        const locale = this.getLocale();
         const defaultDestination = destinations.find((destination) =>
             destination.enabled && destination.isDefault,
         );
@@ -192,7 +195,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
         const fallback = createLegacyUploadDestination({
             endpoint: this.getStorage().getItem(STORAGE_KEYS.UPLOAD_ENDPOINT) ?? "",
-            locale: this.getStorage().getItem(STORAGE_KEYS.LOCALE),
+            locale,
             pubkeyHex,
             now: this.now(),
         });
@@ -293,7 +296,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
         const destination = createLegacyUploadDestination({
             endpoint,
-            locale: this.getStorage().getItem(STORAGE_KEYS.LOCALE),
+            locale: this.getLocale(),
             pubkeyHex,
             now: this.now(),
         });
@@ -336,7 +339,7 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
         const storage = this.getStorage();
         const destination = createLegacyUploadDestination({
             endpoint: storage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT) ?? "",
-            locale: storage.getItem(STORAGE_KEYS.LOCALE),
+            locale: this.getLocale(),
             pubkeyHex: pubkeyHex === UPLOAD_DESTINATION_GLOBAL_SCOPE ? null : pubkeyHex,
             now: this.now(),
         });
@@ -353,6 +356,10 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
     private getLegacyUploadEndpointMigrationKey(scopeKey: string): string {
         return `${LEGACY_UPLOAD_DESTINATION_MIGRATION_KEY}.${scopeKey}`;
+    }
+
+    private getLocale(): string {
+        return getEffectiveLocale(this.getStorage(), this.getNavigator());
     }
 
     private async markLegacyUploadEndpointMigrated(scopeKey: string): Promise<void> {

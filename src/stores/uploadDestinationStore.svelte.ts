@@ -25,10 +25,12 @@ async function load(pubkeyHex: string | null = null): Promise<void> {
     uploadDestinationState.error = null;
 
     try {
-        const destinations = await uploadDestinationsRepository.getAll(pubkeyHex);
         const defaultDestination = await uploadDestinationsRepository.getDefault(pubkeyHex);
+        const destinations = await uploadDestinationsRepository.getAll(pubkeyHex);
         uploadDestinationState.destinations = destinations;
-        uploadDestinationState.defaultDestination = defaultDestination;
+        uploadDestinationState.defaultDestination = destinations.find(
+            (destination) => destination.id === defaultDestination.id,
+        ) ?? defaultDestination;
     } catch (error) {
         uploadDestinationState.error = error instanceof Error ? error.message : String(error);
     } finally {

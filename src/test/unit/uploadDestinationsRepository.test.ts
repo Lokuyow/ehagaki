@@ -58,6 +58,27 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("falls back to navigator locale when no locale is stored yet", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(
+            db,
+            () => 1234,
+            () => storage,
+            null,
+            () => ({ language: "ja-JP" }),
+        );
+
+        const destination = await repository.getDefault(null);
+
+        expect(destination.protocol).toBe("blossom");
+        expect(destination.presetId).toBe("share-yabu-me-blossom");
+        expect(destination.serverUrl).toBe("https://share.yabu.me/api/v2/media");
+        expect(destination.isDefault).toBe(true);
+
+        db.close();
+    });
+
     it("keeps only one default destination per scope", async () => {
         const db = createTestDb();
         const storage = new MockStorage();

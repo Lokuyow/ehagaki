@@ -32,6 +32,27 @@ const NIP96_PRESET_IDS: Record<string, UploadPresetId> = {
     "https://files.sovbit.host/api/v2/media": "files-sovbit-host",
 };
 
+function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
+    const endpoint = uploadEndpoints.find((candidate) => candidate.url === endpointUrl);
+
+    if (!endpoint) {
+        throw new Error(`Missing NIP-96 upload endpoint preset: ${endpointUrl}`);
+    }
+
+    return {
+        id: NIP96_PRESET_IDS[endpoint.url] ?? "custom",
+        name: endpoint.label,
+        protocol: "nip96",
+        serverUrl: endpoint.url,
+        resolvedUploadUrl: endpoint.url,
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+            supportedMimeTypes: ["image/*", "video/*"],
+            source: "preset",
+        },
+    };
+}
+
 export function getPreferredDefaultUploadPresetIds(locale: string | null | undefined): UploadPresetId[] {
     return locale === "ja"
         ? ["share-yabu-me-blossom", "blossom-band"]
@@ -50,18 +71,6 @@ function getDefaultUploadDestinationPreset(locale: string | null | undefined): U
 }
 
 export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
-    ...uploadEndpoints.map((endpoint) => ({
-        id: NIP96_PRESET_IDS[endpoint.url] ?? "custom",
-        name: endpoint.label,
-        protocol: "nip96" as const,
-        serverUrl: endpoint.url,
-        resolvedUploadUrl: endpoint.url,
-        capabilities: {
-            ...DEFAULT_UPLOAD_CAPABILITIES,
-            supportedMimeTypes: ["image/*", "video/*"],
-            source: "preset" as const,
-        },
-    })),
     {
         id: "share-yabu-me-blossom",
         name: "share.yabu.me(blossom)",
@@ -71,6 +80,17 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
             ...DEFAULT_UPLOAD_CAPABILITIES,
         },
     },
+    createNip96Preset("https://share.yabu.me/api/v2/media"),
+    {
+        id: "cdn-nostrcheck-me",
+        name: "nostrcheck.me(blossom)",
+        protocol: "blossom",
+        serverUrl: "https://cdn.nostrcheck.me",
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+        },
+    },
+    createNip96Preset("https://nostrcheck.me/api/v2/media"),
     {
         id: "blossom-band",
         name: "blossom.band",
@@ -80,15 +100,6 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
             ...DEFAULT_UPLOAD_CAPABILITIES,
             supportsDelete: true,
             supportsList: true,
-        },
-    },
-    {
-        id: "cdn-nostrcheck-me",
-        name: "nostrcheck.me(blossom)",
-        protocol: "blossom",
-        serverUrl: "https://cdn.nostrcheck.me",
-        capabilities: {
-            ...DEFAULT_UPLOAD_CAPABILITIES,
         },
     },
     {
@@ -109,6 +120,9 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
             ...DEFAULT_UPLOAD_CAPABILITIES,
         },
     },
+    createNip96Preset("https://nostr.build/api/v2/nip96/upload"),
+    createNip96Preset("https://nostpic.com/api/v2/media"),
+    createNip96Preset("https://files.sovbit.host/api/v2/media"),
 ];
 
 function createUploadDestinationId(): string {
@@ -140,9 +154,17 @@ export function findUploadPresetByEndpoint(endpoint: string | null | undefined):
     if (!endpoint) return null;
     const normalizedEndpoint = normalizeServerUrl(endpoint);
 
+    const resolvedUploadUrlMatch = UPLOAD_DESTINATION_PRESETS.find((preset) =>
+        preset.resolvedUploadUrl
+        && normalizeServerUrl(preset.resolvedUploadUrl) === normalizedEndpoint,
+    );
+
+    if (resolvedUploadUrlMatch) {
+        return resolvedUploadUrlMatch;
+    }
+
     return UPLOAD_DESTINATION_PRESETS.find((preset) =>
-        preset.resolvedUploadUrl === endpoint
-        || normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
+        normalizeServerUrl(preset.serverUrl) === normalizedEndpoint,
     ) ?? null;
 }
 
