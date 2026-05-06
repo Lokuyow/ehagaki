@@ -12,44 +12,72 @@ const NIP46_RECONNECT_POLL_MS = 200;
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
-    async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
+    private async getSignFunction(): Promise<(event: any) => Promise<any>> {
         const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
-        let signFunc: (event: any) => Promise<any>;
         if (storedKey) {
-            signFunc = (event) => seckeySigner(storedKey).signEvent(event);
+            return (event) => seckeySigner(storedKey).signEvent(event);
         } else if (nip46Service.isConnected()) {
             const signer = nip46Service.getSigner()!;
-            signFunc = (event) => signer.signEvent(event);
+            return (event) => signer.signEvent(event);
         } else if (parentClientAuthService.isConnected()) {
             const signer = parentClientAuthService.getSigner()!;
-            signFunc = (event) => signer.signEvent(event);
+            return (event) => signer.signEvent(event);
         } else if (authState.value.type === 'nip46') {
             // NIP-46認証だが接続が未完了（再接続中など）→ 接続完了を待つ
             const connected = await this.waitForNip46Connection();
             if (connected) {
                 const signer = nip46Service.getSigner()!;
-                signFunc = (event) => signer.signEvent(event);
-            } else {
-                throw new Error('Authentication required');
+                return (event) => signer.signEvent(event);
             }
+            throw new Error('Authentication required');
         } else if (authState.value.type === 'parentClient') {
             const signer = parentClientAuthService.getSigner();
             if (!signer) {
                 throw new Error('Authentication required');
             }
-            signFunc = (event) => signer.signEvent(event);
+            return (event) => signer.signEvent(event);
         } else {
             // NIP-07の場合はwindow.nostrを即時利用
             const nostr = (window as any)?.nostr;
 
             if (nostr?.signEvent) {
-                signFunc = (event) => nostr.signEvent(event);
-            } else {
-                throw new Error('Authentication required');
+                return (event) => nostr.signEvent(event);
             }
+            throw new Error('Authentication required');
         }
+    }
+
+    async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
+        const signFunc = await this.getSignFunction();
         const { getToken } = await import("nostr-tools/nip98");
         return await getToken(url, method, signFunc, true);
+    }
+
+    async buildBlossomAuthorizationHeader(params: {
+        serverUrl: string;
+        method: string;
+        sha256?: string;
+        contentType?: string;
+        contentLength?: number;
+    }): Promise<string> {
+        const signFunc = await this.getSignFunction();
+        const expiration = Math.floor(Date.now() / 1000) + 60 * 5;
+        const tags = [
+            ["t", params.method],
+            ["expiration", String(expiration)],
+            ["server", params.serverUrl],
+        ];
+        if (params.sha256) tags.push(["x", params.sha256]);
+        if (params.contentType) tags.push(["m", params.contentType]);
+        if (params.contentLength !== undefined) tags.push(["size", String(params.contentLength)]);
+
+        const event = await signFunc({
+            kind: 24242,
+            created_at: Math.floor(Date.now() / 1000),
+            content: "",
+            tags,
+        });
+        return `Nostr ${btoa(JSON.stringify(event))}`;
     }
 
     /**

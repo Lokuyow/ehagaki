@@ -114,8 +114,9 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * - sign_event:1 — ショートテキストノート（投稿）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
  * - sign_event:27235 — NIP-98 HTTP認証（ファイルアップロード）
+ * - sign_event:24242 — Blossom / BUD-11 HTTP認証（ファイルアップロード）
  */
-const NIP46_REQUESTED_PERMS = 'sign_event:1,sign_event:42,sign_event:27235';
+const NIP46_REQUESTED_PERMS = 'sign_event:1,sign_event:42,sign_event:27235,sign_event:24242';
 
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {

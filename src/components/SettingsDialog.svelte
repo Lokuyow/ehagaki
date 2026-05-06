@@ -21,7 +21,6 @@
     import { themeModeStore } from "../stores/themeStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
     import {
-        uploadEndpoints,
         getCompressionLevels,
         SW_UPDATE_TIMEOUT,
     } from "../lib/constants";
@@ -36,6 +35,7 @@
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import SettingsRelaySection from "./settings/SettingsRelaySection.svelte";
     import SettingsCompressionSection from "./settings/SettingsCompressionSection.svelte";
+    import SettingsUploadDestinationSection from "./settings/SettingsUploadDestinationSection.svelte";
     import RadioButton from "./RadioButton.svelte";
     import type { ThemeMode } from "../lib/utils/settingsStorage";
 
@@ -54,9 +54,6 @@
 
     // ブラウザ履歴統合
     useDialogHistory(() => show, handleClose, true);
-
-    // ユニークID生成
-    const uid = $props.id();
 
     // 圧縮設定候補（$locale変更時にラベルも更新）
     let compressionLevels = $derived(getCompressionLevels($_));
@@ -317,25 +314,7 @@
                 (settingsStore.videoQualityLevel = value)}
         />
 
-        <!-- アップロード先設定セクション -->
-        <div class="setting-section">
-            <div class="setting-row">
-                <span class="setting-label"
-                    >{$_("settingsDialog.upload_destination") ||
-                        "アップロード先"}</span
-                >
-                <div class="setting-control">
-                    <select
-                        id="{uid}-endpoint"
-                        bind:value={settingsStore.uploadEndpoint}
-                    >
-                        {#each uploadEndpoints as ep}
-                            <option value={ep.url}>{ep.label}</option>
-                        {/each}
-                    </select>
-                </div>
-            </div>
-        </div>
+        <SettingsUploadDestinationSection />
 
         <!-- テーマ設定セクション -->
         <div class="setting-section">
@@ -663,12 +642,6 @@
     .lang-icon-btn {
         mask-image: url("/icons/language-solid-full.svg");
     }
-    select {
-        padding: 6px;
-        height: 50px;
-        font-size: 1rem;
-    }
-
     .setting-row-with-note {
         align-items: flex-start;
     }

@@ -1,0 +1,85 @@
+import "fake-indexeddb/auto";
+import Dexie from "dexie";
+import { afterEach, describe, expect, it } from "vitest";
+import { STORAGE_KEYS } from "../../lib/constants";
+import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
+import { DexieUploadDestinationsRepository } from "../../lib/storage/uploadDestinationsRepository";
+import { MockStorage } from "../helpers";
+
+const testDbNames = new Set<string>();
+
+function createTestDb(): EHagakiDB {
+    const name = `${EHAGAKI_DB_NAME}-upload-destinations-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    testDbNames.add(name);
+    return new EHagakiDB(name);
+}
+
+afterEach(async () => {
+    for (const name of testDbNames) {
+        await Dexie.delete(name);
+    }
+    testDbNames.clear();
+});
+
+describe("uploadDestinationsRepository", () => {
+    it("migrates legacy uploadEndpoint into a NIP-96 destination", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        storage.setItem(STORAGE_KEYS.UPLOAD_ENDPOINT, "https://nostr.build/api/v2/nip96/upload");
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+
+        const destination = await repository.getDefault(null);
+
+        expect(destination.protocol).toBe("nip96");
+        expect(destination.presetId).toBe("nostr-build");
+        expect(destination.resolvedUploadUrl).toBe("https://nostr.build/api/v2/nip96/upload");
+        expect(destination.isDefault).toBe(true);
+
+        db.close();
+    });
+
+    it("keeps only one default destination per scope", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const first = await repository.getDefault(null);
+
+        await repository.put({
+            ...first,
+            id: "second",
+            name: "Second",
+            serverUrl: "https://example.com/upload",
+            resolvedUploadUrl: "https://example.com/upload",
+            isDefault: true,
+            createdAt: 1235,
+            updatedAt: 1235,
+        });
+
+        const destinations = await repository.getAll(null);
+
+        expect(destinations.filter((destination) => destination.isDefault)).toHaveLength(1);
+        expect(destinations.find((destination) => destination.isDefault)?.id).toBe("second");
+
+        db.close();
+    });
+
+    it("stores plain records even when state-proxied nested values are passed", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const destination = await repository.getDefault(null);
+        const proxiedCapabilities = new Proxy(destination.capabilities, {});
+
+        await repository.put({
+            ...destination,
+            capabilities: proxiedCapabilities,
+            updatedAt: 2345,
+        });
+
+        const stored = await repository.getDefault(null);
+
+        expect(stored.capabilities).toEqual(destination.capabilities);
+
+        db.close();
+    });
+});

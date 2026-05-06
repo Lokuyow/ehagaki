@@ -1,0 +1,354 @@
+<script lang="ts">
+    import { onMount } from "svelte";
+    import { _ } from "svelte-i18n";
+    import Button from "../Button.svelte";
+    import ConfirmDialog from "../ConfirmDialog.svelte";
+    import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
+    import type { UploadDestination, UploadProtocol, UploadPresetId } from "../../lib/types";
+    import {
+        DEFAULT_UPLOAD_CAPABILITIES,
+        UPLOAD_DESTINATION_PRESETS,
+        createUploadDestinationFromPreset,
+        normalizeServerUrl,
+    } from "../../lib/upload/uploadDestinationPresets";
+
+    const emptyForm = {
+        id: "",
+        name: "",
+        protocol: "blossom" as UploadProtocol,
+        serverUrl: "",
+        presetId: "custom" as UploadPresetId,
+        enabled: true,
+        isDefault: false,
+    };
+
+    let expanded = $state(false);
+    let editing = $state(false);
+    let form = $state({ ...emptyForm });
+    let deleteTarget: UploadDestination | null = $state(null);
+    let testingId: string | null = $state(null);
+    let destinationState = $derived(uploadDestinationStore.value);
+    const presetOptions = UPLOAD_DESTINATION_PRESETS.filter((preset) => preset.id !== "custom");
+
+    onMount(() => {
+        void uploadDestinationStore.load(null);
+    });
+
+    function formatMaxSize(bytes: number | null): string {
+        if (!bytes) return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
+        const units = ["B", "KB", "MB", "GB"];
+        let value = bytes;
+        let unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.length - 1) {
+            value /= 1024;
+            unitIndex += 1;
+        }
+        return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+    }
+
+    function getMimeSummary(destination: UploadDestination): string {
+        const mimeTypes = destination.capabilities.supportedMimeTypes;
+        if (!mimeTypes.length) return $_("settingsDialog.uploadDestinationUnknown") || "未確認";
+        if (mimeTypes.length <= 3) return mimeTypes.join(", ");
+        return `${mimeTypes.slice(0, 3).join(", ")} +${mimeTypes.length - 3}`;
+    }
+
+    function startAdd(): void {
+        form = { ...emptyForm };
+        editing = true;
+        expanded = true;
+    }
+
+    function startEdit(destination: UploadDestination): void {
+        form = {
+            id: destination.id,
+            name: destination.name,
+            protocol: destination.protocol,
+            serverUrl: destination.serverUrl,
+            presetId: destination.presetId ?? "custom",
+            enabled: destination.enabled,
+            isDefault: destination.isDefault,
+        };
+        editing = true;
+        expanded = true;
+    }
+
+    function applyPreset(presetId: UploadPresetId): void {
+        form.presetId = presetId;
+        const preset = UPLOAD_DESTINATION_PRESETS.find((item) => item.id === presetId);
+        if (!preset) return;
+        form.name = preset.name;
+        form.protocol = preset.protocol;
+        form.serverUrl = preset.serverUrl;
+    }
+
+    async function saveForm(): Promise<void> {
+        const timestamp = Date.now();
+        const preset = UPLOAD_DESTINATION_PRESETS.find((item) => item.id === form.presetId);
+        const existing = destinationState.destinations.find((destination) => destination.id === form.id);
+        const destination: UploadDestination = preset && !existing
+            ? {
+                ...createUploadDestinationFromPreset({
+                    preset,
+                    pubkeyHex: null,
+                    isDefault: form.isDefault || destinationState.destinations.length === 0,
+                    now: timestamp,
+                }),
+                name: form.name.trim() || preset.name,
+                serverUrl: normalizeServerUrl(form.serverUrl || preset.serverUrl),
+                enabled: form.enabled,
+            }
+            : {
+                ...(existing ?? createUploadDestinationFromPreset({
+                    preset: preset ?? {
+                        id: "custom",
+                        name: form.name || "Custom",
+                        protocol: form.protocol,
+                        serverUrl: form.serverUrl,
+                        capabilities: DEFAULT_UPLOAD_CAPABILITIES,
+                    },
+                    pubkeyHex: null,
+                    isDefault: form.isDefault || destinationState.destinations.length === 0,
+                    now: timestamp,
+                })),
+                name: form.name.trim(),
+                protocol: form.protocol,
+                serverUrl: normalizeServerUrl(form.serverUrl),
+                presetId: form.presetId,
+                enabled: form.enabled,
+                isDefault: form.isDefault,
+                updatedAt: timestamp,
+            };
+
+        await uploadDestinationStore.save(destination);
+        editing = false;
+    }
+
+    async function testDestination(destination: UploadDestination): Promise<void> {
+        testingId = destination.id;
+        try {
+            await uploadDestinationStore.test(destination);
+        } finally {
+            testingId = null;
+        }
+    }
+</script>
+
+<div class="setting-section upload-destination-section">
+    <div class="setting-row">
+        <div class="setting-label-group">
+            <span class="setting-label">
+                {$_("settingsDialog.upload_destination") || "アップロード先"}
+            </span>
+            <span class="upload-summary">
+                {destinationState.defaultDestination?.name || $_("settingsDialog.uploadDestinationNone") || "未設定"}
+            </span>
+        </div>
+        <div class="setting-control">
+            <Button
+                variant="default"
+                shape="rounded"
+                onClick={() => (expanded = !expanded)}
+            >
+                {expanded
+                    ? $_("settingsDialog.uploadDestinationClose") || "閉じる"
+                    : $_("settingsDialog.uploadDestinationManage") || "管理"}
+            </Button>
+        </div>
+    </div>
+
+    {#if expanded}
+        <div class="upload-panel">
+            {#each destinationState.destinations as destination}
+                <div class="destination-row">
+                    <div class="destination-main">
+                        <div class="destination-title">
+                            <span>{destination.name}</span>
+                            {#if destination.isDefault}
+                                <span class="badge">{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span>
+                            {/if}
+                            {#if !destination.enabled}
+                                <span class="badge muted">{$_("settingsDialog.uploadDestinationDisabled") || "無効"}</span>
+                            {/if}
+                        </div>
+                        <div class="destination-meta">
+                            {destination.protocol} / {destination.presetId || "custom"} / {formatMaxSize(destination.capabilities.maxUploadSize)}
+                        </div>
+                        <div class="destination-meta">{getMimeSummary(destination)}</div>
+                    </div>
+                    <div class="destination-actions">
+                        <Button variant="default" shape="rounded" onClick={() => testDestination(destination)} disabled={testingId === destination.id}>
+                            {testingId === destination.id
+                                ? $_("settingsDialog.uploadDestinationTesting") || "確認中"
+                                : $_("settingsDialog.uploadDestinationTest") || "接続テスト"}
+                        </Button>
+                        <Button variant="default" shape="rounded" onClick={() => uploadDestinationStore.setDefault(destination.id, null)} disabled={destination.isDefault}>
+                            {$_("settingsDialog.uploadDestinationSetDefault") || "既定"}
+                        </Button>
+                        <Button variant="default" shape="rounded" onClick={() => startEdit(destination)}>
+                            {$_("settingsDialog.uploadDestinationEdit") || "編集"}
+                        </Button>
+                        <Button variant="default" shape="rounded" onClick={() => (deleteTarget = destination)} disabled={destinationState.destinations.length <= 1}>
+                            {$_("settingsDialog.uploadDestinationDelete") || "削除"}
+                        </Button>
+                    </div>
+                    {#if destinationState.testResults[destination.id]?.message}
+                        <div class:error={!destinationState.testResults[destination.id].success} class="test-result">
+                            {destinationState.testResults[destination.id].message}
+                        </div>
+                    {/if}
+                </div>
+            {/each}
+
+            {#if editing}
+                <div class="destination-form">
+                    <label>
+                        <span>{$_("settingsDialog.uploadDestinationPreset") || "プリセット"}</span>
+                        <select value={form.presetId} onchange={(event) => applyPreset((event.currentTarget as HTMLSelectElement).value as UploadPresetId)}>
+                            <option value="custom">custom</option>
+                            {#each presetOptions as preset}
+                                <option value={preset.id}>{preset.name}</option>
+                            {/each}
+                        </select>
+                    </label>
+                    <label>
+                        <span>{$_("settingsDialog.uploadDestinationProtocol") || "Protocol"}</span>
+                        <select bind:value={form.protocol}>
+                            <option value="blossom">Blossom</option>
+                            <option value="nip96">NIP-96 legacy</option>
+                            <option value="custom-http">Custom HTTP</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span>{$_("settingsDialog.uploadDestinationName") || "名前"}</span>
+                        <input bind:value={form.name} />
+                    </label>
+                    <label>
+                        <span>URL</span>
+                        <input bind:value={form.serverUrl} inputmode="url" />
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" bind:checked={form.enabled} />
+                        <span>{$_("settingsDialog.uploadDestinationEnabled") || "有効"}</span>
+                    </label>
+                    <label class="checkbox-row">
+                        <input type="checkbox" bind:checked={form.isDefault} />
+                        <span>{$_("settingsDialog.uploadDestinationDefault") || "既定"}</span>
+                    </label>
+                    <div class="form-actions">
+                        <Button variant="primary" shape="rounded" onClick={saveForm} disabled={!form.name.trim() || !form.serverUrl.trim()}>
+                            {$_("settingsDialog.uploadDestinationSave") || "保存"}
+                        </Button>
+                        <Button variant="default" shape="rounded" onClick={() => (editing = false)}>
+                            {$_("postComponent.cancel") || "キャンセル"}
+                        </Button>
+                    </div>
+                </div>
+            {:else}
+                <Button variant="default" shape="rounded" onClick={startAdd}>
+                    {$_("settingsDialog.uploadDestinationAdd") || "追加"}
+                </Button>
+            {/if}
+        </div>
+    {/if}
+</div>
+
+<ConfirmDialog
+    open={!!deleteTarget}
+    title={$_("settingsDialog.uploadDestinationDelete") || "削除"}
+    description={$_("settingsDialog.uploadDestinationDeleteConfirm") || "このアップロード先を削除します。"}
+    confirmLabel={$_("settingsDialog.uploadDestinationDelete") || "削除"}
+    cancelLabel={$_("postComponent.cancel") || "キャンセル"}
+    confirmVariant="danger"
+    onConfirm={async () => {
+        if (!deleteTarget) return;
+        await uploadDestinationStore.delete(deleteTarget.id, null);
+        deleteTarget = null;
+    }}
+    onCancel={() => (deleteTarget = null)}
+/>
+
+<style>
+    .upload-destination-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .upload-summary,
+    .destination-meta {
+        color: var(--text-light);
+        font-size: 0.875rem;
+    }
+
+    .upload-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .destination-row,
+    .destination-form {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .destination-title {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+        font-weight: 600;
+    }
+
+    .badge {
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 2px 7px;
+        font-size: 0.75rem;
+        font-weight: 400;
+    }
+
+    .badge.muted {
+        opacity: 0.6;
+    }
+
+    .destination-actions,
+    .form-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+
+    .test-result {
+        font-size: 0.875rem;
+        color: var(--text-light);
+    }
+
+    .test-result.error {
+        color: #c62828;
+    }
+
+    label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.875rem;
+    }
+
+    .checkbox-row {
+        flex-direction: row;
+        align-items: center;
+    }
+
+    input,
+    select {
+        min-height: 42px;
+        padding: 6px;
+        font-size: 1rem;
+    }
+</style>

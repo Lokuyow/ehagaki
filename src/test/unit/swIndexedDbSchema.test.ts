@@ -42,7 +42,7 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(8);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(9);
         expect(createdStores.get('meta')?.keyPath).toBe('key');
         expect(createdStores.get('emojiItems')?.createIndex).toHaveBeenCalledWith(
             '[pubkeyHex+identityKey]',
@@ -59,6 +59,10 @@ describe('swIndexedDbSchema', () => {
         expect(createdStores.get('hashtagHistory')?.createIndex).toHaveBeenCalledWith(
             'useCount',
             'useCount',
+        );
+        expect(createdStores.get('uploadDestinations')?.createIndex).toHaveBeenCalledWith(
+            '[scopeKey+isDefault]',
+            ['scopeKey', 'isDefault'],
         );
     });
 });

@@ -49,6 +49,70 @@ export interface FileUploadResponse {
     aborted?: boolean;
 }
 
+export type UploadProtocol = "blossom" | "nip96" | "custom-http";
+export type UploadPresetId = "nostr-build" | "blossom-band" | "self-hosted" | "custom";
+export type UploadAuthType = "blossom-bud11" | "nip98" | "none" | "custom";
+export type UploadCapabilitiesSource = "preset" | "protocol-discovery" | "test" | "manual";
+
+export interface UploadDestinationCapabilities {
+    maxUploadSize: number | null;
+    supportedMimeTypes: string[];
+    supportsDelete: boolean;
+    supportsList: boolean;
+    supportsMirror: boolean;
+    supportsMediaOptimization: boolean;
+    authRequired: boolean;
+    lastCheckedAt?: number;
+    source: UploadCapabilitiesSource;
+    raw?: unknown;
+}
+
+export interface UploadDestination {
+    id: string;
+    pubkeyHex: string | null;
+    name: string;
+    protocol: UploadProtocol;
+    serverUrl: string;
+    resolvedUploadUrl?: string;
+    presetId?: UploadPresetId;
+    isDefault: boolean;
+    enabled: boolean;
+    createdAt: number;
+    updatedAt: number;
+    capabilities: UploadDestinationCapabilities;
+    auth: {
+        type: UploadAuthType;
+    };
+    schemaVersion: 1;
+}
+
+export interface UploadConnectionTestResult {
+    success: boolean;
+    status?: number;
+    message?: string;
+    capabilities?: UploadDestinationCapabilities;
+}
+
+export interface UploadAdapterUploadParams {
+    file: File;
+    destination: UploadDestination;
+    authService: AuthService;
+    fetch: typeof fetch;
+    metadata?: Record<string, string | number | undefined>;
+    devMode?: boolean;
+}
+
+export interface UploadProtocolAdapter {
+    protocol: UploadProtocol;
+    upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse>;
+    testConnection(params: {
+        destination: UploadDestination;
+        fetch: typeof fetch;
+        authService?: AuthService;
+        sampleFile?: File;
+    }): Promise<UploadConnectionTestResult>;
+}
+
 export interface UploadInfoCallbacks {
     onProgress?: (progress: UploadProgress) => void;
     onVideoCompressionProgress?: (progress: number) => void;
@@ -102,6 +166,13 @@ export type VideoCompressionLevel = keyof typeof VIDEO_COMPRESSION_OPTIONS_MAP;
 
 export interface AuthService {
     buildAuthHeader(url: string, method: string): Promise<string>;
+    buildBlossomAuthorizationHeader?(params: {
+        serverUrl: string;
+        method: string;
+        sha256?: string;
+        contentType?: string;
+        contentLength?: number;
+    }): Promise<string>;
 }
 
 export interface MimeTypeSupportInterface {
@@ -118,13 +189,15 @@ export interface FileUploadManagerInterface {
         endpoint: string,
         callbacks?: UploadInfoCallbacks,
         devMode?: boolean,
-        metadata?: Record<string, string | number | undefined>
+        metadata?: Record<string, string | number | undefined>,
+        destination?: UploadDestination
     ) => Promise<FileUploadResponse>;
     uploadMultipleFilesWithCallbacks: (
         files: File[],
         endpoint: string,
         callbacks?: UploadInfoCallbacks,
-        metadataList?: Array<Record<string, string | number | undefined> | undefined>
+        metadataList?: Array<Record<string, string | number | undefined> | undefined>,
+        destination?: UploadDestination
     ) => Promise<FileUploadResponse[]>;
 }
 
@@ -148,6 +221,7 @@ export interface UploadHelperDependencies {
     imageSizeMapStore: {
         update: (updater: (map: Record<string, ImageDimensions>) => Record<string, ImageDimensions>) => void;
     };
+    resolveUploadDestination?: () => Promise<UploadDestination>;
 }
 
 export interface UploadHelperParams {

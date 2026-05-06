@@ -38,6 +38,7 @@ describe("EHagakiDB", () => {
             "profiles",
             "relayConfigs",
             "sharedMedia",
+            "uploadDestinations",
         ]);
 
         db.close();

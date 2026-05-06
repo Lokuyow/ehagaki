@@ -1,9 +1,9 @@
 import Dexie, { type Table } from "dexie";
 import type { CustomEmojiSourceType } from "../customEmoji";
-import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem } from "../types";
+import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 1;
+export const EHAGAKI_DB_VERSION = 2;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -107,6 +107,10 @@ export interface HashtagHistoryRecord {
     schemaVersion: number;
 }
 
+export interface UploadDestinationRecord extends UploadDestination {
+    scopeKey: string;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
@@ -116,6 +120,7 @@ export class EHagakiDB extends Dexie {
     relayConfigs!: Table<RelayConfigRecord, string>;
     sharedMedia!: Table<SharedMediaRecord, string>;
     hashtagHistory!: Table<HashtagHistoryRecord, string>;
+    uploadDestinations!: Table<UploadDestinationRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -129,6 +134,7 @@ export class EHagakiDB extends Dexie {
             relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
             sharedMedia: "id, createdAt, updatedAt, schemaVersion",
             hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
+            uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
         });
     }
 }

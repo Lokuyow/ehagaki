@@ -13,14 +13,14 @@ import type {
   MimeTypeSupportInterface,
   SharedMediaData,
   SharedMediaProcessingResult,
-  FileUploadManagerInterface
+  FileUploadManagerInterface,
+  UploadDestination
 } from "./types";
 import {
   DEFAULT_API_URL,
   getDefaultEndpoint,
   MAX_FILE_SIZE,
-  STORAGE_KEYS,
-  UPLOAD_POLLING_CONFIG
+  STORAGE_KEYS
 } from "./constants";
 import { generateBlurhashForFile, createPlaceholderUrl } from "./tags/imetaTag";
 import { MimeTypeSupport } from './mimeTypeSupport';
@@ -28,6 +28,8 @@ import { ImageCompressionService } from './imageCompressionService';
 import { NostrAuthService } from './nostrAuthService';
 import { isValidUploadEndpoint, normalizeLocale } from './utils/settingsStorage';
 import { isDefaultUploadAborted } from './uploadAbortUtils';
+import { getUploadAdapter } from "./upload/uploadAdapterRegistry";
+import { createLegacyUploadDestination } from "./upload/uploadDestinationPresets";
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -127,62 +129,13 @@ export class FileUploadManager implements FileUploadManagerInterface {
     return fallbackEndpoint;
   }
 
-  private async pollUploadStatus(
-    processingUrl: string,
-    authHeader: string,
-    maxWaitTime: number = UPLOAD_POLLING_CONFIG.MAX_WAIT_TIME
-  ): Promise<any> {
-    const startTime = Date.now();
-
-    while (true) {
-      // ポーリング中の中止チェック
-      if (this.isUploadAborted()) {
-        throw new Error('Upload aborted by user');
-      }
-
-      if (Date.now() - startTime > maxWaitTime) throw new Error(UPLOAD_POLLING_CONFIG.TIMEOUT_MESSAGE);
-      const response = await this.dependencies.fetch(processingUrl, {
-        method: "GET",
-        headers: { Authorization: authHeader }
-      });
-      if (!response.ok) throw new Error(`Unexpected status code ${response.status} while polling processing_url`);
-
-      let processingStatus: any = null;
-      try {
-        processingStatus = await response.json();
-      } catch {
-        processingStatus = null;
-      }
-
-      if (response.status === 201 && processingStatus) return processingStatus;
-
-      if (processingStatus?.status === "processing") {
-        await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLLING_CONFIG.RETRY_INTERVAL));
-        continue;
-      }
-
-      if (processingStatus?.status === "success") {
-        return processingStatus;
-      }
-
-      if (processingStatus?.status === "error") {
-        throw new Error(processingStatus?.message || "File processing failed");
-      }
-
-      if (response.status === 200) {
-        return processingStatus;
-      }
-
-      throw new Error("Unexpected processing status");
-    }
-  }
-
   async uploadFile(
     file: File,
     apiUrl: string = DEFAULT_API_URL,
     devMode: boolean = false,
     metadata?: Record<string, string | number | undefined>,
-    callbacks?: UploadInfoCallbacks
+    callbacks?: UploadInfoCallbacks,
+    destination?: UploadDestination
   ): Promise<FileUploadResponse> {
     let sizeInfo: any = undefined; // sizeInfoを関数スコープで宣言
 
@@ -249,23 +202,18 @@ export class FileUploadManager implements FileUploadManagerInterface {
       );
 
       const finalUrl = this.getUploadEndpoint(apiUrl);
-      const authHeader = await this.authService.buildAuthHeader(finalUrl, "POST");
-
-      const formData = new FormData();
-      formData.append('file', uploadFile);
-
-      if (metadata?.caption) formData.append('caption', String(metadata.caption));
-      if (metadata?.expiration !== undefined) formData.append('expiration', String(metadata.expiration));
-      formData.append('size', String(uploadFile.size));
-      if (metadata?.alt) formData.append('alt', String(metadata.alt));
-      if (metadata?.media_type) formData.append('media_type', String(metadata.media_type));
-      formData.append('content_type', metadata?.content_type ? String(metadata.content_type) : uploadFile.type || '');
-      formData.append('no_transform', metadata?.no_transform ? String(metadata.no_transform) : 'true');
-
-      const response = await this.dependencies.fetch(finalUrl, {
-        method: 'POST',
-        headers: { 'Authorization': authHeader },
-        body: formData
+      const uploadDestination = destination ?? createLegacyUploadDestination({
+        endpoint: finalUrl,
+        locale: this.dependencies.localStorage.getItem(STORAGE_KEYS.LOCALE),
+      });
+      const adapter = getUploadAdapter(uploadDestination.protocol);
+      const uploadResult = await adapter.upload({
+        file: uploadFile,
+        destination: uploadDestination,
+        authService: this.authService,
+        fetch: this.dependencies.fetch,
+        metadata,
+        devMode,
       });
 
       // 重要な処理前後のみ中止チェック
@@ -278,64 +226,9 @@ export class FileUploadManager implements FileUploadManagerInterface {
         };
       }
 
-      // レスポンスの処理
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'Unknown error');
-        return {
-          success: false,
-          error: `Upload failed: ${response.status} ${response.statusText} - ${errorText}`,
-          sizeInfo
-        };
-      }
-
-      let data: any;
-      try {
-        data = await response.json();
-      } catch (jsonError) {
-        if (devMode) {
-          console.error("[dev] JSON parse error:", jsonError);
-        }
-        return { success: false, error: 'Could not parse upload response', sizeInfo };
-      }
-
-      if ((response.status === 200 || response.status === 202) && data.processing_url) {
-        try {
-          const processingAuthToken = await this.authService.buildAuthHeader(data.processing_url, "GET");
-          data = await this.pollUploadStatus(data.processing_url, processingAuthToken);
-
-          // ポーリング後の中止チェック
-          if (this.isUploadAborted()) {
-            return {
-              success: false,
-              error: 'Upload aborted by user',
-              sizeInfo,
-              aborted: true
-            };
-          }
-        } catch (e) {
-          return { success: false, error: e instanceof Error ? e.message : String(e), sizeInfo };
-        }
-      }
-
-      const parsedNip94: Record<string, string> = {};
-      if (data?.nip94_event?.tags && Array.isArray(data.nip94_event.tags)) {
-        for (const tag of data.nip94_event.tags) {
-          if (!Array.isArray(tag) || tag.length < 2) continue;
-          const key = String(tag[0]);
-          const value = tag.slice(1).join(' ');
-          if (!(key in parsedNip94)) parsedNip94[key] = value;
-        }
-      }
-
-      if (data.status === 'success' && data.nip94_event?.tags) {
-        const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === 'url');
-        if (urlTag?.[1]) return { success: true, url: urlTag[1], sizeInfo, nip94: parsedNip94 };
-      }
       return {
-        success: false,
-        error: data.message || 'Could not extract URL from response',
-        sizeInfo,
-        nip94: Object.keys(parsedNip94).length ? parsedNip94 : undefined
+        ...uploadResult,
+        sizeInfo
       };
     } catch (error) {
       // エラーハンドリング時の中止チェック
@@ -377,7 +270,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
     onProgress?: (progress: UploadProgress) => void,
     devMode: boolean = false,
     metadataList?: Array<Record<string, string | number | undefined> | undefined>,
-    callbacks?: UploadInfoCallbacks
+    callbacks?: UploadInfoCallbacks,
+    destination?: UploadDestination
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
     const results: FileUploadResponse[] = new Array(files.length);
@@ -403,7 +297,7 @@ export class FileUploadManager implements FileUploadManagerInterface {
       const file = files[index];
       try {
         const meta = metadataList ? metadataList[index] : undefined;
-        const result = await this.uploadFile(file, apiUrl, devMode, meta, callbacks);
+        const result = await this.uploadFile(file, apiUrl, devMode, meta, callbacks, destination);
         results[index] = result;
         if (result.success) {
           completed++;
@@ -428,11 +322,12 @@ export class FileUploadManager implements FileUploadManagerInterface {
     apiUrl: string = DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks,
     devMode: boolean = false,
-    metadata?: Record<string, string | number | undefined>
+    metadata?: Record<string, string | number | undefined>,
+    destination?: UploadDestination
   ): Promise<FileUploadResponse> {
     callbacks?.onProgress?.({ completed: 0, failed: 0, aborted: 0, total: 1, inProgress: true });
     try {
-      const result = await this.uploadFile(file, apiUrl, devMode, metadata, callbacks);
+      const result = await this.uploadFile(file, apiUrl, devMode, metadata, callbacks, destination);
       callbacks?.onProgress?.({
         completed: result.success ? 1 : 0,
         failed: (!result.success && !result.aborted) ? 1 : 0,
@@ -456,7 +351,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
     files: File[],
     apiUrl: string = DEFAULT_API_URL,
     callbacks?: UploadInfoCallbacks,
-    metadataList?: Array<Record<string, string | number | undefined> | undefined>
+    metadataList?: Array<Record<string, string | number | undefined> | undefined>,
+    destination?: UploadDestination
   ): Promise<FileUploadResponse[]> {
     if (!files?.length) return [];
 
@@ -475,7 +371,8 @@ export class FileUploadManager implements FileUploadManagerInterface {
       callbacks?.onProgress,
       import.meta.env.MODE === "development",
       metadataList,
-      callbacks
+      callbacks,
+      destination
     );
 
     // 中止された場合はサイズ情報表示をスキップ

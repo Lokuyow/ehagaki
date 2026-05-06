@@ -27,6 +27,7 @@ import type {
     UploadProgress,
     UploadInfoCallbacks,
     ImageDimensions,
+    UploadDestination,
 } from "./types";
 import {
     insertPlaceholdersIntoEditor,
@@ -49,6 +50,7 @@ import {
     createUploadProgress,
     notifyUploadProgress,
 } from './uploadProgressUtils';
+import { uploadDestinationsRepository } from "./storage/uploadDestinationsRepository";
 
 function createFileUploadManager(
     dependencies: UploadHelperDependencies,
@@ -102,27 +104,44 @@ async function uploadValidFiles(
     uploadCallbacks: UploadInfoCallbacks | undefined,
     metadataList: Array<Record<string, string | number | undefined>> | undefined,
     devMode: boolean,
+    destination?: UploadDestination,
 ): Promise<FileUploadResponse[] | null> {
     try {
         if (validFiles.length === 1) {
-            return [
-                await fileUploadManager.uploadFileWithCallbacks(
+            const response = destination
+                ? await fileUploadManager.uploadFileWithCallbacks(
                     validFiles[0],
                     endpoint,
                     uploadCallbacks,
                     devMode,
                     metadataList?.[0],
-                ),
-            ];
+                    destination,
+                )
+                : await fileUploadManager.uploadFileWithCallbacks(
+                    validFiles[0],
+                    endpoint,
+                    uploadCallbacks,
+                    devMode,
+                    metadataList?.[0],
+                );
+            return [response];
         }
 
         if (validFiles.length > 1) {
-            return await fileUploadManager.uploadMultipleFilesWithCallbacks(
-                validFiles,
-                endpoint,
-                uploadCallbacks,
-                metadataList,
-            );
+            return destination
+                ? await fileUploadManager.uploadMultipleFilesWithCallbacks(
+                    validFiles,
+                    endpoint,
+                    uploadCallbacks,
+                    metadataList,
+                    destination,
+                )
+                : await fileUploadManager.uploadMultipleFilesWithCallbacks(
+                    validFiles,
+                    endpoint,
+                    uploadCallbacks,
+                    metadataList,
+                );
         }
     } catch (error) {
         if (devMode) {
@@ -230,6 +249,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     getMimeTypeFromUrl,
     createImetaTag: async (params: any) => await createImetaTag(params),
     imageSizeMapStore,
+    resolveUploadDestination: () => uploadDestinationsRepository.getDefault(null),
 });
 
 export async function uploadHelper({
@@ -244,7 +264,11 @@ export async function uploadHelper({
 }: UploadHelperParams): Promise<UploadHelperResult> {
     const fileArray = Array.from(files);
     const managedUploadCallbacks = createManagedUploadCallbacks(uploadCallbacks);
-    const endpoint = dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT) || "";
+    const uploadDestination = await dependencies.resolveUploadDestination?.();
+    const endpoint = uploadDestination?.resolvedUploadUrl
+        || uploadDestination?.serverUrl
+        || dependencies.localStorage.getItem(STORAGE_KEYS.UPLOAD_ENDPOINT)
+        || "";
     const imageOxMap: Record<string, string> = {};
     const imageXMap: Record<string, string> = {};
 
@@ -397,6 +421,7 @@ export async function uploadHelper({
             managedUploadCallbacks,
             metadataList,
             devMode,
+            uploadDestination,
         );
     } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
