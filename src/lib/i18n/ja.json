@@ -88,6 +88,7 @@
     "info_header_pixels": "最大画素数",
     "info_header_quality": "品質",
     "image_quality_setting": "画像品質",
+    "image_short_edge_protection_note": "縦長・横長の画像では、文字が潰れにくいように短辺が最低 {pixels}px になるよう補正します。画素数上限は {megapixels} メガピクセルで、上限を超える場合は画素数上限を優先します。",
     "video_quality_setting": "動画品質",
     "quality_lossless": "オリジナル",
     "quality_high": "高",

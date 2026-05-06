@@ -111,6 +111,27 @@ describe('calculateExtremeAspectMaxWidthOrHeight', () => {
         expect(result.wasAdjusted).toBe(true);
     });
 
+    it('端数が出る縦長画像でも短辺がminShortEdgeを下回らないmaxWidthOrHeightにする', () => {
+        const result = calculateExtremeAspectMaxWidthOrHeight({
+            width: 540,
+            height: 8712,
+            maxWidthOrHeight: 800,
+            settings: {
+                enabled: true,
+                aspectRatioThreshold: 3,
+                minShortEdge: 320,
+                maxMegapixels: 8,
+            },
+        });
+
+        expect(result).toEqual({
+            maxWidthOrHeight: 5163,
+            targetWidth: 320,
+            targetHeight: 5163,
+            wasAdjusted: true,
+        });
+    });
+
     it('通常比率画像では従来のmaxWidthOrHeightを維持する', () => {
         const result = calculateExtremeAspectMaxWidthOrHeight({
             width: 4000,

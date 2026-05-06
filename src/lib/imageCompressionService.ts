@@ -103,12 +103,19 @@ export function calculateExtremeAspectMaxWidthOrHeight({
     const shortEdgeScale = targetShortEdge / shortEdge;
     const maxPixels = settings.maxMegapixels * 1_000_000;
     const megapixelScale = Math.sqrt(maxPixels / (width * height));
+    const isMegapixelLimited = megapixelScale < shortEdgeScale;
     const adjustedScale = Math.min(shortEdgeScale, megapixelScale, 1);
-    const { targetWidth, targetHeight } = calculateScaledDimensions(
-        width,
-        height,
-        adjustedScale,
-    );
+    const { targetWidth, targetHeight } = isMegapixelLimited
+        ? calculateScaledDimensions(width, height, adjustedScale)
+        : height >= width
+            ? {
+                targetWidth: Math.max(1, Math.floor(width * adjustedScale)),
+                targetHeight: Math.max(1, Math.ceil(height * adjustedScale)),
+            }
+            : {
+                targetWidth: Math.max(1, Math.ceil(width * adjustedScale)),
+                targetHeight: Math.max(1, Math.floor(height * adjustedScale)),
+            };
     const adjustedMaxWidthOrHeight = Math.max(targetWidth, targetHeight);
 
     return {
