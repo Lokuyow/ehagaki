@@ -1,4 +1,5 @@
 import { seckeySigner } from "@rx-nostr/crypto";
+import type { Signer } from "nostr-tools/signer";
 import { keyManager } from "./keyManager.svelte";
 import { nip46Service } from "./nip46Service";
 import { parentClientAuthService } from "./parentClientAuthService";
@@ -10,69 +11,98 @@ const NIP46_RECONNECT_WAIT_MS = 10000;
 /** NIP-46再接続のポーリング間隔(ms) */
 const NIP46_RECONNECT_POLL_MS = 200;
 
-function getServerDomain(serverUrl: string): string {
-    try {
-        return new URL(serverUrl).hostname.toLowerCase();
-    } catch {
-        return serverUrl
-            .replace(/^https?:\/\//i, "")
-            .split("/")[0]
-            .toLowerCase();
-    }
-}
-
-function base64UrlEncode(value: string): string {
+function base64Encode(value: string): string {
     const binary = encodeURIComponent(value).replace(
         /%([0-9A-F]{2})/g,
         (_match, hex) => String.fromCharCode(Number.parseInt(hex, 16)),
     );
-    return btoa(binary)
-        .replace(/\+/g, "-")
-        .replace(/\//g, "_")
-        .replace(/=+$/g, "");
+    return btoa(binary);
 }
 
 // --- NIP-98認証サービス ---
 export class NostrAuthService implements AuthService {
-    private async getSignFunction(): Promise<(event: any) => Promise<any>> {
+    private async getSigner(): Promise<Signer> {
         const storedKey = keyManager.getFromStore() || keyManager.loadFromStorage();
         if (storedKey) {
-            return (event) => seckeySigner(storedKey).signEvent(event);
-        } else if (nip46Service.isConnected()) {
-            const signer = nip46Service.getSigner()!;
-            return (event) => signer.signEvent(event);
-        } else if (parentClientAuthService.isConnected()) {
-            const signer = parentClientAuthService.getSigner()!;
-            return (event) => signer.signEvent(event);
-        } else if (authState.value.type === 'nip46') {
+            return {
+                getPublicKey: async () => {
+                    const derived = keyManager.derivePublicKey(storedKey);
+                    if (!derived.hex) {
+                        throw new Error('Authentication required');
+                    }
+                    return derived.hex;
+                },
+                signEvent: async (event) => await seckeySigner(storedKey).signEvent(event) as any,
+            };
+        }
+
+        if (nip46Service.isConnected()) {
+            const signer = nip46Service.getSigner();
+            if (signer) {
+                return signer;
+            }
+        }
+
+        if (parentClientAuthService.isConnected()) {
+            const signer = parentClientAuthService.getSigner();
+            if (signer) {
+                return signer;
+            }
+        }
+
+        if (authState.value.type === 'nip46') {
             // NIP-46認証だが接続が未完了（再接続中など）→ 接続完了を待つ
             const connected = await this.waitForNip46Connection();
             if (connected) {
-                const signer = nip46Service.getSigner()!;
-                return (event) => signer.signEvent(event);
+                const signer = nip46Service.getSigner();
+                if (signer) {
+                    return signer;
+                }
             }
             throw new Error('Authentication required');
-        } else if (authState.value.type === 'parentClient') {
+        }
+
+        if (authState.value.type === 'parentClient') {
             const signer = parentClientAuthService.getSigner();
             if (!signer) {
                 throw new Error('Authentication required');
             }
-            return (event) => signer.signEvent(event);
-        } else {
-            // NIP-07の場合はwindow.nostrを即時利用
-            const nostr = (window as any)?.nostr;
-
-            if (nostr?.signEvent) {
-                return (event) => nostr.signEvent(event);
-            }
-            throw new Error('Authentication required');
+            return signer;
         }
+
+        // NIP-07の場合はwindow.nostrを即時利用
+        const nostr = (window as any)?.nostr;
+        if (nostr?.signEvent) {
+            return {
+                getPublicKey: async () => {
+                    if (typeof nostr.getPublicKey === 'function') {
+                        return await nostr.getPublicKey();
+                    }
+                    if (authState.value.pubkey) {
+                        return authState.value.pubkey;
+                    }
+                    throw new Error('Authentication required');
+                },
+                signEvent: async (event) => await nostr.signEvent(event),
+            };
+        }
+
+        throw new Error('Authentication required');
+    }
+
+    private async getSignFunction(): Promise<(event: any) => Promise<any>> {
+        const signer = await this.getSigner();
+        return async (event) => await signer.signEvent(event);
     }
 
     async buildAuthHeader(url: string, method: string = "POST"): Promise<string> {
         const signFunc = await this.getSignFunction();
         const { getToken } = await import("nostr-tools/nip98");
         return await getToken(url, method, signFunc, true);
+    }
+
+    async getBlossomSigner(): Promise<Signer> {
+        return await this.getSigner();
     }
 
     async buildBlossomAuthorizationHeader(params: {
@@ -82,22 +112,26 @@ export class NostrAuthService implements AuthService {
         contentType?: string;
         contentLength?: number;
     }): Promise<string> {
-        const signFunc = await this.getSignFunction();
-        const expiration = Math.floor(Date.now() / 1000) + 60 * 5;
+        void params.serverUrl;
+        void params.contentType;
+        void params.contentLength;
+
+        const signer = await this.getSigner();
+        const now = Math.floor(Date.now() / 1000);
         const tags = [
+            ["expiration", String(now + 60)],
             ["t", params.method],
-            ["expiration", String(expiration)],
-            ["server", getServerDomain(params.serverUrl)],
         ];
         if (params.sha256) tags.push(["x", params.sha256]);
 
-        const event = await signFunc({
+        const event = await signer.signEvent({
             kind: 24242,
-            created_at: Math.floor(Date.now() / 1000),
-            content: params.method === "upload" ? "Upload Blob" : `Authorize ${params.method}`,
+            created_at: now,
+            content: "blossom stuff",
             tags,
         });
-        return `Nostr ${base64UrlEncode(JSON.stringify(event))}`;
+
+        return `Nostr ${base64Encode(JSON.stringify(event))}`;
     }
 
     /**

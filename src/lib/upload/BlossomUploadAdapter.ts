@@ -1,3 +1,4 @@
+import { BlossomClient, type BlobDescriptor } from "nostr-tools/nipb7";
 import { calculateSHA256Hex } from "../utils/fileUtils";
 import type {
     FileUploadResponse,
@@ -16,7 +17,7 @@ function getUploadUrl(destination: UploadDestination): string {
     return `${normalizeBlossomServerUrl(destination)}/upload`;
 }
 
-function descriptorToNip94(data: any, file: File, sha256: string): Record<string, string> {
+function descriptorToNip94(data: any, file: File, sha256: string = ""): Record<string, string> {
     return {
         url: String(data?.url ?? ""),
         x: String(data?.sha256 ?? data?.x ?? sha256),
@@ -25,7 +26,7 @@ function descriptorToNip94(data: any, file: File, sha256: string): Record<string
     };
 }
 
-function parseBlobDescriptor(data: any, file: File, sha256: string): FileUploadResponse {
+function parseBlobDescriptor(data: BlobDescriptor | any, file: File, sha256?: string): FileUploadResponse {
     const url = typeof data?.url === "string" ? data.url : "";
     if (!url) {
         return {
@@ -39,6 +40,94 @@ function parseBlobDescriptor(data: any, file: File, sha256: string): FileUploadR
         url,
         nip94: descriptorToNip94(data, file, sha256),
     };
+}
+
+function parseBlossomUploadError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error);
+    const match = message.match(/^upload returned an error \((\d+)\):\s*(.*)$/);
+    if (match) {
+        return `Blossom upload failed: ${match[1]} ${match[2]}`;
+    }
+    return message ? `Blossom upload failed: ${message}` : "Blossom upload failed";
+}
+
+function normalizeUploadBlob(file: File): File | Blob {
+    if (typeof file.arrayBuffer === "function") {
+        return file;
+    }
+
+    const blob = new Blob([file], {
+        type: file.type || "application/octet-stream",
+    }) as Blob & {
+        arrayBuffer?: () => Promise<ArrayBuffer>;
+    };
+
+    if (typeof blob.arrayBuffer !== "function") {
+        blob.arrayBuffer = async () => await new Response(blob).arrayBuffer();
+    }
+
+    return blob;
+}
+
+function createBlossomClient(
+    destination: UploadDestination,
+    signer: NonNullable<UploadAdapterUploadParams["authService"]["getBlossomSigner"]> extends () => Promise<infer T>
+        ? T
+        : never,
+    fetchImpl: typeof fetch,
+): BlossomClient {
+    type BlossomClientHttpCall = {
+        httpCall: (
+            method: string,
+            url: string,
+            contentType?: string,
+            addAuthorization?: () => Promise<string>,
+            body?: File | Blob,
+            result?: unknown,
+        ) => Promise<unknown>;
+    };
+
+    const baseUrl = `${normalizeBlossomServerUrl(destination)}/`;
+    const client = new BlossomClient(baseUrl, signer);
+
+    (client as unknown as BlossomClientHttpCall).httpCall = async (
+        method: string,
+        url: string,
+        contentType?: string,
+        addAuthorization?: () => Promise<string>,
+        body?: File | Blob,
+        result?: unknown,
+    ) => {
+        const headers: Record<string, string> = {};
+        if (contentType) {
+            headers["Content-Type"] = contentType;
+        }
+        if (addAuthorization) {
+            const auth = await addAuthorization();
+            if (auth) {
+                headers.Authorization = auth;
+            }
+        }
+
+        const response = await fetchImpl(`${baseUrl}${url}`, {
+            method,
+            headers,
+            body,
+        });
+
+        if (response.status >= 300) {
+            const reason = response.headers.get("X-Reason") || response.statusText;
+            throw new Error(`${url} returned an error (${response.status}): ${reason}`);
+        }
+
+        if (result !== null && response.headers.get("content-type")?.includes("application/json")) {
+            return await response.json();
+        }
+
+        return response;
+    };
+
+    return client;
 }
 
 function buildBlossomCapabilities(
@@ -72,41 +161,29 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
     readonly protocol = "blossom" as const;
 
     async upload(params: UploadAdapterUploadParams): Promise<FileUploadResponse> {
-        const uploadUrl = getUploadUrl(params.destination);
-        const sha256 = await calculateSHA256Hex(params.file);
-        const authorization = await params.authService.buildBlossomAuthorizationHeader?.({
-            serverUrl: normalizeBlossomServerUrl(params.destination),
-            method: "upload",
-            sha256,
-            contentType: params.file.type,
-            contentLength: params.file.size,
-        });
-
-        if (!authorization) {
-            return { success: false, error: "Blossom authorization is not available" };
+        const signer = await params.authService.getBlossomSigner?.();
+        if (!signer) {
+            return { success: false, error: "Blossom signer is not available" };
         }
 
-        const response = await params.fetch(uploadUrl, {
-            method: "PUT",
-            headers: {
-                Authorization: authorization,
-                "Content-Type": params.file.type || "application/octet-stream",
-                "X-SHA-256": sha256,
-            },
-            body: params.file,
-        });
+        try {
+            const client = createBlossomClient(
+                params.destination,
+                signer,
+                params.fetch,
+            );
+            const descriptor = await client.uploadBlob(
+                normalizeUploadBlob(params.file),
+                params.file.type,
+            );
 
-        if (!response.ok) {
-            const reason = response.headers.get("X-Reason")
-                || await response.text().catch(() => "Unknown error");
+            return parseBlobDescriptor(descriptor, params.file);
+        } catch (error) {
             return {
                 success: false,
-                error: `Blossom upload failed: ${response.status} ${reason}`,
+                error: parseBlossomUploadError(error),
             };
         }
-
-        const data = await response.json().catch(() => null);
-        return parseBlobDescriptor(data, params.file, sha256);
     }
 
     async testConnection(params: {

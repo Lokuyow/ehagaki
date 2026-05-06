@@ -3,6 +3,7 @@
     import { _ } from "svelte-i18n";
     import Button from "../Button.svelte";
     import ConfirmDialog from "../ConfirmDialog.svelte";
+    import { authState } from "../../stores/authStore.svelte";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
     import type {
         UploadDestination,
@@ -15,6 +16,7 @@
         createUploadDestinationFromPreset,
         normalizeServerUrl,
     } from "../../lib/upload/uploadDestinationPresets";
+    import { resolveUploadDestinationForUse } from "../../lib/upload/uploadDestinationResolver";
 
     const emptyForm = {
         id: "",
@@ -67,6 +69,19 @@
 
     function canExpandMimeTypes(destination: UploadDestination): boolean {
         return destination.capabilities.supportedMimeTypes.length > 3;
+    }
+
+    function getEffectiveDestinationUrl(
+        destination: UploadDestination,
+    ): string {
+        const resolved = resolveUploadDestinationForUse(destination, {
+            pubkeyHex: authState.value.pubkey || null,
+            npub: authState.value.npub || null,
+        });
+
+        return resolved.protocol === "nip96"
+            ? resolved.resolvedUploadUrl || resolved.serverUrl
+            : resolved.serverUrl;
     }
 
     function toggleMimeTypes(destinationId: string): void {
@@ -308,6 +323,9 @@
                                 "custom"} / {formatMaxSize(
                                 destination.capabilities.maxUploadSize,
                             )}
+                        </div>
+                        <div class="destination-meta destination-url">
+                            {getEffectiveDestinationUrl(destination)}
                         </div>
                         <div class="destination-meta mime-meta">
                             <span>{getMimeSummary(destination)}</span>

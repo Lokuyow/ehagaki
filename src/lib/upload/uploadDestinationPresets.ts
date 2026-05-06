@@ -56,6 +56,42 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
             supportsList: true,
         },
     },
+    {
+        id: "cdn-nostrcheck-me",
+        name: "cdn.nostrcheck.me",
+        protocol: "blossom",
+        serverUrl: "https://cdn.nostrcheck.me",
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+        },
+    },
+    {
+        id: "nostr-download",
+        name: "nostr.download",
+        protocol: "blossom",
+        serverUrl: "https://nostr.download",
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+        },
+    },
+    {
+        id: "blossom-primal-net",
+        name: "blossom.primal.net",
+        protocol: "blossom",
+        serverUrl: "https://blossom.primal.net",
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+        },
+    },
+    {
+        id: "cdn-satellite-earth",
+        name: "cdn.satellite.earth",
+        protocol: "blossom",
+        serverUrl: "https://cdn.satellite.earth",
+        capabilities: {
+            ...DEFAULT_UPLOAD_CAPABILITIES,
+        },
+    },
 ];
 
 function createUploadDestinationId(): string {

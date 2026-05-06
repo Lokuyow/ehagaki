@@ -30,4 +30,39 @@ describe("uploadDestinationPresets", () => {
             }),
         ]));
     });
+
+    it("includes generic Blossom presets from lumilumi for isolation testing", () => {
+        expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
+            expect.objectContaining({
+                id: "blossom-band",
+                name: "blossom.band",
+                protocol: "blossom",
+                serverUrl: "https://blossom.band",
+            }),
+            expect.objectContaining({
+                id: "cdn-nostrcheck-me",
+                name: "cdn.nostrcheck.me",
+                protocol: "blossom",
+                serverUrl: "https://cdn.nostrcheck.me",
+            }),
+            expect.objectContaining({
+                id: "nostr-download",
+                name: "nostr.download",
+                protocol: "blossom",
+                serverUrl: "https://nostr.download",
+            }),
+            expect.objectContaining({
+                id: "blossom-primal-net",
+                name: "blossom.primal.net",
+                protocol: "blossom",
+                serverUrl: "https://blossom.primal.net",
+            }),
+            expect.objectContaining({
+                id: "cdn-satellite-earth",
+                name: "cdn.satellite.earth",
+                protocol: "blossom",
+                serverUrl: "https://cdn.satellite.earth",
+            }),
+        ]));
+    });
 });

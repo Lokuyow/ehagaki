@@ -36,6 +36,33 @@ function createBlossomBandDestination(): UploadDestination {
     };
 }
 
+function createGenericBlossomDestination(): UploadDestination {
+    return {
+        id: "nostr-download",
+        pubkeyHex: null,
+        name: "nostr.download",
+        protocol: "blossom",
+        serverUrl: "https://nostr.download",
+        presetId: "nostr-download",
+        isDefault: true,
+        enabled: true,
+        createdAt: 1,
+        updatedAt: 1,
+        capabilities: {
+            maxUploadSize: null,
+            supportedMimeTypes: [],
+            supportsDelete: false,
+            supportsList: false,
+            supportsMirror: false,
+            supportsMediaOptimization: false,
+            authRequired: true,
+            source: "preset",
+        },
+        auth: { type: "blossom-bud11" },
+        schemaVersion: 1,
+    };
+}
+
 describe("uploadDestinationResolver", () => {
     it("resolves blossom.band preset to the current user's npub subdomain", () => {
         expect(resolveBlossomBandServerUrl({ pubkeyHex })).toBe(`https://${npub}.blossom.band`);
@@ -44,5 +71,12 @@ describe("uploadDestinationResolver", () => {
 
         expect(destination.serverUrl).toBe(`https://${npub}.blossom.band`);
         expect(destination).not.toHaveProperty("resolvedUploadUrl");
+    });
+
+    it("keeps generic Blossom destinations unchanged for non-blossom.band isolation", () => {
+        const destination = resolveUploadDestinationForUse(createGenericBlossomDestination(), { pubkeyHex });
+
+        expect(destination.serverUrl).toBe("https://nostr.download");
+        expect(destination.presetId).toBe("nostr-download");
     });
 });

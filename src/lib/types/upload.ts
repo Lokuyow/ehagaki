@@ -1,6 +1,7 @@
 // --- Upload, Compression, File handling関連型定義 ---
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
+import type { Signer } from "nostr-tools/signer";
 import { VIDEO_COMPRESSION_OPTIONS_MAP } from "../constants";
 import type { ImageDimensions } from './media';
 
@@ -57,6 +58,10 @@ export type UploadPresetId =
     | "nostrcheck-me"
     | "files-sovbit-host"
     | "blossom-band"
+    | "cdn-nostrcheck-me"
+    | "nostr-download"
+    | "blossom-primal-net"
+    | "cdn-satellite-earth"
     | "custom";
 export type UploadAuthType = "blossom-bud11" | "nip98" | "none" | "custom";
 export type UploadCapabilitiesSource = "preset" | "protocol-discovery" | "test" | "manual";
@@ -173,6 +178,7 @@ export type VideoCompressionLevel = keyof typeof VIDEO_COMPRESSION_OPTIONS_MAP;
 
 export interface AuthService {
     buildAuthHeader(url: string, method: string): Promise<string>;
+    getBlossomSigner?(): Promise<Signer>;
     buildBlossomAuthorizationHeader?(params: {
         serverUrl: string;
         method: string;

@@ -426,10 +426,19 @@ describe('FileUploadManager', () => {
         it('destination が指定された場合は legacy uploadEndpoint を読まず Blossom adapter で送信する', async () => {
             const file = createMockFile('test.jpg', 'image/jpeg', 1000);
             mockDependencies.localStorage.setItem('uploadEndpoint', 'https://nostr.build/api/v2/nip96/upload');
+            const signer = {
+                getPublicKey: vi.fn().mockResolvedValue('f'.repeat(64)),
+                signEvent: vi.fn().mockImplementation(async (event) => ({
+                    ...event,
+                    id: 'signed-event',
+                    pubkey: 'f'.repeat(64),
+                    sig: 'signature',
+                })),
+            };
 
             const mockAuthService: AuthService = {
                 buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token'),
-                buildBlossomAuthorizationHeader: vi.fn().mockResolvedValue('Nostr mock-token'),
+                getBlossomSigner: vi.fn().mockResolvedValue(signer),
             };
             const mockCompressionService = {
                 compress: vi.fn().mockResolvedValue({
@@ -471,11 +480,14 @@ describe('FileUploadManager', () => {
                 mockAuthService,
                 mockCompressionService
             );
-            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+            mockFetch.mockResolvedValue(new Response(JSON.stringify({
                 url: 'https://blossom.band/mockhash.jpg',
                 sha256: 'mockhash',
                 size: file.size,
                 type: file.type,
+            }), {
+                status: 200,
+                headers: { 'content-type': 'application/json' },
             }));
 
             const result = await uploadManager.uploadFile(
@@ -489,13 +501,7 @@ describe('FileUploadManager', () => {
 
             expect(result.success).toBe(true);
             expect(mockAuthService.buildAuthHeader).not.toHaveBeenCalled();
-            expect(mockAuthService.buildBlossomAuthorizationHeader).toHaveBeenCalledWith(
-                expect.objectContaining({
-                    serverUrl: 'https://npub1example.blossom.band',
-                    method: 'upload',
-                    sha256: 'mockhash',
-                }),
-            );
+            expect(mockAuthService.getBlossomSigner).toHaveBeenCalledTimes(1);
             expect(mockFetch).toHaveBeenCalledWith(
                 'https://npub1example.blossom.band/upload',
                 expect.objectContaining({

@@ -246,12 +246,10 @@ describe('NostrAuthService', () => {
     describe('buildBlossomAuthorizationHeader', () => {
         function decodeNostrHeader(header: string): any {
             const token = header.replace(/^Nostr\s+/, '');
-            const base64 = token.replace(/-/g, '+').replace(/_/g, '/');
-            const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=');
-            return JSON.parse(atob(padded));
+            return JSON.parse(atob(token));
         }
 
-        it('BUD-11 形式の Base64URL token と domain-only server tag を返す', async () => {
+        it('blossom.band でも nipb7 互換の非 scoped Base64 token を返す', async () => {
             const { keyManager } = await import('../../lib/keyManager.svelte');
             vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
 
@@ -263,18 +261,40 @@ describe('NostrAuthService', () => {
                 contentLength: 123,
             });
 
-            expect(result).toMatch(/^Nostr [A-Za-z0-9_-]+$/);
-            expect(result).not.toContain('=');
-
+            const token = result.replace(/^Nostr\s+/, '');
             const event = decodeNostrHeader(result);
 
             expect(event.kind).toBe(24242);
-            expect(event.content).toBe('Upload Blob');
+            expect(event.content).toBe('blossom stuff');
             expect(event.tags).toContainEqual(['t', 'upload']);
-            expect(event.tags).toContainEqual(['server', 'npub1example.blossom.band']);
             expect(event.tags).toContainEqual(['x', 'a'.repeat(64)]);
-            expect(event.tags.some((tag: string[]) => tag[0] === 'm')).toBe(false);
-            expect(event.tags.some((tag: string[]) => tag[0] === 'size')).toBe(false);
+            expect(event.tags.some((tag: string[]) => tag[0] === 'server')).toBe(false);
+            expect(token).toBe(btoa(JSON.stringify(event)));
+
+            vi.mocked(keyManager.getFromStore).mockReturnValue(null);
+        });
+
+        it('generic Blossom にも同じ非 scoped Base64 token を返す', async () => {
+            const { keyManager } = await import('../../lib/keyManager.svelte');
+            vi.mocked(keyManager.getFromStore).mockReturnValue('nsec1testkey');
+
+            const result = await service.buildBlossomAuthorizationHeader({
+                serverUrl: 'https://nostr.download',
+                method: 'upload',
+                sha256: 'b'.repeat(64),
+                contentType: 'image/png',
+                contentLength: 456,
+            });
+
+            const token = result.replace(/^Nostr\s+/, '');
+            const event = JSON.parse(atob(token));
+
+            expect(event.kind).toBe(24242);
+            expect(event.content).toBe('blossom stuff');
+            expect(event.tags).toContainEqual(['t', 'upload']);
+            expect(event.tags).toContainEqual(['x', 'b'.repeat(64)]);
+            expect(event.tags.some((tag: string[]) => tag[0] === 'server')).toBe(false);
+            expect(token).toBe(btoa(JSON.stringify(event)));
 
             vi.mocked(keyManager.getFromStore).mockReturnValue(null);
         });
