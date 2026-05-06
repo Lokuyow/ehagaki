@@ -56,17 +56,6 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
             supportsList: true,
         },
     },
-    {
-        id: "self-hosted",
-        name: "Self-hosted Blossom",
-        protocol: "blossom",
-        serverUrl: "",
-        capabilities: {
-            ...DEFAULT_UPLOAD_CAPABILITIES,
-            supportsDelete: true,
-            supportsList: true,
-        },
-    },
 ];
 
 function createUploadDestinationId(): string {

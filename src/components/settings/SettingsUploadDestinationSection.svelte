@@ -88,6 +88,11 @@
 
     function applyPreset(presetId: UploadPresetId): void {
         form.presetId = presetId;
+        if (presetId === "custom") {
+            form.name = "";
+            form.serverUrl = "";
+            return;
+        }
         const preset = UPLOAD_DESTINATION_PRESETS.find((item) => item.id === presetId);
         if (!preset) return;
         form.name = preset.name;

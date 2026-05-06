@@ -57,7 +57,6 @@ export type UploadPresetId =
     | "nostrcheck-me"
     | "files-sovbit-host"
     | "blossom-band"
-    | "self-hosted"
     | "custom";
 export type UploadAuthType = "blossom-bud11" | "nip98" | "none" | "custom";
 export type UploadCapabilitiesSource = "preset" | "protocol-discovery" | "test" | "manual";
