@@ -13,6 +13,7 @@
             | "warning"
             | "header";
         shape?: "square" | "rounded" | "pill" | "circle";
+        contentLayout?: "text" | "icon" | "iconText";
         className?: string;
         ariaLabel?: string;
         style?: string;
@@ -24,6 +25,7 @@
         disabled = false,
         variant = "default",
         shape = "rounded",
+        contentLayout = undefined,
         className = "",
         ariaLabel = "",
         style = "",
@@ -37,6 +39,7 @@
             {...props}
             {variant}
             {shape}
+            {contentLayout}
             {className}
             {ariaLabel}
             {style}

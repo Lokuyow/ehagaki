@@ -122,6 +122,7 @@
     <Button
         variant="default"
         shape="circle"
+        contentLayout="icon"
         className="settings-btn {swNeedRefresh ? 'has-update' : ''}"
         onClick={onOpenSettingsDialog}
         ariaLabel="設定"

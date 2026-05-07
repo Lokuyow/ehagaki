@@ -58,6 +58,7 @@
             <Button
                 variant="default"
                 shape="rounded"
+                contentLayout="iconText"
                 className="refresh-relays-profile-btn"
                 onClick={() => onRefreshRelaysAndProfile?.()}
                 ariaLabel={$_("settingsDialog.refresh_relays_and_profile") ||

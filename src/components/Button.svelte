@@ -17,7 +17,8 @@
             | "footer"
             | "close"
             | "copy";
-        shape?: "none" | "square" | "rounded" | "pill" | "circle";
+        shape?: "square" | "rounded" | "pill" | "circle";
+        contentLayout?: "text" | "icon" | "iconText";
         children?: import("svelte").Snippet;
         onClick?: (event: MouseEvent) => void;
         selected?: boolean;
@@ -30,12 +31,18 @@
         ariaLabel = "",
         style = "",
         variant = "default",
-        shape = "none",
+        shape = undefined,
+        contentLayout = undefined,
         children,
         onClick = undefined,
         selected = false,
         ...restProps
     }: Props = $props();
+
+    let contentLayoutClass = $derived(
+        contentLayout ? `content-${contentLayout}` : "",
+    );
+    let shapeClass = $derived(shape ?? "");
 
     function handleClick(event: MouseEvent) {
         if (onClick) onClick(event);
@@ -44,7 +51,7 @@
 
 <button
     {type}
-    class={`${className} ${variant} ${shape} ${selected ? "selected" : ""}`}
+    class={`${className} ${variant} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
     {disabled}
     aria-label={ariaLabel}
     {style}
@@ -58,8 +65,7 @@
     /* --- Variant Styles --- */
     .default {
         background-color: var(--btn-bg);
-        padding: 10px 14px 10px 14px;
-        gap: 8px;
+        padding: 8px 12px 8px 12px;
 
         :global(.svg-icon) {
             width: 24px;
@@ -259,5 +265,16 @@
             width: 28px;
             height: 28px;
         }
+    }
+
+    /* --- Content Layout Styles --- */
+    .content-iconText {
+        gap: 8px;
+        padding: 12px 18px 12px 16px;
+    }
+
+    .content-icon {
+        padding: 0;
+        aspect-ratio: 1;
     }
 </style>

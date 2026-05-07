@@ -132,6 +132,7 @@
                             <Button
                                 variant="header"
                                 shape="square"
+                                contentLayout="icon"
                                 className="clear-button"
                                 disabled={!canResetCurrentPostContent ||
                                     postStatus.sending ||
@@ -163,6 +164,7 @@
                             <Button
                                 variant="header"
                                 shape="square"
+                                contentLayout="icon"
                                 className="draft-list-button"
                                 onClick={(e) => {
                                     onShowDraftList();
@@ -192,6 +194,7 @@
                             <Button
                                 variant="header"
                                 shape="square"
+                                contentLayout="icon"
                                 className="draft-save-button"
                                 disabled={!canSaveCurrentDraft ||
                                     postStatus.sending ||

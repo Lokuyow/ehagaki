@@ -250,6 +250,7 @@
                         <Button
                             variant="primary"
                             shape="rounded"
+                            contentLayout="iconText"
                             className="sw-update-btn {isUpdating
                                 ? 'loading'
                                 : ''}"
@@ -288,6 +289,7 @@
                     <Button
                         variant="default"
                         shape="rounded"
+                        contentLayout="iconText"
                         className="lang-btn"
                         onClick={toggleLanguage}
                     >

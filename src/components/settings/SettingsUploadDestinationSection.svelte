@@ -317,6 +317,7 @@
             <Button
                 variant="default"
                 shape="rounded"
+                contentLayout="iconText"
                 className="upload-destination-manage-btn"
                 onClick={() => (expanded = !expanded)}
             >
@@ -575,12 +576,13 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
-    }
 
-    :global(.upload-destination-manage-btn) {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
+        :global(.upload-destination-manage-btn) {
+            :global(.svg-icon) {
+                width: 26px;
+                height: 26px;
+            }
+        }
     }
 
     .server-cog-icon {

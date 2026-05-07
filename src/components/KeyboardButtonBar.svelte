@@ -221,6 +221,7 @@
                             props}
                         <Button
                             variant="footer"
+                            contentLayout="icon"
                             className="image-button"
                             disabled={!hasStoredKey ||
                                 postStatus.sending ||
@@ -246,6 +247,7 @@
             </Tooltip.Root>
             <Button
                 variant="footer"
+                contentLayout="icon"
                 className="custom-emoji-button"
                 selected={customEmojiPickerOpen}
                 disabled={!hasStoredKey}
@@ -304,6 +306,7 @@
                         } = props}
                         <Button
                             variant="primary"
+                            contentLayout="icon"
                             className="post-button {isShowingLoader
                                 ? 'loading'
                                 : ''}"
@@ -374,6 +377,7 @@
                         <Button
                             variant="footer"
                             selected={contentWarningEnabled}
+                            contentLayout="icon"
                             onClick={(e) => {
                                 toggleContentWarning();
                                 if (typeof tooltipOnclick === "function") {
@@ -402,6 +406,7 @@
                             props}
                         <Button
                             variant="footer"
+                            contentLayout="icon"
                             selected={hashtagPinEnabled}
                             onClick={(e) => {
                                 toggleHashtagPin();
