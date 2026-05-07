@@ -3,6 +3,7 @@
     import { _ } from "svelte-i18n";
     import type { RxNostr } from "rx-nostr";
     import Button from "../Button.svelte";
+    import InfoPopoverButton from "../InfoPopoverButton.svelte";
     import { uploadDestinationStore } from "../../stores/uploadDestinationStore.svelte";
     import { authState } from "../../stores/authStore.svelte";
     import type {
@@ -525,6 +526,33 @@
                                   "settingsDialog.uploadDestinationBud03Publish",
                               ) || "BUD-03 へ publish"}
                     </Button>
+                    <InfoPopoverButton
+                        side="top"
+                        ariaLabel={$_(
+                            "settingsDialog.uploadDestinationBud03InfoLabel",
+                        ) || "BUD-03 の説明"}
+                    >
+                        <div class="bud03-popover">
+                            <p>
+                                {$_(
+                                    "settingsDialog.uploadDestinationBud03InfoScope",
+                                ) ||
+                                    "BUD-03 は Blossom のアップロード先だけを kind 10063 の server tag として保存します。NIP-96 と Custom HTTP は publish 対象外です。"}
+                            </p>
+                            <p>
+                                {$_(
+                                    "settingsDialog.uploadDestinationBud03InfoOrder",
+                                ) ||
+                                    "publish 時は有効な Blossom アップロード先をこの一覧の順番で保存し、先頭のアップロード先が優先されます。"}
+                            </p>
+                            <p>
+                                {$_(
+                                    "settingsDialog.uploadDestinationBud03InfoFetch",
+                                ) ||
+                                    "BUD-03 から取得すると、Blossom のアップロード先だけを取得結果で置き換えます。"}
+                            </p>
+                        </div>
+                    </InfoPopoverButton>
                 </div>
                 {#if destinationState.bud03Status}
                     <div class="test-result">
@@ -649,6 +677,7 @@
     .form-actions,
     .panel-actions {
         display: flex;
+        align-items: center;
         flex-wrap: wrap;
         gap: 6px;
     }
@@ -660,6 +689,18 @@
 
     .test-result.error {
         color: #c62828;
+    }
+
+    .bud03-popover {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        font-size: 0.875rem;
+        line-height: 1.5;
+    }
+
+    .bud03-popover p {
+        margin: 0;
     }
 
     label {
