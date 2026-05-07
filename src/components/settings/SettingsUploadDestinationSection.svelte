@@ -317,11 +317,17 @@
             <Button
                 variant="default"
                 shape="rounded"
+                className="upload-destination-manage-btn"
                 onClick={() => (expanded = !expanded)}
             >
-                {expanded
-                    ? $_("settingsDialog.uploadDestinationClose") || "閉じる"
-                    : $_("settingsDialog.uploadDestinationManage") || "管理"}
+                <div class="server-cog-icon svg-icon" aria-hidden="true"></div>
+                <span class="btn-text">
+                    {expanded
+                        ? $_("settingsDialog.uploadDestinationClose") ||
+                          "閉じる"
+                        : $_("settingsDialog.uploadDestinationManage") ||
+                          "管理"}
+                </span>
             </Button>
         </div>
     </div>
@@ -569,6 +575,16 @@
         display: flex;
         flex-direction: column;
         gap: 12px;
+    }
+
+    :global(.upload-destination-manage-btn) {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .server-cog-icon {
+        mask-image: url("/icons/server-solid-full.svg");
     }
 
     .upload-summary,
