@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { RecentCustomEmojiItem } from "../../lib/recentCustomEmoji";
-import { recentCustomEmojiStore } from "../../stores/recentCustomEmojiStore.svelte";
+import type { CustomEmojiUsageItem } from "../../lib/customEmojiUsage";
+import { customEmojiUsageStore } from "../../stores/customEmojiUsageStore.svelte";
 
-function createRecent(shortcode: string, lastUsedAt = 1000): RecentCustomEmojiItem {
+function createUsageItem(shortcode: string, lastUsedAt = 1000): CustomEmojiUsageItem {
     return {
         identityKey: `${shortcode}|https://example.com/${shortcode}.webp|`,
         shortcode,
@@ -14,44 +14,44 @@ function createRecent(shortcode: string, lastUsedAt = 1000): RecentCustomEmojiIt
     };
 }
 
-describe("recentCustomEmojiStore", () => {
+describe("customEmojiUsageStore", () => {
     beforeEach(() => {
-        recentCustomEmojiStore.reset();
+        customEmojiUsageStore.reset();
         vi.clearAllMocks();
     });
 
     it("loads recent custom emoji items for the current pubkey", async () => {
-        const items = [createRecent("blobcat")];
+        const items = [createUsageItem("blobcat")];
         const repository = {
-            getRecent: vi.fn().mockResolvedValue(items),
+            getUsageHistory: vi.fn().mockResolvedValue(items),
         };
 
-        await recentCustomEmojiStore.load({ pubkey: "pubkey", repository });
+        await customEmojiUsageStore.load({ pubkey: "pubkey", repository });
 
-        expect(repository.getRecent).toHaveBeenCalledWith("pubkey", 100);
-        expect(recentCustomEmojiStore.items).toEqual(items);
-        expect(recentCustomEmojiStore.loading).toBe(false);
+        expect(repository.getUsageHistory).toHaveBeenCalledWith("pubkey", 100);
+        expect(customEmojiUsageStore.items).toEqual(items);
+        expect(customEmojiUsageStore.loading).toBe(false);
     });
 
     it("clears items when pubkey is missing", async () => {
         const repository = {
-            getRecent: vi.fn().mockResolvedValue([createRecent("blobcat")]),
+            getUsageHistory: vi.fn().mockResolvedValue([createUsageItem("blobcat")]),
         };
-        await recentCustomEmojiStore.load({ pubkey: "pubkey", repository });
+        await customEmojiUsageStore.load({ pubkey: "pubkey", repository });
 
-        await recentCustomEmojiStore.load({ pubkey: null, repository });
+        await customEmojiUsageStore.load({ pubkey: null, repository });
 
-        expect(recentCustomEmojiStore.items).toEqual([]);
-        expect(recentCustomEmojiStore.loading).toBe(false);
+        expect(customEmojiUsageStore.items).toEqual([]);
+        expect(customEmojiUsageStore.loading).toBe(false);
     });
 
     it("records usage and replaces items from the repository result", async () => {
-        const items = [createRecent("party", 2000)];
+        const items = [createUsageItem("party", 2000)];
         const repository = {
             recordUse: vi.fn().mockResolvedValue(items),
         };
 
-        await recentCustomEmojiStore.recordUse({
+        await customEmojiUsageStore.recordUse({
             pubkey: "pubkey",
             emoji: {
                 shortcode: "party",
@@ -66,6 +66,6 @@ describe("recentCustomEmojiStore", () => {
             src: "https://example.com/party.webp",
             setAddress: "30030:pubkey:set",
         });
-        expect(recentCustomEmojiStore.items).toEqual(items);
+        expect(customEmojiUsageStore.items).toEqual(items);
     });
 });

@@ -2,7 +2,7 @@
 
 import type { Editor as TipTapEditor } from "@tiptap/core";
 import type { MediaGalleryItem } from "./media";
-import type { CustomEmojiSelection } from "../recentCustomEmoji";
+import type { CustomEmojiSelection } from "../customEmojiUsage";
 
 // Post and Editor types
 export interface PostStatus {

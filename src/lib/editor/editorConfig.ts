@@ -12,7 +12,7 @@ import { Video } from './videoExtension';
 import { CustomEmoji } from './customEmojiExtension';
 import UniqueID from './uniqueIdExtension';
 import { ContentTrackingExtension, MediaPasteExtension, ImageDragDropExtension, CustomEmojiDragDropExtension, SmartBackspaceExtension, ClipboardExtension, AndroidCompositionFix, HashtagSuggestion, CustomEmojiSuggestion, ToolbarCaretExtension } from '.';
-import type { CustomEmojiSelection } from '../recentCustomEmoji';
+import type { CustomEmojiSelection } from '../customEmojiUsage';
 
 const MEDIA_NODE_TYPES = new Set(['image', 'video', 'customEmoji']);
 const MEDIA_FOCUS_SELECTOR = '.node-image.is-node-focused, .node-video.is-node-focused, .custom-emoji-wrapper.is-node-focused';

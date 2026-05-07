@@ -4,11 +4,11 @@ import {
     normalizeEmojiShortcode,
     normalizeEmojiShortcodeForLookup,
 } from "./customEmoji";
-import type { RecentCustomEmojiRecord } from "./storage/ehagakiDb";
+import type { CustomEmojiUsageRecord } from "./storage/ehagakiDb";
 
-export const RECENT_CUSTOM_EMOJI_DISPLAY_ROWS = 2;
-export const MAX_RECENT_CUSTOM_EMOJI_HISTORY = 100;
-export const RECENT_CUSTOM_EMOJI_SCHEMA_VERSION = 1;
+export const CUSTOM_EMOJI_USAGE_DISPLAY_ROWS = 2;
+export const MAX_CUSTOM_EMOJI_USAGE_HISTORY = 100;
+export const CUSTOM_EMOJI_USAGE_SCHEMA_VERSION = 1;
 
 export interface CustomEmojiSelection {
     identityKey?: string;
@@ -17,7 +17,7 @@ export interface CustomEmojiSelection {
     setAddress?: string | null;
 }
 
-export interface RecentCustomEmojiItem extends CustomEmojiSelection {
+export interface CustomEmojiUsageItem extends CustomEmojiSelection {
     identityKey: string;
     shortcodeLower: string;
     setAddress: string | null;
@@ -33,7 +33,7 @@ function normalizeSetAddress(value: unknown): string | null {
     return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-export function createRecentCustomEmojiRecordId(params: {
+export function createCustomEmojiUsageRecordId(params: {
     pubkeyHex: string;
     shortcodeLower: string;
     src: string;
@@ -45,7 +45,7 @@ export function createRecentCustomEmojiRecordId(params: {
     ].map(encodeIdentityPart).join("|");
 }
 
-export function normalizeCustomEmojiSelection(value: CustomEmojiSelection): RecentCustomEmojiItem | null {
+export function normalizeCustomEmojiSelection(value: CustomEmojiSelection): CustomEmojiUsageItem | null {
     const shortcode = normalizeEmojiShortcode(value.shortcode);
     const shortcodeLower = normalizeEmojiShortcodeForLookup(shortcode);
     if (!shortcode || !shortcodeLower || !isValidCustomEmojiUrl(value.src)) {
@@ -70,16 +70,16 @@ export function normalizeCustomEmojiSelection(value: CustomEmojiSelection): Rece
     };
 }
 
-export function createRecentCustomEmojiRecord(params: {
+export function createCustomEmojiUsageRecord(params: {
     pubkeyHex: string;
     emoji: CustomEmojiSelection;
-    existing?: RecentCustomEmojiRecord | null;
+    existing?: CustomEmojiUsageRecord | null;
     now: number;
-}): RecentCustomEmojiRecord | null {
+}): CustomEmojiUsageRecord | null {
     const normalized = normalizeCustomEmojiSelection(params.emoji);
     if (!params.pubkeyHex || !normalized) return null;
 
-    const id = createRecentCustomEmojiRecordId({
+    const id = createCustomEmojiUsageRecordId({
         pubkeyHex: params.pubkeyHex,
         shortcodeLower: normalized.shortcodeLower,
         src: normalized.src,
@@ -96,11 +96,11 @@ export function createRecentCustomEmojiRecord(params: {
         count: (params.existing?.count ?? 0) + 1,
         createdAt: params.existing?.createdAt ?? params.now,
         updatedAt: params.now,
-        schemaVersion: RECENT_CUSTOM_EMOJI_SCHEMA_VERSION,
+        schemaVersion: CUSTOM_EMOJI_USAGE_SCHEMA_VERSION,
     };
 }
 
-export function toRecentCustomEmojiItem(record: RecentCustomEmojiRecord): RecentCustomEmojiItem {
+export function toCustomEmojiUsageItem(record: CustomEmojiUsageRecord): CustomEmojiUsageItem {
     return {
         identityKey: createCustomEmojiIdentityKey({
             shortcodeLower: record.shortcodeLower,
@@ -116,26 +116,26 @@ export function toRecentCustomEmojiItem(record: RecentCustomEmojiRecord): Recent
     };
 }
 
-export function sortRecentCustomEmojiRecords(
-    left: RecentCustomEmojiRecord,
-    right: RecentCustomEmojiRecord,
+export function sortCustomEmojiUsageByRecency(
+    left: CustomEmojiUsageRecord,
+    right: CustomEmojiUsageRecord,
 ): number {
     if (right.lastUsedAt !== left.lastUsedAt) return right.lastUsedAt - left.lastUsedAt;
     return left.shortcodeLower.localeCompare(right.shortcodeLower);
 }
 
-export function sortFrequentCustomEmojiItems(
-    left: RecentCustomEmojiItem,
-    right: RecentCustomEmojiItem,
+export function sortCustomEmojiUsageByFrequency(
+    left: CustomEmojiUsageItem,
+    right: CustomEmojiUsageItem,
 ): number {
     if (right.count !== left.count) return right.count - left.count;
     if (right.lastUsedAt !== left.lastUsedAt) return right.lastUsedAt - left.lastUsedAt;
     return left.shortcodeLower.localeCompare(right.shortcodeLower);
 }
 
-export function getRecentCustomEmojiDisplayLimit(
+export function getCustomEmojiUsageDisplayLimit(
     columnCount: number,
-    rowCount = RECENT_CUSTOM_EMOJI_DISPLAY_ROWS,
+    rowCount = CUSTOM_EMOJI_USAGE_DISPLAY_ROWS,
 ): number {
     return Math.max(0, Math.floor(columnCount) * Math.max(0, Math.floor(rowCount)));
 }

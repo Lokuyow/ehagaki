@@ -16,12 +16,12 @@
     } from "../lib/customEmoji";
     import type {
         CustomEmojiSelection,
-        RecentCustomEmojiItem,
-    } from "../lib/recentCustomEmoji";
+        CustomEmojiUsageItem,
+    } from "../lib/customEmojiUsage";
     import {
-        getRecentCustomEmojiDisplayLimit,
-        sortFrequentCustomEmojiItems,
-    } from "../lib/recentCustomEmoji";
+        getCustomEmojiUsageDisplayLimit,
+        sortCustomEmojiUsageByFrequency,
+    } from "../lib/customEmojiUsage";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import {
@@ -37,7 +37,7 @@
         pubkey?: string | null;
         open?: boolean;
         maxHeight?: number | null;
-        recentItems?: RecentCustomEmojiItem[];
+        customEmojiUsageItems?: CustomEmojiUsageItem[];
         onSelect?: (emoji: CustomEmojiSelection) => void;
         onMoveCaretLeft?: () => void;
         onMoveCaretRight?: () => void;
@@ -50,7 +50,7 @@
         pubkey,
         open = false,
         maxHeight = null,
-        recentItems = [],
+        customEmojiUsageItems = [],
         onSelect,
         onMoveCaretLeft,
         onMoveCaretRight,
@@ -66,7 +66,7 @@
     let renderItemsFrameId: number | null = null;
     let layoutFrameId: number | null = null;
     let pickerElement: HTMLDivElement | null = null;
-    let recentSectionHeight = $state(0);
+    let usageSectionsHeight = $state(0);
     let lastLoadRxNostr: RxNostr | null | undefined = undefined;
     let lastLoadPubkey: string | null | undefined = undefined;
 
@@ -77,19 +77,19 @@
         if (!query) return items;
         return items.filter((item) => item.shortcodeLower.includes(query));
     });
-    let showRecentItems = $derived(
-        search.trim().length === 0 && recentItems.length > 0,
+    let showUsageSections = $derived(
+        search.trim().length === 0 && customEmojiUsageItems.length > 0,
     );
     let columnCount = $derived(
         Math.max(1, Math.floor(pickerWidth / CUSTOM_EMOJI_GRID_CELL_SIZE)),
     );
     let recentDisplayLimit = $derived(
-        getRecentCustomEmojiDisplayLimit(columnCount),
+        getCustomEmojiUsageDisplayLimit(columnCount),
     );
-    let visibleRecentItems = $derived(recentItems.slice(0, recentDisplayLimit));
+    let visibleRecentItems = $derived(customEmojiUsageItems.slice(0, recentDisplayLimit));
     let visibleFrequentItems = $derived(
-        [...recentItems]
-            .sort(sortFrequentCustomEmojiItems)
+        [...customEmojiUsageItems]
+            .sort(sortCustomEmojiUsageByFrequency)
             .slice(0, recentDisplayLimit),
     );
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
@@ -106,7 +106,7 @@
             Math.min(
                 Math.max(0, totalRowCount - visibleRowCount),
                 Math.floor(
-                    Math.max(0, scrollTop - recentSectionHeight) /
+                    Math.max(0, scrollTop - usageSectionsHeight) /
                         CUSTOM_EMOJI_GRID_CELL_SIZE,
                 ) - VIRTUAL_OVERSCAN_ROWS,
             ),
@@ -361,29 +361,29 @@
                                 customClass="custom-emoji-loading"
                             />
                         </Command.Loading>
-                    {:else if filteredItems.length === 0 && !showRecentItems}
+                    {:else if filteredItems.length === 0 && !showUsageSections}
                         <Command.Empty class="custom-emoji-message">
                             {$_("customEmoji.empty")}
                         </Command.Empty>
                     {:else}
-                        {#if showRecentItems}
-                            <div bind:clientHeight={recentSectionHeight}>
+                        {#if showUsageSections}
+                            <div bind:clientHeight={usageSectionsHeight}>
                                 <section
-                                    class="recent-custom-emoji-section"
+                                    class="custom-emoji-usage-section"
                                     aria-label={$_("customEmoji.recent")}
                                 >
-                                    <div class="recent-custom-emoji-title">
+                                    <div class="custom-emoji-usage-title">
                                         {$_("customEmoji.recent")}
                                     </div>
                                     <div
-                                        class="recent-custom-emoji-grid"
+                                        class="custom-emoji-usage-grid"
                                         style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
                                     >
                                         {#each visibleRecentItems as emoji (emoji.identityKey)}
                                             <Command.Item
                                                 value={`recent:${emoji.identityKey}`}
                                                 keywords={[emoji.shortcode]}
-                                                class="emoji-item recent-emoji-item"
+                                                class="emoji-item custom-emoji-usage-item"
                                                 onSelect={() => selectEmoji(emoji)}
                                                 onmousedown={preventKeyboardFocusChange}
                                                 ontouchstart={preserveKeyboardForScrollableTouch}
@@ -402,21 +402,21 @@
                                     </div>
                                 </section>
                                 <section
-                                    class="recent-custom-emoji-section"
+                                    class="custom-emoji-usage-section"
                                     aria-label={$_("customEmoji.frequent")}
                                 >
-                                    <div class="recent-custom-emoji-title">
+                                    <div class="custom-emoji-usage-title">
                                         {$_("customEmoji.frequent")}
                                     </div>
                                     <div
-                                        class="recent-custom-emoji-grid"
+                                        class="custom-emoji-usage-grid"
                                         style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
                                     >
                                         {#each visibleFrequentItems as emoji (emoji.identityKey)}
                                             <Command.Item
                                                 value={`frequent:${emoji.identityKey}`}
                                                 keywords={[emoji.shortcode]}
-                                                class="emoji-item recent-emoji-item"
+                                                class="emoji-item custom-emoji-usage-item"
                                                 onSelect={() => selectEmoji(emoji)}
                                                 onmousedown={preventKeyboardFocusChange}
                                                 ontouchstart={preserveKeyboardForScrollableTouch}
@@ -436,7 +436,7 @@
                                 </section>
                             </div>
                         {:else}
-                            <div bind:clientHeight={recentSectionHeight}></div>
+                            <div bind:clientHeight={usageSectionsHeight}></div>
                         {/if}
                         <div
                             class="emoji-virtual-list"
@@ -716,19 +716,19 @@
         justify-items: center;
     }
 
-    .recent-custom-emoji-section {
+    .custom-emoji-usage-section {
         padding: 4px;
         border-bottom: 1px solid var(--border);
     }
 
-    .recent-custom-emoji-title {
+    .custom-emoji-usage-title {
         padding: 0 6px 2px;
         color: var(--text-muted, var(--text));
         font-size: 0.78rem;
         font-weight: 700;
     }
 
-    .recent-custom-emoji-grid {
+    .custom-emoji-usage-grid {
         display: grid;
         grid-auto-rows: 40px;
         justify-items: center;

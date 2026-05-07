@@ -2,33 +2,33 @@ import "fake-indexeddb/auto";
 import Dexie from "dexie";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-    createRecentCustomEmojiRecord,
-    createRecentCustomEmojiRecordId,
-    getRecentCustomEmojiDisplayLimit,
-    MAX_RECENT_CUSTOM_EMOJI_HISTORY,
-    sortFrequentCustomEmojiItems,
-    type RecentCustomEmojiItem,
-} from "../../lib/recentCustomEmoji";
+    createCustomEmojiUsageRecord,
+    createCustomEmojiUsageRecordId,
+    getCustomEmojiUsageDisplayLimit,
+    MAX_CUSTOM_EMOJI_USAGE_HISTORY,
+    sortCustomEmojiUsageByFrequency,
+    type CustomEmojiUsageItem,
+} from "../../lib/customEmojiUsage";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
-import { DexieRecentCustomEmojisRepository } from "../../lib/storage/recentCustomEmojisRepository";
+import { DexieCustomEmojiUsageRepository } from "../../lib/storage/customEmojiUsageRepository";
 
 const testDbNames = new Set<string>();
 
 function createTestDb(): EHagakiDB {
-    const name = `${EHAGAKI_DB_NAME}-recent-custom-emoji-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const name = `${EHAGAKI_DB_NAME}-custom-emoji-usage-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     testDbNames.add(name);
     return new EHagakiDB(name);
 }
 
-describe("recentCustomEmoji", () => {
+describe("customEmojiUsage", () => {
     let db: EHagakiDB;
     let nowValue: number;
-    let repository: DexieRecentCustomEmojisRepository;
+    let repository: DexieCustomEmojiUsageRepository;
 
     beforeEach(() => {
         db = createTestDb();
         nowValue = 1000;
-        repository = new DexieRecentCustomEmojisRepository(db, () => nowValue);
+        repository = new DexieCustomEmojiUsageRepository(db, () => nowValue);
     });
 
     afterEach(async () => {
@@ -40,7 +40,7 @@ describe("recentCustomEmoji", () => {
     });
 
     it("uses pubkey + shortcodeLower + src as the recent record identity", () => {
-        expect(createRecentCustomEmojiRecordId({
+        expect(createCustomEmojiUsageRecordId({
             pubkeyHex: "pubkey",
             shortcodeLower: "blobcat",
             src: "https://example.com/blobcat.webp",
@@ -48,7 +48,7 @@ describe("recentCustomEmoji", () => {
     });
 
     it("creates normalized records and preserves setAddress", () => {
-        expect(createRecentCustomEmojiRecord({
+        expect(createCustomEmojiUsageRecord({
             pubkeyHex: "pubkey",
             emoji: {
                 shortcode: ":BlobCat:",
@@ -81,7 +81,7 @@ describe("recentCustomEmoji", () => {
             setAddress: "30030:pubkey:new",
         });
 
-        await expect(repository.getRecent("pubkey")).resolves.toEqual([
+        await expect(repository.getUsageHistory("pubkey")).resolves.toEqual([
             expect.objectContaining({
                 shortcode: "blobcat",
                 src: "https://example.com/blobcat.webp",
@@ -103,20 +103,20 @@ describe("recentCustomEmoji", () => {
             src: "https://example.com/b.webp",
         });
 
-        await expect(repository.getRecent("pubkey")).resolves.toMatchObject([
+        await expect(repository.getUsageHistory("pubkey")).resolves.toMatchObject([
             { shortcode: "blobcat", src: "https://example.com/b.webp", count: 1 },
             { shortcode: "blobcat", src: "https://example.com/a.webp", count: 1 },
         ]);
     });
 
     it("calculates the display limit from the current column count as two rows", () => {
-        expect(getRecentCustomEmojiDisplayLimit(4)).toBe(8);
-        expect(getRecentCustomEmojiDisplayLimit(20)).toBe(40);
-        expect(getRecentCustomEmojiDisplayLimit(20.8)).toBe(40);
+        expect(getCustomEmojiUsageDisplayLimit(4)).toBe(8);
+        expect(getCustomEmojiUsageDisplayLimit(20)).toBe(40);
+        expect(getCustomEmojiUsageDisplayLimit(20.8)).toBe(40);
     });
 
     it("sorts frequent display items by count and then lastUsedAt", () => {
-        const items: RecentCustomEmojiItem[] = [
+        const items: CustomEmojiUsageItem[] = [
             {
                 identityKey: "newest",
                 shortcode: "newest",
@@ -146,7 +146,7 @@ describe("recentCustomEmoji", () => {
             },
         ];
 
-        expect(items.sort(sortFrequentCustomEmojiItems).map((item) => item.shortcode)).toEqual([
+        expect(items.sort(sortCustomEmojiUsageByFrequency).map((item) => item.shortcode)).toEqual([
             "often",
             "newest",
             "newer",
@@ -174,7 +174,7 @@ describe("recentCustomEmoji", () => {
             src: "https://example.com/newest.webp",
         });
 
-        await expect(repository.getRecent("pubkey")).resolves.toMatchObject([
+        await expect(repository.getUsageHistory("pubkey")).resolves.toMatchObject([
             { shortcode: "newest", count: 1 },
             { shortcode: "often", count: 2 },
             { shortcode: "newer", count: 1 },
@@ -182,7 +182,7 @@ describe("recentCustomEmoji", () => {
     });
 
     it("returns same-count items in lastUsedAt descending order up to the history limit by default", async () => {
-        for (let index = 1; index <= MAX_RECENT_CUSTOM_EMOJI_HISTORY + 1; index += 1) {
+        for (let index = 1; index <= MAX_CUSTOM_EMOJI_USAGE_HISTORY + 1; index += 1) {
             nowValue = index * 1000;
             await repository.recordUse("pubkey", {
                 shortcode: `emoji${index}`,
@@ -190,14 +190,14 @@ describe("recentCustomEmoji", () => {
             });
         }
 
-        const recent = await repository.getRecent("pubkey");
-        expect(recent).toHaveLength(MAX_RECENT_CUSTOM_EMOJI_HISTORY);
+        const recent = await repository.getUsageHistory("pubkey");
+        expect(recent).toHaveLength(MAX_CUSTOM_EMOJI_USAGE_HISTORY);
         expect(recent[0].shortcode).toBe("emoji101");
         expect(recent.at(-1)?.shortcode).toBe("emoji2");
     });
 
     it("trims stored history to the maximum history size", async () => {
-        for (let index = 1; index <= MAX_RECENT_CUSTOM_EMOJI_HISTORY + 1; index += 1) {
+        for (let index = 1; index <= MAX_CUSTOM_EMOJI_USAGE_HISTORY + 1; index += 1) {
             nowValue = index * 1000;
             await repository.recordUse("pubkey", {
                 shortcode: `emoji${index}`,
@@ -205,8 +205,8 @@ describe("recentCustomEmoji", () => {
             });
         }
 
-        const records = await db.recentCustomEmojis.where("pubkeyHex").equals("pubkey").toArray();
-        expect(records).toHaveLength(MAX_RECENT_CUSTOM_EMOJI_HISTORY);
+        const records = await db.customEmojiUsage.where("pubkeyHex").equals("pubkey").toArray();
+        expect(records).toHaveLength(MAX_CUSTOM_EMOJI_USAGE_HISTORY);
         expect(records.map((record) => record.shortcode)).not.toContain("emoji1");
     });
 });

@@ -87,7 +87,7 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'updatedAt', keyPath: 'updatedAt' },
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
     ]);
-    createObjectStoreIfMissing(db, 'recentCustomEmojis', 'id', [
+    createObjectStoreIfMissing(db, 'customEmojiUsage', 'id', [
         { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
         { name: 'shortcodeLower', keyPath: 'shortcodeLower' },
         { name: 'src', keyPath: 'src' },

@@ -30,7 +30,7 @@
   } from "../lib/editor/editorDomActions.svelte";
   import { generateMediaItemId } from "../lib/utils/appUtils";
   import type { CustomEmojiAttrs } from "../lib/editor";
-  import type { CustomEmojiSelection } from "../lib/recentCustomEmoji";
+  import type { CustomEmojiSelection } from "../lib/customEmojiUsage";
   import { containsSecretKey } from "../lib/utils/nostrUtils";
   import {
     collectFullscreenMediaItems,

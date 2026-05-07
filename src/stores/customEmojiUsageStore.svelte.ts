@@ -1,21 +1,21 @@
 import {
-    MAX_RECENT_CUSTOM_EMOJI_HISTORY,
+    MAX_CUSTOM_EMOJI_USAGE_HISTORY,
     type CustomEmojiSelection,
-    type RecentCustomEmojiItem,
-} from "../lib/recentCustomEmoji";
-import type { RecentCustomEmojisRepository } from "../lib/storage/recentCustomEmojisRepository";
+    type CustomEmojiUsageItem,
+} from "../lib/customEmojiUsage";
+import type { CustomEmojiUsageRepository } from "../lib/storage/customEmojiUsageRepository";
 
-let items = $state<RecentCustomEmojiItem[]>([]);
+let items = $state<CustomEmojiUsageItem[]>([]);
 let loading = $state(false);
 let error = $state<string | null>(null);
 let activePubkey: string | null = null;
 
-async function getDefaultRepository(): Promise<RecentCustomEmojisRepository> {
-    const { recentCustomEmojisRepository } = await import("../lib/storage/recentCustomEmojisRepository");
-    return recentCustomEmojisRepository;
+async function getDefaultRepository(): Promise<CustomEmojiUsageRepository> {
+    const { customEmojiUsageRepository } = await import("../lib/storage/customEmojiUsageRepository");
+    return customEmojiUsageRepository;
 }
 
-export const recentCustomEmojiStore = {
+export const customEmojiUsageStore = {
     get items() {
         return items;
     },
@@ -29,7 +29,7 @@ export const recentCustomEmojiStore = {
     async load(params: {
         pubkey?: string | null;
         limit?: number;
-        repository?: Pick<RecentCustomEmojisRepository, "getRecent">;
+        repository?: Pick<CustomEmojiUsageRepository, "getUsageHistory">;
     }): Promise<void> {
         if (!params.pubkey) {
             items = [];
@@ -46,16 +46,16 @@ export const recentCustomEmojiStore = {
 
         try {
             const repository = params.repository ?? await getDefaultRepository();
-            const nextItems = await repository.getRecent(
+            const nextItems = await repository.getUsageHistory(
                 pubkey,
-                params.limit ?? MAX_RECENT_CUSTOM_EMOJI_HISTORY,
+                params.limit ?? MAX_CUSTOM_EMOJI_USAGE_HISTORY,
             );
             if (activePubkey === pubkey) {
                 items = nextItems;
             }
         } catch {
             if (activePubkey === pubkey) {
-                error = "customEmoji.recent_load_failed";
+                error = "customEmoji.usage_load_failed";
                 items = [];
             }
         } finally {
@@ -68,7 +68,7 @@ export const recentCustomEmojiStore = {
     async recordUse(params: {
         pubkey?: string | null;
         emoji: CustomEmojiSelection;
-        repository?: Pick<RecentCustomEmojisRepository, "recordUse">;
+        repository?: Pick<CustomEmojiUsageRepository, "recordUse">;
     }): Promise<void> {
         if (!params.pubkey) return;
 
@@ -84,7 +84,7 @@ export const recentCustomEmojiStore = {
             }
         } catch {
             if (activePubkey === pubkey) {
-                error = "customEmoji.recent_save_failed";
+                error = "customEmoji.usage_save_failed";
             }
         }
     },

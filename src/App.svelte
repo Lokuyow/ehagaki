@@ -153,9 +153,9 @@
   } from "./lib/appAuthUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
-  import type { CustomEmojiSelection } from "./lib/recentCustomEmoji";
+  import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
-  import { recentCustomEmojiStore } from "./stores/recentCustomEmojiStore.svelte";
+  import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
   type PostComponent =
     typeof import("./components/PostComponent.svelte").default;
@@ -1036,7 +1036,7 @@
     }
 
     void customEmojiStore.prefetchCache({ pubkey });
-    void recentCustomEmojiStore.load({ pubkey });
+    void customEmojiUsageStore.load({ pubkey });
   });
 
   $effect(() => {
@@ -1392,7 +1392,7 @@
     const pubkey = authState.value?.pubkey;
     if (!pubkey) return;
 
-    void recentCustomEmojiStore.recordUse({ pubkey, emoji });
+    void customEmojiUsageStore.recordUse({ pubkey, emoji });
   }
 
   function handleCustomEmojiSelect(emoji: CustomEmojiSelection): void {
@@ -1474,7 +1474,7 @@
                       open={customEmojiPickerOpen}
                       maxHeight={customEmojiPickerMaxHeight}
                       onSelect={handleCustomEmojiSelect}
-                      recentItems={recentCustomEmojiStore.items}
+                      customEmojiUsageItems={customEmojiUsageStore.items}
                       onMoveCaretLeft={() =>
                         postComponentRef?.moveCaretLeft?.()}
                       onMoveCaretRight={() =>

@@ -7,7 +7,7 @@ import {
     normalizeEmojiShortcode,
     type CustomEmojiItem,
 } from '../customEmoji';
-import type { CustomEmojiSelection } from '../recentCustomEmoji';
+import type { CustomEmojiSelection } from '../customEmojiUsage';
 import { customEmojiStore } from '../../stores/customEmojiStore.svelte';
 import { createSuggestionRenderer } from './suggestionRenderer';
 

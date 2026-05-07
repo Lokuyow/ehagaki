@@ -60,7 +60,7 @@ describe('swIndexedDbSchema', () => {
             'useCount',
             'useCount',
         );
-        expect(createdStores.get('recentCustomEmojis')?.createIndex).toHaveBeenCalledWith(
+        expect(createdStores.get('customEmojiUsage')?.createIndex).toHaveBeenCalledWith(
             '[pubkeyHex+shortcodeLower+src]',
             ['pubkeyHex', 'shortcodeLower', 'src'],
         );
