@@ -88,7 +88,7 @@
     "info_header_pixels": "Maximum Pixels",
     "info_header_quality": "Quality",
     "image_quality_setting": "Image Quality",
-    "image_short_edge_protection_note": "For very tall or wide images, eHagaki adjusts the short edge to at least {pixels}px to keep text readable. The megapixel limit is {megapixels} MP and still takes priority.",
+    "image_short_edge_protection_note": "For images where the long edge is at least {aspectRatio}x the short edge, eHagaki adjusts the short edge to at least {pixels}px to keep text readable. The megapixel limit is {megapixels} MP and still takes priority.",
     "video_quality_setting": "Video Quality",
     "quality_lossless": "Lossless",
     "quality_high": "Hi",

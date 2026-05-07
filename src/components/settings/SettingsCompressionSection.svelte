@@ -94,6 +94,7 @@
                 <p class="popover-note">
                     {$_("settingsDialog.image_short_edge_protection_note", {
                         values: {
+                            aspectRatio: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.aspectRatioThreshold,
                             pixels: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.minShortEdge,
                             megapixels: DEFAULT_EXTREME_ASPECT_COMPRESSION_SETTINGS.maxMegapixels,
                         },
