@@ -742,7 +742,6 @@
     flex-direction: column;
     align-items: stretch;
     overflow: visible;
-    transition: flex-basis 0.25s ease-out;
   }
 
   .upload-error {
