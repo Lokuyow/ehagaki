@@ -200,6 +200,7 @@
     "search_label": "Search custom emoji",
     "search_placeholder": "Search emoji",
     "recent": "Recently used custom emoji",
+    "frequent": "Frequently used custom emoji",
     "loading": "Loading emoji...",
     "empty": "No emoji",
     "resize": "Resize emoji picker",

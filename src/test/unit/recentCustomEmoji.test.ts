@@ -6,6 +6,8 @@ import {
     createRecentCustomEmojiRecordId,
     getRecentCustomEmojiDisplayLimit,
     MAX_RECENT_CUSTOM_EMOJI_HISTORY,
+    sortFrequentCustomEmojiItems,
+    type RecentCustomEmojiItem,
 } from "../../lib/recentCustomEmoji";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexieRecentCustomEmojisRepository } from "../../lib/storage/recentCustomEmojisRepository";
@@ -113,7 +115,73 @@ describe("recentCustomEmoji", () => {
         expect(getRecentCustomEmojiDisplayLimit(20.8)).toBe(40);
     });
 
-    it("returns recent items in lastUsedAt descending order up to the history limit by default", async () => {
+    it("sorts frequent display items by count and then lastUsedAt", () => {
+        const items: RecentCustomEmojiItem[] = [
+            {
+                identityKey: "newest",
+                shortcode: "newest",
+                shortcodeLower: "newest",
+                src: "https://example.com/newest.webp",
+                setAddress: null,
+                lastUsedAt: 4000,
+                count: 1,
+            },
+            {
+                identityKey: "often",
+                shortcode: "often",
+                shortcodeLower: "often",
+                src: "https://example.com/often.webp",
+                setAddress: null,
+                lastUsedAt: 3000,
+                count: 2,
+            },
+            {
+                identityKey: "newer",
+                shortcode: "newer",
+                shortcodeLower: "newer",
+                src: "https://example.com/newer.webp",
+                setAddress: null,
+                lastUsedAt: 2000,
+                count: 1,
+            },
+        ];
+
+        expect(items.sort(sortFrequentCustomEmojiItems).map((item) => item.shortcode)).toEqual([
+            "often",
+            "newest",
+            "newer",
+        ]);
+    });
+
+    it("returns recent items in lastUsedAt order", async () => {
+        await repository.recordUse("pubkey", {
+            shortcode: "often",
+            src: "https://example.com/often.webp",
+        });
+        nowValue = 2000;
+        await repository.recordUse("pubkey", {
+            shortcode: "newer",
+            src: "https://example.com/newer.webp",
+        });
+        nowValue = 3000;
+        await repository.recordUse("pubkey", {
+            shortcode: "often",
+            src: "https://example.com/often.webp",
+        });
+        nowValue = 4000;
+        await repository.recordUse("pubkey", {
+            shortcode: "newest",
+            src: "https://example.com/newest.webp",
+        });
+
+        await expect(repository.getRecent("pubkey")).resolves.toMatchObject([
+            { shortcode: "newest", count: 1 },
+            { shortcode: "often", count: 2 },
+            { shortcode: "newer", count: 1 },
+        ]);
+    });
+
+    it("returns same-count items in lastUsedAt descending order up to the history limit by default", async () => {
         for (let index = 1; index <= MAX_RECENT_CUSTOM_EMOJI_HISTORY + 1; index += 1) {
             nowValue = index * 1000;
             await repository.recordUse("pubkey", {

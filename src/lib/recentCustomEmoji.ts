@@ -124,6 +124,15 @@ export function sortRecentCustomEmojiRecords(
     return left.shortcodeLower.localeCompare(right.shortcodeLower);
 }
 
+export function sortFrequentCustomEmojiItems(
+    left: RecentCustomEmojiItem,
+    right: RecentCustomEmojiItem,
+): number {
+    if (right.count !== left.count) return right.count - left.count;
+    if (right.lastUsedAt !== left.lastUsedAt) return right.lastUsedAt - left.lastUsedAt;
+    return left.shortcodeLower.localeCompare(right.shortcodeLower);
+}
+
 export function getRecentCustomEmojiDisplayLimit(
     columnCount: number,
     rowCount = RECENT_CUSTOM_EMOJI_DISPLAY_ROWS,

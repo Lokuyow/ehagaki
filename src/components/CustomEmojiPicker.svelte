@@ -18,7 +18,10 @@
         CustomEmojiSelection,
         RecentCustomEmojiItem,
     } from "../lib/recentCustomEmoji";
-    import { getRecentCustomEmojiDisplayLimit } from "../lib/recentCustomEmoji";
+    import {
+        getRecentCustomEmojiDisplayLimit,
+        sortFrequentCustomEmojiItems,
+    } from "../lib/recentCustomEmoji";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { customEmojiStore } from "../stores/customEmojiStore.svelte";
     import {
@@ -84,6 +87,11 @@
         getRecentCustomEmojiDisplayLimit(columnCount),
     );
     let visibleRecentItems = $derived(recentItems.slice(0, recentDisplayLimit));
+    let visibleFrequentItems = $derived(
+        [...recentItems]
+            .sort(sortFrequentCustomEmojiItems)
+            .slice(0, recentDisplayLimit),
+    );
     let totalRowCount = $derived(Math.ceil(filteredItems.length / columnCount));
     let effectivePickerHeight = $derived(
         Math.max(CUSTOM_EMOJI_PICKER_MIN_HEIGHT, pickerHeight),
@@ -359,40 +367,74 @@
                         </Command.Empty>
                     {:else}
                         {#if showRecentItems}
-                            <section
-                                class="recent-custom-emoji-section"
-                                bind:clientHeight={recentSectionHeight}
-                                aria-label={$_("customEmoji.recent")}
-                            >
-                                <div class="recent-custom-emoji-title">
-                                    {$_("customEmoji.recent")}
-                                </div>
-                                <div
-                                    class="recent-custom-emoji-grid"
-                                    style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                            <div bind:clientHeight={recentSectionHeight}>
+                                <section
+                                    class="recent-custom-emoji-section"
+                                    aria-label={$_("customEmoji.recent")}
                                 >
-                                    {#each visibleRecentItems as emoji (emoji.identityKey)}
-                                        <Command.Item
-                                            value={`recent:${emoji.identityKey}`}
-                                            keywords={[emoji.shortcode]}
-                                            class="emoji-item recent-emoji-item"
-                                            onSelect={() => selectEmoji(emoji)}
-                                            onmousedown={preventKeyboardFocusChange}
-                                            ontouchstart={preserveKeyboardForScrollableTouch}
-                                        >
-                                            <img
-                                                src={emoji.src}
-                                                alt={`:${emoji.shortcode}:`}
-                                                title={`:${emoji.shortcode}:`}
-                                                class="emoji-image"
-                                                draggable="false"
-                                                loading="lazy"
-                                                decoding="async"
-                                            />
-                                        </Command.Item>
-                                    {/each}
-                                </div>
-                            </section>
+                                    <div class="recent-custom-emoji-title">
+                                        {$_("customEmoji.recent")}
+                                    </div>
+                                    <div
+                                        class="recent-custom-emoji-grid"
+                                        style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                                    >
+                                        {#each visibleRecentItems as emoji (emoji.identityKey)}
+                                            <Command.Item
+                                                value={`recent:${emoji.identityKey}`}
+                                                keywords={[emoji.shortcode]}
+                                                class="emoji-item recent-emoji-item"
+                                                onSelect={() => selectEmoji(emoji)}
+                                                onmousedown={preventKeyboardFocusChange}
+                                                ontouchstart={preserveKeyboardForScrollableTouch}
+                                            >
+                                                <img
+                                                    src={emoji.src}
+                                                    alt={`:${emoji.shortcode}:`}
+                                                    title={`:${emoji.shortcode}:`}
+                                                    class="emoji-image"
+                                                    draggable="false"
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                />
+                                            </Command.Item>
+                                        {/each}
+                                    </div>
+                                </section>
+                                <section
+                                    class="recent-custom-emoji-section"
+                                    aria-label={$_("customEmoji.frequent")}
+                                >
+                                    <div class="recent-custom-emoji-title">
+                                        {$_("customEmoji.frequent")}
+                                    </div>
+                                    <div
+                                        class="recent-custom-emoji-grid"
+                                        style={`grid-template-columns: repeat(${columnCount}, minmax(0, 1fr));`}
+                                    >
+                                        {#each visibleFrequentItems as emoji (emoji.identityKey)}
+                                            <Command.Item
+                                                value={`frequent:${emoji.identityKey}`}
+                                                keywords={[emoji.shortcode]}
+                                                class="emoji-item recent-emoji-item"
+                                                onSelect={() => selectEmoji(emoji)}
+                                                onmousedown={preventKeyboardFocusChange}
+                                                ontouchstart={preserveKeyboardForScrollableTouch}
+                                            >
+                                                <img
+                                                    src={emoji.src}
+                                                    alt={`:${emoji.shortcode}:`}
+                                                    title={`:${emoji.shortcode}:`}
+                                                    class="emoji-image"
+                                                    draggable="false"
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                />
+                                            </Command.Item>
+                                        {/each}
+                                    </div>
+                                </section>
+                            </div>
                         {:else}
                             <div bind:clientHeight={recentSectionHeight}></div>
                         {/if}
