@@ -1073,9 +1073,9 @@
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-rows: auto auto;
         align-items: center;
-        gap: 8px;
+        gap: 6px;
         border-bottom: 1px solid var(--border-hr);
-        padding: 12px;
+        padding: 8px 12px;
     }
 
     .post-history-item:last-child {
@@ -1175,8 +1175,8 @@
     }
 
     :global(.copy-nevent-button) {
-        width: 44px;
-        min-height: 44px;
+        width: 40px;
+        min-height: 40px;
         --btn-bg: var(--dialog);
     }
 
