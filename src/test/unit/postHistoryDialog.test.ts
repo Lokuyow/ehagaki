@@ -1023,6 +1023,42 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('ページ送り後に投稿履歴のスクロール位置を先頭に戻す', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(60);
+        repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => Promise.resolve(
+            page === 1
+                ? [createRecord({ eventId: 'page-1', content: '1ページ目' })]
+                : [createRecord({ eventId: 'page-2', content: '2ページ目' })],
+        ));
+
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        let postHistoryContainer: HTMLDivElement | null = null;
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await waitFor(() => {
+            postHistoryContainer = document.querySelector('.post-history-container') as HTMLDivElement;
+            expect(postHistoryContainer).toBeTruthy();
+            expect(nextButton).toHaveProperty('disabled', false);
+            expect(screen.getByText('1 / 2 ページ')).toBeTruthy();
+        });
+
+        postHistoryContainer!.scrollTop = 123;
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+            expect(postHistoryContainer!.scrollTop).toBe(0);
+        });
+    });
+
     it('次ページに必要な件数が足りない場合は until 付きで古い投稿を追加取得する', async () => {
         repositoryMock.countForPubkey
             .mockResolvedValueOnce(50)

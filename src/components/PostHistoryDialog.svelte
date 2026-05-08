@@ -81,6 +81,7 @@
     >("idle");
     let hasMoreRemote = $state(false);
     let nextUntil = $state<number | null>(null);
+    let historyContainer: HTMLDivElement | null = null;
 
     let isSearchMode = $derived(searchQuery.length > 0);
     let posts = $derived(isSearchMode ? searchPosts : loadedPosts);
@@ -661,6 +662,13 @@
         );
     }
 
+    function resetHistoryScrollPosition(): void {
+        if (!historyContainer) {
+            return;
+        }
+        historyContainer.scrollTop = 0;
+    }
+
     function handlePreviousPage(): void {
         if (!canGoPrevious) {
             return;
@@ -668,10 +676,12 @@
 
         if (isSearchMode) {
             searchPage -= 1;
+            resetHistoryScrollPosition();
             return;
         }
 
         currentPage -= 1;
+        resetHistoryScrollPosition();
     }
 
     function handleNextPage(): void {
@@ -686,17 +696,20 @@
         const targetPage = displayPage + 1;
         if (isSearchMode) {
             searchPage = targetPage;
+            resetHistoryScrollPosition();
             return;
         }
 
         if (targetPage <= totalPages) {
             currentPage = targetPage;
+            resetHistoryScrollPosition();
             return;
         }
 
         const pageReady = await ensurePageAvailable(targetPage);
         if (pageReady) {
             currentPage = targetPage;
+            resetHistoryScrollPosition();
             return;
         }
 
@@ -1022,7 +1035,7 @@
         </div>
     {/if}
 
-    <div class="post-history-container">
+    <div class="post-history-container" bind:this={historyContainer}>
         {#if posts.length === 0}
             <div class="empty-state">
                 <div class="empty-message">
