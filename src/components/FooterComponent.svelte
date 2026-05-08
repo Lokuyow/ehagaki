@@ -124,7 +124,7 @@
             {#if isAuthenticated}
                 <Button
                     variant="default"
-                    shape="circle"
+                    shape="pill"
                     contentLayout="icon"
                     className="post-history-btn"
                     onClick={onOpenPostHistoryDialog}
@@ -162,7 +162,7 @@
         width: 100%;
         max-width: 800px;
         height: var(--footer-height);
-        gap: 12px;
+        gap: 6px;
         margin: auto;
         padding: 8px;
         background: var(--bg-footer);
@@ -176,6 +176,7 @@
     :global(.login-btn) {
         width: 140px;
         font-size: 1.1rem;
+        min-width: 50px;
     }
 
     :global(.settings-btn.default) {
@@ -190,8 +191,14 @@
         mask-image: url("/icons/clock-rotate-left-solid-full.svg");
     }
     :global(.post-history-btn.default) {
-        width: 50px;
+        max-width: 200px;
         height: 50px;
+        flex: 1 1 auto;
+
+        :global(.svg-icon) {
+            width: 32px;
+            height: 32px;
+        }
     }
     :global(.settings-btn.has-update) {
         position: relative;
@@ -233,6 +240,7 @@
     :global(button.profile-display.default) {
         width: 50px;
         height: 50px;
+        flex: 0 0 auto;
         z-index: 10;
 
         &:hover:not(:disabled) {

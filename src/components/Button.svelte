@@ -276,5 +276,10 @@
     .content-icon {
         padding: 0;
         aspect-ratio: 1;
+
+        :global(.svg-icon) {
+            width: 30px;
+            height: 30px;
+        }
     }
 </style>
