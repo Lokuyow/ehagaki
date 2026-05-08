@@ -112,12 +112,13 @@ function getRelayConnectionFailureHint(relays: string[]): string | null {
  * NIP-46 connect時にリモートサイナーへ要求するパーミッション。
  * Amberなどのリモートサイナーで「アプリが要求するkindのみ許可」を選択した場合に使われる。
  * - sign_event:1 — ショートテキストノート（投稿）
+ * - sign_event:5 — NIP-09 Event Deletion Request（投稿削除リクエスト）
  * - sign_event:42 — NIP-28 チャンネルメッセージ（パブリックチャット投稿）
  * - sign_event:10063 — BUD-03 Blossom server list（アップロード先 publish）
  * - sign_event:27235 — NIP-98 HTTP認証（ファイルアップロード）
  * - sign_event:24242 — Blossom / BUD-11 HTTP認証（ファイルアップロード）
  */
-const NIP46_REQUESTED_PERMS = 'sign_event:1,sign_event:42,sign_event:10063,sign_event:27235,sign_event:24242';
+const NIP46_REQUESTED_PERMS = 'sign_event:1,sign_event:5,sign_event:42,sign_event:10063,sign_event:27235,sign_event:24242';
 
 // --- rx-nostr EventSigner アダプタ ---
 export class Nip46SignerAdapter {

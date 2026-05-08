@@ -3,10 +3,15 @@
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { ChannelContextService } from "../lib/channelContextService";
+    import {
+        canRequestPostDeletion,
+        postDeletionService,
+    } from "../lib/postDeletionService";
     import { postHistoryLocalSearchService } from "../lib/postHistoryLocalSearchService";
     import { RelayConfigUtils } from "../lib/relayConfigUtils";
     import {
@@ -62,6 +67,11 @@
     );
     let searchInput = $state("");
     let searchQuery = $state("");
+    let deleteConfirmOpen = $state(false);
+    let deleteTargetPost = $state<PostHistoryRecord | null>(null);
+    let deleteRequestState = $state<
+        Record<string, "sending" | "failed" | undefined>
+    >({});
     let currentPage = $state(1);
     let searchPage = $state(1);
     let totalCount = $state(0);
@@ -148,6 +158,9 @@
         loadedPosts = [];
         searchPosts = [];
         copyState = {};
+        deleteConfirmOpen = false;
+        deleteTargetPost = null;
+        deleteRequestState = {};
         channelDisplayByEventId = {};
         currentPage = 1;
         totalCount = 0;
@@ -196,6 +209,8 @@
     function handleClose() {
         cancelCurrentSync();
         cancelCurrentChannelResolution();
+        deleteConfirmOpen = false;
+        deleteTargetPost = null;
         show = false;
         onClose?.();
     }
@@ -864,6 +879,92 @@
             };
         }, 1800);
     }
+
+    function isDeletionSending(post: PostHistoryRecord): boolean {
+        return deleteRequestState[post.eventId] === "sending";
+    }
+
+    function hasDeletionFailed(post: PostHistoryRecord): boolean {
+        return deleteRequestState[post.eventId] === "failed";
+    }
+
+    function canDeletePost(post: PostHistoryRecord): boolean {
+        return canRequestPostDeletion(post, pubkeyHex);
+    }
+
+    function openDeleteConfirm(post: PostHistoryRecord): void {
+        if (!canDeletePost(post)) {
+            return;
+        }
+
+        deleteTargetPost = post;
+        deleteConfirmOpen = true;
+    }
+
+    function handleDeleteCancel(): void {
+        deleteConfirmOpen = false;
+        deleteTargetPost = null;
+    }
+
+    function patchDeletedPost(
+        eventId: string,
+        deletedAt: number,
+        deletionEventId: string,
+    ): void {
+        const applyDeletedState = (items: PostHistoryRecord[]) =>
+            items.map((post) =>
+                post.eventId === eventId
+                    ? {
+                          ...post,
+                          deletedAt,
+                          deletionEventId,
+                      }
+                    : post,
+            );
+
+        loadedPosts = applyDeletedState(loadedPosts);
+        searchPosts = applyDeletedState(searchPosts);
+    }
+
+    async function handleDeleteConfirm(): Promise<void> {
+        const targetPost = deleteTargetPost;
+        if (!targetPost) {
+            return;
+        }
+
+        deleteRequestState = {
+            ...deleteRequestState,
+            [targetPost.eventId]: "sending",
+        };
+
+        const result = await postDeletionService.requestDeletion({
+            post: targetPost,
+            rxNostr,
+        });
+
+        if (
+            result.success &&
+            typeof result.deletedAt === "number" &&
+            result.deletionEventId
+        ) {
+            patchDeletedPost(
+                targetPost.eventId,
+                result.deletedAt,
+                result.deletionEventId,
+            );
+            deleteRequestState = {
+                ...deleteRequestState,
+                [targetPost.eventId]: undefined,
+            };
+        } else {
+            deleteRequestState = {
+                ...deleteRequestState,
+                [targetPost.eventId]: "failed",
+            };
+        }
+
+        deleteTargetPost = null;
+    }
 </script>
 
 <DialogWrapper
@@ -933,7 +1034,10 @@
         {:else}
             <ul class="post-history-list">
                 {#each posts as post (post.eventId)}
-                    <li class="post-history-item">
+                    <li
+                        class="post-history-item"
+                        class:post-history-item-deleted={!!post.deletedAt}
+                    >
                         <div class="post-history-main">
                             <div class="post-preview-header">
                                 {#if post.kind === 42}
@@ -957,9 +1061,27 @@
                                     {buildPreview(post.content)}
                                 </div>
                             </div>
-                            {#if post.deletedAt}
+                            {#if post.deletedAt || hasDeletionFailed(post)}
                                 <div class="post-meta">
-                                    <span>{$_("postHistory.deleted")}</span>
+                                    {#if post.deletedAt}
+                                        <span class="deleted-badge"
+                                            >{$_(
+                                                "postHistory.deletedBadge",
+                                            )}</span
+                                        >
+                                        <span
+                                            >{$_(
+                                                "postHistory.deleteRequested",
+                                            )}</span
+                                        >
+                                    {/if}
+                                    {#if hasDeletionFailed(post)}
+                                        <span class="delete-failed"
+                                            >{$_(
+                                                "postHistory.deleteFailed",
+                                            )}</span
+                                        >
+                                    {/if}
                                 </div>
                             {/if}
                         </div>
@@ -984,6 +1106,19 @@
                             >
                                 <div class="copy-icon svg-icon"></div>
                             </Button>
+                            {#if canDeletePost(post)}
+                                <Button
+                                    className="delete-post-button"
+                                    variant="danger"
+                                    shape="square"
+                                    disabled={isDeletionSending(post)}
+                                    onClick={() => openDeleteConfirm(post)}
+                                >
+                                    {isDeletionSending(post)
+                                        ? $_("postHistory.deleteSending")
+                                        : $_("postHistory.delete")}
+                                </Button>
+                            {/if}
                         </div>
                     </li>
                 {/each}
@@ -1010,6 +1145,39 @@
         </Dialog.Close>
     {/snippet}
 </DialogWrapper>
+
+<ConfirmDialog
+    bind:open={deleteConfirmOpen}
+    title={$_("postHistory.deleteRequestTitle")}
+    description={$_("postHistory.deleteRequestDescription")}
+    confirmLabel={deleteTargetPost && isDeletionSending(deleteTargetPost)
+        ? $_("postHistory.deleteSending")
+        : $_("postHistory.deleteConfirm")}
+    cancelLabel={$_("postHistory.deleteCancel")}
+    confirmVariant="danger"
+    confirmDisabled={deleteTargetPost
+        ? isDeletionSending(deleteTargetPost)
+        : false}
+    onConfirm={handleDeleteConfirm}
+    onCancel={handleDeleteCancel}
+    contentClass="post-history-delete-confirm"
+>
+    {#snippet children()}
+        <div class="delete-confirm-body">
+            <p class="delete-confirm-description">
+                {$_("postHistory.deleteRequestDescription")}
+            </p>
+            <p class="delete-confirm-warning">
+                {$_("postHistory.deleteRequestWarning")}
+            </p>
+            {#if deleteTargetPost}
+                <div class="delete-confirm-preview">
+                    {buildPreview(deleteTargetPost.content)}
+                </div>
+            {/if}
+        </div>
+    {/snippet}
+</ConfirmDialog>
 
 <style>
     :global(.post-history-dialog .dialog-content) {
@@ -1140,6 +1308,10 @@
         border-bottom: none;
     }
 
+    .post-history-item-deleted {
+        opacity: 0.72;
+    }
+
     .post-history-main {
         display: contents;
         min-width: 0;
@@ -1218,11 +1390,25 @@
         line-height: 1.3;
     }
 
+    .deleted-badge {
+        padding: 2px 6px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--theme), transparent 82%);
+        color: var(--theme);
+        font-weight: 600;
+    }
+
+    .delete-failed {
+        color: var(--danger);
+    }
+
     .post-history-actions {
         display: flex;
         grid-column: 2;
         grid-row: 2;
         align-items: center;
+        justify-content: flex-end;
+        flex-wrap: wrap;
         gap: 6px;
         color: var(--text-muted);
         font-size: 0.82rem;
@@ -1237,6 +1423,40 @@
         width: 40px;
         min-height: 40px;
         --btn-bg: var(--dialog);
+    }
+
+    :global(.delete-post-button) {
+        min-height: 36px;
+        padding: 6px 10px;
+        font-size: 0.82rem;
+        line-height: 1.2;
+    }
+
+    .delete-confirm-body {
+        display: grid;
+        gap: 12px;
+        text-align: left;
+    }
+
+    .delete-confirm-description,
+    .delete-confirm-warning {
+        margin: 0;
+        line-height: 1.5;
+    }
+
+    .delete-confirm-warning {
+        color: var(--text-muted);
+        font-size: 0.94rem;
+    }
+
+    .delete-confirm-preview {
+        padding: 10px 12px;
+        border: 1px solid var(--border-soft);
+        background: var(--background);
+        color: var(--text);
+        line-height: 1.5;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
     }
 
     .copy-icon {

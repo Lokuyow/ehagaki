@@ -18,6 +18,17 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
+        'postHistory.delete': '削除',
+        'postHistory.deleteRequest': '削除リクエスト',
+        'postHistory.deleteRequestTitle': '削除リクエストを送信',
+        'postHistory.deleteRequestDescription': 'この投稿の削除リクエストをリレーへ送信します。',
+        'postHistory.deleteRequestWarning': '削除はリレーへのリクエストであり、完全な削除は保証されません。',
+        'postHistory.deleteConfirm': '送信',
+        'postHistory.deleteCancel': 'キャンセル',
+        'postHistory.deleteSending': '送信中',
+        'postHistory.deleteRequested': '削除リクエスト送信済み',
+        'postHistory.deleteFailed': '削除リクエストの送信に失敗しました',
+        'postHistory.deletedBadge': '削除リクエスト済み',
         'postHistory.eventId': 'event id',
         'postHistory.media': 'メディア',
         'postHistory.deleted': '削除済み',
@@ -52,6 +63,10 @@ const clipboardMock = vi.hoisted(() => ({
 
 const localSearchServiceMock = vi.hoisted(() => ({
     searchLocalPosts: vi.fn(),
+}));
+
+const postDeletionServiceMock = vi.hoisted(() => ({
+    requestDeletion: vi.fn(),
 }));
 
 const channelContextServiceMock = vi.hoisted(() => ({
@@ -91,6 +106,15 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
     postHistoryLocalSearchService: localSearchServiceMock,
+}));
+
+vi.mock('../../lib/postDeletionService', () => ({
+    canRequestPostDeletion: (post: { pubkeyHex: string; deletedAt?: number; kind: number }, currentPubkey?: string | null) =>
+        !!currentPubkey
+        && post.pubkeyHex === currentPubkey
+        && post.deletedAt === undefined
+        && [1, 42].includes(post.kind),
+    postDeletionService: postDeletionServiceMock,
 }));
 
 vi.mock('../../lib/storage/channelMetadataRepository', () => ({
@@ -173,6 +197,12 @@ describe('PostHistoryDialog', () => {
             items: [],
             total: 0,
             hasNext: false,
+        });
+        postDeletionServiceMock.requestDeletion.mockResolvedValue({
+            success: true,
+            eventId: 'delete-event-id',
+            deletionEventId: 'delete-event-id',
+            deletedAt: 1234,
         });
         channelMetadataRepositoryMock.getMany.mockResolvedValue([]);
         channelMetadataRepositoryMock.upsertResolvedChannel.mockImplementation(async (input: Record<string, any>) => ({
@@ -1234,6 +1264,149 @@ describe('PostHistoryDialog', () => {
             window,
         );
         expect(screen.getByText('コピーしました')).toBeTruthy();
+    });
+
+    it('自分の投稿にだけ削除ボタンを表示する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'mine', content: '自分の投稿', media: [] }),
+            createRecord({
+                eventId: 'other',
+                pubkeyHex: 'b'.repeat(64),
+                content: '他人の投稿',
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('自分の投稿')).toBeTruthy();
+            expect(screen.getByText('他人の投稿')).toBeTruthy();
+        });
+
+        expect(screen.getAllByRole('button', { name: '削除' })).toHaveLength(1);
+    });
+
+    it('deletedAt がある投稿では削除状態を表示し、削除ボタンを出さない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'deleted-post',
+                content: '削除済み投稿',
+                media: [],
+                deletedAt: 999,
+                deletionEventId: 'delete-event-id',
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('削除リクエスト送信済み')).toBeTruthy();
+            expect(screen.getByText('削除リクエスト済み')).toBeTruthy();
+        });
+
+        expect(screen.queryByRole('button', { name: '削除' })).toBeNull();
+    });
+
+    it('削除ボタンで確認ダイアログを開き、理由入力欄を表示しない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'delete-target', content: '削除対象本文', media: [] }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const deleteButton = await screen.findByRole('button', { name: '削除' });
+        await fireEvent.click(deleteButton);
+
+        await waitFor(() => {
+            expect(screen.getAllByText('この投稿の削除リクエストをリレーへ送信します。').length).toBeGreaterThan(0);
+            expect(screen.getByText('削除はリレーへのリクエストであり、完全な削除は保証されません。')).toBeTruthy();
+            expect(screen.getAllByText('削除対象本文').length).toBeGreaterThan(0);
+        });
+
+        expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('削除確認後に service を呼び、削除状態表示へ切り替える', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'delete-target', content: '削除対象本文', media: [] }),
+        ]);
+        postDeletionServiceMock.requestDeletion.mockResolvedValue({
+            success: true,
+            eventId: 'delete-event-id',
+            deletionEventId: 'delete-event-id',
+            deletedAt: 4567,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
+
+        await waitFor(() => {
+            expect(postDeletionServiceMock.requestDeletion).toHaveBeenCalledWith({
+                post: expect.objectContaining({ eventId: 'delete-target' }),
+                rxNostr: {},
+            });
+            expect(screen.getByText('削除リクエスト送信済み')).toBeTruthy();
+            expect(screen.getByText('削除リクエスト済み')).toBeTruthy();
+        });
+    });
+
+    it('削除送信失敗時に deleteFailed を表示する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'delete-target', content: '削除対象本文', media: [] }),
+        ]);
+        postDeletionServiceMock.requestDeletion.mockResolvedValue({
+            success: false,
+            error: 'post_error',
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('削除リクエストの送信に失敗しました')).toBeTruthy();
+        });
     });
 
     it('channelMetadata cache 済みなら service を呼ばず channel 名を表示する', async () => {
