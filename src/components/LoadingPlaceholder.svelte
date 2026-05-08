@@ -5,12 +5,14 @@
         text?: string | boolean;
         showLoader?: boolean;
         customClass?: string;
+        state?: "loading" | "complete";
     }
 
     let {
         text = false,
         showLoader = false,
         customClass = "",
+        state = undefined,
     }: Props = $props();
 
     // デフォルトテキストを国際化対応で設定
@@ -23,10 +25,11 @@
     );
 
     let safeDisplayText = $derived(sanitizeHtmlAllowingWbr(displayText));
+    let isLoading = $derived(state ? state === "loading" : showLoader);
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>
-    {#if showLoader}
+    {#if isLoading}
         <div class="loader-container">
             <div class="square"></div>
             <div class="square"></div>
@@ -36,7 +39,7 @@
         </div>
     {/if}
     {#if displayText}
-        <span class="placeholder-text loading-text"
+        <span class="placeholder-text" class:loading-text={isLoading}
             >{@html safeDisplayText}</span
         >
     {/if}
@@ -58,7 +61,7 @@
     .placeholder-text {
         padding: 0 4px;
         color: var(--text);
-        opacity: 0.6;
+        opacity: 0.8;
         font-size: 0.875rem;
         font-weight: 500;
     }

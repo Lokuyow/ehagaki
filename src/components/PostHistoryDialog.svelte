@@ -4,6 +4,7 @@
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import {
         POST_HISTORY_INITIAL_FETCH_LIMIT,
@@ -264,7 +265,12 @@
                 class="status-message"
                 class:status-error={syncStatus === "failed"}
             >
-                {$_(syncStatusMessageKey)}
+                <LoadingPlaceholder
+                    text={$_(syncStatusMessageKey)}
+                    showLoader={true}
+                    state={syncStatus === "syncing" ? "loading" : "complete"}
+                    customClass="status-loading-placeholder"
+                />
             </div>
         {/if}
     </div>
@@ -422,10 +428,34 @@
         font-size: 0.8rem;
         line-height: 1.3;
         text-align: right;
+
+        :global(.status-loading-placeholder) {
+            justify-content: flex-end;
+            width: auto;
+        }
+    }
+
+    :global(.status-loading-placeholder .loader-container) {
+        width: 20px;
+        height: 20px;
+        flex: 0 0 20px;
+
+        :global(.square) {
+            background: currentColor;
+        }
+    }
+
+    :global(.status-loading-placeholder .placeholder-text) {
+        color: inherit;
+        font-size: inherit;
     }
 
     .status-error {
         color: var(--danger);
+    }
+
+    .status-error :global(.status-loading-placeholder .square) {
+        background-color: var(--danger);
     }
 
     .post-history-list {
