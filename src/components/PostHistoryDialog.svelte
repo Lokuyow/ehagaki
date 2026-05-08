@@ -1543,9 +1543,8 @@
 
     .post-meta {
         display: flex;
-        grid-column: 1;
-        grid-row: 3;
         flex-wrap: wrap;
+        justify-content: flex-end;
         gap: 6px 10px;
         color: var(--text-muted);
         font-size: 0.82rem;
