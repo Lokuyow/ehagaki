@@ -14,6 +14,7 @@
         POST_HISTORY_PAGE_SIZE,
         POST_HISTORY_RELAY_FETCH_LIMIT,
         postHistoryRelayFetchService,
+        type PostHistoryRelayFetchResult,
         type PostHistoryRelayFetchTask,
     } from "../lib/postHistoryRelayFetchService";
     import {
@@ -140,15 +141,59 @@
         appliedSearchQuery = "";
     }
 
-    function handleClose() {
+    function resetDialogState(): void {
         cancelCurrentSync();
         cancelCurrentChannelResolution();
         resetSearchState();
+        loadedPosts = [];
+        searchPosts = [];
+        copyState = {};
+        channelDisplayByEventId = {};
+        currentPage = 1;
+        totalCount = 0;
+        searchTotalCount = 0;
+        syncStatus = "idle";
+        hasMoreRemote = false;
+        nextUntil = null;
+        hasStartedInitialSync = false;
+    }
+
+    function canContinueRelayHistory(
+        result: PostHistoryRelayFetchResult,
+    ): boolean {
+        if (result.nextUntil === null) {
+            return false;
+        }
+
+        return result.status === "success"
+            ? result.hasMore
+            : result.events.length > 0;
+    }
+
+    function updateRelayHistoryCursor(
+        result: PostHistoryRelayFetchResult,
+    ): void {
+        const canContinue = canContinueRelayHistory(result);
+        hasMoreRemote = canContinue;
+        nextUntil = canContinue ? result.nextUntil : null;
+    }
+
+    function handleClose() {
+        cancelCurrentSync();
+        cancelCurrentChannelResolution();
         show = false;
         onClose?.();
     }
 
     useDialogHistory(() => show, handleClose, true);
+
+    $effect(() => {
+        if (show) {
+            return;
+        }
+
+        resetDialogState();
+    });
 
     $effect(() => {
         if (!show) {
@@ -573,10 +618,7 @@
             });
         }
 
-        if (result.status === "success") {
-            hasMoreRemote = result.hasMore && result.nextUntil !== null;
-            nextUntil = result.hasMore ? result.nextUntil : null;
-        }
+        updateRelayHistoryCursor(result);
 
         if (searchQuery) {
             await loadSearchPage(searchPage, searchQuery);
@@ -679,13 +721,7 @@
                 return false;
             }
 
-            if (result.status !== "success") {
-                syncStatus = "failed";
-                return false;
-            }
-
-            hasMoreRemote = result.hasMore && result.nextUntil !== null;
-            nextUntil = result.hasMore ? result.nextUntil : null;
+            updateRelayHistoryCursor(result);
 
             if (result.events.length > 0) {
                 const upsertSummary =
@@ -703,6 +739,12 @@
 
             if (currentCount >= requiredCount) {
                 syncStatus = didMateriallyChange ? "synced" : "idle";
+                return true;
+            }
+
+            if (result.status !== "success") {
+                syncStatus = "failed";
+                return false;
             }
         }
 

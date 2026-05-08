@@ -756,6 +756,171 @@ describe('PostHistoryDialog', () => {
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
+    it('初期同期が timeout でも nextUntil があれば次へで追加取得を継続できる', async () => {
+        let countCall = 0;
+        repositoryMock.countForPubkey.mockImplementation(async () => {
+            countCall += 1;
+            return countCall >= 4 ? 51 : 50;
+        });
+        repositoryMock.getPage.mockImplementation(async ({ page }: { page: number }) => (
+            page === 2
+                ? [createRecord({ eventId: 'page-2', content: '2ページ目' })]
+                : [createRecord({ eventId: 'page-1', content: '1ページ目' })]
+        ));
+        repositoryMock.upsertFetchedEvents
+            .mockResolvedValueOnce({
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 1,
+            })
+            .mockResolvedValueOnce({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'timeout',
+                    events: [
+                        {
+                            event: {
+                                id: 'timeout-event'.repeat(4),
+                                pubkey: 'a'.repeat(64),
+                                kind: 1,
+                                content: '途中まで取得した投稿',
+                                tags: [],
+                                created_at: 150,
+                                sig: 'c'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    fetchedAt: 1000,
+                    nextUntil: 149,
+                    hasMore: false,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [
+                        {
+                            event: {
+                                id: 'older-event'.repeat(4),
+                                pubkey: 'a'.repeat(64),
+                                kind: 1,
+                                content: '2ページ目',
+                                tags: [],
+                                created_at: 140,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    fetchedAt: 2000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+            expect(nextButton).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: 'a'.repeat(64),
+                    limit: 200,
+                    until: 149,
+                }),
+            );
+            expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+        });
+    });
+
+    it('close 後に reopen すると同期状態を初期化して再試行する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'error',
+                    events: [],
+                    fetchedAt: 1000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: [],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 2000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: [],
+                }),
+                cancel: vi.fn(),
+            });
+
+        const onClose = vi.fn();
+        const { rerender } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+        });
+
+        await rerender({
+            show: false,
+            onClose,
+            pubkeyHex: 'a'.repeat(64),
+            rxNostr: {} as any,
+        });
+
+        await rerender({
+            show: true,
+            onClose,
+            pubkeyHex: 'a'.repeat(64),
+            rxNostr: {} as any,
+        });
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
+            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+        });
+    });
+
     it('ページ送りボタンが動作し、前後の disabled 状態が切り替わる', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(60);
         repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => Promise.resolve(
