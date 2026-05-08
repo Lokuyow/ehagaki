@@ -72,7 +72,12 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type { AuthResult, Draft, MediaGalleryItem } from "./lib/types";
+  import type {
+    AuthResult,
+    Draft,
+    MediaGalleryItem,
+    NostrEvent,
+  } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -122,6 +127,7 @@
     applyReplyQuoteQuery,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
+  import { isSignedNostrEvent } from "./lib/postHistoryEventUtils";
   import type {
     EmbedComposerSetContextPayload,
     EmbedSettingsSetPayload,
@@ -138,6 +144,7 @@
     buildPatchedChannelContext,
     buildPatchedReplyQuoteQuery,
   } from "./lib/embedComposerContextPatch";
+  import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
     applyEmbedComposerContent,
     buildEmbedComposerContextPatch,
@@ -152,6 +159,7 @@
     resolveLogoutAccountAction,
     restoreManagedAccountSession,
   } from "./lib/appAuthUtils";
+  import { focusEditor } from "./lib/utils/appDomUtils";
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
@@ -1383,6 +1391,39 @@
     });
   }
 
+  function getPostHistoryReplySeedEvents(
+    post: PostHistoryRecord,
+  ): Record<string, NostrEvent> | undefined {
+    if (!isSignedNostrEvent(post.rawEvent)) {
+      return undefined;
+    }
+
+    return {
+      [post.eventId]: post.rawEvent,
+    };
+  }
+
+  function handlePostHistoryReply(post: PostHistoryRecord): void {
+    const preloadedEvents = getPostHistoryReplySeedEvents(post);
+
+    void applyReplyQuoteQuery({
+      replyQuoteQuery: {
+        reply: {
+          eventId: post.eventId,
+          relayHints: [...post.relayHints, ...post.acceptedRelays],
+          authorPubkey: post.pubkeyHex,
+        },
+        quotes: [],
+      },
+      ...getReplyQuoteApplyParams(),
+      ...(preloadedEvents ? { preloadedEvents } : {}),
+    }).catch((error) => {
+      console.error("投稿履歴からのリプライ適用に失敗:", error);
+    });
+
+    focusEditor(".tiptap-editor", 100);
+  }
+
   // バルーンメッセージフック
   const balloon = useBalloonMessage(
     () => $_,
@@ -1638,6 +1679,7 @@
         <PostHistoryDialogComponent
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
+          onReplyPost={handlePostHistoryReply}
           pubkeyHex={authState.value?.pubkey ?? null}
           {rxNostr}
           relayConfig={relayConfigStore.value}

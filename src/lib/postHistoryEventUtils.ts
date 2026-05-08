@@ -31,6 +31,25 @@ export function cloneNostrEvent(event: NostrEvent): NostrEvent {
     };
 }
 
+export function isSignedNostrEvent(rawEvent: unknown): rawEvent is NostrEvent {
+    if (!rawEvent || typeof rawEvent !== "object") {
+        return false;
+    }
+
+    const candidate = rawEvent as Partial<NostrEvent>;
+    return typeof candidate.id === "string"
+        && typeof candidate.pubkey === "string"
+        && typeof candidate.kind === "number"
+        && typeof candidate.content === "string"
+        && typeof candidate.created_at === "number"
+        && typeof candidate.sig === "string"
+        && Array.isArray(candidate.tags)
+        && candidate.tags.every((tag) =>
+            Array.isArray(tag)
+            && tag.every((value) => typeof value === "string"),
+        );
+}
+
 export function isSameSignedNostrEvent(rawEvent: unknown, event: NostrEvent): boolean {
     if (!rawEvent || typeof rawEvent !== "object") {
         return false;

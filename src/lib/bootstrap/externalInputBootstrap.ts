@@ -19,7 +19,11 @@ import {
 import { processExternalChannelContextQuery } from './externalChannelContextBootstrapUtils';
 import { processReplyQuoteReference } from './externalReplyQuoteBootstrapUtils';
 import type { RelayProfileService } from "../relayProfileService";
-import type { ChannelContextQueryTarget, ReplyQuoteQueryResult } from "../types";
+import type {
+    ChannelContextQueryTarget,
+    NostrEvent,
+    ReplyQuoteQueryResult,
+} from "../types";
 
 interface SharedMediaStoreLike {
     files: File[];
@@ -234,6 +238,7 @@ export interface ApplyReplyQuoteQueryParams extends Pick<
     | "setReplyQuoteError"
 > {
     replyQuoteQuery: ReplyQuoteQueryResult;
+    preloadedEvents?: Record<string, NostrEvent>;
 }
 
 function sanitizeReplyQuoteQuery(
@@ -262,6 +267,7 @@ function sanitizeReplyQuoteQuery(
 
 export async function applyReplyQuoteQuery({
     replyQuoteQuery,
+    preloadedEvents = {},
     relayProfileService,
     rxNostr,
     relayConfig,
@@ -274,10 +280,6 @@ export async function applyReplyQuoteQuery({
 
     setReplyQuote(sanitizedReplyQuoteQuery);
 
-    if (!rxNostr) {
-        return;
-    }
-
     const references = [
         ...(sanitizedReplyQuoteQuery.reply ? [sanitizedReplyQuoteQuery.reply] : []),
         ...sanitizedReplyQuoteQuery.quotes,
@@ -287,12 +289,21 @@ export async function applyReplyQuoteQuery({
         return;
     }
 
+    const resolvableReferences = references.filter((reference) =>
+        !!rxNostr || !!preloadedEvents[reference.eventId],
+    );
+
+    if (resolvableReferences.length === 0) {
+        return;
+    }
+
     const rqService = new ReplyQuoteService();
     await Promise.allSettled(
-        references.map((reference) =>
+        resolvableReferences.map((reference) =>
             processReplyQuoteReference({
                 reference,
                 replyQuoteService: rqService,
+                initialEvent: preloadedEvents[reference.eventId],
                 relayProfileService,
                 rxNostr,
                 relayConfig,

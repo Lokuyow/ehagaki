@@ -1,10 +1,11 @@
 import type { RelayProfileService } from '../relayProfileService';
 import { ReplyQuoteService } from '../replyQuoteService';
-import type { ReplyQuoteQueryTarget } from '../types';
+import type { NostrEvent, ReplyQuoteQueryTarget } from '../types';
 
 export interface ProcessReplyQuoteReferenceParams {
     reference: ReplyQuoteQueryTarget;
     replyQuoteService: Pick<ReplyQuoteService, 'fetchReferencedEvent' | 'extractThreadInfo'>;
+    initialEvent?: NostrEvent;
     relayProfileService?: Pick<RelayProfileService, 'fetchProfileRealtime'>;
     rxNostr?: any;
     relayConfig: any;
@@ -16,6 +17,7 @@ export interface ProcessReplyQuoteReferenceParams {
 export async function processReplyQuoteReference({
     reference,
     replyQuoteService,
+    initialEvent,
     relayProfileService,
     rxNostr,
     relayConfig,
@@ -23,12 +25,13 @@ export async function processReplyQuoteReference({
     updateAuthorDisplayName,
     setReplyQuoteError,
 }: ProcessReplyQuoteReferenceParams): Promise<void> {
-    const event = await replyQuoteService.fetchReferencedEvent(
-        reference.eventId,
-        reference.relayHints,
-        rxNostr,
-        relayConfig,
-    );
+    const event = initialEvent
+        ?? await replyQuoteService.fetchReferencedEvent(
+            reference.eventId,
+            reference.relayHints,
+            rxNostr,
+            relayConfig,
+        );
 
     if (!event) {
         setReplyQuoteError(reference.eventId, 'Event not found');

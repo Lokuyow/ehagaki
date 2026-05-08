@@ -38,6 +38,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.channel': 'チャンネル',
         'postHistory.channelLoading': '読み込み中...',
         'postHistory.channelUnknown': '不明',
+        'replyQuote.reply_label': 'リプライ',
         'global.close': '閉じる',
     };
 
@@ -302,6 +303,66 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: '折りたたむ' }));
         expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
+    });
+
+    it('reply callback がある場合は preview 下にリプライボタンを表示し、折りたたみボタンと共存する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'replyable-post',
+                content: [
+                    'line1',
+                    'line2',
+                    'line3',
+                    'line4',
+                    'line5',
+                    'line6',
+                ].join('\n'),
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        expect(await screen.findByRole('button', { name: 'リプライ' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
+    });
+
+    it('リプライボタン押下で callback 実行後にダイアログを閉じる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'reply-target',
+                content: '返信したい投稿',
+                media: [],
+            }),
+        ]);
+        const onClose = vi.fn();
+        const onReplyPost = vi.fn();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                onReplyPost,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('返信したい投稿');
+        await fireEvent.click(await screen.findByRole('button', { name: 'リプライ' }));
+
+        expect(onReplyPost).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'reply-target' }),
+        );
+        expect(onClose).toHaveBeenCalledOnce();
     });
 
     it('投稿日時が 24 時間以内なら時刻のみを表示する', async () => {

@@ -29,6 +29,7 @@
     interface Props {
         show: boolean;
         onClose: () => void;
+        onReplyPost?: (post: PostHistoryRecord) => void;
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
@@ -37,6 +38,7 @@
     let {
         show = $bindable(false),
         onClose,
+        onReplyPost = undefined,
         pubkeyHex = null,
         rxNostr = undefined,
         relayConfig = null,
@@ -173,6 +175,15 @@
 
         deleteTargetPost = post;
         deleteConfirmOpen = true;
+    }
+
+    function handleReplyPost(post: PostHistoryRecord): void {
+        if (!onReplyPost) {
+            return;
+        }
+
+        onReplyPost(post);
+        handleClose();
     }
 
     function handleDeleteCancel(): void {
@@ -417,24 +428,55 @@
                                 >
                                     {buildPreview(post.content)}
                                 </div>
-                                {#if previewCollapse.shouldCollapsePost(post)}
-                                    <button
-                                        type="button"
-                                        class="post-preview-toggle-button"
-                                        aria-expanded={previewCollapse.isPostExpanded(
+                                {#if onReplyPost ||
+                                    previewCollapse.shouldCollapsePost(post)}
+                                    <div class="post-preview-actions">
+                                        {#if onReplyPost}
+                                            <button
+                                                type="button"
+                                                class="post-preview-action-button"
+                                                onclick={() =>
+                                                    handleReplyPost(post)}
+                                            >
+                                                <div
+                                                    class="reply-icon svg-icon"
+                                                    aria-hidden="true"
+                                                ></div>
+                                                <span>
+                                                    {$_(
+                                                        "replyQuote.reply_label",
+                                                    )}
+                                                </span>
+                                            </button>
+                                        {/if}
+                                        {#if previewCollapse.shouldCollapsePost(
                                             post,
                                         )}
-                                        aria-controls={"post-preview-content-" +
-                                            post.eventId}
-                                        onclick={() =>
-                                            previewCollapse.togglePostExpanded(
-                                                post.eventId,
-                                            )}
-                                    >
-                                        {previewCollapse.isPostExpanded(post)
-                                            ? $_("postHistory.collapse")
-                                            : $_("postHistory.expand")}
-                                    </button>
+                                            <button
+                                                type="button"
+                                                class="post-preview-action-button post-preview-toggle-button"
+                                                aria-expanded={previewCollapse.isPostExpanded(
+                                                    post,
+                                                )}
+                                                aria-controls={"post-preview-content-" +
+                                                    post.eventId}
+                                                onclick={() =>
+                                                    previewCollapse.togglePostExpanded(
+                                                        post.eventId,
+                                                    )}
+                                            >
+                                                {previewCollapse.isPostExpanded(
+                                                    post,
+                                                )
+                                                    ? $_(
+                                                          "postHistory.collapse",
+                                                      )
+                                                    : $_(
+                                                          "postHistory.expand",
+                                                      )}
+                                            </button>
+                                        {/if}
+                                    </div>
                                 {/if}
                             </div>
                             {#if post.deletedAt || hasDeletionFailed(post)}
@@ -836,8 +878,19 @@
         overflow: hidden;
     }
 
-    .post-preview-toggle-button {
-        margin: 8px 0 0 1rem;
+    .post-preview-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 16px;
+        margin-top: 8px;
+        padding-left: 1rem;
+    }
+
+    .post-preview-action-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         border: none;
         background: transparent;
         color: var(--text-muted);
@@ -847,8 +900,18 @@
         text-align: left;
     }
 
-    .post-preview-toggle-button:hover {
+    .post-preview-action-button:hover {
         text-decoration: underline;
+    }
+
+    .post-preview-action-button .svg-icon {
+        width: 16px;
+        height: 16px;
+        background-color: currentColor;
+    }
+
+    .post-preview-toggle-button {
+        margin: 0;
     }
 
     .post-meta {
@@ -903,6 +966,10 @@
 
     .copy-icon {
         mask-image: url("/icons/copy-solid-full.svg");
+    }
+
+    .reply-icon {
+        mask-image: url("/icons/reply-solid-full.svg");
     }
 
     .trash-icon {

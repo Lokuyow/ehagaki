@@ -79,7 +79,10 @@ vi.mock('../../lib/utils/swCommunication', () => ({
     getSharedMediaWithFallback: mockState.getSharedMediaWithFallback,
 }));
 
-import { runExternalInputBootstrap } from '../../lib/bootstrap/externalInputBootstrap';
+import {
+    applyReplyQuoteQuery,
+    runExternalInputBootstrap,
+} from '../../lib/bootstrap/externalInputBootstrap';
 
 function createParams() {
     return {
@@ -276,6 +279,60 @@ describe('runExternalInputBootstrap', () => {
         });
 
         await bootstrapPromise;
+    });
+
+    it('preloaded event がある場合は rxNostr なしでも reply preview を解決する', async () => {
+        const params = createParams();
+        const event = {
+            id: 'event-1',
+            pubkey: 'author-pubkey',
+            created_at: 1,
+            kind: 1,
+            tags: [],
+            content: 'hello',
+            sig: 'sig',
+        };
+
+        await applyReplyQuoteQuery({
+            replyQuoteQuery: {
+                reply: {
+                    eventId: 'event-1',
+                    relayHints: ['wss://hint-relay.example.com/'],
+                    authorPubkey: 'author-pubkey',
+                },
+                quotes: [],
+            },
+            relayProfileService: undefined,
+            rxNostr: undefined,
+            relayConfig: null,
+            setReplyQuote: params.setReplyQuote,
+            updateReferencedEvent: params.updateReferencedEvent,
+            updateAuthorDisplayName: params.updateAuthorDisplayName,
+            setReplyQuoteError: params.setReplyQuoteError,
+            preloadedEvents: {
+                'event-1': event,
+            },
+        });
+
+        expect(params.setReplyQuote).toHaveBeenCalledWith({
+            reply: {
+                eventId: 'event-1',
+                relayHints: ['wss://hint-relay.example.com/'],
+                authorPubkey: 'author-pubkey',
+            },
+            quotes: [],
+        });
+        expect(params.updateReferencedEvent).toHaveBeenCalledWith(
+            'event-1',
+            event,
+            {
+                rootEventId: null,
+                rootRelayHint: null,
+                rootPubkey: null,
+            },
+        );
+        expect(mockState.fetchReferencedEvent).not.toHaveBeenCalled();
+        expect(params.setReplyQuoteError).not.toHaveBeenCalled();
     });
 
     it('channel metadata がある場合は parent preview をそのまま使い自身の relays を使う', async () => {
