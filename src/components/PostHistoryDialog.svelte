@@ -178,6 +178,21 @@
         nextUntil = canContinue ? result.nextUntil : null;
     }
 
+    function resolveSyncStatusAfterFetch(
+        result: PostHistoryRelayFetchResult,
+        didMateriallyChange: boolean,
+    ): "idle" | "synced" | "failed" {
+        if (result.status === "error") {
+            return "failed";
+        }
+
+        if (result.status === "timeout") {
+            return "idle";
+        }
+
+        return didMateriallyChange ? "synced" : "idle";
+    }
+
     function handleClose() {
         cancelCurrentSync();
         cancelCurrentChannelResolution();
@@ -625,12 +640,10 @@
         } else {
             await loadPage(currentPage);
         }
-        syncStatus =
-            result.status === "success"
-                ? upsertSummary.insertedCount + upsertSummary.updatedCount > 0
-                    ? "synced"
-                    : "idle"
-                : "failed";
+        syncStatus = resolveSyncStatusAfterFetch(
+            result,
+            upsertSummary.insertedCount + upsertSummary.updatedCount > 0,
+        );
     }
 
     function handlePreviousPage(): void {
@@ -738,7 +751,10 @@
                 await postHistoryRepository.countForPubkey(pubkeyHex);
 
             if (currentCount >= requiredCount) {
-                syncStatus = didMateriallyChange ? "synced" : "idle";
+                syncStatus = resolveSyncStatusAfterFetch(
+                    result,
+                    didMateriallyChange,
+                );
                 return true;
             }
 

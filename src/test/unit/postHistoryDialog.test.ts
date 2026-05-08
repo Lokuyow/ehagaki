@@ -756,6 +756,38 @@ describe('PostHistoryDialog', () => {
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
     });
 
+    it('初期同期が timeout でも失敗表示を出さず既存一覧を維持する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([createRecord()]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'timeout',
+                events: [],
+                fetchedAt: 5000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+        });
+
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
     it('初期同期が timeout でも nextUntil があれば次へで追加取得を継続できる', async () => {
         let countCall = 0;
         repositoryMock.countForPubkey.mockImplementation(async () => {
@@ -840,7 +872,7 @@ describe('PostHistoryDialog', () => {
         const nextButton = await screen.findByRole('button', { name: '次へ' });
 
         await waitFor(() => {
-            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
             expect(nextButton).toHaveProperty('disabled', false);
         });
 
