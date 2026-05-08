@@ -106,7 +106,7 @@
     "deleteRequested": "Deletion request sent",
     "deleteFailed": "Failed to send deletion request",
     "deletedBadge": "Deletion requested",
-    "copyNevent": "Copy nevent",
+    "copyNevent": "Copy event ID",
     "copied": "Copied",
     "copyFailed": "Copy failed",
     "eventId": "event id",
