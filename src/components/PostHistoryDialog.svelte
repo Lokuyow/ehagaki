@@ -1436,13 +1436,16 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
+        align-items: stretch;
     }
 
     .menu-action-button {
         display: flex;
         align-items: center;
+        justify-content: flex-start;
         gap: 10px;
         width: 100%;
+        min-height: 40px;
         border: none;
         background: transparent;
         color: inherit;
@@ -1466,8 +1469,13 @@
     }
 
     .menu-action-button .svg-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: 18px;
         height: 18px;
+        min-width: 18px;
+        min-height: 18px;
     }
 
     @keyframes popover-in {
