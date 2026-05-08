@@ -467,9 +467,9 @@
     .post-preview {
         grid-column: 1;
         grid-row: 2;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        min-width: 0;
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
         color: var(--text);
         font-size: 1rem;
     }
