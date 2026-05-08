@@ -47,6 +47,15 @@
     let canGoPrevious = $derived(currentPage > 1);
     let canGoNext = $derived(currentPage < totalPages);
     let showPaging = $derived(totalCount > 0);
+    let syncStatusMessageKey = $derived(
+        syncStatus === "idle"
+            ? null
+            : syncStatus === "syncing"
+              ? "postHistory.syncing"
+              : syncStatus === "synced"
+                ? "postHistory.synced"
+                : "postHistory.syncFailed",
+    );
 
     let loadRequestId = 0;
     let hasStartedInitialSync = false;
@@ -250,33 +259,22 @@
 >
     <div class="post-history-heading">
         <h3>{$_("postHistory.title")}</h3>
+        {#if syncStatusMessageKey}
+            <div
+                class="status-message"
+                class:status-error={syncStatus === "failed"}
+            >
+                {$_(syncStatusMessageKey)}
+            </div>
+        {/if}
     </div>
 
     <div class="post-history-container">
-        {#if posts.length === 0 && syncStatus === "syncing"}
-            <div class="status-message">{$_("postHistory.syncing")}</div>
-        {:else if posts.length === 0}
+        {#if posts.length === 0}
             <div class="empty-state">
-                {#if syncStatus === "failed"}
-                    <div class="status-message status-error">
-                        {$_("postHistory.syncFailed")}
-                    </div>
-                {/if}
                 <div class="empty-message">{$_("postHistory.empty")}</div>
             </div>
         {:else}
-            {#if syncStatus !== "idle"}
-                <div
-                    class="status-message"
-                    class:status-error={syncStatus === "failed"}
-                >
-                    {syncStatus === "syncing"
-                        ? $_("postHistory.syncing")
-                        : syncStatus === "synced"
-                          ? $_("postHistory.synced")
-                          : $_("postHistory.syncFailed")}
-                </div>
-            {/if}
             <ul class="post-history-list">
                 {#each posts as post (post.eventId)}
                     <li class="post-history-item">
@@ -380,12 +378,16 @@
     }
 
     .post-history-heading {
+        display: flex;
+        align-items: center;
+        gap: 12px;
         width: 100%;
         padding: 18px 16px;
         border-bottom: 1px solid var(--border-hr);
     }
 
     .post-history-heading h3 {
+        min-width: 0;
         margin: 0;
         font-size: 1.25rem;
     }
@@ -413,10 +415,11 @@
     }
 
     .status-message {
-        padding: 10px 12px 0;
+        margin-left: auto;
         color: var(--text-muted);
         font-size: 0.8rem;
         line-height: 1.3;
+        text-align: right;
     }
 
     .status-error {
