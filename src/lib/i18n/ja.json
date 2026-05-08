@@ -88,12 +88,19 @@
     "title": "投稿履歴",
     "description": "eHagaki で投稿に成功したイベントのローカル履歴です。",
     "empty": "投稿履歴はありません",
+    "syncing": "リレーと同期中...",
+    "synced": "リレーとの同期が完了しました",
+    "syncFailed": "リレーとの同期に失敗しました",
     "copyNevent": "neventをコピー",
     "copied": "コピーしました",
     "copyFailed": "コピーに失敗しました",
     "eventId": "event id",
     "media": "メディア",
-    "deleted": "削除済み"
+    "deleted": "削除済み",
+    "previousPage": "前へ",
+    "nextPage": "次へ",
+    "page": "{page} / {total} ページ",
+    "noMorePosts": "これ以上古い投稿はありません"
   },
   "settingsDialog": {
     "info_header_setting": "設定",

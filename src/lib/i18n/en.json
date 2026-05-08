@@ -88,12 +88,19 @@
     "title": "Post History",
     "description": "Local history of events successfully posted from eHagaki.",
     "empty": "No post history",
+    "syncing": "Syncing with relays...",
+    "synced": "Relay sync completed",
+    "syncFailed": "Relay sync failed",
     "copyNevent": "Copy nevent",
     "copied": "Copied",
     "copyFailed": "Copy failed",
     "eventId": "event id",
     "media": "Media",
-    "deleted": "Deleted"
+    "deleted": "Deleted",
+    "previousPage": "Previous",
+    "nextPage": "Next",
+    "page": "Page {page} / {total}",
+    "noMorePosts": "No more older posts"
   },
   "settingsDialog": {
     "info_header_setting": "Setting",

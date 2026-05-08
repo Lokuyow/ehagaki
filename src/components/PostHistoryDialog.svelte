@@ -1,11 +1,19 @@
 <script lang="ts">
+    import type { RxNostr } from "rx-nostr";
     import { _ } from "svelte-i18n";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import {
+        POST_HISTORY_INITIAL_FETCH_LIMIT,
+        POST_HISTORY_PAGE_SIZE,
+        postHistoryRelayFetchService,
+        type PostHistoryRelayFetchTask,
+    } from "../lib/postHistoryRelayFetchService";
     import { postHistoryRepository } from "../lib/storage/postHistoryRepository";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+    import type { RelayConfig } from "../lib/types";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { toNevent } from "../lib/utils/nostrUtils";
 
@@ -15,18 +23,42 @@
         show: boolean;
         onClose: () => void;
         pubkeyHex?: string | null;
+        rxNostr?: RxNostr;
+        relayConfig?: RelayConfig | null;
     }
 
     let {
         show = $bindable(false),
         onClose,
         pubkeyHex = null,
+        rxNostr = undefined,
+        relayConfig = null,
     }: Props = $props();
+
+    const pageSize = POST_HISTORY_PAGE_SIZE;
 
     let posts = $state<PostHistoryRecord[]>([]);
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
+    let currentPage = $state(1);
+    let totalCount = $state(0);
+    let syncStatus = $state<"idle" | "syncing" | "synced" | "failed">("idle");
+
+    let totalPages = $derived(Math.max(1, Math.ceil(totalCount / pageSize)));
+    let canGoPrevious = $derived(currentPage > 1);
+    let canGoNext = $derived(currentPage < totalPages);
+    let showPaging = $derived(totalCount > 0);
+
+    let loadRequestId = 0;
+    let hasStartedInitialSync = false;
+    let currentFetchTask: PostHistoryRelayFetchTask | null = null;
+
+    function cancelCurrentSync(): void {
+        currentFetchTask?.cancel();
+        currentFetchTask = null;
+    }
 
     function handleClose() {
+        cancelCurrentSync();
         show = false;
         onClose?.();
     }
@@ -34,14 +66,116 @@
     useDialogHistory(() => show, handleClose, true);
 
     $effect(() => {
-        if (show) {
-            void postHistoryRepository
-                .getAll({ pubkeyHex })
-                .then((loadedPosts) => {
-                    if (show) posts = loadedPosts;
-                });
+        if (!show) {
+            return;
         }
+
+        return () => {
+            cancelCurrentSync();
+        };
     });
+
+    $effect(() => {
+        if (!show || !pubkeyHex || !rxNostr || hasStartedInitialSync) {
+            return;
+        }
+
+        hasStartedInitialSync = true;
+        syncStatus = "syncing";
+        void syncFromRelays();
+    });
+
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
+        void loadPage(currentPage);
+    });
+
+    async function loadPage(page: number): Promise<void> {
+        if (!pubkeyHex) {
+            posts = [];
+            totalCount = 0;
+            return;
+        }
+
+        const requestId = ++loadRequestId;
+        const normalizedPage = Math.max(1, Math.trunc(page));
+        const [count, loadedPosts] = await Promise.all([
+            postHistoryRepository.countForPubkey(pubkeyHex),
+            postHistoryRepository.getPage({
+                pubkeyHex,
+                page: normalizedPage,
+                pageSize,
+            }),
+        ]);
+
+        if (!show || requestId !== loadRequestId) {
+            return;
+        }
+
+        const nextTotalPages = Math.max(1, Math.ceil(count / pageSize));
+        const safePage =
+            count === 0 ? 1 : Math.min(normalizedPage, nextTotalPages);
+        if (safePage !== normalizedPage) {
+            currentPage = safePage;
+            return;
+        }
+
+        totalCount = count;
+        posts = loadedPosts;
+    }
+
+    async function syncFromRelays(): Promise<void> {
+        if (!pubkeyHex || !rxNostr) {
+            return;
+        }
+
+        cancelCurrentSync();
+        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
+            pubkeyHex,
+            relayConfig,
+            limit: POST_HISTORY_INITIAL_FETCH_LIMIT,
+        });
+        currentFetchTask = task;
+
+        const result = await task.promise;
+        if (currentFetchTask !== task) {
+            return;
+        }
+
+        currentFetchTask = null;
+        if (!show || result.status === "cancelled") {
+            return;
+        }
+
+        if (result.events.length > 0) {
+            await postHistoryRepository.upsertFetchedEvents({
+                events: result.events,
+                fetchedAt: result.fetchedAt,
+            });
+        }
+
+        await loadPage(currentPage);
+        syncStatus = result.status === "success" ? "synced" : "failed";
+    }
+
+    function handlePreviousPage(): void {
+        if (!canGoPrevious) {
+            return;
+        }
+
+        currentPage -= 1;
+    }
+
+    function handleNextPage(): void {
+        if (!canGoNext) {
+            return;
+        }
+
+        currentPage += 1;
+    }
 
     function formatPostedAt(postedAt: number): string {
         return new Intl.DateTimeFormat(undefined, {
@@ -119,9 +253,30 @@
     </div>
 
     <div class="post-history-container">
-        {#if posts.length === 0}
-            <div class="empty-message">{$_("postHistory.empty")}</div>
+        {#if posts.length === 0 && syncStatus === "syncing"}
+            <div class="status-message">{$_("postHistory.syncing")}</div>
+        {:else if posts.length === 0}
+            <div class="empty-state">
+                {#if syncStatus === "failed"}
+                    <div class="status-message status-error">
+                        {$_("postHistory.syncFailed")}
+                    </div>
+                {/if}
+                <div class="empty-message">{$_("postHistory.empty")}</div>
+            </div>
         {:else}
+            {#if syncStatus !== "idle"}
+                <div
+                    class="status-message"
+                    class:status-error={syncStatus === "failed"}
+                >
+                    {syncStatus === "syncing"
+                        ? $_("postHistory.syncing")
+                        : syncStatus === "synced"
+                          ? $_("postHistory.synced")
+                          : $_("postHistory.syncFailed")}
+                </div>
+            {/if}
             <ul class="post-history-list">
                 {#each posts as post (post.eventId)}
                     <li class="post-history-item">
@@ -162,6 +317,40 @@
                     </li>
                 {/each}
             </ul>
+        {/if}
+
+        {#if showPaging}
+            <div class="post-history-pagination">
+                <Button
+                    className="post-history-page-button"
+                    variant="default"
+                    shape="pill"
+                    disabled={!canGoPrevious}
+                    ariaLabel={$_("postHistory.previousPage")}
+                    onClick={handlePreviousPage}
+                >
+                    <span class="btn-text"
+                        >{$_("postHistory.previousPage")}</span
+                    >
+                </Button>
+
+                <div class="post-history-page-indicator">
+                    {$_("postHistory.page", {
+                        values: { page: currentPage, total: totalPages },
+                    })}
+                </div>
+
+                <Button
+                    className="post-history-page-button"
+                    variant="default"
+                    shape="pill"
+                    disabled={!canGoNext}
+                    ariaLabel={$_("postHistory.nextPage")}
+                    onClick={handleNextPage}
+                >
+                    <span class="btn-text">{$_("postHistory.nextPage")}</span>
+                </Button>
+            </div>
         {/if}
     </div>
 
@@ -207,6 +396,13 @@
         overflow-y: auto;
     }
 
+    .empty-state {
+        display: grid;
+        gap: 8px;
+        min-height: 100px;
+        align-content: center;
+    }
+
     .empty-message {
         display: flex;
         justify-content: center;
@@ -214,6 +410,17 @@
         height: 100px;
         color: var(--text-muted);
         font-size: 1rem;
+    }
+
+    .status-message {
+        padding: 10px 12px 0;
+        color: var(--text-muted);
+        font-size: 0.8rem;
+        line-height: 1.3;
+    }
+
+    .status-error {
+        color: var(--danger);
     }
 
     .post-history-list {
@@ -270,6 +477,26 @@
 
     .copy-failed {
         color: var(--danger);
+    }
+
+    .post-history-pagination {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px;
+        border-top: 1px solid var(--border-hr);
+    }
+
+    .post-history-page-indicator {
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    :global(.post-history-page-button) {
+        min-width: 88px;
     }
 
     :global(.copy-nevent-button) {

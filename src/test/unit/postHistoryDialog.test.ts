@@ -2,25 +2,40 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
-const mockTranslate = vi.hoisted(() => (key: string) => {
+const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record<string, unknown> }) => {
     const translations: Record<string, string> = {
         'postHistory.title': '投稿履歴',
         'postHistory.description': 'eHagakiで投稿に成功した履歴です。',
-        'postHistory.empty': '投稿履歴はまだありません',
+        'postHistory.empty': '投稿履歴はありません',
+        'postHistory.syncing': 'リレーと同期中...',
+        'postHistory.synced': 'リレーとの同期が完了しました',
+        'postHistory.syncFailed': 'リレーとの同期に失敗しました',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
         'postHistory.eventId': 'event id',
         'postHistory.media': 'メディア',
         'postHistory.deleted': '削除済み',
+        'postHistory.previousPage': '前へ',
+        'postHistory.nextPage': '次へ',
         'global.close': '閉じる',
     };
+
+    if (key === 'postHistory.page') {
+        return `${options?.values?.page} / ${options?.values?.total} ページ`;
+    }
 
     return translations[key] || key;
 });
 
 const repositoryMock = vi.hoisted(() => ({
-    getAll: vi.fn(),
+    getPage: vi.fn(),
+    countForPubkey: vi.fn(),
+    upsertFetchedEvents: vi.fn(),
+}));
+
+const relayFetchServiceMock = vi.hoisted(() => ({
+    fetchLatest: vi.fn(),
 }));
 
 const clipboardMock = vi.hoisted(() => ({
@@ -43,6 +58,12 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: repositoryMock,
 }));
 
+vi.mock('../../lib/postHistoryRelayFetchService', () => ({
+    POST_HISTORY_INITIAL_FETCH_LIMIT: 50,
+    POST_HISTORY_PAGE_SIZE: 50,
+    postHistoryRelayFetchService: relayFetchServiceMock,
+}));
+
 vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
 
 vi.mock('../../lib/utils/nostrUtils', async () => {
@@ -55,10 +76,48 @@ vi.mock('../../lib/utils/nostrUtils', async () => {
 
 import PostHistoryDialog from '../../components/PostHistoryDialog.svelte';
 
+function createRecord(overrides: Record<string, any> = {}) {
+    return {
+        id: 'event-1',
+        eventId: 'b'.repeat(64),
+        pubkeyHex: 'a'.repeat(64),
+        kind: 1,
+        content: '投稿本文\nhttps://example.com/image.jpg',
+        tags: [],
+        createdAt: 1_700_000_000,
+        postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+        relayHints: ['wss://hint.example.com/'],
+        acceptedRelays: ['wss://accepted.example.com/'],
+        media: [
+            {
+                url: 'https://example.com/image.jpg',
+                mimeType: 'image/jpeg',
+            },
+        ],
+        rawEvent: {},
+        updatedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+        schemaVersion: 2,
+        ...overrides,
+    };
+}
+
 describe('PostHistoryDialog', () => {
     beforeEach(() => {
         vi.clearAllMocks();
-        repositoryMock.getAll.mockResolvedValue([]);
+        repositoryMock.getPage.mockResolvedValue([]);
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue(undefined);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'cancelled',
+                events: [],
+                fetchedAt: 0,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: [],
+            }),
+            cancel: vi.fn(),
+        });
         clipboardMock.tryCopyToClipboard.mockResolvedValue(true);
         nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
     });
@@ -73,35 +132,181 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(repositoryMock.getAll).toHaveBeenCalledWith({ pubkeyHex: 'a'.repeat(64) });
-            expect(screen.getByText('投稿履歴はまだありません')).toBeTruthy();
+            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(repositoryMock.getPage).toHaveBeenCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                page: 1,
+                pageSize: 50,
+            });
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+    });
+
+    it('ローカル履歴を即表示しつつ自動取得を開始する', async () => {
+        const cancel = vi.fn();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([createRecord()]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText('リレーと同期中...')).toBeTruthy();
+        });
+
+        expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledWith(
+            {} as any,
+            expect.objectContaining({
+                pubkeyHex: 'a'.repeat(64),
+                limit: 50,
+            }),
+        );
+
+        view.unmount();
+        expect(cancel).toHaveBeenCalledOnce();
+    });
+
+    it('同期成功後に upsert して一覧を更新する', async () => {
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(1);
+        repositoryMock.getPage
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([createRecord()]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [
+                    {
+                        event: {
+                            id: 'b'.repeat(64),
+                            pubkey: 'a'.repeat(64),
+                            kind: 1,
+                            content: '投稿本文',
+                            tags: [],
+                            created_at: 1_700_000_000,
+                            sig: 'c'.repeat(128),
+                        },
+                        relayUrls: ['wss://relay.example.com/'],
+                    },
+                ],
+                fetchedAt: 5000,
+                nextUntil: 1_699_999_999,
+                hasMore: true,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalledWith({
+                events: [
+                    {
+                        event: expect.objectContaining({ id: 'b'.repeat(64) }),
+                        relayUrls: ['wss://relay.example.com/'],
+                    },
+                ],
+                fetchedAt: 5000,
+            });
+            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+        });
+    });
+
+    it('同期失敗でも既存一覧を維持する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([createRecord()]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'error',
+                events: [],
+                fetchedAt: 5000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: [],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+        });
+
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('ページ送りボタンが動作し、前後の disabled 状態が切り替わる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(60);
+        repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => Promise.resolve(
+            page === 1
+                ? [createRecord({ eventId: 'page-1', content: '1ページ目' })]
+                : [createRecord({ eventId: 'page-2', content: '2ページ目' })],
+        ));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const previousButton = await screen.findByRole('button', { name: '前へ' });
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await waitFor(() => {
+            expect(previousButton).toHaveProperty('disabled', true);
+            expect(nextButton).toHaveProperty('disabled', false);
+            expect(screen.getByText('1 / 2 ページ')).toBeTruthy();
+        });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(repositoryMock.getPage).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                page: 2,
+                pageSize: 50,
+            });
+            expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+            expect(previousButton).toHaveProperty('disabled', false);
+            expect(nextButton).toHaveProperty('disabled', true);
         });
     });
 
     it('投稿履歴一覧を表示し、neventコピー成功を表示する', async () => {
-        repositoryMock.getAll.mockResolvedValue([
-            {
-                id: 'event-1',
-                eventId: 'b'.repeat(64),
-                pubkeyHex: 'a'.repeat(64),
-                kind: 1,
-                content: '投稿本文\nhttps://example.com/image.jpg',
-                tags: [],
-                createdAt: 1_700_000_000,
-                postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
-                relayHints: ['wss://hint.example.com/'],
-                acceptedRelays: ['wss://accepted.example.com/'],
-                media: [
-                    {
-                        url: 'https://example.com/image.jpg',
-                        mimeType: 'image/jpeg',
-                    },
-                ],
-                rawEvent: {},
-                updatedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
-                schemaVersion: 1,
-            },
-        ]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([createRecord()]);
 
         render(PostHistoryDialog, {
             props: {
@@ -134,24 +339,37 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByText('コピーしました')).toBeTruthy();
     });
 
-    it('neventコピー失敗を表示する', async () => {
-        repositoryMock.getAll.mockResolvedValue([
-            {
-                id: 'event-1',
-                eventId: 'b'.repeat(64),
+    it('unmount 時に進行中の同期を cleanup する', async () => {
+        const cancel = vi.fn();
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel,
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
-                kind: 1,
+                rxNostr: {} as any,
+            },
+        });
+
+        view.unmount();
+        expect(cancel).toHaveBeenCalledOnce();
+    });
+
+    it('neventコピー失敗を表示する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
                 content: '投稿本文',
-                tags: [],
-                createdAt: 1_700_000_000,
-                postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+                media: [],
                 relayHints: [],
                 acceptedRelays: [],
-                media: [],
-                rawEvent: {},
-                updatedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
-                schemaVersion: 1,
-            },
+            }),
         ]);
         clipboardMock.tryCopyToClipboard.mockResolvedValue(false);
 

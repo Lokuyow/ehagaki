@@ -1,6 +1,6 @@
 import "fake-indexeddb/auto";
 import Dexie from "dexie";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { EHAGAKI_DB_NAME, EHagakiDB } from "../../lib/storage/ehagakiDb";
 import { DexiePostHistoryRepository } from "../../lib/storage/postHistoryRepository";
 
@@ -44,6 +44,14 @@ afterEach(async () => {
 });
 
 describe("DexiePostHistoryRepository", () => {
+    it("default console 依存で初期化できる", () => {
+        const db = createTestDb();
+
+        expect(() => new DexiePostHistoryRepository(db, () => 1000)).not.toThrow();
+
+        db.close();
+    });
+
     it("signed event を保存して pubkey ごとに postedAt 降順で取得する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
@@ -94,6 +102,175 @@ describe("DexiePostHistoryRepository", () => {
                 mimeType: "video/mp4",
             },
         ]);
+        expect(records[1].schemaVersion).toBe(2);
+
+        db.close();
+    });
+
+    it("page 単位取得と件数取得、oldest createdAt 取得ができる", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 100 }),
+            postedAt: 1000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 200 }),
+            postedAt: 2000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 300 }),
+            postedAt: 3000,
+        });
+
+        await expect(repository.countForPubkey(pubkey)).resolves.toBe(3);
+        await expect(repository.getPage({ pubkeyHex: pubkey, page: 1, pageSize: 2 }))
+            .resolves.toMatchObject([
+                { eventId: "3".repeat(64) },
+                { eventId: "2".repeat(64) },
+            ]);
+        await expect(repository.getPage({ pubkeyHex: pubkey, page: 2, pageSize: 2 }))
+            .resolves.toMatchObject([
+                { eventId: "1".repeat(64) },
+            ]);
+        await expect(repository.getOldestCreatedAt(pubkey)).resolves.toBe(100);
+
+        db.close();
+    });
+
+    it("relay 取得イベントを upsert しても既存 local record の主要フィールドを壊さない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 7000);
+        const pubkey = "b".repeat(64);
+        const eventId = "1".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({
+                id: eventId,
+                pubkey,
+                content: "local content",
+                created_at: 100,
+            }),
+            acceptedRelays: ["wss://accepted.example.com"],
+            relayHints: ["wss://hint.example.com"],
+            postedAt: 5000,
+        });
+        await repository.markDeleted(eventId, "d".repeat(64), 6000);
+
+        await repository.upsertFetchedEvents({
+            events: [
+                {
+                    event: createSignedEvent({
+                        id: eventId,
+                        pubkey,
+                        content: "local content",
+                        created_at: 100,
+                    }),
+                    relayUrls: ["wss://fetched.example.com"],
+                },
+            ],
+            fetchedAt: 7000,
+        });
+
+        const [record] = await repository.getAll({ pubkeyHex: pubkey });
+
+        expect(record.acceptedRelays).toEqual(["wss://accepted.example.com/"]);
+        expect(record.relayHints).toEqual([
+            "wss://hint.example.com/",
+            "wss://fetched.example.com/",
+            "wss://accepted.example.com/",
+        ]);
+        expect(record.fetchedRelays).toEqual(["wss://fetched.example.com/"]);
+        expect(record.postedAt).toBe(5000);
+        expect(record.deletedAt).toBe(6000);
+        expect(record.deletionEventId).toBe("d".repeat(64));
+        expect(record.fetchedAt).toBe(7000);
+        expect(record.lastSeenAt).toBe(7000);
+        expect(record.rawEvent).toMatchObject({
+            id: eventId,
+            content: "local content",
+        });
+        await expect(repository.countForPubkey(pubkey)).resolves.toBe(1);
+
+        db.close();
+    });
+
+    it("kind:42 の root e tag から channel 情報を保存する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 9000);
+        const pubkey = "b".repeat(64);
+
+        await repository.upsertFetchedEvents({
+            events: [
+                {
+                    event: createSignedEvent({
+                        id: "4".repeat(64),
+                        pubkey,
+                        kind: 42,
+                        tags: [
+                            ["e", "channel-id", "wss://channel.example.com", "root"],
+                            ["e", "reply-id", "wss://reply.example.com", "reply"],
+                        ],
+                        created_at: 321,
+                    }),
+                    relayUrls: ["wss://relay.example.com"],
+                },
+            ],
+            fetchedAt: 9000,
+        });
+
+        const [record] = await repository.getAll({ pubkeyHex: pubkey });
+
+        expect(record.kind).toBe(42);
+        expect(record.channelEventId).toBe("channel-id");
+        expect(record.channelRelayHints).toEqual(["wss://channel.example.com/"]);
+        expect(record.postedAt).toBe(321000);
+
+        db.close();
+    });
+
+    it("同一 eventId の fetched event が矛盾した場合は既存 rawEvent を維持する", async () => {
+        const db = createTestDb();
+        const mockConsole = {
+            log: vi.fn(),
+            warn: vi.fn(),
+            error: vi.fn(),
+        } as unknown as Console;
+        const repository = new DexiePostHistoryRepository(db, () => 7000, mockConsole);
+        const pubkey = "b".repeat(64);
+        const eventId = "1".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({
+                id: eventId,
+                pubkey,
+                content: "local content",
+                created_at: 100,
+            }),
+            postedAt: 5000,
+        });
+
+        await repository.upsertFetchedEvents({
+            events: [
+                {
+                    event: createSignedEvent({
+                        id: eventId,
+                        pubkey,
+                        content: "remote different content",
+                        created_at: 100,
+                    }),
+                    relayUrls: ["wss://fetched.example.com"],
+                },
+            ],
+            fetchedAt: 7000,
+        });
+
+        const [record] = await repository.getAll({ pubkeyHex: pubkey });
+        expect(record.content).toBe("local content");
+        expect(record.rawEvent).toMatchObject({ content: "local content" });
+        expect(mockConsole.warn).toHaveBeenCalledWith("post_history_raw_event_conflict", eventId);
 
         db.close();
     });

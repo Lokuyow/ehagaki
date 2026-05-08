@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 5;
+export const EHAGAKI_DB_VERSION = 6;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -146,8 +146,13 @@ export interface PostHistoryRecord {
     postedAt: number;
     relayHints: string[];
     acceptedRelays: string[];
+    fetchedRelays?: string[];
     media: PostHistoryMediaRecord[];
     rawEvent: unknown;
+    fetchedAt?: number;
+    lastSeenAt?: number;
+    channelEventId?: string;
+    channelRelayHints?: string[];
     deletedAt?: number;
     deletionEventId?: string;
     updatedAt: number;
@@ -181,7 +186,7 @@ export class EHagakiDB extends Dexie {
             hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
             customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
-            postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, schemaVersion, [pubkeyHex+postedAt]",
+            postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
         });
     }
 }

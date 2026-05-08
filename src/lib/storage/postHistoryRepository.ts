@@ -1,24 +1,36 @@
+import Dexie from "dexie";
+import {
+    cloneNostrEvent,
+    extractPostHistoryChannelReference,
+    isSameSignedNostrEvent,
+} from "../postHistoryEventUtils";
 import { RelayConfigUtils } from "../relayConfigUtils";
+import type { NostrEvent } from "../types";
 import type { PostHistoryRecord, PostHistoryMediaRecord, EHagakiDB } from "./ehagakiDb";
 import { ehagakiDb } from "./ehagakiDb";
 
-export const POST_HISTORY_SCHEMA_VERSION = 1;
-
-type SignedNostrEvent = {
-    id: string;
-    pubkey: string;
-    kind: number;
-    content: string;
-    tags: string[][];
-    created_at: number;
-    sig: string;
-};
+export const POST_HISTORY_SCHEMA_VERSION = 2;
 
 export type PostHistorySaveInput = {
-    event: SignedNostrEvent;
+    event: NostrEvent;
     acceptedRelays?: string[];
     relayHints?: string[];
     postedAt?: number;
+};
+
+export type PostHistoryPageOptions = PostHistoryRepositoryOptions & {
+    page: number;
+    pageSize: number;
+};
+
+export type PostHistoryFetchedEventItem = {
+    event: NostrEvent;
+    relayUrls?: string[];
+};
+
+export type PostHistoryUpsertFetchedEventsInput = {
+    events: PostHistoryFetchedEventItem[];
+    fetchedAt?: number;
 };
 
 export type PostHistoryRepositoryOptions = {
@@ -27,9 +39,18 @@ export type PostHistoryRepositoryOptions = {
 
 export interface PostHistoryRepository {
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
+    getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
+    countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
+    upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<void>;
+    getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
     markDeleted(eventId: string, deletionEventId: string, deletedAt?: number): Promise<void>;
 }
+
+type NormalizedFetchedEventItem = {
+    event: NostrEvent;
+    relayUrls: string[];
+};
 
 function parseImetaTag(tag: string[]): PostHistoryMediaRecord | null {
     const fields = new Map<string, string>();
@@ -96,7 +117,7 @@ function extractContentMedia(content: string, existingUrls: Set<string>): PostHi
         }));
 }
 
-export function extractPostHistoryMedia(event: Pick<SignedNostrEvent, "content" | "tags">): PostHistoryMediaRecord[] {
+export function extractPostHistoryMedia(event: Pick<NostrEvent, "content" | "tags">): PostHistoryMediaRecord[] {
     const media = event.tags
         .filter((tag) => tag[0] === "imeta")
         .map(parseImetaTag)
@@ -104,6 +125,22 @@ export function extractPostHistoryMedia(event: Pick<SignedNostrEvent, "content" 
     const seenUrls = new Set(media.map((item) => item.url));
     media.push(...extractContentMedia(event.content, seenUrls));
     return media;
+}
+
+function cloneMedia(media: PostHistoryMediaRecord[]): PostHistoryMediaRecord[] {
+    return media.map((item) => ({ ...item }));
+}
+
+function normalizePageNumber(page: number): number {
+    return Number.isFinite(page) ? Math.max(1, Math.trunc(page)) : 1;
+}
+
+function normalizePageSize(pageSize: number): number {
+    return Number.isFinite(pageSize) ? Math.max(1, Math.trunc(pageSize)) : 50;
+}
+
+function toPostedAtFromCreatedAt(createdAt: number): number {
+    return Math.max(0, createdAt * 1000);
 }
 
 function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRecord {
@@ -114,6 +151,7 @@ function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRe
         ...(input.relayHints ?? []),
         ...acceptedRelays,
     ], { limit: 3 });
+    const channelReference = extractPostHistoryChannelReference(event);
 
     return {
         id: event.id,
@@ -127,34 +165,201 @@ function toRecord(input: PostHistorySaveInput, now: () => number): PostHistoryRe
         relayHints,
         acceptedRelays,
         media: extractPostHistoryMedia(event),
-        rawEvent: {
-            ...event,
-            tags: event.tags.map((tag) => [...tag]),
-        },
+        rawEvent: cloneNostrEvent(event),
+        ...(channelReference.channelEventId
+            ? { channelEventId: channelReference.channelEventId }
+            : {}),
+        ...(channelReference.channelRelayHints
+            ? { channelRelayHints: channelReference.channelRelayHints }
+            : {}),
         updatedAt,
         schemaVersion: POST_HISTORY_SCHEMA_VERSION,
     };
+}
+
+function normalizeFetchedEventItems(
+    items: PostHistoryFetchedEventItem[],
+    console: Console,
+): NormalizedFetchedEventItem[] {
+    const normalized = new Map<string, NormalizedFetchedEventItem>();
+
+    for (const item of items) {
+        if (!item?.event?.id || !item.event.pubkey) {
+            continue;
+        }
+
+        const relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(item.relayUrls);
+        const existing = normalized.get(item.event.id);
+
+        if (!existing) {
+            normalized.set(item.event.id, {
+                event: item.event,
+                relayUrls,
+            });
+            continue;
+        }
+
+        if (!isSameSignedNostrEvent(existing.event, item.event)) {
+            console.warn("post_history_fetched_event_conflict", item.event.id);
+            continue;
+        }
+
+        existing.relayUrls = RelayConfigUtils.sanitizeExternalRelayUrls([
+            ...existing.relayUrls,
+            ...relayUrls,
+        ]);
+    }
+
+    return Array.from(normalized.values());
 }
 
 export class DexiePostHistoryRepository implements PostHistoryRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
         private now: () => number = Date.now,
+        private console: Console = typeof globalThis.console !== "undefined"
+            ? globalThis.console
+            : { log: () => undefined, warn: () => undefined, error: () => undefined } as Console,
     ) { }
 
     async getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]> {
         if (!options.pubkeyHex) return [];
 
         const records = await this.db.postHistory
-            .where("pubkeyHex")
-            .equals(options.pubkeyHex)
+            .where("[pubkeyHex+postedAt]")
+            .between([options.pubkeyHex, Dexie.minKey], [options.pubkeyHex, Dexie.maxKey])
+            .reverse()
             .toArray();
 
-        return records.sort((a, b) => b.postedAt - a.postedAt);
+        return records.sort((a, b) => b.postedAt - a.postedAt || b.createdAt - a.createdAt);
+    }
+
+    async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex) return [];
+
+        const page = normalizePageNumber(options.page);
+        const pageSize = normalizePageSize(options.pageSize);
+
+        return this.db.postHistory
+            .where("[pubkeyHex+postedAt]")
+            .between([options.pubkeyHex, Dexie.minKey], [options.pubkeyHex, Dexie.maxKey])
+            .reverse()
+            .offset((page - 1) * pageSize)
+            .limit(pageSize)
+            .toArray();
+    }
+
+    async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {
+        if (!pubkeyHex) return 0;
+
+        return this.db.postHistory
+            .where("pubkeyHex")
+            .equals(pubkeyHex)
+            .count();
     }
 
     async putPostedEvent(input: PostHistorySaveInput): Promise<void> {
         await this.db.postHistory.put(toRecord(input, this.now));
+    }
+
+    async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<void> {
+        const normalizedItems = normalizeFetchedEventItems(input.events, this.console);
+        if (normalizedItems.length === 0) {
+            return;
+        }
+
+        const fetchedAt = input.fetchedAt ?? this.now();
+        const eventIds = normalizedItems.map((item) => item.event.id);
+
+        await this.db.transaction("rw", this.db.postHistory, async () => {
+            const existingRecords = await this.db.postHistory.bulkGet(eventIds);
+            const existingMap = new Map<string, PostHistoryRecord>();
+
+            existingRecords.forEach((record) => {
+                if (record) {
+                    existingMap.set(record.eventId, record);
+                }
+            });
+
+            const nextRecords = normalizedItems.map((item) => {
+                const existingRecord = existingMap.get(item.event.id);
+                const fetchedRelays = RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(existingRecord?.fetchedRelays ?? []),
+                    ...item.relayUrls,
+                ]);
+                const rawEventChanged = !!existingRecord
+                    && !isSameSignedNostrEvent(existingRecord.rawEvent, item.event);
+
+                if (rawEventChanged) {
+                    this.console.warn("post_history_raw_event_conflict", item.event.id);
+                }
+
+                const channelReference = rawEventChanged && existingRecord
+                    ? {
+                        channelEventId: existingRecord.channelEventId,
+                        channelRelayHints: existingRecord.channelRelayHints,
+                    }
+                    : extractPostHistoryChannelReference(item.event);
+                const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
+                    ...(existingRecord?.relayHints ?? []),
+                    ...item.relayUrls,
+                    ...(existingRecord?.acceptedRelays ?? []),
+                ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
+
+                return {
+                    id: item.event.id,
+                    eventId: item.event.id,
+                    pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
+                    kind: rawEventChanged && existingRecord ? existingRecord.kind : item.event.kind,
+                    content: rawEventChanged && existingRecord ? existingRecord.content : item.event.content,
+                    tags: rawEventChanged && existingRecord
+                        ? existingRecord.tags.map((tag) => [...tag])
+                        : item.event.tags.map((tag) => [...tag]),
+                    createdAt: rawEventChanged && existingRecord ? existingRecord.createdAt : item.event.created_at,
+                    postedAt: existingRecord?.postedAt ?? toPostedAtFromCreatedAt(item.event.created_at),
+                    relayHints,
+                    acceptedRelays: existingRecord?.acceptedRelays ?? [],
+                    ...(fetchedRelays.length > 0 ? { fetchedRelays } : {}),
+                    media: rawEventChanged && existingRecord
+                        ? cloneMedia(existingRecord.media)
+                        : extractPostHistoryMedia(item.event),
+                    rawEvent: rawEventChanged && existingRecord
+                        ? existingRecord.rawEvent
+                        : cloneNostrEvent(item.event),
+                    fetchedAt,
+                    lastSeenAt: fetchedAt,
+                    ...(channelReference.channelEventId
+                        ? { channelEventId: channelReference.channelEventId }
+                        : existingRecord?.channelEventId
+                            ? { channelEventId: existingRecord.channelEventId }
+                            : {}),
+                    ...(channelReference.channelRelayHints
+                        ? { channelRelayHints: channelReference.channelRelayHints }
+                        : existingRecord?.channelRelayHints
+                            ? { channelRelayHints: [...existingRecord.channelRelayHints] }
+                            : {}),
+                    ...(existingRecord?.deletedAt !== undefined ? { deletedAt: existingRecord.deletedAt } : {}),
+                    ...(existingRecord?.deletionEventId
+                        ? { deletionEventId: existingRecord.deletionEventId }
+                        : {}),
+                    updatedAt: this.now(),
+                    schemaVersion: POST_HISTORY_SCHEMA_VERSION,
+                } satisfies PostHistoryRecord;
+            });
+
+            await this.db.postHistory.bulkPut(nextRecords);
+        });
+    }
+
+    async getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null> {
+        if (!pubkeyHex) return null;
+
+        const oldestRecord = await this.db.postHistory
+            .where("[pubkeyHex+createdAt]")
+            .between([pubkeyHex, Dexie.minKey], [pubkeyHex, Dexie.maxKey])
+            .first();
+
+        return oldestRecord?.createdAt ?? null;
     }
 
     async markDeleted(eventId: string, deletionEventId: string, deletedAt: number = this.now()): Promise<void> {

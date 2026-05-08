@@ -1167,7 +1167,9 @@
     ) {
       void initializeEmbedStorageSync();
     }
-    embedIndexedDbService.initialize({ locationSearch: window.location.search });
+    embedIndexedDbService.initialize({
+      locationSearch: window.location.search,
+    });
 
     const cleanupParentClientLoginHandler =
       parentClientAuthService.onRemoteLogin((pubkeyHex) => {
@@ -1637,6 +1639,8 @@
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
           pubkeyHex={authState.value?.pubkey ?? null}
+          {rxNostr}
+          relayConfig={relayConfigStore.value}
         />
       {/if}
       {#if showDraftLimitConfirmStore.value}
