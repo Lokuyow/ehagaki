@@ -2,6 +2,7 @@
     import type { Snippet } from "svelte";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
 
     interface Props {
         /** ダイアログの開閉状態 */
@@ -28,6 +29,8 @@
         canGoPrevious?: boolean;
         /** 次ページへ移動できるか */
         canGoNext?: boolean;
+        /** 次ページ読み込み中か */
+        nextPageLoading?: boolean;
         /** 前ページボタン押下時のコールバック */
         onPreviousPage?: () => void;
         /** 次ページボタン押下時のコールバック */
@@ -53,6 +56,7 @@
         nextPageLabel = "",
         canGoPrevious = false,
         canGoNext = false,
+        nextPageLoading = false,
         onPreviousPage,
         onNextPage,
         initialFocus = "default",
@@ -138,14 +142,24 @@
                             </div>
 
                             <Button
-                                className="dialog-page-button"
+                                className={`dialog-page-button ${nextPageLoading ? "loading" : ""}`}
                                 variant="default"
                                 shape="pill"
-                                disabled={!canGoNext}
+                                disabled={!canGoNext || nextPageLoading}
                                 ariaLabel={nextPageLabel}
                                 onClick={onNextPage}
                             >
-                                <span class="btn-text">{nextPageLabel}</span>
+                                {#if nextPageLoading}
+                                    <LoadingPlaceholder
+                                        showLoader={true}
+                                        loaderSize={30}
+                                        state="loading"
+                                        customClass="dialog-page-loading-placeholder"
+                                    />
+                                {:else}
+                                    <span class="btn-text">{nextPageLabel}</span
+                                    >
+                                {/if}
                             </Button>
                         </div>
                     {:else}
@@ -244,6 +258,20 @@
         height: auto;
         min-height: 40px;
         flex: 1 0 auto;
+    }
+
+    :global(.dialog-page-loading-placeholder) {
+        color: var(--text);
+        column-gap: 2px;
+    }
+
+    :global(.dialog-page-loading-placeholder .placeholder-text) {
+        color: inherit;
+        font-size: 1rem;
+    }
+
+    :global(.dialog-page-loading-placeholder .loader-container .square) {
+        background-color: currentColor;
     }
 
     /* 閉じるボタン付きフッター用スタイル */

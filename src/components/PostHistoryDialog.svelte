@@ -368,6 +368,7 @@
     nextPageLabel={$_("postHistory.nextPage")}
     {canGoPrevious}
     {canGoNext}
+    nextPageLoading={syncStatus === "older-syncing"}
     onPreviousPage={handlePreviousPage}
     onNextPage={handleNextPage}
     initialFocus="content"

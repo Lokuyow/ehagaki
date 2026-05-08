@@ -103,6 +103,15 @@ function createRecord(overrides: Record<string, any> = {}) {
     };
 }
 
+function createDeferred<T>() {
+    let resolve!: (value: T) => void;
+    const promise = new Promise<T>((resolvePromise) => {
+        resolve = resolvePromise;
+    });
+
+    return { promise, resolve };
+}
+
 describe('PostHistoryDialog', () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -166,6 +175,10 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
             expect(screen.getByText('リレーと同期中...')).toBeTruthy();
         });
+
+        const nextButton = screen.getByRole('button', { name: '次へ' });
+        expect(nextButton.querySelector('.dialog-page-loading-placeholder')).toBeNull();
+        expect(nextButton.textContent).toContain('次へ');
 
         expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledWith(
             {} as any,
@@ -391,6 +404,71 @@ describe('PostHistoryDialog', () => {
                 fetchedAt: 2000,
             });
             expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+        });
+    });
+
+    it('古い投稿をリレーから取得中は次へボタンにローダーを表示する', async () => {
+        const olderFetch = createDeferred<{
+            status: 'success';
+            events: any[];
+            fetchedAt: number;
+            nextUntil: null;
+            hasMore: false;
+            relayUrls: string[];
+        }>();
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50);
+        repositoryMock.getPage.mockResolvedValue([createRecord({ eventId: 'page-1', content: '1ページ目' })]);
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 1000,
+                    nextUntil: 149,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: olderFetch.promise,
+                cancel: vi.fn(),
+            });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+        });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(nextButton).toHaveProperty('disabled', true);
+            expect(nextButton.querySelector('.dialog-page-loading-placeholder')).toBeTruthy();
+            expect(nextButton.querySelector('.loader-container')).toBeTruthy();
+            expect(nextButton.textContent).not.toContain('次へ');
+        });
+
+        olderFetch.resolve({
+            status: 'success',
+            events: [],
+            fetchedAt: 2000,
+            nextUntil: null,
+            hasMore: false,
+            relayUrls: [],
         });
     });
 
