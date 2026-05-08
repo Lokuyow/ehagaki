@@ -1144,6 +1144,7 @@
     }
 
     .post-preview-content {
+        padding-left: 1rem;
         overflow-wrap: anywhere;
         white-space: pre-wrap;
     }
