@@ -268,6 +268,7 @@
                 <LoadingPlaceholder
                     text={$_(syncStatusMessageKey)}
                     showLoader={true}
+                    loaderSize={25}
                     state={syncStatus === "syncing" ? "loading" : "complete"}
                     customClass="status-loading-placeholder"
                 />
@@ -390,7 +391,8 @@
         align-items: center;
         gap: 12px;
         width: 100%;
-        padding: 18px 16px;
+        min-height: 50px;
+        padding: 0 16px;
         border-bottom: 1px solid var(--border-hr);
     }
 
@@ -432,14 +434,11 @@
         :global(.status-loading-placeholder) {
             justify-content: flex-end;
             width: auto;
+            column-gap: 0;
         }
     }
 
     :global(.status-loading-placeholder .loader-container) {
-        width: 20px;
-        height: 20px;
-        flex: 0 0 20px;
-
         :global(.square) {
             background: currentColor;
         }

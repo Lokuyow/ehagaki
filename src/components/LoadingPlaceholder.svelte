@@ -6,6 +6,7 @@
         showLoader?: boolean;
         customClass?: string;
         state?: "loading" | "complete";
+        loaderSize?: number | string;
     }
 
     let {
@@ -13,6 +14,7 @@
         showLoader = false,
         customClass = "",
         state = undefined,
+        loaderSize = 40,
     }: Props = $props();
 
     // デフォルトテキストを国際化対応で設定
@@ -26,11 +28,14 @@
 
     let safeDisplayText = $derived(sanitizeHtmlAllowingWbr(displayText));
     let isLoading = $derived(state ? state === "loading" : showLoader);
+    let loaderSizeValue = $derived(
+        typeof loaderSize === "number" ? `${loaderSize}px` : loaderSize,
+    );
 </script>
 
 <div class="loading-placeholder {customClass}" aria-label={displayText}>
     {#if isLoading}
-        <div class="loader-container">
+        <div class="loader-container" style:--loader-size={loaderSizeValue}>
             <div class="square"></div>
             <div class="square"></div>
             <div class="square"></div>
@@ -106,8 +111,8 @@
     /* 正方形たちをまとめるコンテナ */
     .loader-container {
         position: relative;
-        width: 40px;
-        height: 40px;
+        width: var(--loader-size);
+        height: var(--loader-size);
     }
     /* 正方形の基本スタイル */
     .square {
@@ -131,16 +136,29 @@
             transform: translate(-25%, -25%) scale(1) rotate(0deg);
         }
         20% {
-            transform: translate(12px, 10px) scale(0.6) rotate(-170deg);
+            transform: translate(
+                    calc(var(--loader-size) * 0.3),
+                    calc(var(--loader-size) * 0.25)
+                )
+                scale(0.6) rotate(-170deg);
         }
         40% {
-            transform: translate(8px, -2px) scale(1.05) rotate(200deg);
+            transform: translate(
+                    calc(var(--loader-size) * 0.2),
+                    calc(var(--loader-size) * -0.05)
+                )
+                scale(1.05) rotate(200deg);
         }
         60% {
-            transform: translate(-2px, -4px) scale(0.9) rotate(-220deg);
+            transform: translate(
+                    calc(var(--loader-size) * -0.05),
+                    calc(var(--loader-size) * -0.1)
+                )
+                scale(0.9) rotate(-220deg);
         }
         80% {
-            transform: translate(0px, 12px) scale(0.5) rotate(0deg);
+            transform: translate(0, calc(var(--loader-size) * 0.3)) scale(0.5)
+                rotate(0deg);
         }
         100% {
             transform: translate(-25%, -25%) scale(1) rotate(360deg);
@@ -148,23 +166,23 @@
     }
     /* 各正方形のサイズとアニメーション開始タイミングを個別に設定 */
     .square:nth-child(1) {
-        width: 8px;
-        height: 8px;
+        width: calc(var(--loader-size) * 0.2);
+        height: calc(var(--loader-size) * 0.2);
         animation-delay: -4s;
     }
     .square:nth-child(2) {
-        width: 12px;
-        height: 12px;
+        width: calc(var(--loader-size) * 0.3);
+        height: calc(var(--loader-size) * 0.3);
         animation-delay: -3s;
     }
     .square:nth-child(3) {
-        width: 14px;
-        height: 14px;
+        width: calc(var(--loader-size) * 0.35);
+        height: calc(var(--loader-size) * 0.35);
         animation-delay: -1s;
     }
     .square:nth-child(4) {
-        width: 18px;
-        height: 18px;
+        width: calc(var(--loader-size) * 0.45);
+        height: calc(var(--loader-size) * 0.45);
         animation-delay: -2s;
     }
 </style>
