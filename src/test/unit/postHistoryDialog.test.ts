@@ -10,7 +10,6 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.searchPlaceholder': '投稿履歴を検索',
         'postHistory.searchNoResults': '一致する投稿はありません',
         'postHistory.searchResults': '検索結果',
-        'postHistory.clearSearch': '検索をクリア',
         'postHistory.empty': '投稿履歴はありません',
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
@@ -281,7 +280,7 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('検索結果 0 件では searchNoResults を表示し、clear で通常表示へ戻る', async () => {
+    it('検索結果 0 件では searchNoResults を表示し、検索入力を消すと通常表示へ戻る', async () => {
         vi.useFakeTimers();
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
@@ -310,7 +309,8 @@ describe('PostHistoryDialog', () => {
             expect(screen.queryByText('投稿履歴はありません')).toBeNull();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '検索をクリア' }));
+        await fireEvent.input(searchInput, { target: { value: '' } });
+        await vi.advanceTimersByTimeAsync(250);
 
         await waitFor(() => {
             expect(screen.getByText('通常一覧')).toBeTruthy();

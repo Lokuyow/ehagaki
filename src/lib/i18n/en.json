@@ -91,7 +91,6 @@
     "searchPlaceholder": "Search",
     "searchNoResults": "No matching posts",
     "searchResults": "Search results",
-    "clearSearch": "Clear search",
     "empty": "No post history",
     "syncing": "Syncing with relays...",
     "synced": "Relay sync completed",

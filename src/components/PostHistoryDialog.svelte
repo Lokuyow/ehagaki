@@ -87,7 +87,6 @@
             : currentPage < totalPages || hasMoreRemote,
     );
     let showPaging = $derived(displayTotalCount > 0);
-    let hasSearchInput = $derived(searchInput.trim().length > 0);
     let syncStatusMessageKey = $derived(
         isSearchMode || syncStatus === "idle"
             ? null
@@ -139,10 +138,6 @@
         searchPosts = [];
         searchTotalCount = 0;
         appliedSearchQuery = "";
-    }
-
-    function handleClearSearch(): void {
-        resetSearchState();
     }
 
     function handleClose() {
@@ -832,16 +827,6 @@
             placeholder={$_("postHistory.searchPlaceholder")}
             aria-label={$_("postHistory.search")}
         />
-        {#if hasSearchInput}
-            <button
-                type="button"
-                class="post-history-search-clear"
-                aria-label={$_("postHistory.clearSearch")}
-                onclick={handleClearSearch}
-            >
-                {$_("postHistory.clearSearch")}
-            </button>
-        {/if}
     </div>
 
     {#if isSearchMode && searchTotalCount > 0}
@@ -982,18 +967,6 @@
 
     .post-history-search-input::placeholder {
         color: var(--text-muted);
-    }
-
-    .post-history-search-clear {
-        flex-shrink: 0;
-        border: 1px solid var(--border-soft);
-        border-radius: 999px;
-        background: transparent;
-        color: var(--text-muted);
-        font: inherit;
-        line-height: 1;
-        padding: 10px 12px;
-        cursor: pointer;
     }
 
     .post-history-search-summary {
