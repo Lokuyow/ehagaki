@@ -100,7 +100,10 @@
     "previousPage": "前へ",
     "nextPage": "次へ",
     "page": "{page} / {total} ページ",
-    "noMorePosts": "これ以上古い投稿はありません"
+    "noMorePosts": "これ以上古い投稿はありません",
+    "channel": "チャンネル",
+    "channelLoading": "読み込み中...",
+    "channelUnknown": "不明"
   },
   "settingsDialog": {
     "info_header_setting": "設定",

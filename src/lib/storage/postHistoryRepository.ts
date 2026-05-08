@@ -33,6 +33,12 @@ export type PostHistoryUpsertFetchedEventsInput = {
     fetchedAt?: number;
 };
 
+export type PostHistoryUpsertFetchedEventsResult = {
+    insertedCount: number;
+    updatedCount: number;
+    unchangedCount: number;
+};
+
 export type PostHistoryRepositoryOptions = {
     pubkeyHex?: string | null;
 };
@@ -42,7 +48,7 @@ export interface PostHistoryRepository {
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
     countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
-    upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<void>;
+    upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult>;
     getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
     markDeleted(eventId: string, deletionEventId: string, deletedAt?: number): Promise<void>;
 }
@@ -213,6 +219,54 @@ function normalizeFetchedEventItems(
     return Array.from(normalized.values());
 }
 
+function areStringArraysEqual(left: string[] | undefined, right: string[] | undefined): boolean {
+    const normalizedLeft = left ?? [];
+    const normalizedRight = right ?? [];
+    if (normalizedLeft.length !== normalizedRight.length) {
+        return false;
+    }
+
+    return normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
+function areMediaArraysEqual(left: PostHistoryMediaRecord[], right: PostHistoryMediaRecord[]): boolean {
+    if (left.length !== right.length) {
+        return false;
+    }
+
+    return left.every((item, index) => {
+        const target = right[index];
+        return item.url === target.url
+            && item.mimeType === target.mimeType
+            && item.alt === target.alt
+            && item.blurhash === target.blurhash
+            && item.dim === target.dim
+            && item.size === target.size
+            && item.uploadProtocol === target.uploadProtocol;
+    });
+}
+
+function hasMaterialPostHistoryChanges(
+    existingRecord: PostHistoryRecord,
+    nextRecord: PostHistoryRecord,
+): boolean {
+    return existingRecord.kind !== nextRecord.kind
+        || existingRecord.content !== nextRecord.content
+        || existingRecord.createdAt !== nextRecord.createdAt
+        || existingRecord.postedAt !== nextRecord.postedAt
+        || existingRecord.deletedAt !== nextRecord.deletedAt
+        || existingRecord.deletionEventId !== nextRecord.deletionEventId
+        || existingRecord.channelEventId !== nextRecord.channelEventId
+        || !isSameSignedNostrEvent(existingRecord.rawEvent, nextRecord.rawEvent as NostrEvent)
+        || !areStringArraysEqual(existingRecord.relayHints, nextRecord.relayHints)
+        || !areStringArraysEqual(existingRecord.acceptedRelays, nextRecord.acceptedRelays)
+        || !areStringArraysEqual(existingRecord.fetchedRelays, nextRecord.fetchedRelays)
+        || !areStringArraysEqual(existingRecord.channelRelayHints, nextRecord.channelRelayHints)
+        || !areMediaArraysEqual(existingRecord.media, nextRecord.media)
+        || existingRecord.tags.length !== nextRecord.tags.length
+        || existingRecord.tags.some((tag, index) => !areStringArraysEqual(tag, nextRecord.tags[index]));
+}
+
 export class DexiePostHistoryRepository implements PostHistoryRepository {
     constructor(
         private db: EHagakiDB = ehagakiDb,
@@ -262,14 +316,21 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         await this.db.postHistory.put(toRecord(input, this.now));
     }
 
-    async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<void> {
+    async upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult> {
         const normalizedItems = normalizeFetchedEventItems(input.events, this.console);
         if (normalizedItems.length === 0) {
-            return;
+            return {
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
         }
 
         const fetchedAt = input.fetchedAt ?? this.now();
         const eventIds = normalizedItems.map((item) => item.event.id);
+        let insertedCount = 0;
+        let updatedCount = 0;
+        let unchangedCount = 0;
 
         await this.db.transaction("rw", this.db.postHistory, async () => {
             const existingRecords = await this.db.postHistory.bulkGet(eventIds);
@@ -306,7 +367,7 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     ...(existingRecord?.acceptedRelays ?? []),
                 ], { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT });
 
-                return {
+                const nextRecord = {
                     id: item.event.id,
                     eventId: item.event.id,
                     pubkeyHex: existingRecord?.pubkeyHex ?? item.event.pubkey,
@@ -345,10 +406,26 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
                     updatedAt: this.now(),
                     schemaVersion: POST_HISTORY_SCHEMA_VERSION,
                 } satisfies PostHistoryRecord;
+
+                if (!existingRecord) {
+                    insertedCount += 1;
+                } else if (hasMaterialPostHistoryChanges(existingRecord, nextRecord)) {
+                    updatedCount += 1;
+                } else {
+                    unchangedCount += 1;
+                }
+
+                return nextRecord;
             });
 
             await this.db.postHistory.bulkPut(nextRecords);
         });
+
+        return {
+            insertedCount,
+            updatedCount,
+            unchangedCount,
+        };
     }
 
     async getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null> {

@@ -7,6 +7,7 @@ import type {
     ChannelContextState,
     NostrEvent,
     RelayConfig,
+    ResolvedChannelMetadata,
 } from "./types";
 
 interface ChannelMetadataContent {
@@ -14,6 +15,11 @@ interface ChannelMetadataContent {
     about?: string | null;
     picture?: string | null;
     relays: string[];
+}
+
+interface ChannelMetadataParseResult {
+    metadata: ChannelMetadataContent;
+    isValid: boolean;
 }
 
 interface FetchEventResult {
@@ -24,6 +30,11 @@ interface FetchEventResult {
 interface FetchLatestMetadataResult {
     event: NostrEvent | null;
     relayUrls: string[];
+    metadata: ChannelMetadataContent;
+}
+
+export interface ChannelContextResolveOptions {
+    signal?: AbortSignal;
 }
 
 export interface ChannelContextServiceDeps {
@@ -60,6 +71,21 @@ function resolveMetadataValue(
     return null;
 }
 
+function toChannelContextState(
+    resolvedChannelMetadata: ResolvedChannelMetadata,
+): ChannelContextState {
+    return {
+        eventId: resolvedChannelMetadata.channelEventId,
+        relayHints: [...resolvedChannelMetadata.relayHints],
+        ...(resolvedChannelMetadata.channelRelays?.length
+            ? { channelRelays: [...resolvedChannelMetadata.channelRelays] }
+            : {}),
+        name: resolvedChannelMetadata.name,
+        about: resolvedChannelMetadata.about,
+        picture: resolvedChannelMetadata.picture,
+    };
+}
+
 export class ChannelContextService {
     private console: Console;
     private setTimeoutFn: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -78,35 +104,53 @@ export class ChannelContextService {
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
     ): Promise<ChannelContextState> {
+        return this.resolveChannelMetadata(
+            channelContextQuery,
+            rxNostr,
+            relayConfig,
+        ).then(toChannelContextState);
+    }
+
+    resolveChannelMetadata(
+        channelContextQuery: ChannelContextQueryTarget,
+        rxNostr: RxNostr,
+        relayConfig?: RelayConfig | null,
+        options: ChannelContextResolveOptions = {},
+    ): Promise<ResolvedChannelMetadata> {
         const sanitizedHints = RelayConfigUtils.sanitizeExternalRelayUrls(
             channelContextQuery.relayHints,
             { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
         );
 
-        return this.resolveChannelContextInternal(
+        return this.resolveChannelMetadataInternal(
             channelContextQuery.eventId,
             sanitizedHints,
             rxNostr,
             relayConfig,
+            options,
         );
     }
 
-    private async resolveChannelContextInternal(
+    private async resolveChannelMetadataInternal(
         eventId: string,
         relayHints: string[],
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
-    ): Promise<ChannelContextState> {
+        options: ChannelContextResolveOptions = {},
+    ): Promise<ResolvedChannelMetadata> {
         const rootResult = await this.fetchEventById(
             eventId,
             relayHints,
             rxNostr,
             relayConfig,
+            5000,
+            options.signal,
         );
 
-        const baseMetadata = rootResult.event?.kind === 40
+        const baseMetadataResult = rootResult.event?.kind === 40
             ? this.parseChannelMetadataContent(rootResult.event.content)
-            : { relays: [] };
+            : { metadata: { relays: [] }, isValid: false };
+        const baseMetadata = baseMetadataResult.metadata;
 
         const metadataReadRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
             RelayConfigUtils.mergeRelayConfigs(
@@ -123,12 +167,12 @@ export class ChannelContextService {
                 metadataReadRelays,
                 rxNostr,
                 relayConfig,
+                5000,
+                options.signal,
             )
-            : { event: null, relayUrls: [] };
+            : { event: null, relayUrls: [], metadata: { relays: [] } };
 
-        const latestMetadata = metadataResult.event
-            ? this.parseChannelMetadataContent(metadataResult.event.content)
-            : { relays: [] };
+        const latestMetadata = metadataResult.metadata;
 
         const channelRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
             RelayConfigUtils.mergeRelayConfigs(
@@ -141,12 +185,13 @@ export class ChannelContextService {
             RelayConfigUtils.mergeRelayConfigs(
                 relayHints,
                 rootResult.relayUrl ? [rootResult.relayUrl] : [],
+                metadataResult.relayUrls,
             ),
             { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
         );
 
         return {
-            eventId,
+            channelEventId: eventId,
             relayHints: resolvedRelayHints,
             ...(channelRelays.length > 0
                 ? { channelRelays }
@@ -154,29 +199,42 @@ export class ChannelContextService {
             name: resolveMetadataValue(latestMetadata.name, baseMetadata.name),
             about: resolveMetadataValue(latestMetadata.about, baseMetadata.about),
             picture: resolveMetadataValue(latestMetadata.picture, baseMetadata.picture),
+            creatorPubkey: rootResult.event?.kind === 40 ? rootResult.event.pubkey : null,
+            createEventCreatedAt: rootResult.event?.kind === 40 ? rootResult.event.created_at : null,
+            metadataEventId: metadataResult.event?.id ?? null,
+            metadataCreatedAt: metadataResult.event?.created_at ?? null,
         };
     }
 
-    private parseChannelMetadataContent(content: string): ChannelMetadataContent {
+    private parseChannelMetadataContent(content: string): ChannelMetadataParseResult {
         try {
             const parsed = JSON.parse(content);
             if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-                return { relays: [] };
+                return {
+                    metadata: { relays: [] },
+                    isValid: false,
+                };
             }
 
             const record = parsed as Record<string, unknown>;
             return {
-                name: sanitizeMetadataText(record.name),
-                about: sanitizeMetadataText(record.about),
-                picture: sanitizeMetadataText(record.picture),
-                relays: RelayConfigUtils.sanitizeExternalRelayUrls(
-                    Array.isArray(record.relays)
-                        ? record.relays.filter((value): value is string => typeof value === "string")
-                        : [],
-                ),
+                metadata: {
+                    name: sanitizeMetadataText(record.name),
+                    about: sanitizeMetadataText(record.about),
+                    picture: sanitizeMetadataText(record.picture),
+                    relays: RelayConfigUtils.sanitizeExternalRelayUrls(
+                        Array.isArray(record.relays)
+                            ? record.relays.filter((value): value is string => typeof value === "string")
+                            : [],
+                    ),
+                },
+                isValid: true,
             };
         } catch {
-            return { relays: [] };
+            return {
+                metadata: { relays: [] },
+                isValid: false,
+            };
         }
     }
 
@@ -207,6 +265,7 @@ export class ChannelContextService {
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
         timeoutMs = 5000,
+        signal?: AbortSignal,
     ): Promise<FetchEventResult> {
         return new Promise((resolve) => {
             const rxReq = createRxBackwardReq();
@@ -214,11 +273,16 @@ export class ChannelContextService {
             let subscription: { unsubscribe?: () => void } | undefined;
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+            const handleAbort = () => {
+                safeResolve({ event: null, relayUrl: null });
+            };
+
             const cleanup = () => {
                 if (timeoutId !== undefined) {
                     this.clearTimeoutFn(timeoutId);
                     timeoutId = undefined;
                 }
+                signal?.removeEventListener("abort", handleAbort);
                 subscription?.unsubscribe?.();
                 subscription = undefined;
             };
@@ -232,6 +296,13 @@ export class ChannelContextService {
                 cleanup();
                 resolve(result);
             };
+
+            if (signal?.aborted) {
+                safeResolve({ event: null, relayUrl: null });
+                return;
+            }
+
+            signal?.addEventListener("abort", handleAbort, { once: true });
 
             try {
                 subscription = rxNostr.use(rxReq, {
@@ -277,6 +348,7 @@ export class ChannelContextService {
         rxNostr: RxNostr,
         relayConfig?: RelayConfig | null,
         timeoutMs = 5000,
+        signal?: AbortSignal,
     ): Promise<FetchLatestMetadataResult> {
         return new Promise((resolve) => {
             const rxReq = createRxBackwardReq();
@@ -284,13 +356,19 @@ export class ChannelContextService {
             let subscription: { unsubscribe?: () => void } | undefined;
             let timeoutId: ReturnType<typeof setTimeout> | undefined;
             let latestEvent: NostrEvent | null = null;
+            let latestMetadata: ChannelMetadataContent = { relays: [] };
             const relayUrls = new Set<string>();
+
+            const handleAbort = () => {
+                safeResolve();
+            };
 
             const cleanup = () => {
                 if (timeoutId !== undefined) {
                     this.clearTimeoutFn(timeoutId);
                     timeoutId = undefined;
                 }
+                signal?.removeEventListener("abort", handleAbort);
                 subscription?.unsubscribe?.();
                 subscription = undefined;
             };
@@ -305,8 +383,16 @@ export class ChannelContextService {
                 resolve({
                     event: latestEvent,
                     relayUrls: Array.from(relayUrls),
+                    metadata: latestMetadata,
                 });
             };
+
+            if (signal?.aborted) {
+                safeResolve();
+                return;
+            }
+
+            signal?.addEventListener("abort", handleAbort, { once: true });
 
             try {
                 subscription = rxNostr.use(rxReq, {
@@ -325,12 +411,20 @@ export class ChannelContextService {
                             return;
                         }
 
+                        const parsedMetadata = this.parseChannelMetadataContent(
+                            event.content,
+                        );
+                        if (!parsedMetadata.isValid) {
+                            return;
+                        }
+
                         if (typeof packet.from === "string") {
                             relayUrls.add(packet.from);
                         }
 
                         if (!latestEvent || event.created_at > latestEvent.created_at) {
                             latestEvent = event;
+                            latestMetadata = parsedMetadata.metadata;
                         }
                     },
                     complete: () => {

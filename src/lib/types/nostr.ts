@@ -279,6 +279,19 @@ export interface ChannelContextState {
     isMetadataLoading?: boolean;
 }
 
+export interface ResolvedChannelMetadata {
+    channelEventId: string;
+    relayHints: string[];
+    channelRelays?: string[];
+    name: string | null;
+    about: string | null;
+    picture: string | null;
+    creatorPubkey: string | null;
+    createEventCreatedAt: number | null;
+    metadataEventId: string | null;
+    metadataCreatedAt: number | null;
+}
+
 export interface NostrEvent {
     id: string;
     pubkey: string;

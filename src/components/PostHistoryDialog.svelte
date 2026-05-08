@@ -6,6 +6,8 @@
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
+    import { ChannelContextService } from "../lib/channelContextService";
+    import { RelayConfigUtils } from "../lib/relayConfigUtils";
     import {
         POST_HISTORY_INITIAL_FETCH_LIMIT,
         POST_HISTORY_PAGE_SIZE,
@@ -13,6 +15,10 @@
         postHistoryRelayFetchService,
         type PostHistoryRelayFetchTask,
     } from "../lib/postHistoryRelayFetchService";
+    import {
+        channelMetadataRepository,
+        type ChannelMetadataCache,
+    } from "../lib/storage/channelMetadataRepository";
     import { postHistoryRepository } from "../lib/storage/postHistoryRepository";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type { RelayConfig } from "../lib/types";
@@ -38,9 +44,18 @@
     }: Props = $props();
 
     const pageSize = POST_HISTORY_PAGE_SIZE;
+    const channelContextService = new ChannelContextService();
+
+    type ChannelDisplayState = {
+        status: "loading" | "resolved" | "failed";
+        name: string | null;
+    };
 
     let posts = $state<PostHistoryRecord[]>([]);
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
+    let channelDisplayByEventId = $state<Record<string, ChannelDisplayState>>(
+        {},
+    );
     let currentPage = $state(1);
     let totalCount = $state(0);
     let syncStatus = $state<
@@ -71,14 +86,32 @@
     let loadRequestId = 0;
     let hasStartedInitialSync = false;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
+    let channelResolutionRequestId = 0;
+    let currentChannelAbortController: AbortController | null = null;
+    let currentChannelRequestIds: string[] = [];
+    const pendingChannelEventIds = new Set<string>();
 
     function cancelCurrentSync(): void {
         currentFetchTask?.cancel();
         currentFetchTask = null;
     }
 
+    function clearCurrentChannelResolution(): void {
+        currentChannelRequestIds.forEach((channelEventId) => {
+            pendingChannelEventIds.delete(channelEventId);
+        });
+        currentChannelRequestIds = [];
+        currentChannelAbortController = null;
+    }
+
+    function cancelCurrentChannelResolution(): void {
+        currentChannelAbortController?.abort();
+        clearCurrentChannelResolution();
+    }
+
     function handleClose() {
         cancelCurrentSync();
+        cancelCurrentChannelResolution();
         show = false;
         onClose?.();
     }
@@ -92,6 +125,7 @@
 
         return () => {
             cancelCurrentSync();
+            cancelCurrentChannelResolution();
         };
     });
 
@@ -112,6 +146,250 @@
 
         void loadPage(currentPage);
     });
+
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
+        cancelCurrentChannelResolution();
+
+        const channelPosts = posts.filter((post) => post.kind === 42);
+        if (channelPosts.length === 0) {
+            return;
+        }
+
+        const channelEventIds = Array.from(
+            new Set(
+                channelPosts
+                    .map((post) => post.channelEventId)
+                    .filter(
+                        (channelEventId): channelEventId is string =>
+                            typeof channelEventId === "string",
+                    ),
+            ),
+        );
+
+        if (channelEventIds.length === 0) {
+            return;
+        }
+
+        const requestId = ++channelResolutionRequestId;
+        void (async () => {
+            const cachedRecords = await channelMetadataRepository.getMany(
+                channelEventIds,
+            );
+
+            if (!show || requestId !== channelResolutionRequestId) {
+                return;
+            }
+
+            const cachedById = new Map(
+                cachedRecords.map((record) => [record.channelEventId, record]),
+            );
+
+            channelDisplayByEventId = {
+                ...channelDisplayByEventId,
+                ...Object.fromEntries(
+                    channelEventIds.map((channelEventId) => {
+                        const cachedRecord =
+                            cachedById.get(channelEventId) ?? null;
+                        return [
+                            channelEventId,
+                            toChannelDisplayState(
+                                cachedRecord,
+                                !!rxNostr,
+                            ) satisfies ChannelDisplayState,
+                        ];
+                    }),
+                ),
+            };
+
+            if (!rxNostr) {
+                return;
+            }
+
+            const refreshTargets = channelEventIds.filter((channelEventId) => {
+                const cachedRecord = cachedById.get(channelEventId) ?? null;
+                return channelMetadataRepository.shouldRefresh(cachedRecord)
+                    && !pendingChannelEventIds.has(channelEventId);
+            });
+
+            if (refreshTargets.length === 0) {
+                return;
+            }
+
+            const abortController = new AbortController();
+            currentChannelAbortController = abortController;
+            currentChannelRequestIds = [...refreshTargets];
+            refreshTargets.forEach((channelEventId) => {
+                pendingChannelEventIds.add(channelEventId);
+            });
+
+            const resolvedChannels = await Promise.all(
+                refreshTargets.map(async (channelEventId) => {
+                    const sourcePost = channelPosts.find(
+                        (post) => post.channelEventId === channelEventId,
+                    );
+                    const cachedRecord = cachedById.get(channelEventId) ?? null;
+                    const relayHints = buildChannelRelayHints(
+                        sourcePost,
+                        cachedRecord,
+                    );
+
+                    try {
+                        const resolvedMetadata =
+                            await channelContextService.resolveChannelMetadata(
+                                {
+                                    eventId: channelEventId,
+                                    relayHints,
+                                },
+                                rxNostr,
+                                relayConfig,
+                                { signal: abortController.signal },
+                            );
+
+                        if (
+                            abortController.signal.aborted
+                            || currentChannelAbortController !== abortController
+                        ) {
+                            return null;
+                        }
+
+                        const savedRecord =
+                            await channelMetadataRepository.upsertResolvedChannel({
+                                channelEventId:
+                                    resolvedMetadata.channelEventId,
+                                name: resolvedMetadata.name,
+                                about: resolvedMetadata.about,
+                                picture: resolvedMetadata.picture,
+                                relays: resolvedMetadata.channelRelays,
+                                relayHints: resolvedMetadata.relayHints,
+                                ...(resolvedMetadata.creatorPubkey
+                                    ? {
+                                        creatorPubkey:
+                                            resolvedMetadata.creatorPubkey,
+                                    }
+                                    : {}),
+                                ...(typeof resolvedMetadata.createEventCreatedAt ===
+                                "number"
+                                    ? {
+                                        createEventCreatedAt:
+                                            resolvedMetadata.createEventCreatedAt,
+                                    }
+                                    : {}),
+                                ...(resolvedMetadata.metadataEventId
+                                    ? {
+                                        metadataEventId:
+                                            resolvedMetadata.metadataEventId,
+                                    }
+                                    : {}),
+                                ...(typeof resolvedMetadata.metadataCreatedAt ===
+                                "number"
+                                    ? {
+                                        metadataCreatedAt:
+                                            resolvedMetadata.metadataCreatedAt,
+                                    }
+                                    : {}),
+                            });
+
+                        return {
+                            channelEventId,
+                            status: savedRecord.name ? "resolved" : "failed",
+                            name: savedRecord.name,
+                        } satisfies {
+                            channelEventId: string;
+                        } & ChannelDisplayState;
+                    } catch {
+                        if (abortController.signal.aborted) {
+                            return null;
+                        }
+
+                        await channelMetadataRepository.markFetchFailed(
+                            channelEventId,
+                            Date.now(),
+                            relayHints,
+                        );
+
+                        return {
+                            channelEventId,
+                            status: cachedRecord?.name ? "resolved" : "failed",
+                            name: cachedRecord?.name ?? null,
+                        } satisfies {
+                            channelEventId: string;
+                        } & ChannelDisplayState;
+                    }
+                }),
+            );
+
+            if (
+                !show
+                || requestId !== channelResolutionRequestId
+                || currentChannelAbortController !== abortController
+                || abortController.signal.aborted
+            ) {
+                return;
+            }
+
+            clearCurrentChannelResolution();
+            channelDisplayByEventId = {
+                ...channelDisplayByEventId,
+                ...Object.fromEntries(
+                    resolvedChannels
+                        .filter(
+                            (
+                                result,
+                            ): result is {
+                                channelEventId: string;
+                                status: "resolved" | "failed";
+                                name: string | null;
+                            } => result !== null,
+                        )
+                        .map((result) => [
+                            result.channelEventId,
+                            {
+                                status: result.status,
+                                name: result.name,
+                            } satisfies ChannelDisplayState,
+                        ]),
+                ),
+            };
+        })();
+    });
+
+    function toChannelDisplayState(
+        cachedRecord: ChannelMetadataCache | null,
+        canLoad: boolean,
+    ): ChannelDisplayState {
+        if (!cachedRecord) {
+            return {
+                status: canLoad ? "loading" : "failed",
+                name: null,
+            };
+        }
+
+        return {
+            status: cachedRecord.name ? "resolved" : "failed",
+            name: cachedRecord.name,
+        };
+    }
+
+    function buildChannelRelayHints(
+        sourcePost: PostHistoryRecord | undefined,
+        cachedRecord: ChannelMetadataCache | null,
+    ): string[] {
+        return RelayConfigUtils.sanitizeExternalRelayUrls(
+            [
+                ...(sourcePost?.channelRelayHints ?? []),
+                ...(cachedRecord?.relayHints ?? []),
+                ...(cachedRecord?.relays ?? []),
+                ...(sourcePost?.relayHints ?? []),
+                ...(sourcePost?.fetchedRelays ?? []),
+                ...(sourcePost?.acceptedRelays ?? []),
+            ],
+            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        );
+    }
 
     async function loadPage(page: number): Promise<void> {
         if (!pubkeyHex) {
@@ -161,6 +439,11 @@
         currentFetchTask = task;
 
         const result = await task.promise;
+        let upsertSummary = {
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        };
         if (currentFetchTask !== task) {
             return;
         }
@@ -171,7 +454,7 @@
         }
 
         if (result.events.length > 0) {
-            await postHistoryRepository.upsertFetchedEvents({
+            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
                 events: result.events,
                 fetchedAt: result.fetchedAt,
             });
@@ -183,7 +466,12 @@
         }
 
         await loadPage(currentPage);
-        syncStatus = result.status === "success" ? "synced" : "failed";
+        syncStatus =
+            result.status === "success"
+                ? upsertSummary.insertedCount + upsertSummary.updatedCount > 0
+                    ? "synced"
+                    : "idle"
+                : "failed";
     }
 
     function handlePreviousPage(): void {
@@ -244,6 +532,7 @@
         ) {
             cancelCurrentSync();
             syncStatus = "older-syncing";
+            let didMateriallyChange = false;
 
             const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
                 pubkeyHex,
@@ -272,18 +561,28 @@
             nextUntil = result.hasMore ? result.nextUntil : null;
 
             if (result.events.length > 0) {
-                await postHistoryRepository.upsertFetchedEvents({
-                    events: result.events,
-                    fetchedAt: result.fetchedAt,
-                });
+                const upsertSummary =
+                    await postHistoryRepository.upsertFetchedEvents({
+                        events: result.events,
+                        fetchedAt: result.fetchedAt,
+                    });
+                didMateriallyChange =
+                    upsertSummary.insertedCount + upsertSummary.updatedCount >
+                    0;
             }
 
             currentCount =
                 await postHistoryRepository.countForPubkey(pubkeyHex);
+
+            if (currentCount >= requiredCount) {
+                syncStatus = didMateriallyChange ? "synced" : "idle";
+            }
         }
 
         if (currentCount >= requiredCount) {
-            syncStatus = "synced";
+            if (syncStatus === "older-syncing") {
+                syncStatus = "idle";
+            }
             return true;
         }
 
@@ -320,6 +619,27 @@
         ].filter(Boolean);
 
         return `${$_("postHistory.media")}: ${parts.join(", ")}`;
+    }
+
+    function getChannelText(post: PostHistoryRecord): string | null {
+        if (post.kind !== 42) {
+            return null;
+        }
+
+        if (!post.channelEventId) {
+            return $_("postHistory.channelUnknown");
+        }
+
+        const channelDisplay = channelDisplayByEventId[post.channelEventId];
+        if (!channelDisplay || channelDisplay.status === "loading") {
+            return $_("postHistory.channelLoading");
+        }
+
+        if (channelDisplay.status === "resolved" && channelDisplay.name) {
+            return channelDisplay.name;
+        }
+
+        return $_("postHistory.channelUnknown");
     }
 
     function buildNevent(post: PostHistoryRecord): string {
@@ -405,7 +725,23 @@
                                 <span>{formatPostedAt(post.postedAt)}</span>
                             </div>
                             <div class="post-preview">
-                                {buildPreview(post.content)}
+                                {#if post.kind === 42}
+                                    <div class="post-history-channel-row">
+                                        <span
+                                            class="channel-icon svg-icon"
+                                            aria-hidden="true"
+                                        ></span>
+                                        <span class="channel-label"
+                                            >{$_("postHistory.channel")}:</span
+                                        >
+                                        <span class="channel-name"
+                                            >{getChannelText(post)}</span
+                                        >
+                                    </div>
+                                {/if}
+                                <div class="post-preview-content">
+                                    {buildPreview(post.content)}
+                                </div>
                             </div>
                             <div class="post-meta">
                                 <span>{getMediaText(post)}</span>
@@ -577,12 +913,45 @@
     .post-preview {
         grid-column: 1;
         grid-row: 2;
+        display: grid;
+        gap: 4px;
         min-width: 0;
-        overflow-wrap: anywhere;
-        white-space: pre-wrap;
         color: var(--text);
         font-size: 1rem;
         line-height: 1.5;
+    }
+
+    .post-history-channel-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.3;
+    }
+
+    .channel-icon {
+        width: 1em;
+        height: 1em;
+        flex-shrink: 0;
+        mask-image: url("/icons/comments-solid-full.svg");
+    }
+
+    .channel-label {
+        flex-shrink: 0;
+    }
+
+    .channel-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .post-preview-content {
+        overflow-wrap: anywhere;
+        white-space: pre-wrap;
     }
 
     .post-meta {

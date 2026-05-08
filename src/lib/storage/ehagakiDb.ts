@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 6;
+export const EHAGAKI_DB_VERSION = 7;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -159,6 +159,23 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
+export interface ChannelMetadataRecord {
+    channelEventId: string;
+    name: string | null;
+    about: string | null;
+    picture: string | null;
+    relays: string[];
+    relayHints: string[];
+    creatorPubkey?: string;
+    createEventCreatedAt?: number;
+    metadataEventId?: string;
+    metadataCreatedAt?: number;
+    fetchedAt?: number;
+    lastFetchFailedAt?: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
@@ -171,6 +188,7 @@ export class EHagakiDB extends Dexie {
     customEmojiUsage!: Table<CustomEmojiUsageRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
+    channelMetadata!: Table<ChannelMetadataRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -187,6 +205,7 @@ export class EHagakiDB extends Dexie {
             customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
+            channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
         });
     }
 }

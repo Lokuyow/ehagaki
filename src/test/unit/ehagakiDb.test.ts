@@ -30,6 +30,7 @@ describe("EHagakiDB", () => {
 
         expect(db.name).toBeTypeOf("string");
         expect(db.tables.map((table) => table.name).sort()).toEqual([
+            "channelMetadata",
             "customEmojiUsage",
             "drafts",
             "emojiCacheMeta",

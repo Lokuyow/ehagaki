@@ -159,7 +159,7 @@ describe("DexiePostHistoryRepository", () => {
         });
         await repository.markDeleted(eventId, "d".repeat(64), 6000);
 
-        await repository.upsertFetchedEvents({
+        const result = await repository.upsertFetchedEvents({
             events: [
                 {
                     event: createSignedEvent({
@@ -176,6 +176,11 @@ describe("DexiePostHistoryRepository", () => {
 
         const [record] = await repository.getAll({ pubkeyHex: pubkey });
 
+        expect(result).toEqual({
+            insertedCount: 0,
+            updatedCount: 1,
+            unchangedCount: 0,
+        });
         expect(record.acceptedRelays).toEqual(["wss://accepted.example.com/"]);
         expect(record.relayHints).toEqual([
             "wss://hint.example.com/",
@@ -202,7 +207,7 @@ describe("DexiePostHistoryRepository", () => {
         const repository = new DexiePostHistoryRepository(db, () => 9000);
         const pubkey = "b".repeat(64);
 
-        await repository.upsertFetchedEvents({
+        const result = await repository.upsertFetchedEvents({
             events: [
                 {
                     event: createSignedEvent({
@@ -223,10 +228,58 @@ describe("DexiePostHistoryRepository", () => {
 
         const [record] = await repository.getAll({ pubkeyHex: pubkey });
 
+        expect(result).toEqual({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
         expect(record.kind).toBe(42);
         expect(record.channelEventId).toBe("channel-id");
         expect(record.channelRelayHints).toEqual(["wss://channel.example.com/"]);
+        expect(record).not.toHaveProperty("channelName");
         expect(record.postedAt).toBe(321000);
+
+        db.close();
+    });
+
+    it("同一 fetched event を再 upsert しても実質変更がなければ unchanged として返す", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 9000);
+        const pubkey = "b".repeat(64);
+
+        await repository.upsertFetchedEvents({
+            events: [
+                {
+                    event: createSignedEvent({
+                        id: "5".repeat(64),
+                        pubkey,
+                        created_at: 654,
+                    }),
+                    relayUrls: ["wss://relay.example.com"],
+                },
+            ],
+            fetchedAt: 9000,
+        });
+
+        const result = await repository.upsertFetchedEvents({
+            events: [
+                {
+                    event: createSignedEvent({
+                        id: "5".repeat(64),
+                        pubkey,
+                        created_at: 654,
+                    }),
+                    relayUrls: ["wss://relay.example.com"],
+                },
+            ],
+            fetchedAt: 9500,
+        });
+
+        expect(result).toEqual({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 1,
+        });
 
         db.close();
     });

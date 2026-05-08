@@ -100,7 +100,10 @@
     "previousPage": "Previous",
     "nextPage": "Next",
     "page": "Page {page} / {total}",
-    "noMorePosts": "No more older posts"
+    "noMorePosts": "No more older posts",
+    "channel": "Channel",
+    "channelLoading": "Loading...",
+    "channelUnknown": "Unknown"
   },
   "settingsDialog": {
     "info_header_setting": "Setting",

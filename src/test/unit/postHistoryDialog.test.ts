@@ -19,6 +19,9 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.deleted': '削除済み',
         'postHistory.previousPage': '前へ',
         'postHistory.nextPage': '次へ',
+        'postHistory.channel': 'チャンネル',
+        'postHistory.channelLoading': '読み込み中...',
+        'postHistory.channelUnknown': '不明',
         'global.close': '閉じる',
     };
 
@@ -43,6 +46,18 @@ const clipboardMock = vi.hoisted(() => ({
     tryCopyToClipboard: vi.fn(),
 }));
 
+const channelContextServiceMock = vi.hoisted(() => ({
+    resolveChannelContext: vi.fn(),
+    resolveChannelMetadata: vi.fn(),
+}));
+
+const channelMetadataRepositoryMock = vi.hoisted(() => ({
+    getMany: vi.fn(),
+    upsertResolvedChannel: vi.fn(),
+    shouldRefresh: vi.fn(),
+    markFetchFailed: vi.fn(),
+}));
+
 const nostrUtilsMock = vi.hoisted(() => ({
     toNevent: vi.fn(() => 'nevent1mock'),
 }));
@@ -64,6 +79,14 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_PAGE_SIZE: 50,
     POST_HISTORY_RELAY_FETCH_LIMIT: 200,
     postHistoryRelayFetchService: relayFetchServiceMock,
+}));
+
+vi.mock('../../lib/storage/channelMetadataRepository', () => ({
+    channelMetadataRepository: channelMetadataRepositoryMock,
+}));
+
+vi.mock('../../lib/channelContextService', () => ({
+    ChannelContextService: vi.fn(() => channelContextServiceMock),
 }));
 
 vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
@@ -117,7 +140,11 @@ describe('PostHistoryDialog', () => {
         vi.clearAllMocks();
         repositoryMock.getPage.mockResolvedValue([]);
         repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.upsertFetchedEvents.mockResolvedValue(undefined);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: Promise.resolve({
                 status: 'cancelled',
@@ -130,6 +157,41 @@ describe('PostHistoryDialog', () => {
             cancel: vi.fn(),
         });
         clipboardMock.tryCopyToClipboard.mockResolvedValue(true);
+        channelMetadataRepositoryMock.getMany.mockResolvedValue([]);
+        channelMetadataRepositoryMock.upsertResolvedChannel.mockImplementation(async (input: Record<string, any>) => ({
+            channelEventId: input.channelEventId,
+            name: input.name ?? null,
+            about: input.about ?? null,
+            picture: input.picture ?? null,
+            relays: input.relays ?? [],
+            relayHints: input.relayHints ?? [],
+            creatorPubkey: input.creatorPubkey,
+            createEventCreatedAt: input.createEventCreatedAt,
+            metadataEventId: input.metadataEventId,
+            metadataCreatedAt: input.metadataCreatedAt,
+            fetchedAt: 1000,
+        }));
+        channelMetadataRepositoryMock.shouldRefresh.mockReturnValue(true);
+        channelMetadataRepositoryMock.markFetchFailed.mockResolvedValue(undefined);
+        channelContextServiceMock.resolveChannelContext.mockResolvedValue({
+            eventId: 'channel-id',
+            relayHints: ['wss://channel.example.com/'],
+            name: 'general',
+            about: null,
+            picture: null,
+        });
+        channelContextServiceMock.resolveChannelMetadata.mockResolvedValue({
+            channelEventId: 'channel-id',
+            relayHints: ['wss://channel.example.com/'],
+            channelRelays: ['wss://channel-write.example.com/'],
+            name: 'general',
+            about: null,
+            picture: null,
+            creatorPubkey: 'c'.repeat(64),
+            createEventCreatedAt: 100,
+            metadataEventId: 'm'.repeat(64),
+            metadataCreatedAt: 200,
+        });
         nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
     });
 
@@ -193,6 +255,11 @@ describe('PostHistoryDialog', () => {
     });
 
     it('同期成功後に upsert して一覧を更新する', async () => {
+        repositoryMock.upsertFetchedEvents.mockResolvedValueOnce({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
         repositoryMock.countForPubkey
             .mockResolvedValueOnce(0)
             .mockResolvedValueOnce(1);
@@ -244,6 +311,54 @@ describe('PostHistoryDialog', () => {
                 fetchedAt: 5000,
             });
             expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+        });
+    });
+
+    it('同期成功でも実質変更がなければ synced を表示しない', async () => {
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(1)
+            .mockResolvedValueOnce(1);
+        repositoryMock.getPage
+            .mockResolvedValueOnce([createRecord()])
+            .mockResolvedValueOnce([createRecord()]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [
+                    {
+                        event: {
+                            id: 'b'.repeat(64),
+                            pubkey: 'a'.repeat(64),
+                            kind: 1,
+                            content: '投稿本文',
+                            tags: [],
+                            created_at: 1_700_000_000,
+                            sig: 'c'.repeat(128),
+                        },
+                        relayUrls: ['wss://relay.example.com/'],
+                    },
+                ],
+                fetchedAt: 5000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalledOnce();
+            expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
             expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
         });
     });
@@ -379,9 +494,14 @@ describe('PostHistoryDialog', () => {
         const nextButton = await screen.findByRole('button', { name: '次へ' });
 
         await waitFor(() => {
-            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
         });
 
+        repositoryMock.upsertFetchedEvents.mockResolvedValueOnce({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
         await fireEvent.click(nextButton);
 
         await waitFor(() => {
@@ -450,7 +570,7 @@ describe('PostHistoryDialog', () => {
         const nextButton = await screen.findByRole('button', { name: '次へ' });
 
         await waitFor(() => {
-            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
         });
 
         await fireEvent.click(nextButton);
@@ -556,6 +676,121 @@ describe('PostHistoryDialog', () => {
             window,
         );
         expect(screen.getByText('コピーしました')).toBeTruthy();
+    });
+
+    it('channelMetadata cache 済みなら service を呼ばず channel 名を表示する', async () => {
+        channelMetadataRepositoryMock.getMany.mockResolvedValue([
+            {
+                channelEventId: 'channel-id',
+                name: 'cached-general',
+                about: null,
+                picture: null,
+                relays: ['wss://channel-write.example.com/'],
+                relayHints: ['wss://channel.example.com/'],
+                creatorPubkey: 'c'.repeat(64),
+                createEventCreatedAt: 100,
+                metadataEventId: 'm'.repeat(64),
+                metadataCreatedAt: 200,
+                fetchedAt: 1000,
+            },
+        ]);
+        channelMetadataRepositoryMock.shouldRefresh.mockReturnValue(false);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'channel-post',
+                kind: 42,
+                content: 'channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(channelMetadataRepositoryMock.getMany).toHaveBeenCalledWith(['channel-id']);
+            expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
+            expect(screen.getByText('cached-general')).toBeTruthy();
+        });
+    });
+
+    it('未取得 channel だけ service で解決して保存し、同じ channelEventId の fetch を重複させない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'channel-post-1',
+                kind: 42,
+                content: 'first channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+            createRecord({
+                eventId: 'channel-post-2',
+                kind: 42,
+                content: 'second channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(channelContextServiceMock.resolveChannelMetadata).toHaveBeenCalledTimes(1);
+            expect(channelMetadataRepositoryMock.upsertResolvedChannel).toHaveBeenCalledTimes(1);
+            expect(screen.getAllByText('general').length).toBeGreaterThan(0);
+        });
+    });
+
+    it('channel metadata 取得失敗時は失敗を記録して unknown を表示する', async () => {
+        channelContextServiceMock.resolveChannelMetadata.mockRejectedValueOnce(new Error('fetch failed'));
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'channel-post',
+                kind: 42,
+                content: 'channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(channelMetadataRepositoryMock.markFetchFailed).toHaveBeenCalledWith(
+                'channel-id',
+                expect.any(Number),
+                expect.any(Array),
+            );
+            expect(screen.getByText('不明')).toBeTruthy();
+        });
     });
 
     it('unmount 時に進行中の同期を cleanup する', async () => {
