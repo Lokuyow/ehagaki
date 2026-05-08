@@ -1368,8 +1368,10 @@
         border-bottom: none;
     }
 
-    .post-history-item-deleted {
-        opacity: 0.72;
+    .post-history-item-deleted .post-history-main > :not(.post-meta),
+    .post-history-item-deleted .post-meta > :not(.deleted-badge),
+    .post-history-item-deleted .post-history-actions {
+        opacity: 0.65;
     }
 
     .post-history-main {
@@ -1430,7 +1432,7 @@
         box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
         padding: 8px;
         min-width: 180px;
-        z-index: 100001;
+        z-index: 102;
         outline: none;
     }
 
@@ -1571,6 +1573,7 @@
         background: color-mix(in srgb, var(--theme), transparent 82%);
         color: var(--theme);
         font-weight: 600;
+        opacity: 1;
     }
 
     .delete-failed {
