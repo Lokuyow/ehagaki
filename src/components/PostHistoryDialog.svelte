@@ -279,11 +279,13 @@
                 {#each posts as post (post.eventId)}
                     <li class="post-history-item">
                         <div class="post-history-main">
+                            <div class="post-preview-header">
+                                <span>{formatPostedAt(post.postedAt)}</span>
+                            </div>
                             <div class="post-preview">
                                 {buildPreview(post.content)}
                             </div>
                             <div class="post-meta">
-                                <span>{formatPostedAt(post.postedAt)}</span>
                                 <span>{getMediaText(post)}</span>
                                 {#if post.deletedAt}
                                     <span>{$_("postHistory.deleted")}</span>
@@ -434,8 +436,10 @@
     }
 
     .post-history-item {
-        display: flex;
-        align-items: stretch;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto auto;
+        align-items: center;
         gap: 8px;
         border-bottom: 1px solid var(--border-hr);
         padding: 12px;
@@ -446,13 +450,23 @@
     }
 
     .post-history-main {
-        display: grid;
-        gap: 8px;
+        display: contents;
         min-width: 0;
-        flex: 1;
+    }
+
+    .post-preview-header {
+        display: flex;
+        grid-column: 1 / -1;
+        grid-row: 1;
+        justify-content: flex-end;
+        color: var(--text-muted);
+        font-size: 0.78rem;
+        line-height: 1.3;
     }
 
     .post-preview {
+        grid-column: 1;
+        grid-row: 2;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -462,6 +476,8 @@
 
     .post-meta {
         display: flex;
+        grid-column: 1;
+        grid-row: 3;
         flex-wrap: wrap;
         gap: 6px 10px;
         color: var(--text-muted);
@@ -471,6 +487,8 @@
 
     .post-history-actions {
         display: flex;
+        grid-column: 2;
+        grid-row: 2 / 4;
         align-items: center;
         gap: 6px;
         color: var(--text-muted);
