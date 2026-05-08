@@ -24,9 +24,7 @@
     }: Props = $props();
 
     let posts = $state<PostHistoryRecord[]>([]);
-    let copyState = $state<Record<string, "copied" | "failed" | undefined>>(
-        {},
-    );
+    let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
 
     function handleClose() {
         show = false;
@@ -118,7 +116,6 @@
 >
     <div class="post-history-heading">
         <h3>{$_("postHistory.title")}</h3>
-        <p>{$_("postHistory.description")}</p>
     </div>
 
     <div class="post-history-container">
@@ -154,8 +151,9 @@
                         <div class="post-history-actions">
                             {#if copyState[post.eventId]}
                                 <span
-                                    class:copy-failed={copyState[post.eventId] ===
-                                        "failed"}
+                                    class:copy-failed={copyState[
+                                        post.eventId
+                                    ] === "failed"}
                                 >
                                     {copyState[post.eventId] === "copied"
                                         ? $_("postHistory.copied")
@@ -212,13 +210,6 @@
     .post-history-heading h3 {
         margin: 0;
         font-size: 1.25rem;
-    }
-
-    .post-history-heading p {
-        margin: 6px 0 0;
-        color: var(--text-muted);
-        font-size: 0.9rem;
-        line-height: 1.4;
     }
 
     .post-history-container {
