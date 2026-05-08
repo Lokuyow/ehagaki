@@ -518,6 +518,7 @@
 
     :global(.post-history-page-button) {
         min-width: 88px;
+        min-height: 40px;
     }
 
     :global(.copy-nevent-button) {
