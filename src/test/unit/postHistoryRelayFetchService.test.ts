@@ -80,7 +80,7 @@ describe("PostHistoryRelayFetchService", () => {
         expect(rxReq.emit).toHaveBeenCalledWith({
             authors: ["b".repeat(64)],
             kinds: [1, 42],
-            limit: 50,
+            limit: 200,
         });
         expect(rxReq.over).toHaveBeenCalledOnce();
         expect(result.status).toBe("success");

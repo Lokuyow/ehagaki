@@ -6,7 +6,8 @@ import type { NostrEvent, RelayConfig } from "./types";
 
 export const POST_HISTORY_FETCH_KINDS = [1, 42] as const;
 export const POST_HISTORY_PAGE_SIZE = 50;
-export const POST_HISTORY_INITIAL_FETCH_LIMIT = 50;
+export const POST_HISTORY_RELAY_FETCH_LIMIT = 200;
+export const POST_HISTORY_INITIAL_FETCH_LIMIT = POST_HISTORY_RELAY_FETCH_LIMIT;
 export const POST_HISTORY_FETCH_TIMEOUT_MS = 5000;
 
 export type PostHistoryRelayFetchStatus = "success" | "timeout" | "error" | "cancelled";

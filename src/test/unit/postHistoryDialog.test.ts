@@ -60,8 +60,9 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
 }));
 
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
-    POST_HISTORY_INITIAL_FETCH_LIMIT: 50,
+    POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
     POST_HISTORY_PAGE_SIZE: 50,
+    POST_HISTORY_RELAY_FETCH_LIMIT: 200,
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 
@@ -170,7 +171,7 @@ describe('PostHistoryDialog', () => {
             {} as any,
             expect.objectContaining({
                 pubkeyHex: 'a'.repeat(64),
-                limit: 50,
+                limit: 200,
             }),
         );
 
@@ -376,7 +377,7 @@ describe('PostHistoryDialog', () => {
                 {} as any,
                 expect.objectContaining({
                     pubkeyHex: 'a'.repeat(64),
-                    limit: 50,
+                    limit: 200,
                     until: 149,
                 }),
             );

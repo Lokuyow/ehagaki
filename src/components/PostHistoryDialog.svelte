@@ -9,6 +9,7 @@
     import {
         POST_HISTORY_INITIAL_FETCH_LIMIT,
         POST_HISTORY_PAGE_SIZE,
+        POST_HISTORY_RELAY_FETCH_LIMIT,
         postHistoryRelayFetchService,
         type PostHistoryRelayFetchTask,
     } from "../lib/postHistoryRelayFetchService";
@@ -247,7 +248,7 @@
             const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
                 pubkeyHex,
                 relayConfig,
-                limit: pageSize,
+                limit: POST_HISTORY_RELAY_FETCH_LIMIT,
                 until: nextUntil,
             });
             currentFetchTask = task;
