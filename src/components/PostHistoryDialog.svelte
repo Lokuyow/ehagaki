@@ -1047,7 +1047,7 @@
                                             aria-hidden="true"
                                         ></span>
                                         <span class="channel-label"
-                                            >{$_("postHistory.channel")}:</span
+                                            >{$_("postHistory.channel")}</span
                                         >
                                         <span class="channel-name"
                                             >{getChannelText(post)}</span
@@ -1344,13 +1344,10 @@
     }
 
     .post-history-item {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-rows: auto auto;
+        display: flex;
         align-items: center;
-        gap: 6px;
         border-bottom: 1px solid var(--border-hr);
-        padding: 8px 12px;
+        padding: 8px;
     }
 
     .post-history-item:last-child {
@@ -1362,26 +1359,27 @@
     }
 
     .post-history-main {
-        display: contents;
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 0;
         min-width: 0;
+        gap: 2px;
     }
 
     .post-preview-header {
         display: flex;
-        grid-column: 1 / -1;
-        grid-row: 1;
         align-items: center;
         justify-content: space-between;
         gap: 8px;
         color: var(--text-muted);
-        font-size: 0.78rem;
+        font-size: 0.875rem;
         line-height: 1.3;
     }
 
     .post-preview-header-actions {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: 2px;
         flex-shrink: 0;
         margin-left: auto;
     }
@@ -1391,8 +1389,8 @@
     }
 
     :global(.menu-trigger) {
-        width: 36px;
-        height: 36px;
+        width: 30px;
+        height: 30px;
         background: transparent;
         border: none;
         border-radius: 50%;
@@ -1502,16 +1500,16 @@
     .post-history-channel-row {
         display: flex;
         align-items: center;
-        gap: 4px;
+        gap: 6px;
         min-width: 0;
         color: var(--text-muted);
-        font-size: 0.82rem;
+        font-size: 0.875rem;
         line-height: 1.3;
     }
 
     .channel-icon {
-        width: 1em;
-        height: 1em;
+        width: 18px;
+        height: 18px;
         flex-shrink: 0;
         mask-image: url("/icons/comments-solid-full.svg");
         background-color: currentColor;
@@ -1559,8 +1557,6 @@
 
     .post-history-actions {
         display: flex;
-        grid-column: 2;
-        grid-row: 2;
         align-items: center;
         justify-content: flex-end;
         flex-wrap: wrap;
@@ -1568,6 +1564,7 @@
         color: var(--text-muted);
         font-size: 0.82rem;
         flex-shrink: 0;
+        margin-left: auto;
     }
 
     .copy-failed {
