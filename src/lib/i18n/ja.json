@@ -117,7 +117,9 @@
     "noMorePosts": "これ以上古い投稿はありません",
     "channel": "チャンネル",
     "channelLoading": "読み込み中...",
-    "channelUnknown": "不明"
+    "channelUnknown": "不明",
+    "expand": "もっと見る",
+    "collapse": "折りたたむ"
   },
   "settingsDialog": {
     "info_header_setting": "設定",

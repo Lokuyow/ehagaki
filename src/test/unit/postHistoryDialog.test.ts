@@ -18,6 +18,8 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
+        'postHistory.expand': 'もっと見る',
+        'postHistory.collapse': '折りたたむ',
         'postHistory.delete': '削除',
         'postHistory.deleteRequest': '削除リクエスト',
         'postHistory.deleteRequestTitle': '削除リクエストを送信',
@@ -264,6 +266,42 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
         });
+    });
+
+    it('長い投稿本文は折りたたみ表示し、ボタンで展開できる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'long-post',
+                content: [
+                    'line1',
+                    'line2',
+                    'line3',
+                    'line4',
+                    'line5',
+                    'line6',
+                ].join('\n'),
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const toggleButton = await screen.findByRole('button', {
+            name: 'もっと見る',
+        });
+
+        expect(toggleButton).toBeTruthy();
+        await fireEvent.click(toggleButton);
+        expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: '折りたたむ' }));
+        expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
     });
 
     it('投稿日時が 24 時間以内なら時刻のみを表示する', async () => {

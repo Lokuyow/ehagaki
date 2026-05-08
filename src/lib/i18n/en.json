@@ -117,7 +117,9 @@
     "noMorePosts": "No more older posts",
     "channel": "Channel",
     "channelLoading": "Loading...",
-    "channelUnknown": "Unknown"
+    "channelUnknown": "Unknown",
+    "expand": "Show more",
+    "collapse": "Show less"
   },
   "settingsDialog": {
     "info_header_setting": "Setting",

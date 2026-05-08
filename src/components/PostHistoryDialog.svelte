@@ -76,6 +76,7 @@
     let searchPage = $state(1);
     let totalCount = $state(0);
     let searchTotalCount = $state(0);
+    let expandedPosts = $state<Record<string, boolean>>({});
     let syncStatus = $state<
         "idle" | "syncing" | "older-syncing" | "synced" | "failed" | "no-more"
     >("idle");
@@ -163,6 +164,7 @@
         deleteTargetPost = null;
         deleteRequestState = {};
         channelDisplayByEventId = {};
+        expandedPosts = {};
         currentPage = 1;
         totalCount = 0;
         searchTotalCount = 0;
@@ -905,6 +907,21 @@
         return canRequestPostDeletion(post, pubkeyHex);
     }
 
+    function isPostExpanded(post: PostHistoryRecord): boolean {
+        return expandedPosts[post.eventId] ?? false;
+    }
+
+    function togglePostExpanded(eventId: string): void {
+        expandedPosts = {
+            ...expandedPosts,
+            [eventId]: !expandedPosts[eventId],
+        };
+    }
+
+    function shouldCollapsePost(post: PostHistoryRecord): boolean {
+        return post.content.split("\n").length > 5;
+    }
+
     function openDeleteConfirm(post: PostHistoryRecord): void {
         if (!canDeletePost(post)) {
             return;
@@ -1159,9 +1176,30 @@
                                 </div>
                             </div>
                             <div class="post-preview">
-                                <div class="post-preview-content">
+                                <div
+                                    class="post-preview-content"
+                                    class:post-preview-content-collapsed={!isPostExpanded(
+                                        post,
+                                    ) && shouldCollapsePost(post)}
+                                    id={"post-preview-content-" + post.eventId}
+                                >
                                     {buildPreview(post.content)}
                                 </div>
+                                {#if shouldCollapsePost(post)}
+                                    <button
+                                        type="button"
+                                        class="post-preview-toggle-button"
+                                        aria-expanded={isPostExpanded(post)}
+                                        aria-controls={"post-preview-content-" +
+                                            post.eventId}
+                                        onclick={() =>
+                                            togglePostExpanded(post.eventId)}
+                                    >
+                                        {isPostExpanded(post)
+                                            ? $_("postHistory.collapse")
+                                            : $_("postHistory.expand")}
+                                    </button>
+                                {/if}
                             </div>
                             {#if post.deletedAt || hasDeletionFailed(post)}
                                 <div class="post-meta">
@@ -1555,6 +1593,27 @@
         padding-left: 1rem;
         overflow-wrap: anywhere;
         white-space: pre-wrap;
+        line-height: 1.5;
+    }
+
+    .post-preview-content-collapsed {
+        max-height: calc(5 * 1.5em);
+        overflow: hidden;
+    }
+
+    .post-preview-toggle-button {
+        margin: 8px 0 0 1rem;
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        font: inherit;
+        cursor: pointer;
+        padding: 0;
+        text-align: left;
+    }
+
+    .post-preview-toggle-button:hover {
+        text-decoration: underline;
     }
 
     .post-meta {
