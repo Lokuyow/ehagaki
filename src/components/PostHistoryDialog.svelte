@@ -7,6 +7,7 @@
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { ChannelContextService } from "../lib/channelContextService";
+    import { postHistoryLocalSearchService } from "../lib/postHistoryLocalSearchService";
     import { RelayConfigUtils } from "../lib/relayConfigUtils";
     import {
         POST_HISTORY_INITIAL_FETCH_LIMIT,
@@ -44,6 +45,7 @@
     }: Props = $props();
 
     const pageSize = POST_HISTORY_PAGE_SIZE;
+    const searchDebounceMs = 250;
     const channelContextService = new ChannelContextService();
 
     type ChannelDisplayState = {
@@ -51,25 +53,43 @@
         name: string | null;
     };
 
-    let posts = $state<PostHistoryRecord[]>([]);
+    let loadedPosts = $state<PostHistoryRecord[]>([]);
+    let searchPosts = $state<PostHistoryRecord[]>([]);
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
     let channelDisplayByEventId = $state<Record<string, ChannelDisplayState>>(
         {},
     );
+    let searchInput = $state("");
+    let searchQuery = $state("");
     let currentPage = $state(1);
+    let searchPage = $state(1);
     let totalCount = $state(0);
+    let searchTotalCount = $state(0);
     let syncStatus = $state<
         "idle" | "syncing" | "older-syncing" | "synced" | "failed" | "no-more"
     >("idle");
     let hasMoreRemote = $state(false);
     let nextUntil = $state<number | null>(null);
 
-    let totalPages = $derived(Math.max(1, Math.ceil(totalCount / pageSize)));
-    let canGoPrevious = $derived(currentPage > 1);
-    let canGoNext = $derived(currentPage < totalPages || hasMoreRemote);
-    let showPaging = $derived(totalCount > 0);
+    let isSearchMode = $derived(searchQuery.length > 0);
+    let posts = $derived(isSearchMode ? searchPosts : loadedPosts);
+    let displayPage = $derived(isSearchMode ? searchPage : currentPage);
+    let displayTotalCount = $derived(
+        isSearchMode ? searchTotalCount : totalCount,
+    );
+    let totalPages = $derived(
+        Math.max(1, Math.ceil(displayTotalCount / pageSize)),
+    );
+    let canGoPrevious = $derived(displayPage > 1);
+    let canGoNext = $derived(
+        isSearchMode
+            ? displayPage < totalPages
+            : currentPage < totalPages || hasMoreRemote,
+    );
+    let showPaging = $derived(displayTotalCount > 0);
+    let hasSearchInput = $derived(searchInput.trim().length > 0);
     let syncStatusMessageKey = $derived(
-        syncStatus === "idle"
+        isSearchMode || syncStatus === "idle"
             ? null
             : syncStatus === "syncing" || syncStatus === "older-syncing"
               ? "postHistory.syncing"
@@ -80,16 +100,19 @@
                   : "postHistory.syncFailed",
     );
     let showSyncLoader = $derived(
-        syncStatus === "syncing" || syncStatus === "older-syncing",
+        !isSearchMode &&
+            (syncStatus === "syncing" || syncStatus === "older-syncing"),
     );
 
     let loadRequestId = 0;
+    let searchLoadRequestId = 0;
     let hasStartedInitialSync = false;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
     let channelResolutionRequestId = 0;
     let currentChannelAbortController: AbortController | null = null;
     let currentChannelRequestIds: string[] = [];
     const pendingChannelEventIds = new Set<string>();
+    let appliedSearchQuery = "";
 
     function cancelCurrentSync(): void {
         currentFetchTask?.cancel();
@@ -109,9 +132,23 @@
         clearCurrentChannelResolution();
     }
 
+    function resetSearchState(): void {
+        searchInput = "";
+        searchQuery = "";
+        searchPage = 1;
+        searchPosts = [];
+        searchTotalCount = 0;
+        appliedSearchQuery = "";
+    }
+
+    function handleClearSearch(): void {
+        resetSearchState();
+    }
+
     function handleClose() {
         cancelCurrentSync();
         cancelCurrentChannelResolution();
+        resetSearchState();
         show = false;
         onClose?.();
     }
@@ -144,7 +181,49 @@
             return;
         }
 
+        const nextSearchQuery = searchInput.trim();
+        const timeoutId = setTimeout(() => {
+            searchQuery = nextSearchQuery;
+        }, searchDebounceMs);
+
+        return () => {
+            clearTimeout(timeoutId);
+        };
+    });
+
+    $effect(() => {
+        if (!show || isSearchMode) {
+            return;
+        }
+
         void loadPage(currentPage);
+    });
+
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
+        if (!searchQuery) {
+            appliedSearchQuery = "";
+            if (searchPage !== 1) {
+                searchPage = 1;
+                return;
+            }
+
+            searchPosts = [];
+            searchTotalCount = 0;
+            return;
+        }
+
+        if (searchQuery !== appliedSearchQuery && searchPage !== 1) {
+            appliedSearchQuery = searchQuery;
+            searchPage = 1;
+            return;
+        }
+
+        appliedSearchQuery = searchQuery;
+        void loadSearchPage(searchPage, searchQuery);
     });
 
     $effect(() => {
@@ -197,14 +276,14 @@
                             channelEventId,
                             toChannelDisplayState(
                                 cachedRecord,
-                                !!rxNostr,
+                                !!rxNostr && !isSearchMode,
                             ) satisfies ChannelDisplayState,
                         ];
                     }),
                 ),
             };
 
-            if (!rxNostr) {
+            if (!rxNostr || isSearchMode) {
                 return;
             }
 
@@ -396,14 +475,14 @@
 
     async function loadPage(page: number): Promise<void> {
         if (!pubkeyHex) {
-            posts = [];
+            loadedPosts = [];
             totalCount = 0;
             return;
         }
 
         const requestId = ++loadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
-        const [count, loadedPosts] = await Promise.all([
+        const [count, pagePosts] = await Promise.all([
             postHistoryRepository.countForPubkey(pubkeyHex),
             postHistoryRepository.getPage({
                 pubkeyHex,
@@ -425,7 +504,43 @@
         }
 
         totalCount = count;
-        posts = loadedPosts;
+        loadedPosts = pagePosts;
+    }
+
+    async function loadSearchPage(page: number, query: string): Promise<void> {
+        if (!pubkeyHex || !query) {
+            searchPosts = [];
+            searchTotalCount = 0;
+            return;
+        }
+
+        const requestId = ++searchLoadRequestId;
+        const normalizedPage = Math.max(1, Math.trunc(page));
+        const result = await postHistoryLocalSearchService.searchLocalPosts({
+            pubkeyHex,
+            query,
+            page: normalizedPage,
+            pageSize,
+        });
+
+        if (
+            !show ||
+            requestId !== searchLoadRequestId ||
+            query !== searchQuery
+        ) {
+            return;
+        }
+
+        const nextTotalPages = Math.max(1, Math.ceil(result.total / pageSize));
+        const safePage =
+            result.total === 0 ? 1 : Math.min(normalizedPage, nextTotalPages);
+        if (safePage !== normalizedPage) {
+            searchPage = safePage;
+            return;
+        }
+
+        searchTotalCount = result.total;
+        searchPosts = result.items;
     }
 
     async function syncFromRelays(): Promise<void> {
@@ -468,7 +583,11 @@
             nextUntil = result.hasMore ? result.nextUntil : null;
         }
 
-        await loadPage(currentPage);
+        if (searchQuery) {
+            await loadSearchPage(searchPage, searchQuery);
+        } else {
+            await loadPage(currentPage);
+        }
         syncStatus =
             result.status === "success"
                 ? upsertSummary.insertedCount + upsertSummary.updatedCount > 0
@@ -479,6 +598,11 @@
 
     function handlePreviousPage(): void {
         if (!canGoPrevious) {
+            return;
+        }
+
+        if (isSearchMode) {
+            searchPage -= 1;
             return;
         }
 
@@ -494,7 +618,12 @@
             return;
         }
 
-        const targetPage = currentPage + 1;
+        const targetPage = displayPage + 1;
+        if (isSearchMode) {
+            searchPage = targetPage;
+            return;
+        }
+
         if (targetPage <= totalPages) {
             currentPage = targetPage;
             return;
@@ -666,13 +795,13 @@
     footerVariant="close-button"
     showPagination={showPaging}
     paginationLabel={$_("postHistory.page", {
-        values: { page: currentPage, total: totalPages },
+        values: { page: displayPage, total: totalPages },
     })}
     previousPageLabel={$_("postHistory.previousPage")}
     nextPageLabel={$_("postHistory.nextPage")}
     {canGoPrevious}
     {canGoNext}
-    nextPageLoading={syncStatus === "older-syncing"}
+    nextPageLoading={!isSearchMode && syncStatus === "older-syncing"}
     onPreviousPage={handlePreviousPage}
     onNextPage={handleNextPage}
     initialFocus="content"
@@ -695,10 +824,41 @@
         {/if}
     </div>
 
+    <div class="post-history-search-row">
+        <input
+            bind:value={searchInput}
+            class="post-history-search-input"
+            type="search"
+            placeholder={$_("postHistory.searchPlaceholder")}
+            aria-label={$_("postHistory.search")}
+        />
+        {#if hasSearchInput}
+            <button
+                type="button"
+                class="post-history-search-clear"
+                aria-label={$_("postHistory.clearSearch")}
+                onclick={handleClearSearch}
+            >
+                {$_("postHistory.clearSearch")}
+            </button>
+        {/if}
+    </div>
+
+    {#if isSearchMode && searchTotalCount > 0}
+        <div class="post-history-search-summary">
+            <span>{$_("postHistory.searchResults")}</span>
+            <span>{searchTotalCount}</span>
+        </div>
+    {/if}
+
     <div class="post-history-container">
         {#if posts.length === 0}
             <div class="empty-state">
-                <div class="empty-message">{$_("postHistory.empty")}</div>
+                <div class="empty-message">
+                    {isSearchMode
+                        ? $_("postHistory.searchNoResults")
+                        : $_("postHistory.empty")}
+                </div>
             </div>
         {:else}
             <ul class="post-history-list">
@@ -800,6 +960,50 @@
         min-width: 0;
         margin: 0;
         font-size: 1.25rem;
+    }
+
+    .post-history-search-row {
+        display: flex;
+        align-items: center;
+        width: 100%;
+        gap: 8px;
+        border-bottom: 1px solid var(--border-hr);
+    }
+
+    .post-history-search-input {
+        width: 100%;
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border-soft);
+        background: var(--background);
+        color: var(--text);
+        font: inherit;
+    }
+
+    .post-history-search-input::placeholder {
+        color: var(--text-muted);
+    }
+
+    .post-history-search-clear {
+        flex-shrink: 0;
+        border: 1px solid var(--border-soft);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--text-muted);
+        font: inherit;
+        line-height: 1;
+        padding: 10px 12px;
+        cursor: pointer;
+    }
+
+    .post-history-search-summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 16px 0;
+        color: var(--text-muted);
+        font-size: 0.82rem;
     }
 
     .post-history-container {

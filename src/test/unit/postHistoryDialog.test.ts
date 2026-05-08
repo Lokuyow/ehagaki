@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
@@ -6,6 +6,11 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
     const translations: Record<string, string> = {
         'postHistory.title': '投稿履歴',
         'postHistory.description': 'eHagakiで投稿に成功した履歴です。',
+        'postHistory.search': '検索',
+        'postHistory.searchPlaceholder': '投稿履歴を検索',
+        'postHistory.searchNoResults': '一致する投稿はありません',
+        'postHistory.searchResults': '検索結果',
+        'postHistory.clearSearch': '検索をクリア',
         'postHistory.empty': '投稿履歴はありません',
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
@@ -46,6 +51,10 @@ const clipboardMock = vi.hoisted(() => ({
     tryCopyToClipboard: vi.fn(),
 }));
 
+const localSearchServiceMock = vi.hoisted(() => ({
+    searchLocalPosts: vi.fn(),
+}));
+
 const channelContextServiceMock = vi.hoisted(() => ({
     resolveChannelContext: vi.fn(),
     resolveChannelMetadata: vi.fn(),
@@ -79,6 +88,10 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_PAGE_SIZE: 50,
     POST_HISTORY_RELAY_FETCH_LIMIT: 200,
     postHistoryRelayFetchService: relayFetchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryLocalSearchService', () => ({
+    postHistoryLocalSearchService: localSearchServiceMock,
 }));
 
 vi.mock('../../lib/storage/channelMetadataRepository', () => ({
@@ -157,6 +170,11 @@ describe('PostHistoryDialog', () => {
             cancel: vi.fn(),
         });
         clipboardMock.tryCopyToClipboard.mockResolvedValue(true);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [],
+            total: 0,
+            hasNext: false,
+        });
         channelMetadataRepositoryMock.getMany.mockResolvedValue([]);
         channelMetadataRepositoryMock.upsertResolvedChannel.mockImplementation(async (input: Record<string, any>) => ({
             channelEventId: input.channelEventId,
@@ -195,6 +213,10 @@ describe('PostHistoryDialog', () => {
         nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
     });
 
+    afterEach(() => {
+        vi.useRealTimers();
+    });
+
     it('空の投稿履歴を表示する', async () => {
         render(PostHistoryDialog, {
             props: {
@@ -211,8 +233,279 @@ describe('PostHistoryDialog', () => {
                 page: 1,
                 pageSize: 50,
             });
+            expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
         });
+    });
+
+    it('検索 input からローカル検索へ切り替える', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧' }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [
+                createRecord({
+                    eventId: 'search-hit',
+                    content: 'needle result',
+                    media: [],
+                }),
+            ],
+            total: 1,
+            hasNext: false,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await fireEvent.input(searchInput, { target: { value: '  needle  ' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: 'needle',
+                page: 1,
+                pageSize: 50,
+            });
+            expect(screen.getByText('needle result')).toBeTruthy();
+            expect(screen.queryByText('通常一覧')).toBeNull();
+            expect(screen.getByText('検索結果')).toBeTruthy();
+        });
+    });
+
+    it('検索結果 0 件では searchNoResults を表示し、clear で通常表示へ戻る', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧', media: [] }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [],
+            total: 0,
+            hasNext: false,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await fireEvent.input(searchInput, { target: { value: 'nomatch' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(screen.getByText('一致する投稿はありません')).toBeTruthy();
+            expect(screen.queryByText('投稿履歴はありません')).toBeNull();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '検索をクリア' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('通常一覧')).toBeTruthy();
+            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('検索語が変わったら searchPage を 1 に戻す', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧', media: [] }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ query, page }: { query: string; page: number }) => ({
+                items: [
+                    createRecord({
+                        eventId: `${query}-${page}`,
+                        content: `${query}-${page}`,
+                        media: [],
+                    }),
+                ],
+                total: query === 'alpha' ? 60 : 1,
+                hasNext: query === 'alpha' && page === 1,
+            }),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(screen.getByText('alpha-1')).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: 'alpha',
+                page: 2,
+                pageSize: 50,
+            });
+            expect(screen.getByText('alpha-2')).toBeTruthy();
+        });
+
+        await fireEvent.input(searchInput, { target: { value: 'beta' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: 'beta',
+                page: 1,
+                pageSize: 50,
+            });
+            expect(screen.getByText('beta-1')).toBeTruthy();
+        });
+    });
+
+    it('検索中の next は relay older fetch を呼ばずローカル検索ページだけ進める', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧', media: [] }),
+        ]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 0,
+                nextUntil: 149,
+                hasMore: true,
+                relayUrls: [],
+            }),
+            cancel: vi.fn(),
+        });
+        localSearchServiceMock.searchLocalPosts.mockImplementation(
+            async ({ page }: { page: number }) => ({
+                items: [
+                    createRecord({
+                        eventId: `search-page-${page}`,
+                        content: `search-page-${page}`,
+                        media: [],
+                    }),
+                ],
+                total: 60,
+                hasNext: page === 1,
+            }),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
+        });
+
+        await fireEvent.input(searchInput, { target: { value: 'alpha' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(screen.getByText('search-page-1')).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: 'alpha',
+                page: 2,
+                pageSize: 50,
+            });
+            expect(screen.getByText('search-page-2')).toBeTruthy();
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    it('検索中も cached channel 名表示と nevent コピーを維持し、channel relay fetch はしない', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [
+                createRecord({
+                    eventId: 'channel-search',
+                    kind: 42,
+                    content: 'channel hit',
+                    media: [],
+                    channelEventId: 'channel-id',
+                    channelRelayHints: ['wss://channel.example.com/'],
+                }),
+            ],
+            total: 1,
+            hasNext: false,
+        });
+        channelMetadataRepositoryMock.getMany.mockResolvedValue([
+            {
+                channelEventId: 'channel-id',
+                name: 'cached-general',
+                about: null,
+                picture: null,
+                relays: ['wss://channel-write.example.com/'],
+                relayHints: ['wss://channel.example.com/'],
+                creatorPubkey: 'c'.repeat(64),
+                createEventCreatedAt: 100,
+                metadataEventId: 'm'.repeat(64),
+                metadataCreatedAt: 200,
+                fetchedAt: 1000,
+            },
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await fireEvent.input(searchInput, { target: { value: 'channel' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(screen.getByText('cached-general')).toBeTruthy();
+            expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'neventをコピー' }));
+
+        expect(nostrUtilsMock.toNevent).toHaveBeenCalledWith(expect.objectContaining({
+            eventId: 'channel-search',
+            kind: 42,
+        }));
+        expect(screen.getByText('コピーしました')).toBeTruthy();
     });
 
     it('ローカル履歴を即表示しつつ自動取得を開始する', async () => {
