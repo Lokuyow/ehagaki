@@ -8,7 +8,7 @@
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { toNevent } from "../lib/utils/nostrUtils";
-    import { shortenMiddle } from "../lib/utils/textDisplayUtils";
+
     import { writeRelaysStore } from "../stores/relayStore.svelte";
 
     interface Props {
@@ -133,13 +133,6 @@
                                 <span>
                                     {$_("postHistory.postedAt")}: {formatPostedAt(
                                         post.postedAt,
-                                    )}
-                                </span>
-                                <span>
-                                    {$_("postHistory.eventId")}: {shortenMiddle(
-                                        post.eventId,
-                                        8,
-                                        6,
                                     )}
                                 </span>
                                 <span>{getMediaText(post)}</span>
