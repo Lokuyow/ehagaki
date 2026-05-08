@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
     import { _ } from "svelte-i18n";
-    import { Dialog } from "bits-ui";
+    import { Dialog, Popover } from "bits-ui";
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
@@ -1054,7 +1054,78 @@
                                         >
                                     </div>
                                 {/if}
-                                <span>{formatPostedAt(post.postedAt)}</span>
+                                <div class="post-preview-header-actions">
+                                    <span>{formatPostedAt(post.postedAt)}</span>
+                                    <Popover.Root>
+                                        <Popover.Trigger
+                                            class="menu-trigger"
+                                            aria-label="アクションを表示"
+                                        >
+                                            <div
+                                                class="more-icon svg-icon"
+                                            ></div>
+                                        </Popover.Trigger>
+                                        <Popover.Portal>
+                                            <Popover.Content
+                                                side="bottom"
+                                                sideOffset={8}
+                                                class="post-history-menu-content"
+                                                trapFocus={false}
+                                                onCloseAutoFocus={(
+                                                    event: Event,
+                                                ) => event.preventDefault()}
+                                            >
+                                                <div
+                                                    class="post-history-menu-body"
+                                                >
+                                                    <button
+                                                        type="button"
+                                                        class="menu-action-button"
+                                                        onclick={() =>
+                                                            void handleCopyNevent(
+                                                                post,
+                                                            )}
+                                                    >
+                                                        <div
+                                                            class="copy-icon svg-icon"
+                                                            aria-hidden="true"
+                                                        ></div>
+                                                        <span>
+                                                            {$_(
+                                                                "postHistory.copyNevent",
+                                                            )}
+                                                        </span>
+                                                    </button>
+                                                    {#if canDeletePost(post)}
+                                                        <button
+                                                            type="button"
+                                                            class="menu-action-button menu-action-button-danger"
+                                                            disabled={isDeletionSending(
+                                                                post,
+                                                            )}
+                                                            onclick={() =>
+                                                                openDeleteConfirm(
+                                                                    post,
+                                                                )}
+                                                        >
+                                                            <span>
+                                                                {isDeletionSending(
+                                                                    post,
+                                                                )
+                                                                    ? $_(
+                                                                          "postHistory.deleteSending",
+                                                                      )
+                                                                    : $_(
+                                                                          "postHistory.delete",
+                                                                      )}
+                                                            </span>
+                                                        </button>
+                                                    {/if}
+                                                </div>
+                                            </Popover.Content>
+                                        </Popover.Portal>
+                                    </Popover.Root>
+                                </div>
                             </div>
                             <div class="post-preview">
                                 <div class="post-preview-content">
@@ -1096,28 +1167,6 @@
                                         ? $_("postHistory.copied")
                                         : $_("postHistory.copyFailed")}
                                 </span>
-                            {/if}
-                            <Button
-                                className="copy-nevent-button"
-                                variant="default"
-                                shape="circle"
-                                ariaLabel={$_("postHistory.copyNevent")}
-                                onClick={() => void handleCopyNevent(post)}
-                            >
-                                <div class="copy-icon svg-icon"></div>
-                            </Button>
-                            {#if canDeletePost(post)}
-                                <Button
-                                    className="delete-post-button"
-                                    variant="danger"
-                                    shape="square"
-                                    disabled={isDeletionSending(post)}
-                                    onClick={() => openDeleteConfirm(post)}
-                                >
-                                    {isDeletionSending(post)
-                                        ? $_("postHistory.deleteSending")
-                                        : $_("postHistory.delete")}
-                                </Button>
                             {/if}
                         </div>
                     </li>
@@ -1329,10 +1378,116 @@
         line-height: 1.3;
     }
 
-    .post-preview-header > span {
-        margin-left: auto;
+    .post-preview-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
         flex-shrink: 0;
+        margin-left: auto;
+    }
+
+    .post-preview-header-actions > span {
         white-space: nowrap;
+    }
+
+    :global(.menu-trigger) {
+        width: 36px;
+        height: 36px;
+        background: transparent;
+        border: none;
+        border-radius: 50%;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+    }
+
+    .more-icon {
+        mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+        width: 20px;
+        height: 20px;
+        background-color: currentColor;
+    }
+
+    :global(.post-history-menu-content) {
+        background: var(--dialog, #fff);
+        color: var(--text, #000);
+        border: 1px solid var(--border, #ccc);
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+        padding: 8px;
+        min-width: 180px;
+        z-index: 100001;
+        outline: none;
+    }
+
+    :global(.post-history-menu-content[data-state="open"]) {
+        animation: popover-in 150ms ease-out;
+    }
+
+    :global(.post-history-menu-content[data-state="closed"]) {
+        animation: popover-out 100ms ease-in;
+    }
+
+    .post-history-menu-body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .menu-action-button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        border: none;
+        background: transparent;
+        color: inherit;
+        text-align: left;
+        padding: 10px 12px;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .menu-action-button:hover:not(:disabled) {
+        background: color-mix(in srgb, var(--dialog), var(--border) 12%);
+    }
+
+    .menu-action-button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+    .menu-action-button-danger {
+        color: var(--danger);
+    }
+
+    .menu-action-button .svg-icon {
+        width: 18px;
+        height: 18px;
+    }
+
+    @keyframes popover-in {
+        from {
+            opacity: 0;
+            transform: translateY(-4px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @keyframes popover-out {
+        from {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        to {
+            opacity: 0;
+            transform: translateY(-4px);
+        }
     }
 
     .post-preview {

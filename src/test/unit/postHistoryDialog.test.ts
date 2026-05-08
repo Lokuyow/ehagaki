@@ -597,7 +597,9 @@ describe('PostHistoryDialog', () => {
             expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: 'neventをコピー' }));
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: 'neventをコピー' }));
 
         expect(nostrUtilsMock.toNevent).toHaveBeenCalledWith(expect.objectContaining({
             eventId: 'channel-search',
@@ -1248,7 +1250,9 @@ describe('PostHistoryDialog', () => {
             expect(screen.queryByText('メディア: image 1')).toBeNull();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: 'neventをコピー' }));
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: 'neventをコピー' }));
 
         expect(nostrUtilsMock.toNevent).toHaveBeenCalledWith(expect.objectContaining({
             eventId: 'b'.repeat(64),
@@ -1291,7 +1295,11 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('他人の投稿')).toBeTruthy();
         });
 
-        expect(screen.getAllByRole('button', { name: '削除' })).toHaveLength(1);
+        expect(screen.getAllByRole('button', { name: 'アクションを表示' })).toHaveLength(2);
+
+        const actionTriggers = screen.getAllByRole('button', { name: 'アクションを表示' });
+        await fireEvent.click(actionTriggers[0]);
+        expect(await screen.findByRole('button', { name: '削除' })).toBeTruthy();
     });
 
     it('deletedAt がある投稿では削除状態を表示し、削除ボタンを出さない', async () => {
@@ -1336,8 +1344,10 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const deleteButton = await screen.findByRole('button', { name: '削除' });
-        await fireEvent.click(deleteButton);
+        await screen.findByText('削除対象本文');
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
 
         await waitFor(() => {
             expect(screen.getAllByText('この投稿の削除リクエストをリレーへ送信します。').length).toBeGreaterThan(0);
@@ -1369,6 +1379,9 @@ describe('PostHistoryDialog', () => {
             },
         });
 
+        await screen.findByText('削除対象本文');
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
         await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
         await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
 
@@ -1401,6 +1414,9 @@ describe('PostHistoryDialog', () => {
             },
         });
 
+        await screen.findByText('削除対象本文');
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
         await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
         await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
 
@@ -1573,7 +1589,9 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('投稿本文')).toBeTruthy();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: 'neventをコピー' }));
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: 'neventをコピー' }));
 
         expect(screen.getByText('コピーに失敗しました')).toBeTruthy();
     });
