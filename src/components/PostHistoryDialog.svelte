@@ -1108,6 +1108,10 @@
                                                                     post,
                                                                 )}
                                                         >
+                                                            <div
+                                                                class="trash-icon svg-icon"
+                                                                aria-hidden="true"
+                                                            ></div>
                                                             <span>
                                                                 {isDeletionSending(
                                                                     post,
@@ -1613,6 +1617,10 @@
 
     .copy-icon {
         mask-image: url("/icons/copy-solid-full.svg");
+    }
+
+    .trash-icon {
+        mask-image: url("/icons/trash-can-solid-full.svg");
     }
 
     .xmark-icon {
