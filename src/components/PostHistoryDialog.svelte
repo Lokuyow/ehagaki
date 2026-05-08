@@ -838,7 +838,7 @@
     }
 
     function buildPreview(content: string): string {
-        const normalized = content.replace(/\s+/g, " ").trim();
+        const normalized = content.trim();
         return normalized || " ";
     }
 

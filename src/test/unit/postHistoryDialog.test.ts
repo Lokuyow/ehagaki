@@ -626,7 +626,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
             expect(screen.getByText('リレーと同期中...')).toBeTruthy();
         });
 
@@ -703,7 +703,7 @@ describe('PostHistoryDialog', () => {
                 fetchedAt: 5000,
             });
             expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
-            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
         });
     });
 
@@ -751,7 +751,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalledOnce();
             expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
-            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
         });
     });
 
@@ -781,7 +781,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
-            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
         });
 
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
@@ -812,7 +812,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
             expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
         });
 
@@ -1281,7 +1281,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
             expect(screen.queryByText('メディア: image 1')).toBeNull();
         });
 
