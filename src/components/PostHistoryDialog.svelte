@@ -256,6 +256,16 @@
     description={$_("postHistory.description")}
     contentClass="post-history-dialog"
     footerVariant="close-button"
+    showPagination={showPaging}
+    paginationLabel={$_("postHistory.page", {
+        values: { page: currentPage, total: totalPages },
+    })}
+    previousPageLabel={$_("postHistory.previousPage")}
+    nextPageLabel={$_("postHistory.nextPage")}
+    {canGoPrevious}
+    {canGoNext}
+    onPreviousPage={handlePreviousPage}
+    onNextPage={handleNextPage}
     initialFocus="content"
 >
     <div class="post-history-heading">
@@ -324,40 +334,6 @@
                     </li>
                 {/each}
             </ul>
-        {/if}
-
-        {#if showPaging}
-            <div class="post-history-pagination">
-                <Button
-                    className="post-history-page-button"
-                    variant="default"
-                    shape="pill"
-                    disabled={!canGoPrevious}
-                    ariaLabel={$_("postHistory.previousPage")}
-                    onClick={handlePreviousPage}
-                >
-                    <span class="btn-text"
-                        >{$_("postHistory.previousPage")}</span
-                    >
-                </Button>
-
-                <div class="post-history-page-indicator">
-                    {$_("postHistory.page", {
-                        values: { page: currentPage, total: totalPages },
-                    })}
-                </div>
-
-                <Button
-                    className="post-history-page-button"
-                    variant="default"
-                    shape="pill"
-                    disabled={!canGoNext}
-                    ariaLabel={$_("postHistory.nextPage")}
-                    onClick={handleNextPage}
-                >
-                    <span class="btn-text">{$_("postHistory.nextPage")}</span>
-                </Button>
-            </div>
         {/if}
     </div>
 
@@ -528,27 +504,6 @@
 
     .copy-failed {
         color: var(--danger);
-    }
-
-    .post-history-pagination {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 12px;
-        border-top: 1px solid var(--border-hr);
-    }
-
-    .post-history-page-indicator {
-        color: var(--text-muted);
-        font-size: 0.82rem;
-        text-align: center;
-        white-space: nowrap;
-    }
-
-    :global(.post-history-page-button) {
-        min-width: 88px;
-        min-height: 40px;
     }
 
     :global(.copy-nevent-button) {

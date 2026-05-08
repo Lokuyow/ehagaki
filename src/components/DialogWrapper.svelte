@@ -1,6 +1,7 @@
 <script lang="ts">
     import type { Snippet } from "svelte";
     import { Dialog } from "bits-ui";
+    import Button from "./Button.svelte";
 
     interface Props {
         /** ダイアログの開閉状態 */
@@ -15,6 +16,22 @@
         contentClass?: string;
         /** フッターのバリエーション: "default" = シンプル, "close-button" = 閉じるボタン付き */
         footerVariant?: "default" | "close-button";
+        /** フッターにページ送りを表示するか */
+        showPagination?: boolean;
+        /** ページ送りの現在表示テキスト */
+        paginationLabel?: string;
+        /** 前ページボタンのラベル */
+        previousPageLabel?: string;
+        /** 次ページボタンのラベル */
+        nextPageLabel?: string;
+        /** 前ページへ移動できるか */
+        canGoPrevious?: boolean;
+        /** 次ページへ移動できるか */
+        canGoNext?: boolean;
+        /** 前ページボタン押下時のコールバック */
+        onPreviousPage?: () => void;
+        /** 次ページボタン押下時のコールバック */
+        onNextPage?: () => void;
         /** 開いた直後のフォーカス先 */
         initialFocus?: "default" | "content";
         /** ダイアログのメインコンテンツ */
@@ -30,6 +47,14 @@
         description,
         contentClass = "",
         footerVariant = "default",
+        showPagination = false,
+        paginationLabel = "",
+        previousPageLabel = "",
+        nextPageLabel = "",
+        canGoPrevious = false,
+        canGoNext = false,
+        onPreviousPage,
+        onNextPage,
         initialFocus = "default",
         children,
         footer,
@@ -82,12 +107,50 @@
                 {@render children?.()}
             </div>
 
-            {#if footer}
+            {#if footer || showPagination}
                 <div
                     class="dialog-footer"
                     class:close-button-footer={footerVariant === "close-button"}
+                    class:has-pagination={showPagination}
                 >
-                    {@render footer()}
+                    {#if showPagination}
+                        <div
+                            class="dialog-pagination"
+                            aria-label={paginationLabel}
+                        >
+                            <Button
+                                className="dialog-page-button"
+                                variant="default"
+                                shape="pill"
+                                disabled={!canGoPrevious}
+                                ariaLabel={previousPageLabel}
+                                onClick={onPreviousPage}
+                            >
+                                <span class="btn-text">{previousPageLabel}</span
+                                >
+                            </Button>
+
+                            <div class="dialog-page-center">
+                                <div class="dialog-page-indicator">
+                                    {paginationLabel}
+                                </div>
+                                {@render footer?.()}
+                            </div>
+
+                            <Button
+                                className="dialog-page-button"
+                                variant="default"
+                                shape="pill"
+                                disabled={!canGoNext}
+                                ariaLabel={nextPageLabel}
+                                onClick={onNextPage}
+                            >
+                                <span class="btn-text">{nextPageLabel}</span>
+                            </Button>
+                        </div>
+                    {:else}
+                        {@render footer?.()}
+                    {/if}
                 </div>
             {/if}
         </Dialog.Content>
@@ -143,8 +206,44 @@
         width: 100%;
         box-sizing: content-box;
         display: flex;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
+    }
+
+    .dialog-pagination {
+        display: flex;
+        align-items: stretch;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        box-sizing: border-box;
+        padding: 8px 10px;
+        border-top: 1px solid var(--border-hr);
+    }
+
+    .dialog-page-center {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+        flex: 1 0 auto;
+    }
+
+    .dialog-page-indicator {
+        min-width: 0;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        text-align: center;
+        white-space: nowrap;
+    }
+
+    :global(.dialog-page-button) {
+        min-width: 88px;
+        height: auto;
+        min-height: 40px;
+        flex: 1 0 auto;
     }
 
     /* 閉じるボタン付きフッター用スタイル */
@@ -156,6 +255,23 @@
             border: none;
             border-radius: 0;
             width: 100%;
+        }
+    }
+
+    .dialog-footer.close-button-footer.has-pagination {
+        border-top: none;
+
+        :global(.modal-close) {
+            border: 1px solid var(--btn-border);
+            border-radius: 50px;
+            width: 100%;
+            min-width: 72px;
+            min-height: 34px;
+        }
+
+        :global(.modal-close .svg-icon) {
+            width: 20px;
+            height: 20px;
         }
     }
 
