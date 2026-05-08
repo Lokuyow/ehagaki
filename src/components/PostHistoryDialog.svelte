@@ -1091,9 +1091,23 @@
                                                             aria-hidden="true"
                                                         ></div>
                                                         <span>
-                                                            {$_(
-                                                                "postHistory.copyNevent",
-                                                            )}
+                                                            {copyState[
+                                                                post.eventId
+                                                            ] === "copied"
+                                                                ? $_(
+                                                                      "postHistory.copied",
+                                                                  )
+                                                                : copyState[
+                                                                        post
+                                                                            .eventId
+                                                                    ] ===
+                                                                    "failed"
+                                                                  ? $_(
+                                                                        "postHistory.copyFailed",
+                                                                    )
+                                                                  : $_(
+                                                                        "postHistory.copyNevent",
+                                                                    )}
                                                         </span>
                                                     </button>
                                                     {#if canDeletePost(post)}
@@ -1160,19 +1174,7 @@
                                 </div>
                             {/if}
                         </div>
-                        <div class="post-history-actions">
-                            {#if copyState[post.eventId]}
-                                <span
-                                    class:copy-failed={copyState[
-                                        post.eventId
-                                    ] === "failed"}
-                                >
-                                    {copyState[post.eventId] === "copied"
-                                        ? $_("postHistory.copied")
-                                        : $_("postHistory.copyFailed")}
-                                </span>
-                            {/if}
-                        </div>
+                        <div class="post-history-actions"></div>
                     </li>
                 {/each}
             </ul>
@@ -1577,10 +1579,6 @@
         font-size: 0.82rem;
         flex-shrink: 0;
         margin-left: auto;
-    }
-
-    .copy-failed {
-        color: var(--danger);
     }
 
     :global(.copy-nevent-button) {
