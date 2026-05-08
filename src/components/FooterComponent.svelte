@@ -16,6 +16,7 @@
         isAuthInitialized: boolean;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
+        onOpenPostHistoryDialog: () => void;
         onOpenSettingsDialog: () => void;
         onOpenLogoutDialog: () => void;
     }
@@ -25,6 +26,7 @@
         isAuthInitialized,
         swNeedRefresh,
         onShowLoginDialog,
+        onOpenPostHistoryDialog,
         onOpenSettingsDialog,
         onOpenLogoutDialog,
     }: Props = $props();
@@ -117,7 +119,25 @@
         </Button>
     {/if}
 
-    <FooterInfoDisplay />
+    <FooterInfoDisplay>
+        {#snippet fallback()}
+            {#if isAuthenticated}
+                <Button
+                    variant="default"
+                    shape="circle"
+                    contentLayout="icon"
+                    className="post-history-btn"
+                    onClick={onOpenPostHistoryDialog}
+                    ariaLabel={$_("postHistory.open")}
+                >
+                    <div
+                        class="post-history-icon svg-icon"
+                        aria-label={$_("postHistory.open")}
+                    ></div>
+                </Button>
+            {/if}
+        {/snippet}
+    </FooterInfoDisplay>
 
     <Button
         variant="default"
@@ -165,6 +185,13 @@
 
     .settings-icon {
         mask-image: url("/icons/gear-solid-full.svg");
+    }
+    .post-history-icon {
+        mask-image: url("/icons/clock-rotate-left-solid-full.svg");
+    }
+    :global(.post-history-btn.default) {
+        width: 50px;
+        height: 50px;
     }
     :global(.settings-btn.has-update) {
         position: relative;

@@ -83,6 +83,19 @@
     "logout_account": "ログアウト",
     "copy_success": "コピーしました"
   },
+  "postHistory": {
+    "open": "投稿履歴を開く",
+    "title": "投稿履歴",
+    "description": "eHagaki で投稿に成功したイベントのローカル履歴です。",
+    "empty": "投稿履歴はありません",
+    "copyNevent": "neventをコピー",
+    "copied": "コピーしました",
+    "copyFailed": "コピーに失敗しました",
+    "eventId": "event id",
+    "postedAt": "投稿日時",
+    "media": "メディア",
+    "deleted": "削除済み"
+  },
   "settingsDialog": {
     "info_header_setting": "設定",
     "info_header_pixels": "最大画素数",

@@ -169,10 +169,14 @@ export class PostEventSender {
                     if (packet.ok) {
                         // completeOn: "all-ok" でも、ok:true を受信した時点で
                         // next 内で即座に成功として resolve する
-                        safeResolve({
+                        const result: PostResult = {
                             success: true,
                             eventId: packet.event?.id || packet.eventId || event.id,
-                        });
+                        };
+                        if (packet.from) {
+                            result.acceptedRelays = [packet.from];
+                        }
+                        safeResolve(result);
                     } else {
                         rejectedCount++;
                     }

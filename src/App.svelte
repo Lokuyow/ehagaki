@@ -36,6 +36,7 @@
     showLogoutDialogStore,
     showSettingsDialogStore,
     showWelcomeDialogStore,
+    showPostHistoryDialogStore,
     showDraftListDialogStore,
     showDraftLimitConfirmStore,
     pendingDraftContentStore,
@@ -169,6 +170,8 @@
     typeof import("./components/WelcomeDialog.svelte").default;
   type DraftListDialogComponent =
     typeof import("./components/DraftListDialog.svelte").default;
+  type PostHistoryDialogComponent =
+    typeof import("./components/PostHistoryDialog.svelte").default;
   type CustomEmojiPickerComponent =
     typeof import("./components/CustomEmojiPicker.svelte").default;
   type ComponentImporter<T> = () => Promise<{ default: T }>;
@@ -179,6 +182,8 @@
   let SettingsDialogComponent: SettingsDialogComponent | null = $state(null);
   let WelcomeDialogComponent: WelcomeDialogComponent | null = $state(null);
   let DraftListDialogComponent: DraftListDialogComponent | null = $state(null);
+  let PostHistoryDialogComponent: PostHistoryDialogComponent | null =
+    $state(null);
   let CustomEmojiPickerComponent: CustomEmojiPickerComponent | null =
     $state(null);
 
@@ -217,6 +222,10 @@
     createComponentLoader<DraftListDialogComponent>(
       () => import("./components/DraftListDialog.svelte"),
     );
+  const loadPostHistoryDialogModule =
+    createComponentLoader<PostHistoryDialogComponent>(
+      () => import("./components/PostHistoryDialog.svelte"),
+    );
   const loadCustomEmojiPickerModule =
     createComponentLoader<CustomEmojiPickerComponent>(
       () => import("./components/CustomEmojiPicker.svelte"),
@@ -244,6 +253,10 @@
 
   async function loadDraftListDialog(): Promise<void> {
     DraftListDialogComponent = await loadDraftListDialogModule();
+  }
+
+  async function loadPostHistoryDialog(): Promise<void> {
+    PostHistoryDialogComponent = await loadPostHistoryDialogModule();
   }
 
   async function loadCustomEmojiPicker(): Promise<void> {
@@ -337,6 +350,9 @@
   const draftListDialog = createDialogVisibilityHandlers(
     showDraftListDialogStore,
   );
+  const postHistoryDialog = createDialogVisibilityHandlers(
+    showPostHistoryDialogStore,
+  );
   const addAccountDialog = createDialogVisibilityHandlers(
     showAddAccountDialogStore,
   );
@@ -394,6 +410,12 @@
   $effect(() => {
     if (showDraftListDialogStore.value) {
       void loadDraftListDialog();
+    }
+  });
+
+  $effect(() => {
+    if (showPostHistoryDialogStore.value) {
+      void loadPostHistoryDialog();
     }
   });
 
@@ -1515,6 +1537,7 @@
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh}
         onShowLoginDialog={loginDialog.open}
+        onOpenPostHistoryDialog={postHistoryDialog.open}
         onOpenSettingsDialog={settingsDialog.open}
         onOpenLogoutDialog={logoutDialog.open}
       />
@@ -1606,6 +1629,13 @@
           show={showDraftListDialogStore.value}
           onClose={draftListDialog.close}
           onApplyDraft={handleApplyDraft}
+          pubkeyHex={authState.value?.pubkey ?? null}
+        />
+      {/if}
+      {#if showPostHistoryDialogStore.value && PostHistoryDialogComponent}
+        <PostHistoryDialogComponent
+          show={showPostHistoryDialogStore.value}
+          onClose={postHistoryDialog.close}
           pubkeyHex={authState.value?.pubkey ?? null}
         />
       {/if}

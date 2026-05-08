@@ -20,6 +20,7 @@ let showLogout = $state(false);
 let showSettings = $state(false);
 let showWelcome = $state(false);
 let showAddAccount = $state(false);
+let showPostHistory = $state(false);
 
 export const showLoginDialogStore = createBooleanStore(() => showLogin, (value) => { showLogin = value; });
 
@@ -28,6 +29,8 @@ export const showLogoutDialogStore = createBooleanStore(() => showLogout, (value
 export const showSettingsDialogStore = createBooleanStore(() => showSettings, (value) => { showSettings = value; });
 
 export const showWelcomeDialogStore = createBooleanStore(() => showWelcome, (value) => { showWelcome = value; });
+
+export const showPostHistoryDialogStore = createBooleanStore(() => showPostHistory, (value) => { showPostHistory = value; });
 
 // --- 下書きダイアログ状態管理 ---
 import type { DraftChannelData, DraftReplyQuoteData } from '../lib/types';
@@ -54,6 +57,7 @@ export function isAnyDialogOpen(): boolean {
         showSettings ||
         showWelcome ||
         showAddAccount ||
+        showPostHistory ||
         showDraftList ||
         showDraftLimitConfirm;
 }

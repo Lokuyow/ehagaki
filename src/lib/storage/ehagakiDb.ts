@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 4;
+export const EHAGAKI_DB_VERSION = 5;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -125,6 +125,35 @@ export interface UploadDestinationRecord extends UploadDestination {
     scopeKey: string;
 }
 
+export interface PostHistoryMediaRecord {
+    url: string;
+    mimeType?: string;
+    alt?: string;
+    blurhash?: string;
+    dim?: string;
+    size?: number;
+    uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
+}
+
+export interface PostHistoryRecord {
+    id: string;
+    eventId: string;
+    pubkeyHex: string;
+    kind: number;
+    content: string;
+    tags: string[][];
+    createdAt: number;
+    postedAt: number;
+    relayHints: string[];
+    acceptedRelays: string[];
+    media: PostHistoryMediaRecord[];
+    rawEvent: unknown;
+    deletedAt?: number;
+    deletionEventId?: string;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export class EHagakiDB extends Dexie {
     meta!: Table<MetaRecord, string>;
     emojiItems!: Table<EmojiItemRecord, string>;
@@ -136,6 +165,7 @@ export class EHagakiDB extends Dexie {
     hashtagHistory!: Table<HashtagHistoryRecord, string>;
     customEmojiUsage!: Table<CustomEmojiUsageRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
+    postHistory!: Table<PostHistoryRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
         super(databaseName);
@@ -151,6 +181,7 @@ export class EHagakiDB extends Dexie {
             hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
             customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
+            postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, schemaVersion, [pubkeyHex+postedAt]",
         });
     }
 }

@@ -69,6 +69,26 @@ export function toNpub(pubkeyHex: string): string {
     }
 }
 
+function appendUniqueRelays(target: string[], source: string[], limit: number): void {
+    for (const relay of source) {
+        if (!relay || target.includes(relay)) continue;
+        target.push(relay);
+        if (target.length >= limit) return;
+    }
+}
+
+export function selectRelayHints(
+    relayGroups: string[][],
+    limit: number = 3,
+): string[] {
+    const relays: string[] = [];
+    for (const group of relayGroups) {
+        appendUniqueRelays(relays, group, limit);
+        if (relays.length >= limit) break;
+    }
+    return relays;
+}
+
 /**
  * 公開鍵hexとリレーリストからnprofile文字列を生成
  * @param pubkeyHex 公開鍵のhex形式
@@ -83,23 +103,40 @@ export function toNprofile(
 ): string {
     try {
         // kind:0を受信したリレー1つ + writeリレー上から2つ = 最大3つ
-        const relays: string[] = [];
-
-        // 1. kind:0を受信したリレーから1つ
-        if (profileRelays.length > 0) {
-            relays.push(profileRelays[0]);
-        }
-
-        // 2. writeリレーから2つ（profileRelaysと重複しないもの）
-        const remainingSlots = 3 - relays.length;
-        if (remainingSlots > 0) {
-            const uniqueWriteRelays = writeRelays.filter(r => !relays.includes(r));
-            relays.push(...uniqueWriteRelays.slice(0, Math.min(remainingSlots, 2)));
-        }
+        const relays = selectRelayHints([
+            profileRelays.slice(0, 1),
+            writeRelays,
+        ], 3);
 
         return nip19.nprofileEncode({
             pubkey: pubkeyHex,
             relays
+        });
+    } catch {
+        return "";
+    }
+}
+
+export function toNevent(params: {
+    eventId: string;
+    authorPubkey: string;
+    kind: number;
+    acceptedRelays?: string[];
+    relayHints?: string[];
+    writeRelays?: string[];
+}): string {
+    try {
+        const relays = selectRelayHints([
+            params.acceptedRelays ?? [],
+            params.relayHints ?? [],
+            params.writeRelays ?? [],
+        ], 3);
+
+        return nip19.neventEncode({
+            id: params.eventId,
+            author: params.authorPubkey,
+            kind: params.kind,
+            relays,
         });
     } catch {
         return "";

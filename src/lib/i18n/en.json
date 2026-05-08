@@ -83,6 +83,19 @@
     "logout_account": "Logout",
     "copy_success": "Copied"
   },
+  "postHistory": {
+    "open": "Open post history",
+    "title": "Post History",
+    "description": "Local history of events successfully posted from eHagaki.",
+    "empty": "No post history",
+    "copyNevent": "Copy nevent",
+    "copied": "Copied",
+    "copyFailed": "Copy failed",
+    "eventId": "event id",
+    "postedAt": "Posted at",
+    "media": "Media",
+    "deleted": "Deleted"
+  },
   "settingsDialog": {
     "info_header_setting": "Setting",
     "info_header_pixels": "Maximum Pixels",

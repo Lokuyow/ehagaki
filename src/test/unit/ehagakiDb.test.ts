@@ -36,6 +36,7 @@ describe("EHagakiDB", () => {
             "emojiItems",
             "hashtagHistory",
             "meta",
+            "postHistory",
             "profiles",
             "relayConfigs",
             "sharedMedia",

@@ -49,6 +49,7 @@
   } from "../stores/replyQuoteStore.svelte";
   import { channelContextState } from "../stores/channelContextStore.svelte";
   import { ReplyQuoteService } from "../lib/replyQuoteService";
+  import { postHistoryRepository } from "../lib/storage/postHistoryRepository";
   import {
     editorState,
     updateEditorContent,
@@ -189,6 +190,8 @@
           replyQuoteState,
           replyQuoteService: new ReplyQuoteService(),
           clearReplyQuoteFn: clearReplyQuote,
+          savePostHistoryFn: (input) =>
+            postHistoryRepository.putPostedEvent(input),
         });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }

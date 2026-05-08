@@ -20,6 +20,7 @@ import {
     derivePublicKeyFromNsec,
     toNpub,
     toNprofile,
+    toNevent,
 } from '../../lib/utils/nostrUtils';
 
 // =============================================================================
@@ -345,5 +346,41 @@ describe('toNprofile', () => {
             const result = toNprofile('');
             expect(typeof result).toBe('string');
         });
+    });
+});
+
+describe('toNevent', () => {
+    it('event id / author / kind / relay hints を含む nevent1 を生成する', () => {
+        const eventId = 'a'.repeat(64);
+        const authorPubkey = KNOWN_PUBKEY_HEX;
+
+        const nevent = toNevent({
+            eventId,
+            authorPubkey,
+            kind: 1,
+            acceptedRelays: ['wss://accepted.example.com/'],
+            writeRelays: ['wss://write.example.com/'],
+        });
+
+        expect(nevent.startsWith('nevent1')).toBe(true);
+        const decoded = nip19.decode(nevent);
+        expect(decoded.type).toBe('nevent');
+        expect((decoded.data as any).id).toBe(eventId);
+        expect((decoded.data as any).author).toBe(authorPubkey);
+        expect((decoded.data as any).kind).toBe(1);
+        expect((decoded.data as any).relays).toContain('wss://accepted.example.com/');
+    });
+
+    it('relay hints は最大3件に制限される', () => {
+        const nevent = toNevent({
+            eventId: 'a'.repeat(64),
+            authorPubkey: KNOWN_PUBKEY_HEX,
+            kind: 42,
+            acceptedRelays: ['wss://r1.example.com/', 'wss://r2.example.com/'],
+            relayHints: ['wss://r3.example.com/', 'wss://r4.example.com/'],
+        });
+
+        const decoded = nip19.decode(nevent);
+        expect((decoded.data as any).relays).toHaveLength(3);
     });
 });

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import type { Snippet } from "svelte";
     import { _ } from "svelte-i18n";
     import { useFooterMiddleDisplay } from "../lib/hooks/useFooterMiddleDisplay.svelte";
     import {
@@ -7,6 +8,12 @@
         shouldShowDevLog,
     } from "../lib/debug";
     import FooterProgressStatus from "./FooterProgressStatus.svelte";
+
+    interface Props {
+        fallback?: Snippet;
+    }
+
+    let { fallback }: Props = $props();
 
     async function handleDevLogCopy(e?: Event) {
         try {
@@ -72,6 +79,8 @@
                 </div>
             </div>
         {/if}
+    {:else if fallback}
+        {@render fallback()}
     {/if}
 </div>
 

@@ -109,4 +109,15 @@ export function ensureCurrentEHagakiDbSchema(
         { name: '[scopeKey+isDefault]', keyPath: ['scopeKey', 'isDefault'] },
         { name: '[scopeKey+enabled]', keyPath: ['scopeKey', 'enabled'] },
     ]);
+    createObjectStoreIfMissing(db, 'postHistory', 'id', [
+        { name: 'eventId', keyPath: 'eventId' },
+        { name: 'pubkeyHex', keyPath: 'pubkeyHex' },
+        { name: 'kind', keyPath: 'kind' },
+        { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'postedAt', keyPath: 'postedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'deletedAt', keyPath: 'deletedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' },
+        { name: '[pubkeyHex+postedAt]', keyPath: ['pubkeyHex', 'postedAt'] },
+    ]);
 }

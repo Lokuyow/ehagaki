@@ -118,7 +118,7 @@ const createServiceWorkerMocks = (): ServiceWorkerModule => {
     const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
     const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
     const INDEXEDDB_NAME = 'eHagakiDB';
-    const INDEXEDDB_VERSION = 1;
+    const INDEXEDDB_VERSION = 5;
     const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
     const SHARED_MEDIA_RECORD_ID = 'latest';
     const SHARED_MEDIA_SCHEMA_VERSION = 1;

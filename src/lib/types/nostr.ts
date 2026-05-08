@@ -179,6 +179,12 @@ export interface PostManagerDeps {
     seckeySignerFn?: (key: string) => any;
     getNip46SignerFn?: () => any;
     getParentClientSignerFn?: () => any;
+    savePostHistoryFn?: (input: {
+        event: NostrEvent;
+        acceptedRelays?: string[];
+        relayHints?: string[];
+    }) => void | Promise<void>;
+    writeRelaysStore?: { value: string[] };
     extractContentWithImagesFn?: (editor: TipTapEditor) => string;
     extractContentWithEmojiTagsFn?: (editor: TipTapEditor) => {
         content: string;

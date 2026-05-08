@@ -26,6 +26,7 @@ export interface PostResult {
     success: boolean;
     error?: string;
     eventId?: string;
+    acceptedRelays?: string[];
 }
 
 // Editor and Utils types

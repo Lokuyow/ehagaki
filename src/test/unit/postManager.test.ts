@@ -449,7 +449,11 @@ describe('PostManager editor state helpers', () => {
             mockDeps.hashtagStore = mockHashtagStore;
             mockDeps.keyManager = mockKeyManager;
             mockDeps.seckeySignerFn = vi.fn().mockImplementation((key: string) => ({
-                sign: vi.fn().mockImplementation(async (event: any) => ({ ...event, sig: "mock-signature" }))
+                signEvent: vi.fn().mockImplementation(async (event: any) => ({
+                    ...event,
+                    id: 'signed-test-event-id',
+                    sig: "mock-signature",
+                }))
             }));
 
             manager = new PostManager(mockRxNostr, mockDeps);
@@ -1014,7 +1018,11 @@ describe('PostManager統合テスト', () => {
             createImetaTagFn: vi.fn().mockResolvedValue(['imeta', 'test']),
             getClientTagFn: vi.fn().mockReturnValue(['client', 'test-client']),
             seckeySignerFn: vi.fn().mockImplementation((key: string) => ({
-                sign: vi.fn().mockImplementation(async (event: any) => ({ ...event, sig: "mock-signature" }))
+                signEvent: vi.fn().mockImplementation(async (event: any) => ({
+                    ...event,
+                    id: 'signed-test-event-id',
+                    sig: "mock-signature",
+                }))
             }))
         };
 
@@ -1048,20 +1056,20 @@ describe('PostManager統合テスト', () => {
         const result = await manager.submitPost('Test post content');
 
         expect(result.success).toBe(true);
-        expect(mockRxNostr.send).toHaveBeenCalledWith(
-            expect.objectContaining({
-                kind: 1,
-                content: 'Test post content',
-                tags: expect.arrayContaining([
-                    ['t', 'test'],
-                    ['t', 'example'],
-                    ['client', 'test-client']
-                ])
-            }),
-            expect.objectContaining({
-                signer: expect.any(Object)
-            })
-        );
+        const [sentEvent, sendOptions] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+        expect(sentEvent).toEqual(expect.objectContaining({
+            kind: 1,
+            content: 'Test post content',
+            id: 'signed-test-event-id',
+            sig: 'mock-signature',
+            tags: expect.arrayContaining([
+                ['t', 'test'],
+                ['t', 'example'],
+                ['client', 'test-client']
+            ])
+        }));
+        expect(sendOptions).toEqual(expect.objectContaining({ completeOn: 'all-ok' }));
+        expect(sendOptions).not.toHaveProperty('signer');
     });
 
     it('getClientTagFn 未指定時は settingsStore.clientTagEnabled を使う', async () => {
@@ -1098,6 +1106,98 @@ describe('PostManager統合テスト', () => {
         expect(sentEvent.tags.some((tag: string[]) => tag[0] === 'client')).toBe(false);
     });
 
+    it('投稿成功時に署名済みeventを投稿履歴保存関数へ渡す', async () => {
+        const savePostHistoryFn = vi.fn();
+        mockDeps.savePostHistoryFn = savePostHistoryFn;
+        mockDeps.writeRelaysStore = {
+            value: [
+                'wss://write.example.com',
+                'wss://other-write.example.com',
+            ],
+        };
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'wss://accepted.example.com',
+                        ok: true,
+                        done: true,
+                        eventId: 'test-event-id',
+                        type: 'ok',
+                        message: ''
+                    });
+                });
+                return { unsubscribe: vi.fn() };
+            })
+        };
+
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await manager.submitPost('Test post content');
+
+        expect(result.success).toBe(true);
+        expect(savePostHistoryFn).toHaveBeenCalledWith({
+            event: expect.objectContaining({
+                id: 'signed-test-event-id',
+                sig: 'mock-signature',
+                content: 'Test post content',
+            }),
+            acceptedRelays: ['wss://accepted.example.com/'],
+            relayHints: [
+                'wss://accepted.example.com/',
+                'wss://write.example.com/',
+                'wss://other-write.example.com/',
+            ],
+        });
+    });
+
+    it('投稿失敗時は投稿履歴保存関数を呼ばない', async () => {
+        const savePostHistoryFn = vi.fn();
+        mockDeps.savePostHistoryFn = savePostHistoryFn;
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const mockObservable = {
+            subscribe: vi.fn((observer) => {
+                process.nextTick(() => {
+                    observer.next({
+                        from: 'wss://rejected.example.com',
+                        ok: false,
+                        done: true,
+                        eventId: 'test-event-id',
+                        type: 'ok',
+                        message: 'rejected'
+                    });
+                    observer.complete();
+                });
+                return { unsubscribe: vi.fn() };
+            })
+        };
+
+        vi.mocked(mockRxNostr.send).mockReturnValue(mockObservable as any);
+
+        const result = await manager.submitPost('Test post content');
+
+        expect(result.success).toBe(false);
+        expect(savePostHistoryFn).not.toHaveBeenCalled();
+    });
+
+    it('signEventを持たないsignerでは未署名送信しない', async () => {
+        mockDeps.seckeySignerFn = vi.fn().mockReturnValue({
+            sign: vi.fn(),
+        });
+        manager = new PostManager(mockRxNostr, mockDeps);
+
+        const result = await manager.submitPost('Test post content');
+
+        expect(result).toEqual({
+            success: false,
+            error: 'nostr_sign_event_not_supported',
+        });
+        expect(mockRxNostr.send).not.toHaveBeenCalled();
+    });
+
     it('channel context がある場合は kind 42 の channel message を送信する', async () => {
         const mockObservable = {
             subscribe: vi.fn((observer) => {
@@ -1132,22 +1232,24 @@ describe('PostManager統合テスト', () => {
         const result = await manager.submitPost('Channel root message');
 
         expect(result.success).toBe(true);
-        expect(mockRxNostr.send).toHaveBeenCalledWith(
-            expect.objectContaining({
-                kind: 42,
-                content: 'Channel root message',
-                tags: expect.arrayContaining([
-                    ['e', 'channel-root-event', 'wss://channel-relay.example.com', 'root'],
-                ]),
-            }),
-            expect.objectContaining({
-                signer: expect.any(Object),
-                on: {
-                    relays: ['wss://channel-relay.example.com/'],
-                    defaultWriteRelays: true,
-                },
-            }),
-        );
+        const [sentEvent, sendOptions] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+        expect(sentEvent).toEqual(expect.objectContaining({
+            kind: 42,
+            content: 'Channel root message',
+            id: 'signed-test-event-id',
+            sig: 'mock-signature',
+            tags: expect.arrayContaining([
+                ['e', 'channel-root-event', 'wss://channel-relay.example.com', 'root'],
+            ]),
+        }));
+        expect(sendOptions).toEqual(expect.objectContaining({
+            completeOn: 'all-ok',
+            on: {
+                relays: ['wss://channel-relay.example.com/'],
+                defaultWriteRelays: true,
+            },
+        }));
+        expect(sendOptions).not.toHaveProperty('signer');
         expect((mockDeps as any).channelContextState.value).toEqual({
             eventId: 'channel-root-event',
             relayHints: ['wss://channel-lookup.example.com'],
@@ -1601,6 +1703,7 @@ describe('PostManager統合テスト', () => {
 
             const mockParentSigner = {
                 signEvent: vi.fn().mockResolvedValue({
+                    id: 'parent-signed-event-id',
                     kind: 1,
                     content: 'Test post content',
                     pubkey: mockAuthState.pubkey,
@@ -1636,10 +1739,18 @@ describe('PostManager統合テスト', () => {
             expect(mockIframeService.notifyPostSuccess).toHaveBeenCalledWith({
                 eventId: 'test-event-id',
             });
-            expect(mockRxNostr.send).toHaveBeenCalledWith(
-                expect.any(Object),
-                expect.objectContaining({ signer: mockParentSigner, completeOn: 'all-ok' })
-            );
+            expect(mockParentSigner.signEvent).toHaveBeenCalledWith(expect.objectContaining({
+                kind: 1,
+                content: 'Test post content',
+                pubkey: mockAuthState.pubkey,
+            }));
+            const [sentEvent, sendOptions] = vi.mocked(mockRxNostr.send).mock.calls[0] as [any, any];
+            expect(sentEvent).toEqual(expect.objectContaining({
+                id: 'parent-signed-event-id',
+                sig: 'parent-signature',
+            }));
+            expect(sendOptions).toEqual(expect.objectContaining({ completeOn: 'all-ok' }));
+            expect(sendOptions).not.toHaveProperty('signer');
         });
     });
 

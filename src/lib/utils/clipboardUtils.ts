@@ -193,6 +193,26 @@ export async function copyToClipboard(text: string, type: "npub" | "nprofile" | 
     await fallbackCopy(text, type, windowObj);
 }
 
+export async function tryCopyToClipboard(
+    text: string,
+    type: "npub" | "nprofile" | string = "",
+    navigatorObj?: Navigator,
+    windowObj?: Window,
+): Promise<boolean> {
+    try {
+        const nav = navigatorObj ?? navigator;
+        if (nav?.clipboard && typeof nav.clipboard.writeText === "function") {
+            await nav.clipboard.writeText(text);
+            console.log(`${type} copied to clipboard`);
+            return true;
+        }
+    } catch (error) {
+        console.error(`Failed to copy ${type}:`, error);
+    }
+
+    return fallbackCopy(text, type, windowObj);
+}
+
 /**
  * フォールバックコピー処理（textarea + execCommand）
  * 
@@ -200,7 +220,7 @@ export async function copyToClipboard(text: string, type: "npub" | "nprofile" | 
  * @param type - テキストの種類（ログ出力用）
  * @param windowObj - Windowオブジェクト（テスト用）
  */
-async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "", windowObj?: Window): Promise<void> {
+async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "", windowObj?: Window): Promise<boolean> {
     const win = windowObj ?? window;
     try {
         const doc = (win && (win as any).document) || document;
@@ -221,10 +241,12 @@ async function fallbackCopy(text: string, type: "npub" | "nprofile" | string = "
 
         if (successful) {
             console.log(`${type} copied to clipboard (fallback)`);
+            return true;
         } else {
             throw new Error("fallback_copy_failed");
         }
     } catch (error) {
         console.warn(`Failed to copy ${type} (both clipboard API and fallback failed):`, error);
+        return false;
     }
 }

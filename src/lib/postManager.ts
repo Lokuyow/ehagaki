@@ -18,6 +18,8 @@ import { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEve
 import { ReplyQuoteService } from "./replyQuoteService";
 import { replyQuoteState, clearReplyQuote } from "../stores/replyQuoteStore.svelte";
 import { settingsStore } from "../stores/settingsStore.svelte";
+import { writeRelaysStore } from "../stores/relayStore.svelte";
+import { RelayConfigUtils } from "./relayConfigUtils";
 
 // 後方互換性のためre-export
 export { trimTrailingNewlineAfterMedia, PostValidator, PostEventBuilder, PostEventSender } from "./postEventBuilder";
@@ -62,6 +64,7 @@ export class PostManager {
     this.deps.keyManager = deps.keyManager || keyManager;
     this.deps.createImetaTagFn = deps.createImetaTagFn || createImetaTag;
     this.deps.settingsStore = deps.settingsStore || settingsStore;
+    this.deps.writeRelaysStore = deps.writeRelaysStore || writeRelaysStore;
     this.deps.replyQuoteState = deps.replyQuoteState || replyQuoteState;
     this.deps.getClientTagFn = deps.getClientTagFn || (() =>
       buildClientTag(this.deps.settingsStore?.clientTagEnabled ?? true)
@@ -166,6 +169,33 @@ export class PostManager {
     return result;
   }
 
+  private async saveSubmittedPostHistory(params: {
+    event: any;
+    result: PostResult;
+    additionalWriteRelays?: string[];
+  }): Promise<void> {
+    if (!params.result.success || !this.deps.savePostHistoryFn) return;
+
+    const acceptedRelays = RelayConfigUtils.sanitizeExternalRelayUrls(
+      params.result.acceptedRelays,
+    );
+    const relayHints = RelayConfigUtils.sanitizeExternalRelayUrls([
+      ...acceptedRelays,
+      ...(params.additionalWriteRelays ?? []),
+      ...(this.deps.writeRelaysStore?.value ?? []),
+    ], { limit: 3 });
+
+    try {
+      await this.deps.savePostHistoryFn({
+        event: params.event,
+        acceptedRelays,
+        relayHints,
+      });
+    } catch (error) {
+      this.deps.console?.warn?.("post_history_save_failed", error);
+    }
+  }
+
   private async sendPreparedEvent(params: {
     event: any;
     hashtags: string[];
@@ -175,16 +205,28 @@ export class PostManager {
     signEvent?: (event: any) => Promise<any>;
     logSignedEvent?: boolean;
   }): Promise<PostResult> {
-    const eventToSend = params.signEvent
-      ? await params.signEvent(params.event)
+    const signEvent = params.signEvent
+      ?? (typeof params.signer?.signEvent === "function"
+        ? params.signer.signEvent.bind(params.signer)
+        : undefined);
+    if (params.signer && !signEvent) {
+      return this.notifyPostFailure("nostr_sign_event_not_supported");
+    }
+
+    const eventToSend = signEvent
+      ? await signEvent(params.event)
       : params.event;
 
-    if (params.signEvent && params.logSignedEvent) {
+    if (signEvent && params.logSignedEvent) {
       this.deps.console?.log('署名済みイベント:', eventToSend);
     }
 
     const result = await this.eventSender!.sendEvent(eventToSend, {
-      signer: params.signer,
+      additionalWriteRelays: params.additionalWriteRelays,
+    });
+    await this.saveSubmittedPostHistory({
+      event: eventToSend,
+      result,
       additionalWriteRelays: params.additionalWriteRelays,
     });
     return this.finalizeSubmittedPost(
