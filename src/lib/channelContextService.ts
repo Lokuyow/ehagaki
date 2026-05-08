@@ -94,7 +94,7 @@ export class ChannelContextService {
     constructor(deps: ChannelContextServiceDeps = {}) {
         this.console = deps.console || (typeof console !== "undefined"
             ? console
-            : { log: () => {}, warn: () => {}, error: () => {} } as Console);
+            : { log: () => { }, warn: () => { }, error: () => { } } as Console);
         this.setTimeoutFn = deps.setTimeoutFn || ((fn: () => void, ms: number) => setTimeout(fn, ms));
         this.clearTimeoutFn = deps.clearTimeoutFn || ((id: ReturnType<typeof setTimeout>) => clearTimeout(id));
     }

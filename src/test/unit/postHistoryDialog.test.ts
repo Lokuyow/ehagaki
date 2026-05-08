@@ -657,7 +657,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
-            expect(screen.getByText('メディア: image 1')).toBeTruthy();
+            expect(screen.queryByText('メディア: image 1')).toBeNull();
         });
 
         await fireEvent.click(screen.getByRole('button', { name: 'neventをコピー' }));
@@ -721,6 +721,9 @@ describe('PostHistoryDialog', () => {
             expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
             expect(screen.getByText('cached-general')).toBeTruthy();
         });
+
+        const channelRow = screen.getByText('cached-general').closest('.post-history-channel-row');
+        expect(channelRow?.parentElement?.classList.contains('post-preview-header')).toBe(true);
     });
 
     it('未取得 channel だけ service で解決して保存し、同じ channelEventId の fetch を重複させない', async () => {

@@ -176,9 +176,8 @@
 
         const requestId = ++channelResolutionRequestId;
         void (async () => {
-            const cachedRecords = await channelMetadataRepository.getMany(
-                channelEventIds,
-            );
+            const cachedRecords =
+                await channelMetadataRepository.getMany(channelEventIds);
 
             if (!show || requestId !== channelResolutionRequestId) {
                 return;
@@ -211,8 +210,10 @@
 
             const refreshTargets = channelEventIds.filter((channelEventId) => {
                 const cachedRecord = cachedById.get(channelEventId) ?? null;
-                return channelMetadataRepository.shouldRefresh(cachedRecord)
-                    && !pendingChannelEventIds.has(channelEventId);
+                return (
+                    channelMetadataRepository.shouldRefresh(cachedRecord) &&
+                    !pendingChannelEventIds.has(channelEventId)
+                );
             });
 
             if (refreshTargets.length === 0) {
@@ -250,48 +251,50 @@
                             );
 
                         if (
-                            abortController.signal.aborted
-                            || currentChannelAbortController !== abortController
+                            abortController.signal.aborted ||
+                            currentChannelAbortController !== abortController
                         ) {
                             return null;
                         }
 
                         const savedRecord =
-                            await channelMetadataRepository.upsertResolvedChannel({
-                                channelEventId:
-                                    resolvedMetadata.channelEventId,
-                                name: resolvedMetadata.name,
-                                about: resolvedMetadata.about,
-                                picture: resolvedMetadata.picture,
-                                relays: resolvedMetadata.channelRelays,
-                                relayHints: resolvedMetadata.relayHints,
-                                ...(resolvedMetadata.creatorPubkey
-                                    ? {
-                                        creatorPubkey:
-                                            resolvedMetadata.creatorPubkey,
-                                    }
-                                    : {}),
-                                ...(typeof resolvedMetadata.createEventCreatedAt ===
-                                "number"
-                                    ? {
-                                        createEventCreatedAt:
-                                            resolvedMetadata.createEventCreatedAt,
-                                    }
-                                    : {}),
-                                ...(resolvedMetadata.metadataEventId
-                                    ? {
-                                        metadataEventId:
-                                            resolvedMetadata.metadataEventId,
-                                    }
-                                    : {}),
-                                ...(typeof resolvedMetadata.metadataCreatedAt ===
-                                "number"
-                                    ? {
-                                        metadataCreatedAt:
-                                            resolvedMetadata.metadataCreatedAt,
-                                    }
-                                    : {}),
-                            });
+                            await channelMetadataRepository.upsertResolvedChannel(
+                                {
+                                    channelEventId:
+                                        resolvedMetadata.channelEventId,
+                                    name: resolvedMetadata.name,
+                                    about: resolvedMetadata.about,
+                                    picture: resolvedMetadata.picture,
+                                    relays: resolvedMetadata.channelRelays,
+                                    relayHints: resolvedMetadata.relayHints,
+                                    ...(resolvedMetadata.creatorPubkey
+                                        ? {
+                                              creatorPubkey:
+                                                  resolvedMetadata.creatorPubkey,
+                                          }
+                                        : {}),
+                                    ...(typeof resolvedMetadata.createEventCreatedAt ===
+                                    "number"
+                                        ? {
+                                              createEventCreatedAt:
+                                                  resolvedMetadata.createEventCreatedAt,
+                                          }
+                                        : {}),
+                                    ...(resolvedMetadata.metadataEventId
+                                        ? {
+                                              metadataEventId:
+                                                  resolvedMetadata.metadataEventId,
+                                          }
+                                        : {}),
+                                    ...(typeof resolvedMetadata.metadataCreatedAt ===
+                                    "number"
+                                        ? {
+                                              metadataCreatedAt:
+                                                  resolvedMetadata.metadataCreatedAt,
+                                          }
+                                        : {}),
+                                },
+                            );
 
                         return {
                             channelEventId,
@@ -323,10 +326,10 @@
             );
 
             if (
-                !show
-                || requestId !== channelResolutionRequestId
-                || currentChannelAbortController !== abortController
-                || abortController.signal.aborted
+                !show ||
+                requestId !== channelResolutionRequestId ||
+                currentChannelAbortController !== abortController ||
+                abortController.signal.aborted
             ) {
                 return;
             }
@@ -602,25 +605,6 @@
         return normalized || " ";
     }
 
-    function getMediaText(post: PostHistoryRecord): string {
-        if (post.media.length === 0) return `${$_("postHistory.media")}: 0`;
-
-        const imageCount = post.media.filter((item) =>
-            item.mimeType?.startsWith("image/"),
-        ).length;
-        const videoCount = post.media.filter((item) =>
-            item.mimeType?.startsWith("video/"),
-        ).length;
-        const otherCount = post.media.length - imageCount - videoCount;
-        const parts = [
-            imageCount > 0 ? `image ${imageCount}` : "",
-            videoCount > 0 ? `video ${videoCount}` : "",
-            otherCount > 0 ? `media ${otherCount}` : "",
-        ].filter(Boolean);
-
-        return `${$_("postHistory.media")}: ${parts.join(", ")}`;
-    }
-
     function getChannelText(post: PostHistoryRecord): string | null {
         if (post.kind !== 42) {
             return null;
@@ -722,9 +706,6 @@
                     <li class="post-history-item">
                         <div class="post-history-main">
                             <div class="post-preview-header">
-                                <span>{formatPostedAt(post.postedAt)}</span>
-                            </div>
-                            <div class="post-preview">
                                 {#if post.kind === 42}
                                     <div class="post-history-channel-row">
                                         <span
@@ -739,16 +720,18 @@
                                         >
                                     </div>
                                 {/if}
+                                <span>{formatPostedAt(post.postedAt)}</span>
+                            </div>
+                            <div class="post-preview">
                                 <div class="post-preview-content">
                                     {buildPreview(post.content)}
                                 </div>
                             </div>
-                            <div class="post-meta">
-                                <span>{getMediaText(post)}</span>
-                                {#if post.deletedAt}
+                            {#if post.deletedAt}
+                                <div class="post-meta">
                                     <span>{$_("postHistory.deleted")}</span>
-                                {/if}
-                            </div>
+                                </div>
+                            {/if}
                         </div>
                         <div class="post-history-actions">
                             {#if copyState[post.eventId]}
@@ -884,7 +867,7 @@
     .post-history-item {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-rows: auto auto auto;
+        grid-template-rows: auto auto;
         align-items: center;
         gap: 8px;
         border-bottom: 1px solid var(--border-hr);
@@ -904,17 +887,23 @@
         display: flex;
         grid-column: 1 / -1;
         grid-row: 1;
-        justify-content: flex-end;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
         color: var(--text-muted);
         font-size: 0.78rem;
         line-height: 1.3;
     }
 
+    .post-preview-header > span {
+        margin-left: auto;
+        flex-shrink: 0;
+        white-space: nowrap;
+    }
+
     .post-preview {
         grid-column: 1;
         grid-row: 2;
-        display: grid;
-        gap: 4px;
         min-width: 0;
         color: var(--text);
         font-size: 1rem;
@@ -936,6 +925,7 @@
         height: 1em;
         flex-shrink: 0;
         mask-image: url("/icons/comments-solid-full.svg");
+        background-color: currentColor;
     }
 
     .channel-label {
@@ -968,7 +958,7 @@
     .post-history-actions {
         display: flex;
         grid-column: 2;
-        grid-row: 2 / 4;
+        grid-row: 2;
         align-items: center;
         gap: 6px;
         color: var(--text-muted);
