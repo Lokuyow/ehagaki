@@ -718,10 +718,37 @@
     }
 
     function formatPostedAt(postedAt: number): string {
+        const postedDate = new Date(postedAt);
+        const now = Date.now();
+        const diffMs = Math.abs(now - postedAt);
+        const minuteTimeFormat: Intl.DateTimeFormatOptions = {
+            hour: "numeric",
+            minute: "2-digit",
+        };
+
+        if (diffMs < 24 * 60 * 60 * 1000) {
+            return new Intl.DateTimeFormat(undefined, minuteTimeFormat).format(
+                postedDate,
+            );
+        }
+
+        const monthDayTimeFormat: Intl.DateTimeFormatOptions = {
+            month: "numeric",
+            day: "numeric",
+            ...minuteTimeFormat,
+        };
+
+        if (diffMs < 365 * 24 * 60 * 60 * 1000) {
+            return new Intl.DateTimeFormat(
+                undefined,
+                monthDayTimeFormat,
+            ).format(postedDate);
+        }
+
         return new Intl.DateTimeFormat(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-        }).format(new Date(postedAt));
+            year: "numeric",
+            ...monthDayTimeFormat,
+        }).format(postedDate);
     }
 
     function buildPreview(content: string): string {

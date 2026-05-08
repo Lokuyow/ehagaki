@@ -237,6 +237,74 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('投稿日時が 24 時間以内なら時刻のみを表示する', async () => {
+        vi.useFakeTimers();
+        const now = Date.UTC(2025, 0, 1, 12, 0, 0);
+        vi.setSystemTime(now);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'recent',
+                postedAt: now - 60 * 60 * 1000,
+                content: '最近の投稿',
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const expected = new Intl.DateTimeFormat(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(now - 60 * 60 * 1000));
+
+        await waitFor(() => {
+            expect(screen.getByText(expected)).toBeTruthy();
+            expect(screen.getByText('最近の投稿')).toBeTruthy();
+        });
+    });
+
+    it('投稿日時が 1 年以内なら月日時刻を表示する', async () => {
+        vi.useFakeTimers();
+        const now = Date.UTC(2025, 0, 1, 12, 0, 0);
+        vi.setSystemTime(now);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'within-year',
+                postedAt: now - 100 * 24 * 60 * 60 * 1000,
+                content: '1 年以内の投稿',
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const expected = new Intl.DateTimeFormat(undefined, {
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(now - 100 * 24 * 60 * 60 * 1000));
+
+        await waitFor(() => {
+            expect(screen.getByText(expected)).toBeTruthy();
+            expect(screen.getByText('1 年以内の投稿')).toBeTruthy();
+        });
+    });
+
     it('検索 input からローカル検索へ切り替える', async () => {
         vi.useFakeTimers();
         repositoryMock.countForPubkey.mockResolvedValue(1);
