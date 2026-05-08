@@ -103,7 +103,6 @@
     "deleteConfirm": "送信",
     "deleteCancel": "キャンセル",
     "deleteSending": "送信中",
-    "deleteRequested": "削除リクエスト送信済み",
     "deleteFailed": "削除リクエストの送信に失敗しました",
     "deletedBadge": "削除リクエスト済み",
     "copyNevent": "イベントIDをコピー",

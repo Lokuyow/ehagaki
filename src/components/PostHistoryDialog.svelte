@@ -1158,11 +1158,6 @@
                                                 "postHistory.deletedBadge",
                                             )}</span
                                         >
-                                        <span
-                                            >{$_(
-                                                "postHistory.deleteRequested",
-                                            )}</span
-                                        >
                                     {/if}
                                     {#if hasDeletionFailed(post)}
                                         <span class="delete-failed"

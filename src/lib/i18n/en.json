@@ -103,7 +103,6 @@
     "deleteConfirm": "Send",
     "deleteCancel": "Cancel",
     "deleteSending": "Sending",
-    "deleteRequested": "Deletion request sent",
     "deleteFailed": "Failed to send deletion request",
     "deletedBadge": "Deletion requested",
     "copyNevent": "Copy event ID",

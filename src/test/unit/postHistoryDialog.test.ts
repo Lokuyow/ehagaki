@@ -26,7 +26,6 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.deleteConfirm': '送信',
         'postHistory.deleteCancel': 'キャンセル',
         'postHistory.deleteSending': '送信中',
-        'postHistory.deleteRequested': '削除リクエスト送信済み',
         'postHistory.deleteFailed': '削除リクエストの送信に失敗しました',
         'postHistory.deletedBadge': '削除リクエスト済み',
         'postHistory.eventId': 'event id',
@@ -1323,7 +1322,6 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('削除リクエスト送信済み')).toBeTruthy();
             expect(screen.getByText('削除リクエスト済み')).toBeTruthy();
         });
 
@@ -1390,7 +1388,6 @@ describe('PostHistoryDialog', () => {
                 post: expect.objectContaining({ eventId: 'delete-target' }),
                 rxNostr: {},
             });
-            expect(screen.getByText('削除リクエスト送信済み')).toBeTruthy();
             expect(screen.getByText('削除リクエスト済み')).toBeTruthy();
         });
     });
