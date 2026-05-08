@@ -33,6 +33,29 @@
     let progressDisplay = $derived(footerDisplay.progressDisplay);
     let imageSizeDisplay = $derived(footerDisplay.imageSizeDisplay);
     let showingInfo = $derived(footerDisplay.showingInfo);
+
+    function handleFooterCenterClick(): void {
+        if (!imageSizeDisplay) {
+            return;
+        }
+
+        footerDisplay.hideImageSizeInfo();
+    }
+
+    function handleFooterCenterKeyDown(event: KeyboardEvent): void {
+        if (!imageSizeDisplay) {
+            return;
+        }
+
+        if (
+            event.key === "Enter" ||
+            event.key === " " ||
+            event.key === "Spacebar"
+        ) {
+            event.preventDefault();
+            footerDisplay.hideImageSizeInfo();
+        }
+    }
 </script>
 
 {#if shouldShowDevLog() && $devLog.length}
@@ -52,37 +75,67 @@
     </button>
 {/if}
 
-<div class="footer-center">
-    {#if showingInfo}
-        {#if sharedMediaError}
-            <div class="shared-media-error">
-                <div class="error-text">{sharedMediaError}</div>
-            </div>
-        {:else if progressDisplay}
-            <FooterProgressStatus
-                text={progressDisplay.text}
-                value={progressDisplay.value}
-                ariaLabel={progressDisplay.ariaLabel}
-                ariaValueText={progressDisplay.ariaValueText}
-                showAbort={progressDisplay.showAbort}
-                abortAriaLabel={progressDisplay.abortAriaLabel}
-                onAbort={footerDisplay.handleAbortAll}
-            />
-        {:else if imageSizeDisplay}
-            <div class="image-size-info">
-                <div class="size-label">
-                    {$_("footerInfoDisplay.data_size")}:
+{#if imageSizeDisplay}
+    <div
+        class="footer-center clickable"
+        onclick={handleFooterCenterClick}
+        onkeydown={handleFooterCenterKeyDown}
+        role="button"
+        tabindex="0"
+    >
+        {#if showingInfo}
+            {#if sharedMediaError}
+                <div class="shared-media-error">
+                    <div class="error-text">{sharedMediaError}</div>
                 </div>
-                <div class="size-details">
-                    {imageSizeDisplay.originalLine}<br />
-                    {imageSizeDisplay.resultLine}
+            {:else if progressDisplay}
+                <FooterProgressStatus
+                    text={progressDisplay.text}
+                    value={progressDisplay.value}
+                    ariaLabel={progressDisplay.ariaLabel}
+                    ariaValueText={progressDisplay.ariaValueText}
+                    showAbort={progressDisplay.showAbort}
+                    abortAriaLabel={progressDisplay.abortAriaLabel}
+                    onAbort={footerDisplay.handleAbortAll}
+                />
+            {:else}
+                <div class="image-size-info">
+                    <div class="size-label">
+                        {$_("footerInfoDisplay.data_size")}:
+                    </div>
+                    <div class="size-details">
+                        {imageSizeDisplay.originalLine}<br />
+                        {imageSizeDisplay.resultLine}
+                    </div>
                 </div>
-            </div>
+            {/if}
+        {:else if fallback}
+            {@render fallback()}
         {/if}
-    {:else if fallback}
-        {@render fallback()}
-    {/if}
-</div>
+    </div>
+{:else}
+    <div class="footer-center">
+        {#if showingInfo}
+            {#if sharedMediaError}
+                <div class="shared-media-error">
+                    <div class="error-text">{sharedMediaError}</div>
+                </div>
+            {:else if progressDisplay}
+                <FooterProgressStatus
+                    text={progressDisplay.text}
+                    value={progressDisplay.value}
+                    ariaLabel={progressDisplay.ariaLabel}
+                    ariaValueText={progressDisplay.ariaValueText}
+                    showAbort={progressDisplay.showAbort}
+                    abortAriaLabel={progressDisplay.abortAriaLabel}
+                    onAbort={footerDisplay.handleAbortAll}
+                />
+            {/if}
+        {:else if fallback}
+            {@render fallback()}
+        {/if}
+    </div>
+{/if}
 
 <style>
     .footer-center {
@@ -91,9 +144,15 @@
         justify-content: center;
         align-items: center;
         height: 100%;
+        background: transparent;
+    }
+
+    .footer-center.clickable {
+        cursor: pointer;
     }
 
     .image-size-info {
+        user-select: text;
         display: flex;
         flex-direction: column;
         align-items: flex-start;

@@ -35,6 +35,7 @@ interface UseFooterMiddleDisplayReturn {
     readonly imageSizeDisplay: FooterImageSizeDisplayModel | null;
     readonly showingInfo: boolean;
     handleAbortAll: () => void;
+    hideImageSizeInfo: () => void;
 }
 
 export function useFooterMiddleDisplay(
@@ -132,6 +133,10 @@ export function useFooterMiddleDisplay(
         }
 
         abortAllUploads();
+    }
+
+    function hideImageSizeInfo(): void {
+        resetUploadDisplayState({ imageSizeInfoOnly: true });
     }
 
     let isImageCompressionActive = $derived(
@@ -272,5 +277,6 @@ export function useFooterMiddleDisplay(
             return showingInfo;
         },
         handleAbortAll,
+        hideImageSizeInfo,
     };
 }
