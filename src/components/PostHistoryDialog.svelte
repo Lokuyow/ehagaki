@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { onDestroy, tick } from "svelte";
     import type { RxNostr } from "rx-nostr";
     import { _ } from "svelte-i18n";
     import { Dialog, Popover } from "bits-ui";
@@ -76,7 +77,10 @@
     let searchPage = $state(1);
     let totalCount = $state(0);
     let searchTotalCount = $state(0);
+    let collapsiblePosts = $state<Record<string, boolean>>({});
     let expandedPosts = $state<Record<string, boolean>>({});
+    let postPreviewElements: Record<string, HTMLDivElement | null> = {};
+    let resizeObserver: ResizeObserver | null = null;
     let syncStatus = $state<
         "idle" | "syncing" | "older-syncing" | "synced" | "failed" | "no-more"
     >("idle");
@@ -164,6 +168,7 @@
         deleteTargetPost = null;
         deleteRequestState = {};
         channelDisplayByEventId = {};
+        collapsiblePosts = {};
         expandedPosts = {};
         currentPage = 1;
         totalCount = 0;
@@ -297,6 +302,26 @@
 
         appliedSearchQuery = searchQuery;
         void loadSearchPage(searchPage, searchQuery);
+    });
+
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
+        posts;
+        void measureCollapsiblePosts();
+    });
+
+    $effect(() => {
+        if (!show || !historyContainer) {
+            return;
+        }
+
+        setupResizeObserver();
+        return () => {
+            disposeResizeObserver();
+        };
     });
 
     $effect(() => {
@@ -907,6 +932,83 @@
         return canRequestPostDeletion(post, pubkeyHex);
     }
 
+    function getLineHeight(element: HTMLElement): number {
+        const style = getComputedStyle(element);
+        const parsedLineHeight = parseFloat(style.lineHeight);
+        if (!parsedLineHeight || Number.isNaN(parsedLineHeight)) {
+            const parsedFontSize = parseFloat(style.fontSize);
+            return parsedFontSize && !Number.isNaN(parsedFontSize)
+                ? parsedFontSize * 1.5
+                : 24;
+        }
+        return parsedLineHeight;
+    }
+
+    function previewRef(node: HTMLDivElement, eventId: string) {
+        postPreviewElements[eventId] = node;
+        void measureCollapsiblePosts();
+
+        return {
+            destroy() {
+                if (postPreviewElements[eventId] === node) {
+                    delete postPreviewElements[eventId];
+                }
+            },
+        };
+    }
+
+    async function measureCollapsiblePosts(): Promise<void> {
+        await tick();
+
+        if (!show) {
+            collapsiblePosts = {};
+            return;
+        }
+
+        const nextCollapsiblePosts: Record<string, boolean> = {};
+        const maxLines = 5;
+
+        for (const post of posts) {
+            const previewEl = postPreviewElements[post.eventId];
+            if (!previewEl) {
+                continue;
+            }
+
+            const lineHeight = getLineHeight(previewEl);
+            const maxHeight = lineHeight * maxLines;
+            const useRenderedHeight = previewEl.scrollHeight > 0;
+            nextCollapsiblePosts[post.eventId] = useRenderedHeight
+                ? previewEl.scrollHeight > maxHeight + 0.5
+                : post.content.split("\n").length > maxLines;
+        }
+
+        collapsiblePosts = nextCollapsiblePosts;
+    }
+
+    function setupResizeObserver(): void {
+        if (typeof ResizeObserver === "undefined" || !historyContainer) {
+            return;
+        }
+
+        if (resizeObserver) {
+            return;
+        }
+
+        resizeObserver = new ResizeObserver(() => {
+            void measureCollapsiblePosts();
+        });
+        resizeObserver.observe(historyContainer);
+    }
+
+    function disposeResizeObserver(): void {
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+    }
+
+    onDestroy(() => {
+        disposeResizeObserver();
+    });
+
     function isPostExpanded(post: PostHistoryRecord): boolean {
         return expandedPosts[post.eventId] ?? false;
     }
@@ -919,7 +1021,7 @@
     }
 
     function shouldCollapsePost(post: PostHistoryRecord): boolean {
-        return post.content.split("\n").length > 5;
+        return collapsiblePosts[post.eventId] ?? false;
     }
 
     function openDeleteConfirm(post: PostHistoryRecord): void {
@@ -1178,6 +1280,7 @@
                             <div class="post-preview">
                                 <div
                                     class="post-preview-content"
+                                    use:previewRef={post.eventId}
                                     class:post-preview-content-collapsed={!isPostExpanded(
                                         post,
                                     ) && shouldCollapsePost(post)}
@@ -1594,6 +1697,7 @@
         overflow-wrap: anywhere;
         white-space: pre-wrap;
         line-height: 1.5;
+        word-break: break-word;
     }
 
     .post-preview-content-collapsed {
