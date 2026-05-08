@@ -180,7 +180,7 @@
         background: var(--dialog);
         color: var(--text);
         width: 100%;
-        max-width: 500px;
+        max-width: 600px;
         display: flex;
         flex-direction: column;
         align-items: center;
