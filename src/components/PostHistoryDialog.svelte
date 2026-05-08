@@ -42,20 +42,29 @@
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
     let currentPage = $state(1);
     let totalCount = $state(0);
-    let syncStatus = $state<"idle" | "syncing" | "synced" | "failed">("idle");
+    let syncStatus = $state<
+        "idle" | "syncing" | "older-syncing" | "synced" | "failed" | "no-more"
+    >("idle");
+    let hasMoreRemote = $state(false);
+    let nextUntil = $state<number | null>(null);
 
     let totalPages = $derived(Math.max(1, Math.ceil(totalCount / pageSize)));
     let canGoPrevious = $derived(currentPage > 1);
-    let canGoNext = $derived(currentPage < totalPages);
+    let canGoNext = $derived(currentPage < totalPages || hasMoreRemote);
     let showPaging = $derived(totalCount > 0);
     let syncStatusMessageKey = $derived(
         syncStatus === "idle"
             ? null
-            : syncStatus === "syncing"
+            : syncStatus === "syncing" || syncStatus === "older-syncing"
               ? "postHistory.syncing"
               : syncStatus === "synced"
                 ? "postHistory.synced"
-                : "postHistory.syncFailed",
+                : syncStatus === "no-more"
+                  ? "postHistory.noMorePosts"
+                  : "postHistory.syncFailed",
+    );
+    let showSyncLoader = $derived(
+        syncStatus === "syncing" || syncStatus === "older-syncing",
     );
 
     let loadRequestId = 0;
@@ -167,6 +176,11 @@
             });
         }
 
+        if (result.status === "success") {
+            hasMoreRemote = result.hasMore && result.nextUntil !== null;
+            nextUntil = result.hasMore ? result.nextUntil : null;
+        }
+
         await loadPage(currentPage);
         syncStatus = result.status === "success" ? "synced" : "failed";
     }
@@ -180,11 +194,100 @@
     }
 
     function handleNextPage(): void {
+        void goToNextPage();
+    }
+
+    async function goToNextPage(): Promise<void> {
         if (!canGoNext) {
             return;
         }
 
-        currentPage += 1;
+        const targetPage = currentPage + 1;
+        if (targetPage <= totalPages) {
+            currentPage = targetPage;
+            return;
+        }
+
+        const pageReady = await ensurePageAvailable(targetPage);
+        if (pageReady) {
+            currentPage = targetPage;
+            return;
+        }
+
+        await loadPage(currentPage);
+    }
+
+    async function ensurePageAvailable(targetPage: number): Promise<boolean> {
+        if (!pubkeyHex) {
+            return false;
+        }
+
+        const requiredCount = (targetPage - 1) * pageSize + 1;
+        let currentCount =
+            await postHistoryRepository.countForPubkey(pubkeyHex);
+
+        if (currentCount >= requiredCount) {
+            return true;
+        }
+
+        if (!rxNostr || !hasMoreRemote || nextUntil === null) {
+            syncStatus = "no-more";
+            return false;
+        }
+
+        while (
+            show &&
+            currentCount < requiredCount &&
+            hasMoreRemote &&
+            nextUntil !== null
+        ) {
+            cancelCurrentSync();
+            syncStatus = "older-syncing";
+
+            const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
+                pubkeyHex,
+                relayConfig,
+                limit: pageSize,
+                until: nextUntil,
+            });
+            currentFetchTask = task;
+
+            const result = await task.promise;
+            if (currentFetchTask !== task) {
+                return false;
+            }
+
+            currentFetchTask = null;
+            if (!show || result.status === "cancelled") {
+                return false;
+            }
+
+            if (result.status !== "success") {
+                syncStatus = "failed";
+                return false;
+            }
+
+            hasMoreRemote = result.hasMore && result.nextUntil !== null;
+            nextUntil = result.hasMore ? result.nextUntil : null;
+
+            if (result.events.length > 0) {
+                await postHistoryRepository.upsertFetchedEvents({
+                    events: result.events,
+                    fetchedAt: result.fetchedAt,
+                });
+            }
+
+            currentCount =
+                await postHistoryRepository.countForPubkey(pubkeyHex);
+        }
+
+        if (currentCount >= requiredCount) {
+            syncStatus = "synced";
+            return true;
+        }
+
+        syncStatus = "no-more";
+        return false;
     }
 
     function formatPostedAt(postedAt: number): string {
@@ -277,9 +380,9 @@
             >
                 <LoadingPlaceholder
                     text={$_(syncStatusMessageKey)}
-                    showLoader={true}
+                    showLoader={showSyncLoader}
                     loaderSize={25}
-                    state={syncStatus === "syncing" ? "loading" : "complete"}
+                    state={showSyncLoader ? "loading" : "complete"}
                     customClass="status-loading-placeholder"
                 />
             </div>

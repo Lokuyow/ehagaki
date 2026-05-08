@@ -10,6 +10,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
         'postHistory.syncFailed': 'リレーとの同期に失敗しました',
+        'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
@@ -301,6 +302,145 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
             expect(previousButton).toHaveProperty('disabled', false);
             expect(nextButton).toHaveProperty('disabled', true);
+        });
+    });
+
+    it('次ページに必要な件数が足りない場合は until 付きで古い投稿を追加取得する', async () => {
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(51)
+            .mockResolvedValueOnce(51);
+        repositoryMock.getPage
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-1', content: '1ページ目' })])
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-1', content: '1ページ目' })])
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-2', content: '2ページ目' })]);
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 1000,
+                    nextUntil: 149,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [
+                        {
+                            event: {
+                                id: 'c'.repeat(64),
+                                pubkey: 'a'.repeat(64),
+                                kind: 1,
+                                content: '2ページ目',
+                                tags: [],
+                                created_at: 140,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    fetchedAt: 2000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+        });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: 'a'.repeat(64),
+                    limit: 50,
+                    until: 149,
+                }),
+            );
+            expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalledWith({
+                events: [
+                    {
+                        event: expect.objectContaining({ id: 'c'.repeat(64) }),
+                        relayUrls: ['wss://relay.example.com/'],
+                    },
+                ],
+                fetchedAt: 2000,
+            });
+            expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+        });
+    });
+
+    it('古い投稿を追加取得しても件数が足りなければ noMorePosts を表示する', async () => {
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50);
+        repositoryMock.getPage.mockResolvedValue([createRecord({ eventId: 'page-1', content: '1ページ目' })]);
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 1000,
+                    nextUntil: 149,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 2000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(screen.getByText('これ以上古い投稿はありません')).toBeTruthy();
+            expect(screen.getByText('1 / 1 ページ')).toBeTruthy();
         });
     });
 

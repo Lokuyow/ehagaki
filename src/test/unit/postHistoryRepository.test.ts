@@ -179,8 +179,8 @@ describe("DexiePostHistoryRepository", () => {
         expect(record.acceptedRelays).toEqual(["wss://accepted.example.com/"]);
         expect(record.relayHints).toEqual([
             "wss://hint.example.com/",
-            "wss://fetched.example.com/",
             "wss://accepted.example.com/",
+            "wss://fetched.example.com/",
         ]);
         expect(record.fetchedRelays).toEqual(["wss://fetched.example.com/"]);
         expect(record.postedAt).toBe(5000);
