@@ -1,5 +1,4 @@
 <script lang="ts">
-    import { onDestroy, tick } from "svelte";
     import type { RxNostr } from "rx-nostr";
     import { _ } from "svelte-i18n";
     import { Dialog, Popover } from "bits-ui";
@@ -7,27 +6,19 @@
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
-    import { ChannelContextService } from "../lib/channelContextService";
+    import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
+    import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
     import {
         canRequestPostDeletion,
         postDeletionService,
     } from "../lib/postDeletionService";
-    import { postHistoryLocalSearchService } from "../lib/postHistoryLocalSearchService";
-    import { RelayConfigUtils } from "../lib/relayConfigUtils";
     import {
-        POST_HISTORY_INITIAL_FETCH_LIMIT,
-        POST_HISTORY_PAGE_SIZE,
-        POST_HISTORY_RELAY_FETCH_LIMIT,
-        postHistoryRelayFetchService,
-        type PostHistoryRelayFetchResult,
-        type PostHistoryRelayFetchTask,
-    } from "../lib/postHistoryRelayFetchService";
-    import {
-        channelMetadataRepository,
-        type ChannelMetadataCache,
-    } from "../lib/storage/channelMetadataRepository";
-    import { postHistoryRepository } from "../lib/storage/postHistoryRepository";
+        buildPreview,
+        formatPostedAt,
+    } from "../lib/postHistoryDialogUtils";
+    import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
     import type { RelayConfig } from "../lib/types";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
@@ -51,172 +42,43 @@
         relayConfig = null,
     }: Props = $props();
 
-    const pageSize = POST_HISTORY_PAGE_SIZE;
-    const searchDebounceMs = 250;
-    const channelContextService = new ChannelContextService();
+    const history = usePostHistoryListing({
+        getShow: () => show,
+        getPubkeyHex: () => pubkeyHex,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        pageSize: POST_HISTORY_PAGE_SIZE,
+    });
+    const channelDisplay = usePostHistoryChannelDisplay({
+        getShow: () => show,
+        getPosts: () => history.posts,
+        getRxNostr: () => rxNostr,
+        getRelayConfig: () => relayConfig,
+        getIsSearchMode: () => history.isSearchMode,
+    });
 
-    type ChannelDisplayState = {
-        status: "loading" | "resolved" | "failed";
-        name: string | null;
-    };
-
-    let loadedPosts = $state<PostHistoryRecord[]>([]);
-    let searchPosts = $state<PostHistoryRecord[]>([]);
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
-    let channelDisplayByEventId = $state<Record<string, ChannelDisplayState>>(
-        {},
-    );
-    let searchInput = $state("");
-    let searchQuery = $state("");
     let deleteConfirmOpen = $state(false);
     let deleteTargetPost = $state<PostHistoryRecord | null>(null);
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
-    let currentPage = $state(1);
-    let searchPage = $state(1);
-    let totalCount = $state(0);
-    let searchTotalCount = $state(0);
-    let collapsiblePosts = $state<Record<string, boolean>>({});
-    let expandedPosts = $state<Record<string, boolean>>({});
-    let postPreviewElements: Record<string, HTMLDivElement | null> = {};
-    let resizeObserver: ResizeObserver | null = null;
-    let syncStatus = $state<
-        "idle" | "syncing" | "older-syncing" | "synced" | "failed" | "no-more"
-    >("idle");
-    let hasMoreRemote = $state(false);
-    let nextUntil = $state<number | null>(null);
     let historyContainer: HTMLDivElement | null = null;
-
-    let isSearchMode = $derived(searchQuery.length > 0);
-    let posts = $derived(isSearchMode ? searchPosts : loadedPosts);
-    let displayPage = $derived(isSearchMode ? searchPage : currentPage);
-    let displayTotalCount = $derived(
-        isSearchMode ? searchTotalCount : totalCount,
-    );
-    let totalPages = $derived(
-        Math.max(1, Math.ceil(displayTotalCount / pageSize)),
-    );
-    let canGoPrevious = $derived(displayPage > 1);
-    let canGoNext = $derived(
-        isSearchMode
-            ? displayPage < totalPages
-            : currentPage < totalPages || hasMoreRemote,
-    );
-    let showPaging = $derived(displayTotalCount > 0);
-    let syncStatusMessageKey = $derived(
-        isSearchMode || syncStatus === "idle"
-            ? null
-            : syncStatus === "syncing" || syncStatus === "older-syncing"
-              ? "postHistory.syncing"
-              : syncStatus === "synced"
-                ? "postHistory.synced"
-                : syncStatus === "no-more"
-                  ? "postHistory.noMorePosts"
-                  : "postHistory.syncFailed",
-    );
-    let showSyncLoader = $derived(
-        !isSearchMode &&
-            (syncStatus === "syncing" || syncStatus === "older-syncing"),
-    );
-
-    let loadRequestId = 0;
-    let searchLoadRequestId = 0;
-    let hasStartedInitialSync = false;
-    let currentFetchTask: PostHistoryRelayFetchTask | null = null;
-    let channelResolutionRequestId = 0;
-    let currentChannelAbortController: AbortController | null = null;
-    let currentChannelRequestIds: string[] = [];
-    const pendingChannelEventIds = new Set<string>();
-    let appliedSearchQuery = "";
-
-    function cancelCurrentSync(): void {
-        currentFetchTask?.cancel();
-        currentFetchTask = null;
-    }
-
-    function clearCurrentChannelResolution(): void {
-        currentChannelRequestIds.forEach((channelEventId) => {
-            pendingChannelEventIds.delete(channelEventId);
-        });
-        currentChannelRequestIds = [];
-        currentChannelAbortController = null;
-    }
-
-    function cancelCurrentChannelResolution(): void {
-        currentChannelAbortController?.abort();
-        clearCurrentChannelResolution();
-    }
-
-    function resetSearchState(): void {
-        searchInput = "";
-        searchQuery = "";
-        searchPage = 1;
-        searchPosts = [];
-        searchTotalCount = 0;
-        appliedSearchQuery = "";
-    }
-
+    const previewCollapse = usePostHistoryPreviewCollapse({
+        getShow: () => show,
+        getPosts: () => history.posts,
+        getContainer: () => historyContainer,
+    });
     function resetDialogState(): void {
-        cancelCurrentSync();
-        cancelCurrentChannelResolution();
-        resetSearchState();
-        loadedPosts = [];
-        searchPosts = [];
         copyState = {};
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         deleteRequestState = {};
-        channelDisplayByEventId = {};
-        collapsiblePosts = {};
-        expandedPosts = {};
-        currentPage = 1;
-        totalCount = 0;
-        searchTotalCount = 0;
-        syncStatus = "idle";
-        hasMoreRemote = false;
-        nextUntil = null;
-        hasStartedInitialSync = false;
-    }
-
-    function canContinueRelayHistory(
-        result: PostHistoryRelayFetchResult,
-    ): boolean {
-        if (result.nextUntil === null) {
-            return false;
-        }
-
-        return result.status === "success"
-            ? result.hasMore
-            : result.events.length > 0;
-    }
-
-    function updateRelayHistoryCursor(
-        result: PostHistoryRelayFetchResult,
-    ): void {
-        const canContinue = canContinueRelayHistory(result);
-        hasMoreRemote = canContinue;
-        nextUntil = canContinue ? result.nextUntil : null;
-    }
-
-    function resolveSyncStatusAfterFetch(
-        result: PostHistoryRelayFetchResult,
-        didMateriallyChange: boolean,
-    ): "idle" | "synced" | "failed" {
-        if (result.status === "error") {
-            return "failed";
-        }
-
-        if (result.status === "timeout") {
-            return "idle";
-        }
-
-        return didMateriallyChange ? "synced" : "idle";
     }
 
     function handleClose() {
-        cancelCurrentSync();
-        cancelCurrentChannelResolution();
+        history.cancelCurrentSync();
+        channelDisplay.cancelCurrentChannelResolution();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         show = false;
@@ -239,455 +101,9 @@
         }
 
         return () => {
-            cancelCurrentSync();
-            cancelCurrentChannelResolution();
+            channelDisplay.cancelCurrentChannelResolution();
         };
     });
-
-    $effect(() => {
-        if (!show || !pubkeyHex || !rxNostr || hasStartedInitialSync) {
-            return;
-        }
-
-        hasStartedInitialSync = true;
-        syncStatus = "syncing";
-        void syncFromRelays();
-    });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        const nextSearchQuery = searchInput.trim();
-        const timeoutId = setTimeout(() => {
-            searchQuery = nextSearchQuery;
-        }, searchDebounceMs);
-
-        return () => {
-            clearTimeout(timeoutId);
-        };
-    });
-
-    $effect(() => {
-        if (!show || isSearchMode) {
-            return;
-        }
-
-        void loadPage(currentPage);
-    });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        if (!searchQuery) {
-            appliedSearchQuery = "";
-            if (searchPage !== 1) {
-                searchPage = 1;
-                return;
-            }
-
-            searchPosts = [];
-            searchTotalCount = 0;
-            return;
-        }
-
-        if (searchQuery !== appliedSearchQuery && searchPage !== 1) {
-            appliedSearchQuery = searchQuery;
-            searchPage = 1;
-            return;
-        }
-
-        appliedSearchQuery = searchQuery;
-        void loadSearchPage(searchPage, searchQuery);
-    });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        posts;
-        void measureCollapsiblePosts();
-    });
-
-    $effect(() => {
-        if (!show || !historyContainer) {
-            return;
-        }
-
-        setupResizeObserver();
-        return () => {
-            disposeResizeObserver();
-        };
-    });
-
-    $effect(() => {
-        if (!show) {
-            return;
-        }
-
-        cancelCurrentChannelResolution();
-
-        const channelPosts = posts.filter((post) => post.kind === 42);
-        if (channelPosts.length === 0) {
-            return;
-        }
-
-        const channelEventIds = Array.from(
-            new Set(
-                channelPosts
-                    .map((post) => post.channelEventId)
-                    .filter(
-                        (channelEventId): channelEventId is string =>
-                            typeof channelEventId === "string",
-                    ),
-            ),
-        );
-
-        if (channelEventIds.length === 0) {
-            return;
-        }
-
-        const requestId = ++channelResolutionRequestId;
-        void (async () => {
-            const cachedRecords =
-                await channelMetadataRepository.getMany(channelEventIds);
-
-            if (!show || requestId !== channelResolutionRequestId) {
-                return;
-            }
-
-            const cachedById = new Map(
-                cachedRecords.map((record) => [record.channelEventId, record]),
-            );
-
-            channelDisplayByEventId = {
-                ...channelDisplayByEventId,
-                ...Object.fromEntries(
-                    channelEventIds.map((channelEventId) => {
-                        const cachedRecord =
-                            cachedById.get(channelEventId) ?? null;
-                        return [
-                            channelEventId,
-                            toChannelDisplayState(
-                                cachedRecord,
-                                !!rxNostr && !isSearchMode,
-                            ) satisfies ChannelDisplayState,
-                        ];
-                    }),
-                ),
-            };
-
-            if (!rxNostr || isSearchMode) {
-                return;
-            }
-
-            const refreshTargets = channelEventIds.filter((channelEventId) => {
-                const cachedRecord = cachedById.get(channelEventId) ?? null;
-                return (
-                    channelMetadataRepository.shouldRefresh(cachedRecord) &&
-                    !pendingChannelEventIds.has(channelEventId)
-                );
-            });
-
-            if (refreshTargets.length === 0) {
-                return;
-            }
-
-            const abortController = new AbortController();
-            currentChannelAbortController = abortController;
-            currentChannelRequestIds = [...refreshTargets];
-            refreshTargets.forEach((channelEventId) => {
-                pendingChannelEventIds.add(channelEventId);
-            });
-
-            const resolvedChannels = await Promise.all(
-                refreshTargets.map(async (channelEventId) => {
-                    const sourcePost = channelPosts.find(
-                        (post) => post.channelEventId === channelEventId,
-                    );
-                    const cachedRecord = cachedById.get(channelEventId) ?? null;
-                    const relayHints = buildChannelRelayHints(
-                        sourcePost,
-                        cachedRecord,
-                    );
-
-                    try {
-                        const resolvedMetadata =
-                            await channelContextService.resolveChannelMetadata(
-                                {
-                                    eventId: channelEventId,
-                                    relayHints,
-                                },
-                                rxNostr,
-                                relayConfig,
-                                { signal: abortController.signal },
-                            );
-
-                        if (
-                            abortController.signal.aborted ||
-                            currentChannelAbortController !== abortController
-                        ) {
-                            return null;
-                        }
-
-                        const savedRecord =
-                            await channelMetadataRepository.upsertResolvedChannel(
-                                {
-                                    channelEventId:
-                                        resolvedMetadata.channelEventId,
-                                    name: resolvedMetadata.name,
-                                    about: resolvedMetadata.about,
-                                    picture: resolvedMetadata.picture,
-                                    relays: resolvedMetadata.channelRelays,
-                                    relayHints: resolvedMetadata.relayHints,
-                                    ...(resolvedMetadata.creatorPubkey
-                                        ? {
-                                              creatorPubkey:
-                                                  resolvedMetadata.creatorPubkey,
-                                          }
-                                        : {}),
-                                    ...(typeof resolvedMetadata.createEventCreatedAt ===
-                                    "number"
-                                        ? {
-                                              createEventCreatedAt:
-                                                  resolvedMetadata.createEventCreatedAt,
-                                          }
-                                        : {}),
-                                    ...(resolvedMetadata.metadataEventId
-                                        ? {
-                                              metadataEventId:
-                                                  resolvedMetadata.metadataEventId,
-                                          }
-                                        : {}),
-                                    ...(typeof resolvedMetadata.metadataCreatedAt ===
-                                    "number"
-                                        ? {
-                                              metadataCreatedAt:
-                                                  resolvedMetadata.metadataCreatedAt,
-                                          }
-                                        : {}),
-                                },
-                            );
-
-                        return {
-                            channelEventId,
-                            status: savedRecord.name ? "resolved" : "failed",
-                            name: savedRecord.name,
-                        } satisfies {
-                            channelEventId: string;
-                        } & ChannelDisplayState;
-                    } catch {
-                        if (abortController.signal.aborted) {
-                            return null;
-                        }
-
-                        await channelMetadataRepository.markFetchFailed(
-                            channelEventId,
-                            Date.now(),
-                            relayHints,
-                        );
-
-                        return {
-                            channelEventId,
-                            status: cachedRecord?.name ? "resolved" : "failed",
-                            name: cachedRecord?.name ?? null,
-                        } satisfies {
-                            channelEventId: string;
-                        } & ChannelDisplayState;
-                    }
-                }),
-            );
-
-            if (
-                !show ||
-                requestId !== channelResolutionRequestId ||
-                currentChannelAbortController !== abortController ||
-                abortController.signal.aborted
-            ) {
-                return;
-            }
-
-            clearCurrentChannelResolution();
-            channelDisplayByEventId = {
-                ...channelDisplayByEventId,
-                ...Object.fromEntries(
-                    resolvedChannels
-                        .filter(
-                            (
-                                result,
-                            ): result is {
-                                channelEventId: string;
-                                status: "resolved" | "failed";
-                                name: string | null;
-                            } => result !== null,
-                        )
-                        .map((result) => [
-                            result.channelEventId,
-                            {
-                                status: result.status,
-                                name: result.name,
-                            } satisfies ChannelDisplayState,
-                        ]),
-                ),
-            };
-        })();
-    });
-
-    function toChannelDisplayState(
-        cachedRecord: ChannelMetadataCache | null,
-        canLoad: boolean,
-    ): ChannelDisplayState {
-        if (!cachedRecord) {
-            return {
-                status: canLoad ? "loading" : "failed",
-                name: null,
-            };
-        }
-
-        return {
-            status: cachedRecord.name ? "resolved" : "failed",
-            name: cachedRecord.name,
-        };
-    }
-
-    function buildChannelRelayHints(
-        sourcePost: PostHistoryRecord | undefined,
-        cachedRecord: ChannelMetadataCache | null,
-    ): string[] {
-        return RelayConfigUtils.sanitizeExternalRelayUrls(
-            [
-                ...(sourcePost?.channelRelayHints ?? []),
-                ...(cachedRecord?.relayHints ?? []),
-                ...(cachedRecord?.relays ?? []),
-                ...(sourcePost?.relayHints ?? []),
-                ...(sourcePost?.fetchedRelays ?? []),
-                ...(sourcePost?.acceptedRelays ?? []),
-            ],
-            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
-        );
-    }
-
-    async function loadPage(page: number): Promise<void> {
-        if (!pubkeyHex) {
-            loadedPosts = [];
-            totalCount = 0;
-            return;
-        }
-
-        const requestId = ++loadRequestId;
-        const normalizedPage = Math.max(1, Math.trunc(page));
-        const [count, pagePosts] = await Promise.all([
-            postHistoryRepository.countForPubkey(pubkeyHex),
-            postHistoryRepository.getPage({
-                pubkeyHex,
-                page: normalizedPage,
-                pageSize,
-            }),
-        ]);
-
-        if (!show || requestId !== loadRequestId) {
-            return;
-        }
-
-        const nextTotalPages = Math.max(1, Math.ceil(count / pageSize));
-        const safePage =
-            count === 0 ? 1 : Math.min(normalizedPage, nextTotalPages);
-        if (safePage !== normalizedPage) {
-            currentPage = safePage;
-            return;
-        }
-
-        totalCount = count;
-        loadedPosts = pagePosts;
-    }
-
-    async function loadSearchPage(page: number, query: string): Promise<void> {
-        if (!pubkeyHex || !query) {
-            searchPosts = [];
-            searchTotalCount = 0;
-            return;
-        }
-
-        const requestId = ++searchLoadRequestId;
-        const normalizedPage = Math.max(1, Math.trunc(page));
-        const result = await postHistoryLocalSearchService.searchLocalPosts({
-            pubkeyHex,
-            query,
-            page: normalizedPage,
-            pageSize,
-        });
-
-        if (
-            !show ||
-            requestId !== searchLoadRequestId ||
-            query !== searchQuery
-        ) {
-            return;
-        }
-
-        const nextTotalPages = Math.max(1, Math.ceil(result.total / pageSize));
-        const safePage =
-            result.total === 0 ? 1 : Math.min(normalizedPage, nextTotalPages);
-        if (safePage !== normalizedPage) {
-            searchPage = safePage;
-            return;
-        }
-
-        searchTotalCount = result.total;
-        searchPosts = result.items;
-    }
-
-    async function syncFromRelays(): Promise<void> {
-        if (!pubkeyHex || !rxNostr) {
-            return;
-        }
-
-        cancelCurrentSync();
-        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
-            pubkeyHex,
-            relayConfig,
-            limit: POST_HISTORY_INITIAL_FETCH_LIMIT,
-        });
-        currentFetchTask = task;
-
-        const result = await task.promise;
-        let upsertSummary = {
-            insertedCount: 0,
-            updatedCount: 0,
-            unchangedCount: 0,
-        };
-        if (currentFetchTask !== task) {
-            return;
-        }
-
-        currentFetchTask = null;
-        if (!show || result.status === "cancelled") {
-            return;
-        }
-
-        if (result.events.length > 0) {
-            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
-                events: result.events,
-                fetchedAt: result.fetchedAt,
-            });
-        }
-
-        updateRelayHistoryCursor(result);
-
-        if (searchQuery) {
-            await loadSearchPage(searchPage, searchQuery);
-        } else {
-            await loadPage(currentPage);
-        }
-        syncStatus = resolveSyncStatusAfterFetch(
-            result,
-            upsertSummary.insertedCount + upsertSummary.updatedCount > 0,
-        );
-    }
 
     function resetHistoryScrollPosition(): void {
         if (!historyContainer) {
@@ -697,197 +113,15 @@
     }
 
     function handlePreviousPage(): void {
-        if (!canGoPrevious) {
-            return;
-        }
-
-        if (isSearchMode) {
-            searchPage -= 1;
+        if (history.goPreviousPage()) {
             resetHistoryScrollPosition();
-            return;
         }
-
-        currentPage -= 1;
-        resetHistoryScrollPosition();
     }
 
-    function handleNextPage(): void {
-        void goToNextPage();
-    }
-
-    async function goToNextPage(): Promise<void> {
-        if (!canGoNext) {
-            return;
-        }
-
-        const targetPage = displayPage + 1;
-        if (isSearchMode) {
-            searchPage = targetPage;
+    async function handleNextPage(): Promise<void> {
+        if (await history.goToNextPage()) {
             resetHistoryScrollPosition();
-            return;
         }
-
-        if (targetPage <= totalPages) {
-            currentPage = targetPage;
-            resetHistoryScrollPosition();
-            return;
-        }
-
-        const pageReady = await ensurePageAvailable(targetPage);
-        if (pageReady) {
-            currentPage = targetPage;
-            resetHistoryScrollPosition();
-            return;
-        }
-
-        await loadPage(currentPage);
-    }
-
-    async function ensurePageAvailable(targetPage: number): Promise<boolean> {
-        if (!pubkeyHex) {
-            return false;
-        }
-
-        const requiredCount = (targetPage - 1) * pageSize + 1;
-        let currentCount =
-            await postHistoryRepository.countForPubkey(pubkeyHex);
-
-        if (currentCount >= requiredCount) {
-            return true;
-        }
-
-        if (!rxNostr || !hasMoreRemote || nextUntil === null) {
-            syncStatus = "no-more";
-            return false;
-        }
-
-        while (
-            show &&
-            currentCount < requiredCount &&
-            hasMoreRemote &&
-            nextUntil !== null
-        ) {
-            cancelCurrentSync();
-            syncStatus = "older-syncing";
-            let didMateriallyChange = false;
-
-            const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
-                pubkeyHex,
-                relayConfig,
-                limit: POST_HISTORY_RELAY_FETCH_LIMIT,
-                until: nextUntil,
-            });
-            currentFetchTask = task;
-
-            const result = await task.promise;
-            if (currentFetchTask !== task) {
-                return false;
-            }
-
-            currentFetchTask = null;
-            if (!show || result.status === "cancelled") {
-                return false;
-            }
-
-            updateRelayHistoryCursor(result);
-
-            if (result.events.length > 0) {
-                const upsertSummary =
-                    await postHistoryRepository.upsertFetchedEvents({
-                        events: result.events,
-                        fetchedAt: result.fetchedAt,
-                    });
-                didMateriallyChange =
-                    upsertSummary.insertedCount + upsertSummary.updatedCount >
-                    0;
-            }
-
-            currentCount =
-                await postHistoryRepository.countForPubkey(pubkeyHex);
-
-            if (currentCount >= requiredCount) {
-                syncStatus = resolveSyncStatusAfterFetch(
-                    result,
-                    didMateriallyChange,
-                );
-                return true;
-            }
-
-            if (result.status !== "success") {
-                syncStatus = "failed";
-                return false;
-            }
-        }
-
-        if (currentCount >= requiredCount) {
-            if (syncStatus === "older-syncing") {
-                syncStatus = "idle";
-            }
-            return true;
-        }
-
-        syncStatus = "no-more";
-        return false;
-    }
-
-    function formatPostedAt(postedAt: number): string {
-        const postedDate = new Date(postedAt);
-        const now = Date.now();
-        const diffMs = Math.abs(now - postedAt);
-        const minuteTimeFormat: Intl.DateTimeFormatOptions = {
-            hour: "numeric",
-            minute: "2-digit",
-        };
-
-        if (diffMs < 24 * 60 * 60 * 1000) {
-            return new Intl.DateTimeFormat(undefined, minuteTimeFormat).format(
-                postedDate,
-            );
-        }
-
-        const monthDayTimeFormat: Intl.DateTimeFormatOptions = {
-            month: "numeric",
-            day: "numeric",
-            ...minuteTimeFormat,
-        };
-
-        if (diffMs < 365 * 24 * 60 * 60 * 1000) {
-            return new Intl.DateTimeFormat(
-                undefined,
-                monthDayTimeFormat,
-            ).format(postedDate);
-        }
-
-        return new Intl.DateTimeFormat(undefined, {
-            year: "numeric",
-            ...monthDayTimeFormat,
-        }).format(postedDate);
-    }
-
-    function buildPreview(content: string): string {
-        const normalized = content.trim();
-        return normalized || " ";
-    }
-
-    function getChannelText(post: PostHistoryRecord): string | null {
-        if (post.kind !== 42) {
-            return null;
-        }
-
-        if (!post.channelEventId) {
-            return $_("postHistory.channelUnknown");
-        }
-
-        const channelDisplay = channelDisplayByEventId[post.channelEventId];
-        if (!channelDisplay || channelDisplay.status === "loading") {
-            return $_("postHistory.channelLoading");
-        }
-
-        if (channelDisplay.status === "resolved" && channelDisplay.name) {
-            return channelDisplay.name;
-        }
-
-        return $_("postHistory.channelUnknown");
     }
 
     function buildNevent(post: PostHistoryRecord): string {
@@ -932,98 +166,6 @@
         return canRequestPostDeletion(post, pubkeyHex);
     }
 
-    function getLineHeight(element: HTMLElement): number {
-        const style = getComputedStyle(element);
-        const parsedLineHeight = parseFloat(style.lineHeight);
-        if (!parsedLineHeight || Number.isNaN(parsedLineHeight)) {
-            const parsedFontSize = parseFloat(style.fontSize);
-            return parsedFontSize && !Number.isNaN(parsedFontSize)
-                ? parsedFontSize * 1.5
-                : 24;
-        }
-        return parsedLineHeight;
-    }
-
-    function previewRef(node: HTMLDivElement, eventId: string) {
-        postPreviewElements[eventId] = node;
-        void measureCollapsiblePosts();
-
-        return {
-            destroy() {
-                if (postPreviewElements[eventId] === node) {
-                    delete postPreviewElements[eventId];
-                }
-            },
-        };
-    }
-
-    async function measureCollapsiblePosts(): Promise<void> {
-        await tick();
-
-        if (!show) {
-            collapsiblePosts = {};
-            return;
-        }
-
-        const nextCollapsiblePosts: Record<string, boolean> = {};
-        const maxLines = 5;
-
-        for (const post of posts) {
-            const previewEl = postPreviewElements[post.eventId];
-            if (!previewEl) {
-                continue;
-            }
-
-            const lineHeight = getLineHeight(previewEl);
-            const maxHeight = lineHeight * maxLines;
-            const useRenderedHeight = previewEl.scrollHeight > 0;
-            nextCollapsiblePosts[post.eventId] = useRenderedHeight
-                ? previewEl.scrollHeight > maxHeight + 0.5
-                : post.content.split("\n").length > maxLines;
-        }
-
-        collapsiblePosts = nextCollapsiblePosts;
-    }
-
-    function setupResizeObserver(): void {
-        if (typeof ResizeObserver === "undefined" || !historyContainer) {
-            return;
-        }
-
-        if (resizeObserver) {
-            return;
-        }
-
-        resizeObserver = new ResizeObserver(() => {
-            void measureCollapsiblePosts();
-        });
-        resizeObserver.observe(historyContainer);
-    }
-
-    function disposeResizeObserver(): void {
-        resizeObserver?.disconnect();
-        resizeObserver = null;
-    }
-
-    onDestroy(() => {
-        disposeResizeObserver();
-    });
-
-    function isPostExpanded(post: PostHistoryRecord): boolean {
-        return expandedPosts[post.eventId] ?? false;
-    }
-
-    function togglePostExpanded(eventId: string): void {
-        expandedPosts = {
-            ...expandedPosts,
-            [eventId]: !expandedPosts[eventId],
-        };
-    }
-
-    function shouldCollapsePost(post: PostHistoryRecord): boolean {
-        return collapsiblePosts[post.eventId] ?? false;
-    }
-
     function openDeleteConfirm(post: PostHistoryRecord): void {
         if (!canDeletePost(post)) {
             return;
@@ -1036,26 +178,6 @@
     function handleDeleteCancel(): void {
         deleteConfirmOpen = false;
         deleteTargetPost = null;
-    }
-
-    function patchDeletedPost(
-        eventId: string,
-        deletedAt: number,
-        deletionEventId: string,
-    ): void {
-        const applyDeletedState = (items: PostHistoryRecord[]) =>
-            items.map((post) =>
-                post.eventId === eventId
-                    ? {
-                          ...post,
-                          deletedAt,
-                          deletionEventId,
-                      }
-                    : post,
-            );
-
-        loadedPosts = applyDeletedState(loadedPosts);
-        searchPosts = applyDeletedState(searchPosts);
     }
 
     async function handleDeleteConfirm(): Promise<void> {
@@ -1079,7 +201,7 @@
             typeof result.deletedAt === "number" &&
             result.deletionEventId
         ) {
-            patchDeletedPost(
+            history.patchDeletedPost(
                 targetPost.eventId,
                 result.deletedAt,
                 result.deletionEventId,
@@ -1106,31 +228,32 @@
     description={$_("postHistory.description")}
     contentClass="post-history-dialog"
     footerVariant="close-button"
-    showPagination={showPaging}
+    showPagination={history.showPaging}
     paginationLabel={$_("postHistory.page", {
-        values: { page: displayPage, total: totalPages },
+        values: { page: history.displayPage, total: history.totalPages },
     })}
     previousPageLabel={$_("postHistory.previousPage")}
     nextPageLabel={$_("postHistory.nextPage")}
-    {canGoPrevious}
-    {canGoNext}
-    nextPageLoading={!isSearchMode && syncStatus === "older-syncing"}
+    canGoPrevious={history.canGoPrevious}
+    canGoNext={history.canGoNext}
+    nextPageLoading={!history.isSearchMode &&
+        history.syncStatus === "older-syncing"}
     onPreviousPage={handlePreviousPage}
     onNextPage={handleNextPage}
     initialFocus="content"
 >
     <div class="post-history-heading">
         <h3>{$_("postHistory.title")}</h3>
-        {#if syncStatusMessageKey}
+        {#if history.syncStatusMessageKey}
             <div
                 class="status-message"
-                class:status-error={syncStatus === "failed"}
+                class:status-error={history.syncStatus === "failed"}
             >
                 <LoadingPlaceholder
-                    text={$_(syncStatusMessageKey)}
-                    showLoader={showSyncLoader}
+                    text={$_(history.syncStatusMessageKey)}
+                    showLoader={history.showSyncLoader}
                     loaderSize={25}
-                    state={showSyncLoader ? "loading" : "complete"}
+                    state={history.showSyncLoader ? "loading" : "complete"}
                     customClass="status-loading-placeholder"
                 />
             </div>
@@ -1139,7 +262,7 @@
 
     <div class="post-history-search-row">
         <input
-            bind:value={searchInput}
+            bind:value={history.state.searchInput}
             class="post-history-search-input"
             type="search"
             placeholder={$_("postHistory.searchPlaceholder")}
@@ -1147,25 +270,25 @@
         />
     </div>
 
-    {#if isSearchMode && searchTotalCount > 0}
+    {#if history.isSearchMode && history.state.searchTotalCount > 0}
         <div class="post-history-search-summary">
             <span>{$_("postHistory.searchResults")}</span>
-            <span>{searchTotalCount}</span>
+            <span>{history.state.searchTotalCount}</span>
         </div>
     {/if}
 
     <div class="post-history-container" bind:this={historyContainer}>
-        {#if posts.length === 0}
+        {#if history.posts.length === 0}
             <div class="empty-state">
                 <div class="empty-message">
-                    {isSearchMode
+                    {history.isSearchMode
                         ? $_("postHistory.searchNoResults")
                         : $_("postHistory.empty")}
                 </div>
             </div>
         {:else}
             <ul class="post-history-list">
-                {#each posts as post (post.eventId)}
+                {#each history.posts as post (post.eventId)}
                     <li
                         class="post-history-item"
                         class:post-history-item-deleted={!!post.deletedAt}
@@ -1182,7 +305,10 @@
                                             >{$_("postHistory.channel")}</span
                                         >
                                         <span class="channel-name"
-                                            >{getChannelText(post)}</span
+                                            >{channelDisplay.getChannelText(
+                                                post,
+                                                $_,
+                                            )}</span
                                         >
                                     </div>
                                 {/if}
@@ -1280,25 +406,32 @@
                             <div class="post-preview">
                                 <div
                                     class="post-preview-content"
-                                    use:previewRef={post.eventId}
-                                    class:post-preview-content-collapsed={!isPostExpanded(
+                                    use:previewCollapse.previewRef={post.eventId}
+                                    class:post-preview-content-collapsed={!previewCollapse.isPostExpanded(
                                         post,
-                                    ) && shouldCollapsePost(post)}
+                                    ) &&
+                                        previewCollapse.shouldCollapsePost(
+                                            post,
+                                        )}
                                     id={"post-preview-content-" + post.eventId}
                                 >
                                     {buildPreview(post.content)}
                                 </div>
-                                {#if shouldCollapsePost(post)}
+                                {#if previewCollapse.shouldCollapsePost(post)}
                                     <button
                                         type="button"
                                         class="post-preview-toggle-button"
-                                        aria-expanded={isPostExpanded(post)}
+                                        aria-expanded={previewCollapse.isPostExpanded(
+                                            post,
+                                        )}
                                         aria-controls={"post-preview-content-" +
                                             post.eventId}
                                         onclick={() =>
-                                            togglePostExpanded(post.eventId)}
+                                            previewCollapse.togglePostExpanded(
+                                                post.eventId,
+                                            )}
                                     >
-                                        {isPostExpanded(post)
+                                        {previewCollapse.isPostExpanded(post)
                                             ? $_("postHistory.collapse")
                                             : $_("postHistory.expand")}
                                     </button>
@@ -1323,7 +456,6 @@
                                 </div>
                             {/if}
                         </div>
-                        <div class="post-history-actions"></div>
                     </li>
                 {/each}
             </ul>
@@ -1510,8 +642,7 @@
     }
 
     .post-history-item-deleted .post-history-main > :not(.post-meta),
-    .post-history-item-deleted .post-meta > :not(.deleted-badge),
-    .post-history-item-deleted .post-history-actions {
+    .post-history-item-deleted .post-meta > :not(.deleted-badge) {
         opacity: 0.65;
     }
 
@@ -1741,31 +872,6 @@
 
     .delete-failed {
         color: var(--danger);
-    }
-
-    .post-history-actions {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        flex-wrap: wrap;
-        gap: 6px;
-        color: var(--text-muted);
-        font-size: 0.82rem;
-        flex-shrink: 0;
-        margin-left: auto;
-    }
-
-    :global(.copy-nevent-button) {
-        width: 40px;
-        min-height: 40px;
-        --btn-bg: var(--dialog);
-    }
-
-    :global(.delete-post-button) {
-        min-height: 36px;
-        padding: 6px 10px;
-        font-size: 0.82rem;
-        line-height: 1.2;
     }
 
     .delete-confirm-body {
