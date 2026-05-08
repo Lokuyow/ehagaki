@@ -1457,6 +1457,7 @@
         width: 100%;
         min-height: 40px;
         border: none;
+        border-radius: 6px;
         background: transparent;
         color: inherit;
         text-align: left;
