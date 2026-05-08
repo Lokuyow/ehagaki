@@ -156,7 +156,7 @@
                             <Button
                                 className="copy-nevent-button"
                                 variant="default"
-                                shape="square"
+                                shape="circle"
                                 ariaLabel={$_("postHistory.copyNevent")}
                                 onClick={() => void handleCopyNevent(post)}
                             >
