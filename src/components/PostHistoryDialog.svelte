@@ -472,6 +472,7 @@
         white-space: pre-wrap;
         color: var(--text);
         font-size: 1rem;
+        line-height: 1.5;
     }
 
     .post-meta {
