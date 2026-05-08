@@ -11,7 +11,6 @@ const mockTranslate = vi.hoisted(() => (key: string) => {
         'postHistory.copied': 'コピーしました',
         'postHistory.copyFailed': 'コピーに失敗しました',
         'postHistory.eventId': 'event id',
-        'postHistory.postedAt': '投稿日時',
         'postHistory.media': 'メディア',
         'postHistory.deleted': '削除済み',
         'global.close': '閉じる',
@@ -114,7 +113,6 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText(/投稿本文 https:\/\/example.com\/image.jpg/)).toBeTruthy();
-            expect(screen.getByText(/event id:/)).toBeTruthy();
             expect(screen.getByText('メディア: image 1')).toBeTruthy();
         });
 

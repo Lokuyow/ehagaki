@@ -130,11 +130,7 @@
                                 {buildPreview(post.content)}
                             </div>
                             <div class="post-meta">
-                                <span>
-                                    {$_("postHistory.postedAt")}: {formatPostedAt(
-                                        post.postedAt,
-                                    )}
-                                </span>
+                                <span>{formatPostedAt(post.postedAt)}</span>
                                 <span>{getMediaText(post)}</span>
                                 {#if post.deletedAt}
                                     <span>{$_("postHistory.deleted")}</span>
