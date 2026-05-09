@@ -720,7 +720,18 @@
 
 <style>
     :global(.post-history-dialog .dialog-content) {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow: hidden;
         padding: 0;
+    }
+
+    :global(.post-history-dialog.dialog) {
+        top: 0;
+        transform: translateX(-50%);
+        height: 100svh;
+        max-height: 100svh;
     }
 
     .post-history-heading {
@@ -772,8 +783,9 @@
     }
 
     .post-history-container {
+        flex: 1 1 auto;
+        min-height: 0;
         width: 100%;
-        min-height: 100px;
         overflow-y: auto;
     }
 
