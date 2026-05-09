@@ -26,6 +26,7 @@
 
     let {
         className = "",
+        class: classAttr = "",
         disabled = false,
         type = "button",
         ariaLabel = "",
@@ -42,6 +43,7 @@
     let contentLayoutClass = $derived(
         contentLayout ? `content-${contentLayout}` : "",
     );
+    let computedClassName = $derived(`${classAttr} ${className}`.trim());
     let shapeClass = $derived(shape ?? "");
 
     function handleClick(event: MouseEvent) {
@@ -51,7 +53,7 @@
 
 <button
     {type}
-    class={`${className} ${variant} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
+    class={`${computedClassName} ${variant} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
     {disabled}
     aria-label={ariaLabel}
     {style}

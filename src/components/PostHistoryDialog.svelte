@@ -428,31 +428,28 @@
                                 >
                                     {buildPreview(post.content)}
                                 </div>
-                                {#if onReplyPost ||
-                                    previewCollapse.shouldCollapsePost(post)}
+                                {#if onReplyPost || previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-actions">
                                         {#if onReplyPost}
-                                            <button
+                                            <Button
                                                 type="button"
                                                 class="post-preview-action-button"
-                                                onclick={() =>
+                                                ariaLabel={$_(
+                                                    "replyQuote.reply_label",
+                                                )}
+                                                contentLayout="icon"
+                                                shape="circle"
+                                                onClick={() =>
                                                     handleReplyPost(post)}
                                             >
                                                 <div
                                                     class="reply-icon svg-icon"
                                                     aria-hidden="true"
                                                 ></div>
-                                                <span>
-                                                    {$_(
-                                                        "replyQuote.reply_label",
-                                                    )}
-                                                </span>
-                                            </button>
+                                            </Button>
                                         {/if}
-                                        {#if previewCollapse.shouldCollapsePost(
-                                            post,
-                                        )}
-                                            <button
+                                        {#if previewCollapse.shouldCollapsePost(post)}
+                                            <Button
                                                 type="button"
                                                 class="post-preview-action-button post-preview-toggle-button"
                                                 aria-expanded={previewCollapse.isPostExpanded(
@@ -460,7 +457,7 @@
                                                 )}
                                                 aria-controls={"post-preview-content-" +
                                                     post.eventId}
-                                                onclick={() =>
+                                                onClick={() =>
                                                     previewCollapse.togglePostExpanded(
                                                         post.eventId,
                                                     )}
@@ -468,13 +465,9 @@
                                                 {previewCollapse.isPostExpanded(
                                                     post,
                                                 )
-                                                    ? $_(
-                                                          "postHistory.collapse",
-                                                      )
-                                                    : $_(
-                                                          "postHistory.expand",
-                                                      )}
-                                            </button>
+                                                    ? $_("postHistory.collapse")
+                                                    : $_("postHistory.expand")}
+                                            </Button>
                                         {/if}
                                     </div>
                                 {/if}
@@ -885,32 +878,18 @@
         gap: 8px 16px;
         margin-top: 8px;
         padding-left: 1rem;
+
+        :global(.post-preview-action-button) {
+            background: transparent;
+        }
     }
 
-    .post-preview-action-button {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        border: none;
-        background: transparent;
-        color: var(--text-muted);
-        font: inherit;
-        cursor: pointer;
-        padding: 0;
-        text-align: left;
+    :global(.post-preview-action-button) .svg-icon {
+        width: 20px;
+        height: 20px;
     }
 
-    .post-preview-action-button:hover {
-        text-decoration: underline;
-    }
-
-    .post-preview-action-button .svg-icon {
-        width: 16px;
-        height: 16px;
-        background-color: currentColor;
-    }
-
-    .post-preview-toggle-button {
+    :global(.post-preview-toggle-button) {
         margin: 0;
     }
 
