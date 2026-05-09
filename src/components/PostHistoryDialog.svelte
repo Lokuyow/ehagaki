@@ -1124,7 +1124,7 @@
         color: var(--text);
         font-size: 1rem;
         line-height: 1.5;
-        gap: 6px;
+        gap: 4px;
     }
 
     .post-history-channel-row {
@@ -1197,8 +1197,9 @@
 
     .post-preview-footer {
         display: flex;
-        align-items: center;
+        align-items: stretch;
         justify-content: space-between;
+        height: 36px;
         gap: 8px;
         padding-left: 1rem;
         color: var(--text-muted);
@@ -1221,15 +1222,15 @@
             width: 130px;
 
             :global(.menu-trigger) {
-                min-height: 30px;
+                min-height: auto;
                 aspect-ratio: 1;
                 background: transparent;
                 border-radius: 50%;
 
                 .more-icon {
                     mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
-                    width: 20px;
-                    height: 20px;
+                    width: 22px;
+                    height: 22px;
                     --svg: var(--btn-post-preview-action);
                 }
             }
@@ -1242,8 +1243,7 @@
         }
 
         :global(.post-preview-action-button) {
-            height: auto;
-            min-height: 30px;
+            min-height: auto;
             background: transparent;
 
             :global(.svg-icon) {
