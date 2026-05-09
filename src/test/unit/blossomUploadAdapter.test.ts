@@ -38,7 +38,7 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-function mockImageLoads(loadStates: boolean[]): ReturnType<typeof vi.spyOn> {
+function mockImageLoads(loadStates: boolean[]) {
     return vi.spyOn(window, "Image").mockImplementation(() => {
         const image = {
             onload: null as (() => void) | null,
