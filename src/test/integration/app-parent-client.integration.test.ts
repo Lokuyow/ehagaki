@@ -16,6 +16,7 @@ const QUEUED_REPLY_EVENT_ID = '33'.repeat(32);
 const CLEAR_REPLY_EVENT_ID = '44'.repeat(32);
 const CLEAR_QUOTE_EVENT_ID = '55'.repeat(32);
 const CHANNEL_EVENT_ID = '66'.repeat(32);
+const HISTORY_QUOTE_EVENT_ID = '77'.repeat(32);
 
 const mockState = vi.hoisted(() => {
     const setNsec = vi.fn();
@@ -91,6 +92,7 @@ const mockState = vi.hoisted(() => {
     const notifySettingsApplied = vi.fn();
     const notifySettingsError = vi.fn();
     const applyUploadEndpointPreference = vi.fn(async () => null);
+    const hydrateReplyQuoteReferences = vi.fn().mockResolvedValue(undefined);
     const syncAccountStores = vi.fn();
     const accountManager = {
         addAccount: vi.fn(),
@@ -128,6 +130,7 @@ const mockState = vi.hoisted(() => {
         notifySettingsApplied,
         notifySettingsError,
         applyUploadEndpointPreference,
+        hydrateReplyQuoteReferences,
         syncAccountStores,
         accountManager,
         bootstrapParams: null as {
@@ -265,6 +268,7 @@ vi.mock('../../lib/iframeMessageService', () => ({
 vi.mock('../../lib/bootstrap/externalInputBootstrap', () => ({
     applyReplyQuoteQuery: mockState.applyReplyQuoteQuery,
     applyChannelContextQuery: mockState.applyChannelContextQuery,
+    hydrateReplyQuoteReferences: mockState.hydrateReplyQuoteReferences,
 }));
 
 vi.mock('../../lib/urlQueryHandler', () => ({
@@ -862,7 +866,7 @@ describe('App parentClient integration', () => {
             expect(replyQuoteState.value.quotes).toHaveLength(1);
         });
         expect(replyQuoteState.value.quotes[0]).toEqual(expect.objectContaining({
-            eventId: 'history-quote-target',
+            eventId: HISTORY_QUOTE_EVENT_ID,
             relayHints: ['wss://quote.example.com/', 'wss://accepted.example.com/'],
             authorPubkey: 'a'.repeat(64),
         }));

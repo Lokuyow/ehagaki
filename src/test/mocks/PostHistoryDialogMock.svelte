@@ -17,7 +17,7 @@
     }: Props = $props();
 
     const quotePost = {
-        eventId: "history-quote-target",
+        eventId: "77".repeat(32),
         pubkeyHex: "a".repeat(64),
         kind: 1,
         content: "quote target",

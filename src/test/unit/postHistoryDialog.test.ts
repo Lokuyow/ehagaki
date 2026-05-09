@@ -1490,7 +1490,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('削除リクエスト済み')).toBeTruthy();
+            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(2);
         });
 
         expect(screen.queryByRole('button', { name: '削除' })).toBeNull();
@@ -1556,7 +1556,7 @@ describe('PostHistoryDialog', () => {
                 post: expect.objectContaining({ eventId: 'delete-target' }),
                 rxNostr: {},
             });
-            expect(screen.getByText('削除リクエスト済み')).toBeTruthy();
+            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(2);
         });
     });
 
@@ -1586,7 +1586,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
 
         await waitFor(() => {
-            expect(screen.getByText('削除リクエストの送信に失敗しました')).toBeTruthy();
+            expect(screen.getAllByText('削除リクエストの送信に失敗しました')).toHaveLength(2);
         });
     });
 
