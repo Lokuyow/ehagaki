@@ -1425,7 +1425,19 @@
   }
 
   function handlePostHistoryQuote(post: PostHistoryRecord): void {
+    const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
     const referenceTarget = buildPostHistoryReferenceTarget(post);
+
+    if (channelContextQuery) {
+      void applyChannelContextQuery({
+        channelContextQuery,
+        ...getChannelContextApplyParams(),
+      }).catch((error) => {
+        console.error("投稿履歴からのチャンネル適用に失敗:", error);
+      });
+    } else {
+      clearChannelContext();
+    }
 
     if (!addQuoteReference(referenceTarget)) {
       focusEditor(".tiptap-editor", 100);
