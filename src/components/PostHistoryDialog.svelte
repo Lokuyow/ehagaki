@@ -1028,20 +1028,6 @@
         white-space: nowrap;
     }
 
-    :global(.menu-trigger) {
-        min-height: 30px;
-        aspect-ratio: 1;
-        background: transparent;
-        border-radius: 50%;
-
-        .more-icon {
-            mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
-            width: 20px;
-            height: 20px;
-            --svg: var(--post-preview-action-button);
-        }
-    }
-
     :global(.post-history-menu-content) {
         background: var(--dialog, #fff);
         color: var(--text, #000);
@@ -1226,24 +1212,55 @@
             flex: 1 0 auto;
         }
 
+        --btn-post-preview-action-hover: var(--svg);
         .post-preview-action-right {
             display: flex;
             align-items: center;
             justify-content: flex-end;
             gap: 8px;
             width: 130px;
+
+            :global(.menu-trigger) {
+                min-height: 30px;
+                aspect-ratio: 1;
+                background: transparent;
+                border-radius: 50%;
+
+                .more-icon {
+                    mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+                    width: 20px;
+                    height: 20px;
+                    --svg: var(--btn-post-preview-action);
+                }
+            }
+
+            @media (min-width: 601px) {
+                :global(.menu-trigger:hover) :global(.more-icon) {
+                    --svg: var(--btn-post-preview-action-hover);
+                }
+            }
         }
-    }
 
-    .post-preview-footer :global(.post-preview-action-button) {
-        height: auto;
-        min-height: 30px;
-        background: transparent;
+        :global(.post-preview-action-button) {
+            height: auto;
+            min-height: 30px;
+            background: transparent;
 
-        :global(.svg-icon) {
-            width: 24px;
-            height: 24px;
-            --svg: var(--post-preview-action-button);
+            :global(.svg-icon) {
+                width: 24px;
+                height: 24px;
+                --svg: var(--btn-post-preview-action);
+            }
+        }
+
+        @media (min-width: 601px) {
+            :global(.post-preview-action-button:hover:not(:disabled)) {
+                background: color-mix(in srgb, var(--theme) 10%, transparent);
+
+                :global(.svg-icon) {
+                    --svg: var(--theme);
+                }
+            }
         }
     }
 
