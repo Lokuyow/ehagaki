@@ -112,7 +112,8 @@ export function formatPostedAt(
 
     return new Intl.DateTimeFormat(undefined, {
         year: "numeric",
-        ...monthDayTimeFormat,
+        month: "numeric",
+        day: "numeric",
     }).format(postedDate);
 }
 
