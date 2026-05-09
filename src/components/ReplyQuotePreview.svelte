@@ -301,7 +301,7 @@
     }
 
     .reply-icon {
-        mask-image: url("/icons/reply-solid-full.svg");
+        mask-image: url("/icons/message-solid-full.svg");
     }
 
     .quote-icon {

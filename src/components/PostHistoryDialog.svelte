@@ -1038,7 +1038,7 @@
     }
 
     .reply-icon {
-        mask-image: url("/icons/reply-solid-full.svg");
+        mask-image: url("/icons/message-regular-full.svg");
     }
 
     .quote-icon {

@@ -389,7 +389,7 @@
     }
 
     .reply-context .preview-mode-icon {
-        mask-image: url("/icons/reply-solid-full.svg");
+        mask-image: url("/icons/message-solid-full.svg");
     }
 
     .quote-context .preview-mode-icon {
