@@ -72,12 +72,7 @@
     markSharedMediaProcessed,
     clearSharedMediaProcessed,
   } from "./stores/settingsStore.svelte";
-  import type {
-    AuthResult,
-    Draft,
-    MediaGalleryItem,
-    NostrEvent,
-  } from "./lib/types";
+  import type { AuthResult, Draft, MediaGalleryItem } from "./lib/types";
   import { useBalloonMessage } from "./lib/hooks/useBalloonMessage.svelte";
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
@@ -127,7 +122,6 @@
     applyReplyQuoteQuery,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
-  import { isSignedNostrEvent } from "./lib/postHistoryEventUtils";
   import type {
     EmbedComposerSetContextPayload,
     EmbedSettingsSetPayload,
@@ -144,6 +138,10 @@
     buildPatchedChannelContext,
     buildPatchedReplyQuoteQuery,
   } from "./lib/embedComposerContextPatch";
+  import {
+    buildPostHistoryReplyChannelContextQuery,
+    buildPostHistoryReplySeedEvents,
+  } from "./lib/postHistoryReplyUtils";
   import type { PostHistoryRecord } from "./lib/storage/ehagakiDb";
   import {
     applyEmbedComposerContent,
@@ -1391,20 +1389,20 @@
     });
   }
 
-  function getPostHistoryReplySeedEvents(
-    post: PostHistoryRecord,
-  ): Record<string, NostrEvent> | undefined {
-    if (!isSignedNostrEvent(post.rawEvent)) {
-      return undefined;
-    }
-
-    return {
-      [post.eventId]: post.rawEvent,
-    };
-  }
-
   function handlePostHistoryReply(post: PostHistoryRecord): void {
-    const preloadedEvents = getPostHistoryReplySeedEvents(post);
+    const preloadedEvents = buildPostHistoryReplySeedEvents(post);
+    const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
+
+    if (channelContextQuery) {
+      void applyChannelContextQuery({
+        channelContextQuery,
+        ...getChannelContextApplyParams(),
+      }).catch((error) => {
+        console.error("投稿履歴からのチャンネル適用に失敗:", error);
+      });
+    } else {
+      clearChannelContext();
+    }
 
     void applyReplyQuoteQuery({
       replyQuoteQuery: {

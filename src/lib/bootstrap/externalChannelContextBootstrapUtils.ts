@@ -49,7 +49,7 @@ export async function processExternalChannelContextQuery({
     const metadataProvided = hasProvidedChannelMetadata(channelContextQuery);
     const channelRelaysProvided = hasProvidedChannelRelays(channelContextQuery);
 
-    if (!rxNostr || channelRelaysProvided || metadataProvided) {
+    if (!rxNostr || metadataProvided) {
         setChannelContext(baseContext);
         return;
     }
@@ -66,6 +66,9 @@ export async function processExternalChannelContextQuery({
     );
     setChannelContext({
         ...resolvedChannelContext,
+        ...(channelRelaysProvided
+            ? { channelRelays: channelContextQuery.channelRelays }
+            : {}),
         name: channelContextQuery.name ?? resolvedChannelContext.name,
         about: channelContextQuery.about ?? resolvedChannelContext.about,
         picture: channelContextQuery.picture ?? resolvedChannelContext.picture,
