@@ -1493,20 +1493,20 @@
             class="composer-scroll-content"
             bind:this={composerScrollContentEl}
           >
+            {#if channelContextState.value}
+              <div class="composer-block composer-reference-block">
+                <ChannelContextPreview
+                  channel={channelContextState.value}
+                  onClear={clearChannelContext}
+                />
+              </div>
+            {/if}
             {#if replyQuoteState.value.reply}
               <div class="composer-block composer-reference-block">
                 <ReplyQuotePreview
                   reference={replyQuoteState.value.reply}
                   mode="reply"
                   onClear={clearReplyReference}
-                />
-              </div>
-            {/if}
-            {#if channelContextState.value}
-              <div class="composer-block composer-reference-block">
-                <ChannelContextPreview
-                  channel={channelContextState.value}
-                  onClear={clearChannelContext}
                 />
               </div>
             {/if}
