@@ -984,7 +984,7 @@
     .post-history-item {
         display: flex;
         align-items: center;
-        border-bottom: 1px solid var(--border-hr);
+        border-bottom: 1px solid var(--border-hr-light);
         padding: 10px;
     }
 
