@@ -73,6 +73,7 @@
         getPosts: () => history.posts,
         getContainer: () => historyContainer,
     });
+
     function resetDialogState(): void {
         copyState = {};
         deleteConfirmOpen = false;
@@ -110,10 +111,9 @@
     });
 
     function resetHistoryScrollPosition(): void {
-        if (!historyContainer) {
-            return;
+        if (historyContainer) {
+            historyContainer.scrollTop = 0;
         }
-        historyContainer.scrollTop = 0;
     }
 
     function handlePreviousPage(): void {

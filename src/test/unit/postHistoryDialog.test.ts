@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
+import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
+import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
 
 const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record<string, unknown> }) => {
     const translations: Record<string, string> = {
@@ -176,6 +178,8 @@ function createDeferred<T>() {
 
 describe('PostHistoryDialog', () => {
     beforeEach(() => {
+        clearPersistedPostHistoryListingSnapshots();
+        clearPersistedPostHistoryViewState();
         vi.clearAllMocks();
         repositoryMock.getPage.mockResolvedValue([]);
         repositoryMock.countForPubkey.mockResolvedValue(0);
@@ -246,6 +250,8 @@ describe('PostHistoryDialog', () => {
     });
 
     afterEach(() => {
+        clearPersistedPostHistoryListingSnapshots();
+        clearPersistedPostHistoryViewState();
         vi.useRealTimers();
     });
 
@@ -1189,6 +1195,75 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
             expect(postHistoryContainer!.scrollTop).toBe(0);
         });
+    });
+
+    it('close 後に reopen するとページ位置を復元して前回ページを即表示する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(60);
+        const deferredReopenPage = createDeferred<ReturnType<typeof createRecord>[]>();
+        let page2RequestCount = 0;
+        repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => {
+            if (page === 1) {
+                return Promise.resolve([
+                    createRecord({ eventId: 'page-1', content: '1ページ目' }),
+                ]);
+            }
+
+            if (page === 2) {
+                page2RequestCount += 1;
+
+                if (page2RequestCount === 1) {
+                    return Promise.resolve([
+                        createRecord({ eventId: 'page-2', content: '2ページ目' }),
+                    ]);
+                }
+
+                return deferredReopenPage.promise;
+            }
+
+            return Promise.resolve([]);
+        });
+
+        const onClose = vi.fn();
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        let postHistoryContainer: HTMLDivElement | null = null;
+        await waitFor(() => {
+            postHistoryContainer = document.querySelector('.post-history-container') as HTMLDivElement;
+            expect(postHistoryContainer).toBeTruthy();
+            expect(nextButton).toHaveProperty('disabled', false);
+            expect(screen.getByText('1 / 2 ページ')).toBeTruthy();
+        });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+        });
+
+        view.unmount();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+        expect(screen.getByText('2ページ目')).toBeTruthy();
+
+        deferredReopenPage.resolve([
+            createRecord({ eventId: 'page-2', content: '2ページ目' }),
+        ]);
     });
 
     it('次ページに必要な件数が足りない場合は until 付きで古い投稿を追加取得する', async () => {

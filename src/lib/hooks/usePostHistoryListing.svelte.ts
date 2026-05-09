@@ -12,6 +12,10 @@ import {
     canContinueRelayHistory,
     resolveSyncStatusAfterFetch,
 } from "../postHistoryDialogUtils";
+import {
+    readPersistedPostHistoryViewState,
+    writePersistedPostHistoryViewState,
+} from "../postHistoryDialogViewState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
 import { postHistoryRepository } from "../storage/postHistoryRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
@@ -34,6 +38,85 @@ interface UsePostHistoryListingParams {
     searchDebounceMs?: number;
 }
 
+interface PersistedPostHistoryListingSnapshot {
+    loadedPosts: PostHistoryRecord[];
+    searchPosts: PostHistoryRecord[];
+    totalCount: number;
+    searchTotalCount: number;
+    hasMoreRemote: boolean;
+    nextUntil: number | null;
+}
+
+const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
+    loadedPosts: [],
+    searchPosts: [],
+    totalCount: 0,
+    searchTotalCount: 0,
+    hasMoreRemote: false,
+    nextUntil: null,
+};
+
+const persistedListingSnapshotByPubkey = new Map<
+    string,
+    PersistedPostHistoryListingSnapshot
+>();
+
+function resolveListingSnapshotKey(
+    pubkeyHex: string | null | undefined,
+): string | null {
+    if (typeof pubkeyHex !== "string") {
+        return null;
+    }
+
+    const normalizedPubkeyHex = pubkeyHex.trim();
+    return normalizedPubkeyHex.length > 0 ? normalizedPubkeyHex : null;
+}
+
+function cloneListingSnapshot(
+    snapshot: PersistedPostHistoryListingSnapshot,
+): PersistedPostHistoryListingSnapshot {
+    return {
+        loadedPosts: [...snapshot.loadedPosts],
+        searchPosts: [...snapshot.searchPosts],
+        totalCount: snapshot.totalCount,
+        searchTotalCount: snapshot.searchTotalCount,
+        hasMoreRemote: snapshot.hasMoreRemote,
+        nextUntil: snapshot.nextUntil,
+    };
+}
+
+function readPersistedListingSnapshot(
+    pubkeyHex: string | null | undefined,
+): PersistedPostHistoryListingSnapshot {
+    const key = resolveListingSnapshotKey(pubkeyHex);
+    if (!key) {
+        return cloneListingSnapshot(
+            DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT,
+        );
+    }
+
+    return cloneListingSnapshot(
+        persistedListingSnapshotByPubkey.get(key) ??
+            DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT,
+    );
+}
+
+function writePersistedListingSnapshot(
+    pubkeyHex: string | null | undefined,
+    snapshot: PersistedPostHistoryListingSnapshot,
+): void {
+    const key = resolveListingSnapshotKey(pubkeyHex);
+    if (!key) {
+        return;
+    }
+
+    persistedListingSnapshotByPubkey.set(key, cloneListingSnapshot(snapshot));
+}
+
+export function clearPersistedPostHistoryListingSnapshots(): void {
+    persistedListingSnapshotByPubkey.clear();
+}
+
 export function usePostHistoryListing({
     getShow,
     getPubkeyHex,
@@ -42,18 +125,24 @@ export function usePostHistoryListing({
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
+    const persistedViewState = readPersistedPostHistoryViewState(
+        getPubkeyHex(),
+    );
+    const persistedListingSnapshot = readPersistedListingSnapshot(
+        getPubkeyHex(),
+    );
     const state = $state({
-        loadedPosts: [] as PostHistoryRecord[],
-        searchPosts: [] as PostHistoryRecord[],
-        searchInput: "",
-        searchQuery: "",
-        currentPage: 1,
-        searchPage: 1,
-        totalCount: 0,
-        searchTotalCount: 0,
+        loadedPosts: persistedListingSnapshot.loadedPosts,
+        searchPosts: persistedListingSnapshot.searchPosts,
+        searchInput: persistedViewState.searchInput,
+        searchQuery: persistedViewState.searchQuery,
+        currentPage: persistedViewState.currentPage,
+        searchPage: persistedViewState.searchPage,
+        totalCount: persistedListingSnapshot.totalCount,
+        searchTotalCount: persistedListingSnapshot.searchTotalCount,
         syncStatus: "idle" as PostHistorySyncStatus,
-        hasMoreRemote: false,
-        nextUntil: null as number | null,
+        hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
+        nextUntil: persistedListingSnapshot.nextUntil,
     });
 
     let loadRequestId = 0;
@@ -116,15 +205,7 @@ export function usePostHistoryListing({
 
     function resetState(): void {
         cancelCurrentSync();
-        resetSearchState();
-        state.loadedPosts = [];
-        state.searchPosts = [];
-        state.currentPage = 1;
-        state.totalCount = 0;
-        state.searchTotalCount = 0;
         state.syncStatus = "idle";
-        state.hasMoreRemote = false;
-        state.nextUntil = null;
         hasStartedInitialSync = false;
     }
 
@@ -406,6 +487,26 @@ export function usePostHistoryListing({
         state.loadedPosts = applyDeletedState(state.loadedPosts);
         state.searchPosts = applyDeletedState(state.searchPosts);
     }
+
+    $effect(() => {
+        writePersistedPostHistoryViewState(getPubkeyHex(), {
+            searchInput: state.searchInput,
+            searchQuery: state.searchQuery,
+            currentPage: state.currentPage,
+            searchPage: state.searchPage,
+        });
+    });
+
+    $effect(() => {
+        writePersistedListingSnapshot(getPubkeyHex(), {
+            loadedPosts: state.loadedPosts,
+            searchPosts: state.searchPosts,
+            totalCount: state.totalCount,
+            searchTotalCount: state.searchTotalCount,
+            hasMoreRemote: state.hasMoreRemote,
+            nextUntil: state.nextUntil,
+        });
+    });
 
     $effect(() => {
         if (getShow()) {
