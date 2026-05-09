@@ -13,6 +13,8 @@
         getMedia: () => media,
     });
 
+    const clickableMedia = $derived(mediaCache.state.items[0]);
+
     function getLinkLabel(item: { url: string; alt?: string }): string {
         const alt = item.alt?.trim();
         if (alt) {
@@ -27,117 +29,100 @@
             return item.url;
         }
     }
+
+    function getSurfaceAriaLabel(item: { url: string; alt?: string }): string {
+        return getLinkLabel(item);
+    }
 </script>
 
-{#if mediaCache.state.items.length > 0}
-    <div class="post-history-media-section">
-        <div class="post-history-media-heading">{$_("postHistory.media")}</div>
-        <ul class="post-history-media-list">
-            {#each mediaCache.state.items as item (item.url)}
-                <li class="post-history-media-card">
-                    {#if item.kind === "image" && item.previewObjectUrl}
-                        <img
-                            src={item.previewObjectUrl}
-                            alt={item.alt || ""}
-                            class="post-history-media-image"
-                            loading="lazy"
-                            decoding="async"
-                        />
-                    {:else if item.kind === "video" && item.previewObjectUrl}
-                        <video
-                            src={item.previewObjectUrl}
-                            class="post-history-media-video"
-                            controls
-                            playsinline
-                            preload="metadata"
+{#if clickableMedia}
+    <div class="post-history-inline-media">
+        {#if clickableMedia.cached}
+            <a
+                href={clickableMedia.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="post-history-media-surface post-history-media-link-surface"
+                aria-label={getSurfaceAriaLabel(clickableMedia)}
+                title={getLinkLabel(clickableMedia)}
+            >
+                {#if clickableMedia.kind === "image" && clickableMedia.previewObjectUrl}
+                    <img
+                        src={clickableMedia.previewObjectUrl}
+                        alt={clickableMedia.alt || ""}
+                        class="post-history-media-image"
+                        loading="lazy"
+                        decoding="async"
+                    />
+                {:else if clickableMedia.kind === "video" && clickableMedia.previewObjectUrl}
+                    <video
+                        src={clickableMedia.previewObjectUrl}
+                        class="post-history-media-video"
+                        muted
+                        playsinline
+                        preload="metadata"
+                    >
+                        <track kind="captions" />
+                    </video>
+                {:else}
+                    <div
+                        class="post-history-media-placeholder post-history-media-placeholder-cached"
+                    >
+                        <span class="post-history-media-placeholder-status"
+                            >{$_("postHistory.mediaCached")}</span
                         >
-                            <track kind="captions" />
-                            {$_("videoNode.not_supported")}
-                        </video>
-                    {:else}
-                        <div class="post-history-media-placeholder">
-                            <span>{getLinkLabel(item)}</span>
-                        </div>
-                    {/if}
-
-                    <div class="post-history-media-meta">
-                        <span
-                            class="post-history-media-badge"
-                            class:post-history-media-badge-cached={item.cached}
+                        <span class="post-history-media-placeholder-label"
+                            >{getLinkLabel(clickableMedia)}</span
                         >
-                            {item.cached
-                                ? $_("postHistory.mediaCached")
-                                : $_("postHistory.mediaNotCached")}
-                        </span>
-
-                        {#if !item.cached}
-                            <button
-                                type="button"
-                                class="post-history-media-action"
-                                disabled={item.isCaching}
-                                onclick={() =>
-                                    void mediaCache.fetchAndCacheMedia(item.url)}
-                            >
-                                {item.isCaching
-                                    ? $_("postHistory.mediaLoading")
-                                    : $_("postHistory.mediaFetchAndCache")}
-                            </button>
-                        {:else if item.kind === "video" && !item.previewObjectUrl}
-                            <button
-                                type="button"
-                                class="post-history-media-action"
-                                disabled={item.isLoadingPreview}
-                                onclick={() =>
-                                    void mediaCache.loadCachedVideo(item.url)}
-                            >
-                                {item.isLoadingPreview
-                                    ? $_("postHistory.mediaLoading")
-                                    : $_("postHistory.mediaLoadCachedVideo")}
-                            </button>
-                        {/if}
-
-                        <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            class="post-history-media-link"
-                        >
-                            {$_("postHistory.mediaOpen")}
-                        </a>
                     </div>
-                </li>
-            {/each}
-        </ul>
+                {/if}
+            </a>
+        {:else}
+            <button
+                type="button"
+                class="post-history-media-surface post-history-media-fetch-surface"
+                disabled={clickableMedia.isCaching}
+                aria-label={getSurfaceAriaLabel(clickableMedia)}
+                title={getLinkLabel(clickableMedia)}
+                onclick={() =>
+                    void mediaCache.fetchAndCacheMedia(clickableMedia.url)}
+            >
+                <div
+                    class="post-history-media-placeholder post-history-media-placeholder-uncached"
+                >
+                    <span class="post-history-media-placeholder-status">
+                        {clickableMedia.isCaching
+                            ? $_("postHistory.mediaLoading")
+                            : $_("postHistory.mediaNotCached")}
+                    </span>
+                    <span class="post-history-media-placeholder-label"
+                        >{getLinkLabel(clickableMedia)}</span
+                    >
+                </div>
+            </button>
+        {/if}
     </div>
 {/if}
 
 <style>
-    .post-history-media-section {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        margin-top: 12px;
+    .post-history-inline-media {
+        display: block;
+        width: min(100%, 320px);
     }
 
-    .post-history-media-heading {
-        font-size: 0.875rem;
-        color: var(--color-subtle-text, #666);
-    }
-
-    .post-history-media-list {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-        gap: 10px;
-        margin: 0;
+    .post-history-media-surface {
+        display: block;
+        width: 100%;
         padding: 0;
-        list-style: none;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        cursor: pointer;
     }
 
-    .post-history-media-card {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        min-width: 0;
+    .post-history-media-link-surface {
+        cursor: pointer;
+        text-decoration: none;
     }
 
     .post-history-media-image,
@@ -159,59 +144,59 @@
         object-fit: cover;
     }
 
+    .post-history-media-video {
+        display: block;
+    }
+
     .post-history-media-placeholder {
         display: flex;
-        align-items: center;
+        flex-direction: column;
+        gap: 8px;
+        align-items: flex-start;
         justify-content: center;
         padding: 12px;
-        text-align: center;
+        text-align: left;
         color: var(--color-subtle-text, #666);
         overflow-wrap: anywhere;
     }
 
-    .post-history-media-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: center;
-    }
-
-    .post-history-media-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 3px 8px;
-        border-radius: 999px;
-        font-size: 0.75rem;
+    .post-history-media-placeholder-cached {
         background: color-mix(
             in srgb,
-            var(--background-color, #fff) 90%,
-            #000 10%
+            var(--background-color, #fff) 88%,
+            var(--theme, #2b664b) 12%
         );
-        color: var(--color-subtle-text, #666);
     }
 
-    .post-history-media-badge-cached {
-        color: var(--accent-color, #2b664b);
+    .post-history-media-placeholder-uncached {
+        background: repeating-linear-gradient(
+            -45deg,
+            color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%),
+            color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%) 10px,
+            color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%) 10px,
+            color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%) 20px
+        );
     }
 
-    .post-history-media-action,
-    .post-history-media-link {
+    .post-history-media-placeholder-status {
+        display: inline-flex;
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.78);
+        color: var(--text-muted, #666);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .post-history-media-placeholder-label {
         font: inherit;
-        color: var(--accent-color, #2b664b);
+        color: var(--text, #111);
+        overflow-wrap: anywhere;
     }
 
-    .post-history-media-action {
-        padding: 0;
-        border: 0;
-        background: transparent;
-        cursor: pointer;
-        text-decoration: underline;
-    }
-
-    .post-history-media-action:disabled {
+    .post-history-media-fetch-surface:disabled {
         cursor: default;
         opacity: 0.7;
-        text-decoration: none;
     }
 </style>

@@ -4,12 +4,8 @@ import { readable } from 'svelte/store';
 
 const translateMock = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
-        'postHistory.media': 'メディア',
         'postHistory.mediaCached': 'キャッシュ済み',
         'postHistory.mediaNotCached': '未キャッシュ',
-        'postHistory.mediaFetchAndCache': '再取得して保存',
-        'postHistory.mediaOpen': '開く',
-        'postHistory.mediaLoadCachedVideo': '動画を表示',
         'postHistory.mediaLoading': '読み込み中...',
         'videoNode.not_supported': 'video unsupported',
     };
@@ -39,7 +35,7 @@ describe('PostHistoryMediaList', () => {
         vi.resetAllMocks();
     });
 
-    it('cached image を自動表示し cached video は明示操作で読み込む', async () => {
+    it('cached media は URL の代わりに直接表示する', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockImplementation(async (url: string) => {
                 if (url.endsWith('.jpg')) {
@@ -99,33 +95,12 @@ describe('PostHistoryMediaList', () => {
             props: {
                 media: [
                     {
-                        url: 'https://example.com/image.jpg',
-                        mimeType: 'image/jpeg',
-                        alt: 'sample image',
-                    },
-                    {
                         url: 'https://example.com/video.mp4',
                         mimeType: 'video/mp4',
-                    },
-                    {
-                        url: 'https://example.com/uncached.png',
-                        mimeType: 'image/png',
                     },
                 ],
             },
         });
-
-        await waitFor(() => {
-            expect(screen.getByAltText('sample image')).toBeTruthy();
-        });
-
-        expect(
-            vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
-        ).toHaveBeenCalledWith('https://example.com/image.jpg');
-        expect(screen.getByRole('button', { name: '動画を表示' })).toBeTruthy();
-        expect(container.querySelector('video')).toBeNull();
-
-        await fireEvent.click(screen.getByRole('button', { name: '動画を表示' }));
 
         await waitFor(() => {
             expect(container.querySelector('video')).toBeTruthy();
@@ -133,10 +108,13 @@ describe('PostHistoryMediaList', () => {
         expect(
             vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
         ).toHaveBeenCalledWith('https://example.com/video.mp4');
-        expect(screen.getByText('未キャッシュ')).toBeTruthy();
+        expect(screen.queryByRole('button')).toBeNull();
+        expect(screen.getByRole('link').getAttribute('href')).toBe(
+            'https://example.com/video.mp4',
+        );
     });
 
-    it('uncached image を明示操作で再取得して保存できる', async () => {
+    it('uncached media はプレースホルダー自体のクリックで再取得して保存する', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockResolvedValue(null);
         vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
@@ -172,7 +150,7 @@ describe('PostHistoryMediaList', () => {
         });
 
         await fireEvent.click(
-            screen.getByRole('button', { name: '再取得して保存' }),
+            screen.getByRole('button', { name: 'uncached image' }),
         );
 
         expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({

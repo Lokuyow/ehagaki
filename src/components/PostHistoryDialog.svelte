@@ -6,7 +6,6 @@
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
-    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -590,26 +589,24 @@
                                     </div>
                                 {/if}
                                 <div class="post-preview-body">
-                                    <div
-                                        class="post-preview-content"
-                                        use:previewCollapse.previewRef={post.eventId}
-                                        class:post-preview-content-collapsed={!previewCollapse.isPostExpanded(
-                                            post,
-                                        ) &&
-                                            previewCollapse.shouldCollapsePost(
-                                                post,
-                                            )}
-                                        id={"post-preview-content-" +
-                                            post.eventId}
-                                    >
+                                    <div class="post-preview-content">
                                         <PostHistoryPreviewContent
                                             previewContent={getPreviewContent(
                                                 post,
                                             )}
                                             {emojiLoadStateByUrl}
+                                            previewCollapseAction={previewCollapse.previewRef}
+                                            previewCollapseEventId={post.eventId}
+                                            previewContentId={"post-preview-content-" +
+                                                post.eventId}
+                                            isCollapsed={!previewCollapse.isPostExpanded(
+                                                post,
+                                            ) &&
+                                                previewCollapse.shouldCollapsePost(
+                                                    post,
+                                                )}
                                         />
                                     </div>
-                                    <PostHistoryMediaList media={post.media} />
                                     {#if previewCollapse.shouldCollapsePost(post)}
                                         <div class="post-preview-toggle-row">
                                             <Button
@@ -1156,11 +1153,6 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-    }
-
-    .post-preview-content-collapsed {
-        max-height: calc(5 * 1.5em);
-        overflow: hidden;
     }
 
     .post-preview-body {

@@ -1,4 +1,5 @@
 import { RelayConfigUtils } from "./relayConfigUtils";
+import { normalizePostMediaUrl } from "./postMediaCacheUtils";
 import {
     normalizeEmojiShortcodeForLookup,
     parseEmojiTags,
@@ -17,6 +18,12 @@ export type PostHistoryPreviewSegment =
         text: string;
     }
     | {
+        type: "media";
+        url: string;
+        normalizedUrl: string;
+        media: PostHistoryRecord["media"][number];
+    }
+    | {
         type: "emoji";
         shortcode: string;
         shortcodeLower: string;
@@ -28,6 +35,8 @@ export type PostHistoryPreviewContent = {
     segments: PostHistoryPreviewSegment[];
     emojiUrls: string[];
 };
+
+const URL_PATTERN = /https?:\/\/[^\s]+/g;
 
 export type ChannelDisplayState = {
     status: "loading" | "resolved" | "failed";
@@ -147,10 +156,12 @@ export function buildPreview(content: string): string {
 }
 
 export function buildPreviewContent(
-    post: Pick<PostHistoryRecord, "content" | "tags">,
+    post: Pick<PostHistoryRecord, "content" | "tags"> &
+        Partial<Pick<PostHistoryRecord, "media">>,
 ): PostHistoryPreviewContent {
     const normalizedContent = buildPreview(post.content);
     const emojiMap = buildPostEmojiMap(post.tags);
+    const mediaMap = buildPostMediaMap(post.media ?? []);
     const segments: PostHistoryPreviewSegment[] = [];
     const emojiUrls = new Set<string>();
     let lastIndex = 0;
@@ -168,6 +179,7 @@ export function buildPreviewContent(
             pushTextSegment(
                 segments,
                 normalizedContent.slice(lastIndex, matchIndex),
+                mediaMap,
             );
         }
 
@@ -183,14 +195,14 @@ export function buildPreviewContent(
             });
             emojiUrls.add(emoji.url);
         } else {
-            pushTextSegment(segments, rawShortcodeText);
+            pushTextSegment(segments, rawShortcodeText, mediaMap);
         }
 
         lastIndex = matchIndex + rawShortcodeText.length;
     }
 
     if (lastIndex < normalizedContent.length) {
-        pushTextSegment(segments, normalizedContent.slice(lastIndex));
+        pushTextSegment(segments, normalizedContent.slice(lastIndex), mediaMap);
     }
 
     if (segments.length === 0) {
@@ -222,7 +234,82 @@ function buildPostEmojiMap(
     return emojiMap;
 }
 
+function buildPostMediaMap(
+    media: PostHistoryRecord["media"],
+): Map<string, PostHistoryRecord["media"][number]> {
+    const mediaMap = new Map<string, PostHistoryRecord["media"][number]>();
+
+    for (const item of media) {
+        const normalizedUrl = normalizePostMediaUrl(item.url);
+        if (!normalizedUrl || mediaMap.has(normalizedUrl)) {
+            continue;
+        }
+
+        mediaMap.set(normalizedUrl, item);
+    }
+
+    return mediaMap;
+}
+
+function splitUrlTrailingText(rawUrl: string): {
+    url: string;
+    trailingText: string;
+} {
+    const match = rawUrl.match(/[),.!?:;\]\u3001\u3002]+$/u);
+    if (!match) {
+        return {
+            url: rawUrl,
+            trailingText: "",
+        };
+    }
+
+    const trailingText = match[0];
+    return {
+        url: rawUrl.slice(0, -trailingText.length),
+        trailingText,
+    };
+}
+
 function pushTextSegment(
+    segments: PostHistoryPreviewSegment[],
+    text: string,
+    mediaMap: Map<string, PostHistoryRecord["media"][number]>,
+): void {
+    if (!text) {
+        return;
+    }
+
+    let lastIndex = 0;
+    for (const match of text.matchAll(URL_PATTERN)) {
+        const matchIndex = match.index ?? -1;
+        const rawUrl = match[0] ?? "";
+        if (matchIndex < 0 || !rawUrl) {
+            continue;
+        }
+
+        const { url, trailingText } = splitUrlTrailingText(rawUrl);
+        const media = mediaMap.get(normalizePostMediaUrl(url));
+        if (!media) {
+            continue;
+        }
+
+        pushPlainTextSegment(segments, text.slice(lastIndex, matchIndex));
+        segments.push({
+            type: "media",
+            url,
+            normalizedUrl: normalizePostMediaUrl(url),
+            media,
+        });
+        pushPlainTextSegment(segments, trailingText);
+        lastIndex = matchIndex + rawUrl.length;
+    }
+
+    if (lastIndex < text.length) {
+        pushPlainTextSegment(segments, text.slice(lastIndex));
+    }
+}
+
+function pushPlainTextSegment(
     segments: PostHistoryPreviewSegment[],
     text: string,
 ): void {

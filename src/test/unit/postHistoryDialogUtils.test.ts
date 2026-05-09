@@ -74,4 +74,32 @@ describe("postHistoryDialogUtils", () => {
         ]);
         expect(result.emojiUrls).toEqual(["https://example.com/first.webp"]);
     });
+
+    it("replaces media urls in text with media segments", () => {
+        const result = buildPreviewContent({
+            content: "before https://example.com/image.jpg after\nhttps://example.com/video.mp4",
+            tags: [],
+            media: [
+                { url: "https://example.com/image.jpg", mimeType: "image/jpeg" },
+                { url: "https://example.com/video.mp4", mimeType: "video/mp4" },
+            ],
+        });
+
+        expect(result.segments).toEqual([
+            { type: "text", text: "before " },
+            {
+                type: "media",
+                url: "https://example.com/image.jpg",
+                normalizedUrl: "https://example.com/image.jpg",
+                media: { url: "https://example.com/image.jpg", mimeType: "image/jpeg" },
+            },
+            { type: "text", text: " after\n" },
+            {
+                type: "media",
+                url: "https://example.com/video.mp4",
+                normalizedUrl: "https://example.com/video.mp4",
+                media: { url: "https://example.com/video.mp4", mimeType: "video/mp4" },
+            },
+        ]);
+    });
 });

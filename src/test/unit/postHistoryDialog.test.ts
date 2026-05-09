@@ -188,6 +188,12 @@ function createDeferred<T>() {
     return { promise, resolve };
 }
 
+function expectDefaultMediaReplacement(): void {
+    expect(screen.getByText('投稿本文')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'image.jpg' })).toBeTruthy();
+    expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
+}
+
 describe('PostHistoryDialog', () => {
     beforeEach(() => {
         clearPersistedPostHistoryListingSnapshots();
@@ -300,9 +306,14 @@ describe('PostHistoryDialog', () => {
                     'line3',
                     'line4',
                     'line5',
-                    'line6',
+                    'line6 https://example.com/image.jpg',
                 ].join('\n'),
-                media: [],
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
             }),
         ]);
 
@@ -319,6 +330,7 @@ describe('PostHistoryDialog', () => {
         });
 
         expect(toggleButton).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'image.jpg' })).toBeTruthy();
         await fireEvent.click(toggleButton);
         expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: '折りたたむ' }));
@@ -843,7 +855,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expectDefaultMediaReplacement();
             expect(screen.getByText('リレーと同期中...')).toBeTruthy();
         });
 
@@ -920,7 +932,7 @@ describe('PostHistoryDialog', () => {
                 fetchedAt: 5000,
             });
             expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
-            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expectDefaultMediaReplacement();
         });
     });
 
@@ -968,7 +980,7 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalledOnce();
             expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
-            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expectDefaultMediaReplacement();
         });
     });
 
@@ -998,7 +1010,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
-            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expectDefaultMediaReplacement();
         });
 
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
@@ -1029,7 +1041,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expectDefaultMediaReplacement();
             expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
         });
 
@@ -1567,7 +1579,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText(/投稿本文\s+https:\/\/example.com\/image.jpg/)).toBeTruthy();
+            expectDefaultMediaReplacement();
             expect(screen.queryByText('メディア: image 1')).toBeNull();
         });
 

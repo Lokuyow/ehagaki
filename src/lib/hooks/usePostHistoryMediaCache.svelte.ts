@@ -118,49 +118,6 @@ export function usePostHistoryMediaCache(params: {
         }));
     }
 
-    async function loadCachedVideo(url: string): Promise<void> {
-        const targetIndex = state.items.findIndex((item) => item.url === url);
-        if (targetIndex < 0) {
-            return;
-        }
-
-        const target = state.items[targetIndex];
-        if (
-            !target.cached ||
-            target.kind !== 'video' ||
-            target.previewObjectUrl ||
-            target.isLoadingPreview
-        ) {
-            return;
-        }
-
-        invalidatePendingResolution();
-        updateItem(url, (item) => ({ ...item, isLoadingPreview: true }));
-
-        try {
-            const cached = await postMediaCacheService.createCachedMediaObjectUrl(url);
-            if (!cached) {
-                updateItem(url, (item) => ({ ...item, isLoadingPreview: false }));
-                return;
-            }
-
-            revokeTrackedObjectUrl(url);
-            activeObjectUrls.set(url, cached.objectUrl);
-            updateItem(url, (item) => ({
-                ...item,
-                cached: true,
-                previewObjectUrl: cached.objectUrl,
-                mimeType: cached.mimeType,
-                kind: cached.kind,
-                size: cached.size,
-                source: cached.source,
-                isLoadingPreview: false,
-            }));
-        } catch {
-            updateItem(url, (item) => ({ ...item, isLoadingPreview: false }));
-        }
-    }
-
     async function fetchAndCacheMedia(url: string): Promise<void> {
         const target = state.items.find((item) => item.url === url);
         if (!target || target.cached || target.isCaching) {
@@ -183,7 +140,7 @@ export function usePostHistoryMediaCache(params: {
             await applyCachedState({
                 url,
                 descriptor: cached,
-                loadPreview: cached.kind === 'image',
+                loadPreview: cached.kind === 'image' || cached.kind === 'video',
             });
         } catch {
             updateItem(url, (item) => ({ ...item, isCaching: false }));
@@ -210,7 +167,7 @@ export function usePostHistoryMediaCache(params: {
                         return baseItem;
                     }
 
-                    if (descriptor.kind !== 'image') {
+                    if (descriptor.kind !== 'image' && descriptor.kind !== 'video') {
                         return {
                             ...baseItem,
                             cached: true,
@@ -221,10 +178,10 @@ export function usePostHistoryMediaCache(params: {
                         } satisfies ResolvedPostHistoryMediaItem;
                     }
 
-                    const cachedImage = await postMediaCacheService.createCachedMediaObjectUrl(
+                    const cachedMedia = await postMediaCacheService.createCachedMediaObjectUrl(
                         media.url,
                     );
-                    if (!cachedImage) {
+                    if (!cachedMedia) {
                         return {
                             ...baseItem,
                             cached: true,
@@ -237,20 +194,20 @@ export function usePostHistoryMediaCache(params: {
 
                     if (cancelled) {
                         postMediaCacheService.revokeObjectUrl(
-                            cachedImage.objectUrl,
+                            cachedMedia.objectUrl,
                         );
                         return baseItem;
                     }
 
-                    nextObjectUrls.set(media.url, cachedImage.objectUrl);
+                    nextObjectUrls.set(media.url, cachedMedia.objectUrl);
                     return {
                         ...baseItem,
                         cached: true,
-                        previewObjectUrl: cachedImage.objectUrl,
-                        kind: cachedImage.kind,
-                        mimeType: cachedImage.mimeType,
-                        size: cachedImage.size,
-                        source: cachedImage.source,
+                        previewObjectUrl: cachedMedia.objectUrl,
+                        kind: cachedMedia.kind,
+                        mimeType: cachedMedia.mimeType,
+                        size: cachedMedia.size,
+                        source: cachedMedia.source,
                     } satisfies ResolvedPostHistoryMediaItem;
                 }),
             );
@@ -280,7 +237,6 @@ export function usePostHistoryMediaCache(params: {
 
     return {
         state,
-        loadCachedVideo,
         fetchAndCacheMedia,
     };
 }
