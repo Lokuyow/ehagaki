@@ -39,6 +39,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.channelLoading': '読み込み中...',
         'postHistory.channelUnknown': '不明',
         'replyQuote.reply_label': 'リプライ',
+        'replyQuote.quote_label': '引用',
         'global.close': '閉じる',
     };
 
@@ -305,7 +306,7 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
     });
 
-    it('reply callback がある場合は preview 下にリプライボタンを表示し、折りたたみボタンと共存する', async () => {
+    it('reply/quote callback がある場合は preview 下に両方のボタンを表示し、折りたたみボタンと共存する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({
@@ -327,11 +328,13 @@ describe('PostHistoryDialog', () => {
                 show: true,
                 onClose: vi.fn(),
                 onReplyPost: vi.fn(),
+                onQuotePost: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
             },
         });
 
         expect(await screen.findByRole('button', { name: 'リプライ' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '引用' })).toBeTruthy();
         expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
     });
 
@@ -361,6 +364,36 @@ describe('PostHistoryDialog', () => {
 
         expect(onReplyPost).toHaveBeenCalledWith(
             expect.objectContaining({ eventId: 'reply-target' }),
+        );
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('引用ボタン押下で callback 実行後にダイアログを閉じる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'quote-target',
+                content: '引用したい投稿',
+                media: [],
+            }),
+        ]);
+        const onClose = vi.fn();
+        const onQuotePost = vi.fn();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                onQuotePost,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('引用したい投稿');
+        await fireEvent.click(await screen.findByRole('button', { name: '引用' }));
+
+        expect(onQuotePost).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'quote-target' }),
         );
         expect(onClose).toHaveBeenCalledOnce();
     });

@@ -77,6 +77,7 @@
   import { saveDraft, saveDraftWithReplaceOldest } from "./lib/draftManager";
   import { mediaGalleryStore } from "./stores/mediaGalleryStore.svelte";
   import {
+    addQuoteReference,
     setReplyQuote,
     updateReferencedEvent,
     updateAuthorDisplayName,
@@ -120,6 +121,7 @@
   import {
     applyChannelContextQuery,
     applyReplyQuoteQuery,
+    hydrateReplyQuoteReferences,
     type RunExternalInputBootstrapParams,
   } from "./lib/bootstrap/externalInputBootstrap";
   import type {
@@ -139,6 +141,7 @@
     buildPatchedReplyQuoteQuery,
   } from "./lib/embedComposerContextPatch";
   import {
+    buildPostHistoryReferenceTarget,
     buildPostHistoryReplyChannelContextQuery,
     buildPostHistoryReplySeedEvents,
   } from "./lib/postHistoryReplyUtils";
@@ -1392,6 +1395,7 @@
   function handlePostHistoryReply(post: PostHistoryRecord): void {
     const preloadedEvents = buildPostHistoryReplySeedEvents(post);
     const channelContextQuery = buildPostHistoryReplyChannelContextQuery(post);
+    const referenceTarget = buildPostHistoryReferenceTarget(post);
 
     if (channelContextQuery) {
       void applyChannelContextQuery({
@@ -1407,9 +1411,7 @@
     void applyReplyQuoteQuery({
       replyQuoteQuery: {
         reply: {
-          eventId: post.eventId,
-          relayHints: [...post.relayHints, ...post.acceptedRelays],
-          authorPubkey: post.pubkeyHex,
+          ...referenceTarget,
         },
         quotes: [],
       },
@@ -1417,6 +1419,27 @@
       ...(preloadedEvents ? { preloadedEvents } : {}),
     }).catch((error) => {
       console.error("投稿履歴からのリプライ適用に失敗:", error);
+    });
+
+    focusEditor(".tiptap-editor", 100);
+  }
+
+  function handlePostHistoryQuote(post: PostHistoryRecord): void {
+    const referenceTarget = buildPostHistoryReferenceTarget(post);
+
+    if (!addQuoteReference(referenceTarget)) {
+      focusEditor(".tiptap-editor", 100);
+      return;
+    }
+
+    const preloadedEvents = buildPostHistoryReplySeedEvents(post);
+
+    void hydrateReplyQuoteReferences({
+      references: [referenceTarget],
+      ...getReplyQuoteApplyParams(),
+      ...(preloadedEvents ? { preloadedEvents } : {}),
+    }).catch((error) => {
+      console.error("投稿履歴からの引用適用に失敗:", error);
     });
 
     focusEditor(".tiptap-editor", 100);
@@ -1678,6 +1701,7 @@
           show={showPostHistoryDialogStore.value}
           onClose={postHistoryDialog.close}
           onReplyPost={handlePostHistoryReply}
+          onQuotePost={handlePostHistoryQuote}
           pubkeyHex={authState.value?.pubkey ?? null}
           {rxNostr}
           relayConfig={relayConfigStore.value}

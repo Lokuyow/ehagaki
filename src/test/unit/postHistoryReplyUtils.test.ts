@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+    buildPostHistoryReferenceTarget,
     buildPostHistoryReplyChannelContextQuery,
     buildPostHistoryReplySeedEvents,
 } from '../../lib/postHistoryReplyUtils';
@@ -26,6 +27,28 @@ function createRecord(overrides: Record<string, unknown> = {}) {
 }
 
 describe('postHistoryReplyUtils', () => {
+    it('reply/quote 用の参照ターゲットを正規化して返す', () => {
+        const record = createRecord({
+            relayHints: [
+                'wss://hint.example.com',
+                'https://invalid.example.com',
+            ],
+            acceptedRelays: [
+                'wss://accepted.example.com/',
+                'wss://accepted.example.com',
+            ],
+        });
+
+        expect(buildPostHistoryReferenceTarget(record as never)).toEqual({
+            eventId: 'event-1',
+            relayHints: [
+                'wss://hint.example.com/',
+                'wss://accepted.example.com/',
+            ],
+            authorPubkey: 'a'.repeat(64),
+        });
+    });
+
     it('kind42 では channel context query を返す', () => {
         const record = createRecord({
             kind: 42,

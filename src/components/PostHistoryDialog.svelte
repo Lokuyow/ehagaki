@@ -30,6 +30,7 @@
         show: boolean;
         onClose: () => void;
         onReplyPost?: (post: PostHistoryRecord) => void;
+        onQuotePost?: (post: PostHistoryRecord) => void;
         pubkeyHex?: string | null;
         rxNostr?: RxNostr;
         relayConfig?: RelayConfig | null;
@@ -39,6 +40,7 @@
         show = $bindable(false),
         onClose,
         onReplyPost = undefined,
+        onQuotePost = undefined,
         pubkeyHex = null,
         rxNostr = undefined,
         relayConfig = null,
@@ -183,6 +185,15 @@
         }
 
         onReplyPost(post);
+        handleClose();
+    }
+
+    function handleQuotePost(post: PostHistoryRecord): void {
+        if (!onQuotePost) {
+            return;
+        }
+
+        onQuotePost(post);
         handleClose();
     }
 
@@ -460,7 +471,9 @@
                                         </div>
                                     {/if}
                                 </div>
-                                {#if onReplyPost || previewCollapse.shouldCollapsePost(post)}
+                                {#if onReplyPost ||
+                                    onQuotePost ||
+                                    previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-action-row">
                                         {#if onReplyPost}
                                             <Button
@@ -476,6 +489,24 @@
                                             >
                                                 <div
                                                     class="reply-icon svg-icon"
+                                                    aria-hidden="true"
+                                                ></div>
+                                            </Button>
+                                        {/if}
+                                        {#if onQuotePost}
+                                            <Button
+                                                type="button"
+                                                class="post-preview-action-button"
+                                                ariaLabel={$_(
+                                                    "replyQuote.quote_label",
+                                                )}
+                                                contentLayout="icon"
+                                                shape="circle"
+                                                onClick={() =>
+                                                    handleQuotePost(post)}
+                                            >
+                                                <div
+                                                    class="quote-icon svg-icon"
                                                     aria-hidden="true"
                                                 ></div>
                                             </Button>
@@ -1008,6 +1039,10 @@
 
     .reply-icon {
         mask-image: url("/icons/reply-solid-full.svg");
+    }
+
+    .quote-icon {
+        mask-image: url("/icons/quote-right-solid-full.svg");
     }
 
     .trash-icon {

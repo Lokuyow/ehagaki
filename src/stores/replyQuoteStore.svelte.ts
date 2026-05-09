@@ -5,6 +5,7 @@ import type {
     DraftReplyQuoteData,
     ReplyQuoteComposerState,
     ReplyQuoteQueryResult,
+    ReplyQuoteQueryTarget,
     DraftReplyQuoteEntryData,
 } from '../lib/types';
 import { settingsStore } from './settingsStore.svelte';
@@ -174,6 +175,22 @@ export function clearReplyReference(): void {
 export function removeQuoteReference(eventId: string): void {
     replyQuote.quotes = replyQuote.quotes.filter((quote) => quote.eventId !== eventId);
     notifyReplyQuoteChanged();
+}
+
+export function addQuoteReference(reference: ReplyQuoteQueryTarget): boolean {
+    if (replyQuote.quotes.some((quote) => quote.eventId === reference.eventId)) {
+        return false;
+    }
+
+    replyQuote.quotes = [
+        ...replyQuote.quotes,
+        createReplyQuoteState({
+            mode: 'quote',
+            ...reference,
+        }),
+    ];
+    notifyReplyQuoteChanged();
+    return true;
 }
 
 export function setQuoteNotificationEnabled(eventId: string, enabled: boolean): void {

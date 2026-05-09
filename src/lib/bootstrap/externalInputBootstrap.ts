@@ -22,6 +22,7 @@ import type { RelayProfileService } from "../relayProfileService";
 import type {
     ChannelContextQueryTarget,
     NostrEvent,
+    ReplyQuoteQueryTarget,
     ReplyQuoteQueryResult,
 } from "../types";
 
@@ -265,6 +266,68 @@ function sanitizeReplyQuoteQuery(
     };
 }
 
+function sanitizeReplyQuoteReferences(
+    references: ReplyQuoteQueryTarget[],
+): ReplyQuoteQueryTarget[] {
+    return references.map((reference) => ({
+        ...reference,
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
+            reference.relayHints,
+            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        ),
+    }));
+}
+
+export interface HydrateReplyQuoteReferencesParams extends Pick<
+    RunExternalInputBootstrapParams,
+    | "relayProfileService"
+    | "rxNostr"
+    | "relayConfig"
+    | "updateReferencedEvent"
+    | "updateAuthorDisplayName"
+    | "setReplyQuoteError"
+> {
+    references: ReplyQuoteQueryTarget[];
+    preloadedEvents?: Record<string, NostrEvent>;
+}
+
+export async function hydrateReplyQuoteReferences({
+    references,
+    preloadedEvents = {},
+    relayProfileService,
+    rxNostr,
+    relayConfig,
+    updateReferencedEvent,
+    updateAuthorDisplayName,
+    setReplyQuoteError,
+}: HydrateReplyQuoteReferencesParams): Promise<void> {
+    const sanitizedReferences = sanitizeReplyQuoteReferences(references);
+    const resolvableReferences = sanitizedReferences.filter((reference) =>
+        !!rxNostr || !!preloadedEvents[reference.eventId],
+    );
+
+    if (resolvableReferences.length === 0) {
+        return;
+    }
+
+    const rqService = new ReplyQuoteService();
+    await Promise.allSettled(
+        resolvableReferences.map((reference) =>
+            processReplyQuoteReference({
+                reference,
+                replyQuoteService: rqService,
+                initialEvent: preloadedEvents[reference.eventId],
+                relayProfileService,
+                rxNostr,
+                relayConfig,
+                updateReferencedEvent,
+                updateAuthorDisplayName,
+                setReplyQuoteError,
+            }),
+        ),
+    );
+}
+
 export async function applyReplyQuoteQuery({
     replyQuoteQuery,
     preloadedEvents = {},
@@ -289,30 +352,16 @@ export async function applyReplyQuoteQuery({
         return;
     }
 
-    const resolvableReferences = references.filter((reference) =>
-        !!rxNostr || !!preloadedEvents[reference.eventId],
-    );
-
-    if (resolvableReferences.length === 0) {
-        return;
-    }
-
-    const rqService = new ReplyQuoteService();
-    await Promise.allSettled(
-        resolvableReferences.map((reference) =>
-            processReplyQuoteReference({
-                reference,
-                replyQuoteService: rqService,
-                initialEvent: preloadedEvents[reference.eventId],
-                relayProfileService,
-                rxNostr,
-                relayConfig,
-                updateReferencedEvent,
-                updateAuthorDisplayName,
-                setReplyQuoteError,
-            }),
-        ),
-    );
+    await hydrateReplyQuoteReferences({
+        references,
+        preloadedEvents,
+        relayProfileService,
+        rxNostr,
+        relayConfig,
+        updateReferencedEvent,
+        updateAuthorDisplayName,
+        setReplyQuoteError,
+    });
 }
 
 export async function runExternalInputBootstrap({

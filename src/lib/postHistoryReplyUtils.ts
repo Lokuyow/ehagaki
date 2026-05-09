@@ -1,5 +1,9 @@
 import type { PostHistoryRecord } from "./storage/ehagakiDb";
-import type { ChannelContextQueryTarget, NostrEvent } from "./types";
+import type {
+    ChannelContextQueryTarget,
+    NostrEvent,
+    ReplyQuoteQueryTarget,
+} from "./types";
 import {
     extractPostHistoryChannelReference,
     isSignedNostrEvent,
@@ -15,6 +19,19 @@ export function buildPostHistoryReplySeedEvents(
 
     return {
         [post.eventId]: post.rawEvent,
+    };
+}
+
+export function buildPostHistoryReferenceTarget(
+    post: PostHistoryRecord,
+): ReplyQuoteQueryTarget {
+    return {
+        eventId: post.eventId,
+        relayHints: RelayConfigUtils.sanitizeExternalRelayUrls(
+            [...post.relayHints, ...post.acceptedRelays],
+            { limit: RelayConfigUtils.EXTERNAL_INPUT_RELAY_LIMIT },
+        ),
+        authorPubkey: post.pubkeyHex,
     };
 }
 
