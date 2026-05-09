@@ -985,7 +985,7 @@
         display: flex;
         align-items: center;
         border-bottom: 1px solid var(--border-hr);
-        padding: 8px;
+        padding: 10px;
     }
 
     .post-history-item:last-child {
@@ -1032,20 +1032,14 @@
         min-height: 30px;
         aspect-ratio: 1;
         background: transparent;
-        border: none;
         border-radius: 50%;
-        padding: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-    }
 
-    .more-icon {
-        mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
-        width: 20px;
-        height: 20px;
-        background-color: currentColor;
+        .more-icon {
+            mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+            width: 20px;
+            height: 20px;
+            --svg: var(--post-preview-action-button);
+        }
     }
 
     :global(.post-history-menu-content) {
@@ -1202,8 +1196,9 @@
                     .post-preview-toggle-button:hover
                 ) {
                 color: var(--text-muted);
+                font-size: 0.875rem;
                 font-weight: normal;
-                min-height: 26px;
+                min-height: 24px;
                 padding: 0;
                 background: transparent;
             }
@@ -1248,7 +1243,7 @@
         :global(.svg-icon) {
             width: 24px;
             height: 24px;
-            background: var(--text-muted);
+            --svg: var(--post-preview-action-button);
         }
     }
 

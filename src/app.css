@@ -41,6 +41,7 @@
   --btn-bg: hsl(0, 0%, 94%);
   --btn-border: hsl(0, 0%, 75%);
   --btn-hover-bg: rgba(50, 50, 50, 0.12);
+  --post-preview-action-button: hsl(0, 0%, 75%);
 
   --border: var(--light-gray);
   --border-hr: hsl(0, 0%, 84%);
@@ -214,10 +215,11 @@ select {
   --border: dimgray;
   --border-hr: hsl(0, 0%, 30%);
   --btn-hover-bg: rgba(255, 255, 255, 0.12);
+  --post-preview-action-button: hsl(0, 0%, 35%);
 
   --text: hsl(0, 0%, 90%);
   --text-light: hsl(0, 0%, 75%);
-  --text-muted: hsl(0, 0%, 60%);
+  --text-muted: hsl(0, 0%, 55%);
   --text-red: hsl(0, 99%, 69%);
   --text-r: #3D3D3D;
 
