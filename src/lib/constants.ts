@@ -239,6 +239,12 @@ export const UPLOAD_POLLING_CONFIG = {
     TIMEOUT_MESSAGE: "Upload processing timeout"
 } as const;
 
+export const UPLOADED_MEDIA_AVAILABILITY_CONFIG = {
+    MAX_WAIT_TIME: 15000,
+    RETRY_INTERVAL: 1000,
+    TIMEOUT_MESSAGE: "Uploaded media is not available yet",
+} as const;
+
 // --- appUtils.ts から移動した定数 ---
 // Nostr Key パターン
 export const NSEC_PATTERN = /nsec1[qpzry9x8gf2tvdw0s3jn54khce6mua7l]{10,}/;

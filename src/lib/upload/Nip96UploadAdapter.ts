@@ -1,4 +1,5 @@
 import { UPLOAD_POLLING_CONFIG } from "../constants";
+import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
 import type {
     FileUploadResponse,
     UploadAdapterUploadParams,
@@ -44,6 +45,10 @@ async function pollUploadStatus(params: {
             method: "GET",
             headers: { Authorization: params.authHeader },
         });
+        if (response.status === 404) {
+            await new Promise((resolve) => setTimeout(resolve, UPLOAD_POLLING_CONFIG.RETRY_INTERVAL));
+            continue;
+        }
         if (!response.ok) {
             throw new Error(`Unexpected status code ${response.status} while polling processing_url`);
         }
@@ -147,7 +152,23 @@ export class Nip96UploadAdapter implements UploadProtocolAdapter {
         const parsedNip94 = parseNip94Tags(data);
         if (data.status === "success" && Array.isArray(data.nip94_event?.tags)) {
             const urlTag = data.nip94_event.tags.find((tag: string[]) => tag[0] === "url");
-            if (urlTag?.[1]) return { success: true, url: urlTag[1], nip94: parsedNip94 };
+            if (urlTag?.[1]) {
+                try {
+                    await waitForUploadedMediaAvailability({
+                        url: urlTag[1],
+                        mimeType: params.file.type,
+                        fetch: params.fetch,
+                    });
+                } catch (error) {
+                    return {
+                        success: false,
+                        error: error instanceof Error ? error.message : String(error),
+                        nip94: Object.keys(parsedNip94).length ? parsedNip94 : undefined,
+                    };
+                }
+
+                return { success: true, url: urlTag[1], nip94: parsedNip94 };
+            }
         }
 
         return {

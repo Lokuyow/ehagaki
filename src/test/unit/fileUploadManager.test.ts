@@ -257,11 +257,24 @@ describe('FileUploadManager', () => {
         mockDependencies = createMockDependencies();
         mockFetch = vi.fn();
         mockDependencies.fetch = mockFetch;
+        vi.spyOn(window, 'Image').mockImplementation(() => {
+            const image = {
+                onload: null as (() => void) | null,
+                onerror: null as (() => void) | null,
+                src: '',
+            };
+
+            setTimeout(() => {
+                image.onload?.();
+            }, 0);
+
+            return image as unknown as HTMLImageElement;
+        });
         uploadManager = new FileUploadManager(mockDependencies);
     });
 
     afterEach(() => {
-        vi.clearAllMocks();
+        vi.restoreAllMocks();
     });
 
     describe('ファイルバリデーション', () => {
@@ -480,15 +493,20 @@ describe('FileUploadManager', () => {
                 mockAuthService,
                 mockCompressionService
             );
-            mockFetch.mockResolvedValue(new Response(JSON.stringify({
-                url: 'https://blossom.band/mockhash.jpg',
-                sha256: 'mockhash',
-                size: file.size,
-                type: file.type,
-            }), {
-                status: 200,
-                headers: { 'content-type': 'application/json' },
-            }));
+            mockFetch
+                .mockResolvedValueOnce(new Response(JSON.stringify({
+                    url: 'https://blossom.band/mockhash.jpg',
+                    sha256: 'mockhash',
+                    size: file.size,
+                    type: file.type,
+                }), {
+                    status: 200,
+                    headers: { 'content-type': 'application/json' },
+                }))
+                .mockResolvedValueOnce(new Response(null, {
+                    status: 200,
+                    headers: { 'content-type': file.type },
+                }));
 
             const result = await uploadManager.uploadFile(
                 file,
@@ -703,7 +721,7 @@ describe('FileUploadManager', () => {
 
             expect(result.success).toBe(true);
             expect(result.url).toBe('https://example.com/final.jpg');
-            expect(mockFetch).toHaveBeenCalledTimes(2);
+            expect(mockFetch).toHaveBeenCalledTimes(3);
         });
     });
 

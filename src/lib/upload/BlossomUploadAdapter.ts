@@ -1,5 +1,6 @@
 import { BlossomClient, type BlobDescriptor } from "nostr-tools/nipb7";
 import { calculateSHA256Hex } from "../utils/fileUtils";
+import { waitForUploadedMediaAvailability } from "./uploadedMediaAvailability";
 import type {
     FileUploadResponse,
     UploadAdapterUploadParams,
@@ -244,6 +245,7 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
             return { success: false, error: "Blossom signer is not available" };
         }
 
+        let uploadResult: FileUploadResponse;
         try {
             const client = createBlossomClient(
                 params.destination,
@@ -255,13 +257,33 @@ export class BlossomUploadAdapter implements UploadProtocolAdapter {
                 params.file.type,
             );
 
-            return parseBlobDescriptor(descriptor, params.file);
+            uploadResult = parseBlobDescriptor(descriptor, params.file);
         } catch (error) {
             return {
                 success: false,
                 error: parseBlossomUploadError(error),
             };
         }
+
+        if (!uploadResult.success || !uploadResult.url) {
+            return uploadResult;
+        }
+
+        try {
+            await waitForUploadedMediaAvailability({
+                url: uploadResult.url,
+                mimeType: params.file.type,
+                fetch: params.fetch,
+            });
+        } catch (error) {
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : String(error),
+                nip94: uploadResult.nip94,
+            };
+        }
+
+        return uploadResult;
     }
 
     async testConnection(params: {

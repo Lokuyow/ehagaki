@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BlossomUploadAdapter } from "../../lib/upload/BlossomUploadAdapter";
 import type { UploadDestination } from "../../lib/types";
 
@@ -33,18 +33,52 @@ function createDestination(): UploadDestination {
     };
 }
 
+afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+});
+
+function mockImageLoads(loadStates: boolean[]): ReturnType<typeof vi.spyOn> {
+    return vi.spyOn(window, "Image").mockImplementation(() => {
+        const image = {
+            onload: null as (() => void) | null,
+            onerror: null as (() => void) | null,
+            src: "",
+        };
+
+        setTimeout(() => {
+            const shouldLoad = loadStates.shift() ?? true;
+            if (shouldLoad) {
+                image.onload?.();
+                return;
+            }
+
+            image.onerror?.();
+        }, 0);
+
+        return image as unknown as HTMLImageElement;
+    });
+}
+
 describe("BlossomUploadAdapter", () => {
     it("uses nostr-tools BlossomClient with an authService signer for uploads", async () => {
+        mockImageLoads([true]);
+
         const adapter = new BlossomUploadAdapter();
-        const fetchMock = vi.fn(async () => new Response(JSON.stringify({
-            url: "https://npub1example.blossom.band/mockhash.png",
-            sha256: "a".repeat(64),
-            size: 4,
-            type: "image/png",
-        }), {
-            status: 200,
-            headers: { "content-type": "application/json" },
-        }));
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                url: "https://npub1example.blossom.band/mockhash.png",
+                sha256: "a".repeat(64),
+                size: 4,
+                type: "image/png",
+            }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+            }))
+            .mockResolvedValueOnce(new Response(null, {
+                status: 200,
+                headers: { "content-type": "image/png" },
+            }));
         const signer = {
             getPublicKey: vi.fn(async () => "f".repeat(64)),
             signEvent: vi.fn(async (event) => ({
@@ -76,6 +110,52 @@ describe("BlossomUploadAdapter", () => {
                 method: "PUT",
             }),
         );
+    });
+
+    it("waits until an uploaded image URL becomes loadable", async () => {
+        vi.useFakeTimers();
+
+        const adapter = new BlossomUploadAdapter();
+        const imageSpy = mockImageLoads([false, true]);
+        const fetchMock = vi.fn()
+            .mockResolvedValueOnce(new Response(JSON.stringify({
+                url: "https://npub1example.blossom.band/mockhash.png",
+                sha256: "a".repeat(64),
+                size: 4,
+                type: "image/png",
+            }), {
+                status: 200,
+                headers: { "content-type": "application/json" },
+            }))
+            .mockRejectedValue(new TypeError("Failed to fetch"));
+        const signer = {
+            getPublicKey: vi.fn(async () => "f".repeat(64)),
+            signEvent: vi.fn(async (event) => ({
+                ...event,
+                id: "signed-event",
+                pubkey: "f".repeat(64),
+                sig: "signature",
+            })),
+        };
+
+        const uploadPromise = adapter.upload({
+            file: new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], "test.png", {
+                type: "image/png",
+            }),
+            destination: createDestination(),
+            authService: {
+                buildAuthHeader: vi.fn(),
+                getBlossomSigner: vi.fn(async () => signer),
+            },
+            fetch: fetchMock as unknown as typeof fetch,
+        });
+
+        await vi.runAllTimersAsync();
+
+        const result = await uploadPromise;
+
+        expect(result.success).toBe(true);
+        expect(imageSpy).toHaveBeenCalledTimes(2);
     });
 
     it("uses an image/png probe for HEAD /upload connection tests", async () => {
