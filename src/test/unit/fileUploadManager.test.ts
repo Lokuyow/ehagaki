@@ -10,6 +10,14 @@ import type {
     UploadDestination
 } from '../../lib/types';
 
+const postMediaCacheServiceMock = vi.hoisted(() => ({
+    persistUploadedMedia: vi.fn(),
+}));
+
+vi.mock('../../lib/postMediaCacheService', () => ({
+    postMediaCacheService: postMediaCacheServiceMock,
+}));
+
 vi.mock("../../lib/utils/fileSizeUtils", () => ({
     createFileSizeInfo: vi.fn((original, compressed, wasCompressed, originalName, compressedName, wasSkipped) => ({
         originalSize: original,
@@ -383,6 +391,51 @@ describe('FileUploadManager', () => {
                 expect.any(String),
                 'POST'
             );
+        });
+
+        it('成功時に圧縮後ファイルを投稿履歴メディアキャッシュへ保存する', async () => {
+            const file = createMockFile('cached.webp', 'image/webp', 1000);
+            const compressedFile = new File([new Uint8Array([1, 2, 3, 4])], 'cached.webp', {
+                type: 'image/webp',
+            });
+
+            const mockAuthService: AuthService = {
+                buildAuthHeader: vi.fn().mockResolvedValue('Bearer mock-token')
+            };
+
+            const mockCompressionService = {
+                compress: vi.fn().mockResolvedValue({
+                    file: compressedFile,
+                    wasCompressed: true,
+                    wasSkipped: false
+                }),
+                hasCompressionSettings: vi.fn().mockReturnValue(true),
+                setProgressCallback: vi.fn(),
+                abort: vi.fn()
+            } as CompressionService & { hasCompressionSettings: () => boolean };
+
+            uploadManager = new FileUploadManager(
+                mockDependencies,
+                mockAuthService,
+                mockCompressionService
+            );
+            vi.mocked(postMediaCacheServiceMock.persistUploadedMedia).mockResolvedValue(null);
+
+            mockFetch.mockResolvedValue(createMockResponse(true, 200, {
+                status: 'success',
+                nip94_event: {
+                    tags: [['url', 'https://example.com/cached.webp']]
+                }
+            }));
+
+            const result = await uploadManager.uploadFile(file);
+
+            expect(result.success).toBe(true);
+            expect(postMediaCacheServiceMock.persistUploadedMedia).toHaveBeenCalledWith({
+                url: 'https://example.com/cached.webp',
+                file: compressedFile,
+                mimeType: 'image/webp',
+            });
         });
 
         it('保存済みアップロード先がない場合はロケール既定の送信先を使うが localStorage へは書き戻さない', async () => {

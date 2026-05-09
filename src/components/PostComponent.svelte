@@ -49,6 +49,7 @@
   } from "../stores/replyQuoteStore.svelte";
   import { channelContextState } from "../stores/channelContextStore.svelte";
   import { ReplyQuoteService } from "../lib/replyQuoteService";
+  import { savePostedEventWithMediaCacheLink } from "../lib/postHistoryMediaPersistence";
   import { postHistoryRepository } from "../lib/storage/postHistoryRepository";
   import {
     editorState,
@@ -191,7 +192,10 @@
           replyQuoteService: new ReplyQuoteService(),
           clearReplyQuoteFn: clearReplyQuote,
           savePostHistoryFn: (input) =>
-            postHistoryRepository.putPostedEvent(input),
+            savePostedEventWithMediaCacheLink({
+              input,
+              postHistoryRepositoryImpl: postHistoryRepository,
+            }),
         });
       else postManager.setRxNostr(rxNostr as RxNostr);
     }

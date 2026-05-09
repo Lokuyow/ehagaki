@@ -120,6 +120,16 @@ export function ensureCurrentEHagakiDbSchema(
         { name: 'schemaVersion', keyPath: 'schemaVersion' },
         { name: '[pubkeyHex+postedAt]', keyPath: ['pubkeyHex', 'postedAt'] },
     ]);
+    createObjectStoreIfMissing(db, 'postMediaCache', 'cacheKey', [
+        { name: 'url', keyPath: 'url' },
+        { name: 'normalizedUrl', keyPath: 'normalizedUrl' },
+        { name: 'size', keyPath: 'size' },
+        { name: 'createdAt', keyPath: 'createdAt' },
+        { name: 'lastAccessedAt', keyPath: 'lastAccessedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'source', keyPath: 'source' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' },
+    ]);
     createObjectStoreIfMissing(db, 'channelMetadata', 'channelEventId', [
         { name: 'fetchedAt', keyPath: 'fetchedAt' },
         { name: 'metadataCreatedAt', keyPath: 'metadataCreatedAt' },

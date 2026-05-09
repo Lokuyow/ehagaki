@@ -38,6 +38,7 @@ describe("EHagakiDB", () => {
             "hashtagHistory",
             "meta",
             "postHistory",
+            "postMediaCache",
             "profiles",
             "relayConfigs",
             "sharedMedia",

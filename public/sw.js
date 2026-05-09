@@ -65,7 +65,7 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.20.0';
+const SW_VERSION = '1.21.0';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
@@ -73,7 +73,7 @@ const CUSTOM_EMOJI_CACHE_NAME = 'ehagaki-custom-emoji-images-v2';
 const LEGACY_CUSTOM_EMOJI_CACHE_NAMES = ['ehagaki-custom-emoji-images'];
 const RUNTIME_LARGE_ASSET_CACHE_NAME = 'ehagaki-runtime-large-assets';
 const INDEXEDDB_NAME = 'eHagakiDB';
-const INDEXEDDB_VERSION = 7;
+const INDEXEDDB_VERSION = 8;
 const SHARED_MEDIA_STORE_NAME = 'sharedMedia';
 const SHARED_MEDIA_RECORD_ID = 'latest';
 const SHARED_MEDIA_SCHEMA_VERSION = 1;

@@ -118,6 +118,11 @@
     "channel": "Channel",
     "channelLoading": "Loading...",
     "channelUnknown": "Unknown",
+    "mediaCached": "Cached",
+    "mediaNotCached": "Not cached",
+    "mediaOpen": "Open",
+    "mediaLoadCachedVideo": "Load video",
+    "mediaLoading": "Loading...",
     "expand": "Show more",
     "collapse": "Show less"
   },

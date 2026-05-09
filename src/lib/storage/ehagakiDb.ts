@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 7;
+export const EHAGAKI_DB_VERSION = 8;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -159,6 +159,20 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
+export interface PostMediaCacheEntryRecord {
+    cacheKey: string;
+    url: string;
+    normalizedUrl: string;
+    size: number;
+    mimeType?: string;
+    createdAt: number;
+    lastAccessedAt: number;
+    source: 'uploaded' | 'network';
+    eventIds: string[];
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export interface ChannelMetadataRecord {
     channelEventId: string;
     name: string | null;
@@ -188,6 +202,7 @@ export class EHagakiDB extends Dexie {
     customEmojiUsage!: Table<CustomEmojiUsageRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
+    postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
 
     constructor(databaseName = EHAGAKI_DB_NAME) {
@@ -205,6 +220,7 @@ export class EHagakiDB extends Dexie {
             customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
+            postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
             channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
         });
     }

@@ -6,6 +6,7 @@
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -608,6 +609,7 @@
                                             {emojiLoadStateByUrl}
                                         />
                                     </div>
+                                    <PostHistoryMediaList media={post.media} />
                                     {#if previewCollapse.shouldCollapsePost(post)}
                                         <div class="post-preview-toggle-row">
                                             <Button

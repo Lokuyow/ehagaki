@@ -30,6 +30,7 @@ import { normalizeLocale } from './utils/settingsStorage';
 import { isDefaultUploadAborted } from './uploadAbortUtils';
 import { getUploadAdapter } from "./upload/uploadAdapterRegistry";
 import { createLegacyUploadDestination } from "./upload/uploadDestinationPresets";
+import { postMediaCacheService } from "./postMediaCacheService";
 
 // ファイルアップロード専用マネージャークラス
 export class FileUploadManager implements FileUploadManagerInterface {
@@ -76,6 +77,22 @@ export class FileUploadManager implements FileUploadManagerInterface {
     }
 
     this.dependencies.setImageSizeInfoFromFileSize?.(sizeInfo);
+  }
+
+  private async persistUploadedPostMedia(url: string, file: File): Promise<void> {
+    if (!url) {
+      return;
+    }
+
+    try {
+      await postMediaCacheService.persistUploadedMedia({
+        url,
+        file,
+        mimeType: file.type || undefined,
+      });
+    } catch (error) {
+      console.warn('post_media_cache_persist_failed', error);
+    }
   }
 
   validateImageFile(file: File): FileValidationResult {
@@ -222,6 +239,10 @@ export class FileUploadManager implements FileUploadManagerInterface {
           sizeInfo,
           aborted: true
         };
+      }
+
+      if (uploadResult.success && uploadResult.url) {
+        await this.persistUploadedPostMedia(uploadResult.url, uploadFile);
       }
 
       const normalizedNip94 = uploadResult.success
