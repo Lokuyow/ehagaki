@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Image from '@tiptap/extension-image';
 import {
     clampCustomEmojiPickerHeight,
+    CUSTOM_EMOJI_CACHE_REQUEST_TIMEOUT,
     createCustomEmojiItem,
     CUSTOM_EMOJI_PICKER_CHROME_HEIGHT,
     CUSTOM_EMOJI_PICKER_MIN_HEIGHT,
@@ -19,8 +20,10 @@ import {
     mergeCustomEmojiItems,
     parseEmojiSetAddress,
     parseEmojiTags,
+    preloadCustomEmojiImage,
     readCachedCustomEmojiItems,
     readCustomEmojiPickerHeight,
+    requestCustomEmojiImagesCache,
     writeCachedCustomEmojiItems,
 } from '../../lib/customEmoji';
 import type { CustomEmojiItem } from '../../lib/customEmoji';
@@ -331,6 +334,77 @@ describe('customEmoji', () => {
             ['https://example.com/a.webp', 'https://example.com/b.webp'],
             ['https://example.com/c.webp'],
         ]);
+    });
+
+    it('requests custom emoji caching through the active service worker controller', async () => {
+        const postMessage = vi.fn();
+        const port1 = {
+            onmessage: null as ((event: MessageEvent<unknown>) => void) | null,
+            addEventListener: vi.fn(),
+            close: vi.fn(),
+        };
+        const port2 = {} as MessagePort;
+
+        Object.defineProperty(navigator, 'serviceWorker', {
+            value: {
+                controller: {
+                    postMessage: vi.fn((_message: unknown, _ports: MessagePort[]) => {
+                        queueMicrotask(() => {
+                            port1.onmessage?.({
+                                data: { success: true, cached: 1, failed: 0 },
+                            } as MessageEvent<unknown>);
+                        });
+                    }),
+                },
+            },
+            configurable: true,
+            writable: true,
+        });
+
+        const result = await requestCustomEmojiImagesCache(
+            ['https://example.com/blobcat.webp'],
+            {
+                createMessageChannel: () => ({ port1, port2 }),
+            },
+        );
+
+        expect(result).toEqual({ success: true, cached: 1, failed: 0 });
+        expect(navigator.serviceWorker.controller?.postMessage).toHaveBeenCalledWith(
+            {
+                action: 'cacheCustomEmojiImages',
+                urls: ['https://example.com/blobcat.webp'],
+            },
+            [port2],
+        );
+        expect(port1.close).toHaveBeenCalledTimes(1);
+        expect(postMessage).not.toHaveBeenCalled();
+    });
+
+    it('falls back to a direct image load when service worker caching is unavailable', async () => {
+        Object.defineProperty(navigator, 'serviceWorker', {
+            value: {
+                controller: null,
+            },
+            configurable: true,
+            writable: true,
+        });
+
+        const image = {
+            onload: null as (() => void) | null,
+            onerror: null as (() => void) | null,
+            decoding: 'auto',
+            set src(_value: string) {
+                queueMicrotask(() => {
+                    image.onload?.(new Event('load') as never);
+                });
+            },
+        } as unknown as HTMLImageElement;
+
+        await expect(
+            preloadCustomEmojiImage('https://example.com/blobcat.webp', {
+                createImage: () => image,
+            }),
+        ).resolves.toBe(true);
     });
 
     it('restores cached custom emoji items from IndexedDB metadata', async () => {

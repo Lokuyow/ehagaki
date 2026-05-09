@@ -6,17 +6,20 @@
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
+    import { preloadCustomEmojiImage } from "../lib/customEmoji";
     import {
         canRequestPostDeletion,
         postDeletionService,
     } from "../lib/postDeletionService";
     import {
-        buildPreview,
+        buildPreviewContent,
         formatPostedAt,
+        type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
@@ -67,11 +70,42 @@
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
+    let emojiLoadStateByUrl = $state<
+        Record<string, "loading" | "ready" | "failed" | undefined>
+    >({});
     let historyContainer: HTMLDivElement | null = null;
+    const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
         getPosts: () => history.posts,
         getContainer: () => historyContainer,
+    });
+    let previewContentByEventId = $derived.by(() => {
+        const nextContent: Record<string, PostHistoryPreviewContentData> = {};
+
+        for (const post of history.posts) {
+            nextContent[post.eventId] = buildPreviewContent(post);
+        }
+
+        return nextContent;
+    });
+    let deleteTargetPreviewContent = $derived.by(() =>
+        deleteTargetPost ? buildPreviewContent(deleteTargetPost) : null,
+    );
+    let dialogEmojiUrls = $derived.by(() => {
+        const urls = new Set<string>();
+
+        for (const previewContent of Object.values(previewContentByEventId)) {
+            for (const url of previewContent.emojiUrls) {
+                urls.add(url);
+            }
+        }
+
+        for (const url of deleteTargetPreviewContent?.emojiUrls ?? []) {
+            urls.add(url);
+        }
+
+        return [...urls];
     });
 
     function resetDialogState(): void {
@@ -79,6 +113,8 @@
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         deleteRequestState = {};
+        emojiLoadStateByUrl = {};
+        loadingEmojiUrls.clear();
     }
 
     function handleClose() {
@@ -110,6 +146,26 @@
         };
     });
 
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
+        const pendingUrls = syncEmojiLoadState(dialogEmojiUrls);
+        for (const url of pendingUrls) {
+            void loadPostHistoryEmoji(url);
+        }
+    });
+
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
+        emojiLoadStateByUrl;
+        void previewCollapse.remeasure();
+    });
+
     function resetHistoryScrollPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = 0;
@@ -126,6 +182,77 @@
         if (await history.goToNextPage()) {
             resetHistoryScrollPosition();
         }
+    }
+
+    function getPreviewContent(
+        post: PostHistoryRecord,
+    ): PostHistoryPreviewContentData {
+        return (
+            previewContentByEventId[post.eventId] ?? buildPreviewContent(post)
+        );
+    }
+
+    function syncEmojiLoadState(urls: string[]): string[] {
+        const nextState: Record<
+            string,
+            "loading" | "ready" | "failed" | undefined
+        > = {};
+
+        for (const url of urls) {
+            if (loadingEmojiUrls.has(url)) {
+                nextState[url] = "loading";
+                continue;
+            }
+
+            const currentState = emojiLoadStateByUrl[url];
+            if (currentState === "ready" || currentState === "failed") {
+                nextState[url] = currentState;
+            }
+        }
+
+        const pendingUrls = urls.filter((url) => !nextState[url]);
+        for (const url of pendingUrls) {
+            loadingEmojiUrls.add(url);
+            nextState[url] = "loading";
+        }
+
+        if (!hasSameEmojiLoadState(emojiLoadStateByUrl, nextState)) {
+            emojiLoadStateByUrl = nextState;
+        }
+
+        return pendingUrls;
+    }
+
+    async function loadPostHistoryEmoji(url: string): Promise<void> {
+        const ready = await preloadCustomEmojiImage(url);
+        loadingEmojiUrls.delete(url);
+
+        if (!dialogEmojiUrls.includes(url)) {
+            return;
+        }
+
+        const nextState = ready ? "ready" : "failed";
+        if (emojiLoadStateByUrl[url] === nextState) {
+            return;
+        }
+
+        emojiLoadStateByUrl = {
+            ...emojiLoadStateByUrl,
+            [url]: nextState,
+        };
+    }
+
+    function hasSameEmojiLoadState(
+        left: Record<string, "loading" | "ready" | "failed" | undefined>,
+        right: Record<string, "loading" | "ready" | "failed" | undefined>,
+    ): boolean {
+        const leftKeys = Object.keys(left);
+        const rightKeys = Object.keys(right);
+        if (leftKeys.length !== rightKeys.length) {
+            return false;
+        }
+
+        return leftKeys.every((key) => left[key] === right[key]);
     }
 
     function buildNevent(post: PostHistoryRecord): string {
@@ -474,7 +601,12 @@
                                         id={"post-preview-content-" +
                                             post.eventId}
                                     >
-                                        {buildPreview(post.content)}
+                                        <PostHistoryPreviewContent
+                                            previewContent={getPreviewContent(
+                                                post,
+                                            )}
+                                            {emojiLoadStateByUrl}
+                                        />
                                     </div>
                                     {#if previewCollapse.shouldCollapsePost(post)}
                                         <div class="post-preview-toggle-row">
@@ -711,7 +843,11 @@
             </p>
             {#if deleteTargetPost}
                 <div class="delete-confirm-preview">
-                    {buildPreview(deleteTargetPost.content)}
+                    <PostHistoryPreviewContent
+                        previewContent={deleteTargetPreviewContent ??
+                            buildPreviewContent(deleteTargetPost)}
+                        {emojiLoadStateByUrl}
+                    />
                 </div>
             {/if}
         </div>

@@ -50,6 +50,39 @@ export const CUSTOM_EMOJI_CACHE_URL_LIMIT = 300;
 export const CUSTOM_EMOJI_CACHE_BATCH_SIZE = 24;
 export const EMOJIS_CACHE_SCHEMA_VERSION = 2;
 export const CUSTOM_EMOJI_SUGGESTION_LIMIT = 30;
+export const CUSTOM_EMOJI_CACHE_REQUEST_TIMEOUT = 8000;
+
+export interface CacheCustomEmojiImagesResult {
+    success: boolean;
+    cached: number;
+    failed: number;
+}
+
+interface CustomEmojiCacheMessagePortLike {
+    onmessage: ((event: MessageEvent<unknown>) => void) | null;
+    addEventListener?: (type: string, listener: (event: Event) => void) => void;
+    close: () => void;
+}
+
+interface CustomEmojiCacheMessageChannelLike {
+    port1: CustomEmojiCacheMessagePortLike;
+    port2: MessagePort;
+}
+
+interface RequestCustomEmojiImagesCacheRuntime {
+    navigatorObj?: Pick<Navigator, "serviceWorker">;
+    createMessageChannel?: () => CustomEmojiCacheMessageChannelLike | null;
+    setTimeoutFn?: typeof setTimeout;
+    clearTimeoutFn?: typeof clearTimeout;
+    timeoutMs?: number;
+}
+
+interface PreloadCustomEmojiImageRuntime {
+    requestCache?: (
+        urls: string[],
+    ) => Promise<CacheCustomEmojiImagesResult | null>;
+    createImage?: () => HTMLImageElement;
+}
 
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
@@ -538,4 +571,183 @@ export function cacheCustomEmojiImages(urls: string[]): void {
     };
 
     scheduleBackgroundTask(sendNextBatch);
+}
+
+export async function requestCustomEmojiImagesCache(
+    urls: string[],
+    runtime: RequestCustomEmojiImagesCacheRuntime = {},
+): Promise<CacheCustomEmojiImagesResult | null> {
+    const navigatorObj = runtime.navigatorObj ??
+        (typeof navigator !== "undefined" ? navigator : undefined);
+    const controller = navigatorObj?.serviceWorker?.controller;
+    const createMessageChannel = runtime.createMessageChannel ??
+        createDefaultMessageChannel;
+
+    if (!controller || !createMessageChannel) {
+        return null;
+    }
+
+    const batches = getCustomEmojiCacheBatches(urls);
+    if (!batches.length) {
+        return { success: true, cached: 0, failed: 0 };
+    }
+
+    let cached = 0;
+    let failed = 0;
+
+    for (const batch of batches) {
+        const result = await requestCustomEmojiImagesCacheBatch(batch, {
+            controller,
+            createMessageChannel,
+            setTimeoutFn: runtime.setTimeoutFn ?? setTimeout,
+            clearTimeoutFn: runtime.clearTimeoutFn ?? clearTimeout,
+            timeoutMs: runtime.timeoutMs ?? CUSTOM_EMOJI_CACHE_REQUEST_TIMEOUT,
+        });
+        cached += result.cached;
+        failed += result.failed;
+    }
+
+    return {
+        success: failed === 0,
+        cached,
+        failed,
+    };
+}
+
+export async function preloadCustomEmojiImage(
+    url: string,
+    runtime: PreloadCustomEmojiImageRuntime = {},
+): Promise<boolean> {
+    if (!isValidCustomEmojiUrl(url)) {
+        return false;
+    }
+
+    const requestCache = runtime.requestCache ?? requestCustomEmojiImagesCache;
+    try {
+        const cacheResult = await requestCache([url]);
+        if (cacheResult) {
+            return cacheResult.cached > 0 && cacheResult.failed === 0;
+        }
+    } catch {
+        // Fall through to a direct image load when SW communication is unavailable.
+    }
+
+    return await loadCustomEmojiImage(url, runtime.createImage);
+}
+
+async function requestCustomEmojiImagesCacheBatch(
+    urls: string[],
+    params: {
+        controller: ServiceWorker;
+        createMessageChannel: () => CustomEmojiCacheMessageChannelLike | null;
+        setTimeoutFn: typeof setTimeout;
+        clearTimeoutFn: typeof clearTimeout;
+        timeoutMs: number;
+    },
+): Promise<CacheCustomEmojiImagesResult> {
+    return await new Promise((resolve, reject) => {
+        const messageChannel = params.createMessageChannel();
+        if (!messageChannel) {
+            reject(new Error("MessageChannel is not available"));
+            return;
+        }
+
+        const timeout = params.setTimeoutFn(() => {
+            messageChannel.port1.close();
+            reject(new Error("ServiceWorker custom emoji cache request timed out"));
+        }, params.timeoutMs);
+
+        messageChannel.port1.onmessage = (event) => {
+            params.clearTimeoutFn(timeout);
+            messageChannel.port1.close();
+            resolve(normalizeCacheCustomEmojiImagesResult(event.data, urls.length));
+        };
+
+        messageChannel.port1.addEventListener?.("error", (event) => {
+            params.clearTimeoutFn(timeout);
+            messageChannel.port1.close();
+            reject(event);
+        });
+
+        try {
+            params.controller.postMessage(
+                {
+                    action: "cacheCustomEmojiImages",
+                    urls,
+                },
+                [messageChannel.port2],
+            );
+        } catch (error) {
+            params.clearTimeoutFn(timeout);
+            messageChannel.port1.close();
+            reject(error);
+        }
+    });
+}
+
+function normalizeCacheCustomEmojiImagesResult(
+    value: unknown,
+    requestedCount: number,
+): CacheCustomEmojiImagesResult {
+    if (!value || typeof value !== "object") {
+        return {
+            success: false,
+            cached: 0,
+            failed: requestedCount,
+        };
+    }
+
+    const result = value as Partial<CacheCustomEmojiImagesResult>;
+    const cached = Number.isFinite(result.cached)
+        ? Math.max(0, Number(result.cached))
+        : 0;
+    const failed = Number.isFinite(result.failed)
+        ? Math.max(0, Number(result.failed))
+        : Math.max(0, requestedCount - cached);
+
+    return {
+        success: result.success === true && failed === 0,
+        cached,
+        failed,
+    };
+}
+
+function createDefaultMessageChannel(): CustomEmojiCacheMessageChannelLike | null {
+    if (typeof MessageChannel === "undefined") {
+        return null;
+    }
+
+    return new MessageChannel();
+}
+
+async function loadCustomEmojiImage(
+    url: string,
+    createImage: (() => HTMLImageElement) | undefined,
+): Promise<boolean> {
+    const imageFactory = createImage ??
+        (typeof Image !== "undefined" ? () => new Image() : undefined);
+    if (!imageFactory) {
+        return false;
+    }
+
+    return await new Promise((resolve) => {
+        const image = imageFactory();
+        let settled = false;
+
+        const finish = (ready: boolean) => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            image.onload = null;
+            image.onerror = null;
+            resolve(ready);
+        };
+
+        image.decoding = "async";
+        image.onload = () => finish(true);
+        image.onerror = () => finish(false);
+        image.src = url;
+    });
 }

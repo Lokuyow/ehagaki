@@ -149,6 +149,7 @@ export function usePostHistoryPreviewCollapse({
     return {
         previewRef,
         isPostExpanded,
+        remeasure: measureCollapsiblePosts,
         togglePostExpanded,
         shouldCollapsePost,
     };

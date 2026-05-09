@@ -90,6 +90,10 @@ const nostrUtilsMock = vi.hoisted(() => ({
     toNevent: vi.fn(() => 'nevent1mock'),
 }));
 
+const customEmojiMock = vi.hoisted(() => ({
+    preloadCustomEmojiImage: vi.fn(),
+}));
+
 vi.mock('svelte-i18n', () => ({
     _: readable(mockTranslate),
 }));
@@ -129,6 +133,14 @@ vi.mock('../../lib/storage/channelMetadataRepository', () => ({
 vi.mock('../../lib/channelContextService', () => ({
     ChannelContextService: vi.fn(() => channelContextServiceMock),
 }));
+
+vi.mock('../../lib/customEmoji', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/customEmoji')>('../../lib/customEmoji');
+    return {
+        ...actual,
+        preloadCustomEmojiImage: customEmojiMock.preloadCustomEmojiImage,
+    };
+});
 
 vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
 
@@ -247,6 +259,7 @@ describe('PostHistoryDialog', () => {
             metadataCreatedAt: 200,
         });
         nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
+        customEmojiMock.preloadCustomEmojiImage.mockResolvedValue(true);
     });
 
     afterEach(() => {
@@ -470,6 +483,72 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText(expected)).toBeTruthy();
             expect(screen.getByText('1 年以内の投稿')).toBeTruthy();
         });
+    });
+
+    it('保存済み emoji tag から custom emoji を描画し、同一 URL は一度だけ preload する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'emoji-post-1',
+                content: 'one :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+            createRecord({
+                eventId: 'emoji-post-2',
+                content: 'two :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImage).toHaveBeenCalledTimes(1);
+            expect(customEmojiMock.preloadCustomEmojiImage).toHaveBeenCalledWith(
+                'https://example.com/blobcat.webp',
+            );
+        });
+
+        const images = await screen.findAllByRole('img', { name: ':blobcat:' });
+        expect(images).toHaveLength(2);
+    });
+
+    it('custom emoji の preload に失敗した場合は shortcode のまま表示する', async () => {
+        customEmojiMock.preloadCustomEmojiImage.mockResolvedValue(false);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'emoji-failed',
+                content: 'broken :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImage).toHaveBeenCalledWith(
+                'https://example.com/blobcat.webp',
+            );
+        });
+
+        expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
+        expect(screen.getByText(':blobcat:')).toBeTruthy();
     });
 
     it('検索 input からローカル検索へ切り替える', async () => {
