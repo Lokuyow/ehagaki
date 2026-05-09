@@ -430,49 +430,81 @@
                                 </div>
                                 {#if onReplyPost || previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-actions">
-                                        {#if onReplyPost}
-                                            <Button
-                                                type="button"
-                                                class="post-preview-action-button"
-                                                ariaLabel={$_(
-                                                    "replyQuote.reply_label",
-                                                )}
-                                                contentLayout="icon"
-                                                shape="circle"
-                                                onClick={() =>
-                                                    handleReplyPost(post)}
-                                            >
-                                                <div
-                                                    class="reply-icon svg-icon"
-                                                    aria-hidden="true"
-                                                ></div>
-                                            </Button>
-                                        {/if}
                                         {#if previewCollapse.shouldCollapsePost(post)}
-                                            <Button
-                                                type="button"
-                                                class="post-preview-action-button post-preview-toggle-button"
-                                                aria-expanded={previewCollapse.isPostExpanded(
-                                                    post,
-                                                )}
-                                                aria-controls={"post-preview-content-" +
-                                                    post.eventId}
-                                                onClick={() =>
-                                                    previewCollapse.togglePostExpanded(
-                                                        post.eventId,
-                                                    )}
+                                            <div
+                                                class="post-preview-toggle-row"
                                             >
-                                                {previewCollapse.isPostExpanded(
-                                                    post,
-                                                )
-                                                    ? $_("postHistory.collapse")
-                                                    : $_("postHistory.expand")}
-                                            </Button>
+                                                <Button
+                                                    type="button"
+                                                    class="post-preview-action-button post-preview-toggle-button"
+                                                    aria-expanded={previewCollapse.isPostExpanded(
+                                                        post,
+                                                    )}
+                                                    aria-controls={"post-preview-content-" +
+                                                        post.eventId}
+                                                    onClick={() =>
+                                                        previewCollapse.togglePostExpanded(
+                                                            post.eventId,
+                                                        )}
+                                                >
+                                                    {previewCollapse.isPostExpanded(
+                                                        post,
+                                                    )
+                                                        ? $_(
+                                                              "postHistory.collapse",
+                                                          )
+                                                        : $_(
+                                                              "postHistory.expand",
+                                                          )}
+                                                </Button>
+                                            </div>
                                         {/if}
+                                        <div class="post-preview-action-row">
+                                            {#if onReplyPost}
+                                                <Button
+                                                    type="button"
+                                                    class="post-preview-action-button"
+                                                    ariaLabel={$_(
+                                                        "replyQuote.reply_label",
+                                                    )}
+                                                    contentLayout="icon"
+                                                    shape="circle"
+                                                    onClick={() =>
+                                                        handleReplyPost(post)}
+                                                >
+                                                    <div
+                                                        class="reply-icon svg-icon"
+                                                        aria-hidden="true"
+                                                    ></div>
+                                                </Button>
+                                            {/if}
+                                            {#if post.deletedAt || hasDeletionFailed(post)}
+                                                <div
+                                                    class="post-meta post-meta-inline"
+                                                >
+                                                    {#if post.deletedAt}
+                                                        <span
+                                                            class="deleted-badge"
+                                                            >{$_(
+                                                                "postHistory.deletedBadge",
+                                                            )}</span
+                                                        >
+                                                    {/if}
+                                                    {#if hasDeletionFailed(post)}
+                                                        <span
+                                                            class="delete-failed"
+                                                            >{$_(
+                                                                "postHistory.deleteFailed",
+                                                            )}</span
+                                                        >
+                                                    {/if}
+                                                </div>
+                                            {/if}
+                                        </div>
                                     </div>
                                 {/if}
                             </div>
-                            {#if post.deletedAt || hasDeletionFailed(post)}
+                            {#if !(onReplyPost || previewCollapse.shouldCollapsePost(post)) && (post.deletedAt || hasDeletionFailed(post))}
                                 <div class="post-meta">
                                     {#if post.deletedAt}
                                         <span class="deleted-badge"
@@ -873,24 +905,49 @@
 
     .post-preview-actions {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 8px 16px;
-        margin-top: 8px;
+        flex-direction: column;
         padding-left: 1rem;
+
+        .post-preview-toggle-row {
+            display: flex;
+
+            :global(
+                    .post-preview-toggle-button,
+                    .post-preview-toggle-button:hover
+                ) {
+                color: var(--text-muted);
+                min-height: 26px;
+                padding: 0;
+                background: transparent;
+            }
+
+            :global(.post-preview-toggle-button:hover) {
+                text-decoration: underline;
+            }
+        }
+    }
+
+    .post-preview-action-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
 
         :global(.post-preview-action-button) {
             background: transparent;
         }
     }
 
+    .post-meta-inline {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
     :global(.post-preview-action-button) .svg-icon {
         width: 20px;
         height: 20px;
-    }
-
-    :global(.post-preview-toggle-button) {
-        margin: 0;
     }
 
     .post-meta {
