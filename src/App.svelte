@@ -1439,6 +1439,13 @@
       clearChannelContext();
     }
 
+    if (
+      replyQuoteState.value.reply !== null ||
+      replyQuoteState.value.quotes.length > 0
+    ) {
+      clearReplyQuote();
+    }
+
     if (!addQuoteReference(referenceTarget)) {
       focusEditor(".tiptap-editor", 100);
       return;

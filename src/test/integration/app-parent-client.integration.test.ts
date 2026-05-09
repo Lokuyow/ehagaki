@@ -185,6 +185,8 @@ vi.mock('../../components/ReplyQuotePreview.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
 vi.mock('../../components/ChannelContextPreview.svelte', async () =>
     await import('../mocks/EmptyComponent.svelte'));
+vi.mock('../../components/PostHistoryDialog.svelte', async () =>
+    await import('../mocks/PostHistoryDialogMock.svelte'));
 
 vi.mock('../../lib/authService', () => ({
     authService: {
@@ -304,9 +306,11 @@ import App from '../../App.svelte';
 describe('App parentClient integration', () => {
     beforeEach(async () => {
         const { clearReplyQuote } = await import('../../stores/replyQuoteStore.svelte');
+        const { showPostHistoryDialogStore } = await import('../../stores/dialogStore.svelte');
 
         vi.clearAllMocks();
         clearReplyQuote();
+        showPostHistoryDialogStore.set(false);
         mockState.bootstrapParams = null;
         mockState.parentRemoteLoginListener = null;
         mockState.parentRemoteLogoutListener = null;
@@ -820,6 +824,48 @@ describe('App parentClient integration', () => {
         expect(replyQuoteState.value.quotes).toHaveLength(0);
         expect(mockState.applyReplyQuoteQuery).not.toHaveBeenCalled();
         expect(mockSharedContentStoreModule.clearUrlQueryContentStore).not.toHaveBeenCalled();
+    });
+
+    it('投稿履歴から引用すると既存 composer を置き換えて 1 件だけ追加する', async () => {
+        const { replyQuoteState, setReplyQuote } = await import('../../stores/replyQuoteStore.svelte');
+        const { showPostHistoryDialogStore } = await import('../../stores/dialogStore.svelte');
+
+        setReplyQuote({
+            reply: {
+                eventId: CLEAR_REPLY_EVENT_ID,
+                relayHints: ['wss://hint-relay.example.com'],
+                authorPubkey: null,
+            },
+            quotes: [
+                {
+                    eventId: CLEAR_QUOTE_EVENT_ID,
+                    relayHints: [],
+                    authorPubkey: null,
+                },
+            ],
+        });
+        showPostHistoryDialogStore.set(true);
+
+        render(App);
+
+        await waitFor(() => {
+            expect(mockState.bootstrapParams).toBeTruthy();
+        });
+        await waitFor(() => {
+            expect(document.querySelector('[data-testid="post-history-dialog-quote"]')).toBeTruthy();
+        });
+
+        (document.querySelector('[data-testid="post-history-dialog-quote"]') as HTMLButtonElement)?.click();
+
+        await waitFor(() => {
+            expect(replyQuoteState.value.reply).toBeNull();
+            expect(replyQuoteState.value.quotes).toHaveLength(1);
+        });
+        expect(replyQuoteState.value.quotes[0]).toEqual(expect.objectContaining({
+            eventId: 'history-quote-target',
+            relayHints: ['wss://quote.example.com/', 'wss://accepted.example.com/'],
+            authorPubkey: 'a'.repeat(64),
+        }));
     });
 
 });
