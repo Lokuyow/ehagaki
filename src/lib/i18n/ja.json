@@ -120,6 +120,7 @@
     "channelUnknown": "不明",
     "mediaCached": "キャッシュ済み",
     "mediaNotCached": "未キャッシュ",
+    "mediaFetchAndCache": "再取得して保存",
     "mediaOpen": "開く",
     "mediaLoadCachedVideo": "動画を表示",
     "mediaLoading": "読み込み中...",

@@ -94,6 +94,20 @@ describe('DexiePostMediaCacheRepository', () => {
             updatedAt: 3000,
         });
 
+        await repository.upsert({
+            cacheKey: 'https://example.com/b.jpg',
+            url: 'https://example.com/b.jpg',
+            size: 20,
+            mimeType: 'image/jpeg',
+            source: 'network',
+            lastAccessedAt: 1500,
+        });
+
+        await expect(repository.listByLastAccessed()).resolves.toMatchObject([
+            { cacheKey: 'https://example.com/b.jpg', lastAccessedAt: 1500 },
+            { cacheKey: 'https://example.com/a.jpg', lastAccessedAt: 3000 },
+        ]);
+
         db.close();
     });
 });

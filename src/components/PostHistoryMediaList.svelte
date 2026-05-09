@@ -70,7 +70,19 @@
                                 : $_("postHistory.mediaNotCached")}
                         </span>
 
-                        {#if item.kind === "video" && item.cached && !item.previewObjectUrl}
+                        {#if !item.cached}
+                            <button
+                                type="button"
+                                class="post-history-media-action"
+                                disabled={item.isCaching}
+                                onclick={() =>
+                                    void mediaCache.fetchAndCacheMedia(item.url)}
+                            >
+                                {item.isCaching
+                                    ? $_("postHistory.mediaLoading")
+                                    : $_("postHistory.mediaFetchAndCache")}
+                            </button>
+                        {:else if item.kind === "video" && !item.previewObjectUrl}
                             <button
                                 type="button"
                                 class="post-history-media-action"

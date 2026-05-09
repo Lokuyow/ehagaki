@@ -9,6 +9,12 @@ import {
 } from './storage/postMediaCacheRepository';
 
 export const POST_MEDIA_CACHE_NAME = 'ehagaki-post-media-v1';
+export const POST_MEDIA_CACHE_MAX_TOTAL_SIZE = 128 * 1024 * 1024;
+
+type FetchLike = (
+    input: RequestInfo | URL,
+    init?: RequestInit,
+) => Promise<Response>;
 
 interface CacheLike {
     put(request: RequestInfo | URL, response: Response): Promise<void>;
@@ -22,6 +28,7 @@ interface CacheStorageLike {
 
 interface PostMediaCacheServiceRuntime {
     cacheStorage?: CacheStorageLike;
+    fetch?: FetchLike;
     createObjectUrl?: (blob: Blob) => string;
     revokeObjectUrl?: (url: string) => void;
 }
@@ -49,6 +56,9 @@ function createDefaultRuntime(): PostMediaCacheServiceRuntime {
 
     return {
         cacheStorage: typeof caches === 'undefined' ? undefined : caches,
+        fetch: typeof globalThis.fetch === 'function'
+            ? globalThis.fetch.bind(globalThis)
+            : undefined,
         createObjectUrl: canCreateObjectUrl
             ? URL.createObjectURL.bind(URL)
             : undefined,
@@ -62,6 +72,7 @@ export class PostMediaCacheService {
     constructor(
         private repository: PostMediaCacheRepository = postMediaCacheRepository,
         private runtime: PostMediaCacheServiceRuntime = createDefaultRuntime(),
+        private maxTotalSize = POST_MEDIA_CACHE_MAX_TOTAL_SIZE,
     ) { }
 
     async persistUploadedMedia(params: {
@@ -69,43 +80,45 @@ export class PostMediaCacheService {
         file: Blob;
         mimeType?: string;
     }): Promise<CachedPostMediaDescriptor | null> {
-        const cacheStorage = this.runtime.cacheStorage;
-        const normalizedUrl = normalizePostMediaUrl(params.url);
-        if (!cacheStorage || !normalizedUrl) {
+        return this.persistMediaBlob({
+            url: params.url,
+            file: params.file,
+            mimeType: params.mimeType || params.file.type || undefined,
+            source: 'uploaded',
+        });
+    }
+
+    async fetchAndCacheMedia(params: {
+        url: string;
+        mimeType?: string;
+    }): Promise<CachedPostMediaDescriptor | null> {
+        const fetchFn = this.runtime.fetch;
+        if (!fetchFn) {
             return null;
         }
 
-        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
-        const mimeType = params.mimeType || params.file.type || undefined;
-        const response = new Response(params.file, {
-            headers: mimeType
-                ? { 'Content-Type': mimeType }
-                : undefined,
-        });
+        let response: Response;
+        try {
+            response = await fetchFn(params.url);
+        } catch {
+            return null;
+        }
 
-        await cache.put(normalizedUrl, response);
-        const record = await this.repository.upsert({
-            cacheKey: normalizedUrl,
+        if (!response.ok) {
+            return null;
+        }
+
+        const blob = await response.blob();
+        return this.persistMediaBlob({
             url: params.url,
-            normalizedUrl,
-            size: params.file.size,
-            mimeType,
-            createdAt: Date.now(),
-            lastAccessedAt: Date.now(),
-            source: 'uploaded',
+            file: blob,
+            mimeType:
+                params.mimeType ||
+                response.headers.get('Content-Type') ||
+                blob.type ||
+                undefined,
+            source: 'network',
         });
-
-        return {
-            cacheKey: record.cacheKey,
-            url: record.url,
-            mimeType: record.mimeType,
-            size: record.size,
-            source: record.source,
-            kind: inferPostMediaKind({
-                url: record.url,
-                mimeType: record.mimeType,
-            }),
-        };
     }
 
     async getCachedMediaDescriptor(
@@ -178,6 +191,84 @@ export class PostMediaCacheService {
         const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
         await cache.delete(record.cacheKey);
         await this.repository.deleteByCacheKey(record.cacheKey);
+    }
+
+    private async persistMediaBlob(params: {
+        url: string;
+        file: Blob;
+        mimeType?: string;
+        source: 'uploaded' | 'network';
+    }): Promise<CachedPostMediaDescriptor | null> {
+        const cacheStorage = this.runtime.cacheStorage;
+        const normalizedUrl = normalizePostMediaUrl(params.url);
+        if (!cacheStorage || !normalizedUrl) {
+            return null;
+        }
+
+        if (params.file.size > this.maxTotalSize) {
+            return null;
+        }
+
+        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+        const timestamp = Date.now();
+        const response = new Response(params.file, {
+            headers: params.mimeType
+                ? { 'Content-Type': params.mimeType }
+                : undefined,
+        });
+
+        await cache.put(normalizedUrl, response);
+        const record = await this.repository.upsert({
+            cacheKey: normalizedUrl,
+            url: params.url,
+            normalizedUrl,
+            size: params.file.size,
+            mimeType: params.mimeType,
+            createdAt: timestamp,
+            lastAccessedAt: timestamp,
+            source: params.source,
+        });
+        await this.evictOverflowEntries(normalizedUrl);
+
+        return {
+            cacheKey: record.cacheKey,
+            url: record.url,
+            mimeType: record.mimeType,
+            size: record.size,
+            source: record.source,
+            kind: inferPostMediaKind({
+                url: record.url,
+                mimeType: record.mimeType,
+            }),
+        };
+    }
+
+    private async evictOverflowEntries(protectedCacheKey: string): Promise<void> {
+        const cacheStorage = this.runtime.cacheStorage;
+        if (!cacheStorage) {
+            return;
+        }
+
+        const entries = await this.repository.listByLastAccessed();
+        let totalSize = entries.reduce((sum, entry) => sum + entry.size, 0);
+        if (totalSize <= this.maxTotalSize) {
+            return;
+        }
+
+        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+        for (const entry of entries) {
+            if (entry.cacheKey === protectedCacheKey) {
+                continue;
+            }
+
+            await cache.delete(entry.cacheKey);
+            await this.repository.deleteByCacheKey(entry.cacheKey);
+            totalSize -= entry.size;
+
+            if (totalSize <= this.maxTotalSize) {
+                return;
+            }
+        }
     }
 
     private async getCachedRecordAndResponse(url: string): Promise<{

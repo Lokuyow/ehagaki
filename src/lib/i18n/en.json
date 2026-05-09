@@ -120,6 +120,7 @@
     "channelUnknown": "Unknown",
     "mediaCached": "Cached",
     "mediaNotCached": "Not cached",
+    "mediaFetchAndCache": "Fetch and cache",
     "mediaOpen": "Open",
     "mediaLoadCachedVideo": "Load video",
     "mediaLoading": "Loading...",

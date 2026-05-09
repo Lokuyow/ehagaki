@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
@@ -7,6 +7,7 @@ const translateMock = vi.hoisted(() => (key: string) => {
         'postHistory.media': 'メディア',
         'postHistory.mediaCached': 'キャッシュ済み',
         'postHistory.mediaNotCached': '未キャッシュ',
+        'postHistory.mediaFetchAndCache': '再取得して保存',
         'postHistory.mediaOpen': '開く',
         'postHistory.mediaLoadCachedVideo': '動画を表示',
         'postHistory.mediaLoading': '読み込み中...',
@@ -19,6 +20,7 @@ const translateMock = vi.hoisted(() => (key: string) => {
 const postMediaCacheServiceMock = vi.hoisted(() => ({
     getCachedMediaDescriptor: vi.fn(),
     createCachedMediaObjectUrl: vi.fn(),
+    fetchAndCacheMedia: vi.fn(),
     revokeObjectUrl: vi.fn(),
 }));
 
@@ -33,6 +35,10 @@ vi.mock('../../lib/postMediaCacheService', () => ({
 import PostHistoryMediaList from '../../components/PostHistoryMediaList.svelte';
 
 describe('PostHistoryMediaList', () => {
+    beforeEach(() => {
+        vi.resetAllMocks();
+    });
+
     it('cached image を自動表示し cached video は明示操作で読み込む', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockImplementation(async (url: string) => {
@@ -128,5 +134,56 @@ describe('PostHistoryMediaList', () => {
             vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
         ).toHaveBeenCalledWith('https://example.com/video.mp4');
         expect(screen.getByText('未キャッシュ')).toBeTruthy();
+    });
+
+    it('uncached image を明示操作で再取得して保存できる', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/uncached.png',
+                url: 'https://example.com/uncached.png',
+                mimeType: 'image/png',
+                size: 6,
+                source: 'network',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/uncached.png',
+                url: 'https://example.com/uncached.png',
+                mimeType: 'image/png',
+                size: 6,
+                source: 'network',
+                kind: 'image',
+                objectUrl: 'blob:uncached-image',
+            });
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/uncached.png',
+                        mimeType: 'image/png',
+                        alt: 'uncached image',
+                    },
+                ],
+            },
+        });
+
+        await fireEvent.click(
+            screen.getByRole('button', { name: '再取得して保存' }),
+        );
+
+        expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({
+            url: 'https://example.com/uncached.png',
+            mimeType: 'image/png',
+        });
+        await waitFor(() => {
+            expect(screen.getByAltText('uncached image')).toBeTruthy();
+        });
+        expect(
+            vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
+        ).toHaveBeenCalledWith('https://example.com/uncached.png');
     });
 });

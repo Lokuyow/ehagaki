@@ -7,6 +7,7 @@ export const POST_MEDIA_CACHE_SCHEMA_VERSION = 1;
 export interface PostMediaCacheRepository {
     getByCacheKey(cacheKey: string): Promise<PostMediaCacheEntryRecord | null>;
     getByUrl(url: string): Promise<PostMediaCacheEntryRecord | null>;
+    listByLastAccessed(): Promise<PostMediaCacheEntryRecord[]>;
     upsert(input: {
         cacheKey: string;
         url: string;
@@ -67,6 +68,13 @@ implements PostMediaCacheRepository {
             .first();
 
         return record ? cloneEntry(record) : null;
+    }
+
+    async listByLastAccessed(): Promise<PostMediaCacheEntryRecord[]> {
+        const records = await this.db.postMediaCache
+            .orderBy('lastAccessedAt')
+            .toArray();
+        return records.map(cloneEntry);
     }
 
     async upsert(input: {

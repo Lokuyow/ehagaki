@@ -13,6 +13,7 @@ export interface ResolvedPostHistoryMediaItem {
     size?: number;
     source?: 'uploaded' | 'network';
     isLoadingPreview: boolean;
+    isCaching: boolean;
 }
 
 export function usePostHistoryMediaCache(params: {
@@ -22,6 +23,11 @@ export function usePostHistoryMediaCache(params: {
         items: [] as ResolvedPostHistoryMediaItem[],
     });
     const activeObjectUrls = new Map<string, string>();
+    let resolutionVersion = 0;
+
+    function invalidatePendingResolution(): void {
+        resolutionVersion += 1;
+    }
 
     function revokeTrackedObjectUrl(url: string): void {
         const objectUrl = activeObjectUrls.get(url);
@@ -53,7 +59,63 @@ export function usePostHistoryMediaCache(params: {
             }),
             cached: false,
             isLoadingPreview: false,
+            isCaching: false,
         };
+    }
+
+    function updateItem(
+        url: string,
+        updater: (item: ResolvedPostHistoryMediaItem) => ResolvedPostHistoryMediaItem,
+    ): void {
+        state.items = state.items.map((item) =>
+            item.url === url ? updater(item) : item,
+        );
+    }
+
+    async function applyCachedState(params: {
+        url: string;
+        descriptor: {
+            mimeType?: string;
+            kind: PostMediaKind;
+            size: number;
+            source: 'uploaded' | 'network';
+        };
+        loadPreview: boolean;
+    }): Promise<void> {
+        const { url, descriptor, loadPreview } = params;
+
+        if (loadPreview && (descriptor.kind === 'image' || descriptor.kind === 'video')) {
+            const cached = await postMediaCacheService.createCachedMediaObjectUrl(url);
+            if (cached) {
+                revokeTrackedObjectUrl(url);
+                activeObjectUrls.set(url, cached.objectUrl);
+                updateItem(url, (item) => ({
+                    ...item,
+                    cached: true,
+                    previewObjectUrl: cached.objectUrl,
+                    mimeType: cached.mimeType,
+                    kind: cached.kind,
+                    size: cached.size,
+                    source: cached.source,
+                    isLoadingPreview: false,
+                    isCaching: false,
+                }));
+                return;
+            }
+        }
+
+        revokeTrackedObjectUrl(url);
+        updateItem(url, (item) => ({
+            ...item,
+            cached: true,
+            previewObjectUrl: undefined,
+            mimeType: descriptor.mimeType,
+            kind: descriptor.kind,
+            size: descriptor.size,
+            source: descriptor.source,
+            isLoadingPreview: false,
+            isCaching: false,
+        }));
     }
 
     async function loadCachedVideo(url: string): Promise<void> {
@@ -72,43 +134,67 @@ export function usePostHistoryMediaCache(params: {
             return;
         }
 
-        state.items = state.items.map((item, index) =>
-            index === targetIndex
-                ? { ...item, isLoadingPreview: true }
-                : item,
-        );
+        invalidatePendingResolution();
+        updateItem(url, (item) => ({ ...item, isLoadingPreview: true }));
 
-        const cached = await postMediaCacheService.createCachedMediaObjectUrl(url);
-        if (!cached) {
-            state.items = state.items.map((item, index) =>
-                index === targetIndex
-                    ? { ...item, isLoadingPreview: false }
-                    : item,
-            );
+        try {
+            const cached = await postMediaCacheService.createCachedMediaObjectUrl(url);
+            if (!cached) {
+                updateItem(url, (item) => ({ ...item, isLoadingPreview: false }));
+                return;
+            }
+
+            revokeTrackedObjectUrl(url);
+            activeObjectUrls.set(url, cached.objectUrl);
+            updateItem(url, (item) => ({
+                ...item,
+                cached: true,
+                previewObjectUrl: cached.objectUrl,
+                mimeType: cached.mimeType,
+                kind: cached.kind,
+                size: cached.size,
+                source: cached.source,
+                isLoadingPreview: false,
+            }));
+        } catch {
+            updateItem(url, (item) => ({ ...item, isLoadingPreview: false }));
+        }
+    }
+
+    async function fetchAndCacheMedia(url: string): Promise<void> {
+        const target = state.items.find((item) => item.url === url);
+        if (!target || target.cached || target.isCaching) {
             return;
         }
 
-        revokeTrackedObjectUrl(url);
-        activeObjectUrls.set(url, cached.objectUrl);
-        state.items = state.items.map((item, index) =>
-            index === targetIndex
-                ? {
-                    ...item,
-                    cached: true,
-                    previewObjectUrl: cached.objectUrl,
-                    mimeType: cached.mimeType,
-                    kind: cached.kind,
-                    size: cached.size,
-                    source: cached.source,
-                    isLoadingPreview: false,
-                }
-                : item,
-        );
+        invalidatePendingResolution();
+        updateItem(url, (item) => ({ ...item, isCaching: true }));
+
+        try {
+            const cached = await postMediaCacheService.fetchAndCacheMedia({
+                url,
+                mimeType: target.mimeType,
+            });
+            if (!cached) {
+                updateItem(url, (item) => ({ ...item, isCaching: false }));
+                return;
+            }
+
+            await applyCachedState({
+                url,
+                descriptor: cached,
+                loadPreview: cached.kind === 'image',
+            });
+        } catch {
+            updateItem(url, (item) => ({ ...item, isCaching: false }));
+        }
     }
 
     $effect(() => {
         const mediaItems = params.getMedia();
+        const currentResolutionVersion = ++resolutionVersion;
         let cancelled = false;
+        const nextObjectUrls = new Map<string, string>();
 
         revokeAllObjectUrls();
         state.items = mediaItems.map(toBaseItem);
@@ -156,7 +242,7 @@ export function usePostHistoryMediaCache(params: {
                         return baseItem;
                     }
 
-                    activeObjectUrls.set(media.url, cachedImage.objectUrl);
+                    nextObjectUrls.set(media.url, cachedImage.objectUrl);
                     return {
                         ...baseItem,
                         cached: true,
@@ -169,15 +255,25 @@ export function usePostHistoryMediaCache(params: {
                 }),
             );
 
-            if (cancelled) {
+            if (cancelled || currentResolutionVersion !== resolutionVersion) {
+                for (const objectUrl of nextObjectUrls.values()) {
+                    postMediaCacheService.revokeObjectUrl(objectUrl);
+                }
                 return;
             }
 
+            revokeAllObjectUrls();
+            for (const [url, objectUrl] of nextObjectUrls) {
+                activeObjectUrls.set(url, objectUrl);
+            }
             state.items = resolvedItems;
         })();
 
         return () => {
             cancelled = true;
+            if (currentResolutionVersion === resolutionVersion) {
+                resolutionVersion += 1;
+            }
             revokeAllObjectUrls();
         };
     });
@@ -185,5 +281,6 @@ export function usePostHistoryMediaCache(params: {
     return {
         state,
         loadCachedVideo,
+        fetchAndCacheMedia,
     };
 }
