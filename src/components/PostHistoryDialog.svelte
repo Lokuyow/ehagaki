@@ -317,121 +317,150 @@
                     >
                         <div class="post-history-main">
                             <div class="post-preview">
-                                <div class="post-preview-header">
-                                    {#if post.kind === 42}
-                                        <div class="post-history-channel-row">
-                                            <span
-                                                class="channel-icon svg-icon"
-                                                aria-hidden="true"
-                                            ></span>
-                                            <span class="channel-label"
-                                                >{$_(
-                                                    "postHistory.channel",
-                                                )}</span
+                                {#if post.kind === 42 || post.deletedAt || hasDeletionFailed(post) || !(onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post))}
+                                    <div class="post-preview-header">
+                                        {#if post.kind === 42}
+                                            <div
+                                                class="post-history-channel-row"
                                             >
-                                            <span class="channel-name"
-                                                >{channelDisplay.getChannelText(
-                                                    post,
-                                                    $_,
-                                                )}</span
-                                            >
-                                        </div>
-                                    {/if}
-                                    <div class="post-preview-header-actions">
-                                        <span
-                                            >{formatPostedAt(
-                                                post.postedAt,
-                                            )}</span
-                                        >
-                                        <Popover.Root>
-                                            <Popover.Trigger
-                                                class="menu-trigger"
-                                                aria-label="アクションを表示"
-                                            >
-                                                <div
-                                                    class="more-icon svg-icon"
-                                                ></div>
-                                            </Popover.Trigger>
-                                            <Popover.Portal>
-                                                <Popover.Content
-                                                    side="bottom"
-                                                    sideOffset={8}
-                                                    class="post-history-menu-content"
-                                                    trapFocus={false}
-                                                    onCloseAutoFocus={(
-                                                        event: Event,
-                                                    ) => event.preventDefault()}
+                                                <span
+                                                    class="channel-icon svg-icon"
+                                                    aria-hidden="true"
+                                                ></span>
+                                                <span class="channel-label"
+                                                    >{$_(
+                                                        "postHistory.channel",
+                                                    )}</span
                                                 >
-                                                    <div
-                                                        class="post-history-menu-body"
+                                                <span class="channel-name"
+                                                    >{channelDisplay.getChannelText(
+                                                        post,
+                                                        $_,
+                                                    )}</span
+                                                >
+                                            </div>
+                                        {/if}
+                                        <div class="post-preview-header-right">
+                                            {#if post.deletedAt || hasDeletionFailed(post)}
+                                                <div class="post-meta-inline">
+                                                    {#if post.deletedAt}
+                                                        <span
+                                                            class="deleted-badge"
+                                                            >{$_(
+                                                                "postHistory.deletedBadge",
+                                                            )}</span
+                                                        >
+                                                    {/if}
+                                                    {#if hasDeletionFailed(post)}
+                                                        <span
+                                                            class="delete-failed"
+                                                            >{$_(
+                                                                "postHistory.deleteFailed",
+                                                            )}</span
+                                                        >
+                                                    {/if}
+                                                </div>
+                                            {/if}
+                                            {#if !(onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post))}
+                                                <span
+                                                    >{formatPostedAt(
+                                                        post.postedAt,
+                                                    )}</span
+                                                >
+                                                <Popover.Root>
+                                                    <Popover.Trigger
+                                                        class="menu-trigger"
+                                                        aria-label="アクションを表示"
                                                     >
-                                                        <button
-                                                            type="button"
-                                                            class="menu-action-button"
-                                                            onclick={() =>
-                                                                void handleCopyNevent(
-                                                                    post,
-                                                                )}
+                                                        <div
+                                                            class="more-icon svg-icon"
+                                                        ></div>
+                                                    </Popover.Trigger>
+                                                    <Popover.Portal>
+                                                        <Popover.Content
+                                                            side="bottom"
+                                                            sideOffset={8}
+                                                            class="post-history-menu-content"
+                                                            trapFocus={false}
+                                                            onCloseAutoFocus={(
+                                                                event: Event,
+                                                            ) =>
+                                                                event.preventDefault()}
                                                         >
                                                             <div
-                                                                class="copy-icon svg-icon"
-                                                                aria-hidden="true"
-                                                            ></div>
-                                                            <span>
-                                                                {copyState[
-                                                                    post.eventId
-                                                                ] === "copied"
-                                                                    ? $_(
-                                                                          "postHistory.copied",
-                                                                      )
-                                                                    : copyState[
+                                                                class="post-history-menu-body"
+                                                            >
+                                                                <button
+                                                                    type="button"
+                                                                    class="menu-action-button"
+                                                                    onclick={() =>
+                                                                        void handleCopyNevent(
+                                                                            post,
+                                                                        )}
+                                                                >
+                                                                    <div
+                                                                        class="copy-icon svg-icon"
+                                                                        aria-hidden="true"
+                                                                    ></div>
+                                                                    <span>
+                                                                        {copyState[
                                                                             post
                                                                                 .eventId
                                                                         ] ===
-                                                                        "failed"
-                                                                      ? $_(
-                                                                            "postHistory.copyFailed",
-                                                                        )
-                                                                      : $_(
-                                                                            "postHistory.copyNevent",
+                                                                        "copied"
+                                                                            ? $_(
+                                                                                  "postHistory.copied",
+                                                                              )
+                                                                            : copyState[
+                                                                                    post
+                                                                                        .eventId
+                                                                                ] ===
+                                                                                "failed"
+                                                                              ? $_(
+                                                                                    "postHistory.copyFailed",
+                                                                                )
+                                                                              : $_(
+                                                                                    "postHistory.copyNevent",
+                                                                                )}
+                                                                    </span>
+                                                                </button>
+                                                                {#if canDeletePost(post)}
+                                                                    <button
+                                                                        type="button"
+                                                                        class="menu-action-button menu-action-button-danger"
+                                                                        disabled={isDeletionSending(
+                                                                            post,
                                                                         )}
-                                                            </span>
-                                                        </button>
-                                                        {#if canDeletePost(post)}
-                                                            <button
-                                                                type="button"
-                                                                class="menu-action-button menu-action-button-danger"
-                                                                disabled={isDeletionSending(
-                                                                    post,
-                                                                )}
-                                                                onclick={() =>
-                                                                    openDeleteConfirm(
-                                                                        post,
-                                                                    )}
-                                                            >
-                                                                <div
-                                                                    class="trash-icon svg-icon"
-                                                                    aria-hidden="true"
-                                                                ></div>
-                                                                <span>
-                                                                    {isDeletionSending(
-                                                                        post,
-                                                                    )
-                                                                        ? $_(
-                                                                              "postHistory.deleteSending",
-                                                                          )
-                                                                        : $_(
-                                                                              "postHistory.delete",
-                                                                          )}
-                                                                </span>
-                                                            </button>
-                                                        {/if}
-                                                    </div>
-                                                </Popover.Content>
-                                            </Popover.Portal>
-                                        </Popover.Root>
+                                                                        onclick={() =>
+                                                                            openDeleteConfirm(
+                                                                                post,
+                                                                            )}
+                                                                    >
+                                                                        <div
+                                                                            class="trash-icon svg-icon"
+                                                                            aria-hidden="true"
+                                                                        ></div>
+                                                                        <span>
+                                                                            {isDeletionSending(
+                                                                                post,
+                                                                            )
+                                                                                ? $_(
+                                                                                      "postHistory.deleteSending",
+                                                                                  )
+                                                                                : $_(
+                                                                                      "postHistory.delete",
+                                                                                  )}
+                                                                        </span>
+                                                                    </button>
+                                                                {/if}
+                                                            </div>
+                                                        </Popover.Content>
+                                                    </Popover.Portal>
+                                                </Popover.Root>
+                                            {/if}
+                                        </div>
                                     </div>
-                                </div>
+                                {/if}
                                 <div class="post-preview-body">
                                     <div
                                         class="post-preview-content"
@@ -471,66 +500,143 @@
                                         </div>
                                     {/if}
                                 </div>
-                                {#if onReplyPost ||
-                                    onQuotePost ||
-                                    previewCollapse.shouldCollapsePost(post)}
-                                    <div class="post-preview-action-row">
-                                        {#if onReplyPost}
-                                            <Button
-                                                type="button"
-                                                class="post-preview-action-button"
-                                                ariaLabel={$_(
-                                                    "replyQuote.reply_label",
-                                                )}
-                                                contentLayout="icon"
-                                                shape="circle"
-                                                onClick={() =>
-                                                    handleReplyPost(post)}
+                                {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
+                                    <div class="post-preview-footer">
+                                        <div class="post-preview-action-left">
+                                            {#if onReplyPost}
+                                                <Button
+                                                    type="button"
+                                                    class="post-preview-action-button"
+                                                    ariaLabel={$_(
+                                                        "replyQuote.reply_label",
+                                                    )}
+                                                    contentLayout="icon"
+                                                    shape="circle"
+                                                    onClick={() =>
+                                                        handleReplyPost(post)}
+                                                >
+                                                    <div
+                                                        class="reply-icon svg-icon"
+                                                        aria-hidden="true"
+                                                    ></div>
+                                                </Button>
+                                            {/if}
+                                            {#if onQuotePost}
+                                                <Button
+                                                    type="button"
+                                                    class="post-preview-action-button"
+                                                    ariaLabel={$_(
+                                                        "replyQuote.quote_label",
+                                                    )}
+                                                    contentLayout="icon"
+                                                    shape="circle"
+                                                    onClick={() =>
+                                                        handleQuotePost(post)}
+                                                >
+                                                    <div
+                                                        class="quote-icon svg-icon"
+                                                        aria-hidden="true"
+                                                    ></div>
+                                                </Button>
+                                            {/if}
+                                        </div>
+                                        <div class="post-preview-action-right">
+                                            <span
+                                                >{formatPostedAt(
+                                                    post.postedAt,
+                                                )}</span
                                             >
-                                                <div
-                                                    class="reply-icon svg-icon"
-                                                    aria-hidden="true"
-                                                ></div>
-                                            </Button>
-                                        {/if}
-                                        {#if onQuotePost}
-                                            <Button
-                                                type="button"
-                                                class="post-preview-action-button"
-                                                ariaLabel={$_(
-                                                    "replyQuote.quote_label",
-                                                )}
-                                                contentLayout="icon"
-                                                shape="circle"
-                                                onClick={() =>
-                                                    handleQuotePost(post)}
-                                            >
-                                                <div
-                                                    class="quote-icon svg-icon"
-                                                    aria-hidden="true"
-                                                ></div>
-                                            </Button>
-                                        {/if}
-                                        {#if post.deletedAt || hasDeletionFailed(post)}
-                                            <div
-                                                class="post-meta post-meta-inline"
-                                            >
-                                                {#if post.deletedAt}
-                                                    <span class="deleted-badge"
-                                                        >{$_(
-                                                            "postHistory.deletedBadge",
-                                                        )}</span
+                                            <Popover.Root>
+                                                <Popover.Trigger
+                                                    class="menu-trigger"
+                                                    aria-label="アクションを表示"
+                                                >
+                                                    <div
+                                                        class="more-icon svg-icon"
+                                                    ></div>
+                                                </Popover.Trigger>
+                                                <Popover.Portal>
+                                                    <Popover.Content
+                                                        side="bottom"
+                                                        sideOffset={8}
+                                                        class="post-history-menu-content"
+                                                        trapFocus={false}
+                                                        onCloseAutoFocus={(
+                                                            event: Event,
+                                                        ) =>
+                                                            event.preventDefault()}
                                                     >
-                                                {/if}
-                                                {#if hasDeletionFailed(post)}
-                                                    <span class="delete-failed"
-                                                        >{$_(
-                                                            "postHistory.deleteFailed",
-                                                        )}</span
-                                                    >
-                                                {/if}
-                                            </div>
-                                        {/if}
+                                                        <div
+                                                            class="post-history-menu-body"
+                                                        >
+                                                            <button
+                                                                type="button"
+                                                                class="menu-action-button"
+                                                                onclick={() =>
+                                                                    void handleCopyNevent(
+                                                                        post,
+                                                                    )}
+                                                            >
+                                                                <div
+                                                                    class="copy-icon svg-icon"
+                                                                    aria-hidden="true"
+                                                                ></div>
+                                                                <span>
+                                                                    {copyState[
+                                                                        post
+                                                                            .eventId
+                                                                    ] ===
+                                                                    "copied"
+                                                                        ? $_(
+                                                                              "postHistory.copied",
+                                                                          )
+                                                                        : copyState[
+                                                                                post
+                                                                                    .eventId
+                                                                            ] ===
+                                                                            "failed"
+                                                                          ? $_(
+                                                                                "postHistory.copyFailed",
+                                                                            )
+                                                                          : $_(
+                                                                                "postHistory.copyNevent",
+                                                                            )}
+                                                                </span>
+                                                            </button>
+                                                            {#if canDeletePost(post)}
+                                                                <button
+                                                                    type="button"
+                                                                    class="menu-action-button menu-action-button-danger"
+                                                                    disabled={isDeletionSending(
+                                                                        post,
+                                                                    )}
+                                                                    onclick={() =>
+                                                                        openDeleteConfirm(
+                                                                            post,
+                                                                        )}
+                                                                >
+                                                                    <div
+                                                                        class="trash-icon svg-icon"
+                                                                        aria-hidden="true"
+                                                                    ></div>
+                                                                    <span>
+                                                                        {isDeletionSending(
+                                                                            post,
+                                                                        )
+                                                                            ? $_(
+                                                                                  "postHistory.deleteSending",
+                                                                              )
+                                                                            : $_(
+                                                                                  "postHistory.delete",
+                                                                              )}
+                                                                    </span>
+                                                                </button>
+                                                            {/if}
+                                                        </div>
+                                                    </Popover.Content>
+                                                </Popover.Portal>
+                                            </Popover.Root>
+                                        </div>
                                     </div>
                                 {/if}
                             </div>
@@ -738,8 +844,9 @@
         border-bottom: none;
     }
 
-    .post-history-item-deleted .post-history-main > :not(.post-meta),
-    .post-history-item-deleted .post-meta > :not(.deleted-badge) {
+    .post-history-item-deleted .post-meta-inline > :not(.deleted-badge),
+    .post-history-item-deleted .post-preview-body,
+    .post-history-item-deleted .post-preview-footer {
         opacity: 0.65;
     }
 
@@ -761,7 +868,7 @@
         line-height: 1.3;
     }
 
-    .post-preview-header-actions {
+    .post-preview-header-right {
         display: flex;
         align-items: center;
         gap: 2px;
@@ -769,7 +876,7 @@
         margin-left: auto;
     }
 
-    .post-preview-header-actions > span {
+    .post-preview-header-right > span {
         white-space: nowrap;
     }
 
@@ -889,6 +996,7 @@
         color: var(--text);
         font-size: 1rem;
         line-height: 1.5;
+        gap: 6px;
     }
 
     .post-history-channel-row {
@@ -956,23 +1064,37 @@
         }
     }
 
-    .post-preview-action-row {
+    .post-preview-footer {
         display: flex;
-        align-items: stretch;
+        align-items: center;
         gap: 8px;
-        margin-top: 6px;
         padding-left: 1rem;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+    }
 
-        :global(.post-preview-action-button) {
-            height: auto;
-            min-height: 30px;
-            background: transparent;
+    .post-preview-action-left {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
 
-            :global(.svg-icon) {
-                width: 24px;
-                height: 24px;
-                background: var(--text-muted);
-            }
+    .post-preview-action-right {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-left: auto;
+    }
+
+    .post-preview-footer :global(.post-preview-action-button) {
+        height: auto;
+        min-height: 30px;
+        background: transparent;
+
+        :global(.svg-icon) {
+            width: 24px;
+            height: 24px;
+            background: var(--text-muted);
         }
     }
 
@@ -999,7 +1121,6 @@
         background: color-mix(in srgb, var(--theme), transparent 82%);
         color: var(--theme);
         font-weight: 600;
-        opacity: 1;
     }
 
     .delete-failed {
