@@ -98,6 +98,31 @@ function createFileUploadManager(
     return new dependencies.FileUploadManager();
 }
 
+function getCurrentUploadDestinationIdentity(): {
+    pubkeyHex: string | null;
+    npub: string | null;
+} {
+    if (!authState.value.isAuthenticated) {
+        return {
+            pubkeyHex: null,
+            npub: null,
+        };
+    }
+
+    return {
+        pubkeyHex: authState.value.pubkey || null,
+        npub: authState.value.npub || null,
+    };
+}
+
+export async function resolveCurrentUploadDestination(): Promise<UploadDestination> {
+    const identity = getCurrentUploadDestinationIdentity();
+    return resolveUploadDestinationForUse(
+        await uploadDestinationsRepository.getDefault(identity.pubkeyHex),
+        identity,
+    );
+}
+
 function getDestinationUploadEndpoint(destination: UploadDestination | undefined): string | undefined {
     if (!destination) return undefined;
     if (destination.protocol === "nip96") {
@@ -258,13 +283,7 @@ const createDefaultDependencies = (): UploadHelperDependencies => ({
     getMimeTypeFromUrl,
     createImetaTag: async (params: any) => await createImetaTag(params),
     imageSizeMapStore,
-    resolveUploadDestination: async () => resolveUploadDestinationForUse(
-        await uploadDestinationsRepository.getDefault(null),
-        {
-            pubkeyHex: authState.value.pubkey || null,
-            npub: authState.value.npub || null,
-        },
-    ),
+    resolveUploadDestination: resolveCurrentUploadDestination,
 });
 
 export async function uploadHelper({

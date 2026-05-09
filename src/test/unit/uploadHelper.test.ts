@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { performFileUpload, uploadHelper } from "../../lib/uploadHelper";
+import {
+    performFileUpload,
+    resolveCurrentUploadDestination,
+    uploadHelper,
+} from "../../lib/uploadHelper";
 import { generateBlurhashes, insertPlaceholdersIntoEditor } from "../../lib/editor/placeholderManager";
 import { processFilesForUpload, prepareMetadataList } from "../../lib/utils/fileUtils";
 import {
@@ -19,6 +23,28 @@ import type {
     UploadDestination,
 } from "../../lib/types";
 import { NodeSelection } from "prosemirror-state";
+
+const uploadDestinationsRepositoryMock = vi.hoisted(() => ({
+    getDefault: vi.fn(),
+}));
+
+const authStateMock = vi.hoisted(() => ({
+    value: {
+        isAuthenticated: false,
+        pubkey: "",
+        npub: "",
+    },
+}));
+
+vi.mock("../../lib/storage/uploadDestinationsRepository", () => ({
+    uploadDestinationsRepository: {
+        getDefault: uploadDestinationsRepositoryMock.getDefault,
+    },
+}));
+
+vi.mock("../../stores/authStore.svelte", () => ({
+    authState: authStateMock,
+}));
 
 // imageSizeMapStoreをモック - パスを修正
 vi.mock("../../stores/tagsStore.svelte", () => ({
@@ -428,6 +454,49 @@ describe("uploadHelper", () => {
 
             expect(FileUploadManager).not.toHaveBeenCalled();
             expect(placeholderMap[0].blurhash).toBeUndefined();
+        });
+    });
+
+    describe("resolveCurrentUploadDestination", () => {
+        it("uses the authenticated user's scope for the default destination", async () => {
+            const pubkeyHex = "f".repeat(64);
+            const destination: UploadDestination = {
+                id: "scoped-default",
+                pubkeyHex,
+                name: "Scoped NIP-96",
+                protocol: "nip96",
+                serverUrl: "https://files.example.com",
+                resolvedUploadUrl: "https://files.example.com/api/upload",
+                presetId: "custom",
+                isDefault: true,
+                enabled: true,
+                createdAt: 1,
+                updatedAt: 1,
+                capabilities: {
+                    maxUploadSize: null,
+                    supportedMimeTypes: [],
+                    supportsDelete: false,
+                    supportsList: false,
+                    supportsMirror: false,
+                    supportsMediaOptimization: false,
+                    authRequired: true,
+                    source: "manual",
+                },
+                auth: { type: "nip98" },
+                schemaVersion: 1,
+            };
+
+            authStateMock.value = {
+                isAuthenticated: true,
+                pubkey: pubkeyHex,
+                npub: "npub1example",
+            };
+            uploadDestinationsRepositoryMock.getDefault.mockResolvedValue(destination);
+
+            const result = await resolveCurrentUploadDestination();
+
+            expect(uploadDestinationsRepositoryMock.getDefault).toHaveBeenCalledWith(pubkeyHex);
+            expect(result).toEqual(destination);
         });
     });
 
