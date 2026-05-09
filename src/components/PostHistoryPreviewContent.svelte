@@ -37,9 +37,10 @@
     .post-history-custom-emoji {
         display: inline-block;
         width: auto;
-        height: 1.25em;
-        max-width: none;
-        vertical-align: -0.22em;
+        height: 30px;
+        vertical-align: bottom;
+        margin: 0;
+        padding: 0;
         object-fit: contain;
         user-select: none;
         -webkit-user-drag: none;

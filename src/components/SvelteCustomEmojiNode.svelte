@@ -159,9 +159,9 @@
     :global(.custom-emoji-wrapper[data-node-view-wrapper]) {
         display: inline-block;
         width: auto;
-        height: 1.6em;
+        height: 34px;
         margin: 0;
-        vertical-align: -0.44em;
+        vertical-align: bottom;
         border-radius: 4px;
         line-height: 0;
     }
