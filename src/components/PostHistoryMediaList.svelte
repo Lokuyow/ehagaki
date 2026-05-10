@@ -1,4 +1,5 @@
 <script lang="ts">
+    import BlurhashPlaceholder from "./BlurhashPlaceholder.svelte";
     import Button from "./Button.svelte";
     import { _ } from "svelte-i18n";
     import { inViewportAction } from "../lib/hooks/inViewportAction.svelte";
@@ -7,6 +8,7 @@
         buildPostHistoryMediaLayout,
         type PostHistoryDisplayMediaKind,
         type PostHistoryResolvedMedia,
+        resolvePostHistoryMediaAspectRatio,
     } from "../lib/postHistoryDialogUtils";
     import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
     import type { FullscreenMediaItem } from "../lib/types";
@@ -25,6 +27,7 @@
         hasResolvedCache: boolean;
         cached: boolean;
         previewObjectUrl?: string;
+        isLoadingPreview: boolean;
         isCaching: boolean;
         hasFetchFailed: boolean;
     };
@@ -86,9 +89,16 @@
 
         return {
             ...item,
+            alt: cachedState?.alt ?? item.alt,
+            mimeType: cachedState?.mimeType ?? item.mimeType,
+            blurhash: cachedState?.blurhash ?? item.blurhash,
+            dim: cachedState?.dim ?? item.dim,
+            size: cachedState?.size ?? item.size,
+            uploadProtocol: cachedState?.uploadProtocol ?? item.uploadProtocol,
             hasResolvedCache: cachedState?.hasResolvedCache ?? false,
             cached: cachedState?.cached ?? false,
             previewObjectUrl: cachedState?.previewObjectUrl,
+            isLoadingPreview: cachedState?.isLoadingPreview ?? false,
             isCaching: cachedState?.isCaching ?? false,
             hasFetchFailed: cachedState?.hasFetchFailed ?? false,
         };
@@ -192,8 +202,55 @@
         );
     }
 
+    function isPlaceholderLoading(item: DisplayMediaItem): boolean {
+        return (
+            !item.hasResolvedCache || item.isCaching || item.isLoadingPreview
+        );
+    }
+
+    function shouldShowBlurhashPlaceholder(item: DisplayMediaItem): boolean {
+        return (
+            Boolean(item.blurhash) &&
+            !Boolean(item.cached && item.previewObjectUrl) &&
+            (item.kind === "image" || item.kind === "video")
+        );
+    }
+
+    function getPlaceholderAriaLabel(item: DisplayMediaItem): string {
+        return `${getMediaStatusLabel(item)} ${getLinkLabel(item)}`;
+    }
+
+    function getImageAspectRatio(
+        item: DisplayMediaItem,
+        slotCount: number,
+    ): string {
+        if (slotCount !== 1) {
+            return "1 / 1";
+        }
+
+        return resolvePostHistoryMediaAspectRatio({
+            dim: item.dim,
+            kind: item.kind,
+        });
+    }
+
+    function getVideoAspectRatio(item: DisplayMediaItem): string {
+        return resolvePostHistoryMediaAspectRatio({
+            dim: item.dim,
+            kind: item.kind,
+        });
+    }
+
+    function getMediaSurfaceStyle(aspectRatio: string): string {
+        return `--post-history-media-aspect-ratio: ${aspectRatio};`;
+    }
+
+    function getVideoTypeHint(item: DisplayMediaItem): string {
+        return item.mimeType?.trim() || "video";
+    }
+
     function getMediaStatusLabel(item: DisplayMediaItem): string {
-        if (!item.hasResolvedCache) {
+        if (!item.hasResolvedCache || item.isLoadingPreview) {
             return $_("postHistory.mediaLoading");
         }
 
@@ -221,6 +278,12 @@
                         style={`--post-history-image-columns: ${row.slotCount};`}
                     >
                         {#each row.items as item (item.id)}
+                            {@const imageAspectRatio = getImageAspectRatio(
+                                item,
+                                row.slotCount,
+                            )}
+                            {@const showBlurhashPlaceholder =
+                                shouldShowBlurhashPlaceholder(item)}
                             <div
                                 class="post-history-image-cell"
                                 use:inViewportAction={{
@@ -248,70 +311,148 @@
                                                 alt={item.alt ||
                                                     getLinkLabel(item)}
                                                 class="post-history-media-image"
+                                                style={getMediaSurfaceStyle(
+                                                    imageAspectRatio,
+                                                )}
                                                 loading="lazy"
                                                 decoding="async"
                                             />
                                         {:else}
                                             <div
                                                 class="post-history-media-placeholder post-history-media-placeholder-cached"
+                                                class:post-history-media-placeholder-loading={isPlaceholderLoading(
+                                                    item,
+                                                )}
+                                                class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                                style={getMediaSurfaceStyle(
+                                                    imageAspectRatio,
+                                                )}
+                                                aria-hidden="true"
                                             >
-                                                <span
-                                                    class="post-history-media-placeholder-status"
-                                                    >{$_(
-                                                        "postHistory.mediaCached",
-                                                    )}</span
+                                                {#if showBlurhashPlaceholder}
+                                                    <BlurhashPlaceholder
+                                                        blurhash={item.blurhash}
+                                                    />
+                                                {/if}
+                                                <div
+                                                    class="post-history-media-placeholder-content"
                                                 >
-                                                <span
-                                                    class="post-history-media-placeholder-label"
-                                                    >{getLinkLabel(item)}</span
-                                                >
+                                                    <div
+                                                        class="post-history-media-placeholder-meta"
+                                                    >
+                                                        <span
+                                                            class="post-history-media-placeholder-status"
+                                                            >{getMediaStatusLabel(
+                                                                item,
+                                                            )}</span
+                                                        >
+                                                    </div>
+                                                    <span
+                                                        class="post-history-media-placeholder-label"
+                                                        >{getLinkLabel(
+                                                            item,
+                                                        )}</span
+                                                    >
+                                                    {#if isPlaceholderLoading(item)}
+                                                        <span
+                                                            class="post-history-media-loading-bar"
+                                                            aria-hidden="true"
+                                                        ></span>
+                                                    {/if}
+                                                </div>
                                             </div>
                                         {/if}
                                     </button>
                                 {:else if item.hasFetchFailed}
                                     <div
                                         class="post-history-media-placeholder post-history-media-placeholder-failed"
+                                        class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                        style={getMediaSurfaceStyle(
+                                            imageAspectRatio,
+                                        )}
+                                        aria-label={getPlaceholderAriaLabel(
+                                            item,
+                                        )}
+                                        title={getLinkLabel(item)}
                                     >
-                                        <span
-                                            class="post-history-media-placeholder-status"
-                                            >{$_(
-                                                "postHistory.mediaLoadFailed",
-                                            )}</span
+                                        {#if showBlurhashPlaceholder}
+                                            <BlurhashPlaceholder
+                                                blurhash={item.blurhash}
+                                            />
+                                        {/if}
+                                        <div
+                                            class="post-history-media-placeholder-content"
                                         >
-                                        <span
-                                            class="post-history-media-placeholder-label"
-                                            >{getLinkLabel(item)}</span
-                                        >
-                                        <button
-                                            type="button"
-                                            class="post-history-media-retry-button"
-                                            onclick={() => handleRetry(item)}
-                                        >
-                                            {$_(
-                                                "postHistory.mediaFetchAndCache",
-                                            )}
-                                        </button>
+                                            <div
+                                                class="post-history-media-placeholder-meta"
+                                            >
+                                                <span
+                                                    class="post-history-media-placeholder-status"
+                                                    >{$_(
+                                                        "postHistory.mediaLoadFailed",
+                                                    )}</span
+                                                >
+                                            </div>
+                                            <span
+                                                class="post-history-media-placeholder-label"
+                                                >{getLinkLabel(item)}</span
+                                            >
+                                            <button
+                                                type="button"
+                                                class="post-history-media-retry-button"
+                                                onclick={() =>
+                                                    handleRetry(item)}
+                                            >
+                                                {$_(
+                                                    "postHistory.mediaFetchAndCache",
+                                                )}
+                                            </button>
+                                        </div>
                                     </div>
                                 {:else}
                                     <div
                                         class="post-history-media-placeholder post-history-media-placeholder-uncached"
-                                        class:post-history-media-placeholder-loading={!item.hasResolvedCache ||
-                                            item.isCaching}
+                                        class:post-history-media-placeholder-loading={isPlaceholderLoading(
+                                            item,
+                                        )}
+                                        class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                        style={getMediaSurfaceStyle(
+                                            imageAspectRatio,
+                                        )}
+                                        aria-label={getPlaceholderAriaLabel(
+                                            item,
+                                        )}
+                                        title={getLinkLabel(item)}
                                     >
-                                        <span
-                                            class="post-history-media-placeholder-status"
-                                            >{getMediaStatusLabel(item)}</span
-                                        >
-                                        <span
-                                            class="post-history-media-placeholder-label"
-                                            >{getLinkLabel(item)}</span
-                                        >
-                                        {#if !item.hasResolvedCache || item.isCaching}
-                                            <span
-                                                class="post-history-media-loading-bar"
-                                                aria-hidden="true"
-                                            ></span>
+                                        {#if showBlurhashPlaceholder}
+                                            <BlurhashPlaceholder
+                                                blurhash={item.blurhash}
+                                            />
                                         {/if}
+                                        <div
+                                            class="post-history-media-placeholder-content"
+                                        >
+                                            <div
+                                                class="post-history-media-placeholder-meta"
+                                            >
+                                                <span
+                                                    class="post-history-media-placeholder-status"
+                                                    >{getMediaStatusLabel(
+                                                        item,
+                                                    )}</span
+                                                >
+                                            </div>
+                                            <span
+                                                class="post-history-media-placeholder-label"
+                                                >{getLinkLabel(item)}</span
+                                            >
+                                            {#if isPlaceholderLoading(item)}
+                                                <span
+                                                    class="post-history-media-loading-bar"
+                                                    aria-hidden="true"
+                                                ></span>
+                                            {/if}
+                                        </div>
                                     </div>
                                 {/if}
 
@@ -342,6 +483,9 @@
         {#if videoItems.length > 0}
             <div class="post-history-video-list">
                 {#each videoItems as item (item.id)}
+                    {@const videoAspectRatio = getVideoAspectRatio(item)}
+                    {@const showBlurhashPlaceholder =
+                        shouldShowBlurhashPlaceholder(item)}
                     <article
                         class="post-history-video-card"
                         use:inViewportAction={{
@@ -376,52 +520,69 @@
                             <video
                                 src={item.previewObjectUrl}
                                 class="post-history-media-video"
+                                style={getMediaSurfaceStyle(videoAspectRatio)}
                                 controls
                                 playsinline
                                 preload="metadata"
                             >
                                 <track kind="captions" />
                             </video>
-                        {:else if item.hasFetchFailed}
-                            <div
-                                class="post-history-media-placeholder post-history-media-placeholder-failed post-history-video-placeholder"
-                            >
-                                <span
-                                    class="post-history-media-placeholder-status"
-                                    >{$_("postHistory.mediaLoadFailed")}</span
-                                >
-                                <span
-                                    class="post-history-media-placeholder-label"
-                                    >{getLinkLabel(item)}</span
-                                >
-                                <button
-                                    type="button"
-                                    class="post-history-media-retry-button"
-                                    onclick={() => handleRetry(item)}
-                                >
-                                    {$_("postHistory.mediaFetchAndCache")}
-                                </button>
-                            </div>
                         {:else}
                             <div
-                                class="post-history-media-placeholder post-history-media-placeholder-uncached post-history-video-placeholder"
-                                class:post-history-media-placeholder-loading={!item.hasResolvedCache ||
-                                    item.isCaching}
+                                class="post-history-media-placeholder post-history-video-placeholder"
+                                class:post-history-media-placeholder-cached={item.cached}
+                                class:post-history-media-placeholder-uncached={!item.cached &&
+                                    !item.hasFetchFailed}
+                                class:post-history-media-placeholder-failed={item.hasFetchFailed}
+                                class:post-history-media-placeholder-loading={isPlaceholderLoading(
+                                    item,
+                                )}
+                                class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                style={getMediaSurfaceStyle(videoAspectRatio)}
+                                aria-label={getPlaceholderAriaLabel(item)}
+                                title={getLinkLabel(item)}
                             >
-                                <span
-                                    class="post-history-media-placeholder-status"
-                                    >{getMediaStatusLabel(item)}</span
-                                >
-                                <span
-                                    class="post-history-media-placeholder-label"
-                                    >{getLinkLabel(item)}</span
-                                >
-                                {#if !item.hasResolvedCache || item.isCaching}
-                                    <span
-                                        class="post-history-media-loading-bar"
-                                        aria-hidden="true"
-                                    ></span>
+                                {#if showBlurhashPlaceholder}
+                                    <BlurhashPlaceholder
+                                        blurhash={item.blurhash}
+                                    />
                                 {/if}
+                                <div
+                                    class="post-history-media-placeholder-content"
+                                >
+                                    <div
+                                        class="post-history-media-placeholder-meta"
+                                    >
+                                        <span
+                                            class="post-history-media-placeholder-status"
+                                            >{getMediaStatusLabel(item)}</span
+                                        >
+                                        <span
+                                            class="post-history-media-placeholder-kind"
+                                            >{getVideoTypeHint(item)}</span
+                                        >
+                                    </div>
+                                    <span
+                                        class="post-history-media-placeholder-label"
+                                        >{getLinkLabel(item)}</span
+                                    >
+                                    {#if item.hasFetchFailed}
+                                        <button
+                                            type="button"
+                                            class="post-history-media-retry-button"
+                                            onclick={() => handleRetry(item)}
+                                        >
+                                            {$_(
+                                                "postHistory.mediaFetchAndCache",
+                                            )}
+                                        </button>
+                                    {:else if isPlaceholderLoading(item)}
+                                        <span
+                                            class="post-history-media-loading-bar"
+                                            aria-hidden="true"
+                                        ></span>
+                                    {/if}
+                                </div>
                             </div>
                         {/if}
                     </article>
@@ -468,29 +629,40 @@
                             class:post-history-media-placeholder-uncached={!item.cached &&
                                 !item.hasFetchFailed}
                             class:post-history-media-placeholder-failed={item.hasFetchFailed}
-                            class:post-history-media-placeholder-loading={!item.hasResolvedCache ||
-                                item.isCaching}
+                            class:post-history-media-placeholder-loading={isPlaceholderLoading(
+                                item,
+                            )}
+                            aria-label={getPlaceholderAriaLabel(item)}
+                            title={getLinkLabel(item)}
                         >
-                            <span class="post-history-media-placeholder-status"
-                                >{getMediaStatusLabel(item)}</span
-                            >
-                            <span class="post-history-media-placeholder-label"
-                                >{getLinkLabel(item)}</span
-                            >
-                            {#if item.hasFetchFailed}
-                                <button
-                                    type="button"
-                                    class="post-history-media-retry-button"
-                                    onclick={() => handleRetry(item)}
+                            <div class="post-history-media-placeholder-content">
+                                <div
+                                    class="post-history-media-placeholder-meta"
                                 >
-                                    {$_("postHistory.mediaFetchAndCache")}
-                                </button>
-                            {:else if !item.hasResolvedCache || item.isCaching}
+                                    <span
+                                        class="post-history-media-placeholder-status"
+                                        >{getMediaStatusLabel(item)}</span
+                                    >
+                                </div>
                                 <span
-                                    class="post-history-media-loading-bar"
-                                    aria-hidden="true"
-                                ></span>
-                            {/if}
+                                    class="post-history-media-placeholder-label"
+                                    >{getLinkLabel(item)}</span
+                                >
+                                {#if item.hasFetchFailed}
+                                    <button
+                                        type="button"
+                                        class="post-history-media-retry-button"
+                                        onclick={() => handleRetry(item)}
+                                    >
+                                        {$_("postHistory.mediaFetchAndCache")}
+                                    </button>
+                                {:else if isPlaceholderLoading(item)}
+                                    <span
+                                        class="post-history-media-loading-bar"
+                                        aria-hidden="true"
+                                    ></span>
+                                {/if}
+                            </div>
                         </div>
                     </div>
                 {/each}
@@ -553,16 +725,19 @@
     .post-history-media-image,
     .post-history-media-placeholder {
         width: 100%;
-        aspect-ratio: 1 / 1;
+        height: 100%;
     }
 
     .post-history-media-image {
+        display: block;
+        aspect-ratio: var(--post-history-media-aspect-ratio, 1 / 1);
         object-fit: cover;
     }
 
     .post-history-media-video {
         display: block;
         width: 100%;
+        aspect-ratio: var(--post-history-media-aspect-ratio, 16 / 9);
         max-height: 480px;
         height: 100%;
         object-fit: contain;
@@ -584,7 +759,25 @@
         padding: 12px;
         box-sizing: border-box;
         text-align: left;
+        position: relative;
+        isolation: isolate;
+        aspect-ratio: var(--post-history-media-aspect-ratio, 1 / 1);
         overflow-wrap: anywhere;
+    }
+
+    .post-history-media-placeholder-content {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .post-history-media-placeholder-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
     }
 
     .post-history-media-placeholder-loading {
@@ -616,6 +809,27 @@
         );
     }
 
+    .post-history-media-placeholder-blurhash {
+        background: color-mix(
+            in srgb,
+            var(--background-color, #fff) 18%,
+            #000 82%
+        );
+    }
+
+    .post-history-media-placeholder-blurhash
+        .post-history-media-placeholder-status,
+    .post-history-media-placeholder-kind {
+        background: rgba(255, 255, 255, 0.82);
+        color: rgba(15, 23, 42, 0.88);
+    }
+
+    .post-history-media-placeholder-blurhash
+        .post-history-media-placeholder-label {
+        color: rgba(255, 255, 255, 0.98);
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    }
+
     .post-history-media-placeholder-status {
         display: inline-flex;
         padding: 4px 8px;
@@ -625,6 +839,16 @@
         font-size: 0.75rem;
         text-transform: uppercase;
         letter-spacing: 0.04em;
+    }
+
+    .post-history-media-placeholder-kind {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        letter-spacing: 0.02em;
+        overflow-wrap: anywhere;
     }
 
     .post-history-media-placeholder-label {
@@ -695,9 +919,9 @@
         font-size: 0.92rem;
     }
 
-    /* .post-history-video-placeholder {
-        aspect-ratio: 16 / 9;
-    } */
+    .post-history-video-placeholder {
+        aspect-ratio: var(--post-history-media-aspect-ratio, 16 / 9);
+    }
 
     :global(button.post-history-media-copy-button.circle.copy) {
         min-width: 36px;

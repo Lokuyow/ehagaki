@@ -157,11 +157,13 @@ describe('PostHistoryMediaList', () => {
                         url: 'https://example.com/image.jpg',
                         mimeType: 'image/jpeg',
                         alt: 'cached image',
+                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
                     },
                     {
                         url: 'https://example.com/video.mp4',
                         mimeType: 'video/mp4',
                         alt: 'cached video',
+                        blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.',
                     },
                 ],
             },
@@ -179,6 +181,113 @@ describe('PostHistoryMediaList', () => {
         expect(video?.getAttribute('controls')).not.toBeNull();
         expect(video?.getAttribute('playsinline')).not.toBeNull();
         expect(video?.getAttribute('preload')).toBe('metadata');
+        expect(
+            container.querySelector('.post-history-media-placeholder-blurhash'),
+        ).toBeNull();
+    });
+
+    it('キャッシュ判定中でも blurhash プレースホルダーと alt を表示ヒントに使う', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockImplementation(() => new Promise(() => undefined));
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/loading.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'loading image alt',
+                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                        dim: '1200x800',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(
+                container.querySelector('.post-history-media-placeholder-blurhash'),
+            ).toBeTruthy();
+        });
+
+        const placeholder = container.querySelector(
+            '.post-history-media-placeholder-blurhash',
+        ) as HTMLElement | null;
+
+        expect(placeholder?.getAttribute('title')).toBe('loading image alt');
+        expect(placeholder?.getAttribute('aria-label')).toContain(
+            'loading image alt',
+        );
+        expect(screen.getByText('読み込み中...')).toBeTruthy();
+    });
+
+    it('cached だが object url 生成中の画像は blurhash プレースホルダーを維持する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/cached-loading.jpg',
+                url: 'https://example.com/cached-loading.jpg',
+                mimeType: 'image/jpeg',
+                size: 12,
+                source: 'uploaded',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockImplementation(() => new Promise(() => undefined));
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/cached-loading.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'cached loading image',
+                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(
+                screen.getByRole('button', { name: '開く cached loading image' }),
+            ).toBeTruthy();
+            expect(
+                container.querySelector('.post-history-media-placeholder-blurhash'),
+            ).toBeTruthy();
+        });
+
+        expect(container.querySelector('.post-history-media-loading-bar')).toBeTruthy();
+        expect(screen.queryByAltText('cached loading image')).toBeNull();
+    });
+
+    it('未キャッシュでも blurhash があればプレースホルダー背景を維持する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockImplementation(() => new Promise(() => undefined));
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/uncached-blurhash.png',
+                        mimeType: 'image/png',
+                        alt: 'uncached blurhash image',
+                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({
+                url: 'https://example.com/uncached-blurhash.png',
+                mimeType: 'image/png',
+            });
+            expect(
+                container.querySelector('.post-history-media-placeholder-blurhash'),
+            ).toBeTruthy();
+        });
     });
 
     it('可視範囲に入った uncached media は自動取得して保存する', async () => {
@@ -261,6 +370,7 @@ describe('PostHistoryMediaList', () => {
                         url: 'https://example.com/retry.png',
                         mimeType: 'image/png',
                         alt: 'retry image',
+                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
                     },
                 ],
             },
@@ -269,6 +379,9 @@ describe('PostHistoryMediaList', () => {
         const retryButton = await screen.findByRole('button', {
             name: '再取得して保存',
         });
+        expect(
+            document.querySelector('.post-history-media-placeholder-blurhash'),
+        ).toBeTruthy();
         await fireEvent.click(retryButton);
 
         expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledTimes(2);

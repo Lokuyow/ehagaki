@@ -6,6 +6,7 @@ import {
     buildPostHistoryFullscreenMediaItems,
     buildPreview,
     buildPreviewContent,
+    resolvePostHistoryMediaAspectRatio,
     resolvePostHistoryMedia,
 } from "../../lib/postHistoryDialogUtils";
 
@@ -249,5 +250,27 @@ describe("postHistoryDialogUtils", () => {
                 dim: "1024x768",
             },
         ]);
+    });
+
+    it("resolvePostHistoryMediaAspectRatio parses imeta dim safely", () => {
+        expect(resolvePostHistoryMediaAspectRatio({
+            dim: "1200x800",
+            kind: "image",
+        })).toBe("1200 / 800");
+        expect(resolvePostHistoryMediaAspectRatio({
+            dim: " 1920 x 1080 ",
+            kind: "video",
+        })).toBe("1920 / 1080");
+    });
+
+    it("resolvePostHistoryMediaAspectRatio falls back on invalid dim", () => {
+        expect(resolvePostHistoryMediaAspectRatio({
+            dim: "oops",
+            kind: "image",
+        })).toBe("1 / 1");
+        expect(resolvePostHistoryMediaAspectRatio({
+            dim: "0x1080",
+            kind: "video",
+        })).toBe("16 / 9");
     });
 });

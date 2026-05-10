@@ -7,15 +7,43 @@ export interface ResolvedPostHistoryMediaItem {
     url: string;
     alt?: string;
     mimeType?: string;
+    blurhash?: string;
+    dim?: string;
     kind: PostMediaKind;
     hasResolvedCache: boolean;
     cached: boolean;
     previewObjectUrl?: string;
     size?: number;
+    uploadProtocol?: 'blossom' | 'nip96' | 'custom-http';
     source?: 'uploaded' | 'network';
     isLoadingPreview: boolean;
     isCaching: boolean;
     hasFetchFailed: boolean;
+}
+
+export function buildResolvedPostHistoryMediaBaseItem(
+    media: PostHistoryMediaRecord,
+): ResolvedPostHistoryMediaItem {
+    return {
+        url: media.url,
+        alt: media.alt,
+        mimeType: media.mimeType,
+        blurhash: media.blurhash,
+        dim: media.dim,
+        kind: inferPostMediaKind({
+            url: media.url,
+            mimeType: media.mimeType,
+        }),
+        hasResolvedCache: false,
+        cached: false,
+        previewObjectUrl: undefined,
+        size: media.size,
+        uploadProtocol: media.uploadProtocol,
+        source: undefined,
+        isLoadingPreview: false,
+        isCaching: false,
+        hasFetchFailed: false,
+    };
 }
 
 export function usePostHistoryMediaCache(params: {
@@ -30,7 +58,7 @@ export function usePostHistoryMediaCache(params: {
     function toDirectDisplayItem(
         media: PostHistoryMediaRecord,
     ): ResolvedPostHistoryMediaItem {
-        const baseItem = toBaseItem(media);
+        const baseItem = buildResolvedPostHistoryMediaBaseItem(media);
 
         if (baseItem.kind !== 'image' && baseItem.kind !== 'video') {
             return {
@@ -68,25 +96,6 @@ export function usePostHistoryMediaCache(params: {
         activeObjectUrls.clear();
     }
 
-    function toBaseItem(
-        media: PostHistoryMediaRecord,
-    ): ResolvedPostHistoryMediaItem {
-        return {
-            url: media.url,
-            alt: media.alt,
-            mimeType: media.mimeType,
-            kind: inferPostMediaKind({
-                url: media.url,
-                mimeType: media.mimeType,
-            }),
-            hasResolvedCache: false,
-            cached: false,
-            isLoadingPreview: false,
-            isCaching: false,
-            hasFetchFailed: false,
-        };
-    }
-
     function updateItem(
         url: string,
         updater: (item: ResolvedPostHistoryMediaItem) => ResolvedPostHistoryMediaItem,
@@ -109,6 +118,20 @@ export function usePostHistoryMediaCache(params: {
         const { url, descriptor, loadPreview } = params;
 
         if (loadPreview && (descriptor.kind === 'image' || descriptor.kind === 'video')) {
+            updateItem(url, (item) => ({
+                ...item,
+                hasResolvedCache: true,
+                cached: true,
+                previewObjectUrl: undefined,
+                mimeType: descriptor.mimeType,
+                kind: descriptor.kind,
+                size: descriptor.size,
+                source: descriptor.source,
+                isLoadingPreview: true,
+                isCaching: false,
+                hasFetchFailed: false,
+            }));
+
             const cached = await postMediaCacheService.createCachedMediaObjectUrl(url);
             if (cached) {
                 revokeTrackedObjectUrl(url);
@@ -207,59 +230,85 @@ export function usePostHistoryMediaCache(params: {
         }
 
         revokeAllObjectUrls();
-        state.items = mediaItems.map(toBaseItem);
+        state.items = mediaItems.map(buildResolvedPostHistoryMediaBaseItem);
 
         void (async () => {
-            const resolvedItems = await Promise.all(
+            await Promise.all(
                 mediaItems.map(async (media) => {
-                    const baseItem = toBaseItem(media);
                     const descriptor = await postMediaCacheService.getCachedMediaDescriptor(
                         media.url,
                     );
+                    if (cancelled || currentResolutionVersion !== resolutionVersion) {
+                        return;
+                    }
+
                     if (!descriptor) {
-                        return {
-                            ...baseItem,
+                        updateItem(media.url, (item) => ({
+                            ...item,
                             hasResolvedCache: true,
-                        } satisfies ResolvedPostHistoryMediaItem;
+                        }));
+                        return;
                     }
 
                     if (descriptor.kind !== 'image' && descriptor.kind !== 'video') {
-                        return {
-                            ...baseItem,
+                        updateItem(media.url, (item) => ({
+                            ...item,
                             hasResolvedCache: true,
                             cached: true,
                             kind: descriptor.kind,
                             mimeType: descriptor.mimeType,
                             size: descriptor.size,
                             source: descriptor.source,
-                        } satisfies ResolvedPostHistoryMediaItem;
+                        }));
+                        return;
                     }
+
+                    updateItem(media.url, (item) => ({
+                        ...item,
+                        hasResolvedCache: true,
+                        cached: true,
+                        previewObjectUrl: undefined,
+                        kind: descriptor.kind,
+                        mimeType: descriptor.mimeType,
+                        size: descriptor.size,
+                        source: descriptor.source,
+                        isLoadingPreview: true,
+                        isCaching: false,
+                        hasFetchFailed: false,
+                    }));
 
                     const cachedMedia = await postMediaCacheService.createCachedMediaObjectUrl(
                         media.url,
                     );
+                    if (cancelled || currentResolutionVersion !== resolutionVersion) {
+                        if (cachedMedia) {
+                            postMediaCacheService.revokeObjectUrl(
+                                cachedMedia.objectUrl,
+                            );
+                        }
+                        return;
+                    }
+
                     if (!cachedMedia) {
-                        return {
-                            ...baseItem,
+                        revokeTrackedObjectUrl(media.url);
+                        updateItem(media.url, (item) => ({
+                            ...item,
                             hasResolvedCache: true,
                             cached: true,
                             kind: descriptor.kind,
                             mimeType: descriptor.mimeType,
                             size: descriptor.size,
                             source: descriptor.source,
-                        } satisfies ResolvedPostHistoryMediaItem;
+                            previewObjectUrl: undefined,
+                            isLoadingPreview: false,
+                        }));
+                        return;
                     }
 
-                    if (cancelled) {
-                        postMediaCacheService.revokeObjectUrl(
-                            cachedMedia.objectUrl,
-                        );
-                        return baseItem;
-                    }
-
-                    nextObjectUrls.set(media.url, cachedMedia.objectUrl);
-                    return {
-                        ...baseItem,
+                    revokeTrackedObjectUrl(media.url);
+                    activeObjectUrls.set(media.url, cachedMedia.objectUrl);
+                    updateItem(media.url, (item) => ({
+                        ...item,
                         hasResolvedCache: true,
                         cached: true,
                         previewObjectUrl: cachedMedia.objectUrl,
@@ -267,22 +316,12 @@ export function usePostHistoryMediaCache(params: {
                         mimeType: cachedMedia.mimeType,
                         size: cachedMedia.size,
                         source: cachedMedia.source,
-                    } satisfies ResolvedPostHistoryMediaItem;
+                        isLoadingPreview: false,
+                        isCaching: false,
+                        hasFetchFailed: false,
+                    }));
                 }),
             );
-
-            if (cancelled || currentResolutionVersion !== resolutionVersion) {
-                for (const objectUrl of nextObjectUrls.values()) {
-                    postMediaCacheService.revokeObjectUrl(objectUrl);
-                }
-                return;
-            }
-
-            revokeAllObjectUrls();
-            for (const [url, objectUrl] of nextObjectUrls) {
-                activeObjectUrls.set(url, objectUrl);
-            }
-            state.items = resolvedItems;
         })();
 
         return () => {

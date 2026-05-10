@@ -262,6 +262,23 @@ export function buildPostHistoryFullscreenMediaItems(
     }));
 }
 
+export function resolvePostHistoryMediaAspectRatio(params: {
+    dim?: string;
+    kind: PostHistoryDisplayMediaKind;
+    fallback?: string;
+}): string {
+    const fallback = params.fallback ?? (
+        params.kind === 'video' ? '16 / 9' : '1 / 1'
+    );
+    const parsed = parsePostHistoryMediaDimensions(params.dim);
+
+    if (!parsed) {
+        return fallback;
+    }
+
+    return `${parsed.width} / ${parsed.height}`;
+}
+
 export function buildPostHistoryMediaLayout(
     media: PostHistoryRecord["media"],
 ): PostHistoryMediaLayout {
@@ -278,6 +295,33 @@ export function buildPostHistoryMediaLayout(
         imageRows: buildPostHistoryImageGridRows(images),
         fullscreenMediaItems: buildPostHistoryFullscreenMediaItems(images),
     };
+}
+
+function parsePostHistoryMediaDimensions(
+    dim?: string,
+): { width: number; height: number } | null {
+    const normalized = dim?.trim();
+    if (!normalized) {
+        return null;
+    }
+
+    const match = normalized.match(/^(\d+)\s*x\s*(\d+)$/i);
+    if (!match) {
+        return null;
+    }
+
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (
+        !Number.isSafeInteger(width) ||
+        !Number.isSafeInteger(height) ||
+        width <= 0 ||
+        height <= 0
+    ) {
+        return null;
+    }
+
+    return { width, height };
 }
 
 export function buildPreviewContent(
