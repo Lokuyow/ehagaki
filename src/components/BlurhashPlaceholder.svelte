@@ -128,7 +128,6 @@
 
     .blurhash-placeholder-ready {
         background-image: var(--blurhash-placeholder-image);
-        transform: scale(1.03);
     }
 
     .blurhash-placeholder::after {

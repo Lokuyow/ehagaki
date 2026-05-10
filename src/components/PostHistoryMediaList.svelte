@@ -704,10 +704,6 @@
         pointer-events: none;
     }
 
-    .post-history-media-placeholder-cached {
-        border: 1px solid var(--btn-border);
-    }
-
     .post-history-media-placeholder-uncached {
         background: repeating-linear-gradient(
             -45deg,
