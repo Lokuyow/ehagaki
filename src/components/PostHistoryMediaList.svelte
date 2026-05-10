@@ -515,14 +515,20 @@
         background: transparent;
         text-align: left;
         cursor: pointer;
+
+        &:active:not(:disabled) {
+            transform: scale(1);
+        }
     }
 
     .post-history-image-grid {
         display: flex;
         flex-direction: column;
         width: 100%;
+        border: 1px solid var(--border-hr);
         border-radius: 12px;
         overflow: hidden;
+        gap: 2px;
     }
 
     .post-history-image-row {
@@ -532,6 +538,7 @@
             minmax(0, 1fr)
         );
         width: 100%;
+        gap: 2px;
     }
 
     .post-history-image-cell {
@@ -547,11 +554,6 @@
     .post-history-media-placeholder {
         width: 100%;
         aspect-ratio: 1 / 1;
-        background: color-mix(
-            in srgb,
-            var(--background-color, #fff) 92%,
-            #000 8%
-        );
     }
 
     .post-history-media-image {
@@ -582,7 +584,6 @@
         padding: 12px;
         box-sizing: border-box;
         text-align: left;
-        color: var(--color-subtle-text, #666);
         overflow-wrap: anywhere;
     }
 
@@ -592,11 +593,7 @@
     }
 
     .post-history-media-placeholder-cached {
-        background: color-mix(
-            in srgb,
-            var(--background-color, #fff) 88%,
-            var(--theme, #2b664b) 12%
-        );
+        border: 1px solid var(--btn-border);
     }
 
     .post-history-media-placeholder-uncached {
@@ -606,14 +603,6 @@
             color-mix(in srgb, var(--background-color, #fff) 94%, #000 6%) 10px,
             color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%) 10px,
             color-mix(in srgb, var(--background-color, #fff) 88%, #000 12%) 20px
-        );
-    }
-
-    .post-history-media-placeholder-failed {
-        background: color-mix(
-            in srgb,
-            var(--background-color, #fff) 88%,
-            var(--danger, #b03030) 12%
         );
     }
 
@@ -654,11 +643,6 @@
         padding: 6px 12px;
         border: 1px solid var(--border, #ccc);
         border-radius: 999px;
-        background: color-mix(
-            in srgb,
-            var(--background-color, #fff) 90%,
-            #000 10%
-        );
         color: var(--text, #111);
         font: inherit;
         cursor: pointer;

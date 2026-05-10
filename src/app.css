@@ -246,7 +246,7 @@ select {
 
 @media (min-width: 601px) {
 
-  :root.light button:hover:not(:disabled),
+  :root.light button:hover:not(:disabled):not(.post-history-media-surface),
   :root.light select:hover {
     background: color-mix(in srgb, var(--btn-bg), black 6%);
     color: color-mix(in srgb, var(--text), black 6%);
@@ -257,7 +257,7 @@ select {
     --svg: currentColor;
   }
 
-  :root.dark button:hover:not(:disabled),
+  :root.dark button:hover:not(:disabled):not(.post-history-media-surface),
   :root.dark select:hover {
     background: color-mix(in srgb, var(--btn-bg), white 10%);
     color: color-mix(in srgb, var(--text), white 10%);
