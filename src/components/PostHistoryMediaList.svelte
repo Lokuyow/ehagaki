@@ -657,12 +657,10 @@
     .post-history-media-video {
         display: block;
         width: 100%;
-        aspect-ratio: var(--post-history-media-aspect-ratio, 16 / 9);
-        max-height: 480px;
+        max-height: 300px;
         height: 100%;
         object-fit: contain;
         border-radius: 10px;
-        border: 1px solid var(--border-hr);
         background: color-mix(
             in srgb,
             var(--background-color, #fff) 92%,
@@ -765,13 +763,12 @@
     .post-history-other-media-card {
         display: flex;
         flex-direction: column;
-        gap: 10px;
         width: 100%;
-        padding: 10px;
-        border-radius: 14px;
+        border-radius: 12px;
         border: 1px solid var(--border-hr);
         background: var(--bg-input);
         box-sizing: border-box;
+        overflow: hidden;
     }
 
     .post-history-video-card-header,
@@ -779,15 +776,16 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 12px;
     }
 
     .post-history-video-card-label,
     .post-history-other-media-label {
         min-width: 0;
+        padding: 4px 8px;
         overflow-wrap: anywhere;
-        color: var(--text, #111);
-        font-size: 0.92rem;
+        color: var(--text-muted);
+        font-size: 0.875rem;
+        line-height: 1.2;
     }
 
     .post-history-video-placeholder {
