@@ -129,7 +129,7 @@ const photoSwipeMock = vi.hoisted(() => {
             this.template = root;
         }
 
-        close() {}
+        close() { }
 
         destroy() {
             this.element?.remove();
