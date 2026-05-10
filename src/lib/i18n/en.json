@@ -124,6 +124,7 @@
     "mediaOpen": "Open",
     "mediaLoadCachedVideo": "Load video",
     "mediaLoading": "Loading...",
+    "mediaLoadFailed": "Failed to load",
     "expand": "Show more",
     "collapse": "Show less"
   },

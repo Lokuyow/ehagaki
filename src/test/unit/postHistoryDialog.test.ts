@@ -190,7 +190,7 @@ function createDeferred<T>() {
 
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'image.jpg' })).toBeTruthy();
+    expect(screen.getByText('image.jpg')).toBeTruthy();
     expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
@@ -330,7 +330,7 @@ describe('PostHistoryDialog', () => {
         });
 
         expect(toggleButton).toBeTruthy();
-        expect(screen.getByRole('button', { name: 'image.jpg' })).toBeTruthy();
+        expect(screen.getByText('image.jpg')).toBeTruthy();
         await fireEvent.click(toggleButton);
         expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: '折りたたむ' }));

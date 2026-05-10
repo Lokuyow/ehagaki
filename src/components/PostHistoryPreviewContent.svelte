@@ -3,8 +3,6 @@
         PostHistoryPreviewContent as PostHistoryPreviewContentData,
         PostHistoryPreviewSegment,
     } from "../lib/postHistoryDialogUtils";
-    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
-    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
 
     type EmojiLoadState = "loading" | "ready" | "failed";
     type PreviewRefAction = (
@@ -45,9 +43,6 @@
     const textSegments = $derived.by(() =>
         previewContent.segments.filter(isTextOrEmojiSegment),
     );
-    const mediaSegments = $derived.by(() =>
-        previewContent.segments.filter(isMediaSegment),
-    );
 
     function isEmojiReady(url: string): boolean {
         return emojiLoadStateByUrl[url] === "ready";
@@ -79,12 +74,6 @@
             {/if}
         {/each}
     </div>
-
-    {#each mediaSegments as segment, index (index)}
-        <div class="post-history-inline-media">
-            <PostHistoryMediaList media={[segment.media]} />
-        </div>
-    {/each}
 </div>
 
 <style>
@@ -105,10 +94,6 @@
     .post-history-preview-text-collapsed {
         max-height: calc(5 * 1.5em);
         overflow: hidden;
-    }
-
-    .post-history-inline-media {
-        display: block;
     }
 
     .post-history-custom-emoji {

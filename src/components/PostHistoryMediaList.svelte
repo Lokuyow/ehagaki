@@ -1,19 +1,74 @@
 <script lang="ts">
+    import Button from "./Button.svelte";
     import { _ } from "svelte-i18n";
-    import { usePostHistoryMediaCache } from "../lib/hooks/usePostHistoryMediaCache.svelte";
+    import { inViewportAction } from "../lib/hooks/inViewportAction.svelte";
+    import {
+        usePostHistoryMediaCache,
+    } from "../lib/hooks/usePostHistoryMediaCache.svelte";
+    import {
+        buildPostHistoryMediaLayout,
+        type PostHistoryDisplayMediaKind,
+        type PostHistoryResolvedMedia,
+    } from "../lib/postHistoryDialogUtils";
     import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
+    import type { FullscreenMediaItem } from "../lib/types";
+    import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
 
     interface Props {
         media: PostHistoryMediaRecord[];
+        scrollRoot?: HTMLElement | null;
+        onImageOpen?: (params: {
+            index: number;
+            mediaList: FullscreenMediaItem[];
+        }) => void;
     }
 
-    let { media }: Props = $props();
+    type DisplayMediaItem = PostHistoryResolvedMedia & {
+        hasResolvedCache: boolean;
+        cached: boolean;
+        previewObjectUrl?: string;
+        isCaching: boolean;
+        hasFetchFailed: boolean;
+    };
+
+    const AUTO_FETCH_ROOT_MARGIN = "160px 0px";
+
+    let {
+        media,
+        scrollRoot = null,
+        onImageOpen = undefined,
+    }: Props = $props();
+
+    let copyStateByUrl = $state<Record<string, "copied" | "failed" | undefined>>(
+        {},
+    );
+    const autoRequestedUrls = new Set<string>();
+
+    const mediaLayout = $derived.by(() => buildPostHistoryMediaLayout(media));
 
     const mediaCache = usePostHistoryMediaCache({
-        getMedia: () => media,
+        getMedia: () => mediaLayout.items,
     });
 
-    const clickableMedia = $derived(mediaCache.state.items[0]);
+    const mediaStateByUrl = $derived.by(
+        () =>
+            new Map(
+                mediaCache.state.items.map((item) => [item.url, item] as const),
+            ),
+    );
+
+    const imageRows = $derived.by(() =>
+        mediaLayout.imageRows.map((row) => ({
+            ...row,
+            items: row.items.map((item) => toDisplayMediaItem(item)),
+        })),
+    );
+    const videoItems = $derived.by(() =>
+        mediaLayout.videos.map((item) => toDisplayMediaItem(item)),
+    );
+    const otherItems = $derived.by(() =>
+        mediaLayout.others.map((item) => toDisplayMediaItem(item)),
+    );
 
     function getLinkLabel(item: { url: string; alt?: string }): string {
         const alt = item.alt?.trim();
@@ -30,84 +85,388 @@
         }
     }
 
-    function getSurfaceAriaLabel(item: { url: string; alt?: string }): string {
-        return getLinkLabel(item);
+    function toDisplayMediaItem(item: PostHistoryResolvedMedia): DisplayMediaItem {
+        const cachedState = mediaStateByUrl.get(item.url);
+
+        return {
+            ...item,
+            hasResolvedCache: cachedState?.hasResolvedCache ?? false,
+            cached: cachedState?.cached ?? false,
+            previewObjectUrl: cachedState?.previewObjectUrl,
+            isCaching: cachedState?.isCaching ?? false,
+            hasFetchFailed: cachedState?.hasFetchFailed ?? false,
+        };
+    }
+
+    function getCopyKey(kind: PostHistoryDisplayMediaKind):
+        | "imageContextMenu"
+        | "videoContextMenu" {
+        return kind === "video" ? "videoContextMenu" : "imageContextMenu";
+    }
+
+    function getCopyButtonLabel(
+        kind: PostHistoryDisplayMediaKind,
+        url: string,
+    ): string {
+        const namespace = getCopyKey(kind);
+        const currentState = copyStateByUrl[url];
+
+        if (currentState === "copied") {
+            return $_(`${namespace}.copySuccess`);
+        }
+
+        if (currentState === "failed") {
+            return $_(`${namespace}.copyFailed`);
+        }
+
+        return $_(`${namespace}.copyUrl`);
+    }
+
+    function getImageSurfaceAriaLabel(item: { url: string; alt?: string }): string {
+        return `${$_("postHistory.mediaOpen")} ${getLinkLabel(item)}`;
+    }
+
+    function requestAutoFetch(url: string): void {
+        if (autoRequestedUrls.has(url)) {
+            return;
+        }
+
+        autoRequestedUrls.add(url);
+        void mediaCache.fetchAndCacheMedia(url);
+    }
+
+    async function handleCopyUrl(
+        item: DisplayMediaItem,
+        event: MouseEvent,
+    ): Promise<void> {
+        event.stopPropagation();
+        event.preventDefault();
+
+        const copied = await tryCopyToClipboard(
+            item.url,
+            "URL",
+            navigator,
+            window,
+        );
+
+        copyStateByUrl = {
+            ...copyStateByUrl,
+            [item.url]: copied ? "copied" : "failed",
+        };
+
+        setTimeout(() => {
+            copyStateByUrl = {
+                ...copyStateByUrl,
+                [item.url]: undefined,
+            };
+        }, 1800);
+    }
+
+    function handleRetry(item: DisplayMediaItem): void {
+        void mediaCache.fetchAndCacheMedia(item.url);
+    }
+
+    function handleImageOpen(item: DisplayMediaItem): void {
+        if (!item.cached) {
+            return;
+        }
+
+        const index = mediaLayout.fullscreenMediaItems.findIndex(
+            (candidate) => candidate.id === item.id,
+        );
+        if (index < 0) {
+            return;
+        }
+
+        onImageOpen?.({
+            index,
+            mediaList: mediaLayout.fullscreenMediaItems,
+        });
+    }
+
+    function shouldAutoFetch(item: DisplayMediaItem): boolean {
+        return item.hasResolvedCache
+            && !item.cached
+            && !item.isCaching
+            && !item.hasFetchFailed;
+    }
+
+    function getMediaStatusLabel(item: DisplayMediaItem): string {
+        if (!item.hasResolvedCache) {
+            return $_("postHistory.mediaLoading");
+        }
+
+        if (item.cached) {
+            return $_("postHistory.mediaCached");
+        }
+
+        if (item.hasFetchFailed) {
+            return $_("postHistory.mediaLoadFailed");
+        }
+
+        return item.isCaching
+            ? $_("postHistory.mediaLoading")
+            : $_("postHistory.mediaNotCached");
     }
 </script>
 
-{#if clickableMedia}
-    <div class="post-history-inline-media">
-        {#if clickableMedia.cached}
-            <a
-                href={clickableMedia.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                class="post-history-media-surface post-history-media-link-surface"
-                aria-label={getSurfaceAriaLabel(clickableMedia)}
-                title={getLinkLabel(clickableMedia)}
-            >
-                {#if clickableMedia.kind === "image" && clickableMedia.previewObjectUrl}
-                    <img
-                        src={clickableMedia.previewObjectUrl}
-                        alt={clickableMedia.alt || ""}
-                        class="post-history-media-image"
-                        loading="lazy"
-                        decoding="async"
-                    />
-                {:else if clickableMedia.kind === "video" && clickableMedia.previewObjectUrl}
-                    <video
-                        src={clickableMedia.previewObjectUrl}
-                        class="post-history-media-video"
-                        muted
-                        playsinline
-                        preload="metadata"
-                    >
-                        <track kind="captions" />
-                    </video>
-                {:else}
+{#if mediaLayout.items.length > 0}
+    <div class="post-history-media-section">
+        {#if imageRows.length > 0}
+            <div class="post-history-image-grid">
+                {#each imageRows as row, rowIndex (rowIndex)}
                     <div
-                        class="post-history-media-placeholder post-history-media-placeholder-cached"
+                        class="post-history-image-row"
+                        style={`--post-history-image-columns: ${row.slotCount};`}
                     >
-                        <span class="post-history-media-placeholder-status"
-                            >{$_("postHistory.mediaCached")}</span
-                        >
-                        <span class="post-history-media-placeholder-label"
-                            >{getLinkLabel(clickableMedia)}</span
-                        >
+                        {#each row.items as item (item.id)}
+                            <div
+                                class="post-history-image-cell"
+                                use:inViewportAction={{
+                                    enabled: shouldAutoFetch(item),
+                                    once: true,
+                                    root: scrollRoot,
+                                    rootMargin: AUTO_FETCH_ROOT_MARGIN,
+                                    onEnterView: () => requestAutoFetch(item.url),
+                                }}
+                            >
+                                {#if item.cached}
+                                    <button
+                                        type="button"
+                                        class="post-history-media-surface post-history-image-surface"
+                                        aria-label={getImageSurfaceAriaLabel(item)}
+                                        title={getLinkLabel(item)}
+                                        onclick={() => handleImageOpen(item)}
+                                    >
+                                        {#if item.previewObjectUrl}
+                                            <img
+                                                src={item.previewObjectUrl}
+                                                alt={item.alt || getLinkLabel(item)}
+                                                class="post-history-media-image"
+                                                loading="lazy"
+                                                decoding="async"
+                                            />
+                                        {:else}
+                                            <div
+                                                class="post-history-media-placeholder post-history-media-placeholder-cached"
+                                            >
+                                                <span class="post-history-media-placeholder-status"
+                                                    >{$_("postHistory.mediaCached")}</span
+                                                >
+                                                <span class="post-history-media-placeholder-label"
+                                                    >{getLinkLabel(item)}</span
+                                                >
+                                            </div>
+                                        {/if}
+                                    </button>
+                                {:else if item.hasFetchFailed}
+                                    <div
+                                        class="post-history-media-placeholder post-history-media-placeholder-failed"
+                                    >
+                                        <span class="post-history-media-placeholder-status"
+                                            >{$_("postHistory.mediaLoadFailed")}</span
+                                        >
+                                        <span class="post-history-media-placeholder-label"
+                                            >{getLinkLabel(item)}</span
+                                        >
+                                        <button
+                                            type="button"
+                                            class="post-history-media-retry-button"
+                                            onclick={() => handleRetry(item)}
+                                        >
+                                            {$_("postHistory.mediaFetchAndCache")}
+                                        </button>
+                                    </div>
+                                {:else}
+                                    <div
+                                        class="post-history-media-placeholder post-history-media-placeholder-uncached"
+                                        class:post-history-media-placeholder-loading={!item.hasResolvedCache || item.isCaching}
+                                    >
+                                        <span class="post-history-media-placeholder-status"
+                                            >{getMediaStatusLabel(item)}</span
+                                        >
+                                        <span class="post-history-media-placeholder-label"
+                                            >{getLinkLabel(item)}</span
+                                        >
+                                        {#if !item.hasResolvedCache || item.isCaching}
+                                            <span
+                                                class="post-history-media-loading-bar"
+                                                aria-hidden="true"
+                                            ></span>
+                                        {/if}
+                                    </div>
+                                {/if}
+
+                                <Button
+                                    variant="copy"
+                                    shape="circle"
+                                    className="post-history-media-copy-button post-history-media-copy-button-image"
+                                    ariaLabel={getCopyButtonLabel(item.kind, item.url)}
+                                    title={getCopyButtonLabel(item.kind, item.url)}
+                                    onClick={(event) =>
+                                        void handleCopyUrl(item, event)}
+                                >
+                                    <div class="copy-icon svg-icon"></div>
+                                </Button>
+                            </div>
+                        {/each}
                     </div>
-                {/if}
-            </a>
-        {:else}
-            <button
-                type="button"
-                class="post-history-media-surface post-history-media-fetch-surface"
-                disabled={clickableMedia.isCaching}
-                aria-label={getSurfaceAriaLabel(clickableMedia)}
-                title={getLinkLabel(clickableMedia)}
-                onclick={() =>
-                    void mediaCache.fetchAndCacheMedia(clickableMedia.url)}
-            >
-                <div
-                    class="post-history-media-placeholder post-history-media-placeholder-uncached"
-                >
-                    <span class="post-history-media-placeholder-status">
-                        {clickableMedia.isCaching
-                            ? $_("postHistory.mediaLoading")
-                            : $_("postHistory.mediaNotCached")}
-                    </span>
-                    <span class="post-history-media-placeholder-label"
-                        >{getLinkLabel(clickableMedia)}</span
+                {/each}
+            </div>
+        {/if}
+
+        {#if videoItems.length > 0}
+            <div class="post-history-video-list">
+                {#each videoItems as item (item.id)}
+                    <article
+                        class="post-history-video-card"
+                        use:inViewportAction={{
+                            enabled: shouldAutoFetch(item),
+                            once: true,
+                            root: scrollRoot,
+                            rootMargin: AUTO_FETCH_ROOT_MARGIN,
+                            onEnterView: () => requestAutoFetch(item.url),
+                        }}
                     >
-                </div>
-            </button>
+                        <div class="post-history-video-card-header">
+                            <span class="post-history-video-card-label"
+                                >{getLinkLabel(item)}</span
+                            >
+                            <Button
+                                variant="copy"
+                                shape="circle"
+                                className="post-history-media-copy-button post-history-video-copy-button"
+                                ariaLabel={getCopyButtonLabel(item.kind, item.url)}
+                                title={getCopyButtonLabel(item.kind, item.url)}
+                                onClick={(event) =>
+                                    void handleCopyUrl(item, event)}
+                            >
+                                <div class="copy-icon svg-icon"></div>
+                            </Button>
+                        </div>
+
+                        {#if item.cached && item.previewObjectUrl}
+                            <video
+                                src={item.previewObjectUrl}
+                                class="post-history-media-video"
+                                controls
+                                playsinline
+                                preload="metadata"
+                            >
+                                <track kind="captions" />
+                            </video>
+                        {:else if item.hasFetchFailed}
+                            <div
+                                class="post-history-media-placeholder post-history-media-placeholder-failed post-history-video-placeholder"
+                            >
+                                <span class="post-history-media-placeholder-status"
+                                    >{$_("postHistory.mediaLoadFailed")}</span
+                                >
+                                <span class="post-history-media-placeholder-label"
+                                    >{getLinkLabel(item)}</span
+                                >
+                                <button
+                                    type="button"
+                                    class="post-history-media-retry-button"
+                                    onclick={() => handleRetry(item)}
+                                >
+                                    {$_("postHistory.mediaFetchAndCache")}
+                                </button>
+                            </div>
+                        {:else}
+                            <div
+                                class="post-history-media-placeholder post-history-media-placeholder-uncached post-history-video-placeholder"
+                                class:post-history-media-placeholder-loading={!item.hasResolvedCache || item.isCaching}
+                            >
+                                <span class="post-history-media-placeholder-status"
+                                    >{getMediaStatusLabel(item)}</span
+                                >
+                                <span class="post-history-media-placeholder-label"
+                                    >{getLinkLabel(item)}</span
+                                >
+                                {#if !item.hasResolvedCache || item.isCaching}
+                                    <span
+                                        class="post-history-media-loading-bar"
+                                        aria-hidden="true"
+                                    ></span>
+                                {/if}
+                            </div>
+                        {/if}
+                    </article>
+                {/each}
+            </div>
+        {/if}
+
+        {#if otherItems.length > 0}
+            <div class="post-history-other-media-list">
+                {#each otherItems as item (item.id)}
+                    <div
+                        class="post-history-other-media-card"
+                        use:inViewportAction={{
+                            enabled: shouldAutoFetch(item),
+                            once: true,
+                            root: scrollRoot,
+                            rootMargin: AUTO_FETCH_ROOT_MARGIN,
+                            onEnterView: () => requestAutoFetch(item.url),
+                        }}
+                    >
+                        <div class="post-history-other-media-header">
+                            <span class="post-history-other-media-label"
+                                >{getLinkLabel(item)}</span
+                            >
+                            <Button
+                                variant="copy"
+                                shape="circle"
+                                className="post-history-media-copy-button post-history-video-copy-button"
+                                ariaLabel={getCopyButtonLabel(item.kind, item.url)}
+                                title={getCopyButtonLabel(item.kind, item.url)}
+                                onClick={(event) =>
+                                    void handleCopyUrl(item, event)}
+                            >
+                                <div class="copy-icon svg-icon"></div>
+                            </Button>
+                        </div>
+
+                        <div
+                            class="post-history-media-placeholder"
+                            class:post-history-media-placeholder-cached={item.cached}
+                            class:post-history-media-placeholder-uncached={!item.cached && !item.hasFetchFailed}
+                            class:post-history-media-placeholder-failed={item.hasFetchFailed}
+                            class:post-history-media-placeholder-loading={!item.hasResolvedCache || item.isCaching}
+                        >
+                            <span class="post-history-media-placeholder-status"
+                                >{getMediaStatusLabel(item)}</span
+                            >
+                            <span class="post-history-media-placeholder-label"
+                                >{getLinkLabel(item)}</span
+                            >
+                            {#if item.hasFetchFailed}
+                                <button
+                                    type="button"
+                                    class="post-history-media-retry-button"
+                                    onclick={() => handleRetry(item)}
+                                >
+                                    {$_("postHistory.mediaFetchAndCache")}
+                                </button>
+                            {:else if !item.hasResolvedCache || item.isCaching}
+                                <span
+                                    class="post-history-media-loading-bar"
+                                    aria-hidden="true"
+                                ></span>
+                            {/if}
+                        </div>
+                    </div>
+                {/each}
+            </div>
         {/if}
     </div>
 {/if}
 
 <style>
-    .post-history-inline-media {
-        display: block;
-        width: min(100%, 320px);
+    .post-history-media-section {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
     }
 
     .post-history-media-surface {
@@ -120,13 +479,34 @@
         cursor: pointer;
     }
 
-    .post-history-media-link-surface {
-        cursor: pointer;
-        text-decoration: none;
+    .post-history-image-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .post-history-image-row {
+        display: grid;
+        grid-template-columns: repeat(
+            var(--post-history-image-columns),
+            minmax(0, 1fr)
+        );
+        gap: 8px;
+        width: 100%;
+    }
+
+    .post-history-image-cell {
+        position: relative;
+        min-width: 0;
+    }
+
+    .post-history-image-surface {
+        overflow: hidden;
+        border-radius: 10px;
     }
 
     .post-history-media-image,
-    .post-history-media-video,
     .post-history-media-placeholder {
         width: 100%;
         aspect-ratio: 1 / 1;
@@ -139,13 +519,22 @@
         );
     }
 
-    .post-history-media-image,
-    .post-history-media-video {
+    .post-history-media-image {
         object-fit: cover;
     }
 
     .post-history-media-video {
         display: block;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 10px;
+        border: 1px solid var(--border-hr);
+        background: color-mix(
+            in srgb,
+            var(--background-color, #fff) 92%,
+            #000 8%
+        );
+        object-fit: cover;
     }
 
     .post-history-media-placeholder {
@@ -155,9 +544,15 @@
         align-items: flex-start;
         justify-content: center;
         padding: 12px;
+        box-sizing: border-box;
         text-align: left;
         color: var(--color-subtle-text, #666);
         overflow-wrap: anywhere;
+    }
+
+    .post-history-media-placeholder-loading {
+        position: relative;
+        overflow: hidden;
     }
 
     .post-history-media-placeholder-cached {
@@ -178,6 +573,14 @@
         );
     }
 
+    .post-history-media-placeholder-failed {
+        background: color-mix(
+            in srgb,
+            var(--background-color, #fff) 88%,
+            var(--danger, #b03030) 12%
+        );
+    }
+
     .post-history-media-placeholder-status {
         display: inline-flex;
         padding: 4px 8px;
@@ -195,8 +598,107 @@
         overflow-wrap: anywhere;
     }
 
-    .post-history-media-fetch-surface:disabled {
-        cursor: default;
-        opacity: 0.7;
+    .post-history-media-loading-bar {
+        display: block;
+        width: 100%;
+        height: 8px;
+        border-radius: 999px;
+        background: linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--theme) 10%, transparent),
+            color-mix(in srgb, var(--theme) 28%, transparent),
+            color-mix(in srgb, var(--theme) 10%, transparent)
+        );
+        background-size: 200% 100%;
+        animation: post-history-media-loading 1.4s linear infinite;
+    }
+
+    .post-history-media-retry-button {
+        min-height: 32px;
+        padding: 6px 12px;
+        border: 1px solid var(--border, #ccc);
+        border-radius: 999px;
+        background: color-mix(
+            in srgb,
+            var(--background-color, #fff) 90%,
+            #000 10%
+        );
+        color: var(--text, #111);
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .post-history-video-list,
+    .post-history-other-media-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .post-history-video-card,
+    .post-history-other-media-card {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        padding: 10px;
+        border-radius: 14px;
+        border: 1px solid var(--border-hr);
+        background: color-mix(
+            in srgb,
+            var(--background-color, #fff) 94%,
+            #000 6%
+        );
+        box-sizing: border-box;
+    }
+
+    .post-history-video-card-header,
+    .post-history-other-media-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .post-history-video-card-label,
+    .post-history-other-media-label {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        color: var(--text, #111);
+        font-size: 0.92rem;
+    }
+
+    .post-history-video-placeholder {
+        aspect-ratio: 16 / 9;
+    }
+
+    :global(button.post-history-media-copy-button.circle.copy) {
+        min-width: 36px;
+        width: 36px;
+        height: 36px;
+        min-height: 36px;
+        z-index: 2;
+    }
+
+    :global(button.post-history-media-copy-button-image.circle.copy) {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+    }
+
+    :global(button.post-history-video-copy-button.circle.copy) {
+        position: relative;
+        top: auto;
+        right: auto;
+        flex-shrink: 0;
+    }
+
+    @keyframes post-history-media-loading {
+        0% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: -100% 50%;
+        }
     }
 </style>

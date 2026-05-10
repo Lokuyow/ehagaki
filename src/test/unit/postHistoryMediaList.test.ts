@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 
@@ -6,7 +6,16 @@ const translateMock = vi.hoisted(() => (key: string) => {
     const translations: Record<string, string> = {
         'postHistory.mediaCached': 'キャッシュ済み',
         'postHistory.mediaNotCached': '未キャッシュ',
+        'postHistory.mediaFetchAndCache': '再取得して保存',
         'postHistory.mediaLoading': '読み込み中...',
+        'postHistory.mediaLoadFailed': '読み込みに失敗しました',
+        'postHistory.mediaOpen': '開く',
+        'imageContextMenu.copyUrl': 'URLをコピー',
+        'imageContextMenu.copySuccess': 'URLをコピーしました',
+        'imageContextMenu.copyFailed': 'コピーに失敗しました',
+        'videoContextMenu.copyUrl': 'URLをコピー',
+        'videoContextMenu.copySuccess': 'URLをコピーしました',
+        'videoContextMenu.copyFailed': 'コピーに失敗しました',
         'videoNode.not_supported': 'video unsupported',
     };
 
@@ -20,6 +29,42 @@ const postMediaCacheServiceMock = vi.hoisted(() => ({
     revokeObjectUrl: vi.fn(),
 }));
 
+const clipboardMock = vi.hoisted(() => ({
+    tryCopyToClipboard: vi.fn(),
+}));
+
+const intersectionObserverInstances = vi.hoisted(
+    () => [] as MockIntersectionObserver[],
+);
+
+class MockIntersectionObserver {
+    constructor(
+        private callback: IntersectionObserverCallback,
+    ) {
+        intersectionObserverInstances.push(this);
+    }
+
+    disconnect = vi.fn();
+    observe = vi.fn((target: Element) => {
+        queueMicrotask(() => {
+            this.callback(
+                [
+                    {
+                        isIntersecting: true,
+                        target,
+                    } as IntersectionObserverEntry,
+                ],
+                this as unknown as IntersectionObserver,
+            );
+        });
+    });
+    takeRecords = vi.fn(() => []);
+    unobserve = vi.fn();
+    root = null;
+    rootMargin = '';
+    thresholds = [];
+}
+
 vi.mock('svelte-i18n', () => ({
     _: readable(translateMock),
 }));
@@ -28,14 +73,26 @@ vi.mock('../../lib/postMediaCacheService', () => ({
     postMediaCacheService: postMediaCacheServiceMock,
 }));
 
+vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
+
 import PostHistoryMediaList from '../../components/PostHistoryMediaList.svelte';
 
 describe('PostHistoryMediaList', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        intersectionObserverInstances.length = 0;
+        vi.stubGlobal(
+            'IntersectionObserver',
+            MockIntersectionObserver as unknown as typeof IntersectionObserver,
+        );
+        clipboardMock.tryCopyToClipboard.mockResolvedValue(true);
     });
 
-    it('cached media は URL の代わりに直接表示する', async () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('cached media は画像グリッドと動画カードに分けて表示する', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockImplementation(async (url: string) => {
                 if (url.endsWith('.jpg')) {
@@ -95,26 +152,34 @@ describe('PostHistoryMediaList', () => {
             props: {
                 media: [
                     {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'cached image',
+                    },
+                    {
                         url: 'https://example.com/video.mp4',
                         mimeType: 'video/mp4',
+                        alt: 'cached video',
                     },
                 ],
             },
         });
 
         await waitFor(() => {
+            expect(screen.getByAltText('cached image')).toBeTruthy();
             expect(container.querySelector('video')).toBeTruthy();
         });
         expect(
             vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
-        ).toHaveBeenCalledWith('https://example.com/video.mp4');
-        expect(screen.queryByRole('button')).toBeNull();
-        expect(screen.getByRole('link').getAttribute('href')).toBe(
-            'https://example.com/video.mp4',
-        );
+        ).toHaveBeenCalledTimes(2);
+
+        const video = container.querySelector('video');
+        expect(video?.getAttribute('controls')).not.toBeNull();
+        expect(video?.getAttribute('playsinline')).not.toBeNull();
+        expect(video?.getAttribute('preload')).toBe('metadata');
     });
 
-    it('uncached media はプレースホルダー自体のクリックで再取得して保存する', async () => {
+    it('可視範囲に入った uncached media は自動取得して保存する', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockResolvedValue(null);
         vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
@@ -149,13 +214,11 @@ describe('PostHistoryMediaList', () => {
             },
         });
 
-        await fireEvent.click(
-            screen.getByRole('button', { name: 'uncached image' }),
-        );
-
-        expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({
-            url: 'https://example.com/uncached.png',
-            mimeType: 'image/png',
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({
+                url: 'https://example.com/uncached.png',
+                mimeType: 'image/png',
+            });
         });
         await waitFor(() => {
             expect(screen.getByAltText('uncached image')).toBeTruthy();
@@ -163,5 +226,191 @@ describe('PostHistoryMediaList', () => {
         expect(
             vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
         ).toHaveBeenCalledWith('https://example.com/uncached.png');
+    });
+
+    it('取得失敗時は再取得ボタンを表示し、押下で再試行できる', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockResolvedValueOnce(null)
+            .mockResolvedValueOnce({
+                cacheKey: 'https://example.com/retry.png',
+                url: 'https://example.com/retry.png',
+                mimeType: 'image/png',
+                size: 6,
+                source: 'network',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/retry.png',
+                url: 'https://example.com/retry.png',
+                mimeType: 'image/png',
+                size: 6,
+                source: 'network',
+                kind: 'image',
+                objectUrl: 'blob:retry-image',
+            });
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/retry.png',
+                        mimeType: 'image/png',
+                        alt: 'retry image',
+                    },
+                ],
+            },
+        });
+
+        const retryButton = await screen.findByRole('button', {
+            name: '再取得して保存',
+        });
+        await fireEvent.click(retryButton);
+
+        expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledTimes(2);
+        await waitFor(() => {
+            expect(screen.getByAltText('retry image')).toBeTruthy();
+        });
+    });
+
+    it('画像クリック時は fullscreen 用コールバックへ同一投稿の画像だけを渡す', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockImplementation(async (url: string) => {
+                if (url.endsWith('.jpg')) {
+                    return {
+                        cacheKey: 'https://example.com/image.jpg',
+                        url,
+                        mimeType: 'image/jpeg',
+                        size: 10,
+                        source: 'uploaded',
+                        kind: 'image',
+                    };
+                }
+
+                return {
+                    cacheKey: 'https://example.com/video.mp4',
+                    url,
+                    mimeType: 'video/mp4',
+                    size: 20,
+                    source: 'uploaded',
+                    kind: 'video',
+                };
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockImplementation(async (url: string) => {
+                if (url.endsWith('.jpg')) {
+                    return {
+                        cacheKey: 'https://example.com/image.jpg',
+                        url,
+                        mimeType: 'image/jpeg',
+                        size: 10,
+                        source: 'uploaded',
+                        kind: 'image',
+                        objectUrl: 'blob:image-preview',
+                    };
+                }
+
+                return {
+                    cacheKey: 'https://example.com/video.mp4',
+                    url,
+                    mimeType: 'video/mp4',
+                    size: 20,
+                    source: 'uploaded',
+                    kind: 'video',
+                    objectUrl: 'blob:video-preview',
+                };
+            });
+
+        const onImageOpen = vi.fn();
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'open image',
+                    },
+                    {
+                        url: 'https://example.com/video.mp4',
+                        mimeType: 'video/mp4',
+                        alt: 'open video',
+                    },
+                ],
+                onImageOpen,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('open image')).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByAltText('open image'));
+
+        expect(onImageOpen).toHaveBeenCalledWith({
+            index: 0,
+            mediaList: [
+                {
+                    id: 'https://example.com/image.jpg',
+                    src: 'https://example.com/image.jpg',
+                    alt: 'open image',
+                    type: 'image',
+                    dim: undefined,
+                },
+            ],
+        });
+    });
+
+    it('画像の URL コピーボタン押下は fullscreen 起動へ伝播しない', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/image.jpg',
+                url: 'https://example.com/image.jpg',
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/image.jpg',
+                url: 'https://example.com/image.jpg',
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+                objectUrl: 'blob:image-preview',
+            });
+
+        const onImageOpen = vi.fn();
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'copy target image',
+                    },
+                ],
+                onImageOpen,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('copy target image')).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'URLをコピー' }));
+
+        expect(clipboardMock.tryCopyToClipboard).toHaveBeenCalledWith(
+            'https://example.com/image.jpg',
+            'URL',
+            navigator,
+            window,
+        );
+        expect(onImageOpen).not.toHaveBeenCalled();
     });
 });

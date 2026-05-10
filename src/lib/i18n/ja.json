@@ -124,6 +124,7 @@
     "mediaOpen": "開く",
     "mediaLoadCachedVideo": "動画を表示",
     "mediaLoading": "読み込み中...",
+    "mediaLoadFailed": "読み込みに失敗しました",
     "expand": "もっと見る",
     "collapse": "折りたたむ"
   },

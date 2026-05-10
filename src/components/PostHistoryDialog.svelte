@@ -5,7 +5,9 @@
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
+    import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
     import PostHistoryPreviewContent from "./PostHistoryPreviewContent.svelte";
     import { usePostHistoryChannelDisplay } from "../lib/hooks/usePostHistoryChannelDisplay.svelte";
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
@@ -23,7 +25,7 @@
     } from "../lib/postHistoryDialogUtils";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
-    import type { RelayConfig } from "../lib/types";
+    import type { FullscreenMediaItem, RelayConfig } from "../lib/types";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { toNevent } from "../lib/utils/nostrUtils";
 
@@ -73,7 +75,10 @@
     let emojiLoadStateByUrl = $state<
         Record<string, "loading" | "ready" | "failed" | undefined>
     >({});
-    let historyContainer: HTMLDivElement | null = null;
+    let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
+    let fullscreenIndex = $state(-1);
+    let showImageFullscreen = $state(false);
+    let historyContainer = $state<HTMLDivElement | null>(null);
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
@@ -114,6 +119,9 @@
         deleteTargetPost = null;
         deleteRequestState = {};
         emojiLoadStateByUrl = {};
+        fullscreenMediaItems = [];
+        fullscreenIndex = -1;
+        showImageFullscreen = false;
         loadingEmojiUrls.clear();
     }
 
@@ -122,6 +130,9 @@
         channelDisplay.cancelCurrentChannelResolution();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
+        showImageFullscreen = false;
+        fullscreenMediaItems = [];
+        fullscreenIndex = -1;
         show = false;
         onClose?.();
     }
@@ -327,6 +338,25 @@
     function handleDeleteCancel(): void {
         deleteConfirmOpen = false;
         deleteTargetPost = null;
+    }
+
+    function handleImageOpen(params: {
+        index: number;
+        mediaList: FullscreenMediaItem[];
+    }): void {
+        fullscreenMediaItems = params.mediaList;
+        fullscreenIndex = params.index;
+        showImageFullscreen = params.mediaList.length > 0 && params.index >= 0;
+    }
+
+    function handleFullscreenNavigate(index: number): void {
+        fullscreenIndex = index;
+    }
+
+    function handleFullscreenClose(): void {
+        showImageFullscreen = false;
+        fullscreenMediaItems = [];
+        fullscreenIndex = -1;
     }
 
     async function handleDeleteConfirm(): Promise<void> {
@@ -630,6 +660,15 @@
                                             </Button>
                                         </div>
                                     {/if}
+                                    {#if post.media.length > 0}
+                                        <div class="post-preview-media">
+                                            <PostHistoryMediaList
+                                                media={post.media}
+                                                scrollRoot={historyContainer}
+                                                onImageOpen={handleImageOpen}
+                                            />
+                                        </div>
+                                    {/if}
                                 </div>
                                 {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-footer">
@@ -852,6 +891,16 @@
         </div>
     {/snippet}
 </ConfirmDialog>
+
+<ImageFullscreen
+    bind:show={showImageFullscreen}
+    src={fullscreenMediaItems[fullscreenIndex]?.src ?? ""}
+    alt={fullscreenMediaItems[fullscreenIndex]?.alt ?? ""}
+    onClose={handleFullscreenClose}
+    mediaList={fullscreenMediaItems}
+    currentIndex={fullscreenIndex}
+    onNavigate={handleFullscreenNavigate}
+/>
 
 <style>
     :global(.post-history-dialog .dialog-content) {
@@ -1159,6 +1208,7 @@
         display: flex;
         flex-direction: column;
         padding-left: 1rem;
+        gap: 8px;
 
         .post-preview-content {
             overflow-wrap: anywhere;
@@ -1166,6 +1216,10 @@
             font-size: 1rem;
             line-height: 1.5;
             word-break: break-word;
+        }
+
+        .post-preview-media {
+            display: block;
         }
 
         .post-preview-toggle-row {

@@ -8,12 +8,14 @@ export interface ResolvedPostHistoryMediaItem {
     alt?: string;
     mimeType?: string;
     kind: PostMediaKind;
+    hasResolvedCache: boolean;
     cached: boolean;
     previewObjectUrl?: string;
     size?: number;
     source?: 'uploaded' | 'network';
     isLoadingPreview: boolean;
     isCaching: boolean;
+    hasFetchFailed: boolean;
 }
 
 export function usePostHistoryMediaCache(params: {
@@ -57,9 +59,11 @@ export function usePostHistoryMediaCache(params: {
                 url: media.url,
                 mimeType: media.mimeType,
             }),
+            hasResolvedCache: false,
             cached: false,
             isLoadingPreview: false,
             isCaching: false,
+            hasFetchFailed: false,
         };
     }
 
@@ -91,6 +95,7 @@ export function usePostHistoryMediaCache(params: {
                 activeObjectUrls.set(url, cached.objectUrl);
                 updateItem(url, (item) => ({
                     ...item,
+                    hasResolvedCache: true,
                     cached: true,
                     previewObjectUrl: cached.objectUrl,
                     mimeType: cached.mimeType,
@@ -99,6 +104,7 @@ export function usePostHistoryMediaCache(params: {
                     source: cached.source,
                     isLoadingPreview: false,
                     isCaching: false,
+                    hasFetchFailed: false,
                 }));
                 return;
             }
@@ -107,6 +113,7 @@ export function usePostHistoryMediaCache(params: {
         revokeTrackedObjectUrl(url);
         updateItem(url, (item) => ({
             ...item,
+            hasResolvedCache: true,
             cached: true,
             previewObjectUrl: undefined,
             mimeType: descriptor.mimeType,
@@ -115,6 +122,7 @@ export function usePostHistoryMediaCache(params: {
             source: descriptor.source,
             isLoadingPreview: false,
             isCaching: false,
+            hasFetchFailed: false,
         }));
     }
 
@@ -125,7 +133,11 @@ export function usePostHistoryMediaCache(params: {
         }
 
         invalidatePendingResolution();
-        updateItem(url, (item) => ({ ...item, isCaching: true }));
+        updateItem(url, (item) => ({
+            ...item,
+            isCaching: true,
+            hasFetchFailed: false,
+        }));
 
         try {
             const cached = await postMediaCacheService.fetchAndCacheMedia({
@@ -133,7 +145,11 @@ export function usePostHistoryMediaCache(params: {
                 mimeType: target.mimeType,
             });
             if (!cached) {
-                updateItem(url, (item) => ({ ...item, isCaching: false }));
+                updateItem(url, (item) => ({
+                    ...item,
+                    isCaching: false,
+                    hasFetchFailed: true,
+                }));
                 return;
             }
 
@@ -143,7 +159,11 @@ export function usePostHistoryMediaCache(params: {
                 loadPreview: cached.kind === 'image' || cached.kind === 'video',
             });
         } catch {
-            updateItem(url, (item) => ({ ...item, isCaching: false }));
+            updateItem(url, (item) => ({
+                ...item,
+                isCaching: false,
+                hasFetchFailed: true,
+            }));
         }
     }
 
@@ -164,12 +184,16 @@ export function usePostHistoryMediaCache(params: {
                         media.url,
                     );
                     if (!descriptor) {
-                        return baseItem;
+                        return {
+                            ...baseItem,
+                            hasResolvedCache: true,
+                        } satisfies ResolvedPostHistoryMediaItem;
                     }
 
                     if (descriptor.kind !== 'image' && descriptor.kind !== 'video') {
                         return {
                             ...baseItem,
+                            hasResolvedCache: true,
                             cached: true,
                             kind: descriptor.kind,
                             mimeType: descriptor.mimeType,
@@ -184,6 +208,7 @@ export function usePostHistoryMediaCache(params: {
                     if (!cachedMedia) {
                         return {
                             ...baseItem,
+                            hasResolvedCache: true,
                             cached: true,
                             kind: descriptor.kind,
                             mimeType: descriptor.mimeType,
@@ -202,6 +227,7 @@ export function usePostHistoryMediaCache(params: {
                     nextObjectUrls.set(media.url, cachedMedia.objectUrl);
                     return {
                         ...baseItem,
+                        hasResolvedCache: true,
                         cached: true,
                         previewObjectUrl: cachedMedia.objectUrl,
                         kind: cachedMedia.kind,

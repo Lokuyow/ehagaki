@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+    buildPostHistoryImageGridRows,
+    buildPostHistoryMediaLayout,
+    buildPostHistoryFullscreenMediaItems,
     buildPreview,
     buildPreviewContent,
+    resolvePostHistoryMedia,
 } from "../../lib/postHistoryDialogUtils";
 
 describe("postHistoryDialogUtils", () => {
@@ -99,6 +103,150 @@ describe("postHistoryDialogUtils", () => {
                 url: "https://example.com/video.mp4",
                 normalizedUrl: "https://example.com/video.mp4",
                 media: { url: "https://example.com/video.mp4", mimeType: "video/mp4" },
+            },
+        ]);
+    });
+
+    it("resolvePostHistoryMedia dedupes normalized URLs and classifies media kinds", () => {
+        const result = resolvePostHistoryMedia([
+            {
+                url: "https://example.com/image.jpg#viewer",
+                mimeType: "image/jpeg",
+                alt: "first image",
+                dim: "800x600",
+            },
+            {
+                url: "https://example.com/image.jpg",
+                mimeType: "image/jpeg",
+            },
+            {
+                url: "https://example.com/video.mp4",
+                mimeType: "video/mp4",
+            },
+            {
+                url: "https://example.com/file.bin",
+                mimeType: "application/octet-stream",
+            },
+        ]);
+
+        expect(result).toEqual([
+            {
+                id: "https://example.com/image.jpg",
+                url: "https://example.com/image.jpg#viewer",
+                normalizedUrl: "https://example.com/image.jpg",
+                mimeType: "image/jpeg",
+                alt: "first image",
+                dim: "800x600",
+                kind: "image",
+            },
+            {
+                id: "https://example.com/video.mp4",
+                url: "https://example.com/video.mp4",
+                normalizedUrl: "https://example.com/video.mp4",
+                mimeType: "video/mp4",
+                kind: "video",
+            },
+            {
+                id: "https://example.com/file.bin",
+                url: "https://example.com/file.bin",
+                normalizedUrl: "https://example.com/file.bin",
+                mimeType: "application/octet-stream",
+                kind: "other",
+            },
+        ]);
+    });
+
+    it("buildPostHistoryImageGridRows keeps 5-image second row full width", () => {
+        const images = resolvePostHistoryMedia([
+            { url: "https://example.com/1.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/2.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/3.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/4.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/5.jpg", mimeType: "image/jpeg" },
+        ]);
+
+        expect(
+            buildPostHistoryImageGridRows(images).map((row) => ({
+                itemCount: row.items.length,
+                slotCount: row.slotCount,
+            })),
+        ).toEqual([
+            { itemCount: 3, slotCount: 3 },
+            { itemCount: 2, slotCount: 2 },
+        ]);
+    });
+
+    it("buildPostHistoryImageGridRows keeps 7-8 image final rows at thumbnail width", () => {
+        const sevenImages = resolvePostHistoryMedia([
+            { url: "https://example.com/1.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/2.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/3.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/4.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/5.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/6.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/7.jpg", mimeType: "image/jpeg" },
+        ]);
+        const eightImages = resolvePostHistoryMedia([
+            { url: "https://example.com/1.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/2.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/3.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/4.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/5.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/6.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/7.jpg", mimeType: "image/jpeg" },
+            { url: "https://example.com/8.jpg", mimeType: "image/jpeg" },
+        ]);
+
+        expect(
+            buildPostHistoryImageGridRows(sevenImages).map((row) => ({
+                itemCount: row.items.length,
+                slotCount: row.slotCount,
+            })),
+        ).toEqual([
+            { itemCount: 3, slotCount: 3 },
+            { itemCount: 3, slotCount: 3 },
+            { itemCount: 1, slotCount: 3 },
+        ]);
+        expect(
+            buildPostHistoryImageGridRows(eightImages).map((row) => ({
+                itemCount: row.items.length,
+                slotCount: row.slotCount,
+            })),
+        ).toEqual([
+            { itemCount: 3, slotCount: 3 },
+            { itemCount: 3, slotCount: 3 },
+            { itemCount: 2, slotCount: 3 },
+        ]);
+    });
+
+    it("buildPostHistoryMediaLayout returns image-only fullscreen items", () => {
+        const result = buildPostHistoryMediaLayout([
+            {
+                url: "https://example.com/image.jpg",
+                mimeType: "image/jpeg",
+                alt: "image alt",
+                dim: "1024x768",
+            },
+            {
+                url: "https://example.com/video.mp4",
+                mimeType: "video/mp4",
+                alt: "video alt",
+            },
+        ]);
+
+        expect(result.images).toHaveLength(1);
+        expect(result.videos).toHaveLength(1);
+        expect(result.others).toHaveLength(0);
+        expect(result.fullscreenMediaItems).toEqual(
+            buildPostHistoryFullscreenMediaItems(result.images),
+        );
+        expect(result.fullscreenMediaItems).toEqual([
+            {
+                id: "https://example.com/image.jpg",
+                src: "https://example.com/image.jpg",
+                alt: "image alt",
+                type: "image",
+                dim: "1024x768",
             },
         ]);
     });

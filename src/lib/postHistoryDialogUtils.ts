@@ -1,10 +1,14 @@
 import { RelayConfigUtils } from "./relayConfigUtils";
-import { normalizePostMediaUrl } from "./postMediaCacheUtils";
+import {
+    inferPostMediaKind,
+    normalizePostMediaUrl,
+} from "./postMediaCacheUtils";
 import {
     normalizeEmojiShortcodeForLookup,
     parseEmojiTags,
 } from "./customEmoji";
 import type { PostHistoryRelayFetchResult } from "./postHistoryRelayFetchService";
+import type { FullscreenMediaItem } from "./types";
 import type {
     ChannelMetadataCache,
 } from "./storage/channelMetadataRepository";
@@ -36,7 +40,41 @@ export type PostHistoryPreviewContent = {
     emojiUrls: string[];
 };
 
+export type PostHistoryDisplayMediaKind = "image" | "video" | "other";
+
+export type PostHistoryResolvedMedia = PostHistoryRecord["media"][number] & {
+    id: string;
+    normalizedUrl: string;
+    kind: PostHistoryDisplayMediaKind;
+};
+
+export type PostHistoryImageGridRow = {
+    items: PostHistoryResolvedMedia[];
+    slotCount: 1 | 2 | 3;
+};
+
+export type PostHistoryMediaLayout = {
+    items: PostHistoryResolvedMedia[];
+    images: PostHistoryResolvedMedia[];
+    videos: PostHistoryResolvedMedia[];
+    others: PostHistoryResolvedMedia[];
+    imageRows: PostHistoryImageGridRow[];
+    fullscreenMediaItems: FullscreenMediaItem[];
+};
+
 const URL_PATTERN = /https?:\/\/[^\s]+/g;
+
+const IMAGE_ROW_PATTERNS: Record<number, number[]> = {
+    1: [1],
+    2: [2],
+    3: [3],
+    4: [2, 2],
+    5: [3, 2],
+    6: [3, 3],
+    7: [3, 3, 1],
+    8: [3, 3, 2],
+    9: [3, 3, 3],
+};
 
 export type ChannelDisplayState = {
     status: "loading" | "resolved" | "failed";
@@ -155,6 +193,93 @@ export function buildPreview(content: string): string {
     return normalized || " ";
 }
 
+export function resolvePostHistoryMedia(
+    media: PostHistoryRecord["media"],
+): PostHistoryResolvedMedia[] {
+    const items: PostHistoryResolvedMedia[] = [];
+    const seenUrls = new Set<string>();
+
+    for (const item of media) {
+        const normalizedUrl = normalizePostMediaUrl(item.url);
+        if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
+            continue;
+        }
+
+        seenUrls.add(normalizedUrl);
+
+        const inferredKind = inferPostMediaKind({
+            url: item.url,
+            mimeType: item.mimeType,
+        });
+
+        items.push({
+            ...item,
+            id: normalizedUrl,
+            normalizedUrl,
+            kind: inferredKind === "image" || inferredKind === "video"
+                ? inferredKind
+                : "other",
+        });
+    }
+
+    return items;
+}
+
+export function buildPostHistoryImageGridRows(
+    images: PostHistoryResolvedMedia[],
+): PostHistoryImageGridRow[] {
+    const pattern = resolvePostHistoryImageRowPattern(images.length);
+    const rows: PostHistoryImageGridRow[] = [];
+    let startIndex = 0;
+
+    for (let rowIndex = 0; rowIndex < pattern.length; rowIndex += 1) {
+        const rowLength = pattern[rowIndex];
+        const items = images.slice(startIndex, startIndex + rowLength);
+        startIndex += rowLength;
+
+        rows.push({
+            items,
+            slotCount: resolvePostHistoryImageRowSlotCount({
+                totalCount: images.length,
+                rowLength: items.length,
+                isFinalRow: rowIndex === pattern.length - 1,
+            }),
+        });
+    }
+
+    return rows;
+}
+
+export function buildPostHistoryFullscreenMediaItems(
+    images: PostHistoryResolvedMedia[],
+): FullscreenMediaItem[] {
+    return images.map((item) => ({
+        id: item.id,
+        src: item.url,
+        alt: item.alt,
+        type: "image",
+        dim: item.dim,
+    }));
+}
+
+export function buildPostHistoryMediaLayout(
+    media: PostHistoryRecord["media"],
+): PostHistoryMediaLayout {
+    const items = resolvePostHistoryMedia(media);
+    const images = items.filter((item) => item.kind === "image");
+    const videos = items.filter((item) => item.kind === "video");
+    const others = items.filter((item) => item.kind === "other");
+
+    return {
+        items,
+        images,
+        videos,
+        others,
+        imageRows: buildPostHistoryImageGridRows(images),
+        fullscreenMediaItems: buildPostHistoryFullscreenMediaItems(images),
+    };
+}
+
 export function buildPreviewContent(
     post: Pick<PostHistoryRecord, "content" | "tags"> &
         Partial<Pick<PostHistoryRecord, "media">>,
@@ -232,6 +357,54 @@ function buildPostEmojiMap(
     }
 
     return emojiMap;
+}
+
+function resolvePostHistoryImageRowPattern(count: number): number[] {
+    const normalizedCount = Number.isFinite(count)
+        ? Math.max(0, Math.trunc(count))
+        : 0;
+
+    if (normalizedCount === 0) {
+        return [];
+    }
+
+    const predefinedPattern = IMAGE_ROW_PATTERNS[normalizedCount];
+    if (predefinedPattern) {
+        return [...predefinedPattern];
+    }
+
+    const rows = Array.from(
+        { length: Math.floor(normalizedCount / 3) },
+        () => 3,
+    );
+    const remainder = normalizedCount % 3;
+    if (remainder > 0) {
+        rows.push(remainder);
+    }
+
+    return rows;
+}
+
+function resolvePostHistoryImageRowSlotCount(params: {
+    totalCount: number;
+    rowLength: number;
+    isFinalRow: boolean;
+}): 1 | 2 | 3 {
+    const { totalCount, rowLength, isFinalRow } = params;
+
+    if (isFinalRow && totalCount >= 7 && rowLength < 3) {
+        return 3;
+    }
+
+    if (rowLength >= 3) {
+        return 3;
+    }
+
+    if (rowLength === 2) {
+        return 2;
+    }
+
+    return 1;
 }
 
 function buildPostMediaMap(
