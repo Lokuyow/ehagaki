@@ -255,7 +255,7 @@ function createDeferred<T>() {
 
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
-    expect(screen.getByText('image.jpg')).toBeTruthy();
+    expect(screen.getByTitle('image.jpg')).toBeTruthy();
     expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
@@ -395,7 +395,7 @@ describe('PostHistoryDialog', () => {
         });
 
         expect(toggleButton).toBeTruthy();
-        expect(screen.getByText('image.jpg')).toBeTruthy();
+        expect(screen.getByTitle('image.jpg')).toBeTruthy();
         await fireEvent.click(toggleButton);
         expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
         await fireEvent.click(screen.getByRole('button', { name: '折りたたむ' }));
@@ -436,8 +436,8 @@ describe('PostHistoryDialog', () => {
             expect(container.querySelector('.post-history-preview-text')).toBeNull();
         });
 
-        expect(screen.getByText('image-1.jpg')).toBeTruthy();
-        expect(screen.getByText('image-2.jpg')).toBeTruthy();
+        expect(screen.getByTitle('image-1.jpg')).toBeTruthy();
+        expect(screen.getByTitle('image-2.jpg')).toBeTruthy();
     });
 
     it('fullscreen viewer 内の操作では投稿履歴ダイアログを閉じない', async () => {

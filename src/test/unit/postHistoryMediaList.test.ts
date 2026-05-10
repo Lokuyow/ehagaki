@@ -150,22 +150,24 @@ describe('PostHistoryMediaList', () => {
                 return null;
             });
 
-        const { container } = render(PostHistoryMediaList, {
+        const media = [
+            {
+                url: 'https://example.com/image.jpg',
+                mimeType: 'image/jpeg',
+                alt: 'cached image',
+                blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+            },
+            {
+                url: 'https://example.com/video.mp4',
+                mimeType: 'video/mp4',
+                alt: 'cached video',
+                blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.',
+            },
+        ];
+
+        const { container, rerender } = render(PostHistoryMediaList, {
             props: {
-                media: [
-                    {
-                        url: 'https://example.com/image.jpg',
-                        mimeType: 'image/jpeg',
-                        alt: 'cached image',
-                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
-                    },
-                    {
-                        url: 'https://example.com/video.mp4',
-                        mimeType: 'video/mp4',
-                        alt: 'cached video',
-                        blurhash: 'LGF5]+Yk^6#M@-5c,1J5@[or[Q6.',
-                    },
-                ],
+                media,
             },
         });
 
@@ -184,6 +186,15 @@ describe('PostHistoryMediaList', () => {
         expect(
             container.querySelector('.post-history-media-placeholder-blurhash'),
         ).toBeNull();
+
+        await rerender({
+            media,
+        });
+
+        expect(
+            vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
+        ).toHaveBeenCalledTimes(2);
+        expect(screen.getByAltText('cached image')).toBeTruthy();
     });
 
     it('キャッシュ判定中でも blurhash プレースホルダーと alt を表示ヒントに使う', async () => {

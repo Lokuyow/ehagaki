@@ -1,3 +1,4 @@
+import { onDestroy } from 'svelte';
 import type { PostMediaKind } from '../postMediaCacheUtils';
 import { inferPostMediaKind } from '../postMediaCacheUtils';
 import { postMediaCacheService } from '../postMediaCacheService';
@@ -46,6 +47,26 @@ export function buildResolvedPostHistoryMediaBaseItem(
     };
 }
 
+function buildPostHistoryMediaSignature(
+    mediaItems: PostHistoryMediaRecord[],
+    canUsePersistentCache: boolean,
+): string {
+    const cacheMode = canUsePersistentCache ? '1' : '0';
+
+    return [
+        cacheMode,
+        ...mediaItems.map((media) => [
+            media.url,
+            media.mimeType ?? '',
+            media.alt ?? '',
+            media.blurhash ?? '',
+            media.dim ?? '',
+            media.size ?? '',
+            media.uploadProtocol ?? '',
+        ].join('\u001f')),
+    ].join('\u001e');
+}
+
 export function usePostHistoryMediaCache(params: {
     getMedia: () => PostHistoryMediaRecord[];
 }) {
@@ -54,6 +75,8 @@ export function usePostHistoryMediaCache(params: {
     });
     const activeObjectUrls = new Map<string, string>();
     let resolutionVersion = 0;
+    let lastMediaSignature = '';
+    let isDestroyed = false;
 
     function toDirectDisplayItem(
         media: PostHistoryMediaRecord,
@@ -75,8 +98,9 @@ export function usePostHistoryMediaCache(params: {
         };
     }
 
-    function invalidatePendingResolution(): void {
+    function invalidatePendingResolution(): number {
         resolutionVersion += 1;
+        return resolutionVersion;
     }
 
     function revokeTrackedObjectUrl(url: string): void {
@@ -114,8 +138,14 @@ export function usePostHistoryMediaCache(params: {
             source: 'uploaded' | 'network';
         };
         loadPreview: boolean;
+        expectedResolutionVersion?: number;
     }): Promise<void> {
-        const { url, descriptor, loadPreview } = params;
+        const {
+            url,
+            descriptor,
+            loadPreview,
+            expectedResolutionVersion,
+        } = params;
 
         if (loadPreview && (descriptor.kind === 'image' || descriptor.kind === 'video')) {
             updateItem(url, (item) => ({
@@ -133,6 +163,17 @@ export function usePostHistoryMediaCache(params: {
             }));
 
             const cached = await postMediaCacheService.createCachedMediaObjectUrl(url);
+            if (
+                isDestroyed ||
+                (expectedResolutionVersion !== undefined &&
+                    expectedResolutionVersion !== resolutionVersion)
+            ) {
+                if (cached) {
+                    postMediaCacheService.revokeObjectUrl(cached.objectUrl);
+                }
+                return;
+            }
+
             if (cached) {
                 revokeTrackedObjectUrl(url);
                 activeObjectUrls.set(url, cached.objectUrl);
@@ -151,6 +192,10 @@ export function usePostHistoryMediaCache(params: {
                 }));
                 return;
             }
+        }
+
+        if (isDestroyed) {
+            return;
         }
 
         revokeTrackedObjectUrl(url);
@@ -175,7 +220,7 @@ export function usePostHistoryMediaCache(params: {
             return;
         }
 
-        invalidatePendingResolution();
+        const requestResolutionVersion = invalidatePendingResolution();
         updateItem(url, (item) => ({
             ...item,
             isCaching: true,
@@ -200,6 +245,7 @@ export function usePostHistoryMediaCache(params: {
                 url,
                 descriptor: cached,
                 loadPreview: cached.kind === 'image' || cached.kind === 'video',
+                expectedResolutionVersion: requestResolutionVersion,
             });
         } catch {
             updateItem(url, (item) => ({
@@ -210,23 +256,29 @@ export function usePostHistoryMediaCache(params: {
         }
     }
 
+    onDestroy(() => {
+        isDestroyed = true;
+        resolutionVersion += 1;
+        revokeAllObjectUrls();
+    });
+
     $effect(() => {
         const mediaItems = params.getMedia();
+        const nextMediaSignature = buildPostHistoryMediaSignature(
+            mediaItems,
+            postMediaCacheService.canUsePersistentCache(),
+        );
+
+        if (nextMediaSignature === lastMediaSignature) {
+            return;
+        }
+
+        lastMediaSignature = nextMediaSignature;
         const currentResolutionVersion = ++resolutionVersion;
-        let cancelled = false;
-        const nextObjectUrls = new Map<string, string>();
 
         if (!postMediaCacheService.canUsePersistentCache()) {
-            revokeAllObjectUrls();
             state.items = mediaItems.map(toDirectDisplayItem);
-
-            return () => {
-                cancelled = true;
-                if (currentResolutionVersion === resolutionVersion) {
-                    resolutionVersion += 1;
-                }
-                revokeAllObjectUrls();
-            };
+            return;
         }
 
         revokeAllObjectUrls();
@@ -238,7 +290,11 @@ export function usePostHistoryMediaCache(params: {
                     const descriptor = await postMediaCacheService.getCachedMediaDescriptor(
                         media.url,
                     );
-                    if (cancelled || currentResolutionVersion !== resolutionVersion) {
+
+                    if (
+                        isDestroyed ||
+                        currentResolutionVersion !== resolutionVersion
+                    ) {
                         return;
                     }
 
@@ -280,7 +336,11 @@ export function usePostHistoryMediaCache(params: {
                     const cachedMedia = await postMediaCacheService.createCachedMediaObjectUrl(
                         media.url,
                     );
-                    if (cancelled || currentResolutionVersion !== resolutionVersion) {
+
+                    if (
+                        isDestroyed ||
+                        currentResolutionVersion !== resolutionVersion
+                    ) {
                         if (cachedMedia) {
                             postMediaCacheService.revokeObjectUrl(
                                 cachedMedia.objectUrl,
@@ -323,14 +383,6 @@ export function usePostHistoryMediaCache(params: {
                 }),
             );
         })();
-
-        return () => {
-            cancelled = true;
-            if (currentResolutionVersion === resolutionVersion) {
-                resolutionVersion += 1;
-            }
-            revokeAllObjectUrls();
-        };
     });
 
     return {
