@@ -137,6 +137,17 @@
         onClose?.();
     }
 
+    function isFullscreenViewerTarget(target: EventTarget | null): boolean {
+        return target instanceof Element
+            && target.closest(".ehagaki-pswp") !== null;
+    }
+
+    function handleDialogInteractOutside(event: PointerEvent): void {
+        if (isFullscreenViewerTarget(event.target)) {
+            event.preventDefault();
+        }
+    }
+
     useDialogHistory(() => show, handleClose, true);
 
     $effect(() => {
@@ -403,6 +414,7 @@
 <DialogWrapper
     bind:open={show}
     onOpenChange={(open) => !open && handleClose()}
+    onInteractOutside={handleDialogInteractOutside}
     title={$_("postHistory.title")}
     description={$_("postHistory.description")}
     contentClass="post-history-dialog"

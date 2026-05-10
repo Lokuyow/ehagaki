@@ -9,6 +9,8 @@
         open?: boolean;
         /** open状態変更時のコールバック */
         onOpenChange?: (open: boolean) => void;
+        /** 外側インタラクション発生時のコールバック */
+        onInteractOutside?: (event: PointerEvent) => void;
         /** ダイアログのタイトル（スクリーンリーダー用） */
         title: string;
         /** ダイアログの説明（スクリーンリーダー用） */
@@ -46,6 +48,7 @@
     let {
         open = $bindable(false),
         onOpenChange,
+        onInteractOutside = undefined,
         title,
         description,
         contentClass = "",
@@ -94,6 +97,7 @@
             class="dialog {contentClass}"
             tabindex={shouldFocusContent ? -1 : undefined}
             preventScroll={false}
+            onInteractOutside={onInteractOutside}
             onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >

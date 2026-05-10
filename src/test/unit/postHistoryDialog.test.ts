@@ -387,6 +387,53 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByText('image-2.jpg')).toBeTruthy();
     });
 
+    it('fullscreen viewer 内の操作では投稿履歴ダイアログを閉じない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'fullscreen-safe',
+                content: 'fullscreen target',
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+
+        const onClose = vi.fn();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('fullscreen target');
+
+        const fullscreenRoot = document.createElement('div');
+        fullscreenRoot.className = 'ehagaki-pswp';
+        const fullscreenButton = document.createElement('button');
+        fullscreenButton.type = 'button';
+        fullscreenRoot.appendChild(fullscreenButton);
+        document.body.appendChild(fullscreenRoot);
+
+        try {
+            await fireEvent.pointerDown(fullscreenButton);
+            await fireEvent.pointerUp(fullscreenButton);
+            await fireEvent.click(fullscreenButton);
+            await new Promise((resolve) => setTimeout(resolve, 40));
+
+            expect(onClose).not.toHaveBeenCalled();
+            expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
+        } finally {
+            fullscreenRoot.remove();
+        }
+    });
+
     it('reply/quote callback がある場合は preview 下に両方のボタンを表示し、折りたたみボタンと共存する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
