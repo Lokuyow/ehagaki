@@ -34,6 +34,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.deletedBadge': '削除リクエスト済み',
         'postHistory.eventId': 'event id',
         'postHistory.media': 'メディア',
+        'postHistory.mediaOpen': '開く',
         'postHistory.deleted': '削除済み',
         'postHistory.previousPage': '前へ',
         'postHistory.nextPage': '次へ',
@@ -101,9 +102,61 @@ const nostrUtilsMock = vi.hoisted(() => ({
 const customEmojiMock = vi.hoisted(() => ({
     preloadCustomEmojiImage: vi.fn(),
 }));
+const photoSwipeMock = vi.hoisted(() => {
+    class MockPhotoSwipe {
+        currIndex: number;
+        element: HTMLElement | null = null;
+        template: HTMLElement | null = null;
+        private handlers = new Map<string, Array<(...args: any[]) => void>>();
+
+        constructor(public options: Record<string, any>) {
+            this.currIndex = options.index ?? 0;
+        }
+
+        on(eventName: string, handler: (...args: any[]) => void) {
+            const currentHandlers = this.handlers.get(eventName) ?? [];
+            currentHandlers.push(handler);
+            this.handlers.set(eventName, currentHandlers);
+        }
+
+        init() {
+            const root = document.createElement('div');
+            root.className = `pswp ${this.options.mainClass ?? ''}`.trim();
+            root.tabIndex = -1;
+            document.body.appendChild(root);
+            root.focus();
+            this.element = root;
+            this.template = root;
+        }
+
+        close() {}
+
+        destroy() {
+            this.element?.remove();
+            this.element = null;
+            this.template = null;
+        }
+
+        goTo(index: number) {
+            this.currIndex = index;
+        }
+    }
+
+    return { MockPhotoSwipe };
+});
 
 vi.mock('svelte-i18n', () => ({
     _: readable(mockTranslate),
+}));
+
+vi.mock('photoswipe', () => ({
+    default: photoSwipeMock.MockPhotoSwipe,
+}));
+
+vi.mock('../../lib/utils/fullscreenViewerUtils', () => ({
+    buildFullscreenViewerDataSource: vi.fn(async (items: Array<Record<string, any>>) => items),
+    createFullscreenVideoSlideElement: vi.fn(() => document.createElement('div')),
+    pauseFullscreenVideoContent: vi.fn(),
 }));
 
 vi.mock('../../lib/hooks/useDialogHistory.svelte', () => ({
@@ -431,6 +484,71 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
         } finally {
             fullscreenRoot.remove();
+        }
+    });
+
+    it('fullscreen viewer 表示中は外側へフォーカスが逃げない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'focus-safe',
+                content: 'focus target',
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor).mockResolvedValue({
+            cacheKey: 'https://example.com/image.jpg',
+            url: 'https://example.com/image.jpg',
+            mimeType: 'image/jpeg',
+            size: 10,
+            source: 'uploaded',
+            kind: 'image',
+        });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl).mockResolvedValue({
+            cacheKey: 'https://example.com/image.jpg',
+            url: 'https://example.com/image.jpg',
+            mimeType: 'image/jpeg',
+            size: 10,
+            source: 'uploaded',
+            kind: 'image',
+            objectUrl: 'blob:image-preview',
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('focus target');
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '開く image.jpg' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: '開く image.jpg' }));
+        await waitFor(() => {
+            expect(document.querySelector('.ehagaki-pswp')).toBeTruthy();
+        });
+
+        const outsideButton = document.createElement('button');
+        outsideButton.type = 'button';
+        outsideButton.textContent = 'outside';
+        document.body.appendChild(outsideButton);
+
+        try {
+            outsideButton.focus();
+
+            await waitFor(() => {
+                expect(document.activeElement).toBe(outsideButton);
+            });
+        } finally {
+            outsideButton.remove();
         }
     });
 

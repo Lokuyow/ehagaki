@@ -11,6 +11,8 @@
         onOpenChange?: (open: boolean) => void;
         /** 外側インタラクション発生時のコールバック */
         onInteractOutside?: (event: PointerEvent) => void;
+        /** フォーカストラップを有効にするか */
+        trapFocus?: boolean;
         /** ダイアログのタイトル（スクリーンリーダー用） */
         title: string;
         /** ダイアログの説明（スクリーンリーダー用） */
@@ -49,6 +51,7 @@
         open = $bindable(false),
         onOpenChange,
         onInteractOutside = undefined,
+        trapFocus = true,
         title,
         description,
         contentClass = "",
@@ -96,8 +99,9 @@
             bind:ref={contentRef}
             class="dialog {contentClass}"
             tabindex={shouldFocusContent ? -1 : undefined}
+            {trapFocus}
             preventScroll={false}
-            onInteractOutside={onInteractOutside}
+            {onInteractOutside}
             onOpenAutoFocus={handleOpenAutoFocus}
             onCloseAutoFocus={handleCloseAutoFocus}
         >

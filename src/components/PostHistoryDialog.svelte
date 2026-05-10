@@ -138,8 +138,10 @@
     }
 
     function isFullscreenViewerTarget(target: EventTarget | null): boolean {
-        return target instanceof Element
-            && target.closest(".ehagaki-pswp") !== null;
+        return (
+            target instanceof Element &&
+            target.closest(".ehagaki-pswp") !== null
+        );
     }
 
     function handleDialogInteractOutside(event: PointerEvent): void {
@@ -415,6 +417,7 @@
     bind:open={show}
     onOpenChange={(open) => !open && handleClose()}
     onInteractOutside={handleDialogInteractOutside}
+    trapFocus={false}
     title={$_("postHistory.title")}
     description={$_("postHistory.description")}
     contentClass="post-history-dialog"
