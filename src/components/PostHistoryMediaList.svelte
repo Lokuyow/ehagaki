@@ -658,8 +658,11 @@
     .post-history-image-grid {
         display: flex;
         flex-direction: column;
+        justify-content: center;
+        align-items: center;
         min-width: 100px;
         width: fit-content;
+        min-height: 100px;
         border: 1px solid var(--border-hr);
         border-radius: 12px;
         overflow: hidden;
