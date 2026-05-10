@@ -197,6 +197,113 @@ describe('PostHistoryMediaList', () => {
         expect(screen.getByAltText('cached image')).toBeTruthy();
     });
 
+    it('1枚の画像は 420px を上限にしてアスペクト比を保つ', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/single.jpg',
+                url: 'https://example.com/single.jpg',
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/single.jpg',
+                url: 'https://example.com/single.jpg',
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+                objectUrl: 'blob:single-image',
+            });
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/single.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'single image',
+                        dim: '1200x800',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('single image')).toBeTruthy();
+        });
+
+        const surface = screen.getByRole('button', {
+            name: '開く single image',
+        });
+
+        expect(surface.getAttribute('style')).toContain('aspect-ratio: 1200 / 800');
+        expect(surface.getAttribute('style')).toContain('width: min(100%, 630px)');
+        expect(surface.getAttribute('style')).toContain('max-height: 420px');
+    });
+
+    it('4枚の画像は少し横長の比率で表示する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockImplementation(async (url: string) => ({
+                cacheKey: url,
+                url,
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+            }));
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockImplementation(async (url: string) => ({
+                cacheKey: url,
+                url,
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+                objectUrl: `blob:${url.split('/').at(-1)}`,
+            }));
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/1.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'image 1',
+                    },
+                    {
+                        url: 'https://example.com/2.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'image 2',
+                    },
+                    {
+                        url: 'https://example.com/3.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'image 3',
+                    },
+                    {
+                        url: 'https://example.com/4.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'image 4',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('image 1')).toBeTruthy();
+        });
+
+        const surface = screen.getByRole('button', {
+            name: '開く image 1',
+        });
+
+        expect(surface.getAttribute('style')).toContain('aspect-ratio: 4 / 3');
+        expect(surface.getAttribute('style')).toContain('width: 100%');
+    });
+
     it('キャッシュ判定中でも blurhash プレースホルダーと alt を表示ヒントに使う', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockImplementation(() => new Promise(() => undefined));

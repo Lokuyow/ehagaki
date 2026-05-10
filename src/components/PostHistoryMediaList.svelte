@@ -34,6 +34,7 @@
     };
 
     const AUTO_FETCH_ROOT_MARGIN = "160px 0px";
+    const SINGLE_IMAGE_MAX_HEIGHT = 300;
 
     let { media, scrollRoot = null, onImageOpen = undefined }: Props = $props();
 
@@ -136,6 +137,49 @@
         return `${$_("postHistory.mediaOpen")} ${getLinkLabel(item)}`;
     }
 
+    function getAspectRatioValue(aspectRatio: string): number {
+        const [widthText, heightText] = aspectRatio.split("/");
+        const width = Number(widthText?.trim());
+        const height = Number(heightText?.trim());
+
+        if (
+            !Number.isFinite(width) ||
+            !Number.isFinite(height) ||
+            height <= 0
+        ) {
+            return 1;
+        }
+
+        return width / height;
+    }
+
+    function getSingleImageWidth(aspectRatio: string): string {
+        const maxWidth = Math.round(
+            SINGLE_IMAGE_MAX_HEIGHT * getAspectRatioValue(aspectRatio),
+        );
+
+        return `min(100%, ${maxWidth}px)`;
+    }
+
+    function getMediaSurfaceStyle(params: {
+        aspectRatio: string;
+        singleImage?: boolean;
+    }): string {
+        const width = params.singleImage
+            ? getSingleImageWidth(params.aspectRatio)
+            : "100%";
+
+        return [
+            `aspect-ratio: ${params.aspectRatio};`,
+            `width: ${width};`,
+            params.singleImage
+                ? `max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`
+                : "",
+        ]
+            .filter(Boolean)
+            .join(" ");
+    }
+
     function requestAutoFetch(url: string): void {
         if (autoRequestedUrls.has(url)) {
             return;
@@ -225,6 +269,10 @@
         item: DisplayMediaItem,
         slotCount: number,
     ): string {
+        if (mediaLayout.images.length === 4) {
+            return "4 / 3";
+        }
+
         if (slotCount !== 1) {
             return "1 / 1";
         }
@@ -240,10 +288,6 @@
             dim: item.dim,
             kind: item.kind,
         });
-    }
-
-    function getMediaSurfaceStyle(aspectRatio: string): string {
-        return `--post-history-media-aspect-ratio: ${aspectRatio};`;
     }
 
     function getVideoTypeHint(item: DisplayMediaItem): string {
@@ -283,6 +327,10 @@
                                 item,
                                 row.slotCount,
                             )}
+                            {@const imageSurfaceStyle = getMediaSurfaceStyle({
+                                aspectRatio: imageAspectRatio,
+                                singleImage: mediaLayout.images.length === 1,
+                            })}
                             {@const showBlurhashPlaceholder =
                                 shouldShowBlurhashPlaceholder(item)}
                             <div
@@ -300,6 +348,7 @@
                                     <button
                                         type="button"
                                         class="post-history-media-surface post-history-image-surface"
+                                        style={imageSurfaceStyle}
                                         aria-label={getImageSurfaceAriaLabel(
                                             item,
                                         )}
@@ -312,9 +361,6 @@
                                                 alt={item.alt ||
                                                     getLinkLabel(item)}
                                                 class="post-history-media-image"
-                                                style={getMediaSurfaceStyle(
-                                                    imageAspectRatio,
-                                                )}
                                                 loading="lazy"
                                                 decoding="async"
                                             />
@@ -322,9 +368,7 @@
                                             <div
                                                 class="post-history-media-placeholder post-history-media-placeholder-cached"
                                                 class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                                style={getMediaSurfaceStyle(
-                                                    imageAspectRatio,
-                                                )}
+                                                style={imageSurfaceStyle}
                                                 aria-hidden="true"
                                             >
                                                 {#if showBlurhashPlaceholder}
@@ -350,9 +394,7 @@
                                     <div
                                         class="post-history-media-placeholder post-history-media-placeholder-failed"
                                         class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                        style={getMediaSurfaceStyle(
-                                            imageAspectRatio,
-                                        )}
+                                        style={imageSurfaceStyle}
                                         aria-label={getPlaceholderAriaLabel(
                                             item,
                                         )}
@@ -382,9 +424,7 @@
                                     <div
                                         class="post-history-media-placeholder post-history-media-placeholder-uncached"
                                         class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                        style={getMediaSurfaceStyle(
-                                            imageAspectRatio,
-                                        )}
+                                        style={imageSurfaceStyle}
                                         aria-label={getPlaceholderAriaLabel(
                                             item,
                                         )}
@@ -473,7 +513,6 @@
                             <video
                                 src={item.previewObjectUrl}
                                 class="post-history-media-video"
-                                style={getMediaSurfaceStyle(videoAspectRatio)}
                                 controls
                                 playsinline
                                 preload="metadata"
@@ -488,7 +527,9 @@
                                     !item.hasFetchFailed}
                                 class:post-history-media-placeholder-failed={item.hasFetchFailed}
                                 class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                style={getMediaSurfaceStyle(videoAspectRatio)}
+                                style={getMediaSurfaceStyle({
+                                    aspectRatio: videoAspectRatio,
+                                })}
                                 aria-label={getPlaceholderAriaLabel(item)}
                                 title={getLinkLabel(item)}
                             >
@@ -607,6 +648,7 @@
         background: transparent;
         text-align: left;
         cursor: pointer;
+        margin-inline: auto;
 
         &:active:not(:disabled) {
             transform: scale(1);
@@ -616,7 +658,8 @@
     .post-history-image-grid {
         display: flex;
         flex-direction: column;
-        width: 100%;
+        min-width: 100px;
+        width: fit-content;
         border: 1px solid var(--border-hr);
         border-radius: 12px;
         overflow: hidden;
@@ -645,12 +688,12 @@
     .post-history-media-image,
     .post-history-media-placeholder {
         width: 100%;
-        height: 100%;
+        max-width: 100%;
     }
 
     .post-history-media-image {
         display: block;
-        aspect-ratio: var(--post-history-media-aspect-ratio, 1 / 1);
+        height: 100%;
         object-fit: cover;
     }
 
@@ -679,8 +722,10 @@
         text-align: left;
         position: relative;
         isolation: isolate;
+        height: auto;
         aspect-ratio: var(--post-history-media-aspect-ratio, 1 / 1);
         overflow-wrap: anywhere;
+        margin-inline: auto;
     }
 
     .post-history-media-placeholder-content {
@@ -696,8 +741,6 @@
         position: absolute;
         right: 8px;
         bottom: 8px;
-        /* width: 24px;
-        height: 24px; */
         z-index: 2;
         pointer-events: none;
     }
