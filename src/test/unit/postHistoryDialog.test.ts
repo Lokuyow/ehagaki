@@ -337,6 +337,44 @@ describe('PostHistoryDialog', () => {
         expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
     });
 
+    it('メディアのみの投稿では本文プレビュー要素を表示しない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'media-only',
+                content: [
+                    'https://example.com/image-1.jpg',
+                    'https://example.com/image-2.jpg',
+                ].join('\n'),
+                media: [
+                    {
+                        url: 'https://example.com/image-1.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                    {
+                        url: 'https://example.com/image-2.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(container.querySelector('.post-history-preview-text')).toBeNull();
+        });
+
+        expect(screen.getByText('image-1.jpg')).toBeTruthy();
+        expect(screen.getByText('image-2.jpg')).toBeTruthy();
+    });
+
     it('reply/quote callback がある場合は preview 下に両方のボタンを表示し、折りたたみボタンと共存する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([

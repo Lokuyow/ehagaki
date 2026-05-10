@@ -28,12 +28,6 @@
         isCollapsed = false,
     }: Props = $props();
 
-    function isMediaSegment(
-        segment: PostHistoryPreviewSegment,
-    ): segment is Extract<PostHistoryPreviewSegment, { type: "media" }> {
-        return segment.type === "media";
-    }
-
     function isTextOrEmojiSegment(
         segment: PostHistoryPreviewSegment,
     ): segment is Exclude<PostHistoryPreviewSegment, { type: "media" }> {
@@ -44,36 +38,46 @@
         previewContent.segments.filter(isTextOrEmojiSegment),
     );
 
+    const hasRenderableText = $derived.by(() =>
+        textSegments.some(
+            (segment) =>
+                segment.type === "emoji" ||
+                (segment.type === "text" && segment.text.trim().length > 0),
+        ),
+    );
+
     function isEmojiReady(url: string): boolean {
         return emojiLoadStateByUrl[url] === "ready";
     }
 </script>
 
 <div class="post-history-preview-content">
-    <div
-        id={previewContentId}
-        class="post-history-preview-text"
-        class:post-history-preview-text-collapsed={isCollapsed}
-        use:previewCollapseAction={previewCollapseEventId}
-    >
-        {#each textSegments as segment, index (index)}
-            {#if segment.type === "text"}
-                <span>{segment.text}</span>
-            {:else if isEmojiReady(segment.url)}
-                <img
-                    src={segment.url}
-                    alt={segment.rawShortcodeText}
-                    title={segment.rawShortcodeText}
-                    class="post-history-custom-emoji"
-                    draggable="false"
-                    loading="lazy"
-                    decoding="async"
-                />
-            {:else}
-                <span>{segment.rawShortcodeText}</span>
-            {/if}
-        {/each}
-    </div>
+    {#if hasRenderableText}
+        <div
+            id={previewContentId}
+            class="post-history-preview-text"
+            class:post-history-preview-text-collapsed={isCollapsed}
+            use:previewCollapseAction={previewCollapseEventId}
+        >
+            {#each textSegments as segment, index (index)}
+                {#if segment.type === "text"}
+                    <span>{segment.text}</span>
+                {:else if isEmojiReady(segment.url)}
+                    <img
+                        src={segment.url}
+                        alt={segment.rawShortcodeText}
+                        title={segment.rawShortcodeText}
+                        class="post-history-custom-emoji"
+                        draggable="false"
+                        loading="lazy"
+                        decoding="async"
+                    />
+                {:else}
+                    <span>{segment.rawShortcodeText}</span>
+                {/if}
+            {/each}
+        </div>
+    {/if}
 </div>
 
 <style>
