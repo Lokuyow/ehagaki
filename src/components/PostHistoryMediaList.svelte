@@ -606,6 +606,16 @@
         );
     }
 
+    :global(:root.dark) .post-history-media-placeholder-uncached {
+        background: repeating-linear-gradient(
+            -45deg,
+            color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%),
+            color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%) 10px,
+            color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%) 10px,
+            color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%) 20px
+        );
+    }
+
     .post-history-media-placeholder-status {
         display: inline-flex;
         padding: 4px 8px;
