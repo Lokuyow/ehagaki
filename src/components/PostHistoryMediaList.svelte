@@ -1,5 +1,6 @@
 <script lang="ts">
     import BlurhashPlaceholder from "./BlurhashPlaceholder.svelte";
+    import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import Button from "./Button.svelte";
     import { _ } from "svelte-i18n";
     import { inViewportAction } from "../lib/hooks/inViewportAction.svelte";
@@ -331,6 +332,17 @@
                                                         blurhash={item.blurhash}
                                                     />
                                                 {/if}
+                                                {#if isPlaceholderLoading(item)}
+                                                    <div
+                                                        class="post-history-media-placeholder-loader"
+                                                    >
+                                                        <LoadingPlaceholder
+                                                            showLoader={true}
+                                                            text={false}
+                                                            loaderSize={34}
+                                                        />
+                                                    </div>
+                                                {/if}
                                             </div>
                                         {/if}
                                     </button>
@@ -382,6 +394,17 @@
                                             <BlurhashPlaceholder
                                                 blurhash={item.blurhash}
                                             />
+                                        {/if}
+                                        {#if isPlaceholderLoading(item)}
+                                            <div
+                                                class="post-history-media-placeholder-loader"
+                                            >
+                                                <LoadingPlaceholder
+                                                    showLoader={true}
+                                                    text={false}
+                                                    loaderSize={34}
+                                                />
+                                            </div>
                                         {/if}
                                     </div>
                                 {/if}
@@ -549,6 +572,17 @@
                                     </button>
                                 {/if}
                             </div>
+                            {#if isPlaceholderLoading(item)}
+                                <div
+                                    class="post-history-media-placeholder-loader"
+                                >
+                                    <LoadingPlaceholder
+                                        showLoader={true}
+                                        text={false}
+                                        loaderSize={34}
+                                    />
+                                </div>
+                            {/if}
                         </div>
                     </div>
                 {/each}
@@ -658,6 +692,16 @@
         flex-direction: column;
         gap: 8px;
         width: 100%;
+    }
+
+    .post-history-media-placeholder-loader {
+        position: absolute;
+        right: 8px;
+        bottom: 8px;
+        /* width: 24px;
+        height: 24px; */
+        z-index: 2;
+        pointer-events: none;
     }
 
     .post-history-media-placeholder-cached {
