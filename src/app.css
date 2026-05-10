@@ -217,7 +217,7 @@ select {
 
   --border: dimgray;
   --border-hr: hsl(0, 0%, 30%);
-  --border-hr-light: hsl(0, 0%, 18%);
+  --border-hr-light: hsl(0, 0%, 20%);
 
   --text: hsl(0, 0%, 90%);
   --text-light: hsl(0, 0%, 75%);
