@@ -2,9 +2,7 @@
     import Button from "./Button.svelte";
     import { _ } from "svelte-i18n";
     import { inViewportAction } from "../lib/hooks/inViewportAction.svelte";
-    import {
-        usePostHistoryMediaCache,
-    } from "../lib/hooks/usePostHistoryMediaCache.svelte";
+    import { usePostHistoryMediaCache } from "../lib/hooks/usePostHistoryMediaCache.svelte";
     import {
         buildPostHistoryMediaLayout,
         type PostHistoryDisplayMediaKind,
@@ -33,15 +31,11 @@
 
     const AUTO_FETCH_ROOT_MARGIN = "160px 0px";
 
-    let {
-        media,
-        scrollRoot = null,
-        onImageOpen = undefined,
-    }: Props = $props();
+    let { media, scrollRoot = null, onImageOpen = undefined }: Props = $props();
 
-    let copyStateByUrl = $state<Record<string, "copied" | "failed" | undefined>>(
-        {},
-    );
+    let copyStateByUrl = $state<
+        Record<string, "copied" | "failed" | undefined>
+    >({});
     const autoRequestedUrls = new Set<string>();
 
     const mediaLayout = $derived.by(() => buildPostHistoryMediaLayout(media));
@@ -85,7 +79,9 @@
         }
     }
 
-    function toDisplayMediaItem(item: PostHistoryResolvedMedia): DisplayMediaItem {
+    function toDisplayMediaItem(
+        item: PostHistoryResolvedMedia,
+    ): DisplayMediaItem {
         const cachedState = mediaStateByUrl.get(item.url);
 
         return {
@@ -98,9 +94,9 @@
         };
     }
 
-    function getCopyKey(kind: PostHistoryDisplayMediaKind):
-        | "imageContextMenu"
-        | "videoContextMenu" {
+    function getCopyKey(
+        kind: PostHistoryDisplayMediaKind,
+    ): "imageContextMenu" | "videoContextMenu" {
         return kind === "video" ? "videoContextMenu" : "imageContextMenu";
     }
 
@@ -122,7 +118,10 @@
         return $_(`${namespace}.copyUrl`);
     }
 
-    function getImageSurfaceAriaLabel(item: { url: string; alt?: string }): string {
+    function getImageSurfaceAriaLabel(item: {
+        url: string;
+        alt?: string;
+    }): string {
         return `${$_("postHistory.mediaOpen")} ${getLinkLabel(item)}`;
     }
 
@@ -185,10 +184,12 @@
     }
 
     function shouldAutoFetch(item: DisplayMediaItem): boolean {
-        return item.hasResolvedCache
-            && !item.cached
-            && !item.isCaching
-            && !item.hasFetchFailed;
+        return (
+            item.hasResolvedCache &&
+            !item.cached &&
+            !item.isCaching &&
+            !item.hasFetchFailed
+        );
     }
 
     function getMediaStatusLabel(item: DisplayMediaItem): string {
@@ -227,21 +228,25 @@
                                     once: true,
                                     root: scrollRoot,
                                     rootMargin: AUTO_FETCH_ROOT_MARGIN,
-                                    onEnterView: () => requestAutoFetch(item.url),
+                                    onEnterView: () =>
+                                        requestAutoFetch(item.url),
                                 }}
                             >
                                 {#if item.cached}
                                     <button
                                         type="button"
                                         class="post-history-media-surface post-history-image-surface"
-                                        aria-label={getImageSurfaceAriaLabel(item)}
+                                        aria-label={getImageSurfaceAriaLabel(
+                                            item,
+                                        )}
                                         title={getLinkLabel(item)}
                                         onclick={() => handleImageOpen(item)}
                                     >
                                         {#if item.previewObjectUrl}
                                             <img
                                                 src={item.previewObjectUrl}
-                                                alt={item.alt || getLinkLabel(item)}
+                                                alt={item.alt ||
+                                                    getLinkLabel(item)}
                                                 class="post-history-media-image"
                                                 loading="lazy"
                                                 decoding="async"
@@ -250,10 +255,14 @@
                                             <div
                                                 class="post-history-media-placeholder post-history-media-placeholder-cached"
                                             >
-                                                <span class="post-history-media-placeholder-status"
-                                                    >{$_("postHistory.mediaCached")}</span
+                                                <span
+                                                    class="post-history-media-placeholder-status"
+                                                    >{$_(
+                                                        "postHistory.mediaCached",
+                                                    )}</span
                                                 >
-                                                <span class="post-history-media-placeholder-label"
+                                                <span
+                                                    class="post-history-media-placeholder-label"
                                                     >{getLinkLabel(item)}</span
                                                 >
                                             </div>
@@ -263,10 +272,14 @@
                                     <div
                                         class="post-history-media-placeholder post-history-media-placeholder-failed"
                                     >
-                                        <span class="post-history-media-placeholder-status"
-                                            >{$_("postHistory.mediaLoadFailed")}</span
+                                        <span
+                                            class="post-history-media-placeholder-status"
+                                            >{$_(
+                                                "postHistory.mediaLoadFailed",
+                                            )}</span
                                         >
-                                        <span class="post-history-media-placeholder-label"
+                                        <span
+                                            class="post-history-media-placeholder-label"
                                             >{getLinkLabel(item)}</span
                                         >
                                         <button
@@ -274,18 +287,23 @@
                                             class="post-history-media-retry-button"
                                             onclick={() => handleRetry(item)}
                                         >
-                                            {$_("postHistory.mediaFetchAndCache")}
+                                            {$_(
+                                                "postHistory.mediaFetchAndCache",
+                                            )}
                                         </button>
                                     </div>
                                 {:else}
                                     <div
                                         class="post-history-media-placeholder post-history-media-placeholder-uncached"
-                                        class:post-history-media-placeholder-loading={!item.hasResolvedCache || item.isCaching}
+                                        class:post-history-media-placeholder-loading={!item.hasResolvedCache ||
+                                            item.isCaching}
                                     >
-                                        <span class="post-history-media-placeholder-status"
+                                        <span
+                                            class="post-history-media-placeholder-status"
                                             >{getMediaStatusLabel(item)}</span
                                         >
-                                        <span class="post-history-media-placeholder-label"
+                                        <span
+                                            class="post-history-media-placeholder-label"
                                             >{getLinkLabel(item)}</span
                                         >
                                         {#if !item.hasResolvedCache || item.isCaching}
@@ -301,8 +319,14 @@
                                     variant="copy"
                                     shape="circle"
                                     className="post-history-media-copy-button post-history-media-copy-button-image"
-                                    ariaLabel={getCopyButtonLabel(item.kind, item.url)}
-                                    title={getCopyButtonLabel(item.kind, item.url)}
+                                    ariaLabel={getCopyButtonLabel(
+                                        item.kind,
+                                        item.url,
+                                    )}
+                                    title={getCopyButtonLabel(
+                                        item.kind,
+                                        item.url,
+                                    )}
                                     onClick={(event) =>
                                         void handleCopyUrl(item, event)}
                                 >
@@ -336,7 +360,10 @@
                                 variant="copy"
                                 shape="circle"
                                 className="post-history-media-copy-button post-history-video-copy-button"
-                                ariaLabel={getCopyButtonLabel(item.kind, item.url)}
+                                ariaLabel={getCopyButtonLabel(
+                                    item.kind,
+                                    item.url,
+                                )}
                                 title={getCopyButtonLabel(item.kind, item.url)}
                                 onClick={(event) =>
                                     void handleCopyUrl(item, event)}
@@ -359,10 +386,12 @@
                             <div
                                 class="post-history-media-placeholder post-history-media-placeholder-failed post-history-video-placeholder"
                             >
-                                <span class="post-history-media-placeholder-status"
+                                <span
+                                    class="post-history-media-placeholder-status"
                                     >{$_("postHistory.mediaLoadFailed")}</span
                                 >
-                                <span class="post-history-media-placeholder-label"
+                                <span
+                                    class="post-history-media-placeholder-label"
                                     >{getLinkLabel(item)}</span
                                 >
                                 <button
@@ -376,12 +405,15 @@
                         {:else}
                             <div
                                 class="post-history-media-placeholder post-history-media-placeholder-uncached post-history-video-placeholder"
-                                class:post-history-media-placeholder-loading={!item.hasResolvedCache || item.isCaching}
+                                class:post-history-media-placeholder-loading={!item.hasResolvedCache ||
+                                    item.isCaching}
                             >
-                                <span class="post-history-media-placeholder-status"
+                                <span
+                                    class="post-history-media-placeholder-status"
                                     >{getMediaStatusLabel(item)}</span
                                 >
-                                <span class="post-history-media-placeholder-label"
+                                <span
+                                    class="post-history-media-placeholder-label"
                                     >{getLinkLabel(item)}</span
                                 >
                                 {#if !item.hasResolvedCache || item.isCaching}
@@ -418,7 +450,10 @@
                                 variant="copy"
                                 shape="circle"
                                 className="post-history-media-copy-button post-history-video-copy-button"
-                                ariaLabel={getCopyButtonLabel(item.kind, item.url)}
+                                ariaLabel={getCopyButtonLabel(
+                                    item.kind,
+                                    item.url,
+                                )}
                                 title={getCopyButtonLabel(item.kind, item.url)}
                                 onClick={(event) =>
                                     void handleCopyUrl(item, event)}
@@ -430,9 +465,11 @@
                         <div
                             class="post-history-media-placeholder"
                             class:post-history-media-placeholder-cached={item.cached}
-                            class:post-history-media-placeholder-uncached={!item.cached && !item.hasFetchFailed}
+                            class:post-history-media-placeholder-uncached={!item.cached &&
+                                !item.hasFetchFailed}
                             class:post-history-media-placeholder-failed={item.hasFetchFailed}
-                            class:post-history-media-placeholder-loading={!item.hasResolvedCache || item.isCaching}
+                            class:post-history-media-placeholder-loading={!item.hasResolvedCache ||
+                                item.isCaching}
                         >
                             <span class="post-history-media-placeholder-status"
                                 >{getMediaStatusLabel(item)}</span
@@ -470,6 +507,7 @@
     }
 
     .post-history-media-surface {
+        font-size: 0;
         display: block;
         width: 100%;
         padding: 0;
@@ -482,8 +520,9 @@
     .post-history-image-grid {
         display: flex;
         flex-direction: column;
-        gap: 8px;
         width: 100%;
+        border-radius: 12px;
+        overflow: hidden;
     }
 
     .post-history-image-row {
@@ -492,7 +531,6 @@
             var(--post-history-image-columns),
             minmax(0, 1fr)
         );
-        gap: 8px;
         width: 100%;
     }
 
@@ -503,15 +541,12 @@
 
     .post-history-image-surface {
         overflow: hidden;
-        border-radius: 10px;
     }
 
     .post-history-media-image,
     .post-history-media-placeholder {
         width: 100%;
         aspect-ratio: 1 / 1;
-        border-radius: 10px;
-        border: 1px solid var(--border-hr);
         background: color-mix(
             in srgb,
             var(--background-color, #fff) 92%,
