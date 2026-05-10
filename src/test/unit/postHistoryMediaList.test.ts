@@ -218,7 +218,6 @@ describe('PostHistoryMediaList', () => {
         expect(placeholder?.getAttribute('aria-label')).toContain(
             'loading image alt',
         );
-        expect(screen.getByText('読み込み中...')).toBeTruthy();
     });
 
     it('cached だが object url 生成中の画像は blurhash プレースホルダーを維持する', async () => {
@@ -256,7 +255,6 @@ describe('PostHistoryMediaList', () => {
             ).toBeTruthy();
         });
 
-        expect(container.querySelector('.post-history-media-loading-bar')).toBeTruthy();
         expect(screen.queryByAltText('cached loading image')).toBeNull();
     });
 
