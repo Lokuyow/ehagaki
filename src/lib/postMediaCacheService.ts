@@ -75,6 +75,10 @@ export class PostMediaCacheService {
         private maxTotalSize = POST_MEDIA_CACHE_MAX_TOTAL_SIZE,
     ) { }
 
+    canUsePersistentCache(): boolean {
+        return Boolean(globalThis.isSecureContext) && typeof this.runtime.cacheStorage !== 'undefined';
+    }
+
     async persistUploadedMedia(params: {
         url: string;
         file: Blob;

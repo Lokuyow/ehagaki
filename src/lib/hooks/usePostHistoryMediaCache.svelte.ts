@@ -27,6 +27,26 @@ export function usePostHistoryMediaCache(params: {
     const activeObjectUrls = new Map<string, string>();
     let resolutionVersion = 0;
 
+    function toDirectDisplayItem(
+        media: PostHistoryMediaRecord,
+    ): ResolvedPostHistoryMediaItem {
+        const baseItem = toBaseItem(media);
+
+        if (baseItem.kind !== 'image' && baseItem.kind !== 'video') {
+            return {
+                ...baseItem,
+                hasResolvedCache: true,
+            };
+        }
+
+        return {
+            ...baseItem,
+            hasResolvedCache: true,
+            cached: true,
+            previewObjectUrl: media.url,
+        };
+    }
+
     function invalidatePendingResolution(): void {
         resolutionVersion += 1;
     }
@@ -172,6 +192,19 @@ export function usePostHistoryMediaCache(params: {
         const currentResolutionVersion = ++resolutionVersion;
         let cancelled = false;
         const nextObjectUrls = new Map<string, string>();
+
+        if (!postMediaCacheService.canUsePersistentCache()) {
+            revokeAllObjectUrls();
+            state.items = mediaItems.map(toDirectDisplayItem);
+
+            return () => {
+                cancelled = true;
+                if (currentResolutionVersion === resolutionVersion) {
+                    resolutionVersion += 1;
+                }
+                revokeAllObjectUrls();
+            };
+        }
 
         revokeAllObjectUrls();
         state.items = mediaItems.map(toBaseItem);

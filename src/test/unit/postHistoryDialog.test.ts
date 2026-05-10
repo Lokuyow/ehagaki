@@ -66,6 +66,14 @@ const clipboardMock = vi.hoisted(() => ({
     tryCopyToClipboard: vi.fn(),
 }));
 
+const postMediaCacheServiceMock = vi.hoisted(() => ({
+    canUsePersistentCache: vi.fn(() => true),
+    getCachedMediaDescriptor: vi.fn().mockResolvedValue(null),
+    createCachedMediaObjectUrl: vi.fn().mockResolvedValue(null),
+    fetchAndCacheMedia: vi.fn().mockResolvedValue(null),
+    revokeObjectUrl: vi.fn(),
+}));
+
 const localSearchServiceMock = vi.hoisted(() => ({
     searchLocalPosts: vi.fn(),
 }));
@@ -143,6 +151,10 @@ vi.mock('../../lib/customEmoji', async () => {
 });
 
 vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
+
+vi.mock('../../lib/postMediaCacheService', () => ({
+    postMediaCacheService: postMediaCacheServiceMock,
+}));
 
 vi.mock('../../lib/utils/nostrUtils', async () => {
     const actual = await vi.importActual<typeof import('../../lib/utils/nostrUtils')>('../../lib/utils/nostrUtils');

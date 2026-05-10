@@ -23,6 +23,7 @@ const translateMock = vi.hoisted(() => (key: string) => {
 });
 
 const postMediaCacheServiceMock = vi.hoisted(() => ({
+    canUsePersistentCache: vi.fn(),
     getCachedMediaDescriptor: vi.fn(),
     createCachedMediaObjectUrl: vi.fn(),
     fetchAndCacheMedia: vi.fn(),
@@ -81,6 +82,7 @@ describe('PostHistoryMediaList', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         intersectionObserverInstances.length = 0;
+        vi.mocked(postMediaCacheServiceMock.canUsePersistentCache).mockReturnValue(true);
         vi.stubGlobal(
             'IntersectionObserver',
             MockIntersectionObserver as unknown as typeof IntersectionObserver,
@@ -412,5 +414,40 @@ describe('PostHistoryMediaList', () => {
             window,
         );
         expect(onImageOpen).not.toHaveBeenCalled();
+    });
+
+    it('secure context でない場合は Cache API を使わず直接 URL を描画する', async () => {
+        vi.mocked(postMediaCacheServiceMock.canUsePersistentCache).mockReturnValue(false);
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/direct-image.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'direct image',
+                    },
+                    {
+                        url: 'https://example.com/direct-video.mp4',
+                        mimeType: 'video/mp4',
+                        alt: 'direct video',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('direct image')).toBeTruthy();
+            expect(screen.getByText('direct video')).toBeTruthy();
+        });
+
+        expect(postMediaCacheServiceMock.getCachedMediaDescriptor).not.toHaveBeenCalled();
+        expect(postMediaCacheServiceMock.fetchAndCacheMedia).not.toHaveBeenCalled();
+        expect(screen.getByAltText('direct image').getAttribute('src')).toBe(
+            'https://example.com/direct-image.jpg',
+        );
+        expect(container.querySelector('video')?.getAttribute('src')).toBe(
+            'https://example.com/direct-video.mp4',
+        );
     });
 });
