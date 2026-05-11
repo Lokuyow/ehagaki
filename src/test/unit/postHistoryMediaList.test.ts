@@ -78,9 +78,32 @@ vi.mock('../../lib/utils/clipboardUtils', () => clipboardMock);
 
 import PostHistoryMediaList from '../../components/PostHistoryMediaList.svelte';
 
+function expectSingleImageStageContract(stage: Element | null): void {
+    expect(stage).toBeTruthy();
+    expect(stage?.getAttribute('style')).toContain('width: 100%');
+    expect(stage?.getAttribute('style')).toContain('max-height: 300px');
+    expect(stage?.getAttribute('style')).toContain('min-height: 100px');
+    expect(stage?.getAttribute('style')).toContain('padding: 0');
+}
+
+function expectTallSingleImageStageContract(stage: Element | null): void {
+    expectSingleImageStageContract(stage);
+    expect(stage?.getAttribute('style')).toContain('aspect-ratio: 100 / 300');
+}
+
+function expectSingleImageObjectFitContract(image: HTMLElement): void {
+    expect(image.getAttribute('style')).toContain('width: 100%');
+    expect(image.getAttribute('style')).toContain('height: 100%');
+    expect(image.getAttribute('style')).toContain('max-width: 100%');
+    expect(image.getAttribute('style')).toContain('max-height: 100%');
+    expect(image.getAttribute('style')).toContain('object-fit: contain');
+}
+
 describe('PostHistoryMediaList', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        vi.spyOn(HTMLCanvasElement.prototype, 'getContext')
+            .mockReturnValue(null);
         intersectionObserverInstances.length = 0;
         vi.mocked(postMediaCacheServiceMock.canUsePersistentCache).mockReturnValue(true);
         vi.stubGlobal(
@@ -91,6 +114,7 @@ describe('PostHistoryMediaList', () => {
     });
 
     afterEach(() => {
+        vi.restoreAllMocks();
         vi.unstubAllGlobals();
     });
 
@@ -240,16 +264,76 @@ describe('PostHistoryMediaList', () => {
             name: '開く single image',
         });
         const frame = surface.parentElement;
+        const stage = surface.querySelector('.post-history-single-image-stage');
 
         expect(frame).toBeTruthy();
+        expect(stage).toBeTruthy();
         expect(frame?.getAttribute('style')).toContain(
             'width: max(min(100%, 450px), min(100%, 150px))',
         );
         expect(surface.getAttribute('style')).toContain('width: 100%');
         expect(surface.getAttribute('style')).toContain('min-height: 100px');
+        expect(stage?.getAttribute('style')).toContain(
+            'aspect-ratio: 1200 / 800',
+        );
+        expectSingleImageStageContract(stage);
         expect(image.getAttribute('style')).toContain('aspect-ratio: 1200 / 800');
-        expect(image.getAttribute('style')).toContain('width: min(100%, 450px)');
-        expect(image.getAttribute('style')).toContain('max-height: 300px');
+        expectSingleImageObjectFitContract(image);
+    });
+
+    it('1枚の縦長画像はステージ幅を確保しつつ実画像の比率を保つ', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/tall.webp',
+                url: 'https://example.com/tall.webp',
+                mimeType: 'image/webp',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl)
+            .mockResolvedValue({
+                cacheKey: 'https://example.com/tall.webp',
+                url: 'https://example.com/tall.webp',
+                mimeType: 'image/webp',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+                objectUrl: 'blob:tall-image',
+            });
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/tall.webp',
+                        mimeType: 'image/webp',
+                        alt: 'tall image',
+                        dim: '40x511',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('tall image')).toBeTruthy();
+        });
+
+        const image = screen.getByAltText('tall image');
+        const surface = screen.getByRole('button', {
+            name: '開く tall image',
+        });
+        const frame = surface.parentElement;
+        const stage = surface.querySelector('.post-history-single-image-stage');
+
+        expect(frame).toBeTruthy();
+        expect(stage).toBeTruthy();
+        expect(frame?.getAttribute('style')).toContain(
+            'width: max(min(100%, 23.483366px), min(100%, 100px))',
+        );
+        expectTallSingleImageStageContract(stage);
+        expect(image.getAttribute('style')).toContain('aspect-ratio: 40 / 511');
+        expectSingleImageObjectFitContract(image);
     });
 
     it('4枚の画像は少し横長の比率で表示する', async () => {
@@ -346,6 +430,43 @@ describe('PostHistoryMediaList', () => {
         );
     });
 
+    it('縦長の単一画像はキャッシュ判定中も300pxステージ契約を維持する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockImplementation(() => new Promise(() => undefined));
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/tall-loading.webp',
+                        mimeType: 'image/webp',
+                        alt: 'tall loading image',
+                        blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                        dim: '40x511',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(
+                container.querySelector('.post-history-media-placeholder-blurhash'),
+            ).toBeTruthy();
+        });
+
+        const frame = container.querySelector(
+            '.post-history-image-surface-frame-single',
+        );
+        const placeholder = container.querySelector(
+            '.post-history-image-placeholder-single',
+        );
+
+        expect(frame?.getAttribute('style')).toContain(
+            'width: max(min(100%, 23.483366px), min(100%, 100px))',
+        );
+        expectTallSingleImageStageContract(placeholder);
+    });
+
     it('cached だが object url 生成中の画像は blurhash プレースホルダーを維持する', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockResolvedValue({
@@ -367,6 +488,7 @@ describe('PostHistoryMediaList', () => {
                         mimeType: 'image/jpeg',
                         alt: 'cached loading image',
                         blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                        dim: '40x511',
                     },
                 ],
             },
@@ -382,6 +504,9 @@ describe('PostHistoryMediaList', () => {
         });
 
         expect(screen.queryByAltText('cached loading image')).toBeNull();
+        expectTallSingleImageStageContract(
+            container.querySelector('.post-history-image-placeholder-single'),
+        );
     });
 
     it('未キャッシュでも blurhash があればプレースホルダー背景を維持する', async () => {
@@ -422,15 +547,7 @@ describe('PostHistoryMediaList', () => {
         expect(placeholder?.getAttribute('style')).toContain(
             'aspect-ratio: 1200 / 800',
         );
-        expect(placeholder?.getAttribute('style')).toContain(
-            'width: min(100%, 450px)',
-        );
-        expect(placeholder?.getAttribute('style')).toContain(
-            'max-height: 300px',
-        );
-        expect(placeholder?.getAttribute('style')).toContain(
-            'min-height: 100px',
-        );
+        expectSingleImageStageContract(placeholder);
     });
 
     it('横長の単一画像プレースホルダーは最低高さ相当の幅を確保する', async () => {
@@ -474,15 +591,7 @@ describe('PostHistoryMediaList', () => {
         expect(placeholder?.getAttribute('style')).toContain(
             'aspect-ratio: 4000 / 500',
         );
-        expect(placeholder?.getAttribute('style')).toContain(
-            'width: min(100%, 2400px)',
-        );
-        expect(placeholder?.getAttribute('style')).toContain(
-            'max-height: 300px',
-        );
-        expect(placeholder?.getAttribute('style')).toContain(
-            'min-height: 100px',
-        );
+        expectSingleImageStageContract(placeholder);
     });
 
     it('可視範囲に入った uncached media は自動取得して保存する', async () => {

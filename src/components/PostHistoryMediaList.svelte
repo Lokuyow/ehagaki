@@ -33,9 +33,20 @@
         hasFetchFailed: boolean;
     };
 
+    type ImagePresentation = {
+        aspectRatio: string;
+        isSingleImage: boolean;
+        frameStyle?: string;
+        surfaceStyle: string;
+        placeholderStyle: string;
+        imageStyle?: string;
+    };
+
     const AUTO_FETCH_ROOT_MARGIN = "160px 0px";
     const SINGLE_IMAGE_MAX_HEIGHT = 300;
     const SINGLE_IMAGE_MIN_SIZE = 100;
+    const SINGLE_IMAGE_MIN_STAGE_ASPECT_RATIO =
+        SINGLE_IMAGE_MIN_SIZE / SINGLE_IMAGE_MAX_HEIGHT;
 
     let { media, scrollRoot = null, onImageOpen = undefined }: Props = $props();
 
@@ -154,23 +165,29 @@
         return width / height;
     }
 
-    function getSingleImageWidth(aspectRatio: string): string {
-        const maxWidth = Math.round(
-            SINGLE_IMAGE_MAX_HEIGHT * getAspectRatioValue(aspectRatio),
-        );
+    function formatPixelValue(value: number): string {
+        return Number.isInteger(value)
+            ? `${value}`
+            : value
+                  .toFixed(6)
+                  .replace(/\.0+$/, "")
+                  .replace(/(\.\d*?)0+$/, "$1");
+    }
 
-        return `min(100%, ${maxWidth}px)`;
+    function getSingleImageWidth(aspectRatio: string): string {
+        const maxWidth =
+            SINGLE_IMAGE_MAX_HEIGHT * getAspectRatioValue(aspectRatio);
+
+        return `min(100%, ${formatPixelValue(maxWidth)}px)`;
     }
 
     function getSingleImageMinimumWidth(aspectRatio: string): string {
         const minimumWidth = Math.max(
             SINGLE_IMAGE_MIN_SIZE,
-            Math.round(
-                SINGLE_IMAGE_MIN_SIZE * getAspectRatioValue(aspectRatio),
-            ),
+            SINGLE_IMAGE_MIN_SIZE * getAspectRatioValue(aspectRatio),
         );
 
-        return `min(100%, ${minimumWidth}px)`;
+        return `min(100%, ${formatPixelValue(minimumWidth)}px)`;
     }
 
     function getSingleImageFrameStyle(aspectRatio: string): string {
@@ -183,33 +200,80 @@
         );
     }
 
-    function getSingleImagePlaceholderStyle(aspectRatio: string): string {
+    function getSingleImageStageAspectRatio(aspectRatio: string): string {
+        return getAspectRatioValue(aspectRatio) <
+            SINGLE_IMAGE_MIN_STAGE_ASPECT_RATIO
+            ? `${SINGLE_IMAGE_MIN_SIZE} / ${SINGLE_IMAGE_MAX_HEIGHT}`
+            : aspectRatio;
+    }
+
+    function getSingleImageStageStyle(aspectRatio: string): string {
+        const stageAspectRatio = getSingleImageStageAspectRatio(aspectRatio);
+
         return [
-            getMediaSurfaceStyle({
-                aspectRatio,
-                singleImage: true,
-            }),
+            `aspect-ratio: ${stageAspectRatio};`,
+            "width: 100%;",
+            `max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`,
             `min-height: ${SINGLE_IMAGE_MIN_SIZE}px;`,
+            "padding: 0;",
         ].join(" ");
     }
 
-    function getMediaSurfaceStyle(params: {
-        aspectRatio: string;
-        singleImage?: boolean;
-    }): string {
-        const width = params.singleImage
-            ? getSingleImageWidth(params.aspectRatio)
-            : "100%";
-
+    function getSingleImageStageImageStyle(aspectRatio: string): string {
         return [
-            `aspect-ratio: ${params.aspectRatio};`,
-            `width: ${width};`,
-            params.singleImage
-                ? `max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`
-                : "",
-        ]
-            .filter(Boolean)
-            .join(" ");
+            `aspect-ratio: ${aspectRatio};`,
+            "width: 100%;",
+            "height: 100%;",
+            "max-width: 100%;",
+            "max-height: 100%;",
+            "object-fit: contain;",
+        ].join(" ");
+    }
+
+    function getMediaSurfaceStyle(aspectRatio: string): string {
+        return [`aspect-ratio: ${aspectRatio};`, "width: 100%;"].join(" ");
+    }
+
+    function getImagePresentation(params: {
+        item: DisplayMediaItem;
+        slotCount: number;
+        isSingleImage: boolean;
+    }): ImagePresentation {
+        const aspectRatio = getImageAspectRatio(params.item, params.slotCount);
+
+        if (!params.isSingleImage) {
+            const surfaceStyle = getMediaSurfaceStyle(aspectRatio);
+
+            return {
+                aspectRatio,
+                isSingleImage: false,
+                surfaceStyle,
+                placeholderStyle: surfaceStyle,
+            };
+        }
+
+        return {
+            aspectRatio,
+            isSingleImage: true,
+            frameStyle: getSingleImageFrameStyle(aspectRatio),
+            surfaceStyle: getSingleImageSurfaceStyle(),
+            placeholderStyle: getSingleImageStageStyle(aspectRatio),
+            imageStyle: getSingleImageStageImageStyle(aspectRatio),
+        };
+    }
+
+    function shouldShowInlinePlaceholderLoader(
+        item: DisplayMediaItem,
+        presentation: ImagePresentation,
+    ): boolean {
+        return !presentation.isSingleImage && isPlaceholderLoading(item);
+    }
+
+    function shouldShowFloatingPlaceholderLoader(
+        item: DisplayMediaItem,
+        presentation: ImagePresentation,
+    ): boolean {
+        return presentation.isSingleImage && isPlaceholderLoading(item);
     }
 
     function requestAutoFetch(url: string): void {
@@ -345,6 +409,63 @@
     }
 </script>
 
+{#snippet mediaCopyButton(item: DisplayMediaItem, className: string)}
+    <Button
+        variant="copy"
+        shape="circle"
+        className={`post-history-media-copy-button ${className}`}
+        ariaLabel={getCopyButtonLabel(item.kind, item.url)}
+        title={getCopyButtonLabel(item.kind, item.url)}
+        onClick={(event) => void handleCopyUrl(item, event)}
+    >
+        <div class="copy-icon svg-icon"></div>
+    </Button>
+{/snippet}
+
+{#snippet imagePlaceholder(
+    item: DisplayMediaItem,
+    presentation: ImagePresentation,
+    variantClassName: string,
+    showBlurhashPlaceholder: boolean,
+    showRetry: boolean,
+    ariaHidden: boolean,
+)}
+    <div
+        class={`post-history-media-placeholder ${variantClassName}`}
+        class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+        class:post-history-image-placeholder-single={presentation.isSingleImage}
+        class:post-history-single-image-stage={presentation.isSingleImage}
+        style={presentation.placeholderStyle}
+        aria-hidden={ariaHidden ? "true" : undefined}
+        aria-label={ariaHidden ? undefined : getPlaceholderAriaLabel(item)}
+        title={ariaHidden ? undefined : getLinkLabel(item)}
+    >
+        {#if showBlurhashPlaceholder}
+            <BlurhashPlaceholder blurhash={item.blurhash} />
+        {/if}
+        {#if showRetry}
+            <div class="post-history-media-placeholder-content">
+                <button
+                    type="button"
+                    class="post-history-media-retry-button"
+                    onclick={() => handleRetry(item)}
+                >
+                    {$_("postHistory.mediaFetchAndCache")}
+                </button>
+            </div>
+        {/if}
+        {#if shouldShowInlinePlaceholderLoader(item, presentation)}
+            <div class="post-history-media-placeholder-loader">
+                <LoadingPlaceholder
+                    showLoader={true}
+                    text={false}
+                    loaderSize={34}
+                />
+            </div>
+        {/if}
+    </div>
+{/snippet}
+
 {#if mediaLayout.items.length > 0}
     <div class="post-history-media-section">
         {#if imageRows.length > 0}
@@ -355,15 +476,12 @@
                         style={`--post-history-image-columns: ${row.slotCount};`}
                     >
                         {#each row.items as item (item.id)}
-                            {@const imageAspectRatio = getImageAspectRatio(
-                                item,
-                                row.slotCount,
-                            )}
                             {@const isSingleImage =
                                 mediaLayout.images.length === 1}
-                            {@const imageSurfaceStyle = getMediaSurfaceStyle({
-                                aspectRatio: imageAspectRatio,
-                                singleImage: isSingleImage,
+                            {@const imagePresentation = getImagePresentation({
+                                item,
+                                slotCount: row.slotCount,
+                                isSingleImage,
                             })}
                             {@const showBlurhashPlaceholder =
                                 shouldShowBlurhashPlaceholder(item)}
@@ -382,9 +500,7 @@
                                     class="post-history-image-surface-frame"
                                     class:post-history-image-surface-frame-single={isSingleImage}
                                     style={isSingleImage
-                                        ? getSingleImageFrameStyle(
-                                              imageAspectRatio,
-                                          )
+                                        ? imagePresentation.frameStyle
                                         : undefined}
                                 >
                                     {#if item.cached}
@@ -392,9 +508,7 @@
                                             type="button"
                                             class="post-history-media-surface post-history-image-surface"
                                             class:post-history-image-surface-single={isSingleImage}
-                                            style={isSingleImage
-                                                ? getSingleImageSurfaceStyle()
-                                                : imageSurfaceStyle}
+                                            style={imagePresentation.surfaceStyle}
                                             aria-label={getImageSurfaceAriaLabel(
                                                 item,
                                             )}
@@ -403,119 +517,66 @@
                                                 handleImageOpen(item)}
                                         >
                                             {#if item.previewObjectUrl}
-                                                <img
-                                                    src={item.previewObjectUrl}
-                                                    alt={item.alt ||
-                                                        getLinkLabel(item)}
-                                                    class="post-history-media-image"
-                                                    class:post-history-media-image-single={isSingleImage}
-                                                    style={isSingleImage
-                                                        ? imageSurfaceStyle
-                                                        : undefined}
-                                                    loading="lazy"
-                                                    decoding="async"
-                                                />
-                                            {:else}
-                                                <div
-                                                    class="post-history-media-placeholder post-history-media-placeholder-cached"
-                                                    class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                                    class:post-history-image-placeholder-single={isSingleImage}
-                                                    style={isSingleImage
-                                                        ? getSingleImagePlaceholderStyle(
-                                                              imageAspectRatio,
-                                                          )
-                                                        : imageSurfaceStyle}
-                                                    aria-hidden="true"
-                                                >
-                                                    {#if showBlurhashPlaceholder}
-                                                        <BlurhashPlaceholder
-                                                            blurhash={item.blurhash}
+                                                {#if isSingleImage}
+                                                    <div
+                                                        class="post-history-media-placeholder post-history-image-placeholder-single post-history-single-image-stage"
+                                                        style={imagePresentation.placeholderStyle}
+                                                        aria-hidden="true"
+                                                    >
+                                                        <img
+                                                            src={item.previewObjectUrl}
+                                                            alt={item.alt ||
+                                                                getLinkLabel(
+                                                                    item,
+                                                                )}
+                                                            class="post-history-media-image post-history-media-image-single-stage"
+                                                            style={imagePresentation.imageStyle}
+                                                            loading="lazy"
+                                                            decoding="async"
                                                         />
-                                                    {/if}
-                                                    {#if !isSingleImage && isPlaceholderLoading(item)}
-                                                        <div
-                                                            class="post-history-media-placeholder-loader"
-                                                        >
-                                                            <LoadingPlaceholder
-                                                                showLoader={true}
-                                                                text={false}
-                                                                loaderSize={34}
-                                                            />
-                                                        </div>
-                                                    {/if}
-                                                </div>
+                                                    </div>
+                                                {:else}
+                                                    <img
+                                                        src={item.previewObjectUrl}
+                                                        alt={item.alt ||
+                                                            getLinkLabel(item)}
+                                                        class="post-history-media-image"
+                                                        loading="lazy"
+                                                        decoding="async"
+                                                    />
+                                                {/if}
+                                            {:else}
+                                                {@render imagePlaceholder(
+                                                    item,
+                                                    imagePresentation,
+                                                    "post-history-media-placeholder-cached",
+                                                    showBlurhashPlaceholder,
+                                                    false,
+                                                    true,
+                                                )}
                                             {/if}
                                         </button>
                                     {:else if item.hasFetchFailed}
-                                        <div
-                                            class="post-history-media-placeholder post-history-media-placeholder-failed"
-                                            class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                            class:post-history-image-placeholder-single={isSingleImage}
-                                            style={isSingleImage
-                                                ? getSingleImagePlaceholderStyle(
-                                                      imageAspectRatio,
-                                                  )
-                                                : imageSurfaceStyle}
-                                            aria-label={getPlaceholderAriaLabel(
-                                                item,
-                                            )}
-                                            title={getLinkLabel(item)}
-                                        >
-                                            {#if showBlurhashPlaceholder}
-                                                <BlurhashPlaceholder
-                                                    blurhash={item.blurhash}
-                                                />
-                                            {/if}
-                                            <div
-                                                class="post-history-media-placeholder-content"
-                                            >
-                                                <button
-                                                    type="button"
-                                                    class="post-history-media-retry-button"
-                                                    onclick={() =>
-                                                        handleRetry(item)}
-                                                >
-                                                    {$_(
-                                                        "postHistory.mediaFetchAndCache",
-                                                    )}
-                                                </button>
-                                            </div>
-                                        </div>
+                                        {@render imagePlaceholder(
+                                            item,
+                                            imagePresentation,
+                                            "post-history-media-placeholder-failed",
+                                            showBlurhashPlaceholder,
+                                            true,
+                                            false,
+                                        )}
                                     {:else}
-                                        <div
-                                            class="post-history-media-placeholder post-history-media-placeholder-uncached"
-                                            class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                            class:post-history-image-placeholder-single={isSingleImage}
-                                            style={isSingleImage
-                                                ? getSingleImagePlaceholderStyle(
-                                                      imageAspectRatio,
-                                                  )
-                                                : imageSurfaceStyle}
-                                            aria-label={getPlaceholderAriaLabel(
-                                                item,
-                                            )}
-                                            title={getLinkLabel(item)}
-                                        >
-                                            {#if showBlurhashPlaceholder}
-                                                <BlurhashPlaceholder
-                                                    blurhash={item.blurhash}
-                                                />
-                                            {/if}
-                                            {#if !isSingleImage && isPlaceholderLoading(item)}
-                                                <div
-                                                    class="post-history-media-placeholder-loader"
-                                                >
-                                                    <LoadingPlaceholder
-                                                        showLoader={true}
-                                                        text={false}
-                                                        loaderSize={34}
-                                                    />
-                                                </div>
-                                            {/if}
-                                        </div>
+                                        {@render imagePlaceholder(
+                                            item,
+                                            imagePresentation,
+                                            "post-history-media-placeholder-uncached",
+                                            showBlurhashPlaceholder,
+                                            false,
+                                            false,
+                                        )}
                                     {/if}
 
-                                    {#if isSingleImage && isPlaceholderLoading(item)}
+                                    {#if shouldShowFloatingPlaceholderLoader(item, imagePresentation)}
                                         <div
                                             class="post-history-media-placeholder-loader post-history-media-placeholder-loader-single"
                                         >
@@ -527,23 +588,10 @@
                                         </div>
                                     {/if}
 
-                                    <Button
-                                        variant="copy"
-                                        shape="circle"
-                                        className="post-history-media-copy-button post-history-media-copy-button-image"
-                                        ariaLabel={getCopyButtonLabel(
-                                            item.kind,
-                                            item.url,
-                                        )}
-                                        title={getCopyButtonLabel(
-                                            item.kind,
-                                            item.url,
-                                        )}
-                                        onClick={(event) =>
-                                            void handleCopyUrl(item, event)}
-                                    >
-                                        <div class="copy-icon svg-icon"></div>
-                                    </Button>
+                                    {@render mediaCopyButton(
+                                        item,
+                                        "post-history-media-copy-button-image",
+                                    )}
                                 </div>
                             </div>
                         {/each}
@@ -572,20 +620,10 @@
                             <span class="post-history-video-card-label"
                                 >{getLinkLabel(item)}</span
                             >
-                            <Button
-                                variant="copy"
-                                shape="circle"
-                                className="post-history-media-copy-button post-history-video-copy-button"
-                                ariaLabel={getCopyButtonLabel(
-                                    item.kind,
-                                    item.url,
-                                )}
-                                title={getCopyButtonLabel(item.kind, item.url)}
-                                onClick={(event) =>
-                                    void handleCopyUrl(item, event)}
-                            >
-                                <div class="copy-icon svg-icon"></div>
-                            </Button>
+                            {@render mediaCopyButton(
+                                item,
+                                "post-history-video-copy-button",
+                            )}
                         </div>
 
                         {#if item.cached && item.previewObjectUrl}
@@ -606,9 +644,7 @@
                                     !item.hasFetchFailed}
                                 class:post-history-media-placeholder-failed={item.hasFetchFailed}
                                 class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                style={getMediaSurfaceStyle({
-                                    aspectRatio: videoAspectRatio,
-                                })}
+                                style={getMediaSurfaceStyle(videoAspectRatio)}
                                 aria-label={getPlaceholderAriaLabel(item)}
                                 title={getLinkLabel(item)}
                             >
@@ -656,20 +692,10 @@
                             <span class="post-history-other-media-label"
                                 >{getLinkLabel(item)}</span
                             >
-                            <Button
-                                variant="copy"
-                                shape="circle"
-                                className="post-history-media-copy-button post-history-video-copy-button"
-                                ariaLabel={getCopyButtonLabel(
-                                    item.kind,
-                                    item.url,
-                                )}
-                                title={getCopyButtonLabel(item.kind, item.url)}
-                                onClick={(event) =>
-                                    void handleCopyUrl(item, event)}
-                            >
-                                <div class="copy-icon svg-icon"></div>
-                            </Button>
+                            {@render mediaCopyButton(
+                                item,
+                                "post-history-video-copy-button",
+                            )}
                         </div>
 
                         <div
@@ -786,6 +812,18 @@
         min-height: 100px;
     }
 
+    .post-history-single-image-stage {
+        padding: 0;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: color-mix(
+            in srgb,
+            var(--background-color, #fff) 94%,
+            #000 6%
+        );
+    }
+
     .post-history-media-image,
     .post-history-media-placeholder {
         width: 100%;
@@ -801,6 +839,11 @@
     .post-history-media-image-single {
         height: auto;
         margin-inline: auto;
+    }
+
+    .post-history-media-image-single-stage {
+        position: relative;
+        z-index: 1;
     }
 
     .post-history-media-video {
@@ -872,6 +915,14 @@
             color-mix(in srgb, var(--background-color, #111) 94%, #fff 6%) 10px,
             color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%) 10px,
             color-mix(in srgb, var(--background-color, #111) 88%, #fff 12%) 20px
+        );
+    }
+
+    :global(:root.dark) .post-history-single-image-stage {
+        background: color-mix(
+            in srgb,
+            var(--background-color, #111) 94%,
+            #fff 6%
         );
     }
 
