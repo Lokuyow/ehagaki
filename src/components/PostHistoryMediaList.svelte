@@ -221,12 +221,13 @@
 
     function getSingleImageStageImageStyle(aspectRatio: string): string {
         return [
-            `aspect-ratio: ${aspectRatio};`,
-            "width: auto;",
-            "height: auto;",
+            "position: absolute;",
+            "inset: 0;",
+            "width: 100%;",
+            "height: 100%;",
             "max-width: 100%;",
-            `max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`,
-            "object-fit: contain;",
+            "object-fit: cover;",
+            "object-position: center;",
         ].join(" ");
     }
 
@@ -812,6 +813,7 @@
     }
 
     .post-history-single-image-stage {
+        position: relative;
         padding: 0;
         display: grid;
         place-items: center;

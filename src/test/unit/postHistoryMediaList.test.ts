@@ -92,11 +92,10 @@ function expectTallSingleImageStageContract(stage: Element | null): void {
 }
 
 function expectSingleImageObjectFitContract(image: HTMLElement): void {
-    expect(image.getAttribute('style')).toContain('width: auto');
-    expect(image.getAttribute('style')).toContain('height: auto');
-    expect(image.getAttribute('style')).toContain('max-width: 100%');
-    expect(image.getAttribute('style')).toContain('max-height: 300px');
-    expect(image.getAttribute('style')).toContain('object-fit: contain');
+    expect(image.getAttribute('style')).toContain('position: absolute');
+    expect(image.getAttribute('style')).toContain('inset: 0');
+    expect(image.getAttribute('style')).toContain('object-fit: cover');
+    expect(image.getAttribute('style')).toContain('object-position: center');
 }
 
 describe('PostHistoryMediaList', () => {
@@ -277,7 +276,6 @@ describe('PostHistoryMediaList', () => {
             'aspect-ratio: 1200 / 800',
         );
         expectSingleImageStageContract(stage);
-        expect(image.getAttribute('style')).toContain('aspect-ratio: 1200 / 800');
         expectSingleImageObjectFitContract(image);
     });
 
@@ -332,7 +330,6 @@ describe('PostHistoryMediaList', () => {
             'width: max(min(100%, 23.483366px), min(100%, 100px))',
         );
         expectTallSingleImageStageContract(stage);
-        expect(image.getAttribute('style')).toContain('aspect-ratio: 40 / 511');
         expectSingleImageObjectFitContract(image);
     });
 
