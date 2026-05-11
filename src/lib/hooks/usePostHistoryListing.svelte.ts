@@ -99,7 +99,7 @@ function readPersistedListingSnapshot(
 
     return cloneListingSnapshot(
         persistedListingSnapshotByPubkey.get(key) ??
-            DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT,
+        DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT,
     );
 }
 

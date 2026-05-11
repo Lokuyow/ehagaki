@@ -174,35 +174,35 @@ export class PostMediaCacheService {
             0,
             Math.trunc(
                 options.descriptorSnapshotTtlMs ??
-                    POST_MEDIA_DESCRIPTOR_SNAPSHOT_TTL_MS,
+                POST_MEDIA_DESCRIPTOR_SNAPSHOT_TTL_MS,
             ),
         );
         this.descriptorSnapshotMaxEntries = Math.max(
             0,
             Math.trunc(
                 options.descriptorSnapshotMaxEntries ??
-                    POST_MEDIA_DESCRIPTOR_SNAPSHOT_MAX_ENTRIES,
+                POST_MEDIA_DESCRIPTOR_SNAPSHOT_MAX_ENTRIES,
             ),
         );
         this.objectUrlTtlMs = Math.max(
             0,
             Math.trunc(
                 options.objectUrlTtlMs ??
-                    POST_MEDIA_SHORT_LIVED_OBJECT_URL_TTL_MS,
+                POST_MEDIA_SHORT_LIVED_OBJECT_URL_TTL_MS,
             ),
         );
         this.objectUrlMaxEntries = Math.max(
             0,
             Math.trunc(
                 options.objectUrlMaxEntries ??
-                    POST_MEDIA_SHORT_LIVED_OBJECT_URL_MAX_ENTRIES,
+                POST_MEDIA_SHORT_LIVED_OBJECT_URL_MAX_ENTRIES,
             ),
         );
         this.objectUrlMaxTotalSize = Math.max(
             0,
             Math.trunc(
                 options.objectUrlMaxTotalSize ??
-                    POST_MEDIA_SHORT_LIVED_OBJECT_URL_MAX_TOTAL_SIZE,
+                POST_MEDIA_SHORT_LIVED_OBJECT_URL_MAX_TOTAL_SIZE,
             ),
         );
     }
@@ -833,7 +833,7 @@ export class PostMediaCacheService {
             this.sharedObjectUrlByCacheKey.size <= this.objectUrlMaxEntries &&
             [...this.sharedObjectUrlByCacheKey.values()]
                 .reduce((sum, entry) => sum + entry.size, 0) <=
-                this.objectUrlMaxTotalSize
+            this.objectUrlMaxTotalSize
         ) {
             return;
         }
