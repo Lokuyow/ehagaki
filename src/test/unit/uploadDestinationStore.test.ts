@@ -28,19 +28,20 @@ const { uploadDestinationStore } = await import("../../stores/uploadDestinationS
 
 function createDestination(): UploadDestination {
     return {
-        id: "share-yabu-me-blossom",
+        id: "share-yabu-me",
         pubkeyHex: null,
-        name: "share.yabu.me(blossom)",
-        protocol: "blossom",
+        name: "share.yabu.me",
+        protocol: "nip96",
         serverUrl: "https://share.yabu.me/api/v2/media",
-        presetId: "share-yabu-me-blossom",
+        resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
+        presetId: "share-yabu-me",
         isDefault: true,
         enabled: true,
         createdAt: 1234,
         updatedAt: 1234,
         capabilities: {
             maxUploadSize: null,
-            supportedMimeTypes: [],
+            supportedMimeTypes: ["image/*", "video/*"],
             supportsDelete: false,
             supportsList: false,
             supportsMirror: false,
@@ -49,7 +50,7 @@ function createDestination(): UploadDestination {
             source: "preset",
         },
         auth: {
-            type: "blossom-bud11",
+            type: "nip98",
         },
         schemaVersion: 1,
     };

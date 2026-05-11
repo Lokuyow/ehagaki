@@ -5,7 +5,9 @@ import { ehagakiDb, type EHagakiDB, type UploadDestinationRecord } from "./ehaga
 import {
     UPLOAD_DESTINATION_GLOBAL_SCOPE,
     UPLOAD_DESTINATION_SCHEMA_VERSION,
+    createUploadDestinationFromPreset,
     createLegacyUploadDestination,
+    findUploadPresetByEndpoint,
     getPreferredDefaultUploadPresetIds,
     getScopeKey,
     normalizeServerUrl,
@@ -101,9 +103,42 @@ function toRecord(destination: UploadDestination): UploadDestinationRecord {
     };
 }
 
+function normalizeLegacyShareYabuMeDestination(destination: UploadDestination): UploadDestination {
+    if (destination.protocol !== "blossom") {
+        return destination;
+    }
+
+    const preset = findUploadPresetByEndpoint(destination.serverUrl);
+    if (!preset || preset.id !== "share-yabu-me") {
+        return destination;
+    }
+
+    const normalizedPreset = createUploadDestinationFromPreset({
+        preset,
+        pubkeyHex: destination.pubkeyHex,
+        isDefault: destination.isDefault,
+        now: destination.updatedAt,
+    });
+
+    return {
+        ...destination,
+        name: destination.name === "share.yabu.me(blossom)"
+            ? normalizedPreset.name
+            : destination.name,
+        protocol: normalizedPreset.protocol,
+        serverUrl: normalizedPreset.serverUrl,
+        ...(normalizedPreset.resolvedUploadUrl ? { resolvedUploadUrl: normalizedPreset.resolvedUploadUrl } : {}),
+        presetId: normalizedPreset.presetId,
+        auth: normalizedPreset.auth,
+        capabilities: destination.capabilities.source === "preset"
+            ? normalizedPreset.capabilities
+            : destination.capabilities,
+    };
+}
+
 function toDestination(record: UploadDestinationRecord): UploadDestination {
     const { scopeKey: _scopeKey, ...destination } = record;
-    return destination;
+    return normalizeLegacyShareYabuMeDestination(destination);
 }
 
 function sortDestinations(a: UploadDestination, b: UploadDestination): number {
@@ -380,8 +415,9 @@ export class DexieUploadDestinationsRepository implements UploadDestinationsRepo
 
         if (mode === "default" && records.some((record) => record.enabled)) {
             await this.persistParentSnapshotIfMissing(scopeKey, records);
-            return records.find((record) => record.enabled && record.isDefault)
-                ?? records.find((record) => record.enabled)
+            const normalizedRecords = records.map(toDestination);
+            return normalizedRecords.find((record) => record.enabled && record.isDefault)
+                ?? normalizedRecords.find((record) => record.enabled)
                 ?? null;
         }
 

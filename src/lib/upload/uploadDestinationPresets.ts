@@ -55,8 +55,8 @@ function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
 
 export function getPreferredDefaultUploadPresetIds(locale: string | null | undefined): UploadPresetId[] {
     return locale === "ja"
-        ? ["share-yabu-me-blossom", "blossom-band"]
-        : ["blossom-band", "share-yabu-me-blossom"];
+        ? ["share-yabu-me", "blossom-band"]
+        : ["blossom-band", "share-yabu-me"];
 }
 
 function getDefaultUploadDestinationPreset(locale: string | null | undefined): UploadDestinationPreset | null {
@@ -71,15 +71,6 @@ function getDefaultUploadDestinationPreset(locale: string | null | undefined): U
 }
 
 export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
-    {
-        id: "share-yabu-me-blossom",
-        name: "share.yabu.me(blossom)",
-        protocol: "blossom",
-        serverUrl: "https://share.yabu.me/api/v2/media",
-        capabilities: {
-            ...DEFAULT_UPLOAD_CAPABILITIES,
-        },
-    },
     createNip96Preset("https://share.yabu.me/api/v2/media"),
     {
         id: "cdn-nostrcheck-me",

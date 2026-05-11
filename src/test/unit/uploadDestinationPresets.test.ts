@@ -8,7 +8,6 @@ import {
 describe("uploadDestinationPresets", () => {
     it("exposes presets in the configured order for the settings dialog", () => {
         expect(UPLOAD_DESTINATION_PRESETS.map((preset) => preset.id)).toEqual([
-            "share-yabu-me-blossom",
             "share-yabu-me",
             "cdn-nostrcheck-me",
             "nostrcheck-me",
@@ -25,7 +24,7 @@ describe("uploadDestinationPresets", () => {
         expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
             expect.objectContaining({
                 id: "share-yabu-me",
-                name: "share.yabu.me(NIP-96)",
+                name: "share.yabu.me",
                 protocol: "nip96",
                 resolvedUploadUrl: "https://share.yabu.me/api/v2/media",
             }),
@@ -52,12 +51,6 @@ describe("uploadDestinationPresets", () => {
 
     it("includes generic Blossom presets for alternate Blossom servers", () => {
         expect(UPLOAD_DESTINATION_PRESETS).toEqual(expect.arrayContaining([
-            expect.objectContaining({
-                id: "share-yabu-me-blossom",
-                name: "share.yabu.me(blossom)",
-                protocol: "blossom",
-                serverUrl: "https://share.yabu.me/api/v2/media",
-            }),
             expect.objectContaining({
                 id: "blossom-band",
                 name: "blossom.band",

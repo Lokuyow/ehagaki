@@ -56,7 +56,6 @@ export type UploadProtocol = "blossom" | "nip96" | "custom-http";
 export type UploadPresetId =
     | "nostr-build"
     | "share-yabu-me"
-    | "share-yabu-me-blossom"
     | "nostpic-com"
     | "nostrcheck-me"
     | "files-sovbit-host"
