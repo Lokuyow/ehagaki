@@ -361,8 +361,7 @@
                                 {/if}
                             </div>
                             <div class="destination-meta">
-                                {destination.protocol} / {destination.presetId ||
-                                    "custom"} / {formatMaxSize(
+                                {destination.protocol} / {formatMaxSize(
                                     destination.capabilities.maxUploadSize,
                                 )}
                             </div>
