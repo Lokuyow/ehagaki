@@ -46,8 +46,32 @@
         authState.value.isAuthenticated ? authState.value.pubkey || null : null,
     );
     let canUseBud03 = $derived(Boolean(rxNostr && pubkeyHex));
-    const presetOptions = UPLOAD_DESTINATION_PRESETS.filter(
-        (preset) => preset.id !== "custom",
+
+    const presetMap = new Map(
+        UPLOAD_DESTINATION_PRESETS.map((preset) => [preset.id, preset]),
+    );
+
+    const blossomPresetIds: UploadPresetId[] = [
+        "blossom-band",
+        "cdn-nostrcheck-me",
+        "nostr-download",
+        "blossom-primal-net",
+    ];
+
+    const nip96PresetIds: UploadPresetId[] = [
+        "nostr-build",
+        "nostrcheck-me",
+        "share-yabu-me",
+        "nostpic-com",
+        "files-sovbit-host",
+    ];
+
+    const blossomPresetOptions = blossomPresetIds.map(
+        (presetId) => presetMap.get(presetId)!,
+    );
+
+    const nip96PresetOptions = nip96PresetIds.map(
+        (presetId) => presetMap.get(presetId)!,
     );
 
     onMount(() => {
@@ -253,9 +277,16 @@
                     )}
             >
                 <option value="custom">custom</option>
-                {#each presetOptions as preset}
-                    <option value={preset.id}>{preset.name}</option>
-                {/each}
+                <optgroup label="Blossom">
+                    {#each blossomPresetOptions as preset}
+                        <option value={preset.id}>{preset.name}</option>
+                    {/each}
+                </optgroup>
+                <optgroup label="NIP-96">
+                    {#each nip96PresetOptions as preset}
+                        <option value={preset.id}>{preset.name}</option>
+                    {/each}
+                </optgroup>
             </select>
         </label>
         <label>
