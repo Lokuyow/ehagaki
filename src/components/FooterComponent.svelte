@@ -16,6 +16,7 @@
         isAuthInitialized: boolean;
         swNeedRefresh: boolean;
         onShowLoginDialog: () => void;
+        onWarmPostHistoryDialog?: () => void;
         onOpenPostHistoryDialog: () => void;
         onOpenSettingsDialog: () => void;
         onOpenLogoutDialog: () => void;
@@ -26,6 +27,7 @@
         isAuthInitialized,
         swNeedRefresh,
         onShowLoginDialog,
+        onWarmPostHistoryDialog = undefined,
         onOpenPostHistoryDialog,
         onOpenSettingsDialog,
         onOpenLogoutDialog,
@@ -64,6 +66,10 @@
         pictureUrl: string | undefined | null,
     ): boolean {
         return isSameOriginProfilePictureUrl(pictureUrl);
+    }
+
+    function handlePostHistoryIntent(): void {
+        onWarmPostHistoryDialog?.();
     }
 </script>
 
@@ -127,6 +133,9 @@
                     shape="pill"
                     contentLayout="icon"
                     className="post-history-btn"
+                    onmouseenter={handlePostHistoryIntent}
+                    onfocus={handlePostHistoryIntent}
+                    onpointerdown={handlePostHistoryIntent}
                     onClick={onOpenPostHistoryDialog}
                     ariaLabel={$_("postHistory.open")}
                 >

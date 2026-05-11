@@ -164,6 +164,11 @@
   import { generateMediaItemId } from "./lib/utils/appUtils";
   import { CUSTOM_EMOJI_PICKER_CHROME_HEIGHT } from "./lib/customEmoji";
   import type { CustomEmojiSelection } from "./lib/customEmojiUsage";
+  import {
+    prefetchLatestPostHistoryDescriptors,
+    schedulePostHistoryWarmupOnIdle,
+    type PostHistoryWarmupResult,
+  } from "./lib/postHistoryPrefetch";
   import { customEmojiStore } from "./stores/customEmojiStore.svelte";
   import { customEmojiUsageStore } from "./stores/customEmojiUsageStore.svelte";
 
@@ -299,6 +304,9 @@
   let lastAccountLogoutError = $state("");
   let showTransitionOverlay = $state(false); // ダイアログ切替時のちらつき防止用
   let isBootstrappingApp = true;
+  let postHistoryWarmupPubkey: string | null = null;
+  let postHistoryWarmupResult: PostHistoryWarmupResult | null = null;
+  let postHistoryWarmupPromise: Promise<PostHistoryWarmupResult> | null = null;
   let composerScrollRegionEl: HTMLDivElement | null = $state(null);
   let composerScrollContentEl: HTMLDivElement | null = $state(null);
   let customEmojiPickerRegionEl: HTMLDivElement | null = $state(null);
@@ -426,6 +434,35 @@
     if (showPostHistoryDialogStore.value) {
       void loadPostHistoryDialog();
     }
+  });
+
+  $effect(() => {
+    const pubkeyHex =
+      isAuthenticated && authState.value?.pubkey ? authState.value.pubkey : null;
+
+    if (!pubkeyHex) {
+      resetPostHistoryWarmupState(null);
+      return;
+    }
+
+    if (postHistoryWarmupPubkey !== pubkeyHex) {
+      resetPostHistoryWarmupState(pubkeyHex);
+    }
+
+    if (
+      isBootstrappingApp ||
+      (postHistoryWarmupResult && postHistoryWarmupResult.status !== "failed")
+    ) {
+      return;
+    }
+
+    const scheduled = schedulePostHistoryWarmupOnIdle(() => {
+      void warmLatestPostHistoryDescriptors();
+    });
+
+    return () => {
+      scheduled.cancel();
+    };
   });
 
   $effect(() => {
@@ -1464,6 +1501,59 @@
     focusEditor(".tiptap-editor", 100);
   }
 
+  function resetPostHistoryWarmupState(pubkeyHex: string | null): void {
+    postHistoryWarmupPubkey = pubkeyHex;
+    postHistoryWarmupResult = null;
+    postHistoryWarmupPromise = null;
+  }
+
+  async function warmLatestPostHistoryDescriptors(): Promise<PostHistoryWarmupResult> {
+    const pubkeyHex = authState.value?.isAuthenticated
+      ? authState.value.pubkey ?? null
+      : null;
+
+    if (!pubkeyHex) {
+      resetPostHistoryWarmupState(null);
+      return { status: "skipped", urlCount: 0 };
+    }
+
+    if (postHistoryWarmupPubkey !== pubkeyHex) {
+      resetPostHistoryWarmupState(pubkeyHex);
+    }
+
+    if (postHistoryWarmupPromise) {
+      return postHistoryWarmupPromise;
+    }
+
+    if (postHistoryWarmupResult && postHistoryWarmupResult.status !== "failed") {
+      return postHistoryWarmupResult;
+    }
+
+    const activePubkeyHex = pubkeyHex;
+    const warmupPromise = prefetchLatestPostHistoryDescriptors({
+      pubkeyHex: activePubkeyHex,
+    })
+      .then((result) => {
+        if (postHistoryWarmupPubkey === activePubkeyHex) {
+          postHistoryWarmupResult = result;
+        }
+
+        return result;
+      })
+      .finally(() => {
+        if (postHistoryWarmupPubkey === activePubkeyHex) {
+          postHistoryWarmupPromise = null;
+        }
+      });
+
+    postHistoryWarmupPromise = warmupPromise;
+    return warmupPromise;
+  }
+
+  function handleWarmPostHistoryDialog(): void {
+    void warmLatestPostHistoryDescriptors();
+  }
+
   // バルーンメッセージフック
   const balloon = useBalloonMessage(
     () => $_,
@@ -1620,6 +1710,7 @@
         {isAuthInitialized}
         swNeedRefresh={$swNeedRefresh}
         onShowLoginDialog={loginDialog.open}
+        onWarmPostHistoryDialog={handleWarmPostHistoryDialog}
         onOpenPostHistoryDialog={postHistoryDialog.open}
         onOpenSettingsDialog={settingsDialog.open}
         onOpenLogoutDialog={logoutDialog.open}
