@@ -227,4 +227,26 @@ describe('PostMediaCacheService', () => {
         expect(cacheStorage.cache.has('https://example.com/media/old.webp')).toBe(false);
         expect(cacheStorage.cache.has('https://example.com/media/new.webp')).toBe(true);
     });
+    
+    it('fetch が失敗した場合は例外を呼び出し元へ伝える', async () => {
+        const cacheStorage = new FakeCacheStorage();
+        const repository = {
+            upsert: vi.fn(),
+        };
+        const fetchError = new TypeError('Failed to fetch');
+        const fetchMock = vi.fn(async () => {
+            throw fetchError;
+        });
+        const service = new PostMediaCacheService(repository as never, {
+            cacheStorage,
+            fetch: fetchMock,
+        }, 11);
+
+        await expect(service.fetchAndCacheMedia({
+            url: 'https://example.com/media/cors.webp',
+        })).rejects.toThrow(fetchError);
+
+        expect(repository.upsert).not.toHaveBeenCalled();
+        expect(cacheStorage.cache.has('https://example.com/media/cors.webp')).toBe(false);
+    });
 });

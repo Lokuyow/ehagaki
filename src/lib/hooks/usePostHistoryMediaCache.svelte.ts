@@ -248,6 +248,12 @@ export function usePostHistoryMediaCache(params: {
                 expectedResolutionVersion: requestResolutionVersion,
             });
         } catch {
+            if (target.kind === 'image' || target.kind === 'video') {
+                revokeTrackedObjectUrl(url);
+                updateItem(url, () => toDirectDisplayItem(target));
+                return;
+            }
+
             updateItem(url, (item) => ({
                 ...item,
                 isCaching: false,

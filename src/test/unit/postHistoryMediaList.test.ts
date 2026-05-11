@@ -691,6 +691,45 @@ describe('PostHistoryMediaList', () => {
         });
     });
 
+    it('fetch が CORS で失敗した画像は元 URL を直接描画する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockRejectedValue(new TypeError('Failed to fetch'));
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/cors-image.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'cors image',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(
+                postMediaCacheServiceMock.fetchAndCacheMedia,
+            ).toHaveBeenCalledWith({
+                url: 'https://example.com/cors-image.jpg',
+                mimeType: 'image/jpeg',
+            });
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('cors image')).toBeTruthy();
+        });
+
+        expect(screen.getByAltText('cors image').getAttribute('src')).toBe(
+            'https://example.com/cors-image.jpg',
+        );
+        expect(
+            screen.queryByRole('button', { name: '再取得して保存' }),
+        ).toBeNull();
+    });
+
     it('画像クリック時は fullscreen 用コールバックへ同一投稿の画像だけを渡す', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockImplementation(async (url: string) => {

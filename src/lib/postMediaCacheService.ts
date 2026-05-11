@@ -101,12 +101,7 @@ export class PostMediaCacheService {
             return null;
         }
 
-        let response: Response;
-        try {
-            response = await fetchFn(params.url);
-        } catch {
-            return null;
-        }
+        const response = await fetchFn(params.url);
 
         if (!response.ok) {
             return null;
