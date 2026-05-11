@@ -36,7 +36,7 @@ describe("uploadDestinationPresets", () => {
             }),
             expect.objectContaining({
                 id: "nostrcheck-me",
-                name: "nostrcheck.me(NIP-96)",
+                name: "nostrcheck.me",
                 protocol: "nip96",
                 resolvedUploadUrl: "https://nostrcheck.me/api/v2/media",
             }),
@@ -59,7 +59,7 @@ describe("uploadDestinationPresets", () => {
             }),
             expect.objectContaining({
                 id: "cdn-nostrcheck-me",
-                name: "nostrcheck.me(blossom)",
+                name: "cdn.nostrcheck.me",
                 protocol: "blossom",
                 serverUrl: "https://cdn.nostrcheck.me",
             }),
@@ -83,5 +83,15 @@ describe("uploadDestinationPresets", () => {
         expect(createLegacyUploadDestination({
             endpoint: "https://share.yabu.me/api/v2/media",
         }).presetId).toBe("share-yabu-me");
+    });
+
+    it("derives fallback destination names from the endpoint hostname", () => {
+        expect(createLegacyUploadDestination({
+            endpoint: "https://example.com/upload",
+        })).toEqual(expect.objectContaining({
+            name: "example.com",
+            protocol: "nip96",
+            presetId: "custom",
+        }));
     });
 });

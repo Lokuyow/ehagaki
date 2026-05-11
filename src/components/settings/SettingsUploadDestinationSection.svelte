@@ -15,6 +15,7 @@
         DEFAULT_UPLOAD_CAPABILITIES,
         UPLOAD_DESTINATION_PRESETS,
         createUploadDestinationFromPreset,
+        getUploadDestinationDisplayName,
         normalizeServerUrl,
     } from "../../lib/upload/uploadDestinationPresets";
 
@@ -26,7 +27,6 @@
 
     const emptyForm = {
         id: "",
-        name: "",
         protocol: "blossom" as UploadProtocol,
         serverUrl: "",
         presetId: "custom" as UploadPresetId,
@@ -114,7 +114,6 @@
         }
         form = {
             id: destination.id,
-            name: destination.name,
             protocol: destination.protocol,
             serverUrl: destination.serverUrl,
             presetId: destination.presetId ?? "custom",
@@ -129,7 +128,6 @@
     function applyPreset(presetId: UploadPresetId): void {
         form.presetId = presetId;
         if (presetId === "custom") {
-            form.name = "";
             form.serverUrl = "";
             return;
         }
@@ -137,7 +135,6 @@
             (item) => item.id === presetId,
         );
         if (!preset) return;
-        form.name = preset.name;
         form.protocol = preset.protocol;
         form.serverUrl = preset.serverUrl;
     }
@@ -150,6 +147,19 @@
         const existing = destinationState.destinations.find(
             (destination) => destination.id === form.id,
         );
+        const serverUrl = normalizeServerUrl(
+            form.serverUrl || preset?.serverUrl || "",
+        );
+        const resolvedUploadUrl =
+            [preset?.resolvedUploadUrl, existing?.resolvedUploadUrl].find(
+                (candidate) =>
+                    candidate && normalizeServerUrl(candidate) === serverUrl,
+            ) ?? null;
+        const destinationName = getUploadDestinationDisplayName({
+            serverUrl,
+            resolvedUploadUrl,
+            fallbackName: preset?.name ?? existing?.name ?? "Custom NIP-96",
+        });
         const destination: UploadDestination =
             preset && !existing
                 ? {
@@ -161,10 +171,8 @@
                               destinationState.destinations.length === 0,
                           now: timestamp,
                       }),
-                      name: form.name.trim() || preset.name,
-                      serverUrl: normalizeServerUrl(
-                          form.serverUrl || preset.serverUrl,
-                      ),
+                      name: destinationName,
+                      serverUrl,
                       enabled: form.enabled,
                   }
                 : {
@@ -172,7 +180,7 @@
                           createUploadDestinationFromPreset({
                               preset: preset ?? {
                                   id: "custom",
-                                  name: form.name || "Custom",
+                                  name: destinationName,
                                   protocol: form.protocol,
                                   serverUrl: form.serverUrl,
                                   capabilities: DEFAULT_UPLOAD_CAPABILITIES,
@@ -183,9 +191,9 @@
                                   destinationState.destinations.length === 0,
                               now: timestamp,
                           })),
-                      name: form.name.trim(),
+                      name: destinationName,
                       protocol: form.protocol,
-                      serverUrl: normalizeServerUrl(form.serverUrl),
+                      serverUrl,
                       presetId: form.presetId,
                       enabled: form.enabled,
                       isDefault: form.isDefault,
@@ -262,10 +270,6 @@
             </select>
         </label>
         <label>
-            <span>{$_("settingsDialog.uploadDestinationName") || "名前"}</span>
-            <input bind:value={form.name} />
-        </label>
-        <label>
             <span>URL</span>
             <input bind:value={form.serverUrl} inputmode="url" />
         </label>
@@ -290,7 +294,7 @@
                 variant="primary"
                 shape="rounded"
                 onClick={saveForm}
-                disabled={!form.name.trim() || !form.serverUrl.trim()}
+                disabled={!form.serverUrl.trim()}
             >
                 {$_("settingsDialog.uploadDestinationSave") || "保存"}
             </Button>

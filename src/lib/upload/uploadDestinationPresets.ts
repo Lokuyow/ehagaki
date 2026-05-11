@@ -53,6 +53,28 @@ function createNip96Preset(endpointUrl: string): UploadDestinationPreset {
     };
 }
 
+function getUrlHost(url: string | null | undefined): string | null {
+    if (!url) return null;
+
+    try {
+        return new URL(normalizeServerUrl(url)).host || null;
+    } catch {
+        return null;
+    }
+}
+
+export function getUploadDestinationDisplayName(params: {
+    serverUrl: string;
+    resolvedUploadUrl?: string | null;
+    fallbackName?: string | null;
+}): string {
+    return getUrlHost(params.resolvedUploadUrl)
+        ?? getUrlHost(params.serverUrl)
+        ?? params.fallbackName?.trim()
+        ?? normalizeServerUrl(params.serverUrl)
+        ?? "Custom NIP-96";
+}
+
 export function getPreferredDefaultUploadPresetIds(locale: string | null | undefined): UploadPresetId[] {
     return locale === "ja"
         ? ["share-yabu-me", "blossom-band"]
@@ -74,7 +96,7 @@ export const UPLOAD_DESTINATION_PRESETS: UploadDestinationPreset[] = [
     createNip96Preset("https://share.yabu.me/api/v2/media"),
     {
         id: "cdn-nostrcheck-me",
-        name: "nostrcheck.me(blossom)",
+        name: "cdn.nostrcheck.me",
         protocol: "blossom",
         serverUrl: "https://cdn.nostrcheck.me",
         capabilities: {
@@ -171,7 +193,11 @@ export function createUploadDestinationFromPreset(params: {
     return {
         id: createUploadDestinationId(),
         pubkeyHex: params.pubkeyHex ?? null,
-        name: params.preset.name,
+        name: getUploadDestinationDisplayName({
+            serverUrl,
+            resolvedUploadUrl: params.preset.resolvedUploadUrl,
+            fallbackName: params.preset.name,
+        }),
         protocol: params.preset.protocol,
         serverUrl,
         ...(params.preset.resolvedUploadUrl ? { resolvedUploadUrl: params.preset.resolvedUploadUrl } : {}),
@@ -212,7 +238,10 @@ export function createLegacyUploadDestination(params: {
     return {
         id: createUploadDestinationId(),
         pubkeyHex: params.pubkeyHex ?? null,
-        name: "Custom NIP-96",
+        name: getUploadDestinationDisplayName({
+            serverUrl: fallbackEndpoint,
+            fallbackName: "Custom NIP-96",
+        }),
         protocol: "nip96",
         serverUrl: normalizeServerUrl(fallbackEndpoint),
         resolvedUploadUrl: fallbackEndpoint,

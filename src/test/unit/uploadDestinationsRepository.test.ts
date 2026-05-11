@@ -195,6 +195,33 @@ describe("uploadDestinationsRepository", () => {
         db.close();
     });
 
+    it("derives saved destination names from the destination URL", async () => {
+        const db = createTestDb();
+        const storage = new MockStorage();
+        const repository = new DexieUploadDestinationsRepository(db, () => 1234, () => storage);
+        const first = await repository.getDefault(null);
+
+        await repository.put({
+            ...first,
+            id: "second",
+            name: "Ignored name",
+            serverUrl: "https://example.com/upload",
+            resolvedUploadUrl: "https://example.com/upload",
+            presetId: "custom",
+            isDefault: false,
+            createdAt: 1235,
+            updatedAt: 1235,
+        });
+
+        const destination = await repository.getAll(null).then((destinations) =>
+            destinations.find((item) => item.id === "second"),
+        );
+
+        expect(destination?.name).toBe("example.com");
+
+        db.close();
+    });
+
     it("copies global upload destinations into a user scope on first authenticated load", async () => {
         const db = createTestDb();
         const storage = new MockStorage();

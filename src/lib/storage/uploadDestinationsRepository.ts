@@ -8,6 +8,7 @@ import {
     createUploadDestinationFromPreset,
     createLegacyUploadDestination,
     findUploadPresetByEndpoint,
+    getUploadDestinationDisplayName,
     getPreferredDefaultUploadPresetIds,
     getScopeKey,
     normalizeServerUrl,
@@ -76,7 +77,11 @@ function toPlainDestination(destination: UploadDestination): UploadDestination {
     return {
         id: destination.id,
         pubkeyHex: destination.pubkeyHex ?? null,
-        name: destination.name,
+        name: getUploadDestinationDisplayName({
+            serverUrl: destination.serverUrl,
+            resolvedUploadUrl: destination.resolvedUploadUrl,
+            fallbackName: destination.name,
+        }),
         protocol: destination.protocol,
         serverUrl: destination.serverUrl.trim(),
         ...(destination.resolvedUploadUrl ? { resolvedUploadUrl: destination.resolvedUploadUrl } : {}),
@@ -122,9 +127,11 @@ function normalizeLegacyShareYabuMeDestination(destination: UploadDestination): 
 
     return {
         ...destination,
-        name: destination.name === "share.yabu.me(blossom)"
-            ? normalizedPreset.name
-            : destination.name,
+        name: getUploadDestinationDisplayName({
+            serverUrl: normalizedPreset.serverUrl,
+            resolvedUploadUrl: normalizedPreset.resolvedUploadUrl,
+            fallbackName: destination.name,
+        }),
         protocol: normalizedPreset.protocol,
         serverUrl: normalizedPreset.serverUrl,
         ...(normalizedPreset.resolvedUploadUrl ? { resolvedUploadUrl: normalizedPreset.resolvedUploadUrl } : {}),
