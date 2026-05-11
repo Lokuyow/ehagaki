@@ -490,8 +490,11 @@
                             shape="rounded"
                             onClick={() => startEdit(destination)}
                         >
-                            {$_("settingsDialog.uploadDestinationEdit") ||
-                                "編集"}
+                            {editing && editingTargetId === destination.id
+                                ? $_("settingsDialog.uploadDestinationClose") ||
+                                  "閉じる"
+                                : $_("settingsDialog.uploadDestinationEdit") ||
+                                  "編集"}
                         </Button>
                         <Button
                             variant="default"
