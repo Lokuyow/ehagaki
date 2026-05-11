@@ -228,25 +228,92 @@ describe('PostMediaCacheService', () => {
         expect(cacheStorage.cache.has('https://example.com/media/new.webp')).toBe(true);
     });
 
-    it('fetch が失敗した場合は例外を呼び出し元へ伝える', async () => {
+    it('CORS 失敗時は no-cors の opaque 画像を保存し、直接 URL として再利用できる', async () => {
         const cacheStorage = new FakeCacheStorage();
+        const records = new Map<string, {
+            cacheKey: string;
+            url: string;
+            normalizedUrl: string;
+            size: number;
+            mimeType?: string;
+            createdAt: number;
+            lastAccessedAt: number;
+            source: 'uploaded' | 'network';
+            eventIds: string[];
+            updatedAt: number;
+            schemaVersion: number;
+        }>();
         const repository = {
-            upsert: vi.fn(),
+            getByUrl: vi.fn(async (url: string) => {
+                const normalized = url.replace(/#.*$/, '');
+                return records.get(normalized) ?? null;
+            }),
+            listByLastAccessed: vi.fn(async () => []),
+            upsert: vi.fn(async (input) => {
+                const record = {
+                    cacheKey: input.cacheKey,
+                    url: input.url,
+                    normalizedUrl: input.normalizedUrl ?? input.url,
+                    size: input.size,
+                    mimeType: input.mimeType,
+                    createdAt: input.createdAt ?? 100,
+                    lastAccessedAt: input.lastAccessedAt ?? 100,
+                    source: input.source,
+                    eventIds: input.eventIds ?? [],
+                    updatedAt: input.lastAccessedAt ?? 100,
+                    schemaVersion: 1,
+                };
+                records.set(record.cacheKey, record);
+                return record;
+            }),
+            touch: vi.fn(async () => undefined),
+            deleteByCacheKey: vi.fn(async (cacheKey: string) => {
+                records.delete(cacheKey);
+            }),
         };
-        const fetchError = new TypeError('Failed to fetch');
-        const fetchMock = vi.fn(async () => {
-            throw fetchError;
-        });
+        let opaqueResponse: {
+            type: 'opaque';
+            clone: () => unknown;
+        };
+        opaqueResponse = {
+            type: 'opaque',
+            clone: vi.fn(() => opaqueResponse),
+        };
+        const fetchMock = vi.fn()
+            .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+            .mockResolvedValueOnce(opaqueResponse);
         const service = new PostMediaCacheService(repository as never, {
             cacheStorage,
             fetch: fetchMock,
         }, 11);
 
-        await expect(service.fetchAndCacheMedia({
+        const descriptor = await service.fetchAndCacheMedia({
             url: 'https://example.com/media/cors.webp',
-        })).rejects.toThrow(fetchError);
+        });
 
-        expect(repository.upsert).not.toHaveBeenCalled();
-        expect(cacheStorage.cache.has('https://example.com/media/cors.webp')).toBe(false);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(fetchMock.mock.calls[0][0]).toBe('https://example.com/media/cors.webp');
+        expect(fetchMock.mock.calls[1][0]).toBeInstanceOf(Request);
+        expect((fetchMock.mock.calls[1][0] as Request).mode).toBe('no-cors');
+        expect(descriptor).toMatchObject({
+            cacheKey: 'https://example.com/media/cors.webp',
+            source: 'network',
+            kind: 'image',
+            size: 0,
+        });
+        expect(cacheStorage.cache.has('https://example.com/media/cors.webp')).toBe(true);
+
+        const objectUrl = await service.createCachedMediaObjectUrl(
+            'https://example.com/media/cors.webp',
+        );
+
+        expect(objectUrl).toMatchObject({
+            cacheKey: 'https://example.com/media/cors.webp',
+            url: 'https://example.com/media/cors.webp',
+            source: 'network',
+            kind: 'image',
+            objectUrl: 'https://example.com/media/cors.webp',
+        });
+        expect(repository.touch).toHaveBeenCalledWith('https://example.com/media/cors.webp');
     });
 });

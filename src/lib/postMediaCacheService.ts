@@ -101,23 +101,45 @@ export class PostMediaCacheService {
             return null;
         }
 
-        const response = await fetchFn(params.url);
+        try {
+            const response = await fetchFn(params.url);
 
-        if (!response.ok) {
-            return null;
+            if (response.type === 'opaque') {
+                return await this.persistOpaqueMediaResponse({
+                    url: params.url,
+                    response,
+                    mimeType: params.mimeType,
+                    source: 'network',
+                });
+            }
+
+            if (!response.ok) {
+                return null;
+            }
+
+            const blob = await response.blob();
+            return await this.persistMediaBlob({
+                url: params.url,
+                file: blob,
+                mimeType:
+                    params.mimeType ||
+                    response.headers.get('Content-Type') ||
+                    blob.type ||
+                    undefined,
+                source: 'network',
+            });
+        } catch (error) {
+            const opaqueResponse = await this.fetchOpaqueMediaResponse({
+                url: params.url,
+                mimeType: params.mimeType,
+            });
+
+            if (opaqueResponse) {
+                return opaqueResponse;
+            }
+
+            throw error;
         }
-
-        const blob = await response.blob();
-        return this.persistMediaBlob({
-            url: params.url,
-            file: blob,
-            mimeType:
-                params.mimeType ||
-                response.headers.get('Content-Type') ||
-                blob.type ||
-                undefined,
-            source: 'network',
-        });
     }
 
     async getCachedMediaDescriptor(
@@ -146,17 +168,34 @@ export class PostMediaCacheService {
     async createCachedMediaObjectUrl(
         url: string,
     ): Promise<CachedPostMediaObjectUrl | null> {
-        const createObjectUrl = this.runtime.createObjectUrl;
-        if (!createObjectUrl) {
-            return null;
-        }
-
         const resolved = await this.getCachedRecordAndResponse(url);
         if (!resolved) {
             return null;
         }
 
         const { record, response } = resolved;
+        if (response.type === 'opaque') {
+            await this.repository.touch(record.cacheKey);
+
+            return {
+                cacheKey: record.cacheKey,
+                url: record.url,
+                mimeType: record.mimeType || undefined,
+                size: record.size,
+                source: record.source,
+                kind: inferPostMediaKind({
+                    url: record.url,
+                    mimeType: record.mimeType || undefined,
+                }),
+                objectUrl: record.url,
+            };
+        }
+
+        const createObjectUrl = this.runtime.createObjectUrl;
+        if (!createObjectUrl) {
+            return null;
+        }
+
         const blob = await response.blob();
         const mimeType = record.mimeType || blob.type || undefined;
         const objectUrl = createObjectUrl(blob);
@@ -177,6 +216,10 @@ export class PostMediaCacheService {
     }
 
     revokeObjectUrl(url: string): void {
+        if (!url.startsWith('blob:')) {
+            return;
+        }
+
         this.runtime.revokeObjectUrl?.(url);
     }
 
@@ -222,6 +265,82 @@ export class PostMediaCacheService {
             url: params.url,
             normalizedUrl,
             size: params.file.size,
+            mimeType: params.mimeType,
+            createdAt: timestamp,
+            lastAccessedAt: timestamp,
+            source: params.source,
+        });
+        await this.evictOverflowEntries(normalizedUrl);
+
+        return {
+            cacheKey: record.cacheKey,
+            url: record.url,
+            mimeType: record.mimeType,
+            size: record.size,
+            source: record.source,
+            kind: inferPostMediaKind({
+                url: record.url,
+                mimeType: record.mimeType,
+            }),
+        };
+    }
+
+    private async fetchOpaqueMediaResponse(params: {
+        url: string;
+        mimeType?: string;
+    }): Promise<CachedPostMediaDescriptor | null> {
+        const fetchFn = this.runtime.fetch;
+        if (!fetchFn) {
+            return null;
+        }
+
+        try {
+            const response = await fetchFn(new Request(params.url, {
+                mode: 'no-cors',
+                cache: 'reload',
+            }));
+
+            if (response.type !== 'opaque') {
+                return null;
+            }
+
+            return await this.persistOpaqueMediaResponse({
+                url: params.url,
+                response,
+                mimeType: params.mimeType,
+                source: 'network',
+            });
+        } catch {
+            return null;
+        }
+    }
+
+    private async persistOpaqueMediaResponse(params: {
+        url: string;
+        response: Response;
+        mimeType?: string;
+        source: 'uploaded' | 'network';
+    }): Promise<CachedPostMediaDescriptor | null> {
+        const cacheStorage = this.runtime.cacheStorage;
+        const normalizedUrl = normalizePostMediaUrl(params.url);
+        if (!cacheStorage || !normalizedUrl) {
+            return null;
+        }
+
+        const cache = await cacheStorage.open(POST_MEDIA_CACHE_NAME);
+        const timestamp = Date.now();
+        await cache.put(
+            normalizedUrl,
+            typeof params.response.clone === 'function'
+                ? params.response.clone()
+                : params.response,
+        );
+
+        const record = await this.repository.upsert({
+            cacheKey: normalizedUrl,
+            url: params.url,
+            normalizedUrl,
+            size: 0,
             mimeType: params.mimeType,
             createdAt: timestamp,
             lastAccessedAt: timestamp,
