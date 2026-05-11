@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 8;
+export const EHAGAKI_DB_VERSION = 9;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -121,6 +121,17 @@ export interface CustomEmojiUsageRecord {
     schemaVersion: number;
 }
 
+export interface CustomEmojiImageMetaRecord {
+    url: string;
+    width: number;
+    height: number;
+    aspectRatio: number;
+    fetchedAt: number;
+    lastAccessedAt: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export interface UploadDestinationRecord extends UploadDestination {
     scopeKey: string;
 }
@@ -200,6 +211,7 @@ export class EHagakiDB extends Dexie {
     sharedMedia!: Table<SharedMediaRecord, string>;
     hashtagHistory!: Table<HashtagHistoryRecord, string>;
     customEmojiUsage!: Table<CustomEmojiUsageRecord, string>;
+    customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
@@ -218,6 +230,7 @@ export class EHagakiDB extends Dexie {
             sharedMedia: "id, createdAt, updatedAt, schemaVersion",
             hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
             customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
+            customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",

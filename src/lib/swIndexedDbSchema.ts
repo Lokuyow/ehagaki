@@ -98,6 +98,15 @@ export function ensureCurrentEHagakiDbSchema(
         { name: '[pubkeyHex+lastUsedAt]', keyPath: ['pubkeyHex', 'lastUsedAt'] },
         { name: '[pubkeyHex+shortcodeLower+src]', keyPath: ['pubkeyHex', 'shortcodeLower', 'src'] },
     ]);
+    createObjectStoreIfMissing(db, 'customEmojiImageMeta', 'url', [
+        { name: 'width', keyPath: 'width' },
+        { name: 'height', keyPath: 'height' },
+        { name: 'aspectRatio', keyPath: 'aspectRatio' },
+        { name: 'fetchedAt', keyPath: 'fetchedAt' },
+        { name: 'lastAccessedAt', keyPath: 'lastAccessedAt' },
+        { name: 'updatedAt', keyPath: 'updatedAt' },
+        { name: 'schemaVersion', keyPath: 'schemaVersion' },
+    ]);
     createObjectStoreIfMissing(db, 'uploadDestinations', 'id', [
         { name: 'scopeKey', keyPath: 'scopeKey' },
         { name: 'pubkeyHex', keyPath: 'pubkeyHex' },

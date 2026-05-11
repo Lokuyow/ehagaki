@@ -98,12 +98,21 @@ const channelMetadataRepositoryMock = vi.hoisted(() => ({
     markFetchFailed: vi.fn(),
 }));
 
+const customEmojiImageMetaRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
+    getMany: vi.fn(),
+    upsert: vi.fn(),
+    touchMany: vi.fn(),
+    prune: vi.fn(),
+}));
+
 const nostrUtilsMock = vi.hoisted(() => ({
     toNevent: vi.fn(() => 'nevent1mock'),
 }));
 
 const customEmojiMock = vi.hoisted(() => ({
     preloadCustomEmojiImage: vi.fn(),
+    preloadCustomEmojiImageWithMeta: vi.fn(),
 }));
 const photoSwipeMock = vi.hoisted(() => {
     class MockPhotoSwipe {
@@ -194,6 +203,10 @@ vi.mock('../../lib/storage/channelMetadataRepository', () => ({
     channelMetadataRepository: channelMetadataRepositoryMock,
 }));
 
+vi.mock('../../lib/storage/customEmojiImageMetaRepository', () => ({
+    customEmojiImageMetaRepository: customEmojiImageMetaRepositoryMock,
+}));
+
 vi.mock('../../lib/channelContextService', () => ({
     ChannelContextService: vi.fn(() => channelContextServiceMock),
 }));
@@ -203,6 +216,7 @@ vi.mock('../../lib/customEmoji', async () => {
     return {
         ...actual,
         preloadCustomEmojiImage: customEmojiMock.preloadCustomEmojiImage,
+        preloadCustomEmojiImageWithMeta: customEmojiMock.preloadCustomEmojiImageWithMeta,
     };
 });
 
@@ -316,6 +330,11 @@ describe('PostHistoryDialog', () => {
         }));
         channelMetadataRepositoryMock.shouldRefresh.mockReturnValue(true);
         channelMetadataRepositoryMock.markFetchFailed.mockResolvedValue(undefined);
+        customEmojiImageMetaRepositoryMock.get.mockResolvedValue(null);
+        customEmojiImageMetaRepositoryMock.getMany.mockResolvedValue({});
+        customEmojiImageMetaRepositoryMock.upsert.mockResolvedValue(null);
+        customEmojiImageMetaRepositoryMock.touchMany.mockResolvedValue(undefined);
+        customEmojiImageMetaRepositoryMock.prune.mockResolvedValue(undefined);
         channelContextServiceMock.resolveChannelContext.mockResolvedValue({
             eventId: 'channel-id',
             relayHints: ['wss://channel.example.com/'],
@@ -337,6 +356,12 @@ describe('PostHistoryDialog', () => {
         });
         nostrUtilsMock.toNevent.mockReturnValue('nevent1mock');
         customEmojiMock.preloadCustomEmojiImage.mockResolvedValue(true);
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({
+            ready: true,
+            width: 120,
+            height: 60,
+            aspectRatio: 2,
+        });
     });
 
     afterEach(() => {
@@ -795,8 +820,8 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(customEmojiMock.preloadCustomEmojiImage).toHaveBeenCalledTimes(1);
-            expect(customEmojiMock.preloadCustomEmojiImage).toHaveBeenCalledWith(
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledTimes(1);
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 'https://example.com/blobcat.webp',
             );
         });
@@ -805,8 +830,73 @@ describe('PostHistoryDialog', () => {
         expect(images).toHaveLength(2);
     });
 
+    it('loading 中は shortcode ではなく placeholder を表示し、保存済み寸法から幅を確保する', async () => {
+        const deferred = createDeferred<{
+            ready: boolean;
+            width: number;
+            height: number;
+            aspectRatio: number;
+        }>();
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockReturnValue(deferred.promise);
+        customEmojiImageMetaRepositoryMock.getMany.mockResolvedValue({
+            'https://example.com/blobcat.webp': {
+                url: 'https://example.com/blobcat.webp',
+                width: 60,
+                height: 30,
+                aspectRatio: 2,
+                fetchedAt: 1000,
+                lastAccessedAt: 1000,
+                updatedAt: 1000,
+                schemaVersion: 1,
+            },
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'emoji-loading',
+                content: 'loading :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+        ]);
+
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                'https://example.com/blobcat.webp',
+            );
+            expect(customEmojiImageMetaRepositoryMock.getMany).toHaveBeenCalledWith([
+                'https://example.com/blobcat.webp',
+            ]);
+        });
+
+        await waitFor(() => {
+            const slot = document.querySelector('.post-history-custom-emoji-slot');
+            expect(slot).toBeTruthy();
+            expect(slot?.getAttribute('style')).toContain('60px');
+            expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
+            expect(screen.queryByText(':blobcat:')).toBeNull();
+        });
+
+        deferred.resolve({
+            ready: true,
+            width: 120,
+            height: 60,
+            aspectRatio: 2,
+        });
+    });
+
     it('custom emoji の preload に失敗した場合は shortcode のまま表示する', async () => {
-        customEmojiMock.preloadCustomEmojiImage.mockResolvedValue(false);
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({
+            ready: false,
+        });
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({
@@ -826,7 +916,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(customEmojiMock.preloadCustomEmojiImage).toHaveBeenCalledWith(
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
                 'https://example.com/blobcat.webp',
             );
         });

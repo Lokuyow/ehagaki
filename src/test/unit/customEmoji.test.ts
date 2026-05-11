@@ -21,6 +21,7 @@ import {
     parseEmojiSetAddress,
     parseEmojiTags,
     preloadCustomEmojiImage,
+    preloadCustomEmojiImageWithMeta,
     readCachedCustomEmojiItems,
     readCustomEmojiPickerHeight,
     requestCustomEmojiImagesCache,
@@ -303,9 +304,9 @@ describe('customEmoji', () => {
     it('picker chrome height matches the non-scrollable picker controls', () => {
         expect(CUSTOM_EMOJI_PICKER_CHROME_HEIGHT).toBe(
             CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_HEIGHT -
-                CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP +
-                CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT +
-                CUSTOM_EMOJI_PICKER_SEARCH_ROW_BORDER_HEIGHT,
+            CUSTOM_EMOJI_PICKER_RESIZE_HANDLE_OVERLAP +
+            CUSTOM_EMOJI_PICKER_SEARCH_ROW_HEIGHT +
+            CUSTOM_EMOJI_PICKER_SEARCH_ROW_BORDER_HEIGHT,
         );
     });
 
@@ -405,6 +406,66 @@ describe('customEmoji', () => {
                 createImage: () => image,
             }),
         ).resolves.toBe(true);
+    });
+
+    it('preloadCustomEmojiImageWithMeta reads dimensions after service worker caching succeeds', async () => {
+        const image = {
+            onload: null as (() => void) | null,
+            onerror: null as (() => void) | null,
+            decoding: 'auto',
+            naturalWidth: 120,
+            naturalHeight: 60,
+            set src(_value: string) {
+                queueMicrotask(() => {
+                    image.onload?.(new Event('load') as never);
+                });
+            },
+        } as unknown as HTMLImageElement;
+
+        await expect(
+            preloadCustomEmojiImageWithMeta('https://example.com/blobcat.webp', {
+                requestCache: vi.fn().mockResolvedValue({
+                    success: true,
+                    cached: 1,
+                    failed: 0,
+                }),
+                createImage: () => image,
+            }),
+        ).resolves.toEqual({
+            ready: true,
+            width: 120,
+            height: 60,
+            aspectRatio: 2,
+        });
+    });
+
+    it('preloadCustomEmojiImageWithMeta falls back to direct loading and omits invalid dimensions', async () => {
+        Object.defineProperty(navigator, 'serviceWorker', {
+            value: {
+                controller: null,
+            },
+            configurable: true,
+            writable: true,
+        });
+
+        const image = {
+            onload: null as (() => void) | null,
+            onerror: null as (() => void) | null,
+            decoding: 'auto',
+            naturalWidth: 0,
+            naturalHeight: 0,
+            set src(_value: string) {
+                queueMicrotask(() => {
+                    image.onload?.(new Event('load') as never);
+                });
+            },
+        } as unknown as HTMLImageElement;
+
+        await expect(
+            preloadCustomEmojiImageWithMeta('https://example.com/blobcat.webp', {
+                createImage: () => image,
+            }),
+        ).resolves.toEqual({ ready: true });
     });
 
     it('restores cached custom emoji items from IndexedDB metadata', async () => {

@@ -84,6 +84,13 @@ interface PreloadCustomEmojiImageRuntime {
     createImage?: () => HTMLImageElement;
 }
 
+export interface PreloadedCustomEmojiImageResult {
+    ready: boolean;
+    width?: number;
+    height?: number;
+    aspectRatio?: number;
+}
+
 export function normalizeEmojiShortcode(value: unknown): string {
     return String(value ?? "").replace(/^:+|:+$/g, "").trim();
 }
@@ -635,6 +642,31 @@ export async function preloadCustomEmojiImage(
     return await loadCustomEmojiImage(url, runtime.createImage);
 }
 
+export async function preloadCustomEmojiImageWithMeta(
+    url: string,
+    runtime: PreloadCustomEmojiImageRuntime = {},
+): Promise<PreloadedCustomEmojiImageResult> {
+    if (!isValidCustomEmojiUrl(url)) {
+        return { ready: false };
+    }
+
+    const requestCache = runtime.requestCache ?? requestCustomEmojiImagesCache;
+    try {
+        const cacheResult = await requestCache([url]);
+        if (cacheResult) {
+            if (cacheResult.cached === 0 || cacheResult.failed > 0) {
+                return { ready: false };
+            }
+
+            return await loadCustomEmojiImageWithMeta(url, runtime.createImage);
+        }
+    } catch {
+        // Fall through to a direct image load when SW communication is unavailable.
+    }
+
+    return await loadCustomEmojiImageWithMeta(url, runtime.createImage);
+}
+
 async function requestCustomEmojiImagesCacheBatch(
     urls: string[],
     params: {
@@ -750,4 +782,61 @@ async function loadCustomEmojiImage(
         image.onerror = () => finish(false);
         image.src = url;
     });
+}
+
+async function loadCustomEmojiImageWithMeta(
+    url: string,
+    createImage: (() => HTMLImageElement) | undefined,
+): Promise<PreloadedCustomEmojiImageResult> {
+    const imageFactory = createImage ??
+        (typeof Image !== "undefined" ? () => new Image() : undefined);
+    if (!imageFactory) {
+        return { ready: false };
+    }
+
+    return await new Promise((resolve) => {
+        const image = imageFactory();
+        let settled = false;
+
+        const finish = (result: PreloadedCustomEmojiImageResult) => {
+            if (settled) {
+                return;
+            }
+
+            settled = true;
+            image.onload = null;
+            image.onerror = null;
+            resolve(result);
+        };
+
+        image.decoding = "async";
+        image.onload = () => {
+            const dimensions = normalizeLoadedCustomEmojiImageDimensions(image);
+            finish(dimensions ? { ready: true, ...dimensions } : { ready: true });
+        };
+        image.onerror = () => finish({ ready: false });
+        image.src = url;
+    });
+}
+
+function normalizeLoadedCustomEmojiImageDimensions(
+    image: Pick<HTMLImageElement, "naturalWidth" | "naturalHeight">,
+): Omit<PreloadedCustomEmojiImageResult, "ready"> | null {
+    const width = Math.trunc(Number(image.naturalWidth));
+    const height = Math.trunc(Number(image.naturalHeight));
+
+    if (
+        !Number.isSafeInteger(width) ||
+        !Number.isSafeInteger(height) ||
+        width <= 0 ||
+        height <= 0
+    ) {
+        return null;
+    }
+
+    return {
+        width,
+        height,
+        aspectRatio: width / height,
+    };
 }

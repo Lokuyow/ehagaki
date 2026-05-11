@@ -13,7 +13,10 @@
     import { useDialogHistory } from "../lib/hooks/useDialogHistory.svelte";
     import { usePostHistoryListing } from "../lib/hooks/usePostHistoryListing.svelte";
     import { usePostHistoryPreviewCollapse } from "../lib/hooks/usePostHistoryPreviewCollapse.svelte";
-    import { preloadCustomEmojiImage } from "../lib/customEmoji";
+    import {
+        preloadCustomEmojiImageWithMeta,
+        type PreloadedCustomEmojiImageResult,
+    } from "../lib/customEmoji";
     import {
         canRequestPostDeletion,
         postDeletionService,
@@ -24,12 +27,21 @@
         type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
-    import type { PostHistoryRecord } from "../lib/storage/ehagakiDb";
+    import { customEmojiImageMetaRepository } from "../lib/storage/customEmojiImageMetaRepository";
+    import type {
+        CustomEmojiImageMetaRecord,
+        PostHistoryRecord,
+    } from "../lib/storage/ehagakiDb";
     import type { FullscreenMediaItem, RelayConfig } from "../lib/types";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { toNevent } from "../lib/utils/nostrUtils";
 
     import { writeRelaysStore } from "../stores/relayStore.svelte";
+
+    type EmojiImageMetaSnapshot = Pick<
+        CustomEmojiImageMetaRecord,
+        "url" | "width" | "height" | "aspectRatio"
+    >;
 
     interface Props {
         show: boolean;
@@ -74,6 +86,9 @@
     >({});
     let emojiLoadStateByUrl = $state<
         Record<string, "loading" | "ready" | "failed" | undefined>
+    >({});
+    let emojiImageMetaByUrl = $state<
+        Record<string, EmojiImageMetaSnapshot | undefined>
     >({});
     let fullscreenMediaItems = $state<FullscreenMediaItem[]>([]);
     let fullscreenIndex = $state(-1);
@@ -175,6 +190,14 @@
             return;
         }
 
+        void hydratePostHistoryEmojiImageMeta(dialogEmojiUrls);
+    });
+
+    $effect(() => {
+        if (!show) {
+            return;
+        }
+
         const pendingUrls = syncEmojiLoadState(dialogEmojiUrls);
         for (const url of pendingUrls) {
             void loadPostHistoryEmoji(url);
@@ -187,6 +210,7 @@
         }
 
         emojiLoadStateByUrl;
+        emojiImageMetaByUrl;
         void previewCollapse.remeasure();
     });
 
@@ -247,15 +271,127 @@
         return pendingUrls;
     }
 
+    function toEmojiImageMetaSnapshot(
+        record: Pick<
+            CustomEmojiImageMetaRecord,
+            "url" | "width" | "height" | "aspectRatio"
+        >,
+    ): EmojiImageMetaSnapshot {
+        return {
+            url: record.url,
+            width: record.width,
+            height: record.height,
+            aspectRatio: record.aspectRatio,
+        };
+    }
+
+    function hasResolvedEmojiImageMeta(
+        result: PreloadedCustomEmojiImageResult,
+    ): result is PreloadedCustomEmojiImageResult & {
+        width: number;
+        height: number;
+        aspectRatio: number;
+    } {
+        return (
+            Number.isSafeInteger(result.width) &&
+            Number.isSafeInteger(result.height) &&
+            (result.width ?? 0) > 0 &&
+            (result.height ?? 0) > 0 &&
+            Number.isFinite(result.aspectRatio) &&
+            (result.aspectRatio ?? 0) > 0
+        );
+    }
+
+    function upsertEmojiImageMetaSnapshots(
+        snapshots: Record<string, EmojiImageMetaSnapshot>,
+    ): void {
+        let changed = false;
+        const nextState = { ...emojiImageMetaByUrl };
+
+        for (const [url, snapshot] of Object.entries(snapshots)) {
+            const current = nextState[url];
+            if (
+                current?.width === snapshot.width &&
+                current?.height === snapshot.height &&
+                current?.aspectRatio === snapshot.aspectRatio
+            ) {
+                continue;
+            }
+
+            nextState[url] = snapshot;
+            changed = true;
+        }
+
+        if (changed) {
+            emojiImageMetaByUrl = nextState;
+        }
+    }
+
+    async function hydratePostHistoryEmojiImageMeta(
+        urls: string[],
+    ): Promise<void> {
+        if (urls.length === 0) {
+            return;
+        }
+
+        try {
+            const records = await customEmojiImageMetaRepository.getMany(urls);
+            const foundUrls = Object.keys(records);
+            if (foundUrls.length === 0) {
+                return;
+            }
+
+            upsertEmojiImageMetaSnapshots(
+                Object.fromEntries(
+                    foundUrls.map((url) => [
+                        url,
+                        toEmojiImageMetaSnapshot(records[url]),
+                    ]),
+                ) as Record<string, EmojiImageMetaSnapshot>,
+            );
+            void customEmojiImageMetaRepository.touchMany(foundUrls);
+        } catch {
+            // Metadata hydration is an optimization for layout stability.
+        }
+    }
+
+    async function persistPostHistoryEmojiImageMeta(input: {
+        url: string;
+        width: number;
+        height: number;
+    }): Promise<void> {
+        try {
+            await customEmojiImageMetaRepository.upsert(input);
+        } catch {
+            // Metadata persistence should never break rendering.
+        }
+    }
+
     async function loadPostHistoryEmoji(url: string): Promise<void> {
-        const ready = await preloadCustomEmojiImage(url);
+        const result = await preloadCustomEmojiImageWithMeta(url);
         loadingEmojiUrls.delete(url);
 
         if (!dialogEmojiUrls.includes(url)) {
             return;
         }
 
-        const nextState = ready ? "ready" : "failed";
+        if (result.ready && hasResolvedEmojiImageMeta(result)) {
+            upsertEmojiImageMetaSnapshots({
+                [url]: toEmojiImageMetaSnapshot({
+                    url,
+                    width: result.width,
+                    height: result.height,
+                    aspectRatio: result.aspectRatio,
+                }),
+            });
+            void persistPostHistoryEmojiImageMeta({
+                url,
+                width: result.width,
+                height: result.height,
+            });
+        }
+
+        const nextState = result.ready ? "ready" : "failed";
         if (emojiLoadStateByUrl[url] === nextState) {
             return;
         }
@@ -640,6 +776,7 @@
                                                 post,
                                             )}
                                             {emojiLoadStateByUrl}
+                                            {emojiImageMetaByUrl}
                                             previewCollapseAction={previewCollapse.previewRef}
                                             previewCollapseEventId={post.eventId}
                                             previewContentId={"post-preview-content-" +
@@ -900,6 +1037,7 @@
                         previewContent={deleteTargetPreviewContent ??
                             buildPreviewContent(deleteTargetPost)}
                         {emojiLoadStateByUrl}
+                        {emojiImageMetaByUrl}
                     />
                 </div>
             {/if}
