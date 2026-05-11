@@ -272,8 +272,8 @@ export class PostMediaCacheService {
 
     private async getCachedRecordAndResponse(url: string): Promise<{
         record: Awaited<ReturnType<PostMediaCacheRepository['getByUrl']>> extends infer T
-            ? Exclude<T, null>
-            : never;
+        ? Exclude<T, null>
+        : never;
         response: Response;
     } | null> {
         const cacheStorage = this.runtime.cacheStorage;

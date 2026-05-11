@@ -227,7 +227,7 @@ describe('PostMediaCacheService', () => {
         expect(cacheStorage.cache.has('https://example.com/media/old.webp')).toBe(false);
         expect(cacheStorage.cache.has('https://example.com/media/new.webp')).toBe(true);
     });
-    
+
     it('fetch が失敗した場合は例外を呼び出し元へ伝える', async () => {
         const cacheStorage = new FakeCacheStorage();
         const repository = {
