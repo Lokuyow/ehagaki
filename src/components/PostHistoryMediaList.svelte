@@ -470,7 +470,11 @@
 {#if mediaLayout.items.length > 0}
     <div class="post-history-media-section">
         {#if imageRows.length > 0}
-            <div class="post-history-image-grid">
+            <div
+                class="post-history-image-grid"
+                class:post-history-image-grid-single={mediaLayout.images
+                    .length === 1}
+            >
                 {#each imageRows as row, rowIndex (rowIndex)}
                     <div
                         class="post-history-image-row"
@@ -792,9 +796,19 @@
         width: 100%;
     }
 
+    /* 単体画像のときグリッド側のボーダーを無効化 */
+    .post-history-image-grid-single {
+        border: none;
+        border-radius: 0;
+        overflow: visible;
+    }
+
     .post-history-image-surface-frame-single {
         max-width: 100%;
-        margin-inline: auto;
+        margin-inline: 0;
+        border: 1px solid var(--border-hr);
+        border-radius: 12px;
+        overflow: hidden;
     }
 
     .post-history-image-surface {
