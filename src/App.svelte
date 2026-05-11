@@ -438,7 +438,9 @@
 
   $effect(() => {
     const pubkeyHex =
-      isAuthenticated && authState.value?.pubkey ? authState.value.pubkey : null;
+      isAuthenticated && authState.value?.pubkey
+        ? authState.value.pubkey
+        : null;
 
     if (!pubkeyHex) {
       resetPostHistoryWarmupState(null);
@@ -1509,7 +1511,7 @@
 
   async function warmLatestPostHistoryDescriptors(): Promise<PostHistoryWarmupResult> {
     const pubkeyHex = authState.value?.isAuthenticated
-      ? authState.value.pubkey ?? null
+      ? (authState.value.pubkey ?? null)
       : null;
 
     if (!pubkeyHex) {
@@ -1525,7 +1527,10 @@
       return postHistoryWarmupPromise;
     }
 
-    if (postHistoryWarmupResult && postHistoryWarmupResult.status !== "failed") {
+    if (
+      postHistoryWarmupResult &&
+      postHistoryWarmupResult.status !== "failed"
+    ) {
       return postHistoryWarmupResult;
     }
 
