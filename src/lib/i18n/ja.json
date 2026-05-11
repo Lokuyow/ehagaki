@@ -141,7 +141,7 @@
     "quality_low": "低",
     "upload_destination": "アップロード先",
     "uploadDestinationNone": "未設定",
-    "uploadDestinationUnknown": "未確認",
+    "uploadDestinationUnknown": "最大サイズ未確認",
     "uploadDestinationManage": "管理",
     "uploadDestinationClose": "閉じる",
     "uploadDestinationDefault": "既定",

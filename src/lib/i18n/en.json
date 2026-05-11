@@ -141,7 +141,7 @@
     "quality_low": "Lo",
     "upload_destination": "Upload Destination",
     "uploadDestinationNone": "Not set",
-    "uploadDestinationUnknown": "Unknown",
+    "uploadDestinationUnknown": "Unknown size",
     "uploadDestinationManage": "Manage",
     "uploadDestinationClose": "Close",
     "uploadDestinationDefault": "Default",
