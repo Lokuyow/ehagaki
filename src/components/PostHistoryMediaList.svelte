@@ -35,6 +35,7 @@
 
     const AUTO_FETCH_ROOT_MARGIN = "160px 0px";
     const SINGLE_IMAGE_MAX_HEIGHT = 300;
+    const SINGLE_IMAGE_MIN_SIZE = 100;
 
     let { media, scrollRoot = null, onImageOpen = undefined }: Props = $props();
 
@@ -159,6 +160,37 @@
         );
 
         return `min(100%, ${maxWidth}px)`;
+    }
+
+    function getSingleImageMinimumWidth(aspectRatio: string): string {
+        const minimumWidth = Math.max(
+            SINGLE_IMAGE_MIN_SIZE,
+            Math.round(
+                SINGLE_IMAGE_MIN_SIZE * getAspectRatioValue(aspectRatio),
+            ),
+        );
+
+        return `min(100%, ${minimumWidth}px)`;
+    }
+
+    function getSingleImageFrameStyle(aspectRatio: string): string {
+        return `width: max(${getSingleImageWidth(aspectRatio)}, ${getSingleImageMinimumWidth(aspectRatio)});`;
+    }
+
+    function getSingleImageSurfaceStyle(): string {
+        return ["width: 100%;", `min-height: ${SINGLE_IMAGE_MIN_SIZE}px;`].join(
+            " ",
+        );
+    }
+
+    function getSingleImagePlaceholderStyle(aspectRatio: string): string {
+        return [
+            getMediaSurfaceStyle({
+                aspectRatio,
+                singleImage: true,
+            }),
+            `min-height: ${SINGLE_IMAGE_MIN_SIZE}px;`,
+        ].join(" ");
     }
 
     function getMediaSurfaceStyle(params: {
@@ -327,9 +359,11 @@
                                 item,
                                 row.slotCount,
                             )}
+                            {@const isSingleImage =
+                                mediaLayout.images.length === 1}
                             {@const imageSurfaceStyle = getMediaSurfaceStyle({
                                 aspectRatio: imageAspectRatio,
-                                singleImage: mediaLayout.images.length === 1,
+                                singleImage: isSingleImage,
                             })}
                             {@const showBlurhashPlaceholder =
                                 shouldShowBlurhashPlaceholder(item)}
@@ -344,128 +378,173 @@
                                         requestAutoFetch(item.url),
                                 }}
                             >
-                                {#if item.cached}
-                                    <button
-                                        type="button"
-                                        class="post-history-media-surface post-history-image-surface"
-                                        style={imageSurfaceStyle}
-                                        aria-label={getImageSurfaceAriaLabel(
-                                            item,
-                                        )}
-                                        title={getLinkLabel(item)}
-                                        onclick={() => handleImageOpen(item)}
-                                    >
-                                        {#if item.previewObjectUrl}
-                                            <img
-                                                src={item.previewObjectUrl}
-                                                alt={item.alt ||
-                                                    getLinkLabel(item)}
-                                                class="post-history-media-image"
-                                                loading="lazy"
-                                                decoding="async"
-                                            />
-                                        {:else}
-                                            <div
-                                                class="post-history-media-placeholder post-history-media-placeholder-cached"
-                                                class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                                style={imageSurfaceStyle}
-                                                aria-hidden="true"
-                                            >
-                                                {#if showBlurhashPlaceholder}
-                                                    <BlurhashPlaceholder
-                                                        blurhash={item.blurhash}
-                                                    />
-                                                {/if}
-                                                {#if isPlaceholderLoading(item)}
-                                                    <div
-                                                        class="post-history-media-placeholder-loader"
-                                                    >
-                                                        <LoadingPlaceholder
-                                                            showLoader={true}
-                                                            text={false}
-                                                            loaderSize={34}
-                                                        />
-                                                    </div>
-                                                {/if}
-                                            </div>
-                                        {/if}
-                                    </button>
-                                {:else if item.hasFetchFailed}
-                                    <div
-                                        class="post-history-media-placeholder post-history-media-placeholder-failed"
-                                        class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                        style={imageSurfaceStyle}
-                                        aria-label={getPlaceholderAriaLabel(
-                                            item,
-                                        )}
-                                        title={getLinkLabel(item)}
-                                    >
-                                        {#if showBlurhashPlaceholder}
-                                            <BlurhashPlaceholder
-                                                blurhash={item.blurhash}
-                                            />
-                                        {/if}
-                                        <div
-                                            class="post-history-media-placeholder-content"
-                                        >
-                                            <button
-                                                type="button"
-                                                class="post-history-media-retry-button"
-                                                onclick={() =>
-                                                    handleRetry(item)}
-                                            >
-                                                {$_(
-                                                    "postHistory.mediaFetchAndCache",
-                                                )}
-                                            </button>
-                                        </div>
-                                    </div>
-                                {:else}
-                                    <div
-                                        class="post-history-media-placeholder post-history-media-placeholder-uncached"
-                                        class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
-                                        style={imageSurfaceStyle}
-                                        aria-label={getPlaceholderAriaLabel(
-                                            item,
-                                        )}
-                                        title={getLinkLabel(item)}
-                                    >
-                                        {#if showBlurhashPlaceholder}
-                                            <BlurhashPlaceholder
-                                                blurhash={item.blurhash}
-                                            />
-                                        {/if}
-                                        {#if isPlaceholderLoading(item)}
-                                            <div
-                                                class="post-history-media-placeholder-loader"
-                                            >
-                                                <LoadingPlaceholder
-                                                    showLoader={true}
-                                                    text={false}
-                                                    loaderSize={34}
-                                                />
-                                            </div>
-                                        {/if}
-                                    </div>
-                                {/if}
-
-                                <Button
-                                    variant="copy"
-                                    shape="circle"
-                                    className="post-history-media-copy-button post-history-media-copy-button-image"
-                                    ariaLabel={getCopyButtonLabel(
-                                        item.kind,
-                                        item.url,
-                                    )}
-                                    title={getCopyButtonLabel(
-                                        item.kind,
-                                        item.url,
-                                    )}
-                                    onClick={(event) =>
-                                        void handleCopyUrl(item, event)}
+                                <div
+                                    class="post-history-image-surface-frame"
+                                    class:post-history-image-surface-frame-single={isSingleImage}
+                                    style={isSingleImage
+                                        ? getSingleImageFrameStyle(
+                                              imageAspectRatio,
+                                          )
+                                        : undefined}
                                 >
-                                    <div class="copy-icon svg-icon"></div>
-                                </Button>
+                                    {#if item.cached}
+                                        <button
+                                            type="button"
+                                            class="post-history-media-surface post-history-image-surface"
+                                            class:post-history-image-surface-single={isSingleImage}
+                                            style={isSingleImage
+                                                ? getSingleImageSurfaceStyle()
+                                                : imageSurfaceStyle}
+                                            aria-label={getImageSurfaceAriaLabel(
+                                                item,
+                                            )}
+                                            title={getLinkLabel(item)}
+                                            onclick={() =>
+                                                handleImageOpen(item)}
+                                        >
+                                            {#if item.previewObjectUrl}
+                                                <img
+                                                    src={item.previewObjectUrl}
+                                                    alt={item.alt ||
+                                                        getLinkLabel(item)}
+                                                    class="post-history-media-image"
+                                                    class:post-history-media-image-single={isSingleImage}
+                                                    style={isSingleImage
+                                                        ? imageSurfaceStyle
+                                                        : undefined}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                />
+                                            {:else}
+                                                <div
+                                                    class="post-history-media-placeholder post-history-media-placeholder-cached"
+                                                    class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                                    class:post-history-image-placeholder-single={isSingleImage}
+                                                    style={isSingleImage
+                                                        ? getSingleImagePlaceholderStyle(
+                                                              imageAspectRatio,
+                                                          )
+                                                        : imageSurfaceStyle}
+                                                    aria-hidden="true"
+                                                >
+                                                    {#if showBlurhashPlaceholder}
+                                                        <BlurhashPlaceholder
+                                                            blurhash={item.blurhash}
+                                                        />
+                                                    {/if}
+                                                    {#if !isSingleImage && isPlaceholderLoading(item)}
+                                                        <div
+                                                            class="post-history-media-placeholder-loader"
+                                                        >
+                                                            <LoadingPlaceholder
+                                                                showLoader={true}
+                                                                text={false}
+                                                                loaderSize={34}
+                                                            />
+                                                        </div>
+                                                    {/if}
+                                                </div>
+                                            {/if}
+                                        </button>
+                                    {:else if item.hasFetchFailed}
+                                        <div
+                                            class="post-history-media-placeholder post-history-media-placeholder-failed"
+                                            class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                            class:post-history-image-placeholder-single={isSingleImage}
+                                            style={isSingleImage
+                                                ? getSingleImagePlaceholderStyle(
+                                                      imageAspectRatio,
+                                                  )
+                                                : imageSurfaceStyle}
+                                            aria-label={getPlaceholderAriaLabel(
+                                                item,
+                                            )}
+                                            title={getLinkLabel(item)}
+                                        >
+                                            {#if showBlurhashPlaceholder}
+                                                <BlurhashPlaceholder
+                                                    blurhash={item.blurhash}
+                                                />
+                                            {/if}
+                                            <div
+                                                class="post-history-media-placeholder-content"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    class="post-history-media-retry-button"
+                                                    onclick={() =>
+                                                        handleRetry(item)}
+                                                >
+                                                    {$_(
+                                                        "postHistory.mediaFetchAndCache",
+                                                    )}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    {:else}
+                                        <div
+                                            class="post-history-media-placeholder post-history-media-placeholder-uncached"
+                                            class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
+                                            class:post-history-image-placeholder-single={isSingleImage}
+                                            style={isSingleImage
+                                                ? getSingleImagePlaceholderStyle(
+                                                      imageAspectRatio,
+                                                  )
+                                                : imageSurfaceStyle}
+                                            aria-label={getPlaceholderAriaLabel(
+                                                item,
+                                            )}
+                                            title={getLinkLabel(item)}
+                                        >
+                                            {#if showBlurhashPlaceholder}
+                                                <BlurhashPlaceholder
+                                                    blurhash={item.blurhash}
+                                                />
+                                            {/if}
+                                            {#if !isSingleImage && isPlaceholderLoading(item)}
+                                                <div
+                                                    class="post-history-media-placeholder-loader"
+                                                >
+                                                    <LoadingPlaceholder
+                                                        showLoader={true}
+                                                        text={false}
+                                                        loaderSize={34}
+                                                    />
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/if}
+
+                                    {#if isSingleImage && isPlaceholderLoading(item)}
+                                        <div
+                                            class="post-history-media-placeholder-loader post-history-media-placeholder-loader-single"
+                                        >
+                                            <LoadingPlaceholder
+                                                showLoader={true}
+                                                text={false}
+                                                loaderSize={34}
+                                            />
+                                        </div>
+                                    {/if}
+
+                                    <Button
+                                        variant="copy"
+                                        shape="circle"
+                                        className="post-history-media-copy-button post-history-media-copy-button-image"
+                                        ariaLabel={getCopyButtonLabel(
+                                            item.kind,
+                                            item.url,
+                                        )}
+                                        title={getCopyButtonLabel(
+                                            item.kind,
+                                            item.url,
+                                        )}
+                                        onClick={(event) =>
+                                            void handleCopyUrl(item, event)}
+                                    >
+                                        <div class="copy-icon svg-icon"></div>
+                                    </Button>
+                                </div>
                             </div>
                         {/each}
                     </div>
@@ -681,8 +760,30 @@
         min-width: 0;
     }
 
+    .post-history-image-surface-frame {
+        position: relative;
+        width: 100%;
+    }
+
+    .post-history-image-surface-frame-single {
+        max-width: 100%;
+        margin-inline: auto;
+    }
+
     .post-history-image-surface {
         overflow: hidden;
+    }
+
+    .post-history-image-surface-single {
+        display: grid;
+        place-items: center;
+        min-height: 100px;
+    }
+
+    .post-history-image-placeholder-single {
+        display: grid;
+        place-items: center;
+        min-height: 100px;
     }
 
     .post-history-media-image,
@@ -695,6 +796,11 @@
         display: block;
         height: 100%;
         object-fit: cover;
+    }
+
+    .post-history-media-image-single {
+        height: auto;
+        margin-inline: auto;
     }
 
     .post-history-media-video {
@@ -743,6 +849,10 @@
         bottom: 8px;
         z-index: 2;
         pointer-events: none;
+    }
+
+    .post-history-media-placeholder-loader-single {
+        z-index: 3;
     }
 
     .post-history-media-placeholder-uncached {

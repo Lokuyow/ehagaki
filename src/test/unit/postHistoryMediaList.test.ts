@@ -197,7 +197,7 @@ describe('PostHistoryMediaList', () => {
         expect(screen.getByAltText('cached image')).toBeTruthy();
     });
 
-    it('1枚の画像は 420px を上限にしてアスペクト比を保つ', async () => {
+    it('1枚の画像は最小操作領域を確保しつつアスペクト比を保つ', async () => {
         vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
             .mockResolvedValue({
                 cacheKey: 'https://example.com/single.jpg',
@@ -235,13 +235,21 @@ describe('PostHistoryMediaList', () => {
             expect(screen.getByAltText('single image')).toBeTruthy();
         });
 
+        const image = screen.getByAltText('single image');
         const surface = screen.getByRole('button', {
             name: '開く single image',
         });
+        const frame = surface.parentElement;
 
-        expect(surface.getAttribute('style')).toContain('aspect-ratio: 1200 / 800');
-        expect(surface.getAttribute('style')).toContain('width: min(100%, 630px)');
-        expect(surface.getAttribute('style')).toContain('max-height: 420px');
+        expect(frame).toBeTruthy();
+        expect(frame?.getAttribute('style')).toContain(
+            'width: max(min(100%, 450px), min(100%, 150px))',
+        );
+        expect(surface.getAttribute('style')).toContain('width: 100%');
+        expect(surface.getAttribute('style')).toContain('min-height: 100px');
+        expect(image.getAttribute('style')).toContain('aspect-ratio: 1200 / 800');
+        expect(image.getAttribute('style')).toContain('width: min(100%, 450px)');
+        expect(image.getAttribute('style')).toContain('max-height: 300px');
     });
 
     it('4枚の画像は少し横長の比率で表示する', async () => {
@@ -390,6 +398,7 @@ describe('PostHistoryMediaList', () => {
                         mimeType: 'image/png',
                         alt: 'uncached blurhash image',
                         blurhash: 'LEHV6nWB2yk8pyo0adR*.7kCMdnj',
+                        dim: '1200x800',
                     },
                 ],
             },
@@ -404,6 +413,76 @@ describe('PostHistoryMediaList', () => {
                 container.querySelector('.post-history-media-placeholder-blurhash'),
             ).toBeTruthy();
         });
+
+        const placeholder = container.querySelector(
+            '.post-history-image-placeholder-single',
+        );
+
+        expect(placeholder).toBeTruthy();
+        expect(placeholder?.getAttribute('style')).toContain(
+            'aspect-ratio: 1200 / 800',
+        );
+        expect(placeholder?.getAttribute('style')).toContain(
+            'width: min(100%, 450px)',
+        );
+        expect(placeholder?.getAttribute('style')).toContain(
+            'max-height: 300px',
+        );
+        expect(placeholder?.getAttribute('style')).toContain(
+            'min-height: 100px',
+        );
+    });
+
+    it('横長の単一画像プレースホルダーは最低高さ相当の幅を確保する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor)
+            .mockResolvedValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockImplementation(() => new Promise(() => undefined));
+
+        const { container } = render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/wide-loading.png',
+                        mimeType: 'image/png',
+                        alt: 'wide loading image',
+                        dim: '4000x500',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({
+                url: 'https://example.com/wide-loading.png',
+                mimeType: 'image/png',
+            });
+        });
+
+        const frame = container.querySelector(
+            '.post-history-image-surface-frame-single',
+        );
+        const placeholder = container.querySelector(
+            '.post-history-image-placeholder-single',
+        );
+
+        expect(frame).toBeTruthy();
+        expect(frame?.getAttribute('style')).toContain(
+            'width: max(min(100%, 2400px), min(100%, 800px))',
+        );
+        expect(placeholder).toBeTruthy();
+        expect(placeholder?.getAttribute('style')).toContain(
+            'aspect-ratio: 4000 / 500',
+        );
+        expect(placeholder?.getAttribute('style')).toContain(
+            'width: min(100%, 2400px)',
+        );
+        expect(placeholder?.getAttribute('style')).toContain(
+            'max-height: 300px',
+        );
+        expect(placeholder?.getAttribute('style')).toContain(
+            'min-height: 100px',
+        );
     });
 
     it('可視範囲に入った uncached media は自動取得して保存する', async () => {
