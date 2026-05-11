@@ -433,7 +433,7 @@ describe('ImageCompressionService', () => {
 
                 const callArgs = imageCompressionMock.mock.calls[0];
                 expect(callArgs[1].maxWidthOrHeight).toBe(1600);
-                expect(callArgs[1].maxSizeMB).toBeCloseTo((500000 * 0.75) / (1024 * 1024));
+                expect(callArgs[1].maxSizeMB).toBeUndefined();
                 expect(callArgs[1].alwaysKeepResolution).toBe(true);
                 expect(result.wasCompressed).toBe(true);
             });
@@ -450,6 +450,25 @@ describe('ImageCompressionService', () => {
 
                 const callArgs = imageCompressionMock.mock.calls[0];
                 expect(callArgs[1].maxWidthOrHeight).toBe(1600);
+                expect(callArgs[1].maxSizeMB).toBeUndefined();
+            });
+
+            it('短辺保護が発動した高画質の極端な縦長画像ではmaxSizeMBを付与しない', async () => {
+                mockStorage.setItem('imageQualityLevel', 'high');
+                service = new ImageCompressionService(mockMimeSupport, mockStorage);
+                mockImageNaturalWidth = 45;
+                mockImageNaturalHeight = 1784;
+                const file = createTestFile('thin-long.png', 'image/png', 500000);
+                const compressedContent = new Uint8Array(100000);
+                const compressedFile = new File([compressedContent], 'thin-long.webp', { type: 'image/webp' });
+                imageCompressionMock.mockResolvedValue(compressedFile);
+
+                await service.compress(file);
+
+                const callArgs = imageCompressionMock.mock.calls[0];
+                expect(callArgs[1].maxWidthOrHeight).toBe(1784);
+                expect(callArgs[1].maxSizeMB).toBeUndefined();
+                expect(callArgs[1].alwaysKeepResolution).toBe(true);
             });
 
             it('通常比率画像では従来のmaxWidthOrHeightを渡す', async () => {

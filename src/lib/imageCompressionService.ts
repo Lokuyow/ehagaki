@@ -27,6 +27,11 @@ interface ImageDimensions {
     height: number;
 }
 
+interface PreparedCompressionOptions {
+    options: Record<string, unknown>;
+    shouldSkipMaxSizeMB: boolean;
+}
+
 export interface ExtremeAspectResizeResult {
     maxWidthOrHeight: number;
     targetWidth: number;
@@ -240,15 +245,21 @@ export class ImageCompressionService implements CompressionService {
     private async applyExtremeAspectProtection(
         file: File,
         options: Record<string, unknown>,
-    ): Promise<Record<string, unknown>> {
+    ): Promise<PreparedCompressionOptions> {
         const maxWidthOrHeight = options.maxWidthOrHeight;
         if (typeof maxWidthOrHeight !== "number") {
-            return options;
+            return {
+                options,
+                shouldSkipMaxSizeMB: false,
+            };
         }
 
         const dimensions = await this.loadImageDimensions(file);
         if (!dimensions) {
-            return options;
+            return {
+                options,
+                shouldSkipMaxSizeMB: false,
+            };
         }
 
         const result = calculateExtremeAspectMaxWidthOrHeight({
@@ -257,8 +268,14 @@ export class ImageCompressionService implements CompressionService {
         });
 
         return result.wasAdjusted
-            ? { ...options, maxWidthOrHeight: result.maxWidthOrHeight }
-            : options;
+            ? {
+                options: { ...options, maxWidthOrHeight: result.maxWidthOrHeight },
+                shouldSkipMaxSizeMB: true,
+            }
+            : {
+                options,
+                shouldSkipMaxSizeMB: false,
+            };
     }
 
     private async loadImageData(file: Blob): Promise<ImageData> {
@@ -317,14 +334,16 @@ export class ImageCompressionService implements CompressionService {
         const options = this.getCompressionOptions(level);
         if (!options) return { file, wasCompressed: false, wasSkipped: true };
 
-        const maxSizeMB = this.getTargetMaxSizeMB(file.size, level);
-
         const requestedTargetMime = (options.fileType as string) || file.type;
-        const compressionOptions = await this.applyExtremeAspectProtection(file, options);
+        const maxSizeMB = this.getTargetMaxSizeMB(file.size, level);
+        const {
+            options: compressionOptions,
+            shouldSkipMaxSizeMB,
+        } = await this.applyExtremeAspectProtection(file, options);
 
         let usedOptions: Record<string, unknown> = {
             ...compressionOptions,
-            ...(maxSizeMB ? { maxSizeMB } : {}),
+            ...(!shouldSkipMaxSizeMB && maxSizeMB ? { maxSizeMB } : {}),
             alwaysKeepResolution: true,
             onProgress: (progress: number) => {
                 if (this.onProgress) {
