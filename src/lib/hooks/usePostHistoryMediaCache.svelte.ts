@@ -78,6 +78,69 @@ export function usePostHistoryMediaCache(params: {
     let lastMediaSignature = '';
     let isDestroyed = false;
 
+    function buildInitialResolvedPostHistoryMediaItem(
+        media: PostHistoryMediaRecord,
+    ): ResolvedPostHistoryMediaItem {
+        const baseItem = buildResolvedPostHistoryMediaBaseItem(media);
+        const descriptorSnapshot =
+            postMediaCacheService.getCachedMediaDescriptorSnapshot(media.url);
+
+        if (descriptorSnapshot === undefined) {
+            return baseItem;
+        }
+
+        if (descriptorSnapshot === null) {
+            return {
+                ...baseItem,
+                hasResolvedCache: true,
+            };
+        }
+
+        if (
+            descriptorSnapshot.kind !== 'image' &&
+            descriptorSnapshot.kind !== 'video'
+        ) {
+            return {
+                ...baseItem,
+                hasResolvedCache: true,
+                cached: true,
+                mimeType: descriptorSnapshot.mimeType,
+                kind: descriptorSnapshot.kind,
+                size: descriptorSnapshot.size,
+                source: descriptorSnapshot.source,
+            };
+        }
+
+        const objectUrlSnapshot =
+            postMediaCacheService.getCachedMediaObjectUrlSnapshot(media.url);
+        if (objectUrlSnapshot) {
+            activeObjectUrls.set(media.url, objectUrlSnapshot.objectUrl);
+
+            return {
+                ...baseItem,
+                hasResolvedCache: true,
+                cached: true,
+                previewObjectUrl: objectUrlSnapshot.objectUrl,
+                mimeType: objectUrlSnapshot.mimeType,
+                kind: objectUrlSnapshot.kind,
+                size: objectUrlSnapshot.size,
+                source: objectUrlSnapshot.source,
+            };
+        }
+
+        return {
+            ...baseItem,
+            hasResolvedCache: true,
+            cached: true,
+            previewObjectUrl: undefined,
+            mimeType: descriptorSnapshot.mimeType,
+            kind: descriptorSnapshot.kind,
+            size: descriptorSnapshot.size,
+            source: descriptorSnapshot.source,
+            isLoadingPreview: true,
+        };
+    }
+
     function toDirectDisplayItem(
         media: PostHistoryMediaRecord,
     ): ResolvedPostHistoryMediaItem {
@@ -288,11 +351,62 @@ export function usePostHistoryMediaCache(params: {
         }
 
         revokeAllObjectUrls();
-        state.items = mediaItems.map(buildResolvedPostHistoryMediaBaseItem);
+        state.items = mediaItems.map(buildInitialResolvedPostHistoryMediaItem);
+        const initialItemsByUrl = new Map(
+            state.items.map((item) => [item.url, item] as const),
+        );
 
         void (async () => {
             await Promise.all(
                 mediaItems.map(async (media) => {
+                    const initialItem = initialItemsByUrl.get(media.url);
+                    if (!initialItem) {
+                        return;
+                    }
+
+                    if (initialItem.hasResolvedCache) {
+                        if (
+                            !initialItem.cached ||
+                            initialItem.previewObjectUrl ||
+                            !initialItem.isLoadingPreview
+                        ) {
+                            return;
+                        }
+
+                        const descriptor = await postMediaCacheService.getCachedMediaDescriptor(
+                            media.url,
+                        );
+
+                        if (
+                            isDestroyed ||
+                            currentResolutionVersion !== resolutionVersion
+                        ) {
+                            return;
+                        }
+
+                        if (!descriptor) {
+                            revokeTrackedObjectUrl(media.url);
+                            updateItem(media.url, (item) => ({
+                                ...item,
+                                cached: false,
+                                previewObjectUrl: undefined,
+                                isLoadingPreview: false,
+                            }));
+                            return;
+                        }
+
+                        await applyCachedState({
+                            url: media.url,
+                            descriptor,
+                            loadPreview:
+                                descriptor.kind === 'image' ||
+                                descriptor.kind === 'video',
+                            expectedResolutionVersion:
+                                currentResolutionVersion,
+                        });
+                        return;
+                    }
+
                     const descriptor = await postMediaCacheService.getCachedMediaDescriptor(
                         media.url,
                     );

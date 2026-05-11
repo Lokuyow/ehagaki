@@ -69,6 +69,9 @@ const clipboardMock = vi.hoisted(() => ({
 
 const postMediaCacheServiceMock = vi.hoisted(() => ({
     canUsePersistentCache: vi.fn(() => true),
+    getCachedMediaDescriptorSnapshot: vi.fn().mockReturnValue(undefined),
+    getCachedMediaObjectUrlSnapshot: vi.fn().mockReturnValue(null),
+    prefetchCachedMediaDescriptors: vi.fn().mockResolvedValue(undefined),
     getCachedMediaDescriptor: vi.fn().mockResolvedValue(null),
     createCachedMediaObjectUrl: vi.fn().mockResolvedValue(null),
     fetchAndCacheMedia: vi.fn().mockResolvedValue(null),
@@ -283,6 +286,9 @@ describe('PostHistoryDialog', () => {
             cancel: vi.fn(),
         });
         clipboardMock.tryCopyToClipboard.mockResolvedValue(true);
+        postMediaCacheServiceMock.getCachedMediaDescriptorSnapshot.mockReturnValue(undefined);
+        postMediaCacheServiceMock.getCachedMediaObjectUrlSnapshot.mockReturnValue(null);
+        postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockResolvedValue(undefined);
         localSearchServiceMock.searchLocalPosts.mockResolvedValue({
             items: [],
             total: 0,
@@ -433,11 +439,62 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(container.querySelector('.post-history-preview-text')).toBeNull();
+            expect(screen.getByTitle('image-1.jpg')).toBeTruthy();
+            expect(screen.getByTitle('image-2.jpg')).toBeTruthy();
         });
 
+        expect(container.querySelector('.post-history-preview-text')).toBeNull();
         expect(screen.getByTitle('image-1.jpg')).toBeTruthy();
         expect(screen.getByTitle('image-2.jpg')).toBeTruthy();
+    });
+
+    it('現在表示中ページの media URL を descriptor prefetch する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(60);
+        repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => Promise.resolve(
+            page === 1
+                ? [createRecord({
+                    eventId: 'prefetch-page-1',
+                    content: '1ページ目',
+                    media: [
+                        {
+                            url: 'https://example.com/page-1.jpg',
+                            mimeType: 'image/jpeg',
+                        },
+                    ],
+                })]
+                : [createRecord({
+                    eventId: 'prefetch-page-2',
+                    content: '2ページ目',
+                    media: [
+                        {
+                            url: 'https://example.com/page-2.jpg',
+                            mimeType: 'image/jpeg',
+                        },
+                    ],
+                })],
+        ));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                .toHaveBeenLastCalledWith(['https://example.com/page-1.jpg']);
+            expect(screen.getByText('1ページ目')).toBeTruthy();
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '次へ' }));
+
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                .toHaveBeenLastCalledWith(['https://example.com/page-2.jpg']);
+            expect(screen.getByText('2ページ目')).toBeTruthy();
+        });
     });
 
     it('fullscreen viewer 内の操作では投稿履歴ダイアログを閉じない', async () => {
@@ -819,6 +876,50 @@ describe('PostHistoryDialog', () => {
             expect(screen.queryByText('通常一覧')).toBeNull();
             expect(screen.getByText('検索結果')).toBeTruthy();
         });
+    });
+
+    it('検索結果ページの media URL も descriptor prefetch する', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧', media: [] }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [
+                createRecord({
+                    eventId: 'search-media',
+                    content: 'search media',
+                    media: [
+                        {
+                            url: 'https://example.com/search-media.jpg',
+                            mimeType: 'image/jpeg',
+                        },
+                    ],
+                }),
+            ],
+            total: 1,
+            hasNext: false,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await fireEvent.input(searchInput, { target: { value: 'media' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors)
+                .toHaveBeenLastCalledWith(['https://example.com/search-media.jpg']);
+            expect(screen.getByText('search media')).toBeTruthy();
+        });
+
+        vi.useRealTimers();
     });
 
     it('検索結果 0 件では searchNoResults を表示し、検索入力を消すと通常表示へ戻る', async () => {

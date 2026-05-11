@@ -24,6 +24,9 @@ const translateMock = vi.hoisted(() => (key: string) => {
 
 const postMediaCacheServiceMock = vi.hoisted(() => ({
     canUsePersistentCache: vi.fn(),
+    getCachedMediaDescriptorSnapshot: vi.fn(),
+    getCachedMediaObjectUrlSnapshot: vi.fn(),
+    prefetchCachedMediaDescriptors: vi.fn(),
     getCachedMediaDescriptor: vi.fn(),
     createCachedMediaObjectUrl: vi.fn(),
     fetchAndCacheMedia: vi.fn(),
@@ -105,6 +108,9 @@ describe('PostHistoryMediaList', () => {
             .mockReturnValue(null);
         intersectionObserverInstances.length = 0;
         vi.mocked(postMediaCacheServiceMock.canUsePersistentCache).mockReturnValue(true);
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptorSnapshot).mockReturnValue(undefined);
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaObjectUrlSnapshot).mockReturnValue(null);
+        vi.mocked(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).mockResolvedValue(undefined);
         vi.stubGlobal(
             'IntersectionObserver',
             MockIntersectionObserver as unknown as typeof IntersectionObserver,
@@ -218,6 +224,75 @@ describe('PostHistoryMediaList', () => {
             vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl),
         ).toHaveBeenCalledTimes(2);
         expect(screen.getByAltText('cached image')).toBeTruthy();
+    });
+
+    it('descriptor と object url snapshot があれば初回描画から同期表示する', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptorSnapshot)
+            .mockReturnValue({
+                cacheKey: 'https://example.com/snapshot.jpg',
+                url: 'https://example.com/snapshot.jpg',
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+            });
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaObjectUrlSnapshot)
+            .mockReturnValue({
+                cacheKey: 'https://example.com/snapshot.jpg',
+                url: 'https://example.com/snapshot.jpg',
+                mimeType: 'image/jpeg',
+                size: 10,
+                source: 'uploaded',
+                kind: 'image',
+                objectUrl: 'blob:snapshot-image',
+            });
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/snapshot.jpg',
+                        mimeType: 'image/jpeg',
+                        alt: 'snapshot image',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByAltText('snapshot image')).toBeTruthy();
+        });
+
+        expect(postMediaCacheServiceMock.getCachedMediaDescriptor).not.toHaveBeenCalled();
+        expect(postMediaCacheServiceMock.createCachedMediaObjectUrl).not.toHaveBeenCalled();
+    });
+
+    it('null descriptor snapshot の item は通常 resolve を省略して自動取得へ進む', async () => {
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptorSnapshot)
+            .mockReturnValue(null);
+        vi.mocked(postMediaCacheServiceMock.fetchAndCacheMedia)
+            .mockResolvedValue(null);
+
+        render(PostHistoryMediaList, {
+            props: {
+                media: [
+                    {
+                        url: 'https://example.com/snapshot-miss.png',
+                        mimeType: 'image/png',
+                        alt: 'snapshot miss image',
+                    },
+                ],
+            },
+        });
+
+        await waitFor(() => {
+            expect(postMediaCacheServiceMock.fetchAndCacheMedia).toHaveBeenCalledWith({
+                url: 'https://example.com/snapshot-miss.png',
+                mimeType: 'image/png',
+            });
+        });
+
+        expect(postMediaCacheServiceMock.getCachedMediaDescriptor).not.toHaveBeenCalled();
     });
 
     it('1枚の画像は最小操作領域を確保しつつアスペクト比を保つ', async () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
     PostMediaCacheService,
     POST_MEDIA_CACHE_NAME,
+    POST_MEDIA_CACHE_MAX_TOTAL_SIZE,
 } from '../../lib/postMediaCacheService';
 
 class FakeCache {
@@ -138,7 +139,181 @@ describe('PostMediaCacheService', () => {
         );
 
         service.revokeObjectUrl('blob:cached-media');
-        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:cached-media');
+        expect(revokeObjectUrl).not.toHaveBeenCalled();
+    });
+
+    it('prefetch stores descriptor snapshots by normalized url and expires them by ttl', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+        vi.stubGlobal('isSecureContext', true);
+
+        const cacheStorage = new FakeCacheStorage();
+        await cacheStorage.cache.put(
+            'https://example.com/media/hit.webp',
+            new Response(new Blob([new Uint8Array([1, 2, 3])], {
+                type: 'image/webp',
+            })),
+        );
+
+        const repository = {
+            getByUrl: vi.fn(async (url: string) => {
+                const normalized = url.replace(/#.*$/, '');
+                if (normalized !== 'https://example.com/media/hit.webp') {
+                    return null;
+                }
+
+                return {
+                    cacheKey: 'https://example.com/media/hit.webp',
+                    url: 'https://example.com/media/hit.webp#saved',
+                    normalizedUrl: 'https://example.com/media/hit.webp',
+                    size: 3,
+                    mimeType: 'image/webp',
+                    createdAt: 10,
+                    lastAccessedAt: 10,
+                    source: 'uploaded' as const,
+                    eventIds: [],
+                    updatedAt: 10,
+                    schemaVersion: 1,
+                };
+            }),
+            listByLastAccessed: vi.fn(async () => []),
+            upsert: vi.fn(async () => {
+                throw new Error('upsert should not be called');
+            }),
+            touch: vi.fn(async () => undefined),
+            deleteByCacheKey: vi.fn(async () => undefined),
+        };
+
+        const service = new PostMediaCacheService(
+            repository as never,
+            { cacheStorage },
+            POST_MEDIA_CACHE_MAX_TOTAL_SIZE,
+            { descriptorSnapshotTtlMs: 100 },
+        );
+
+        await service.prefetchCachedMediaDescriptors([
+            'https://example.com/media/hit.webp#one',
+            'https://example.com/media/hit.webp#two',
+            'https://example.com/media/miss.webp',
+        ]);
+
+        expect(repository.getByUrl).toHaveBeenCalledTimes(2);
+        expect(
+            service.getCachedMediaDescriptorSnapshot(
+                'https://example.com/media/hit.webp#three',
+            ),
+        ).toMatchObject({
+            cacheKey: 'https://example.com/media/hit.webp',
+            url: 'https://example.com/media/hit.webp#saved',
+            kind: 'image',
+        });
+        expect(
+            service.getCachedMediaDescriptorSnapshot(
+                'https://example.com/media/miss.webp',
+            ),
+        ).toBeNull();
+        expect(
+            service.getCachedMediaDescriptorSnapshot(
+                'https://example.com/media/unknown.webp',
+            ),
+        ).toBeUndefined();
+
+        vi.setSystemTime(new Date('2025-01-01T00:00:00.101Z'));
+
+        expect(
+            service.getCachedMediaDescriptorSnapshot(
+                'https://example.com/media/hit.webp',
+            ),
+        ).toBeUndefined();
+        expect(
+            service.getCachedMediaDescriptorSnapshot(
+                'https://example.com/media/miss.webp',
+            ),
+        ).toBeUndefined();
+
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    it('reuses short-lived image object urls until ttl expiry', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+
+        const cacheStorage = new FakeCacheStorage();
+        await cacheStorage.cache.put(
+            'https://example.com/media/shared.webp',
+            new Response(new Blob([new Uint8Array([1, 2, 3, 4])], {
+                type: 'image/webp',
+            })),
+        );
+
+        const repository = {
+            getByUrl: vi.fn(async (url: string) => {
+                const normalized = url.replace(/#.*$/, '');
+                if (normalized !== 'https://example.com/media/shared.webp') {
+                    return null;
+                }
+
+                return {
+                    cacheKey: 'https://example.com/media/shared.webp',
+                    url: 'https://example.com/media/shared.webp',
+                    normalizedUrl: 'https://example.com/media/shared.webp',
+                    size: 4,
+                    mimeType: 'image/webp',
+                    createdAt: 10,
+                    lastAccessedAt: 10,
+                    source: 'uploaded' as const,
+                    eventIds: [],
+                    updatedAt: 10,
+                    schemaVersion: 1,
+                };
+            }),
+            listByLastAccessed: vi.fn(async () => []),
+            upsert: vi.fn(async () => {
+                throw new Error('upsert should not be called');
+            }),
+            touch: vi.fn(async () => undefined),
+            deleteByCacheKey: vi.fn(async () => undefined),
+        };
+        const createObjectUrl = vi.fn(() => 'blob:shared-image');
+        const revokeObjectUrl = vi.fn();
+        const service = new PostMediaCacheService(
+            repository as never,
+            {
+                cacheStorage,
+                createObjectUrl,
+                revokeObjectUrl,
+            },
+            POST_MEDIA_CACHE_MAX_TOTAL_SIZE,
+            { objectUrlTtlMs: 100 },
+        );
+
+        const first = await service.createCachedMediaObjectUrl(
+            'https://example.com/media/shared.webp',
+        );
+        expect(first?.objectUrl).toBe('blob:shared-image');
+
+        service.revokeObjectUrl('blob:shared-image');
+        expect(revokeObjectUrl).not.toHaveBeenCalled();
+
+        const second = service.getCachedMediaObjectUrlSnapshot(
+            'https://example.com/media/shared.webp#reopen',
+        );
+        expect(second?.objectUrl).toBe('blob:shared-image');
+        expect(createObjectUrl).toHaveBeenCalledTimes(1);
+
+        service.revokeObjectUrl('blob:shared-image');
+
+        vi.setSystemTime(new Date('2025-01-01T00:00:00.101Z'));
+
+        expect(
+            service.getCachedMediaObjectUrlSnapshot(
+                'https://example.com/media/shared.webp',
+            ),
+        ).toBeNull();
+        expect(revokeObjectUrl).toHaveBeenCalledWith('blob:shared-image');
+
+        vi.useRealTimers();
     });
 
     it('fetches network media on demand and evicts least recently used entries when over capacity', async () => {
@@ -274,10 +449,14 @@ describe('PostMediaCacheService', () => {
         let opaqueResponse: {
             type: 'opaque';
             clone: () => unknown;
+            headers: { get: (name: string) => string | null };
         };
         opaqueResponse = {
             type: 'opaque',
             clone: vi.fn(() => opaqueResponse),
+            headers: {
+                get: vi.fn(() => null),
+            },
         };
         const fetchMock = vi.fn()
             .mockRejectedValueOnce(new TypeError('Failed to fetch'))

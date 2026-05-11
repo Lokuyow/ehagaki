@@ -297,6 +297,27 @@ export function buildPostHistoryMediaLayout(
     };
 }
 
+export function collectPostHistoryMediaUrls(
+    posts: ReadonlyArray<Pick<PostHistoryRecord, 'media'>>,
+): string[] {
+    const urls: string[] = [];
+    const seenUrls = new Set<string>();
+
+    for (const post of posts) {
+        for (const media of post.media) {
+            const normalizedUrl = normalizePostMediaUrl(media.url);
+            if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
+                continue;
+            }
+
+            seenUrls.add(normalizedUrl);
+            urls.push(media.url);
+        }
+    }
+
+    return urls;
+}
+
 function parsePostHistoryMediaDimensions(
     dim?: string,
 ): { width: number; height: number } | null {

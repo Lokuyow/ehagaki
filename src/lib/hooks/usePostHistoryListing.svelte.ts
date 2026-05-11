@@ -8,10 +8,12 @@ import {
     type PostHistoryRelayFetchTask,
 } from "../postHistoryRelayFetchService";
 import {
+    collectPostHistoryMediaUrls,
     resolveSafePage,
     canContinueRelayHistory,
     resolveSyncStatusAfterFetch,
 } from "../postHistoryDialogUtils";
+import { postMediaCacheService } from "../postMediaCacheService";
 import {
     readPersistedPostHistoryViewState,
     writePersistedPostHistoryViewState,
@@ -217,6 +219,25 @@ export function usePostHistoryListing({
         state.nextUntil = canContinue ? result.nextUntil : null;
     }
 
+    async function prefetchCurrentPageMedia(
+        posts: PostHistoryRecord[],
+    ): Promise<void> {
+        if (!postMediaCacheService.canUsePersistentCache()) {
+            return;
+        }
+
+        const urls = collectPostHistoryMediaUrls(posts);
+        if (urls.length === 0) {
+            return;
+        }
+
+        try {
+            await postMediaCacheService.prefetchCachedMediaDescriptors(urls);
+        } catch {
+            // Media descriptor prefetch is best-effort and must not block listing updates.
+        }
+    }
+
     async function loadPage(page: number): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
@@ -243,6 +264,11 @@ export function usePostHistoryListing({
         const safePage = resolveSafePage(normalizedPage, count, pageSize);
         if (safePage !== normalizedPage) {
             state.currentPage = safePage;
+            return;
+        }
+
+        await prefetchCurrentPageMedia(pagePosts);
+        if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
@@ -282,6 +308,15 @@ export function usePostHistoryListing({
         );
         if (safePage !== normalizedPage) {
             state.searchPage = safePage;
+            return;
+        }
+
+        await prefetchCurrentPageMedia(result.items);
+        if (
+            !getShow() ||
+            requestId !== searchLoadRequestId ||
+            query !== state.searchQuery
+        ) {
             return;
         }
 
@@ -557,6 +592,19 @@ export function usePostHistoryListing({
         }
 
         void loadPage(state.currentPage);
+    });
+
+    $effect(() => {
+        if (!getShow()) {
+            return;
+        }
+
+        const currentPosts = posts;
+        if (currentPosts.length === 0) {
+            return;
+        }
+
+        void prefetchCurrentPageMedia(currentPosts);
     });
 
     $effect(() => {
