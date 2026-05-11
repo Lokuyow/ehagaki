@@ -92,10 +92,10 @@ function expectTallSingleImageStageContract(stage: Element | null): void {
 }
 
 function expectSingleImageObjectFitContract(image: HTMLElement): void {
-    expect(image.getAttribute('style')).toContain('width: 100%');
-    expect(image.getAttribute('style')).toContain('height: 100%');
+    expect(image.getAttribute('style')).toContain('width: auto');
+    expect(image.getAttribute('style')).toContain('height: auto');
     expect(image.getAttribute('style')).toContain('max-width: 100%');
-    expect(image.getAttribute('style')).toContain('max-height: 100%');
+    expect(image.getAttribute('style')).toContain('max-height: 300px');
     expect(image.getAttribute('style')).toContain('object-fit: contain');
 }
 

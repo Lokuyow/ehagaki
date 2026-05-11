@@ -222,10 +222,10 @@
     function getSingleImageStageImageStyle(aspectRatio: string): string {
         return [
             `aspect-ratio: ${aspectRatio};`,
-            "width: 100%;",
-            "height: 100%;",
+            "width: auto;",
+            "height: auto;",
             "max-width: 100%;",
-            "max-height: 100%;",
+            `max-height: ${SINGLE_IMAGE_MAX_HEIGHT}px;`,
             "object-fit: contain;",
         ].join(" ");
     }
@@ -801,8 +801,7 @@
     }
 
     .post-history-image-surface-single {
-        display: grid;
-        place-items: center;
+        display: block;
         min-height: 100px;
     }
 
@@ -816,6 +815,8 @@
         padding: 0;
         display: grid;
         place-items: center;
+        justify-self: stretch;
+        align-self: stretch;
         overflow: hidden;
         background: color-mix(
             in srgb,
@@ -839,6 +840,12 @@
     .post-history-media-image-single {
         height: auto;
         margin-inline: auto;
+    }
+
+    .post-history-media-placeholder.post-history-single-image-stage {
+        display: grid;
+        place-items: center;
+        padding: 0;
     }
 
     .post-history-media-image-single-stage {
