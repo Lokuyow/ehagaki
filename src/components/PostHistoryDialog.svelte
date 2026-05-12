@@ -71,12 +71,13 @@
         getRelayConfig: () => relayConfig,
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
+    let historyIsSearchMode = $derived(history.state.searchQuery.length > 0);
     const channelDisplay = usePostHistoryChannelDisplay({
         getShow: () => show,
         getPosts: () => history.posts,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
-        getIsSearchMode: () => history.isSearchMode,
+        getIsSearchMode: () => historyIsSearchMode,
     });
 
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
@@ -129,6 +130,28 @@
         history.syncStatus === "failed" ||
             history.repairStatusMessageKey ===
                 "postHistory.repairPartialFailure",
+    );
+    let historyDisplayPage = $derived(
+        historyIsSearchMode
+            ? history.state.searchPage
+            : history.state.currentPage,
+    );
+    let historyDisplayTotalCount = $derived(
+        historyIsSearchMode
+            ? history.state.searchTotalCount
+            : history.state.totalCount,
+    );
+    let historyTotalPages = $derived(
+        Math.max(1, Math.ceil(historyDisplayTotalCount / POST_HISTORY_PAGE_SIZE)),
+    );
+    let historyShowPaging = $derived(historyDisplayTotalCount > 0);
+    let historyPaginationLabel = $derived(
+        $_("postHistory.page", {
+            values: {
+                page: historyDisplayPage,
+                total: historyTotalPages,
+            },
+        }),
     );
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set<string>();
@@ -242,7 +265,7 @@
 
     function queueHistoryScrollReset(): void {
         pendingHistoryScrollReset = {
-            page: history.displayPage,
+            page: historyDisplayPage,
             previousFirstEventId: history.posts[0]?.eventId ?? null,
         };
     }
@@ -264,7 +287,7 @@
             return;
         }
 
-        const currentPage = history.displayPage;
+        const currentPage = historyDisplayPage;
         const currentFirstEventId = history.posts[0]?.eventId ?? null;
         if (currentPage !== pendingHistoryScrollReset.page) {
             return;
@@ -614,15 +637,13 @@
     description={$_("postHistory.description")}
     contentClass="post-history-dialog"
     footerVariant="close-button"
-    showPagination={history.showPaging}
-    paginationLabel={$_("postHistory.page", {
-        values: { page: history.displayPage, total: history.totalPages },
-    })}
+    showPagination={historyShowPaging}
+    paginationLabel={historyPaginationLabel}
     previousPageLabel={$_("postHistory.previousPage")}
     nextPageLabel={$_("postHistory.nextPage")}
     canGoPrevious={history.canGoPrevious}
     canGoNext={history.canGoNext}
-    nextPageLoading={!history.isSearchMode &&
+    nextPageLoading={!historyIsSearchMode &&
         history.syncStatus === "older-syncing"}
     onPreviousPage={handlePreviousPage}
     onNextPage={handleNextPage}
@@ -678,7 +699,7 @@
         />
     </div>
 
-    {#if history.isSearchMode && history.state.searchTotalCount > 0}
+    {#if historyIsSearchMode && history.state.searchTotalCount > 0}
         <div class="post-history-search-summary">
             <span>{$_("postHistory.searchResults")}</span>
             <span>{history.state.searchTotalCount}</span>
@@ -689,7 +710,7 @@
         {#if history.posts.length === 0}
             <div class="empty-state">
                 <div class="empty-message">
-                    {history.isSearchMode
+                    {historyIsSearchMode
                         ? $_("postHistory.searchNoResults")
                         : $_("postHistory.empty")}
                 </div>

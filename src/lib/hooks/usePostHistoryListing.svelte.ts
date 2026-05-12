@@ -294,26 +294,28 @@ export function usePostHistoryListing({
 
         const requestId = ++loadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
-        const [count, pagePosts] = await Promise.all([
-            postHistoryRepository.countForPubkey(pubkeyHex),
-            postHistoryRepository.getPage({
-                pubkeyHex,
-                page: normalizedPage,
-                pageSize,
-            }),
-        ]);
+        const count = await postHistoryRepository.countForPubkey(pubkeyHex);
 
         if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
         const safePage = resolveSafePage(normalizedPage, count, pageSize);
+        state.totalCount = count;
         if (safePage !== normalizedPage) {
             state.currentPage = safePage;
             return;
         }
 
-        state.totalCount = count;
+        const pagePosts = await postHistoryRepository.getPage({
+            pubkeyHex,
+            page: normalizedPage,
+            pageSize,
+        });
+        if (!getShow() || requestId !== loadRequestId) {
+            return;
+        }
+
         state.loadedPosts = pagePosts;
         void prefetchCurrentPageMedia(pagePosts);
     }
@@ -570,6 +572,7 @@ export function usePostHistoryListing({
             return;
         }
 
+        const preRepairTotalCount = state.totalCount;
         clearRepairFeedback();
         state.repairStatus = "repairing";
         const task = postHistoryRepairService.repairFromRelays(rxNostr, {
@@ -598,6 +601,13 @@ export function usePostHistoryListing({
             if (state.searchQuery) {
                 await loadSearchPage(state.searchPage, state.searchQuery);
             } else {
+                loadRequestId += 1;
+                if (result.addedCount > 0) {
+                    state.totalCount = Math.max(
+                        state.totalCount,
+                        preRepairTotalCount + result.addedCount,
+                    );
+                }
                 await loadPage(state.currentPage);
             }
 

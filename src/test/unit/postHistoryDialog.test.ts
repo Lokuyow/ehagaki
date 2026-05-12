@@ -766,6 +766,86 @@ describe('PostHistoryDialog', () => {
         mediaPrefetch.resolve();
     });
 
+    it('repair 後に総件数を再取得してページ数を即時更新する', async () => {
+        const countReload = createDeferred<number>();
+        const initialPosts = Array.from({ length: 50 }, (_, index) =>
+            createRecord({
+                eventId: `initial-post-${index}`,
+                content: `既存投稿 ${index + 1}`,
+                postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) - index,
+            }),
+        );
+        repositoryMock.countForPubkey.mockResolvedValue(50);
+        repositoryMock.getPage.mockResolvedValue(initialPosts);
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [],
+                attemptedRangeCount: 1,
+                totalRangeCount: 1,
+                hadFailures: false,
+                hasRemainingWork: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+        const getPageIndicatorText = () =>
+            document.querySelector('.dialog-page-indicator')?.textContent?.trim();
+
+        await waitFor(() => {
+            expect(getPageIndicatorText()).toBe('1 / 1 ページ');
+            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        });
+
+        repositoryMock.countForPubkey.mockReturnValue(countReload.promise);
+        repositoryMock.getPage.mockResolvedValue(initialPosts);
+
+        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+
+        await waitFor(() => {
+            expect(getPageIndicatorText()).toBe('1 / 2 ページ');
+        });
+
+        countReload.resolve(51);
+
+        await waitFor(() => {
+            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+        });
+    });
+
     it('長い投稿本文は折りたたみ表示し、ボタンで展開できる', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
