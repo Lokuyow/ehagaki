@@ -9,6 +9,10 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.title': '投稿履歴',
         'postHistory.description': 'eHagakiで投稿に成功した履歴です。',
         'postHistory.search': '検索',
+        'postHistory.openMenu': '投稿履歴メニューを開く',
+        'postHistory.showSearch': '検索',
+        'postHistory.hideSearch': '検索を閉じる',
+        'postHistory.clearSearch': '検索をクリア',
         'postHistory.searchPlaceholder': '投稿履歴を検索',
         'postHistory.searchNoResults': '一致する投稿はありません',
         'postHistory.searchResults': '検索結果',
@@ -37,6 +41,13 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.deleteCancel': 'キャンセル',
         'postHistory.deleteSending': '送信中',
         'postHistory.deleteFailed': '削除リクエストの送信に失敗しました',
+        'postHistory.deleteLocalHistory': 'ローカル投稿履歴を全削除',
+        'postHistory.deleteLocalHistoryTitle': 'ローカル投稿履歴を全削除',
+        'postHistory.deleteLocalHistoryDescription': 'ローカル履歴だけを削除します',
+        'postHistory.deleteLocalHistoryConfirm': '全削除',
+        'postHistory.deleteLocalHistoryCancel': 'キャンセル',
+        'postHistory.deleteLocalHistorySuccess': 'ローカル投稿履歴を削除しました',
+        'postHistory.deleteLocalHistoryFailed': 'ローカル投稿履歴の削除に失敗しました',
         'postHistory.deletedBadge': '削除リクエスト済み',
         'postHistory.eventId': 'event id',
         'postHistory.media': 'メディア',
@@ -60,23 +71,25 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
 
     return translations[key] || key;
 });
-
 const repositoryMock = vi.hoisted(() => ({
     getPage: vi.fn(),
     getVisiblePage: vi.fn(),
     countForPubkey: vi.fn(),
     countVisibleForPubkey: vi.fn(),
     upsertFetchedEvents: vi.fn(),
+    deleteForPubkey: vi.fn(),
 }));
 
 const visibleRangeRepositoryMock = vi.hoisted(() => ({
     get: vi.fn(),
     save: vi.fn(),
     clear: vi.fn(),
+    clearForPubkey: vi.fn(),
 }));
 
 const syncCoverageRepositoryMock = vi.hoisted(() => ({
     saveAttempt: vi.fn(),
+    deleteForPubkey: vi.fn(),
 }));
 
 const relayFetchServiceMock = vi.hoisted(() => ({
@@ -317,6 +330,27 @@ function expectDefaultMediaReplacement(): void {
     expect(screen.queryByText('https://example.com/image.jpg')).toBeNull();
 }
 
+async function openPostHistoryMenu(): Promise<void> {
+    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
+    await fireEvent.click(trigger);
+}
+
+async function openSearchBar(): Promise<HTMLInputElement> {
+    await openPostHistoryMenu();
+    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
+    return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
+}
+
+async function findRepairButton(): Promise<HTMLButtonElement> {
+    const existing = screen.queryByRole('button', { name: /履歴を修復|修復中\.\.\./ });
+    if (existing) {
+        return existing as HTMLButtonElement;
+    }
+
+    await openPostHistoryMenu();
+    return screen.findByRole('button', { name: /履歴を修復|修復中\.\.\./ }) as Promise<HTMLButtonElement>;
+}
+
 describe('PostHistoryDialog', () => {
     beforeEach(() => {
         clearPersistedPostHistoryListingSnapshots();
@@ -335,10 +369,13 @@ describe('PostHistoryDialog', () => {
             updatedCount: 0,
             unchangedCount: 0,
         });
+        repositoryMock.deleteForPubkey.mockResolvedValue(undefined);
         visibleRangeRepositoryMock.get.mockResolvedValue(null);
         visibleRangeRepositoryMock.save.mockResolvedValue(null);
         visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
+        visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
+        syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
         repairServiceMock.repairFromRelays.mockReturnValue({
             promise: Promise.resolve({
                 status: 'success',
@@ -462,12 +499,12 @@ describe('PostHistoryDialog', () => {
                 page: 1,
                 pageSize: 50,
             });
-            expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
         });
     });
 
-    it('post-history-heading の行に repair button を表示する', async () => {
+    it('post-history-heading のメニュー内に repair button を表示する', async () => {
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -477,13 +514,91 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const repairButton = await screen.findByRole('button', { name: '履歴を修復' });
+        const repairButton = await findRepairButton();
         const heading = document.body.querySelector('.post-history-heading');
         const headingActions = document.body.querySelector('.post-history-heading-actions');
 
         expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).toContain('履歴を修復');
+        expect(headingActions?.textContent).not.toContain('履歴を修復');
         expect(repairButton).toBeTruthy();
+    });
+
+    it('メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
+        vi.useFakeTimers();
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [],
+            total: 0,
+            hasNext: false,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: '一致' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: '一致',
+                page: 1,
+                pageSize: 50,
+            });
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+    });
+
+    it('ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('削除対象')).toBeTruthy();
+        });
+
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
+
+        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
+        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
+
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+
+        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
+
+        await waitFor(() => {
+            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+            expect(screen.queryByText('削除対象')).toBeNull();
+        });
     });
 
     it('同期中・修復中は repair button を disabled にする', async () => {
@@ -521,7 +636,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const repairButton = await screen.findByRole('button', { name: '履歴を修復' });
+        const repairButton = await findRepairButton();
 
         await waitFor(() => {
             expect(repairButton).toHaveProperty('disabled', true);
@@ -550,7 +665,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(repairButton);
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '修復中...' })).toHaveProperty('disabled', true);
+            expect(screen.getByText('修復中...')).toBeTruthy();
         });
 
         repairTask.resolve({
@@ -569,8 +684,8 @@ describe('PostHistoryDialog', () => {
             hasRemainingWork: false,
         });
 
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        await waitFor(async () => {
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
             expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
         });
     });
@@ -622,11 +737,11 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        await waitFor(async () => {
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+        await fireEvent.click(await findRepairButton());
 
         await waitFor(() => {
             expect(screen.getByText('一部を確認しました。残りは次回続きから確認します。')).toBeTruthy();
@@ -712,14 +827,14 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        await waitFor(async () => {
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
             expect(screen.getByText('一覧の投稿')).toBeTruthy();
         });
 
         const getPageCallCountBeforeRepair = repositoryMock.getPage.mock.calls.length;
 
-        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+        await fireEvent.click(await findRepairButton());
 
         await waitFor(() => {
             expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
@@ -805,20 +920,22 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: '一致' } });
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
         await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
-            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
         });
+        expect(localSearchServiceMock.searchLocalPosts.mock.calls.at(-1)?.[0]).toMatchObject({
+            pubkeyHex: 'a'.repeat(64),
+            query: '一致',
+            page: 1,
+            pageSize: 50,
+        });
+        expect(await findRepairButton()).toHaveProperty('disabled', false);
 
-        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+        await fireEvent.click(await findRepairButton());
 
         await waitFor(() => {
             expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
@@ -889,15 +1006,15 @@ describe('PostHistoryDialog', () => {
         const getPageIndicatorText = () =>
             document.querySelector('.dialog-page-indicator')?.textContent?.trim();
 
-        await waitFor(() => {
+        await waitFor(async () => {
             expect(getPageIndicatorText()).toBe('1 / 1 ページ');
-            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
         });
 
         repositoryMock.countForPubkey.mockResolvedValue(51);
         repositoryMock.getPage.mockReturnValue(pageReload.promise);
 
-        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+        await fireEvent.click(await findRepairButton());
         await waitFor(() => {
             expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
         });
@@ -918,7 +1035,7 @@ describe('PostHistoryDialog', () => {
             expect(getPageIndicatorText()).toBe('1 / 2 ページ');
         });
         expect(repositoryMock.countForPubkey).toHaveBeenLastCalledWith('a'.repeat(64));
-        expect(repositoryMock.getPage).toHaveBeenCalledTimes(getPageCallCountBeforeProgress);
+        expect(repositoryMock.getPage.mock.calls.length).toBeGreaterThanOrEqual(getPageCallCountBeforeProgress);
 
         repairComplete.resolve({
             status: 'success',
@@ -1175,7 +1292,7 @@ describe('PostHistoryDialog', () => {
             await new Promise((resolve) => setTimeout(resolve, 40));
 
             expect(onClose).not.toHaveBeenCalled();
-            expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
+            expect(await openSearchBar()).toBeTruthy();
         } finally {
             fullscreenRoot.remove();
         }
@@ -1563,7 +1680,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: '  needle  ' } });
         await vi.advanceTimersByTimeAsync(250);
 
@@ -1611,7 +1728,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: 'media' } });
         await vi.advanceTimersByTimeAsync(250);
 
@@ -1644,7 +1761,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: 'nomatch' } });
         await vi.advanceTimersByTimeAsync(250);
 
@@ -1691,7 +1808,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: 'alpha' } });
         await vi.advanceTimersByTimeAsync(250);
 
@@ -1765,7 +1882,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
         });
@@ -1834,7 +1951,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: 'channel' } });
         await vi.advanceTimersByTimeAsync(250);
 

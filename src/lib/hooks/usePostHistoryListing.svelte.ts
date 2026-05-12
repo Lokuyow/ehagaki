@@ -16,6 +16,7 @@ import {
 } from "../postHistoryDialogUtils";
 import { postMediaCacheService } from "../postMediaCacheService";
 import {
+    clearPersistedPostHistoryViewStateForPubkey,
     readPersistedPostHistoryViewState,
     writePersistedPostHistoryViewState,
 } from "../postHistoryDialogViewState";
@@ -137,6 +138,17 @@ function writePersistedListingSnapshot(
 
 export function clearPersistedPostHistoryListingSnapshots(): void {
     persistedListingSnapshotByPubkey.clear();
+}
+
+export function clearPersistedPostHistoryListingSnapshotForPubkey(
+    pubkeyHex: string | null | undefined,
+): void {
+    const key = resolveListingSnapshotKey(pubkeyHex);
+    if (!key) {
+        return;
+    }
+
+    persistedListingSnapshotByPubkey.delete(key);
 }
 
 export function usePostHistoryListing({
@@ -266,6 +278,22 @@ export function usePostHistoryListing({
         state.searchPosts = [];
         state.searchTotalCount = 0;
         appliedSearchQuery = "";
+    }
+
+    function resetListingStateAfterLocalDelete(): void {
+        state.loadedPosts = [];
+        state.searchPosts = [];
+        state.totalCount = 0;
+        state.searchTotalCount = 0;
+        state.currentPage = 1;
+        state.searchPage = 1;
+        state.hasMoreRemote = false;
+        state.nextUntil = null;
+        state.visibleUntil = null;
+        state.syncStatus = "idle";
+        clearRepairFeedback();
+        resetSearchState();
+        hasStartedInitialSync = true;
     }
 
     function resetState(): void {
@@ -918,6 +946,45 @@ export function usePostHistoryListing({
         }
     }
 
+    async function deleteLocalHistory(): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex) {
+            return false;
+        }
+
+        cancelCurrentSync();
+        cancelCurrentRepair();
+
+        try {
+            await Promise.all([
+                postHistoryRepository.deleteForPubkey(pubkeyHex),
+                postHistorySyncCoverageRepository.deleteForPubkey(pubkeyHex),
+                postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
+            ]);
+        } catch {
+            clearRepairFeedback();
+            state.repairMessageKey = "postHistory.deleteLocalHistoryFailed";
+            state.repairMessageValues = null;
+            return false;
+        }
+
+        clearPersistedPostHistoryViewStateForPubkey(pubkeyHex);
+        clearPersistedPostHistoryListingSnapshotForPubkey(pubkeyHex);
+        resetListingStateAfterLocalDelete();
+        state.repairMessageKey = "postHistory.deleteLocalHistorySuccess";
+        state.repairMessageValues = null;
+        writePersistedPostHistoryViewState(pubkeyHex, {
+            currentPage: 1,
+            searchPage: 1,
+            searchInput: "",
+            searchQuery: "",
+        });
+        writePersistedListingSnapshot(pubkeyHex, {
+            ...DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT,
+        });
+        return true;
+    }
+
     function patchDeletedPost(
         eventId: string,
         deletedAt: number,
@@ -1110,6 +1177,8 @@ export function usePostHistoryListing({
         goToNextPage,
         goToLastPage,
         repairFromRelays,
+        resetSearchState,
+        deleteLocalHistory,
         patchDeletedPost,
     };
 }

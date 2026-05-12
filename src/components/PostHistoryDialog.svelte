@@ -82,6 +82,10 @@
     let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
     let deleteConfirmOpen = $state(false);
     let deleteTargetPost = $state<PostHistoryRecord | null>(null);
+    let localHistoryDeleteConfirmOpen = $state(false);
+    let isDeletingLocalHistory = $state(false);
+    let showSearchBar = $state(false);
+    let headingMenuOpen = $state(false);
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
@@ -150,6 +154,10 @@
         copyState = {};
         deleteConfirmOpen = false;
         deleteTargetPost = null;
+        localHistoryDeleteConfirmOpen = false;
+        isDeletingLocalHistory = false;
+        showSearchBar = false;
+        headingMenuOpen = false;
         deleteRequestState = {};
         emojiLoadStateByUrl = {};
         fullscreenMediaItems = [];
@@ -165,6 +173,8 @@
         channelDisplay.cancelCurrentChannelResolution();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
+        localHistoryDeleteConfirmOpen = false;
+        headingMenuOpen = false;
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -557,6 +567,30 @@
         deleteTargetPost = null;
     }
 
+    function showSearch(): void {
+        showSearchBar = true;
+        headingMenuOpen = false;
+    }
+
+    function hideSearch(): void {
+        showSearchBar = false;
+        history.resetSearchState();
+    }
+
+    function openLocalHistoryDeleteConfirm(): void {
+        localHistoryDeleteConfirmOpen = true;
+        headingMenuOpen = false;
+    }
+
+    function handleRepairFromMenu(): void {
+        headingMenuOpen = false;
+        void history.repairFromRelays();
+    }
+
+    function handleLocalHistoryDeleteCancel(): void {
+        localHistoryDeleteConfirmOpen = false;
+    }
+
     function handleImageOpen(params: {
         index: number;
         mediaList: FullscreenMediaItem[];
@@ -615,6 +649,24 @@
 
         deleteTargetPost = null;
     }
+
+    async function handleLocalHistoryDeleteConfirm(): Promise<void> {
+        if (isDeletingLocalHistory) {
+            return;
+        }
+
+        isDeletingLocalHistory = true;
+        try {
+            const deleted = await history.deleteLocalHistory();
+            if (deleted) {
+                localHistoryDeleteConfirmOpen = false;
+                showSearchBar = false;
+                resetHistoryScrollPosition();
+            }
+        } finally {
+            isDeletingLocalHistory = false;
+        }
+    }
 </script>
 
 <DialogWrapper
@@ -652,16 +704,74 @@
                 <h3>{$_("postHistory.title")}</h3>
             </div>
             <div class="post-history-heading-actions">
-                <Button
-                    type="button"
-                    class="post-history-repair-button"
-                    disabled={!history.canRepair}
-                    onClick={() => void history.repairFromRelays()}
-                >
-                    {history.isRepairing
-                        ? $_("postHistory.repairing")
-                        : $_("postHistory.repair")}
-                </Button>
+                <Popover.Root bind:open={headingMenuOpen}>
+                    <Popover.Trigger
+                        class="menu-trigger post-history-heading-menu-trigger"
+                        aria-label={$_("postHistory.openMenu")}
+                    >
+                        <div class="more-icon svg-icon"></div>
+                    </Popover.Trigger>
+                    <Popover.Portal>
+                        <Popover.Content
+                            side="bottom"
+                            align="end"
+                            sideOffset={8}
+                            class="post-history-menu-content"
+                            trapFocus={false}
+                            onCloseAutoFocus={(event: Event) =>
+                                event.preventDefault()}
+                        >
+                            <div class="post-history-menu-body">
+                                <button
+                                    type="button"
+                                    class="menu-action-button"
+                                    onclick={showSearch}
+                                >
+                                    <div
+                                        class="search-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span>{$_("postHistory.showSearch")}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="menu-action-button"
+                                    disabled={!history.canRepair}
+                                    onclick={handleRepairFromMenu}
+                                >
+                                    <div
+                                        class="repair-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span>
+                                        {history.isRepairing
+                                            ? $_("postHistory.repairing")
+                                            : $_("postHistory.repair")}
+                                    </span>
+                                </button>
+                                <div
+                                    class="post-history-menu-separator"
+                                    role="separator"
+                                ></div>
+                                <button
+                                    type="button"
+                                    class="menu-action-button menu-action-button-danger"
+                                    onclick={openLocalHistoryDeleteConfirm}
+                                >
+                                    <div
+                                        class="trash-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span
+                                        >{$_(
+                                            "postHistory.deleteLocalHistory",
+                                        )}</span
+                                    >
+                                </button>
+                            </div>
+                        </Popover.Content>
+                    </Popover.Portal>
+                </Popover.Root>
             </div>
         </div>
         {#if headingStatusMessageKey}
@@ -686,7 +796,8 @@
         {/if}
     </div>
 
-    <div class="post-history-search-row">
+    {#if showSearchBar}
+    <div class="post-history-search-row" class:post-history-search-active={history.isSearchMode}>
         <input
             bind:value={history.state.searchInput}
             class="post-history-search-input"
@@ -694,7 +805,18 @@
             placeholder={$_("postHistory.searchPlaceholder")}
             aria-label={$_("postHistory.search")}
         />
+        <Button
+            type="button"
+            class="post-history-search-close"
+            contentLayout="icon"
+            shape="circle"
+            ariaLabel={$_("postHistory.hideSearch")}
+            onClick={hideSearch}
+        >
+            <div class="xmark-icon svg-icon" aria-hidden="true"></div>
+        </Button>
     </div>
+    {/if}
 
     {#if history.isSearchMode && history.state.searchTotalCount > 0}
         <div class="post-history-search-summary">
@@ -1141,6 +1263,28 @@
     {/snippet}
 </ConfirmDialog>
 
+<ConfirmDialog
+    bind:open={localHistoryDeleteConfirmOpen}
+    title={$_("postHistory.deleteLocalHistoryTitle")}
+    description={$_("postHistory.deleteLocalHistoryDescription")}
+    confirmLabel={$_("postHistory.deleteLocalHistoryConfirm")}
+    cancelLabel={$_("postHistory.deleteLocalHistoryCancel")}
+    confirmVariant="danger"
+    confirmDisabled={isDeletingLocalHistory}
+    onConfirm={handleLocalHistoryDeleteConfirm}
+    onCancel={handleLocalHistoryDeleteCancel}
+    closeOnConfirm={false}
+    contentClass="post-history-local-delete-confirm"
+>
+    {#snippet children()}
+        <div class="delete-confirm-body">
+            <p class="delete-confirm-description">
+                {$_("postHistory.deleteLocalHistoryDescription")}
+            </p>
+        </div>
+    {/snippet}
+</ConfirmDialog>
+
 <ImageFullscreen
     bind:show={showImageFullscreen}
     src={fullscreenMediaItems[fullscreenIndex]?.src ?? ""}
@@ -1198,6 +1342,27 @@
         flex: 0 0 auto;
     }
 
+    :global(.post-history-heading-menu-trigger) {
+        min-height: 40px;
+        aspect-ratio: 1;
+        padding: 0;
+        background: transparent;
+        border-radius: 50%;
+    }
+
+    :global(.post-history-heading-menu-trigger .more-icon) {
+        mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+        width: 22px;
+        height: 22px;
+        --svg: var(--text-muted);
+    }
+
+    @media (min-width: 601px) {
+        :global(.post-history-heading-menu-trigger:hover .more-icon) {
+            --svg: var(--theme);
+        }
+    }
+
     .post-history-heading h3 {
         min-width: 0;
         margin: 0;
@@ -1215,7 +1380,12 @@
         align-items: center;
         width: 100%;
         gap: 8px;
+        padding: 10px 16px 0;
         border-bottom: 1px solid var(--border-hr);
+    }
+
+    .post-history-search-active {
+        border-bottom-color: color-mix(in srgb, var(--theme), var(--border-hr) 55%);
     }
 
     .post-history-search-input {
@@ -1226,6 +1396,18 @@
         background: var(--background);
         color: var(--text);
         font: inherit;
+    }
+
+    :global(.post-history-search-close) {
+        flex: 0 0 auto;
+        min-height: 40px;
+        aspect-ratio: 1;
+        padding: 0;
+        background: transparent;
+    }
+
+    :global(.post-history-search-close .svg-icon) {
+        --svg: var(--text-muted);
     }
 
     .post-history-search-input::placeholder {
@@ -1379,6 +1561,12 @@
         flex-direction: column;
         gap: 4px;
         align-items: stretch;
+    }
+
+    .post-history-menu-separator {
+        height: 1px;
+        margin: 4px 0;
+        background: var(--border-hr);
     }
 
     .menu-action-button {
@@ -1648,6 +1836,14 @@
 
     .copy-icon {
         mask-image: url("/icons/copy-solid-full.svg");
+    }
+
+    .search-icon {
+        mask-image: url("/icons/list-solid-full.svg");
+    }
+
+    .repair-icon {
+        mask-image: url("/icons/rotate-right-solid-full.svg");
     }
 
     .reply-icon {

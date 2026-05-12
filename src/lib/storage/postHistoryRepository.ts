@@ -63,6 +63,7 @@ export interface PostHistoryRepository {
     upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult>;
     getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
     markDeleted(eventId: string, deletionEventId: string, deletedAt?: number): Promise<void>;
+    deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 type NormalizedFetchedEventItem = {
@@ -505,6 +506,15 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             deletionEventId,
             updatedAt: this.now(),
         });
+    }
+
+    async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
+        if (!pubkeyHex) return;
+
+        await this.db.postHistory
+            .where("pubkeyHex")
+            .equals(pubkeyHex)
+            .delete();
     }
 }
 

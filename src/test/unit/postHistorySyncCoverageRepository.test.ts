@@ -122,6 +122,39 @@ describe("DexiePostHistorySyncCoverageRepository", () => {
         db.close();
     });
 
+    it("deleteForPubkey は指定 pubkey の同期記録だけを削除する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistorySyncCoverageRepository(
+            db,
+            () => 6000,
+            ((index) => () => `coverage-${index += 1}`)(0),
+        );
+        const pubkey = "a".repeat(64);
+        const otherPubkey = "b".repeat(64);
+
+        await repository.saveAttempt({
+            pubkeyHex: pubkey,
+            requestKind: "initial",
+            kinds: [1],
+            limit: 200,
+            result: createFetchResult(),
+        });
+        await repository.saveAttempt({
+            pubkeyHex: otherPubkey,
+            requestKind: "initial",
+            kinds: [1],
+            limit: 200,
+            result: createFetchResult({ fetchedAt: 6001 }),
+        });
+
+        await repository.deleteForPubkey(pubkey);
+
+        const records = await db.postHistorySyncCoverage.toArray();
+        expect(records.map((record) => record.pubkeyHex)).toEqual([otherPubkey]);
+
+        db.close();
+    });
+
     it("pending を重複なく保存し、resolved 後は未完了 coverage から除外する", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistorySyncCoverageRepository(

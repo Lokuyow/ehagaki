@@ -91,3 +91,14 @@ export function writePersistedPostHistoryViewState(
 export function clearPersistedPostHistoryViewState(): void {
     persistedViewStateByPubkey.clear();
 }
+
+export function clearPersistedPostHistoryViewStateForPubkey(
+    pubkeyHex: string | null | undefined,
+): void {
+    const key = resolvePersistenceKey(pubkeyHex);
+    if (!key) {
+        return;
+    }
+
+    persistedViewStateByPubkey.delete(key);
+}

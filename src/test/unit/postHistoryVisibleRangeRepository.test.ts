@@ -55,4 +55,33 @@ describe("DexiePostHistoryVisibleRangeRepository", () => {
 
         db.close();
     });
+
+    it("clearForPubkey は指定 pubkey の visible range だけを削除する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryVisibleRangeRepository(db, () => 9002);
+        const kindsKey = buildPostHistoryVisibleKindsKey([1, 42]);
+        const pubkey = "a".repeat(64);
+        const otherPubkey = "b".repeat(64);
+
+        await repository.save({
+            pubkeyHex: pubkey,
+            kindsKey,
+            visibleUntil: 800,
+        });
+        await repository.save({
+            pubkeyHex: otherPubkey,
+            kindsKey,
+            visibleUntil: 900,
+        });
+
+        await repository.clearForPubkey(pubkey);
+
+        await expect(repository.get(pubkey, kindsKey)).resolves.toBeNull();
+        await expect(repository.get(otherPubkey, kindsKey)).resolves.toMatchObject({
+            pubkeyHex: otherPubkey,
+            visibleUntil: 900,
+        });
+
+        db.close();
+    });
 });

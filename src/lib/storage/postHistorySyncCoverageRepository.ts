@@ -44,6 +44,7 @@ export interface PostHistorySyncCoverageRepository {
     enqueuePendingRange(input: PostHistorySyncCoveragePendingInput): Promise<PostHistorySyncCoverageRecord>;
     enqueuePendingRanges(inputs: PostHistorySyncCoveragePendingInput[]): Promise<PostHistorySyncCoverageRecord[]>;
     markResolved(id: string): Promise<void>;
+    deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 const INCOMPLETE_STATUS_PRIORITY: Record<Exclude<PostHistorySyncCoverageStatus, "complete">, number> = {
@@ -272,6 +273,15 @@ export class DexiePostHistorySyncCoverageRepository implements PostHistorySyncCo
                 return right.fetchedAt - left.fetchedAt;
             })
             .slice(0, options.limit ?? Number.POSITIVE_INFINITY);
+    }
+
+    async deleteForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
+        if (!pubkeyHex) return;
+
+        await this.db.postHistorySyncCoverage
+            .where("pubkeyHex")
+            .equals(pubkeyHex)
+            .delete();
     }
 }
 

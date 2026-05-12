@@ -14,6 +14,7 @@ export interface PostHistoryVisibleRangeRepository {
     get(pubkeyHex: string, kindsKey: string): Promise<PostHistoryVisibleRange | null>;
     save(range: Omit<PostHistoryVisibleRange, "updatedAt">): Promise<PostHistoryVisibleRange>;
     clear(pubkeyHex: string, kindsKey: string): Promise<void>;
+    clearForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 type PostHistoryVisibleRangeValue = Omit<PostHistoryVisibleRange, "updatedAt">;
@@ -85,6 +86,17 @@ export class DexiePostHistoryVisibleRangeRepository implements PostHistoryVisibl
 
     async clear(pubkeyHex: string, kindsKey: string): Promise<void> {
         await this.db.meta.delete(buildVisibleRangeKey(pubkeyHex, kindsKey));
+    }
+
+    async clearForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
+        if (!pubkeyHex) return;
+
+        const keyPrefix = `${POST_HISTORY_VISIBLE_RANGE_KEY_PREFIX}${pubkeyHex}:`;
+        const records = await this.db.meta
+            .filter((record) => record.key.startsWith(keyPrefix))
+            .primaryKeys();
+
+        await this.db.meta.bulkDelete(records);
     }
 }
 

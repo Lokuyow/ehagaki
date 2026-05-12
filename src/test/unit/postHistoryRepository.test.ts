@@ -107,6 +107,27 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("deleteForPubkey は指定 pubkey の投稿履歴だけを削除する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+        const otherPubkey = "d".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey }),
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "2".repeat(64), pubkey: otherPubkey }),
+        });
+
+        await repository.deleteForPubkey(pubkey);
+
+        await expect(repository.getAll({ pubkeyHex: pubkey })).resolves.toEqual([]);
+        await expect(repository.getAll({ pubkeyHex: otherPubkey })).resolves.toHaveLength(1);
+
+        db.close();
+    });
+
     it("page 単位取得と件数取得、oldest createdAt 取得ができる", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 1000);
