@@ -754,6 +754,7 @@ describe('PostHistoryDialog', () => {
 
         await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
         const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        const getPageCallCountBeforeProgress = repositoryMock.getPage.mock.calls.length;
         await repairParams.onProgress({
             insertedCount: 1,
             updatedCount: 0,
@@ -768,6 +769,8 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(getPageIndicatorText()).toBe('1 / 2 ページ');
         });
+        expect(repositoryMock.countForPubkey).toHaveBeenLastCalledWith('a'.repeat(64));
+        expect(repositoryMock.getPage).toHaveBeenCalledTimes(getPageCallCountBeforeProgress);
 
         repairComplete.resolve({
             status: 'success',
