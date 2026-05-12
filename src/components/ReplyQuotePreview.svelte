@@ -3,9 +3,9 @@
     import { Tooltip } from "bits-ui";
     import { nip19 } from "nostr-tools";
     import Button from "./Button.svelte";
+    import ComposerContextPreviewShell from "./ComposerContextPreviewShell.svelte";
     import type { ReplyQuoteMode, ReplyQuoteState } from "../lib/types";
     import { sanitizePlainText } from "../lib/utils/domSanitizer";
-    import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
     import { shortenMiddle } from "../lib/utils/textDisplayUtils";
 
     interface Props {
@@ -34,6 +34,8 @@
     let modeLabel = $derived(
         isReply ? $_("replyQuote.reply_label") : $_("replyQuote.quote_label"),
     );
+
+    let modeIconClass = $derived(isReply ? "reply-icon" : "quote-icon");
 
     let authorDisplay = $derived.by(() => {
         if (!reference.authorPubkey) return "";
@@ -123,77 +125,64 @@
     });
 </script>
 
-<div class="reply-quote-preview">
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-        class="preview-header"
-        onmousedown={preventKeyboardFocusChange}
-        ontouchstart={preventKeyboardFocusChange}
-    >
-        <div class="preview-meta">
-            <Button
-                className="preview-label"
-                variant="default"
-                shape="square"
-                onClick={canToggleExpand ? toggleExpand : undefined}
-                aria-expanded={canToggleExpand ? expanded : undefined}
-                ariaLabel={toggleAriaLabel}
-            >
-                <div
-                    class="preview-mode-icon svg-icon"
-                    class:reply-icon={isReply}
-                    class:quote-icon={!isReply}
-                ></div>
-                <span class="mode-text">{modeLabel}</span>
-            </Button>
-            {#if !isReply}
-                <Tooltip.Provider>
-                    <Tooltip.Root delayDuration={500}>
-                        <Tooltip.Trigger>
-                            {#snippet child({ props })}
-                                {@const {
-                                    onclick: tooltipOnclick,
-                                    ...restProps
-                                } = props}
-                                <Button
-                                    className="quote-notification-button"
-                                    variant="default"
-                                    shape="square"
-                                    onClick={(e) => {
-                                        toggleQuoteNotification();
-                                        if (
-                                            typeof tooltipOnclick === "function"
-                                        ) {
-                                            tooltipOnclick(e);
-                                        }
-                                    }}
-                                    aria-pressed={effectiveQuoteNotificationEnabled}
-                                    ariaLabel={quoteNotificationAriaLabel}
-                                    {...restProps}
-                                >
-                                    <div
-                                        class="quote-notification-icon svg-icon"
-                                        class:bell-solid-icon={effectiveQuoteNotificationEnabled}
-                                        class:bell-regular-icon={!effectiveQuoteNotificationEnabled}
-                                    ></div>
-                                </Button>
-                            {/snippet}
-                        </Tooltip.Trigger>
-                        <Tooltip.Portal>
-                            <Tooltip.Content
-                                sideOffset={8}
-                                class="tooltip-content reply-quote-tooltip-content"
+<ComposerContextPreviewShell
+    previewClass="reply-quote-preview"
+    {modeIconClass}
+    {modeLabel}
+    {expanded}
+    {canToggleExpand}
+    {toggleAriaLabel}
+    clearAriaLabel={$_("replyQuote.cancel")}
+    onToggle={toggleExpand}
+    onClear={handleCancel}
+>
+    {#snippet meta()}
+        {#if !isReply}
+            <Tooltip.Provider>
+                <Tooltip.Root delayDuration={500}>
+                    <Tooltip.Trigger>
+                        {#snippet child({ props })}
+                            {@const { onclick: tooltipOnclick, ...restProps } =
+                                props}
+                            <Button
+                                className="quote-notification-button"
+                                variant="default"
+                                shape="square"
+                                onClick={(e) => {
+                                    toggleQuoteNotification();
+                                    if (typeof tooltipOnclick === "function") {
+                                        tooltipOnclick(e);
+                                    }
+                                }}
+                                aria-pressed={effectiveQuoteNotificationEnabled}
+                                ariaLabel={quoteNotificationAriaLabel}
+                                {...restProps}
                             >
-                                {quoteNotificationTooltip}
-                            </Tooltip.Content>
-                        </Tooltip.Portal>
-                    </Tooltip.Root>
-                </Tooltip.Provider>
-            {/if}
-            {#if authorDisplay}
-                <span class="author-name">{authorDisplay}</span>
-            {/if}
-        </div>
+                                <div
+                                    class="quote-notification-icon svg-icon"
+                                    class:bell-solid-icon={effectiveQuoteNotificationEnabled}
+                                    class:bell-regular-icon={!effectiveQuoteNotificationEnabled}
+                                ></div>
+                            </Button>
+                        {/snippet}
+                    </Tooltip.Trigger>
+                    <Tooltip.Portal>
+                        <Tooltip.Content
+                            sideOffset={8}
+                            class="tooltip-content reply-quote-tooltip-content"
+                        >
+                            {quoteNotificationTooltip}
+                        </Tooltip.Content>
+                    </Tooltip.Portal>
+                </Tooltip.Root>
+            </Tooltip.Provider>
+        {/if}
+        {#if authorDisplay}
+            <span class="author-name">{authorDisplay}</span>
+        {/if}
+    {/snippet}
+
+    {#snippet status()}
         {#if showHeaderStatus}
             <div
                 class="preview-status"
@@ -203,72 +192,25 @@
                 <span class="preview-status-text">{statusLabel}</span>
             </div>
         {/if}
-        <Button
-            className="cancel-button"
-            variant="default"
-            shape="square"
-            onClick={handleCancel}
-            title={$_("replyQuote.cancel")}
-            ariaLabel={$_("replyQuote.cancel")}
-        >
-            <div class="close-icon svg-icon"></div>
-        </Button>
-    </div>
+    {/snippet}
 
-    {#if expanded}
+    {#snippet content()}
         {#if sanitizedContent}
-            <div class="preview-content">
-                <p class="content-text">{sanitizedContent}</p>
-            </div>
+            <p class="content-text">{sanitizedContent}</p>
         {/if}
-    {/if}
-</div>
+    {/snippet}
+</ComposerContextPreviewShell>
 
 <style>
-    .reply-quote-preview {
-        display: flex;
-        flex-direction: column;
-        border-left: 3px solid var(--theme);
-        background-color: var(--bg-input);
-        max-width: 800px;
-        width: 100%;
-        font-size: 1rem;
-        flex-shrink: 0;
+    :global(.reply-quote-preview) {
+        --preview-meta-gap: 12px;
+        --preview-content-padding: 10px 20px 10px 20px;
     }
 
-    .preview-header {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-
-        .preview-meta {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            min-width: 0;
-            flex: 1;
-
-            :global(.preview-label) {
-                gap: 6px;
-                height: 50px;
-                min-width: fit-content;
-                padding: 0 10px 0 10px;
-                border-radius: 0 6px 6px 0;
-            }
-
-            :global(.quote-notification-button) {
-                height: 100%;
-                width: 46px;
-                flex-shrink: 0;
-            }
-        }
-
-        :global(.cancel-button) {
-            height: 50px;
-            width: 50px;
-            padding: 2px;
-            flex-shrink: 0;
-        }
+    :global(.reply-quote-preview .quote-notification-button) {
+        height: 100%;
+        width: 46px;
+        flex-shrink: 0;
     }
 
     .preview-status {
@@ -294,17 +236,11 @@
         color: var(--danger);
     }
 
-    .preview-mode-icon {
-        width: 28px;
-        height: 28px;
-        flex-shrink: 0;
-    }
-
-    .reply-icon {
+    :global(.reply-quote-preview .reply-icon) {
         mask-image: url("/icons/message-solid-full.svg");
     }
 
-    .quote-icon {
+    :global(.reply-quote-preview .quote-icon) {
         mask-image: url("/icons/quote-right-solid-full.svg");
     }
 
@@ -321,26 +257,12 @@
         mask-image: url("/icons/bell-solid-full.svg");
     }
 
-    .mode-text {
-        font-size: 1rem;
-        font-weight: 600;
-        color: var(--theme);
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-
     .author-name {
         min-width: 0;
         color: var(--text-light);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-    }
-
-    :global(.cancel-button .close-icon) {
-        width: 30px;
-        height: 30px;
-        mask-image: url("/icons/xmark-solid-full.svg");
     }
 
     :global(.reply-quote-tooltip-content) {
@@ -354,16 +276,6 @@
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
         font-size: 0.8rem;
         line-height: 1.35;
-    }
-
-    .preview-content {
-        display: block;
-        width: 100%;
-        padding: 10px 20px 10px 20px;
-        margin: 0;
-        text-align: left;
-        color: var(--text);
-        font: inherit;
     }
 
     .content-text {
