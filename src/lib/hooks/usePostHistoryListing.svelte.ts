@@ -294,30 +294,46 @@ export function usePostHistoryListing({
 
         const requestId = ++loadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
-        const count = await postHistoryRepository.countForPubkey(pubkeyHex);
+        const [count, pagePosts] = await Promise.all([
+            postHistoryRepository.countForPubkey(pubkeyHex),
+            postHistoryRepository.getPage({
+                pubkeyHex,
+                page: normalizedPage,
+                pageSize,
+            }),
+        ]);
 
         if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
         const safePage = resolveSafePage(normalizedPage, count, pageSize);
-        state.totalCount = count;
         if (safePage !== normalizedPage) {
             state.currentPage = safePage;
             return;
         }
 
-        const pagePosts = await postHistoryRepository.getPage({
-            pubkeyHex,
-            page: normalizedPage,
-            pageSize,
-        });
+        await prefetchCurrentPageMedia(pagePosts);
         if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
+        state.totalCount = count;
         state.loadedPosts = pagePosts;
-        void prefetchCurrentPageMedia(pagePosts);
+    }
+
+    async function refreshTotalCountFromRepository(): Promise<void> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !getShow()) {
+            return;
+        }
+
+        const count = await postHistoryRepository.countForPubkey(pubkeyHex);
+        if (!getShow()) {
+            return;
+        }
+
+        state.totalCount = count;
     }
 
     async function loadSearchPage(page: number, query: string): Promise<void> {
@@ -355,9 +371,17 @@ export function usePostHistoryListing({
             return;
         }
 
+        await prefetchCurrentPageMedia(result.items);
+        if (
+            !getShow() ||
+            requestId !== searchLoadRequestId ||
+            query !== state.searchQuery
+        ) {
+            return;
+        }
+
         state.searchTotalCount = result.total;
         state.searchPosts = result.items;
-        void prefetchCurrentPageMedia(result.items);
     }
 
     async function syncFromRelays(): Promise<void> {
@@ -572,12 +596,14 @@ export function usePostHistoryListing({
             return;
         }
 
-        const preRepairTotalCount = state.totalCount;
         clearRepairFeedback();
         state.repairStatus = "repairing";
         const task = postHistoryRepairService.repairFromRelays(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
+            onProgress: async () => {
+                await refreshTotalCountFromRepository();
+            },
         });
         currentRepairTask = task;
 
@@ -590,10 +616,6 @@ export function usePostHistoryListing({
             currentRepairTask = null;
             state.repairStatus = "idle";
 
-            if (typeof globalThis.console?.debug === "function") {
-                globalThis.console.debug("post_history_repair_result", result);
-            }
-
             if (!getShow() || result.status === "cancelled") {
                 return;
             }
@@ -601,13 +623,6 @@ export function usePostHistoryListing({
             if (state.searchQuery) {
                 await loadSearchPage(state.searchPage, state.searchQuery);
             } else {
-                loadRequestId += 1;
-                if (result.addedCount > 0) {
-                    state.totalCount = Math.max(
-                        state.totalCount,
-                        preRepairTotalCount + result.addedCount,
-                    );
-                }
                 await loadPage(state.currentPage);
             }
 

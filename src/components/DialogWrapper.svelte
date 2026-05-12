@@ -143,11 +143,9 @@
                             </Button>
 
                             <div class="dialog-page-center">
-                                {#key paginationLabel}
-                                    <div class="dialog-page-indicator">
-                                        {paginationLabel}
-                                    </div>
-                                {/key}
+                                <div class="dialog-page-indicator">
+                                    {paginationLabel}
+                                </div>
                                 {@render footer?.()}
                             </div>
 

@@ -684,90 +684,23 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('repair 後の投稿一覧表示をメディア事前取得でブロックしない', async () => {
-        const mediaPrefetch = createDeferred<void>();
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
-            promise: Promise.resolve({
-                status: 'success',
-                events: [],
-                fetchedAt: 1000,
-                nextUntil: null,
-                hasMore: false,
-                relayUrls: ['wss://relay.example.com/'],
-                observedRelayUrls: [],
-                rawCount: 0,
-                uniqueCount: 0,
-                duplicateCount: 0,
-                perRelayCounts: [],
-                oldestCreatedAt: null,
-                newestCreatedAt: null,
-            }),
-            cancel: vi.fn(),
-        });
-        repairServiceMock.repairFromRelays.mockReturnValueOnce({
-            promise: Promise.resolve({
-                status: 'success',
-                addedCount: 1,
-                updatedCount: 0,
-                unchangedCount: 0,
-                processedRangeCount: 1,
-                hasRemainingRanges: false,
-                remainingRangeCount: 0,
-                nextCursorUntil: null,
-                processedRanges: [],
-                attemptedRangeCount: 1,
-                totalRangeCount: 1,
-                hadFailures: false,
-                hasRemainingWork: false,
-            }),
-            cancel: vi.fn(),
-        });
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-                rxNostr: {} as any,
-            },
-        });
-
-        await waitFor(() => {
-            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
-        });
-
-        repositoryMock.countForPubkey.mockResolvedValue(1);
-        repositoryMock.getPage.mockResolvedValue([
-            createRecord({
-                eventId: 'repaired-post',
-                content: '修復された投稿\nhttps://example.com/repaired.jpg',
-                media: [
-                    {
-                        url: 'https://example.com/repaired.jpg',
-                        mimeType: 'image/jpeg',
-                    },
-                ],
-            }),
-        ]);
-        postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockReturnValue(mediaPrefetch.promise);
-
-        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
-
-        await waitFor(() => {
-            expect(screen.getByText(/修復された投稿/)).toBeTruthy();
-            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
-            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).toHaveBeenCalledWith([
-                'https://example.com/repaired.jpg',
-            ]);
-        });
-
-        mediaPrefetch.resolve();
-    });
-
-    it('repair 後に総件数を再取得してページ数を即時更新する', async () => {
-        const countReload = createDeferred<number>();
+    it('repair 完了前でも progress で総件数を再取得してページ数を即時更新する', async () => {
+        const repairComplete = createDeferred<{
+            status: 'success';
+            addedCount: number;
+            updatedCount: number;
+            unchangedCount: number;
+            processedRangeCount: number;
+            hasRemainingRanges: boolean;
+            remainingRangeCount: number;
+            nextCursorUntil: null;
+            processedRanges: any[];
+            attemptedRangeCount: number;
+            totalRangeCount: number;
+            hadFailures: boolean;
+            hasRemainingWork: boolean;
+        }>();
+        const pageReload = createDeferred<ReturnType<typeof createRecord>[]>();
         const initialPosts = Array.from({ length: 50 }, (_, index) =>
             createRecord({
                 eventId: `initial-post-${index}`,
@@ -796,21 +729,7 @@ describe('PostHistoryDialog', () => {
             cancel: vi.fn(),
         });
         repairServiceMock.repairFromRelays.mockReturnValueOnce({
-            promise: Promise.resolve({
-                status: 'success',
-                addedCount: 1,
-                updatedCount: 0,
-                unchangedCount: 0,
-                processedRangeCount: 1,
-                hasRemainingRanges: false,
-                remainingRangeCount: 0,
-                nextCursorUntil: null,
-                processedRanges: [],
-                attemptedRangeCount: 1,
-                totalRangeCount: 1,
-                hadFailures: false,
-                hasRemainingWork: false,
-            }),
+            promise: repairComplete.promise,
             cancel: vi.fn(),
         });
 
@@ -830,19 +749,53 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
         });
 
-        repositoryMock.countForPubkey.mockReturnValue(countReload.promise);
-        repositoryMock.getPage.mockResolvedValue(initialPosts);
+        repositoryMock.countForPubkey.mockResolvedValue(51);
+        repositoryMock.getPage.mockReturnValue(pageReload.promise);
 
         await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        await repairParams.onProgress({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            processedRangeCount: 1,
+            attemptedRangeCount: 1,
+            addedCount: 1,
+            totalUpdatedCount: 0,
+            totalUnchangedCount: 0,
+        });
 
         await waitFor(() => {
             expect(getPageIndicatorText()).toBe('1 / 2 ページ');
         });
 
-        countReload.resolve(51);
+        repairComplete.resolve({
+            status: 'success',
+            addedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            processedRangeCount: 1,
+            hasRemainingRanges: false,
+            remainingRangeCount: 0,
+            nextCursorUntil: null,
+            processedRanges: [],
+            attemptedRangeCount: 1,
+            totalRangeCount: 1,
+            hadFailures: false,
+            hasRemainingWork: false,
+        });
+        pageReload.resolve([
+            createRecord({
+                eventId: 'repaired-post',
+                content: '修復された投稿',
+                postedAt: Date.UTC(2024, 0, 3, 3, 4, 0),
+            }),
+            ...initialPosts.slice(0, 49),
+        ]);
 
         await waitFor(() => {
             expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+            expect(screen.getByText('修復された投稿')).toBeTruthy();
         });
     });
 

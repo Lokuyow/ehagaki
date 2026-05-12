@@ -54,6 +54,86 @@ function createCoverageRecord(overrides: Record<string, any> = {}) {
 }
 
 describe("PostHistoryRepairService", () => {
+    it("range の upsert 後に onProgress を呼ぶ", async () => {
+        const onProgress = vi.fn();
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                events: [
+                    {
+                        event: {
+                            id: "b".repeat(64),
+                            pubkey: "a".repeat(64),
+                            kind: 1,
+                            content: "投稿本文",
+                            tags: [],
+                            created_at: 1_700_000_000,
+                            sig: "c".repeat(128),
+                        },
+                        relayUrls: ["wss://relay.example.com/"],
+                    },
+                ],
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryRepairService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistorySyncCoverageRepository: {
+                listIncompleteAttempts: vi.fn()
+                    .mockResolvedValue([
+                        createCoverageRecord({
+                            id: "pending-range",
+                            status: "pending",
+                            requestKind: "repair",
+                            until: 200,
+                        }),
+                    ])
+                    .mockResolvedValueOnce([
+                        createCoverageRecord({
+                            id: "pending-range",
+                            status: "pending",
+                            requestKind: "repair",
+                            until: 200,
+                        }),
+                    ])
+                    .mockResolvedValueOnce([])
+                    .mockResolvedValueOnce([]),
+                saveAttempt: vi.fn().mockResolvedValue(createCoverageRecord({ status: "complete" })),
+                enqueuePendingRanges: vi.fn(),
+                markResolved: vi.fn(),
+            },
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn().mockResolvedValue({
+                    insertedCount: 2,
+                    updatedCount: 1,
+                    unchangedCount: 3,
+                }),
+                getOldestCreatedAt: vi.fn().mockResolvedValue(null),
+            },
+            postHistoryRepairCursorRepository: {
+                get: vi.fn().mockResolvedValue(null),
+                save: vi.fn(),
+            },
+            now: () => 10_000,
+        });
+
+        await service.repairFromRelays({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            onProgress,
+        }).promise;
+
+        expect(onProgress).toHaveBeenCalledWith({
+            insertedCount: 2,
+            updatedCount: 1,
+            unchangedCount: 3,
+            processedRangeCount: 1,
+            attemptedRangeCount: 1,
+            addedCount: 2,
+            totalUpdatedCount: 1,
+            totalUnchangedCount: 3,
+        });
+    });
+
     it("timeout / error / partial / cancelled の順で未完了 range を再取得する", async () => {
         const debug = vi.fn();
         let unresolved = [

@@ -29,6 +29,18 @@ const SECONDS_PER_DAY = 24 * 60 * 60;
 export interface PostHistoryRepairParams {
     pubkeyHex: string;
     relayConfig?: RelayConfig | null;
+    onProgress?: (progress: PostHistoryRepairProgress) => void | Promise<void>;
+}
+
+export interface PostHistoryRepairProgress {
+    insertedCount: number;
+    updatedCount: number;
+    unchangedCount: number;
+    processedRangeCount: number;
+    attemptedRangeCount: number;
+    addedCount: number;
+    totalUpdatedCount: number;
+    totalUnchangedCount: number;
 }
 
 export interface PostHistoryRepairResult {
@@ -631,6 +643,18 @@ export class PostHistoryRepairService {
                     updatedCount: rangeUpdatedCount,
                     unchangedCount: rangeUnchangedCount,
                 });
+                if (result.events.length > 0) {
+                    await params.onProgress?.({
+                        insertedCount,
+                        updatedCount: rangeUpdatedCount,
+                        unchangedCount: rangeUnchangedCount,
+                        processedRangeCount: processedRanges.length,
+                        attemptedRangeCount,
+                        addedCount,
+                        totalUpdatedCount: updatedCount,
+                        totalUnchangedCount: unchangedCount,
+                    });
+                }
 
                 if (work.source === "coverage") {
                     await this.postHistorySyncCoverageRepository.markResolved(work.record.id);
