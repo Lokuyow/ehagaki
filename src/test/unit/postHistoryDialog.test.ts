@@ -2504,6 +2504,98 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('最終ページで最後ボタンを押すと古い投稿を追加取得して取得後の最終ページへ移動する', async () => {
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(75)
+            .mockResolvedValueOnce(75)
+            .mockResolvedValueOnce(75);
+        repositoryMock.getPage
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-1', content: '1ページ目' })])
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-1', content: '1ページ目' })])
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-2', content: '2ページ目' })]);
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 1000,
+                    nextUntil: 149,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [
+                        {
+                            event: {
+                                id: 'c'.repeat(64),
+                                pubkey: 'a'.repeat(64),
+                                kind: 1,
+                                content: '追加取得した古い投稿',
+                                tags: [],
+                                created_at: 140,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    fetchedAt: 2000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            });
+        repositoryMock.upsertFetchedEvents.mockResolvedValueOnce({
+            insertedCount: 25,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const lastButton = await screen.findByRole('button', { name: '最後のページ' });
+
+        await waitFor(() => {
+            expect(screen.getByText('1 / 1 ページ')).toBeTruthy();
+            expect(lastButton).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(lastButton);
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: 'a'.repeat(64),
+                    limit: 200,
+                    until: 149,
+                }),
+            );
+            expect(repositoryMock.getPage).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                page: 2,
+                pageSize: 50,
+            });
+            expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+            expect(screen.getByText('2ページ目')).toBeTruthy();
+        });
+    });
+
     it('古い投稿をリレーから取得中は次へボタンにローダーを表示する', async () => {
         const olderFetch = createDeferred<{
             status: 'success';

@@ -265,8 +265,8 @@
         }
     }
 
-    function handleLastPage(): void {
-        if (history.goToLastPage()) {
+    async function handleLastPage(): Promise<void> {
+        if (await history.goToLastPage()) {
             queueHistoryScrollReset();
         }
     }

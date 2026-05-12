@@ -186,7 +186,11 @@ export function usePostHistoryListing({
             ? displayPage < totalPages
             : state.currentPage < totalPages || state.hasMoreRemote),
     );
-    const canGoLast = $derived(!isRepairing && displayPage < totalPages);
+    const canGoLast = $derived(
+        !isRepairing && (isSearchMode
+            ? displayPage < totalPages
+            : displayPage < totalPages || state.hasMoreRemote),
+    );
     const showPaging = $derived(displayTotalCount > 0);
     const canRepair = $derived(
         !!getPubkeyHex() &&
@@ -605,7 +609,7 @@ export function usePostHistoryListing({
         return false;
     }
 
-    function goToLastPage(): boolean {
+    async function goToLastPage(): Promise<boolean> {
         if (!canGoLast) {
             return false;
         }
@@ -615,7 +619,33 @@ export function usePostHistoryListing({
             return true;
         }
 
-        state.currentPage = totalPages;
+        if (state.currentPage < totalPages) {
+            state.currentPage = totalPages;
+            return true;
+        }
+
+        const pageReady = await ensurePageAvailable(state.currentPage + 1);
+        if (!pageReady) {
+            await loadPage(state.currentPage);
+            return false;
+        }
+
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex) {
+            return false;
+        }
+
+        const count = await postHistoryRepository.countForPubkey(pubkeyHex);
+        if (!getShow()) {
+            return false;
+        }
+
+        state.totalCount = count;
+        state.currentPage = resolveSafePage(
+            Math.ceil(count / pageSize),
+            count,
+            pageSize,
+        );
         return true;
     }
 
