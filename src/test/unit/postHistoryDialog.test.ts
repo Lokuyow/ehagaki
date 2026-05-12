@@ -684,6 +684,88 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('repair 後の投稿一覧表示をメディア事前取得でブロックしない', async () => {
+        const mediaPrefetch = createDeferred<void>();
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [],
+                attemptedRangeCount: 1,
+                totalRangeCount: 1,
+                hadFailures: false,
+                hasRemainingWork: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'repaired-post',
+                content: '修復された投稿\nhttps://example.com/repaired.jpg',
+                media: [
+                    {
+                        url: 'https://example.com/repaired.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+        postMediaCacheServiceMock.prefetchCachedMediaDescriptors.mockReturnValue(mediaPrefetch.promise);
+
+        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+
+        await waitFor(() => {
+            expect(screen.getByText(/修復された投稿/)).toBeTruthy();
+            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+            expect(postMediaCacheServiceMock.prefetchCachedMediaDescriptors).toHaveBeenCalledWith([
+                'https://example.com/repaired.jpg',
+            ]);
+        });
+
+        mediaPrefetch.resolve();
+    });
+
     it('長い投稿本文は折りたたみ表示し、ボタンで展開できる', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([

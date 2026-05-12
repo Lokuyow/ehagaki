@@ -313,13 +313,9 @@ export function usePostHistoryListing({
             return;
         }
 
-        await prefetchCurrentPageMedia(pagePosts);
-        if (!getShow() || requestId !== loadRequestId) {
-            return;
-        }
-
         state.totalCount = count;
         state.loadedPosts = pagePosts;
+        void prefetchCurrentPageMedia(pagePosts);
     }
 
     async function loadSearchPage(page: number, query: string): Promise<void> {
@@ -357,17 +353,9 @@ export function usePostHistoryListing({
             return;
         }
 
-        await prefetchCurrentPageMedia(result.items);
-        if (
-            !getShow() ||
-            requestId !== searchLoadRequestId ||
-            query !== state.searchQuery
-        ) {
-            return;
-        }
-
         state.searchTotalCount = result.total;
         state.searchPosts = result.items;
+        void prefetchCurrentPageMedia(result.items);
     }
 
     async function syncFromRelays(): Promise<void> {
