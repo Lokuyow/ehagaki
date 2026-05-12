@@ -115,7 +115,6 @@ body {
   overflow-wrap: anywhere;
   word-break: auto-phrase;
   line-break: strict;
-  line-height: 1.0;
 }
 
 a {
