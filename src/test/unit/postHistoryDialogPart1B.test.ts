@@ -531,28 +531,32 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
+    it('[repair-disabled] 同期中・修復中は repair button を disabled にする', async () => {
+        const initialSync = createDeferred<any>();
+        const repairTask = createDeferred<{
+            status: 'success';
+            addedCount: 1;
+            updatedCount: 0;
+            unchangedCount: 0;
+            processedRangeCount: 1;
+            hasRemainingRanges: false;
+            remainingRangeCount: 0;
+            nextCursorUntil: null;
+            processedRanges: [];
+            attemptedRangeCount: 1;
+            totalRangeCount: 1;
+            hadFailures: false;
+            hasRemainingWork: false;
+        }>();
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: initialSync.promise,
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: repairTask.promise,
+            cancel: vi.fn(),
         });
 
-        await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
-            });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -563,20 +567,95 @@ describe('PostHistoryDialog', () => {
         });
 
         const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
 
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
+        await waitFor(() => {
+            expect(repairButton).toHaveProperty('disabled', true);
+        });
+
+        initialSync.resolve({
+            status: 'success',
+            events: [],
+            fetchedAt: 1000,
+            nextUntil: null,
+            hasMore: false,
+            relayUrls: ['wss://relay.example.com/'],
+            observedRelayUrls: [],
+            rawCount: 0,
+            uniqueCount: 0,
+            duplicateCount: 0,
+            perRelayCounts: [],
+            oldestCreatedAt: null,
+            newestCreatedAt: null,
+        });
+
+        await waitFor(() => {
+            expect(repairButton).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(repairButton);
+
+        await waitFor(() => {
+            expect(screen.getByText('修復中...')).toBeTruthy();
+        });
+
+        repairTask.resolve({
+            status: 'success',
+            addedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            processedRangeCount: 1,
+            hasRemainingRanges: false,
+            remainingRangeCount: 0,
+            nextCursorUntil: null,
+            processedRanges: [],
+            attemptedRangeCount: 1,
+            totalRangeCount: 1,
+            hadFailures: false,
+            hasRemainingWork: false,
+        });
+
+        await waitFor(async () => {
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
+            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+        });
     });
 
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
-        vi.useFakeTimers();
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [],
-            total: 0,
-            hasNext: false,
+    it('[repair-continue-later] repair が未完了なら次回継続メッセージを表示する', async () => {
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'partial',
+                addedCount: 2,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 5,
+                hasRemainingRanges: true,
+                remainingRangeCount: 3,
+                nextCursorUntil: 1715515200,
+                processedRanges: [],
+                attemptedRangeCount: 5,
+                totalRangeCount: 6,
+                hadFailures: false,
+                hasRemainingWork: true,
+            }),
+            cancel: vi.fn(),
         });
 
         render(PostHistoryDialog, {
@@ -584,70 +663,217 @@ describe('PostHistoryDialog', () => {
                 show: true,
                 onClose: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
             },
         });
 
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+        await waitFor(async () => {
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(await findRepairButton());
+
+        await waitFor(() => {
+            expect(screen.getByText('一部を確認しました。残りは次回続きから確認します。')).toBeTruthy();
+            expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
+        });
+    });
+
+    it('[repair-preferred-range] 通常モードの repair は current page 由来 preferred range を渡して再読み込みする', async () => {
+        const pubkeyHex = 'a'.repeat(64);
+        const pagePost = createRecord({
+            eventId: 'page-1',
+            content: '一覧の投稿',
+            createdAt: 1_700_000_100,
+        });
+        const expectedSince = pagePost.createdAt - 24 * 60 * 60;
+        const expectedUntil = pagePost.createdAt + 24 * 60 * 60;
+        let currentVisibleUntil = 1_700_000_050;
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([pagePost]);
+        visibleRangeRepositoryMock.get.mockImplementation(async () => ({
+            pubkeyHex,
+            kindsKey: '1,42',
+            visibleUntil: currentVisibleUntil,
+            updatedAt: 1000,
+        }));
+        visibleRangeRepositoryMock.save.mockImplementation(async (input: Record<string, any>) => {
+            currentVisibleUntil = input.visibleUntil;
+            return {
+                ...input,
+                updatedAt: 2000,
+            };
+        });
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [{
+                    source: 'preferred',
+                    status: 'complete',
+                    rangeUnit: 'custom',
+                    since: expectedSince,
+                    until: expectedUntil,
+                }],
+                attemptedRangeCount: 1,
+                totalRangeCount: 1,
+                hadFailures: false,
+                hasRemainingWork: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(async () => {
+            expect(await findRepairButton()).toHaveProperty('disabled', false);
+            expect(screen.getByText('一覧の投稿')).toBeTruthy();
+        });
+
+        const getPageCallCountBeforeRepair = repositoryMock.getPage.mock.calls.length;
+
+        await fireEvent.click(await findRepairButton());
+
+        await waitFor(() => {
+            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+        });
+
+        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        expect(repairParams).toEqual(expect.objectContaining({
+            pubkeyHex,
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: 'custom',
+                since: expectedSince,
+                until: expectedUntil,
+                limit: 200,
+            }],
+            onProgress: expect.any(Function),
+        }));
+
+        await waitFor(() => {
+            expect(visibleRangeRepositoryMock.save).toHaveBeenCalledWith({
+                pubkeyHex,
+                kindsKey: '1,42',
+                visibleUntil: expectedSince,
+            });
+            expect(repositoryMock.getPage.mock.calls.length).toBeGreaterThan(getPageCallCountBeforeRepair);
+        });
+    });
+
+    it('[repair-search-mode] 検索中でも repair button を押せて検索結果を再読み込みする', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'page-1', content: '一覧の投稿' }),
+        ]);
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [createRecord({ eventId: 'search-hit', content: '検索一致' })],
+            total: 1,
+            hasNext: false,
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [],
+                attemptedRangeCount: 1,
+                totalRangeCount: 1,
+                hadFailures: false,
+                hasRemainingWork: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
 
         const searchInput = await openSearchBar();
         await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await vi.advanceTimersByTimeAsync(250);
+        await new Promise((resolve) => setTimeout(resolve, 300));
 
         await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalled();
         });
+        expect(localSearchServiceMock.searchLocalPosts.mock.calls.at(-1)?.[0]).toMatchObject({
+            pubkeyHex: 'a'.repeat(64),
+            query: '一致',
+            page: 1,
+            pageSize: 50,
+        });
+        expect(await findRepairButton()).toHaveProperty('disabled', false);
 
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
+        await fireEvent.click(await findRepairButton());
 
         await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
-        repositoryMock.countForPubkey.mockResolvedValue(1);
-        repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
-        ]);
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
+            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(2);
         });
 
-        await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
-        });
-
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
-
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
-
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
-
-        await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
-        });
+        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        expect(repairParams?.preferredRanges).toBeUndefined();
     });
 
 

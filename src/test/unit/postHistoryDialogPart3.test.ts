@@ -531,90 +531,56 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
-            });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-                rxNostr: {} as any,
-            },
-        });
-
-        const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
-
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
-    });
-
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
+    it('[recent-date-format] 投稿日時が 1 年以内なら月日時刻を表示する', async () => {
         vi.useFakeTimers();
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [],
-            total: 0,
-            hasNext: false,
-        });
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-
-        const searchInput = await openSearchBar();
-        await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await vi.advanceTimersByTimeAsync(250);
-
-        await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
-
-        await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
+        const now = Date.UTC(2025, 0, 1, 12, 0, 0);
+        vi.setSystemTime(now);
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+            createRecord({
+                eventId: 'within-year',
+                postedAt: now - 100 * 24 * 60 * 60 * 1000,
+                content: '1 年以内の投稿',
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const expected = new Intl.DateTimeFormat(undefined, {
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(now - 100 * 24 * 60 * 60 * 1000));
+
+        await waitFor(() => {
+            expect(screen.getByText(expected)).toBeTruthy();
+            expect(screen.getByText('1 年以内の投稿')).toBeTruthy();
+        });
+    });
+
+    it('[emoji-preload] 保存済み emoji tag から custom emoji を描画し、同一 URL は一度だけ preload する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'emoji-post-1',
+                content: 'one :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+            createRecord({
+                eventId: 'emoji-post-2',
+                content: 'two :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
         ]);
 
         render(PostHistoryDialog, {
@@ -626,28 +592,109 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledTimes(1);
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                'https://example.com/blobcat.webp',
+            );
         });
 
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
+        const images = await screen.findAllByRole('img', { name: ':blobcat:' });
+        expect(images).toHaveLength(2);
+    });
 
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
+    it('[emoji-placeholder] loading 中は shortcode ではなく placeholder を表示し、保存済み寸法から幅を確保する', async () => {
+        const deferred = createDeferred<{
+            ready: boolean;
+            width: number;
+            height: number;
+            aspectRatio: number;
+        }>();
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockReturnValue(deferred.promise);
+        customEmojiImageMetaRepositoryMock.getMany.mockResolvedValue({
+            'https://example.com/blobcat.webp': {
+                url: 'https://example.com/blobcat.webp',
+                width: 60,
+                height: 30,
+                aspectRatio: 2,
+                fetchedAt: 1000,
+                lastAccessedAt: 1000,
+                updatedAt: 1000,
+                schemaVersion: 1,
+            },
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'emoji-loading',
+                content: 'loading :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+        ]);
 
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
 
         await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                'https://example.com/blobcat.webp',
+            );
+            expect(customEmojiImageMetaRepositoryMock.getMany).toHaveBeenCalledWith([
+                'https://example.com/blobcat.webp',
+            ]);
         });
+
+        await waitFor(() => {
+            const slot = document.querySelector('.post-history-custom-emoji-slot');
+            expect(slot).toBeTruthy();
+            expect(slot?.getAttribute('style')).toContain('60px');
+            expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
+            expect(screen.queryByText(':blobcat:')).toBeNull();
+        });
+
+        deferred.resolve({
+            ready: true,
+            width: 120,
+            height: 60,
+            aspectRatio: 2,
+        });
+    });
+
+    it('[emoji-preload-failure] custom emoji の preload に失敗した場合は shortcode のまま表示する', async () => {
+        customEmojiMock.preloadCustomEmojiImageWithMeta.mockResolvedValue({
+            ready: false,
+        });
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'emoji-failed',
+                content: 'broken :blobcat:',
+                tags: [['emoji', 'blobcat', 'https://example.com/blobcat.webp']],
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(customEmojiMock.preloadCustomEmojiImageWithMeta).toHaveBeenCalledWith(
+                'https://example.com/blobcat.webp',
+            );
+        });
+
+        expect(screen.queryByRole('img', { name: ':blobcat:' })).toBeNull();
+        expect(screen.getByText(':blobcat:')).toBeTruthy();
     });
 
 

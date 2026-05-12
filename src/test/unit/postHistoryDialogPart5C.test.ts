@@ -531,29 +531,16 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
+    it('[unmount-cleanup] unmount 時に進行中の同期を cleanup する', async () => {
+        const cancel = vi.fn();
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel,
         });
 
-        await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
-            });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
-        render(PostHistoryDialog, {
+        const view = render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -562,60 +549,25 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
+        });
 
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
+        view.unmount();
+        expect(cancel).toHaveBeenCalledOnce();
     });
 
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
-        vi.useFakeTimers();
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [],
-            total: 0,
-            hasNext: false,
-        });
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-
-        const searchInput = await openSearchBar();
-        await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await vi.advanceTimersByTimeAsync(250);
-
-        await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
-
-        await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
+    it('[nevent-copy-failure] neventコピー失敗を表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+            createRecord({
+                content: '投稿本文',
+                media: [],
+                relayHints: [],
+                acceptedRelays: [],
+            }),
         ]);
+        clipboardMock.tryCopyToClipboard.mockResolvedValue(false);
 
         render(PostHistoryDialog, {
             props: {
@@ -626,29 +578,13 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
+            expect(screen.getByText('投稿本文')).toBeTruthy();
         });
 
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: 'neventをコピー' }));
 
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
-
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
-
-        await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
-        });
+        expect(screen.getByText('コピーに失敗しました')).toBeTruthy();
     });
-
-
 });

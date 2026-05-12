@@ -202,6 +202,8 @@ export function usePostHistoryListing({
     let loadRequestId = 0;
     let searchLoadRequestId = 0;
     let hasStartedInitialSync = false;
+    let hasAttemptedInitialLocalLoad = false;
+    let initialLocalLoadKey: string | null = null;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
     let currentRepairTask: PostHistoryRepairTask | null = null;
     let appliedSearchQuery = "";
@@ -348,6 +350,8 @@ export function usePostHistoryListing({
         state.syncStatus = "idle";
         clearRepairFeedback();
         hasStartedInitialSync = false;
+        hasAttemptedInitialLocalLoad = false;
+        initialLocalLoadKey = null;
     }
 
     function updateRelayHistoryCursor(
@@ -1293,8 +1297,23 @@ export function usePostHistoryListing({
 
     $effect(() => {
         if (!getShow() || isSearchMode || state.loadedPosts.length > 0) {
+            if (state.loadedPosts.length > 0) {
+                hasAttemptedInitialLocalLoad = true;
+                initialLocalLoadKey = resolveListingSnapshotKey(getPubkeyHex()) ?? "";
+            }
             return;
         }
+
+        const nextInitialLoadKey = resolveListingSnapshotKey(getPubkeyHex()) ?? "";
+        if (
+            hasAttemptedInitialLocalLoad
+            && initialLocalLoadKey === nextInitialLoadKey
+        ) {
+            return;
+        }
+
+        hasAttemptedInitialLocalLoad = true;
+        initialLocalLoadKey = nextInitialLoadKey;
 
         void loadLatestVisiblePosts();
     });

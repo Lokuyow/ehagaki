@@ -809,7 +809,11 @@
                                         class="latest-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
-                                    <span>{$_("postHistory.returnToLatest")}</span>
+                                    <span
+                                        >{$_(
+                                            "postHistory.returnToLatest",
+                                        )}</span
+                                    >
                                 </button>
                                 <button
                                     type="button"
@@ -881,10 +885,7 @@
             </div>
         {/if}
         {#if headingStatusMessageKey}
-            <div
-                class="status-message"
-                class:status-error={headingStatusError}
-            >
+            <div class="status-message" class:status-error={headingStatusError}>
                 <LoadingPlaceholder
                     text={headingStatusMessageValues
                         ? $_(headingStatusMessageKey, {
@@ -893,9 +894,7 @@
                         : $_(headingStatusMessageKey)}
                     showLoader={history.showStatusLoader}
                     loaderSize={25}
-                    state={history.showStatusLoader
-                        ? "loading"
-                        : "complete"}
+                    state={history.showStatusLoader ? "loading" : "complete"}
                     customClass="status-loading-placeholder"
                 />
             </div>
@@ -1370,7 +1369,8 @@
                             <Button
                                 type="button"
                                 className="post-history-nav-button"
-                                onClick={() => void history.fetchOlderFromRelays()}
+                                onClick={() =>
+                                    void history.fetchOlderFromRelays()}
                             >
                                 {$_("postHistory.fetchOlderFromRelays")}
                             </Button>
@@ -1598,7 +1598,11 @@
     }
 
     .post-history-search-active {
-        border-bottom-color: color-mix(in srgb, var(--theme), var(--border-hr) 55%);
+        border-bottom-color: color-mix(
+            in srgb,
+            var(--theme),
+            var(--border-hr) 55%
+        );
     }
 
     .post-history-search-input {
@@ -1745,7 +1749,7 @@
         line-height: 1.3;
         text-align: right;
         overflow-wrap: anywhere;
-    
+
         :global(.status-loading-placeholder) {
             justify-content: flex-end;
             width: auto;

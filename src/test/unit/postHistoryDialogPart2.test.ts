@@ -531,90 +531,304 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
-            });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-                rxNostr: {} as any,
-            },
-        });
-
-        const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
-
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
-    });
-
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
-        vi.useFakeTimers();
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [],
-            total: 0,
-            hasNext: false,
-        });
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-
-        const searchInput = await openSearchBar();
-        await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await vi.advanceTimersByTimeAsync(250);
-
-        await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
-
-        await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
+    it('長い投稿本文は折りたたみ表示し、ボタンで展開できる', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+            createRecord({
+                eventId: 'long-post',
+                content: [
+                    'line1',
+                    'line2',
+                    'line3',
+                    'line4',
+                    'line5',
+                    'line6 https://example.com/image.jpg',
+                ].join('\n'),
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const toggleButton = await screen.findByRole('button', {
+            name: 'もっと見る',
+        });
+
+        expect(toggleButton).toBeTruthy();
+        expect(screen.getByTitle('image.jpg')).toBeTruthy();
+        await fireEvent.click(toggleButton);
+        expect(screen.getByRole('button', { name: '折りたたむ' })).toBeTruthy();
+        await fireEvent.click(screen.getByRole('button', { name: '折りたたむ' }));
+        expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
+    });
+
+    it('メディアのみの投稿では本文プレビュー要素を表示しない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'media-only',
+                content: [
+                    'https://example.com/image-1.jpg',
+                    'https://example.com/image-2.jpg',
+                ].join('\n'),
+                media: [
+                    {
+                        url: 'https://example.com/image-1.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                    {
+                        url: 'https://example.com/image-2.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByTitle('image-1.jpg')).toBeTruthy();
+            expect(screen.getByTitle('image-2.jpg')).toBeTruthy();
+        });
+
+        expect(container.querySelector('.post-history-preview-text')).toBeNull();
+        expect(screen.getByTitle('image-1.jpg')).toBeTruthy();
+        expect(screen.getByTitle('image-2.jpg')).toBeTruthy();
+    });
+
+    it('fullscreen viewer 内の操作では投稿履歴ダイアログを閉じない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'fullscreen-safe',
+                content: 'fullscreen target',
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+
+        const onClose = vi.fn();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('fullscreen target');
+
+        const fullscreenRoot = document.createElement('div');
+        fullscreenRoot.className = 'ehagaki-pswp';
+        const fullscreenButton = document.createElement('button');
+        fullscreenButton.type = 'button';
+        fullscreenRoot.appendChild(fullscreenButton);
+        document.body.appendChild(fullscreenRoot);
+
+        try {
+            await fireEvent.pointerDown(fullscreenButton);
+            await fireEvent.pointerUp(fullscreenButton);
+            await fireEvent.click(fullscreenButton);
+            await new Promise((resolve) => setTimeout(resolve, 40));
+
+            expect(onClose).not.toHaveBeenCalled();
+            expect(await openSearchBar()).toBeTruthy();
+        } finally {
+            fullscreenRoot.remove();
+        }
+    });
+
+    it('fullscreen viewer 表示中は外側へフォーカスが逃げない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'focus-safe',
+                content: 'focus target',
+                media: [
+                    {
+                        url: 'https://example.com/image.jpg',
+                        mimeType: 'image/jpeg',
+                    },
+                ],
+            }),
+        ]);
+        vi.mocked(postMediaCacheServiceMock.getCachedMediaDescriptor).mockResolvedValue({
+            cacheKey: 'https://example.com/image.jpg',
+            url: 'https://example.com/image.jpg',
+            mimeType: 'image/jpeg',
+            size: 10,
+            source: 'uploaded',
+            kind: 'image',
+        });
+        vi.mocked(postMediaCacheServiceMock.createCachedMediaObjectUrl).mockResolvedValue({
+            cacheKey: 'https://example.com/image.jpg',
+            url: 'https://example.com/image.jpg',
+            mimeType: 'image/jpeg',
+            size: 10,
+            source: 'uploaded',
+            kind: 'image',
+            objectUrl: 'blob:image-preview',
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('focus target');
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '開く image.jpg' })).toBeTruthy();
+        });
+        await fireEvent.click(screen.getByRole('button', { name: '開く image.jpg' }));
+        await waitFor(() => {
+            expect(document.querySelector('.ehagaki-pswp')).toBeTruthy();
+        });
+
+        const outsideButton = document.createElement('button');
+        outsideButton.type = 'button';
+        outsideButton.textContent = 'outside';
+        document.body.appendChild(outsideButton);
+
+        try {
+            outsideButton.focus();
+
+            await waitFor(() => {
+                expect(document.activeElement).toBe(outsideButton);
+            });
+        } finally {
+            outsideButton.remove();
+        }
+    });
+
+    it('reply/quote callback がある場合は preview 下に両方のボタンを表示し、折りたたみボタンと共存する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'replyable-post',
+                content: [
+                    'line1',
+                    'line2',
+                    'line3',
+                    'line4',
+                    'line5',
+                    'line6',
+                ].join('\n'),
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                onReplyPost: vi.fn(),
+                onQuotePost: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        expect(await screen.findByRole('button', { name: 'リプライ' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: '引用' })).toBeTruthy();
+        expect(screen.getByRole('button', { name: 'もっと見る' })).toBeTruthy();
+    });
+
+    it('リプライボタン押下で callback 実行後にダイアログを閉じる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'reply-target',
+                content: '返信したい投稿',
+                media: [],
+            }),
+        ]);
+        const onClose = vi.fn();
+        const onReplyPost = vi.fn();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                onReplyPost,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('返信したい投稿');
+        await fireEvent.click(await screen.findByRole('button', { name: 'リプライ' }));
+
+        expect(onReplyPost).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'reply-target' }),
+        );
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('引用ボタン押下で callback 実行後にダイアログを閉じる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'quote-target',
+                content: '引用したい投稿',
+                media: [],
+            }),
+        ]);
+        const onClose = vi.fn();
+        const onQuotePost = vi.fn();
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose,
+                onQuotePost,
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await screen.findByText('引用したい投稿');
+        await fireEvent.click(await screen.findByRole('button', { name: '引用' }));
+
+        expect(onQuotePost).toHaveBeenCalledWith(
+            expect.objectContaining({ eventId: 'quote-target' }),
+        );
+        expect(onClose).toHaveBeenCalledOnce();
+    });
+
+    it('投稿日時が 24 時間以内なら時刻のみを表示する', async () => {
+        vi.useFakeTimers();
+        const now = Date.UTC(2025, 0, 1, 12, 0, 0);
+        vi.setSystemTime(now);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'recent',
+                postedAt: now - 60 * 60 * 1000,
+                content: '最近の投稿',
+                media: [],
+            }),
         ]);
 
         render(PostHistoryDialog, {
@@ -625,28 +839,14 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
-        });
-
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
-
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
-
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
+        const expected = new Intl.DateTimeFormat(undefined, {
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(now - 60 * 60 * 1000));
 
         await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
+            expect(screen.getByText(expected)).toBeTruthy();
+            expect(screen.getByText('最近の投稿')).toBeTruthy();
         });
     });
 

@@ -531,28 +531,35 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
+    it('[channel-cache-hit] channelMetadata cache 済みなら service を呼ばず channel 名を表示する', async () => {
+        channelMetadataRepositoryMock.getMany.mockResolvedValue([
+            {
+                channelEventId: 'channel-id',
+                name: 'cached-general',
+                about: null,
+                picture: null,
+                relays: ['wss://channel-write.example.com/'],
+                relayHints: ['wss://channel.example.com/'],
+                creatorPubkey: 'c'.repeat(64),
+                createEventCreatedAt: 100,
+                metadataEventId: 'm'.repeat(64),
+                metadataCreatedAt: 200,
+                fetchedAt: 1000,
             },
-        });
+        ]);
+        channelMetadataRepositoryMock.shouldRefresh.mockReturnValue(false);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'channel-post',
+                kind: 42,
+                content: 'channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+        ]);
 
-        await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
-            });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -562,59 +569,35 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
+        await waitFor(() => {
+            expect(channelMetadataRepositoryMock.getMany).toHaveBeenCalledWith(['channel-id']);
+            expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
+            expect(screen.getByText('cached-general')).toBeTruthy();
+        });
 
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
+        const channelRow = screen.getByText('cached-general').closest('.post-history-channel-row');
+        expect(channelRow?.parentElement?.classList.contains('post-preview-header')).toBe(true);
     });
 
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
-        vi.useFakeTimers();
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [],
-            total: 0,
-            hasNext: false,
-        });
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-
-        const searchInput = await openSearchBar();
-        await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await vi.advanceTimersByTimeAsync(250);
-
-        await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
-
-        await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
-        repositoryMock.countForPubkey.mockResolvedValue(1);
+    it('[channel-fetch-dedupe] 未取得 channel だけ service で解決して保存し、同じ channelEventId の fetch を重複させない', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+            createRecord({
+                eventId: 'channel-post-1',
+                kind: 42,
+                content: 'first channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+            createRecord({
+                eventId: 'channel-post-2',
+                kind: 42,
+                content: 'second channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
         ]);
 
         render(PostHistoryDialog, {
@@ -622,31 +605,47 @@ describe('PostHistoryDialog', () => {
                 show: true,
                 onClose: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
             },
         });
 
         await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
+            expect(channelContextServiceMock.resolveChannelMetadata).toHaveBeenCalledTimes(1);
+            expect(channelMetadataRepositoryMock.upsertResolvedChannel).toHaveBeenCalledTimes(1);
+            expect(screen.getAllByText('general').length).toBeGreaterThan(0);
+        });
+    });
+
+    it('[channel-fetch-failure] channel metadata 取得失敗時は失敗を記録して unknown を表示する', async () => {
+        channelContextServiceMock.resolveChannelMetadata.mockRejectedValueOnce(new Error('fetch failed'));
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'channel-post',
+                kind: 42,
+                content: 'channel post',
+                media: [],
+                channelEventId: 'channel-id',
+                channelRelayHints: ['wss://channel.example.com/'],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
         });
 
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
-
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
-
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
-
         await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
+            expect(channelMetadataRepositoryMock.markFetchFailed).toHaveBeenCalledWith(
+                'channel-id',
+                expect.any(Number),
+                expect.any(Array),
+            );
+            expect(screen.getByText('不明')).toBeTruthy();
         });
     });
 

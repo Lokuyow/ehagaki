@@ -531,28 +531,18 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
+    it('[delete-service-success] 削除確認後に service を呼び、削除状態表示へ切り替える', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'delete-target', content: '削除対象本文', media: [] }),
+        ]);
+        postDeletionServiceMock.requestDeletion.mockResolvedValue({
+            success: true,
+            eventId: 'delete-event-id',
+            deletionEventId: 'delete-event-id',
+            deletedAt: 4567,
         });
 
-        await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
-            });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-        });
-    });
-
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -562,91 +552,48 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
-
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
-    });
-
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
-        vi.useFakeTimers();
-        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
-            items: [],
-            total: 0,
-            hasNext: false,
-        });
-
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-            },
-        });
-
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-
-        const searchInput = await openSearchBar();
-        await fireEvent.input(searchInput, { target: { value: '一致' } });
-        await vi.advanceTimersByTimeAsync(250);
+        await screen.findByText('削除対象本文');
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
 
         await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
+            expect(postDeletionServiceMock.requestDeletion).toHaveBeenCalledWith({
+                post: expect.objectContaining({ eventId: 'delete-target' }),
+                rxNostr: {},
             });
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
-
-        await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+            expect(screen.getAllByText('削除リクエスト済み')).toHaveLength(2);
         });
     });
 
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
+    it('[delete-service-failure] 削除送信失敗時に deleteFailed を表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+            createRecord({ eventId: 'delete-target', content: '削除対象本文', media: [] }),
         ]);
+        postDeletionServiceMock.requestDeletion.mockResolvedValue({
+            success: false,
+            error: 'post_error',
+        });
 
         render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
             },
         });
 
-        await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
-        });
-
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
-
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
-
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
+        await screen.findByText('削除対象本文');
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: '削除' }));
+        await fireEvent.click(await screen.findByRole('button', { name: '送信' }));
 
         await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
+            expect(screen.getAllByText('削除リクエストの送信に失敗しました')).toHaveLength(2);
         });
     });
 

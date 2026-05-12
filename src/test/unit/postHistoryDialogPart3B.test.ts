@@ -531,7 +531,24 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[empty-history] 空の投稿履歴を表示する', async () => {
+    it('[search-local] 検索 input からローカル検索へ切り替える', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧' }),
+        ]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [
+                createRecord({
+                    eventId: 'search-hit',
+                    content: 'needle result',
+                    media: [],
+                }),
+            ],
+            total: 1,
+            hasNext: false,
+        });
+
         render(PostHistoryDialog, {
             props: {
                 show: true,
@@ -539,40 +556,30 @@ describe('PostHistoryDialog', () => {
                 pubkeyHex: 'a'.repeat(64),
             },
         });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: '  needle  ' } });
+        await vi.advanceTimersByTimeAsync(250);
 
         await waitFor(() => {
-            expect(repositoryMock.countForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledWith({
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
                 pubkeyHex: 'a'.repeat(64),
-                limit: 50,
-                visibleUntil: null,
+                query: 'needle',
+                page: 1,
+                pageSize: 50,
             });
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+            expect(screen.getByText('needle result')).toBeTruthy();
+            expect(screen.queryByText('通常一覧')).toBeNull();
+            expect(screen.getByText('1件表示 / 1件一致')).toBeTruthy();
         });
     });
 
-    it('[repair-menu-button] post-history-heading のメニュー内に repair button を表示する', async () => {
-        render(PostHistoryDialog, {
-            props: {
-                show: true,
-                onClose: vi.fn(),
-                pubkeyHex: 'a'.repeat(64),
-                rxNostr: {} as any,
-            },
-        });
-
-        const repairButton = await findRepairButton();
-        const heading = document.body.querySelector('.post-history-heading');
-        const headingActions = document.body.querySelector('.post-history-heading-actions');
-
-        expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
-        expect(repairButton).toBeTruthy();
-    });
-
-    it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {
+    it('[search-no-results] 検索結果 0 件では searchNoResults を表示し、検索入力を消すと通常表示へ戻る', async () => {
         vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'normal', content: '通常一覧', media: [] }),
+        ]);
         localSearchServiceMock.searchLocalPosts.mockResolvedValue({
             items: [],
             total: 0,
@@ -587,34 +594,57 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
-
         const searchInput = await openSearchBar();
-        await fireEvent.input(searchInput, { target: { value: '一致' } });
+        await fireEvent.input(searchInput, { target: { value: 'nomatch' } });
         await vi.advanceTimersByTimeAsync(250);
 
         await waitFor(() => {
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
-                pubkeyHex: 'a'.repeat(64),
-                query: '一致',
-                page: 1,
-                pageSize: 50,
-            });
+            expect(screen.getByText('一致する投稿はありません')).toBeTruthy();
+            expect(screen.queryByText('投稿履歴はありません')).toBeNull();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '検索を閉じる' }));
+        await fireEvent.input(searchInput, { target: { value: '' } });
+        await vi.advanceTimersByTimeAsync(250);
 
         await waitFor(() => {
-            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+            expect(screen.getByText('通常一覧')).toBeTruthy();
             expect(screen.queryByText('一致する投稿はありません')).toBeNull();
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(1);
         });
     });
 
-    it('[delete-local-history] ローカル投稿履歴削除は ConfirmDialog を経由し、削除後に空状態へ戻す', async () => {
-        repositoryMock.countForPubkey.mockResolvedValue(1);
-        repositoryMock.getPage.mockResolvedValue([
-            createRecord({ eventId: 'local-history-post', content: '削除対象' }),
+    it('[search-channel-nevent] 検索中も cached channel 名表示と nevent コピーを維持し、channel relay fetch はしない', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getPage.mockResolvedValue([]);
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [
+                createRecord({
+                    eventId: 'channel-search',
+                    kind: 42,
+                    content: 'channel hit',
+                    media: [],
+                    channelEventId: 'channel-id',
+                    channelRelayHints: ['wss://channel.example.com/'],
+                }),
+            ],
+            total: 1,
+            hasNext: false,
+        });
+        channelMetadataRepositoryMock.getMany.mockResolvedValue([
+            {
+                channelEventId: 'channel-id',
+                name: 'cached-general',
+                about: null,
+                picture: null,
+                relays: ['wss://channel-write.example.com/'],
+                relayHints: ['wss://channel.example.com/'],
+                creatorPubkey: 'c'.repeat(64),
+                createEventCreatedAt: 100,
+                metadataEventId: 'm'.repeat(64),
+                metadataCreatedAt: 200,
+                fetchedAt: 1000,
+            },
         ]);
 
         render(PostHistoryDialog, {
@@ -622,31 +652,88 @@ describe('PostHistoryDialog', () => {
                 show: true,
                 onClose: vi.fn(),
                 pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const searchInput = await openSearchBar();
+        await fireEvent.input(searchInput, { target: { value: 'channel' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(screen.getByText('cached-general')).toBeTruthy();
+            expect(channelContextServiceMock.resolveChannelMetadata).not.toHaveBeenCalled();
+        });
+
+        const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
+        await fireEvent.click(actionTrigger);
+        await fireEvent.click(await screen.findByRole('button', { name: 'neventをコピー' }));
+
+        expect(nostrUtilsMock.toNevent).toHaveBeenCalledWith(expect.objectContaining({
+            eventId: 'channel-search',
+            kind: 42,
+        }));
+        expect(screen.getByText('コピーしました')).toBeTruthy();
+    });
+
+    it('[sync-upsert] 同期成功後に upsert して一覧を更新する', async () => {
+        repositoryMock.upsertFetchedEvents.mockResolvedValueOnce({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(0)
+            .mockResolvedValueOnce(1);
+        repositoryMock.getPage
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([createRecord()]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [
+                    {
+                        event: {
+                            id: 'b'.repeat(64),
+                            pubkey: 'a'.repeat(64),
+                            kind: 1,
+                            content: '投稿本文',
+                            tags: [],
+                            created_at: 1_700_000_000,
+                            sig: 'c'.repeat(128),
+                        },
+                        relayUrls: ['wss://relay.example.com/'],
+                    },
+                ],
+                fetchedAt: 5000,
+                nextUntil: 1_699_999_999,
+                hasMore: true,
+                relayUrls: ['wss://relay.example.com/'],
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
             },
         });
 
         await waitFor(() => {
-            expect(screen.getByText('削除対象')).toBeTruthy();
-        });
-
-        await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
-
-        expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
-
-        repositoryMock.countForPubkey.mockResolvedValue(0);
-        repositoryMock.getPage.mockResolvedValue([]);
-
-        await fireEvent.click(screen.getByRole('button', { name: '全削除' }));
-
-        await waitFor(() => {
-            expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
-            expect(screen.queryByText('削除対象')).toBeNull();
+            expect(repositoryMock.upsertFetchedEvents).toHaveBeenCalledWith({
+                events: [
+                    {
+                        event: expect.objectContaining({ id: 'b'.repeat(64) }),
+                        relayUrls: ['wss://relay.example.com/'],
+                    },
+                ],
+                fetchedAt: 5000,
+            });
+            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+            expectDefaultMediaReplacement();
         });
     });
 
