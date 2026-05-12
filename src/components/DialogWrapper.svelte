@@ -294,15 +294,31 @@
         gap: 8px;
         width: 100%;
         box-sizing: border-box;
-        padding: 8px 10px;
+        padding: 6px;
         border-top: 1px solid var(--border-hr);
     }
 
     .dialog-page-button-group {
         display: flex;
         align-items: stretch;
-        gap: 6px;
-        flex: 0 0 auto;
+        gap: 4px;
+        flex: 1 0 auto;
+
+        :global(.dialog-page-icon-button) {
+            width: 40px;
+        }
+
+        :global(.dialog-page-button) {
+            min-width: 40px;
+            height: auto;
+            min-height: 40px;
+            flex: 1 0 auto;
+
+            :global(.svg-icon) {
+                width: 32px;
+                height: 32px;
+            }
+        }
     }
 
     .dialog-page-center {
@@ -320,22 +336,6 @@
         font-size: 0.82rem;
         text-align: center;
         white-space: nowrap;
-    }
-
-    :global(.dialog-page-button) {
-        min-width: 40px;
-        height: auto;
-        min-height: 40px;
-        flex: 0 0 auto;
-    }
-
-    :global(.dialog-page-icon-button) {
-        width: 40px;
-    }
-
-    :global(.dialog-page-icon-button .svg-icon) {
-        width: 24px;
-        height: 24px;
     }
 
     :global(.dialog-page-first-button .svg-icon) {
