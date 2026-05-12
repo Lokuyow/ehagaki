@@ -99,7 +99,7 @@
     "repairing": "Repairing...",
     "repairAdded": "Added {count} posts",
     "repairNoChanges": "No new posts found",
-    "repairContinueLater": "Partially repaired history. Remaining ranges will continue next time.",
+    "repairContinueLater": "Partially checked history. Remaining ranges will continue next time.",
     "repairPartialFailure": "Some ranges failed to fetch. Remaining ranges will continue next time.",
     "delete": "Delete",
     "deleteRequest": "Deletion request",

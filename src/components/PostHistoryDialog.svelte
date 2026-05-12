@@ -118,10 +118,12 @@
         deleteTargetPost ? buildPreviewContent(deleteTargetPost) : null,
     );
     let headingStatusMessageKey = $derived(
-        history.syncStatusMessageKey ?? history.repairStatusMessageKey,
+        history.repairStatusMessageKey ?? history.syncStatusMessageKey,
     );
     let headingStatusMessageValues = $derived(
-        history.syncStatusMessageKey ? null : history.repairStatusMessageValues,
+        history.repairStatusMessageKey
+            ? history.repairStatusMessageValues
+            : null,
     );
     let headingStatusError = $derived(
         history.syncStatus === "failed" ||
@@ -640,9 +642,11 @@
                                   values: headingStatusMessageValues,
                               })
                             : $_(headingStatusMessageKey)}
-                        showLoader={history.showSyncLoader}
+                        showLoader={history.showStatusLoader}
                         loaderSize={25}
-                        state={history.showSyncLoader ? "loading" : "complete"}
+                        state={history.showStatusLoader
+                            ? "loading"
+                            : "complete"}
                         customClass="status-loading-placeholder"
                     />
                 </div>

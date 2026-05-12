@@ -36,10 +36,31 @@ export interface PostHistoryRepairResult {
     addedCount: number;
     updatedCount: number;
     unchangedCount: number;
+    processedRangeCount: number;
+    hasRemainingRanges: boolean;
+    remainingRangeCount: number;
+    nextCursorUntil: number | null;
+    processedRanges: PostHistoryRepairProcessedRangeSummary[];
     attemptedRangeCount: number;
     totalRangeCount: number;
     hadFailures: boolean;
     hasRemainingWork: boolean;
+}
+
+export interface PostHistoryRepairProcessedRangeSummary {
+    source: "coverage" | "fallback";
+    rangeUnit: PostHistoryRepairRangeUnit;
+    since?: number;
+    until?: number;
+    requestedRelayUrls: string[];
+    observedRelayUrls: string[];
+    status: PostHistorySyncCoverageRecord["status"];
+    rawCount: number;
+    uniqueCount: number;
+    duplicateCount: number;
+    insertedCount: number;
+    updatedCount: number;
+    unchangedCount: number;
 }
 
 export interface PostHistoryRepairTask {
@@ -78,7 +99,14 @@ export interface PostHistoryRepairServiceDeps {
     now?: () => number;
     setTimeoutFn?: typeof setTimeout;
     clearTimeoutFn?: typeof clearTimeout;
+    console?: Pick<Console, "debug">;
 }
+
+type PostHistoryRepairRemainingWorkSummary = {
+    hasRemainingRanges: boolean;
+    remainingRangeCount: number;
+    nextCursorUntil: number | null;
+};
 
 function toUnixSeconds(timestampMs: number): number {
     return Math.max(0, Math.floor(timestampMs / 1000));
@@ -185,6 +213,25 @@ function isHardFailureStatus(status: PostHistorySyncCoverageRecord["status"]): b
     return status === "timeout" || status === "error";
 }
 
+function countFallbackMonthlyRanges(cursor: PostHistoryRepairCursor | null): number {
+    if (!cursor || cursor.nextUntil === null) {
+        return 0;
+    }
+
+    let count = 0;
+    let nextUntil = cursor.nextUntil;
+
+    while (nextUntil >= cursor.targetOldestCreatedAt) {
+        count += 1;
+        const nextDate = new Date(nextUntil * 1000);
+        nextUntil = Math.floor(
+            Date.UTC(nextDate.getUTCFullYear(), nextDate.getUTCMonth(), 1) / 1000,
+        ) - 1;
+    }
+
+    return count;
+}
+
 export class PostHistoryRepairService {
     private postHistoryRelayFetchService: Pick<typeof postHistoryRelayFetchService, "fetchLatest">;
     private postHistoryRepository: Pick<PostHistoryRepository, "upsertFetchedEvents" | "getOldestCreatedAt">;
@@ -196,6 +243,7 @@ export class PostHistoryRepairService {
     private now: () => number;
     private setTimeoutFn: typeof setTimeout;
     private clearTimeoutFn: typeof clearTimeout;
+    private console: Pick<Console, "debug">;
 
     constructor(deps: PostHistoryRepairServiceDeps = {}) {
         this.postHistoryRelayFetchService = deps.postHistoryRelayFetchService ?? postHistoryRelayFetchService;
@@ -206,6 +254,9 @@ export class PostHistoryRepairService {
         this.now = deps.now ?? Date.now;
         this.setTimeoutFn = deps.setTimeoutFn ?? setTimeout;
         this.clearTimeoutFn = deps.clearTimeoutFn ?? clearTimeout;
+        this.console = deps.console ?? (typeof globalThis.console !== "undefined"
+            ? globalThis.console
+            : { debug: () => undefined });
     }
 
     private async waitBetweenFetches(
@@ -359,17 +410,18 @@ export class PostHistoryRepairService {
         }
     }
 
-    private async hasRemainingWork(pubkeyHex: string): Promise<boolean> {
+    private async getRemainingWorkSummary(pubkeyHex: string): Promise<PostHistoryRepairRemainingWorkSummary> {
         const incompleteAttempts = await this.postHistorySyncCoverageRepository.listIncompleteAttempts({
             pubkeyHex,
-            limit: 1,
         });
-        if (incompleteAttempts.length > 0) {
-            return true;
-        }
-
         const cursor = await this.postHistoryRepairCursorRepository.get(pubkeyHex);
-        return !!cursor?.nextUntil;
+        const remainingRangeCount = incompleteAttempts.length + countFallbackMonthlyRanges(cursor);
+
+        return {
+            hasRemainingRanges: remainingRangeCount > 0,
+            remainingRangeCount,
+            nextCursorUntil: cursor?.nextUntil ?? null,
+        };
     }
 
     repairFromRelays(rxNostr: RxNostr, params: PostHistoryRepairParams): PostHistoryRepairTask {
@@ -383,6 +435,43 @@ export class PostHistoryRepairService {
             let unchangedCount = 0;
             let attemptedRangeCount = 0;
             let hadFailures = false;
+            const processedRanges: PostHistoryRepairProcessedRangeSummary[] = [];
+
+            const finalizeResult = async (
+                status: PostHistoryRepairResult["status"],
+            ): Promise<PostHistoryRepairResult> => {
+                const remainingWorkSummary = await this.getRemainingWorkSummary(params.pubkeyHex);
+                const result: PostHistoryRepairResult = {
+                    status,
+                    addedCount,
+                    updatedCount,
+                    unchangedCount,
+                    processedRangeCount: processedRanges.length,
+                    hasRemainingRanges: remainingWorkSummary.hasRemainingRanges,
+                    remainingRangeCount: remainingWorkSummary.remainingRangeCount,
+                    nextCursorUntil: remainingWorkSummary.nextCursorUntil,
+                    processedRanges,
+                    attemptedRangeCount,
+                    totalRangeCount: attemptedRangeCount + remainingWorkSummary.remainingRangeCount,
+                    hadFailures,
+                    hasRemainingWork: remainingWorkSummary.hasRemainingRanges,
+                };
+
+                this.console.debug("post_history_repair_summary", {
+                    pubkeyHex: params.pubkeyHex,
+                    requestedRelayUrls: [...new Set(processedRanges.flatMap((item) => item.requestedRelayUrls))],
+                    observedRelayUrls: [...new Set(processedRanges.flatMap((item) => item.observedRelayUrls))],
+                    processedRangeCount: result.processedRangeCount,
+                    addedCount: result.addedCount,
+                    updatedCount: result.updatedCount,
+                    hasRemainingRanges: result.hasRemainingRanges,
+                    remainingRangeCount: result.remainingRangeCount,
+                    nextCursorUntil: result.nextCursorUntil,
+                    processedRanges: result.processedRanges,
+                });
+
+                return result;
+            };
 
             while (!cancelled && attemptedRangeCount < POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN) {
                 const work = await this.getNextWork(params.pubkeyHex);
@@ -397,17 +486,7 @@ export class PostHistoryRepairService {
                 }
 
                 if (cancelled) {
-                    const hasRemainingWork = await this.hasRemainingWork(params.pubkeyHex);
-                    return {
-                        status: "cancelled",
-                        addedCount,
-                        updatedCount,
-                        unchangedCount,
-                        attemptedRangeCount,
-                        totalRangeCount: attemptedRangeCount + (hasRemainingWork ? 1 : 0),
-                        hadFailures,
-                        hasRemainingWork,
-                    };
+                    return finalizeResult("cancelled");
                 }
 
                 const fetchTask = this.postHistoryRelayFetchService.fetchLatest(rxNostr, {
@@ -436,6 +515,39 @@ export class PostHistoryRepairService {
 
                 attemptedRangeCount += 1;
 
+                let insertedCount = 0;
+                let rangeUpdatedCount = 0;
+                let rangeUnchangedCount = 0;
+
+                if (result.events.length > 0) {
+                    const upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
+                        events: result.events,
+                        fetchedAt: result.fetchedAt,
+                    });
+                    insertedCount = upsertSummary.insertedCount;
+                    rangeUpdatedCount = upsertSummary.updatedCount;
+                    rangeUnchangedCount = upsertSummary.unchangedCount;
+                    addedCount += insertedCount;
+                    updatedCount += rangeUpdatedCount;
+                    unchangedCount += rangeUnchangedCount;
+                }
+
+                processedRanges.push({
+                    source: work.source,
+                    rangeUnit: work.range.rangeUnit,
+                    ...(typeof work.range.since === "number" ? { since: work.range.since } : {}),
+                    ...(typeof work.range.until === "number" ? { until: work.range.until } : {}),
+                    requestedRelayUrls: coverageRecord.requestedRelayUrls,
+                    observedRelayUrls: coverageRecord.observedRelayUrls,
+                    status: coverageRecord.status,
+                    rawCount: coverageRecord.rawCount,
+                    uniqueCount: coverageRecord.uniqueCount,
+                    duplicateCount: coverageRecord.duplicateCount,
+                    insertedCount,
+                    updatedCount: rangeUpdatedCount,
+                    unchangedCount: rangeUnchangedCount,
+                });
+
                 if (work.source === "coverage") {
                     await this.postHistorySyncCoverageRepository.markResolved(work.record.id);
                 } else {
@@ -443,27 +555,7 @@ export class PostHistoryRepairService {
                 }
 
                 if (cancelled || result.status === "cancelled") {
-                    const hasRemainingWork = await this.hasRemainingWork(params.pubkeyHex);
-                    return {
-                        status: "cancelled",
-                        addedCount,
-                        updatedCount,
-                        unchangedCount,
-                        attemptedRangeCount,
-                        totalRangeCount: attemptedRangeCount + (hasRemainingWork ? 1 : 0),
-                        hadFailures,
-                        hasRemainingWork,
-                    };
-                }
-
-                if (result.events.length > 0) {
-                    const upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
-                        events: result.events,
-                        fetchedAt: result.fetchedAt,
-                    });
-                    addedCount += upsertSummary.insertedCount;
-                    updatedCount += upsertSummary.updatedCount;
-                    unchangedCount += upsertSummary.unchangedCount;
+                    return finalizeResult("cancelled");
                 }
 
                 if (coverageRecord.status === "partial") {
@@ -489,18 +581,7 @@ export class PostHistoryRepairService {
                 }
             }
 
-            const hasRemainingWork = await this.hasRemainingWork(params.pubkeyHex);
-
-            return {
-                status: hadFailures || hasRemainingWork ? "partial" : "success",
-                addedCount,
-                updatedCount,
-                unchangedCount,
-                attemptedRangeCount,
-                totalRangeCount: attemptedRangeCount + (hasRemainingWork ? 1 : 0),
-                hadFailures,
-                hasRemainingWork,
-            };
+            return finalizeResult(hadFailures ? "partial" : "success");
         })();
 
         return {

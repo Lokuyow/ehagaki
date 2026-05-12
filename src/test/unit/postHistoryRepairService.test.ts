@@ -55,6 +55,7 @@ function createCoverageRecord(overrides: Record<string, any> = {}) {
 
 describe("PostHistoryRepairService", () => {
     it("timeout / error / partial / cancelled の順で未完了 range を再取得する", async () => {
+        const debug = vi.fn();
         let unresolved = [
             createCoverageRecord({ id: "timeout-range", status: "timeout", until: 400 }),
             createCoverageRecord({ id: "error-range", status: "error", until: 300, fetchedAt: 4000 }),
@@ -91,6 +92,7 @@ describe("PostHistoryRepairService", () => {
                 save: vi.fn(),
             },
             now: () => 10_000,
+            console: { debug },
         });
 
         const result = await service.repairFromRelays({} as any, {
@@ -120,7 +122,24 @@ describe("PostHistoryRepairService", () => {
         );
         expect(saveAttempt).toHaveBeenCalledTimes(4);
         expect(result.status).toBe("success");
+        expect(result.processedRangeCount).toBe(4);
+        expect(result.hasRemainingRanges).toBe(false);
         expect(result.hasRemainingWork).toBe(false);
+        expect(result.remainingRangeCount).toBe(0);
+        expect(result.nextCursorUntil).toBeNull();
+        expect(result.processedRanges).toEqual([
+            expect.objectContaining({ until: 400, status: "complete" }),
+            expect.objectContaining({ until: 300, status: "complete" }),
+            expect.objectContaining({ until: 200, status: "complete" }),
+            expect.objectContaining({ until: 100, status: "complete" }),
+        ]);
+        expect(debug).toHaveBeenCalledWith(
+            "post_history_repair_summary",
+            expect.objectContaining({
+                processedRangeCount: 4,
+                hasRemainingRanges: false,
+            }),
+        );
     });
 
     it("partial range は次回用の細分 range に分割してから pending range を取得する", async () => {
@@ -220,6 +239,7 @@ describe("PostHistoryRepairService", () => {
     });
 
     it("未完了 coverage が無い場合は local oldestCreatedAt まで月単位 range を最大 5 件だけ再取得し、残りは cursor で次回へ持ち越す", async () => {
+        const debug = vi.fn();
         const setTimeoutFn = vi.fn((callback: () => void) => {
             callback();
             return 1 as unknown as ReturnType<typeof setTimeout>;
@@ -269,6 +289,7 @@ describe("PostHistoryRepairService", () => {
             now: () => Date.UTC(2026, 4, 12, 12, 0, 0),
             setTimeoutFn: setTimeoutFn as unknown as typeof setTimeout,
             clearTimeoutFn: vi.fn() as unknown as typeof clearTimeout,
+            console: { debug },
         });
 
         const result = await service.repairFromRelays({} as any, {
@@ -288,7 +309,19 @@ describe("PostHistoryRepairService", () => {
         expect(setTimeoutFn).toHaveBeenCalledTimes(POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN - 1);
         expect(cursorSave).toHaveBeenCalled();
         expect(result.attemptedRangeCount).toBe(POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN);
+        expect(result.processedRangeCount).toBe(POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN);
+        expect(result.hasRemainingRanges).toBe(true);
         expect(result.hasRemainingWork).toBe(true);
-        expect(result.status).toBe("partial");
+        expect(result.remainingRangeCount).toBeGreaterThan(0);
+        expect(result.nextCursorUntil).not.toBeNull();
+        expect(result.status).toBe("success");
+        expect(debug).toHaveBeenCalledWith(
+            "post_history_repair_summary",
+            expect.objectContaining({
+                hasRemainingRanges: true,
+                remainingRangeCount: expect.any(Number),
+                nextCursorUntil: expect.any(Number),
+            }),
+        );
     });
 });

@@ -20,7 +20,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairing': '修復中...',
         'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
         'postHistory.repairNoChanges': '新しい投稿はありません',
-        'postHistory.repairContinueLater': '一部を修復しました。残りは次回続きから確認します。',
+        'postHistory.repairContinueLater': '一部を確認しました。残りは次回続きから確認します。',
         'postHistory.repairPartialFailure': '一部のリレーで取得に失敗しました',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
@@ -318,6 +318,11 @@ describe('PostHistoryDialog', () => {
                 addedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
+                processedRangeCount: 0,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [],
                 attemptedRangeCount: 0,
                 totalRangeCount: 0,
                 hadFailures: false,
@@ -461,6 +466,11 @@ describe('PostHistoryDialog', () => {
             addedCount: 1;
             updatedCount: 0;
             unchangedCount: 0;
+            processedRangeCount: 1;
+            hasRemainingRanges: false;
+            remainingRangeCount: 0;
+            nextCursorUntil: null;
+            processedRanges: [];
             attemptedRangeCount: 1;
             totalRangeCount: 1;
             hadFailures: false;
@@ -521,6 +531,11 @@ describe('PostHistoryDialog', () => {
             addedCount: 1,
             updatedCount: 0,
             unchangedCount: 0,
+            processedRangeCount: 1,
+            hasRemainingRanges: false,
+            remainingRangeCount: 0,
+            nextCursorUntil: null,
+            processedRanges: [],
             attemptedRangeCount: 1,
             totalRangeCount: 1,
             hadFailures: false,
@@ -558,6 +573,11 @@ describe('PostHistoryDialog', () => {
                 addedCount: 2,
                 updatedCount: 0,
                 unchangedCount: 0,
+                processedRangeCount: 5,
+                hasRemainingRanges: true,
+                remainingRangeCount: 3,
+                nextCursorUntil: 1715515200,
+                processedRanges: [],
                 attemptedRangeCount: 5,
                 totalRangeCount: 6,
                 hadFailures: false,
@@ -582,7 +602,8 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
 
         await waitFor(() => {
-            expect(screen.getByText('一部を修復しました。残りは次回続きから確認します。')).toBeTruthy();
+            expect(screen.getByText('一部を確認しました。残りは次回続きから確認します。')).toBeTruthy();
+            expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
         });
     });
 
@@ -620,6 +641,11 @@ describe('PostHistoryDialog', () => {
                 addedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
+                processedRangeCount: 1,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [],
                 attemptedRangeCount: 1,
                 totalRangeCount: 1,
                 hadFailures: false,

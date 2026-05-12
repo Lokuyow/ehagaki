@@ -210,8 +210,17 @@ export function usePostHistoryListing({
         (state.syncStatus === "syncing" ||
             state.syncStatus === "older-syncing"),
     );
-    const repairStatusMessageKey = $derived(state.repairMessageKey);
-    const repairStatusMessageValues = $derived(state.repairMessageValues);
+    const showStatusLoader = $derived(showSyncLoader || isRepairing);
+    const repairStatusMessageKey = $derived(
+        state.repairStatus === "repairing"
+            ? "postHistory.repairing"
+            : state.repairMessageKey,
+    );
+    const repairStatusMessageValues = $derived(
+        state.repairStatus === "repairing"
+            ? null
+            : state.repairMessageValues,
+    );
 
     function cancelCurrentSync(): void {
         currentFetchTask?.cancel();
@@ -590,6 +599,10 @@ export function usePostHistoryListing({
             currentRepairTask = null;
             state.repairStatus = "idle";
 
+            if (typeof globalThis.console?.debug === "function") {
+                globalThis.console.debug("post_history_repair_result", result);
+            }
+
             if (!getShow() || result.status === "cancelled") {
                 return;
             }
@@ -603,15 +616,28 @@ export function usePostHistoryListing({
             if (result.hadFailures) {
                 state.repairMessageKey = "postHistory.repairPartialFailure";
                 state.repairMessageValues = null;
-            } else if (result.hasRemainingWork) {
+            } else if (result.hasRemainingRanges) {
                 state.repairMessageKey = "postHistory.repairContinueLater";
-                state.repairMessageValues = null;
+                state.repairMessageValues = {
+                    processedRangeCount: result.processedRangeCount,
+                    remainingRangeCount: result.remainingRangeCount,
+                    addedCount: result.addedCount,
+                    updatedCount: result.updatedCount,
+                    nextCursorUntil: result.nextCursorUntil,
+                };
             } else if (result.addedCount > 0) {
                 state.repairMessageKey = "postHistory.repairAdded";
-                state.repairMessageValues = { count: result.addedCount };
+                state.repairMessageValues = {
+                    count: result.addedCount,
+                    processedRangeCount: result.processedRangeCount,
+                    updatedCount: result.updatedCount,
+                };
             } else {
                 state.repairMessageKey = "postHistory.repairNoChanges";
-                state.repairMessageValues = null;
+                state.repairMessageValues = {
+                    processedRangeCount: result.processedRangeCount,
+                    updatedCount: result.updatedCount,
+                };
             }
         } catch {
             if (currentRepairTask !== task) {
@@ -787,6 +813,9 @@ export function usePostHistoryListing({
         },
         get showSyncLoader() {
             return showSyncLoader;
+        },
+        get showStatusLoader() {
+            return showStatusLoader;
         },
         get isRepairing() {
             return isRepairing;
