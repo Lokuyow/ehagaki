@@ -186,6 +186,76 @@ function splitRepairRange(range: PostHistoryRepairRange): PostHistoryRepairRange
     return [];
 }
 
+function createContinuationRepairRange(params: {
+    range: PostHistoryRepairRange;
+    nextUntil: number | null | undefined;
+    didMateriallyChange?: boolean;
+    allowNoProgressEscape?: boolean;
+}): PostHistoryRepairRange | null {
+    const {
+        range,
+        nextUntil,
+        didMateriallyChange = true,
+        allowNoProgressEscape = false,
+    } = params;
+
+    if (typeof nextUntil !== "number") {
+        return null;
+    }
+
+    let continuationUntil = typeof range.until === "number"
+        ? Math.min(range.until, nextUntil)
+        : nextUntil;
+
+    if (
+        allowNoProgressEscape
+        && !didMateriallyChange
+        && typeof range.until === "number"
+        && continuationUntil === range.until
+    ) {
+        continuationUntil = range.until - 1;
+    }
+
+    if (typeof range.since === "number" && continuationUntil < range.since) {
+        return null;
+    }
+
+    return {
+        kinds: [...range.kinds],
+        rangeUnit: inferRangeUnit(range.since, continuationUntil),
+        ...(typeof range.since === "number" ? { since: range.since } : {}),
+        until: continuationUntil,
+        limit: range.limit,
+    };
+}
+
+function isSameRepairRange(
+    left: PostHistoryRepairRange,
+    right: PostHistoryRepairRange,
+): boolean {
+    return left.rangeUnit === right.rangeUnit
+        && left.limit === right.limit
+        && left.since === right.since
+        && left.until === right.until
+        && left.kinds.length === right.kinds.length
+        && left.kinds.every((kind, index) => kind === right.kinds[index]);
+}
+
+function toPendingRangeInput(
+    pubkeyHex: string,
+    range: PostHistoryRepairRange,
+) {
+    return {
+        pubkeyHex,
+        requestKind: "repair" as const,
+        kinds: range.kinds,
+        rangeUnit: range.rangeUnit,
+        ...(typeof range.since === "number" ? { since: range.since } : {}),
+        ...(typeof range.until === "number" ? { until: range.until } : {}),
+        limit: range.limit,
+    };
+}
+
 function createFallbackMonthlyRange(
     nextUntil: number,
     targetOldestCreatedAt: number,
@@ -380,19 +450,31 @@ export class PostHistoryRepairService {
             const candidate = incompleteAttempts[0];
 
             if (candidate) {
+                const candidateRange = toRepairRange(candidate);
+
                 if (candidate.status === "partial") {
-                    const splitRanges = splitRepairRange(toRepairRange(candidate));
+                    const continuationRange = createContinuationRepairRange({
+                        range: candidateRange,
+                        nextUntil: candidate.nextUntil,
+                    });
+
+                    if (
+                        continuationRange
+                        && !isSameRepairRange(continuationRange, candidateRange)
+                    ) {
+                        await this.postHistorySyncCoverageRepository.enqueuePendingRanges([
+                            toPendingRangeInput(pubkeyHex, continuationRange),
+                        ]);
+                        await this.postHistorySyncCoverageRepository.markResolved(candidate.id);
+                        continue;
+                    }
+
+                    const splitRanges = splitRepairRange(candidateRange);
                     if (splitRanges.length > 0) {
                         await this.postHistorySyncCoverageRepository.enqueuePendingRanges(
-                            splitRanges.map((range) => ({
-                                pubkeyHex,
-                                requestKind: "repair",
-                                kinds: range.kinds,
-                                rangeUnit: range.rangeUnit,
-                                ...(typeof range.since === "number" ? { since: range.since } : {}),
-                                ...(typeof range.until === "number" ? { until: range.until } : {}),
-                                limit: range.limit,
-                            })),
+                            splitRanges.map((range) =>
+                                toPendingRangeInput(pubkeyHex, range)
+                            ),
                         );
                         await this.postHistorySyncCoverageRepository.markResolved(candidate.id);
                         continue;
@@ -402,7 +484,7 @@ export class PostHistoryRepairService {
                 return {
                     source: "coverage",
                     record: candidate,
-                    range: toRepairRange(candidate),
+                    range: candidateRange,
                 };
             }
 
@@ -518,6 +600,7 @@ export class PostHistoryRepairService {
                 let insertedCount = 0;
                 let rangeUpdatedCount = 0;
                 let rangeUnchangedCount = 0;
+                let didMateriallyChange = false;
 
                 if (result.events.length > 0) {
                     const upsertSummary = await this.postHistoryRepository.upsertFetchedEvents({
@@ -527,6 +610,7 @@ export class PostHistoryRepairService {
                     insertedCount = upsertSummary.insertedCount;
                     rangeUpdatedCount = upsertSummary.updatedCount;
                     rangeUnchangedCount = upsertSummary.unchangedCount;
+                    didMateriallyChange = insertedCount + rangeUpdatedCount > 0;
                     addedCount += insertedCount;
                     updatedCount += rangeUpdatedCount;
                     unchangedCount += rangeUnchangedCount;
@@ -559,20 +643,31 @@ export class PostHistoryRepairService {
                 }
 
                 if (coverageRecord.status === "partial") {
-                    const splitRanges = splitRepairRange(work.range);
-                    if (splitRanges.length > 0) {
-                        await this.postHistorySyncCoverageRepository.enqueuePendingRanges(
-                            splitRanges.map((range) => ({
-                                pubkeyHex: params.pubkeyHex,
-                                requestKind: "repair",
-                                kinds: range.kinds,
-                                rangeUnit: range.rangeUnit,
-                                ...(typeof range.since === "number" ? { since: range.since } : {}),
-                                ...(typeof range.until === "number" ? { until: range.until } : {}),
-                                limit: range.limit,
-                            })),
-                        );
+                    const continuationRange = createContinuationRepairRange({
+                        range: work.range,
+                        nextUntil: coverageRecord.nextUntil,
+                        didMateriallyChange,
+                        allowNoProgressEscape: true,
+                    });
+
+                    if (
+                        continuationRange
+                        && !isSameRepairRange(continuationRange, work.range)
+                    ) {
+                        await this.postHistorySyncCoverageRepository.enqueuePendingRanges([
+                            toPendingRangeInput(params.pubkeyHex, continuationRange),
+                        ]);
                         await this.postHistorySyncCoverageRepository.markResolved(coverageRecord.id);
+                    } else {
+                        const splitRanges = splitRepairRange(work.range);
+                        if (splitRanges.length > 0) {
+                            await this.postHistorySyncCoverageRepository.enqueuePendingRanges(
+                                splitRanges.map((range) =>
+                                    toPendingRangeInput(params.pubkeyHex, range)
+                                ),
+                            );
+                            await this.postHistorySyncCoverageRepository.markResolved(coverageRecord.id);
+                        }
                     }
                 }
 

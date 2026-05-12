@@ -238,6 +238,241 @@ describe("PostHistoryRepairService", () => {
         expect(result.attemptedRangeCount).toBe(1);
     });
 
+    it("partial day range は nextUntil で狭めた pending range に置き換えてから再取得する", async () => {
+        let unresolved = [
+            createCoverageRecord({
+                id: "partial-day",
+                status: "partial",
+                requestKind: "repair",
+                rangeUnit: "day",
+                since: 100,
+                until: 200,
+                nextUntil: 150,
+                rangeKey: "1,42|100|200|200",
+            }),
+        ];
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                fetchedAt: 9_000,
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                observedRelayUrls: [],
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            })),
+            cancel: vi.fn(),
+        });
+        const listIncompleteAttempts = vi.fn().mockImplementation(async () => unresolved);
+        const enqueuePendingRanges = vi.fn().mockImplementation(async (inputs: any[]) => {
+            const records = inputs.map((input, index) => createCoverageRecord({
+                id: `pending-narrowed-${index}`,
+                status: "pending",
+                requestKind: "repair",
+                rangeUnit: input.rangeUnit,
+                since: input.since,
+                until: input.until,
+                limit: input.limit,
+                rangeKey: `${input.kinds.join(",")}|${input.since ?? ""}|${input.until ?? ""}|${input.limit}`,
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                fetchedAt: 6_000 + index,
+            }));
+            unresolved = [...unresolved, ...records];
+            return records;
+        });
+        const markResolved = vi.fn().mockImplementation(async (id: string) => {
+            unresolved = unresolved.filter((record) => record.id !== id);
+        });
+        const saveAttempt = vi.fn().mockResolvedValue(createCoverageRecord({
+            id: "complete-after-narrow",
+            status: "complete",
+            requestKind: "repair",
+            rangeUnit: "day",
+            since: 100,
+            until: 150,
+            rangeKey: "1,42|100|150|200",
+        }));
+        const service = new PostHistoryRepairService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistorySyncCoverageRepository: {
+                listIncompleteAttempts,
+                saveAttempt,
+                enqueuePendingRanges,
+                markResolved,
+            },
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn().mockResolvedValue({ insertedCount: 0, updatedCount: 0, unchangedCount: 0 }),
+                getOldestCreatedAt: vi.fn().mockResolvedValue(null),
+            },
+            postHistoryRepairCursorRepository: {
+                get: vi.fn().mockResolvedValue(null),
+                save: vi.fn(),
+            },
+            now: () => 10_000,
+        });
+
+        const result = await service.repairFromRelays({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+        }).promise;
+
+        expect(enqueuePendingRanges).toHaveBeenCalledWith([
+            expect.objectContaining({
+                since: 100,
+                until: 150,
+                rangeUnit: "day",
+            }),
+        ]);
+        expect(fetchLatest).toHaveBeenCalledTimes(1);
+        expect(fetchLatest).toHaveBeenCalledWith(
+            {} as any,
+            expect.objectContaining({
+                since: 100,
+                until: 150,
+            }),
+        );
+        expect(result.processedRangeCount).toBe(1);
+        expect(result.hasRemainingRanges).toBe(false);
+    });
+
+    it("進展が無い partial day range は nextUntil - 1 の pending range に逃がす", async () => {
+        let unresolved = [
+            createCoverageRecord({
+                id: "pending-day",
+                status: "pending",
+                requestKind: "repair",
+                rangeUnit: "day",
+                since: 100,
+                until: 200,
+                rangeKey: "1,42|100|200|200",
+                fetchedAt: 7_000,
+            }),
+        ];
+        const fetchLatest = vi.fn()
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createFetchResult({
+                    fetchedAt: 8_000,
+                    nextUntil: 200,
+                    rawCount: 0,
+                    uniqueCount: 0,
+                    duplicateCount: 0,
+                    observedRelayUrls: [],
+                    perRelayCounts: [],
+                    oldestCreatedAt: null,
+                    newestCreatedAt: null,
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createFetchResult({
+                    fetchedAt: 9_000,
+                    nextUntil: 199,
+                    rawCount: 0,
+                    uniqueCount: 0,
+                    duplicateCount: 0,
+                    observedRelayUrls: [],
+                    perRelayCounts: [],
+                    oldestCreatedAt: null,
+                    newestCreatedAt: null,
+                })),
+                cancel: vi.fn(),
+            });
+        const listIncompleteAttempts = vi.fn().mockImplementation(async () => unresolved);
+        const enqueuePendingRanges = vi.fn().mockImplementation(async (inputs: any[]) => {
+            const records = inputs.map((input, index) => createCoverageRecord({
+                id: `pending-escaped-${index}`,
+                status: "pending",
+                requestKind: "repair",
+                rangeUnit: input.rangeUnit,
+                since: input.since,
+                until: input.until,
+                limit: input.limit,
+                rangeKey: `${input.kinds.join(",")}|${input.since ?? ""}|${input.until ?? ""}|${input.limit}`,
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                fetchedAt: 8_100 + index,
+            }));
+            unresolved = [...unresolved, ...records];
+            return records;
+        });
+        const markResolved = vi.fn().mockImplementation(async (id: string) => {
+            unresolved = unresolved.filter((record) => record.id !== id);
+        });
+        const saveAttempt = vi.fn()
+            .mockResolvedValueOnce(createCoverageRecord({
+                id: "partial-after-200",
+                status: "partial",
+                requestKind: "repair",
+                rangeUnit: "day",
+                since: 100,
+                until: 200,
+                nextUntil: 200,
+                rangeKey: "1,42|100|200|200",
+            }))
+            .mockResolvedValueOnce(createCoverageRecord({
+                id: "complete-after-199",
+                status: "complete",
+                requestKind: "repair",
+                rangeUnit: "day",
+                since: 100,
+                until: 199,
+                rangeKey: "1,42|100|199|200",
+            }));
+        const service = new PostHistoryRepairService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistorySyncCoverageRepository: {
+                listIncompleteAttempts,
+                saveAttempt,
+                enqueuePendingRanges,
+                markResolved,
+            },
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn().mockResolvedValue({ insertedCount: 0, updatedCount: 0, unchangedCount: 0 }),
+                getOldestCreatedAt: vi.fn().mockResolvedValue(null),
+            },
+            postHistoryRepairCursorRepository: {
+                get: vi.fn().mockResolvedValue(null),
+                save: vi.fn(),
+            },
+            now: () => 10_000,
+        });
+
+        const result = await service.repairFromRelays({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+        }).promise;
+
+        expect(enqueuePendingRanges).toHaveBeenCalledWith([
+            expect.objectContaining({
+                since: 100,
+                until: 199,
+                rangeUnit: "day",
+            }),
+        ]);
+        expect(fetchLatest).toHaveBeenNthCalledWith(
+            1,
+            {} as any,
+            expect.objectContaining({
+                since: 100,
+                until: 200,
+            }),
+        );
+        expect(fetchLatest).toHaveBeenNthCalledWith(
+            2,
+            {} as any,
+            expect.objectContaining({
+                since: 100,
+                until: 199,
+            }),
+        );
+        expect(result.processedRangeCount).toBe(2);
+        expect(result.hasRemainingRanges).toBe(false);
+    });
+
     it("未完了 coverage が無い場合は local oldestCreatedAt まで月単位 range を最大 5 件だけ再取得し、残りは cursor で次回へ持ち越す", async () => {
         const debug = vi.fn();
         const setTimeoutFn = vi.fn((callback: () => void) => {
