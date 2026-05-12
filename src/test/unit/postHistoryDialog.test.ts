@@ -20,6 +20,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.repairing': '修復中...',
         'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
         'postHistory.repairNoChanges': '新しい投稿はありません',
+        'postHistory.repairContinueLater': '一部を修復しました。残りは次回続きから確認します。',
         'postHistory.repairPartialFailure': '一部のリレーで取得に失敗しました',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
@@ -320,6 +321,7 @@ describe('PostHistoryDialog', () => {
                 attemptedRangeCount: 0,
                 totalRangeCount: 0,
                 hadFailures: false,
+                hasRemainingWork: false,
             }),
             cancel: vi.fn(),
         });
@@ -462,6 +464,7 @@ describe('PostHistoryDialog', () => {
             attemptedRangeCount: 1;
             totalRangeCount: 1;
             hadFailures: false;
+            hasRemainingWork: false;
         }>();
         relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
             promise: initialSync.promise,
@@ -521,11 +524,65 @@ describe('PostHistoryDialog', () => {
             attemptedRangeCount: 1,
             totalRangeCount: 1,
             hadFailures: false,
+            hasRemainingWork: false,
         });
 
         await waitFor(() => {
             expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
             expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+        });
+    });
+
+    it('repair が未完了なら次回継続メッセージを表示する', async () => {
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'partial',
+                addedCount: 2,
+                updatedCount: 0,
+                unchangedCount: 0,
+                attemptedRangeCount: 5,
+                totalRangeCount: 6,
+                hadFailures: false,
+                hasRemainingWork: true,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('一部を修復しました。残りは次回続きから確認します。')).toBeTruthy();
         });
     });
 
@@ -566,6 +623,7 @@ describe('PostHistoryDialog', () => {
                 attemptedRangeCount: 1,
                 totalRangeCount: 1,
                 hadFailures: false,
+                hasRemainingWork: false,
             }),
             cancel: vi.fn(),
         });

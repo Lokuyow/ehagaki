@@ -170,9 +170,11 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
-export type PostHistorySyncCoverageStatus = 'complete' | 'partial' | 'timeout' | 'error' | 'cancelled';
+export type PostHistorySyncCoverageStatus = 'pending' | 'complete' | 'partial' | 'timeout' | 'error' | 'cancelled';
 
 export type PostHistorySyncCoverageRequestKind = 'initial' | 'older' | 'repair';
+
+export type PostHistoryRepairRangeUnit = 'month' | 'week' | 'day' | 'custom';
 
 export interface PostHistorySyncCoverageRelayCountRecord {
     relayUrl: string;
@@ -189,6 +191,8 @@ export interface PostHistorySyncCoverageRecord {
     relayKey: string;
     kinds: number[];
     kindsKey: string;
+    rangeKey: string;
+    rangeUnit?: PostHistoryRepairRangeUnit;
     since?: number;
     until?: number;
     limit: number;
@@ -202,6 +206,7 @@ export interface PostHistorySyncCoverageRecord {
     nextUntil?: number | null;
     fetchedAt: number;
     updatedAt: number;
+    resolvedAt?: number;
     schemaVersion: number;
 }
 

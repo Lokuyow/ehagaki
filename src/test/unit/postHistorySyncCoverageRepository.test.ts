@@ -114,6 +114,7 @@ describe("DexiePostHistorySyncCoverageRepository", () => {
         ]);
         expect(records[0].kinds).toEqual([1, 42]);
         expect(records[0].kindsKey).toBe("1,42");
+        expect(records[0].rangeKey).toBe("1,42|||200");
         expect(records[0].relayKey).toBe("wss://read.example.com/");
         expect(records[1].until).toBe(100);
         expect(records[2].nextUntil).toBe(99);
@@ -121,7 +122,47 @@ describe("DexiePostHistorySyncCoverageRepository", () => {
         db.close();
     });
 
-    it("未完了 coverage を timeout -> error -> partial -> cancelled の優先順で返す", async () => {
+    it("pending を重複なく保存し、resolved 後は未完了 coverage から除外する", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistorySyncCoverageRepository(
+            db,
+            () => 9000,
+            ((index) => () => `coverage-${index += 1}`)(0),
+        );
+        const pubkeyHex = "a".repeat(64);
+
+        const first = await repository.enqueuePendingRange({
+            pubkeyHex,
+            requestKind: "repair",
+            kinds: [42, 1],
+            rangeUnit: "week",
+            since: 10,
+            until: 20,
+            limit: 200,
+        });
+        const second = await repository.enqueuePendingRange({
+            pubkeyHex,
+            requestKind: "repair",
+            kinds: [1, 42],
+            rangeUnit: "week",
+            since: 10,
+            until: 20,
+            limit: 200,
+        });
+
+        expect(second.id).toBe(first.id);
+        expect((await repository.listIncompleteAttempts({ pubkeyHex })).map((record) => record.status)).toEqual([
+            "pending",
+        ]);
+
+        await repository.markResolved(first.id);
+
+        await expect(repository.listIncompleteAttempts({ pubkeyHex })).resolves.toEqual([]);
+
+        db.close();
+    });
+
+    it("未完了 coverage を timeout -> error -> partial -> pending -> cancelled の優先順で返す", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistorySyncCoverageRepository(
             db,
@@ -165,6 +206,15 @@ describe("DexiePostHistorySyncCoverageRepository", () => {
             limit: 200,
             result: createFetchResult({ fetchedAt: 6000 }),
         });
+        await repository.enqueuePendingRange({
+            pubkeyHex,
+            requestKind: "repair",
+            kinds: [1, 42],
+            rangeUnit: "day",
+            since: 10,
+            until: 10,
+            limit: 200,
+        });
 
         const records = await repository.listIncompleteAttempts({ pubkeyHex });
 
@@ -172,9 +222,10 @@ describe("DexiePostHistorySyncCoverageRepository", () => {
             "timeout",
             "error",
             "partial",
+            "pending",
             "cancelled",
         ]);
-        expect(records.map((record) => record.fetchedAt)).toEqual([4000, 5000, 2000, 3000]);
+        expect(records.map((record) => record.fetchedAt)).toEqual([4000, 5000, 2000, 9000, 3000]);
 
         db.close();
     });

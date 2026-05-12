@@ -3,6 +3,7 @@ import { RelayConfigUtils } from "../relayConfigUtils";
 import type { PostHistoryRelayFetchResult } from "../postHistoryRelayFetchService";
 import type {
     EHagakiDB,
+    PostHistoryRepairRangeUnit,
     PostHistorySyncCoverageRecord,
     PostHistorySyncCoverageRequestKind,
     PostHistorySyncCoverageStatus,
@@ -15,10 +16,21 @@ export type PostHistorySyncCoverageSaveInput = {
     pubkeyHex: string;
     requestKind: PostHistorySyncCoverageRequestKind;
     kinds: number[];
+    rangeUnit?: PostHistoryRepairRangeUnit;
     since?: number;
     until?: number;
     limit: number;
     result: PostHistoryRelayFetchResult;
+};
+
+export type PostHistorySyncCoveragePendingInput = {
+    pubkeyHex: string;
+    requestKind: PostHistorySyncCoverageRequestKind;
+    kinds: number[];
+    rangeUnit?: PostHistoryRepairRangeUnit;
+    since?: number;
+    until?: number;
+    limit: number;
 };
 
 export type PostHistorySyncCoverageListOptions = {
@@ -29,13 +41,17 @@ export type PostHistorySyncCoverageListOptions = {
 export interface PostHistorySyncCoverageRepository {
     saveAttempt(input: PostHistorySyncCoverageSaveInput): Promise<PostHistorySyncCoverageRecord>;
     listIncompleteAttempts(options: PostHistorySyncCoverageListOptions): Promise<PostHistorySyncCoverageRecord[]>;
+    enqueuePendingRange(input: PostHistorySyncCoveragePendingInput): Promise<PostHistorySyncCoverageRecord>;
+    enqueuePendingRanges(inputs: PostHistorySyncCoveragePendingInput[]): Promise<PostHistorySyncCoverageRecord[]>;
+    markResolved(id: string): Promise<void>;
 }
 
 const INCOMPLETE_STATUS_PRIORITY: Record<Exclude<PostHistorySyncCoverageStatus, "complete">, number> = {
     timeout: 0,
     error: 1,
     partial: 2,
-    cancelled: 3,
+    pending: 3,
+    cancelled: 4,
 };
 
 function normalizeKinds(kinds: number[]): number[] {
@@ -52,6 +68,20 @@ function normalizeKinds(kinds: number[]): number[] {
 
 function buildKindsKey(kinds: number[]): string {
     return normalizeKinds(kinds).join(",");
+}
+
+function buildRangeKey(
+    kinds: number[],
+    since: number | undefined,
+    until: number | undefined,
+    limit: number,
+): string {
+    return [
+        buildKindsKey(kinds),
+        typeof since === "number" ? since : "",
+        typeof until === "number" ? until : "",
+        limit,
+    ].join("|");
 }
 
 function buildRelayKey(relayUrls: string[]): string {
@@ -96,6 +126,7 @@ export class DexiePostHistorySyncCoverageRepository implements PostHistorySyncCo
         const observedRelayUrls = RelayConfigUtils.sanitizeExternalRelayUrls(input.result.observedRelayUrls);
         const updatedAt = this.now();
         const status = resolveCoverageStatus(input);
+        const rangeKey = buildRangeKey(kinds, input.since, input.until, input.limit);
 
         const record: PostHistorySyncCoverageRecord = {
             id: this.createId(input),
@@ -106,6 +137,8 @@ export class DexiePostHistorySyncCoverageRepository implements PostHistorySyncCo
             relayKey: buildRelayKey(requestedRelayUrls),
             kinds,
             kindsKey: buildKindsKey(kinds),
+            rangeKey,
+            ...(input.rangeUnit ? { rangeUnit: input.rangeUnit } : {}),
             ...(typeof input.since === "number" ? { since: input.since } : {}),
             ...(typeof input.until === "number" ? { until: input.until } : {}),
             limit: input.limit,
@@ -134,6 +167,93 @@ export class DexiePostHistorySyncCoverageRepository implements PostHistorySyncCo
         return record;
     }
 
+    async enqueuePendingRange(input: PostHistorySyncCoveragePendingInput): Promise<PostHistorySyncCoverageRecord> {
+        const kinds = normalizeKinds(input.kinds);
+        const rangeKey = buildRangeKey(kinds, input.since, input.until, input.limit);
+        const existingRecords = await this.db.postHistorySyncCoverage
+            .where("pubkeyHex")
+            .equals(input.pubkeyHex)
+            .toArray();
+        const existingPending = existingRecords.find((record) =>
+            record.requestKind === input.requestKind
+            && record.status === "pending"
+            && typeof record.resolvedAt !== "number"
+            && record.rangeKey === rangeKey,
+        );
+        if (existingPending) {
+            return existingPending;
+        }
+
+        const updatedAt = this.now();
+        const record: PostHistorySyncCoverageRecord = {
+            id: this.createId({
+                pubkeyHex: input.pubkeyHex,
+                requestKind: input.requestKind,
+                kinds,
+                ...(typeof input.since === "number" ? { since: input.since } : {}),
+                ...(typeof input.until === "number" ? { until: input.until } : {}),
+                rangeUnit: input.rangeUnit,
+                limit: input.limit,
+                result: {
+                    status: "success",
+                    events: [],
+                    fetchedAt: updatedAt,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: [],
+                    observedRelayUrls: [],
+                    rawCount: 0,
+                    uniqueCount: 0,
+                    duplicateCount: 0,
+                    perRelayCounts: [],
+                    oldestCreatedAt: null,
+                    newestCreatedAt: null,
+                },
+            }),
+            pubkeyHex: input.pubkeyHex,
+            requestKind: input.requestKind,
+            requestedRelayUrls: [],
+            observedRelayUrls: [],
+            relayKey: "",
+            kinds,
+            kindsKey: buildKindsKey(kinds),
+            rangeKey,
+            ...(input.rangeUnit ? { rangeUnit: input.rangeUnit } : {}),
+            ...(typeof input.since === "number" ? { since: input.since } : {}),
+            ...(typeof input.until === "number" ? { until: input.until } : {}),
+            limit: input.limit,
+            status: "pending",
+            rawCount: 0,
+            uniqueCount: 0,
+            duplicateCount: 0,
+            perRelayCounts: [],
+            fetchedAt: updatedAt,
+            updatedAt,
+            schemaVersion: POST_HISTORY_SYNC_COVERAGE_SCHEMA_VERSION,
+        };
+
+        await this.db.postHistorySyncCoverage.put(record);
+        return record;
+    }
+
+    async enqueuePendingRanges(inputs: PostHistorySyncCoveragePendingInput[]): Promise<PostHistorySyncCoverageRecord[]> {
+        const records: PostHistorySyncCoverageRecord[] = [];
+
+        for (const input of inputs) {
+            records.push(await this.enqueuePendingRange(input));
+        }
+
+        return records;
+    }
+
+    async markResolved(id: string): Promise<void> {
+        const updatedAt = this.now();
+        await this.db.postHistorySyncCoverage.update(id, {
+            resolvedAt: updatedAt,
+            updatedAt,
+        });
+    }
+
     async listIncompleteAttempts(options: PostHistorySyncCoverageListOptions): Promise<PostHistorySyncCoverageRecord[]> {
         const records = await this.db.postHistorySyncCoverage
             .where("pubkeyHex")
@@ -141,7 +261,7 @@ export class DexiePostHistorySyncCoverageRepository implements PostHistorySyncCo
             .toArray();
 
         return records
-            .filter((record) => record.status !== "complete")
+            .filter((record) => record.status !== "complete" && typeof record.resolvedAt !== "number")
             .sort((left, right) => {
                 const leftPriority = INCOMPLETE_STATUS_PRIORITY[left.status as Exclude<PostHistorySyncCoverageStatus, "complete">];
                 const rightPriority = INCOMPLETE_STATUS_PRIORITY[right.status as Exclude<PostHistorySyncCoverageStatus, "complete">];

@@ -603,6 +603,9 @@ export function usePostHistoryListing({
             if (result.hadFailures) {
                 state.repairMessageKey = "postHistory.repairPartialFailure";
                 state.repairMessageValues = null;
+            } else if (result.hasRemainingWork) {
+                state.repairMessageKey = "postHistory.repairContinueLater";
+                state.repairMessageValues = null;
             } else if (result.addedCount > 0) {
                 state.repairMessageKey = "postHistory.repairAdded";
                 state.repairMessageValues = { count: result.addedCount };
