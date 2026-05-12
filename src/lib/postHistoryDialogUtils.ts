@@ -62,6 +62,21 @@ export type PostHistoryMediaLayout = {
     fullscreenMediaItems: FullscreenMediaItem[];
 };
 
+export interface PostHistoryMediaDimensionHints {
+    width?: number;
+    height?: number;
+    aspectRatio: string;
+    hasExactDimensions: boolean;
+}
+
+export type PostHistoryMediaRenderState =
+    | "ready"
+    | "cache-materializing"
+    | "placeholder"
+    | "loading"
+    | "error"
+    | "unknown";
+
 const URL_PATTERN = /https?:\/\/[^\s]+/g;
 
 const IMAGE_ROW_PATTERNS: Record<number, number[]> = {
@@ -267,16 +282,64 @@ export function resolvePostHistoryMediaAspectRatio(params: {
     kind: PostHistoryDisplayMediaKind;
     fallback?: string;
 }): string {
+    return resolvePostHistoryMediaDimensionHints(params).aspectRatio;
+}
+
+export function resolvePostHistoryMediaDimensionHints(params: {
+    dim?: string;
+    kind: PostHistoryDisplayMediaKind;
+    fallback?: string;
+}): PostHistoryMediaDimensionHints {
     const fallback = params.fallback ?? (
         params.kind === 'video' ? '16 / 9' : '1 / 1'
     );
     const parsed = parsePostHistoryMediaDimensions(params.dim);
 
     if (!parsed) {
-        return fallback;
+        return {
+            aspectRatio: fallback,
+            hasExactDimensions: false,
+        };
     }
 
-    return `${parsed.width} / ${parsed.height}`;
+    return {
+        width: parsed.width,
+        height: parsed.height,
+        aspectRatio: `${parsed.width} / ${parsed.height}`,
+        hasExactDimensions: true,
+    };
+}
+
+export function resolvePostHistoryMediaRenderState(params: {
+    hasResolvedCache: boolean;
+    cached: boolean;
+    previewObjectUrl?: string;
+    isLoadingPreview: boolean;
+    isCaching: boolean;
+    hasFetchFailed: boolean;
+    hasMetadataHint: boolean;
+}): PostHistoryMediaRenderState {
+    if (params.hasFetchFailed) {
+        return "error";
+    }
+
+    if (params.previewObjectUrl) {
+        return "ready";
+    }
+
+    if (params.cached || params.isLoadingPreview) {
+        return "cache-materializing";
+    }
+
+    if (params.isCaching) {
+        return "loading";
+    }
+
+    if (!params.hasResolvedCache) {
+        return params.hasMetadataHint ? "placeholder" : "unknown";
+    }
+
+    return params.hasMetadataHint ? "placeholder" : "unknown";
 }
 
 export function buildPostHistoryMediaLayout(

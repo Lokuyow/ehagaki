@@ -6,7 +6,9 @@ import {
     buildPostHistoryFullscreenMediaItems,
     buildPreview,
     buildPreviewContent,
+    resolvePostHistoryMediaDimensionHints,
     resolvePostHistoryMediaAspectRatio,
+    resolvePostHistoryMediaRenderState,
     resolvePostHistoryMedia,
 } from "../../lib/postHistoryDialogUtils";
 
@@ -272,5 +274,87 @@ describe("postHistoryDialogUtils", () => {
             dim: "0x1080",
             kind: "video",
         })).toBe("16 / 9");
+    });
+
+    it("resolvePostHistoryMediaDimensionHints keeps exact dimensions when available", () => {
+        expect(resolvePostHistoryMediaDimensionHints({
+            dim: "1200x800",
+            kind: "image",
+        })).toEqual({
+            width: 1200,
+            height: 800,
+            aspectRatio: "1200 / 800",
+            hasExactDimensions: true,
+        });
+
+        expect(resolvePostHistoryMediaDimensionHints({
+            dim: "oops",
+            kind: "video",
+        })).toEqual({
+            aspectRatio: "16 / 9",
+            hasExactDimensions: false,
+        });
+    });
+
+    it("resolvePostHistoryMediaRenderState distinguishes ready and placeholder states", () => {
+        expect(resolvePostHistoryMediaRenderState({
+            hasResolvedCache: true,
+            cached: true,
+            previewObjectUrl: "blob:cached-image",
+            isLoadingPreview: false,
+            isCaching: false,
+            hasFetchFailed: false,
+            hasMetadataHint: true,
+        })).toBe("ready");
+
+        expect(resolvePostHistoryMediaRenderState({
+            hasResolvedCache: true,
+            cached: true,
+            previewObjectUrl: undefined,
+            isLoadingPreview: true,
+            isCaching: false,
+            hasFetchFailed: false,
+            hasMetadataHint: true,
+        })).toBe("cache-materializing");
+
+        expect(resolvePostHistoryMediaRenderState({
+            hasResolvedCache: false,
+            cached: false,
+            previewObjectUrl: undefined,
+            isLoadingPreview: false,
+            isCaching: false,
+            hasFetchFailed: false,
+            hasMetadataHint: true,
+        })).toBe("placeholder");
+
+        expect(resolvePostHistoryMediaRenderState({
+            hasResolvedCache: true,
+            cached: false,
+            previewObjectUrl: undefined,
+            isLoadingPreview: false,
+            isCaching: true,
+            hasFetchFailed: false,
+            hasMetadataHint: false,
+        })).toBe("loading");
+
+        expect(resolvePostHistoryMediaRenderState({
+            hasResolvedCache: true,
+            cached: false,
+            previewObjectUrl: undefined,
+            isLoadingPreview: false,
+            isCaching: false,
+            hasFetchFailed: true,
+            hasMetadataHint: true,
+        })).toBe("error");
+
+        expect(resolvePostHistoryMediaRenderState({
+            hasResolvedCache: true,
+            cached: false,
+            previewObjectUrl: undefined,
+            isLoadingPreview: false,
+            isCaching: false,
+            hasFetchFailed: false,
+            hasMetadataHint: false,
+        })).toBe("unknown");
     });
 });

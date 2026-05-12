@@ -8,8 +8,12 @@
     import {
         buildPostHistoryMediaLayout,
         type PostHistoryDisplayMediaKind,
+        type PostHistoryMediaDimensionHints,
+        type PostHistoryMediaRenderState,
         type PostHistoryResolvedMedia,
+        resolvePostHistoryMediaDimensionHints,
         resolvePostHistoryMediaAspectRatio,
+        resolvePostHistoryMediaRenderState,
     } from "../lib/postHistoryDialogUtils";
     import type { PostHistoryMediaRecord } from "../lib/storage/ehagakiDb";
     import type { FullscreenMediaItem } from "../lib/types";
@@ -35,10 +39,11 @@
 
     type ImagePresentation = {
         aspectRatio: string;
+        dimensionHints: PostHistoryMediaDimensionHints;
         isSingleImage: boolean;
         frameStyle?: string;
         surfaceStyle: string;
-        placeholderStyle: string;
+        layoutFrameStyle?: string;
         imageStyle?: string;
     };
 
@@ -200,15 +205,15 @@
         );
     }
 
-    function getSingleImageStageAspectRatio(aspectRatio: string): string {
+    function getSingleImageLayoutAspectRatio(aspectRatio: string): string {
         return getAspectRatioValue(aspectRatio) <
             SINGLE_IMAGE_MIN_STAGE_ASPECT_RATIO
             ? `${SINGLE_IMAGE_MIN_SIZE} / ${SINGLE_IMAGE_MAX_HEIGHT}`
             : aspectRatio;
     }
 
-    function getSingleImageStageStyle(aspectRatio: string): string {
-        const stageAspectRatio = getSingleImageStageAspectRatio(aspectRatio);
+    function getSingleImageLayoutFrameStyle(aspectRatio: string): string {
+        const stageAspectRatio = getSingleImageLayoutAspectRatio(aspectRatio);
 
         return [
             `aspect-ratio: ${stageAspectRatio};`,
@@ -219,7 +224,7 @@
         ].join(" ");
     }
 
-    function getSingleImageStageImageStyle(aspectRatio: string): string {
+    function getSingleImageLayoutImageStyle(aspectRatio: string): string {
         return [
             "position: absolute;",
             "inset: 0;",
@@ -235,46 +240,77 @@
         return [`aspect-ratio: ${aspectRatio};`, "width: 100%;"].join(" ");
     }
 
+    function hasMetadataHint(item: DisplayMediaItem): boolean {
+        return Boolean(item.blurhash?.trim() || item.dim?.trim());
+    }
+
+    function getImageRenderState(
+        item: DisplayMediaItem,
+    ): PostHistoryMediaRenderState {
+        return resolvePostHistoryMediaRenderState({
+            hasResolvedCache: item.hasResolvedCache,
+            cached: item.cached,
+            previewObjectUrl: item.previewObjectUrl,
+            isLoadingPreview: item.isLoadingPreview,
+            isCaching: item.isCaching,
+            hasFetchFailed: item.hasFetchFailed,
+            hasMetadataHint: hasMetadataHint(item),
+        });
+    }
+
     function getImagePresentation(params: {
         item: DisplayMediaItem;
         slotCount: number;
         isSingleImage: boolean;
     }): ImagePresentation {
         const aspectRatio = getImageAspectRatio(params.item, params.slotCount);
+        const dimensionHints = resolvePostHistoryMediaDimensionHints({
+            dim: params.item.dim,
+            kind: params.item.kind,
+        });
 
         if (!params.isSingleImage) {
             const surfaceStyle = getMediaSurfaceStyle(aspectRatio);
 
             return {
                 aspectRatio,
+                dimensionHints,
                 isSingleImage: false,
                 surfaceStyle,
-                placeholderStyle: surfaceStyle,
             };
         }
 
         return {
             aspectRatio,
+            dimensionHints,
             isSingleImage: true,
             frameStyle: getSingleImageFrameStyle(aspectRatio),
             surfaceStyle: getSingleImageSurfaceStyle(),
-            placeholderStyle: getSingleImageStageStyle(aspectRatio),
-            imageStyle: getSingleImageStageImageStyle(aspectRatio),
+            layoutFrameStyle: getSingleImageLayoutFrameStyle(aspectRatio),
+            imageStyle: getSingleImageLayoutImageStyle(aspectRatio),
         };
     }
 
     function shouldShowInlinePlaceholderLoader(
         item: DisplayMediaItem,
         presentation: ImagePresentation,
+        renderState: PostHistoryMediaRenderState,
     ): boolean {
-        return !presentation.isSingleImage && isPlaceholderLoading(item);
+        return (
+            !presentation.isSingleImage &&
+            shouldShowPlaceholderLoader(item, renderState)
+        );
     }
 
     function shouldShowFloatingPlaceholderLoader(
         item: DisplayMediaItem,
         presentation: ImagePresentation,
+        renderState: PostHistoryMediaRenderState,
     ): boolean {
-        return presentation.isSingleImage && isPlaceholderLoading(item);
+        return (
+            presentation.isSingleImage &&
+            shouldShowPlaceholderLoader(item, renderState)
+        );
     }
 
     function requestAutoFetch(url: string): void {
@@ -344,18 +380,43 @@
         );
     }
 
-    function isPlaceholderLoading(item: DisplayMediaItem): boolean {
+    function shouldShowPlaceholderLoader(
+        item: DisplayMediaItem,
+        renderState: PostHistoryMediaRenderState,
+    ): boolean {
         return (
-            !item.hasResolvedCache || item.isCaching || item.isLoadingPreview
+            renderState !== "ready" &&
+            renderState !== "cache-materializing" &&
+            (!item.hasResolvedCache || renderState === "loading")
         );
     }
 
-    function shouldShowBlurhashPlaceholder(item: DisplayMediaItem): boolean {
+    function shouldShowBlurhashPlaceholder(
+        item: DisplayMediaItem,
+        renderState: PostHistoryMediaRenderState,
+    ): boolean {
         return (
             Boolean(item.blurhash) &&
-            !Boolean(item.cached && item.previewObjectUrl) &&
+            renderState !== "ready" &&
+            renderState !== "cache-materializing" &&
             (item.kind === "image" || item.kind === "video")
         );
+    }
+
+    function shouldRenderReadyMedia(
+        renderState: PostHistoryMediaRenderState,
+    ): boolean {
+        return renderState === "ready" || renderState === "cache-materializing";
+    }
+
+    function getImagePlaceholderVariantClass(
+        renderState: PostHistoryMediaRenderState,
+    ): string {
+        if (renderState === "error") {
+            return "post-history-media-placeholder-failed";
+        }
+
+        return "post-history-media-placeholder-uncached";
     }
 
     function getPlaceholderAriaLabel(item: DisplayMediaItem): string {
@@ -429,17 +490,16 @@
     variantClassName: string,
     showBlurhashPlaceholder: boolean,
     showRetry: boolean,
-    ariaHidden: boolean,
 )}
     <div
         class={`post-history-media-placeholder ${variantClassName}`}
         class:post-history-media-placeholder-blurhash={showBlurhashPlaceholder}
         class:post-history-image-placeholder-single={presentation.isSingleImage}
-        class:post-history-single-image-stage={presentation.isSingleImage}
-        style={presentation.placeholderStyle}
-        aria-hidden={ariaHidden ? "true" : undefined}
-        aria-label={ariaHidden ? undefined : getPlaceholderAriaLabel(item)}
-        title={ariaHidden ? undefined : getLinkLabel(item)}
+        style={presentation.isSingleImage
+            ? undefined
+            : presentation.surfaceStyle}
+        aria-label={getPlaceholderAriaLabel(item)}
+        title={getLinkLabel(item)}
     >
         {#if showBlurhashPlaceholder}
             <BlurhashPlaceholder blurhash={item.blurhash} />
@@ -455,7 +515,7 @@
                 </button>
             </div>
         {/if}
-        {#if shouldShowInlinePlaceholderLoader(item, presentation)}
+        {#if shouldShowInlinePlaceholderLoader(item, presentation, getImageRenderState(item))}
             <div class="post-history-media-placeholder-loader">
                 <LoadingPlaceholder
                     showLoader={true}
@@ -488,8 +548,13 @@
                                 slotCount: row.slotCount,
                                 isSingleImage,
                             })}
+                            {@const imageRenderState =
+                                getImageRenderState(item)}
                             {@const showBlurhashPlaceholder =
-                                shouldShowBlurhashPlaceholder(item)}
+                                shouldShowBlurhashPlaceholder(
+                                    item,
+                                    imageRenderState,
+                                )}
                             <div
                                 class="post-history-image-cell"
                                 use:inViewportAction={{
@@ -508,7 +573,7 @@
                                         ? imagePresentation.frameStyle
                                         : undefined}
                                 >
-                                    {#if item.cached}
+                                    {#if shouldRenderReadyMedia(imageRenderState)}
                                         <button
                                             type="button"
                                             class="post-history-media-surface post-history-image-surface"
@@ -521,13 +586,12 @@
                                             onclick={() =>
                                                 handleImageOpen(item)}
                                         >
-                                            {#if item.previewObjectUrl}
-                                                {#if isSingleImage}
-                                                    <div
-                                                        class="post-history-media-placeholder post-history-image-placeholder-single post-history-single-image-stage"
-                                                        style={imagePresentation.placeholderStyle}
-                                                        aria-hidden="true"
-                                                    >
+                                            {#if isSingleImage}
+                                                <div
+                                                    class="post-history-media-layout-frame post-history-single-image-layout-frame"
+                                                    style={imagePresentation.layoutFrameStyle}
+                                                >
+                                                    {#if item.previewObjectUrl}
                                                         <img
                                                             src={item.previewObjectUrl}
                                                             alt={item.alt ||
@@ -536,52 +600,60 @@
                                                                 )}
                                                             class="post-history-media-image post-history-media-image-single-stage"
                                                             style={imagePresentation.imageStyle}
+                                                            width={imagePresentation
+                                                                .dimensionHints
+                                                                .width}
+                                                            height={imagePresentation
+                                                                .dimensionHints
+                                                                .height}
                                                             loading="lazy"
                                                             decoding="async"
                                                         />
-                                                    </div>
-                                                {:else}
-                                                    <img
-                                                        src={item.previewObjectUrl}
-                                                        alt={item.alt ||
-                                                            getLinkLabel(item)}
-                                                        class="post-history-media-image"
-                                                        loading="lazy"
-                                                        decoding="async"
-                                                    />
-                                                {/if}
-                                            {:else}
-                                                {@render imagePlaceholder(
-                                                    item,
-                                                    imagePresentation,
-                                                    "post-history-media-placeholder-cached",
-                                                    showBlurhashPlaceholder,
-                                                    false,
-                                                    true,
-                                                )}
+                                                    {/if}
+                                                </div>
+                                            {:else if item.previewObjectUrl}
+                                                <img
+                                                    src={item.previewObjectUrl}
+                                                    alt={item.alt ||
+                                                        getLinkLabel(item)}
+                                                    class="post-history-media-image"
+                                                    width={imagePresentation
+                                                        .dimensionHints.width}
+                                                    height={imagePresentation
+                                                        .dimensionHints.height}
+                                                    loading="lazy"
+                                                    decoding="async"
+                                                />
                                             {/if}
                                         </button>
-                                    {:else if item.hasFetchFailed}
-                                        {@render imagePlaceholder(
-                                            item,
-                                            imagePresentation,
-                                            "post-history-media-placeholder-failed",
-                                            showBlurhashPlaceholder,
-                                            true,
-                                            false,
-                                        )}
+                                    {:else if isSingleImage}
+                                        <div
+                                            class="post-history-media-layout-frame post-history-single-image-layout-frame"
+                                            style={imagePresentation.layoutFrameStyle}
+                                        >
+                                            {@render imagePlaceholder(
+                                                item,
+                                                imagePresentation,
+                                                getImagePlaceholderVariantClass(
+                                                    imageRenderState,
+                                                ),
+                                                showBlurhashPlaceholder,
+                                                imageRenderState === "error",
+                                            )}
+                                        </div>
                                     {:else}
                                         {@render imagePlaceholder(
                                             item,
                                             imagePresentation,
-                                            "post-history-media-placeholder-uncached",
+                                            getImagePlaceholderVariantClass(
+                                                imageRenderState,
+                                            ),
                                             showBlurhashPlaceholder,
-                                            false,
-                                            false,
+                                            imageRenderState === "error",
                                         )}
                                     {/if}
 
-                                    {#if shouldShowFloatingPlaceholderLoader(item, imagePresentation)}
+                                    {#if shouldShowFloatingPlaceholderLoader(item, imagePresentation, imageRenderState)}
                                         <div
                                             class="post-history-media-placeholder-loader post-history-media-placeholder-loader-single"
                                         >
@@ -609,8 +681,9 @@
             <div class="post-history-video-list">
                 {#each videoItems as item (item.id)}
                     {@const videoAspectRatio = getVideoAspectRatio(item)}
+                    {@const videoRenderState = getImageRenderState(item)}
                     {@const showBlurhashPlaceholder =
-                        shouldShowBlurhashPlaceholder(item)}
+                        shouldShowBlurhashPlaceholder(item, videoRenderState)}
                     <article
                         class="post-history-video-card"
                         use:inViewportAction={{
@@ -683,6 +756,7 @@
         {#if otherItems.length > 0}
             <div class="post-history-other-media-list">
                 {#each otherItems as item (item.id)}
+                    {@const otherRenderState = getImageRenderState(item)}
                     <div
                         class="post-history-other-media-card"
                         use:inViewportAction={{
@@ -723,7 +797,7 @@
                                     </button>
                                 {/if}
                             </div>
-                            {#if isPlaceholderLoading(item)}
+                            {#if shouldShowPlaceholderLoader(item, otherRenderState)}
                                 <div
                                     class="post-history-media-placeholder-loader"
                                 >
@@ -820,13 +894,15 @@
         min-height: 100px;
     }
 
-    .post-history-image-placeholder-single {
-        display: grid;
-        place-items: center;
-        min-height: 100px;
+    .post-history-media-layout-frame {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+        background: transparent;
     }
 
-    .post-history-single-image-stage {
+    .post-history-single-image-layout-frame {
         position: relative;
         padding: 0;
         display: grid;
@@ -834,15 +910,23 @@
         justify-self: stretch;
         align-self: stretch;
         overflow: hidden;
-        background: color-mix(
-            in srgb,
-            var(--background-color, #fff) 94%,
-            #000 6%
-        );
+        background: transparent;
+    }
+
+    .post-history-image-placeholder-single {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        width: 100%;
+        height: 100%;
+        min-height: 0;
+        box-sizing: border-box;
     }
 
     .post-history-media-image,
-    .post-history-media-placeholder {
+    .post-history-media-placeholder,
+    .post-history-media-layout-frame {
         width: 100%;
         max-width: 100%;
     }
@@ -856,12 +940,6 @@
     .post-history-media-image-single {
         height: auto;
         margin-inline: auto;
-    }
-
-    .post-history-media-placeholder.post-history-single-image-stage {
-        display: grid;
-        place-items: center;
-        padding: 0;
     }
 
     .post-history-media-image-single-stage {
@@ -941,12 +1019,10 @@
         );
     }
 
-    :global(:root.dark) .post-history-single-image-stage {
-        background: color-mix(
-            in srgb,
-            var(--background-color, #111) 94%,
-            #fff 6%
-        );
+    .post-history-image-placeholder-single.post-history-media-placeholder {
+        height: 100%;
+        margin-inline: 0;
+        aspect-ratio: auto;
     }
 
     .post-history-media-placeholder-blurhash {
