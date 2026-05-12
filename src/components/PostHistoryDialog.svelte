@@ -629,41 +629,43 @@
     initialFocus="content"
 >
     <div class="post-history-heading">
-        <div class="post-history-heading-main">
-            <h3>{$_("postHistory.title")}</h3>
-            {#if headingStatusMessageKey}
-                <div
-                    class="status-message"
-                    class:status-error={headingStatusError}
+        <div class="post-history-heading-top">
+            <div class="post-history-heading-main">
+                <h3>{$_("postHistory.title")}</h3>
+            </div>
+            <div class="post-history-heading-actions">
+                <Button
+                    type="button"
+                    class="post-history-repair-button"
+                    disabled={!history.canRepair}
+                    onClick={() => void history.repairFromRelays()}
                 >
-                    <LoadingPlaceholder
-                        text={headingStatusMessageValues
-                            ? $_(headingStatusMessageKey, {
-                                  values: headingStatusMessageValues,
-                              })
-                            : $_(headingStatusMessageKey)}
-                        showLoader={history.showStatusLoader}
-                        loaderSize={25}
-                        state={history.showStatusLoader
-                            ? "loading"
-                            : "complete"}
-                        customClass="status-loading-placeholder"
-                    />
-                </div>
-            {/if}
+                    {history.isRepairing
+                        ? $_("postHistory.repairing")
+                        : $_("postHistory.repair")}
+                </Button>
+            </div>
         </div>
-        <div class="post-history-heading-actions">
-            <Button
-                type="button"
-                class="post-history-repair-button"
-                disabled={!history.canRepair}
-                onClick={() => void history.repairFromRelays()}
+        {#if headingStatusMessageKey}
+            <div
+                class="status-message"
+                class:status-error={headingStatusError}
             >
-                {history.isRepairing
-                    ? $_("postHistory.repairing")
-                    : $_("postHistory.repair")}
-            </Button>
-        </div>
+                <LoadingPlaceholder
+                    text={headingStatusMessageValues
+                        ? $_(headingStatusMessageKey, {
+                              values: headingStatusMessageValues,
+                          })
+                        : $_(headingStatusMessageKey)}
+                    showLoader={history.showStatusLoader}
+                    loaderSize={25}
+                    state={history.showStatusLoader
+                        ? "loading"
+                        : "complete"}
+                    customClass="status-loading-placeholder"
+                />
+            </div>
+        {/if}
     </div>
 
     <div class="post-history-search-row">
@@ -1149,20 +1151,25 @@
 
     .post-history-heading {
         display: flex;
-        align-items: center;
+        align-items: flex-start;
         justify-content: space-between;
-        gap: 12px;
+        gap: 8px;
         flex-wrap: wrap;
         width: 100%;
-        min-height: 50px;
-        padding: 0 16px;
+        padding: 0 16px 10px;
         border-bottom: 1px solid var(--border-hr);
     }
 
-    .post-history-heading-main {
+    .post-history-heading-top {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 12px;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .post-history-heading-main {
         min-width: 0;
         flex: 1 1 auto;
     }
@@ -1241,12 +1248,14 @@
     }
 
     .status-message {
-        margin-left: auto;
+        width: 100%;
+        min-width: 0;
         color: var(--text-muted);
         font-size: 0.8rem;
         line-height: 1.3;
         text-align: right;
-
+        overflow-wrap: anywhere;
+    
         :global(.status-loading-placeholder) {
             justify-content: flex-end;
             width: auto;
