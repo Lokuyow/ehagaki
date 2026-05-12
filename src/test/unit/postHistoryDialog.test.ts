@@ -42,8 +42,10 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.media': 'メディア',
         'postHistory.mediaOpen': '開く',
         'postHistory.deleted': '削除済み',
+        'postHistory.firstPage': '最初のページ',
         'postHistory.previousPage': '前へ',
         'postHistory.nextPage': '次へ',
+        'postHistory.lastPage': '最後のページ',
         'postHistory.channel': 'チャンネル',
         'postHistory.channelLoading': '読み込み中...',
         'postHistory.channelUnknown': '不明',
@@ -1731,7 +1733,7 @@ describe('PostHistoryDialog', () => {
 
         const nextButton = screen.getByRole('button', { name: '次へ' });
         expect(nextButton.querySelector('.dialog-page-loading-placeholder')).toBeNull();
-        expect(nextButton.textContent).toContain('次へ');
+        expect(nextButton.querySelector('.svg-icon')).toBeTruthy();
 
         expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledWith(
             {} as any,
@@ -2248,6 +2250,59 @@ describe('PostHistoryDialog', () => {
             expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
             expect(previousButton).toHaveProperty('disabled', false);
             expect(nextButton).toHaveProperty('disabled', true);
+        });
+    });
+
+    it('最初と最後のページへ直接移動できる', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(120);
+        repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => Promise.resolve([
+            createRecord({
+                eventId: `page-${page}`,
+                content: `${page}ページ目`,
+            }),
+        ]));
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const firstButton = await screen.findByRole('button', { name: '最初のページ' });
+        const lastButton = await screen.findByRole('button', { name: '最後のページ' });
+
+        await waitFor(() => {
+            expect(firstButton).toHaveProperty('disabled', true);
+            expect(lastButton).toHaveProperty('disabled', false);
+            expect(screen.getByText('1 / 3 ページ')).toBeTruthy();
+        });
+
+        await fireEvent.click(lastButton);
+
+        await waitFor(() => {
+            expect(repositoryMock.getPage).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                page: 3,
+                pageSize: 50,
+            });
+            expect(screen.getByText('3 / 3 ページ')).toBeTruthy();
+            expect(firstButton).toHaveProperty('disabled', false);
+            expect(lastButton).toHaveProperty('disabled', true);
+        });
+
+        await fireEvent.click(firstButton);
+
+        await waitFor(() => {
+            expect(repositoryMock.getPage).toHaveBeenLastCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                page: 1,
+                pageSize: 50,
+            });
+            expect(screen.getByText('1 / 3 ページ')).toBeTruthy();
+            expect(firstButton).toHaveProperty('disabled', true);
+            expect(lastButton).toHaveProperty('disabled', false);
         });
     });
 

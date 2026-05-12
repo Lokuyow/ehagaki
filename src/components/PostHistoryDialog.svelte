@@ -253,8 +253,20 @@
         }
     }
 
+    function handleFirstPage(): void {
+        if (history.goFirstPage()) {
+            queueHistoryScrollReset();
+        }
+    }
+
     async function handleNextPage(): Promise<void> {
         if (await history.goToNextPage()) {
+            queueHistoryScrollReset();
+        }
+    }
+
+    function handleLastPage(): void {
+        if (history.goToLastPage()) {
             queueHistoryScrollReset();
         }
     }
@@ -618,14 +630,20 @@
     paginationLabel={$_("postHistory.page", {
         values: { page: history.displayPage, total: history.totalPages },
     })}
+    firstPageLabel={$_("postHistory.firstPage")}
     previousPageLabel={$_("postHistory.previousPage")}
     nextPageLabel={$_("postHistory.nextPage")}
+    lastPageLabel={$_("postHistory.lastPage")}
+    canGoFirst={history.canGoFirst}
     canGoPrevious={history.canGoPrevious}
     canGoNext={history.canGoNext}
+    canGoLast={history.canGoLast}
     nextPageLoading={!history.isSearchMode &&
         history.syncStatus === "older-syncing"}
+    onFirstPage={handleFirstPage}
     onPreviousPage={handlePreviousPage}
     onNextPage={handleNextPage}
+    onLastPage={handleLastPage}
     initialFocus="content"
 >
     <div class="post-history-heading">

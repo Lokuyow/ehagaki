@@ -25,20 +25,32 @@
         showPagination?: boolean;
         /** ページ送りの現在表示テキスト */
         paginationLabel?: string;
+        /** 最初のページボタンのラベル */
+        firstPageLabel?: string;
         /** 前ページボタンのラベル */
         previousPageLabel?: string;
         /** 次ページボタンのラベル */
         nextPageLabel?: string;
+        /** 最後のページボタンのラベル */
+        lastPageLabel?: string;
+        /** 最初のページへ移動できるか */
+        canGoFirst?: boolean;
         /** 前ページへ移動できるか */
         canGoPrevious?: boolean;
         /** 次ページへ移動できるか */
         canGoNext?: boolean;
+        /** 最後のページへ移動できるか */
+        canGoLast?: boolean;
         /** 次ページ読み込み中か */
         nextPageLoading?: boolean;
+        /** 最初のページボタン押下時のコールバック */
+        onFirstPage?: () => void;
         /** 前ページボタン押下時のコールバック */
         onPreviousPage?: () => void;
         /** 次ページボタン押下時のコールバック */
         onNextPage?: () => void;
+        /** 最後のページボタン押下時のコールバック */
+        onLastPage?: () => void;
         /** 開いた直後のフォーカス先 */
         initialFocus?: "default" | "content";
         /** ダイアログのメインコンテンツ */
@@ -58,13 +70,19 @@
         footerVariant = "default",
         showPagination = false,
         paginationLabel = "",
+        firstPageLabel = "",
         previousPageLabel = "",
         nextPageLabel = "",
+        lastPageLabel = "",
+        canGoFirst = false,
         canGoPrevious = false,
         canGoNext = false,
+        canGoLast = false,
         nextPageLoading = false,
+        onFirstPage,
         onPreviousPage,
         onNextPage,
+        onLastPage,
         initialFocus = "default",
         children,
         footer,
@@ -130,17 +148,35 @@
                             class="dialog-pagination"
                             aria-label={paginationLabel}
                         >
-                            <Button
-                                className="dialog-page-button"
-                                variant="default"
-                                shape="pill"
-                                disabled={!canGoPrevious}
-                                ariaLabel={previousPageLabel}
-                                onClick={onPreviousPage}
-                            >
-                                <span class="btn-text">{previousPageLabel}</span
+                            <div class="dialog-page-button-group">
+                                {#if firstPageLabel || onFirstPage}
+                                    <Button
+                                        className="dialog-page-button dialog-page-icon-button dialog-page-first-button"
+                                        variant="default"
+                                        shape="pill"
+                                        contentLayout="icon"
+                                        disabled={!canGoFirst}
+                                        ariaLabel={firstPageLabel}
+                                        title={firstPageLabel}
+                                        onClick={onFirstPage}
+                                    >
+                                        <span class="svg-icon"></span>
+                                    </Button>
+                                {/if}
+
+                                <Button
+                                    className="dialog-page-button dialog-page-icon-button dialog-page-previous-button"
+                                    variant="default"
+                                    shape="pill"
+                                    contentLayout="icon"
+                                    disabled={!canGoPrevious}
+                                    ariaLabel={previousPageLabel}
+                                    title={previousPageLabel}
+                                    onClick={onPreviousPage}
                                 >
-                            </Button>
+                                    <span class="svg-icon"></span>
+                                </Button>
+                            </div>
 
                             <div class="dialog-page-center">
                                 <div class="dialog-page-indicator">
@@ -149,26 +185,44 @@
                                 {@render footer?.()}
                             </div>
 
-                            <Button
-                                className={`dialog-page-button ${nextPageLoading ? "loading" : ""}`}
-                                variant="default"
-                                shape="pill"
-                                disabled={!canGoNext || nextPageLoading}
-                                ariaLabel={nextPageLabel}
-                                onClick={onNextPage}
-                            >
-                                {#if nextPageLoading}
-                                    <LoadingPlaceholder
-                                        showLoader={true}
-                                        loaderSize={30}
-                                        state="loading"
-                                        customClass="dialog-page-loading-placeholder"
-                                    />
-                                {:else}
-                                    <span class="btn-text">{nextPageLabel}</span
+                            <div class="dialog-page-button-group">
+                                <Button
+                                    className={`dialog-page-button dialog-page-icon-button dialog-page-next-button ${nextPageLoading ? "loading" : ""}`}
+                                    variant="default"
+                                    shape="pill"
+                                    contentLayout="icon"
+                                    disabled={!canGoNext || nextPageLoading}
+                                    ariaLabel={nextPageLabel}
+                                    title={nextPageLabel}
+                                    onClick={onNextPage}
+                                >
+                                    {#if nextPageLoading}
+                                        <LoadingPlaceholder
+                                            showLoader={true}
+                                            loaderSize={30}
+                                            state="loading"
+                                            customClass="dialog-page-loading-placeholder"
+                                        />
+                                    {:else}
+                                        <span class="svg-icon"></span>
+                                    {/if}
+                                </Button>
+
+                                {#if lastPageLabel || onLastPage}
+                                    <Button
+                                        className="dialog-page-button dialog-page-icon-button dialog-page-last-button"
+                                        variant="default"
+                                        shape="pill"
+                                        contentLayout="icon"
+                                        disabled={!canGoLast || nextPageLoading}
+                                        ariaLabel={lastPageLabel}
+                                        title={lastPageLabel}
+                                        onClick={onLastPage}
                                     >
+                                        <span class="svg-icon"></span>
+                                    </Button>
                                 {/if}
-                            </Button>
+                            </div>
                         </div>
                     {:else}
                         {@render footer?.()}
@@ -244,6 +298,13 @@
         border-top: 1px solid var(--border-hr);
     }
 
+    .dialog-page-button-group {
+        display: flex;
+        align-items: stretch;
+        gap: 6px;
+        flex: 0 0 auto;
+    }
+
     .dialog-page-center {
         display: flex;
         flex-direction: column;
@@ -262,10 +323,35 @@
     }
 
     :global(.dialog-page-button) {
-        min-width: 88px;
+        min-width: 40px;
         height: auto;
         min-height: 40px;
-        flex: 1 0 auto;
+        flex: 0 0 auto;
+    }
+
+    :global(.dialog-page-icon-button) {
+        width: 40px;
+    }
+
+    :global(.dialog-page-icon-button .svg-icon) {
+        width: 24px;
+        height: 24px;
+    }
+
+    :global(.dialog-page-first-button .svg-icon) {
+        mask-image: url("/icons/first_page_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.dialog-page-previous-button .svg-icon) {
+        mask-image: url("/icons/keyboard_arrow_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.dialog-page-next-button .svg-icon) {
+        mask-image: url("/icons/keyboard_arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+    }
+
+    :global(.dialog-page-last-button .svg-icon) {
+        mask-image: url("/icons/last_page_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.dialog-page-loading-placeholder) {

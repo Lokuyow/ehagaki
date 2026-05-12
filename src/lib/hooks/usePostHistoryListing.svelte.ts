@@ -180,11 +180,13 @@ export function usePostHistoryListing({
         Math.max(1, Math.ceil(displayTotalCount / pageSize)),
     );
     const canGoPrevious = $derived(!isRepairing && displayPage > 1);
+    const canGoFirst = $derived(canGoPrevious);
     const canGoNext = $derived(
         !isRepairing && (isSearchMode
             ? displayPage < totalPages
             : state.currentPage < totalPages || state.hasMoreRemote),
     );
+    const canGoLast = $derived(!isRepairing && displayPage < totalPages);
     const showPaging = $derived(displayTotalCount > 0);
     const canRepair = $derived(
         !!getPubkeyHex() &&
@@ -563,6 +565,20 @@ export function usePostHistoryListing({
         return true;
     }
 
+    function goFirstPage(): boolean {
+        if (!canGoFirst) {
+            return false;
+        }
+
+        if (isSearchMode) {
+            state.searchPage = 1;
+            return true;
+        }
+
+        state.currentPage = 1;
+        return true;
+    }
+
     async function goToNextPage(): Promise<boolean> {
         if (!canGoNext) {
             return false;
@@ -587,6 +603,20 @@ export function usePostHistoryListing({
 
         await loadPage(state.currentPage);
         return false;
+    }
+
+    function goToLastPage(): boolean {
+        if (!canGoLast) {
+            return false;
+        }
+
+        if (isSearchMode) {
+            state.searchPage = totalPages;
+            return true;
+        }
+
+        state.currentPage = totalPages;
+        return true;
     }
 
     async function repairFromRelays(): Promise<void> {
@@ -812,8 +842,14 @@ export function usePostHistoryListing({
         get canGoPrevious() {
             return canGoPrevious;
         },
+        get canGoFirst() {
+            return canGoFirst;
+        },
         get canGoNext() {
             return canGoNext;
+        },
+        get canGoLast() {
+            return canGoLast;
         },
         get showPaging() {
             return showPaging;
@@ -844,8 +880,10 @@ export function usePostHistoryListing({
         },
         cancelCurrentSync,
         cancelCurrentRepair,
+        goFirstPage,
         goPreviousPage,
         goToNextPage,
+        goToLastPage,
         repairFromRelays,
         patchDeletedPost,
     };
