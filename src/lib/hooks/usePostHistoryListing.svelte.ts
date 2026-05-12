@@ -23,7 +23,10 @@ import {
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
 import { postHistoryRepairService, type PostHistoryRepairTask } from "../postHistoryRepairService";
 import { postHistoryRepairCursorRepository } from "../storage/postHistoryRepairCursorRepository";
-import { postHistoryRepository } from "../storage/postHistoryRepository";
+import {
+    postHistoryRepository,
+    type PostHistoryTimelineCursor,
+} from "../storage/postHistoryRepository";
 import { postHistorySyncCoverageRepository } from "../storage/postHistorySyncCoverageRepository";
 import {
     buildPostHistoryVisibleKindsKey,
@@ -59,9 +62,12 @@ interface PersistedPostHistoryListingSnapshot {
     searchPosts: PostHistoryRecord[];
     totalCount: number;
     searchTotalCount: number;
+    searchHasNext: boolean;
     hasMoreRemote: boolean;
     nextUntil: number | null;
     visibleUntil: number | null;
+    hasOlderLocal: boolean;
+    hasNewerLocal: boolean;
 }
 
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
@@ -69,9 +75,12 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
     searchPosts: [],
     totalCount: 0,
     searchTotalCount: 0,
+    searchHasNext: false,
     hasMoreRemote: false,
     nextUntil: null,
     visibleUntil: null,
+    hasOlderLocal: false,
+    hasNewerLocal: false,
 };
 
 const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
@@ -103,9 +112,12 @@ function cloneListingSnapshot(
         searchPosts: [...snapshot.searchPosts],
         totalCount: snapshot.totalCount,
         searchTotalCount: snapshot.searchTotalCount,
+        searchHasNext: snapshot.searchHasNext,
         hasMoreRemote: snapshot.hasMoreRemote,
         nextUntil: snapshot.nextUntil,
         visibleUntil: snapshot.visibleUntil,
+        hasOlderLocal: snapshot.hasOlderLocal,
+        hasNewerLocal: snapshot.hasNewerLocal,
     };
 }
 
@@ -171,10 +183,11 @@ export function usePostHistoryListing({
         searchPosts: persistedListingSnapshot.searchPosts,
         searchInput: persistedViewState.searchInput,
         searchQuery: persistedViewState.searchQuery,
-        currentPage: persistedViewState.currentPage,
+        currentPage: 1,
         searchPage: persistedViewState.searchPage,
         totalCount: persistedListingSnapshot.totalCount,
         searchTotalCount: persistedListingSnapshot.searchTotalCount,
+        searchHasNext: persistedListingSnapshot.searchHasNext,
         syncStatus: "idle" as PostHistorySyncStatus,
         repairStatus: "idle" as "idle" | "repairing",
         repairMessageKey: null as string | null,
@@ -182,6 +195,8 @@ export function usePostHistoryListing({
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
         visibleUntil: persistedListingSnapshot.visibleUntil,
+        hasOlderLocal: persistedListingSnapshot.hasOlderLocal,
+        hasNewerLocal: persistedListingSnapshot.hasNewerLocal,
     });
 
     let loadRequestId = 0;
@@ -190,6 +205,7 @@ export function usePostHistoryListing({
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
     let currentRepairTask: PostHistoryRepairTask | null = null;
     let appliedSearchQuery = "";
+    const maxVisiblePosts = Math.max(pageSize * 3, pageSize);
 
     const isSearchMode = $derived(state.searchQuery.length > 0);
     const isRepairing = $derived(state.repairStatus === "repairing");
@@ -197,27 +213,52 @@ export function usePostHistoryListing({
         isSearchMode ? state.searchPosts : state.loadedPosts,
     );
     const displayPage = $derived(
-        isSearchMode ? state.searchPage : state.currentPage,
+        isSearchMode ? state.searchPage : 1,
     );
     const displayTotalCount = $derived(
         isSearchMode ? state.searchTotalCount : state.totalCount,
     );
     const totalPages = $derived(
-        Math.max(1, Math.ceil(displayTotalCount / pageSize)),
+        isSearchMode
+            ? Math.max(1, Math.ceil(state.searchTotalCount / pageSize))
+            : 1,
     );
-    const canGoPrevious = $derived(!isRepairing && displayPage > 1);
+    const canGoPrevious = $derived(
+        !isRepairing && isSearchMode && state.searchPage > 1,
+    );
     const canGoFirst = $derived(canGoPrevious);
     const canGoNext = $derived(
-        !isRepairing && (isSearchMode
-            ? displayPage < totalPages
-            : state.currentPage < totalPages || state.hasMoreRemote),
+        !isRepairing && isSearchMode && state.searchHasNext,
     );
-    const canGoLast = $derived(
-        !isRepairing && (isSearchMode
-            ? displayPage < totalPages
-            : displayPage < totalPages || state.hasMoreRemote),
+    const canGoLast = $derived(canGoNext);
+    const showPaging = $derived(false);
+    const canLoadOlder = $derived(
+        !isRepairing && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
     );
-    const showPaging = $derived(displayTotalCount > 0);
+    const canLoadNewer = $derived(
+        !isRepairing && (isSearchMode ? state.searchPage > 1 : state.hasNewerLocal),
+    );
+    const canReturnToLatest = $derived(
+        !isSearchMode && !isRepairing && state.hasNewerLocal,
+    );
+    const canFetchOlderFromRelays = $derived(
+        !isSearchMode &&
+        !!getPubkeyHex() &&
+        !!getRxNostr() &&
+        !isRepairing &&
+        state.syncStatus !== "syncing" &&
+        state.syncStatus !== "older-syncing" &&
+        state.hasMoreRemote &&
+        state.nextUntil !== null,
+    );
+    const showLocalExhaustedState = $derived(
+        !isSearchMode && state.loadedPosts.length > 0 && !state.hasOlderLocal,
+    );
+    const visibleNewestCreatedAt = $derived(posts[0]?.createdAt ?? null);
+    const visibleOldestCreatedAt = $derived(
+        posts.length > 0 ? posts[posts.length - 1]?.createdAt ?? null : null,
+    );
+    const visiblePostCount = $derived(posts.length);
     const canRepair = $derived(
         !!getPubkeyHex() &&
         !!getRxNostr() &&
@@ -278,6 +319,7 @@ export function usePostHistoryListing({
         state.searchPage = 1;
         state.searchPosts = [];
         state.searchTotalCount = 0;
+        state.searchHasNext = false;
         appliedSearchQuery = "";
     }
 
@@ -286,11 +328,14 @@ export function usePostHistoryListing({
         state.searchPosts = [];
         state.totalCount = 0;
         state.searchTotalCount = 0;
+        state.searchHasNext = false;
         state.currentPage = 1;
         state.searchPage = 1;
         state.hasMoreRemote = false;
         state.nextUntil = null;
         state.visibleUntil = null;
+        state.hasOlderLocal = false;
+        state.hasNewerLocal = false;
         state.syncStatus = "idle";
         clearRepairFeedback();
         resetSearchState();
@@ -442,21 +487,6 @@ export function usePostHistoryListing({
             : postHistoryRepository.countForPubkey(pubkeyHex);
     }
 
-    async function getVisiblePagePosts(params: {
-        pubkeyHex: string;
-        page: number;
-        pageSize: number;
-        visibleUntil: number | null;
-    }): Promise<PostHistoryRecord[]> {
-        return typeof params.visibleUntil === "number"
-            ? postHistoryRepository.getVisiblePage(params)
-            : postHistoryRepository.getPage({
-                pubkeyHex: params.pubkeyHex,
-                page: params.page,
-                pageSize: params.pageSize,
-            });
-    }
-
     async function prefetchCurrentPageMedia(
         posts: PostHistoryRecord[],
     ): Promise<void> {
@@ -476,24 +506,102 @@ export function usePostHistoryListing({
         }
     }
 
-    async function loadPage(page: number): Promise<void> {
+    function toTimelineCursor(
+        post: PostHistoryRecord | null | undefined,
+    ): PostHistoryTimelineCursor | null {
+        if (!post) {
+            return null;
+        }
+
+        return {
+            eventId: post.eventId,
+            postedAt: post.postedAt,
+            createdAt: post.createdAt,
+        };
+    }
+
+    function trimVisiblePosts(
+        nextPosts: PostHistoryRecord[],
+        direction: "older" | "newer",
+    ): PostHistoryRecord[] {
+        if (nextPosts.length <= maxVisiblePosts) {
+            return nextPosts;
+        }
+
+        return direction === "older"
+            ? nextPosts.slice(nextPosts.length - maxVisiblePosts)
+            : nextPosts.slice(0, maxVisiblePosts);
+    }
+
+    async function refreshTimelineAvailability(
+        pubkeyHex: string,
+        currentPosts: PostHistoryRecord[] = state.loadedPosts,
+        expectedRequestId: number | null = null,
+    ): Promise<void> {
+        if (currentPosts.length === 0) {
+            if (
+                getShow() &&
+                getPubkeyHex() === pubkeyHex &&
+                (expectedRequestId === null || expectedRequestId === loadRequestId)
+            ) {
+                state.hasOlderLocal = false;
+                state.hasNewerLocal = false;
+            }
+            return;
+        }
+
+        const newestCursor = toTimelineCursor(currentPosts[0]);
+        const oldestCursor = toTimelineCursor(currentPosts[currentPosts.length - 1]);
+        const visibleUntil = state.visibleUntil;
+        const [newerPosts, olderPosts] = await Promise.all([
+            newestCursor
+                ? postHistoryRepository.getNewerVisibleChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: newestCursor,
+                    limit: 1,
+                })
+                : Promise.resolve([]),
+            oldestCursor
+                ? postHistoryRepository.getOlderVisibleChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: oldestCursor,
+                    limit: 1,
+                })
+                : Promise.resolve([]),
+        ]);
+
+        if (
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex ||
+            (expectedRequestId !== null && expectedRequestId !== loadRequestId)
+        ) {
+            return;
+        }
+
+        state.hasNewerLocal = newerPosts.length > 0;
+        state.hasOlderLocal = olderPosts.length > 0;
+    }
+
+    async function loadLatestVisiblePosts(): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex) {
             state.loadedPosts = [];
             state.totalCount = 0;
             state.visibleUntil = null;
+            state.hasOlderLocal = false;
+            state.hasNewerLocal = false;
             return;
         }
 
         const requestId = ++loadRequestId;
-        const normalizedPage = Math.max(1, Math.trunc(page));
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const [count, pagePosts] = await Promise.all([
+        const [count, latestPosts] = await Promise.all([
             countVisiblePosts(pubkeyHex, visibleUntil),
-            getVisiblePagePosts({
+            postHistoryRepository.getLatestVisibleChunk({
                 pubkeyHex,
-                page: normalizedPage,
-                pageSize,
+                limit: pageSize,
                 visibleUntil,
             }),
         ]);
@@ -502,19 +610,57 @@ export function usePostHistoryListing({
             return;
         }
 
-        const safePage = resolveSafePage(normalizedPage, count, pageSize);
-        if (safePage !== normalizedPage) {
-            state.currentPage = safePage;
-            return;
-        }
-
-        await prefetchCurrentPageMedia(pagePosts);
+        await prefetchCurrentPageMedia(latestPosts);
         if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
         state.totalCount = count;
-        state.loadedPosts = pagePosts;
+        state.loadedPosts = latestPosts;
+        await refreshTimelineAvailability(pubkeyHex, latestPosts, requestId);
+    }
+
+    async function reloadVisibleWindowFromCurrentNewest(): Promise<void> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || state.loadedPosts.length === 0) {
+            await loadLatestVisiblePosts();
+            return;
+        }
+
+        const newestPost = state.loadedPosts[0];
+        const newestCursor = toTimelineCursor(newestPost);
+        if (!newestCursor) {
+            await loadLatestVisiblePosts();
+            return;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const [count, olderPosts] = await Promise.all([
+            countVisiblePosts(pubkeyHex, visibleUntil),
+            state.loadedPosts.length > 1
+                ? postHistoryRepository.getOlderVisibleChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: newestCursor,
+                    limit: state.loadedPosts.length - 1,
+                })
+                : Promise.resolve([]),
+        ]);
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return;
+        }
+
+        const nextPosts = [newestPost, ...olderPosts];
+        await prefetchCurrentPageMedia(nextPosts);
+        if (!getShow() || requestId !== loadRequestId) {
+            return;
+        }
+
+        state.totalCount = count;
+        state.loadedPosts = nextPosts;
+        await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
     }
 
     async function refreshTotalCountFromRepository(): Promise<void> {
@@ -532,11 +678,134 @@ export function usePostHistoryListing({
         state.totalCount = count;
     }
 
+    async function loadOlderVisiblePosts(): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        const oldestCursor = toTimelineCursor(
+            state.loadedPosts[state.loadedPosts.length - 1],
+        );
+        if (!pubkeyHex || !oldestCursor) {
+            await loadLatestVisiblePosts();
+            return state.loadedPosts.length > 0;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const olderPosts = await postHistoryRepository.getOlderVisibleChunk({
+            pubkeyHex,
+            visibleUntil,
+            cursor: oldestCursor,
+            limit: pageSize,
+        });
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (olderPosts.length === 0) {
+            state.hasOlderLocal = false;
+            return false;
+        }
+
+        const nextPosts = trimVisiblePosts(
+            [...state.loadedPosts, ...olderPosts],
+            "older",
+        );
+        await prefetchCurrentPageMedia(nextPosts);
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        state.loadedPosts = nextPosts;
+        await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
+        return true;
+    }
+
+    async function loadNewerVisiblePosts(): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        const newestCursor = toTimelineCursor(state.loadedPosts[0]);
+        if (!pubkeyHex || !newestCursor) {
+            return false;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const newerPosts = await postHistoryRepository.getNewerVisibleChunk({
+            pubkeyHex,
+            visibleUntil,
+            cursor: newestCursor,
+            limit: pageSize,
+        });
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (newerPosts.length === 0) {
+            state.hasNewerLocal = false;
+            return false;
+        }
+
+        const nextPosts = trimVisiblePosts(
+            [...newerPosts, ...state.loadedPosts],
+            "newer",
+        );
+        await prefetchCurrentPageMedia(nextPosts);
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        state.loadedPosts = nextPosts;
+        await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
+        return true;
+    }
+
+    async function jumpToCreatedAt(createdAt: number): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex) {
+            return false;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const [count, datePosts] = await Promise.all([
+            countVisiblePosts(pubkeyHex, visibleUntil),
+            postHistoryRepository.getVisibleChunkFromCreatedAt({
+                pubkeyHex,
+                visibleUntil,
+                createdAt,
+                limit: pageSize,
+            }),
+        ]);
+
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        if (datePosts.length === 0) {
+            state.totalCount = count;
+            state.loadedPosts = [];
+            state.hasOlderLocal = false;
+            state.hasNewerLocal = false;
+            return false;
+        }
+
+        await prefetchCurrentPageMedia(datePosts);
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        state.totalCount = count;
+        state.loadedPosts = datePosts;
+        await refreshTimelineAvailability(pubkeyHex, datePosts, requestId);
+        return true;
+    }
+
     async function loadSearchPage(page: number, query: string): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         if (!pubkeyHex || !query) {
             state.searchPosts = [];
             state.searchTotalCount = 0;
+            state.searchHasNext = false;
             return;
         }
 
@@ -580,6 +849,7 @@ export function usePostHistoryListing({
 
         state.searchTotalCount = result.total;
         state.searchPosts = result.items;
+        state.searchHasNext = result.hasNext;
     }
 
     async function syncFromRelays(): Promise<void> {
@@ -639,8 +909,11 @@ export function usePostHistoryListing({
 
         if (state.searchQuery) {
             await loadSearchPage(state.searchPage, state.searchQuery);
+        } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
+            await loadLatestVisiblePosts();
         } else {
-            await loadPage(state.currentPage);
+            await refreshTotalCountFromRepository();
+            await refreshTimelineAvailability(pubkeyHex);
         }
 
         state.syncStatus = resolveSyncStatusAfterFetch(
@@ -650,217 +923,159 @@ export function usePostHistoryListing({
         );
     }
 
-    async function ensurePageAvailable(targetPage: number): Promise<boolean> {
-        const pubkeyHex = getPubkeyHex();
-        if (!pubkeyHex) {
-            return false;
-        }
-
-        const requiredCount = (targetPage - 1) * pageSize + 1;
-        let currentVisibleUntil = await refreshVisibleUntil(pubkeyHex);
-        let currentCount = await countVisiblePosts(pubkeyHex, currentVisibleUntil);
-
-        if (currentCount >= requiredCount) {
-            return true;
-        }
-
-        const rxNostr = getRxNostr();
-        if (!rxNostr || !state.hasMoreRemote || state.nextUntil === null) {
-            state.syncStatus = "no-more";
-            return false;
-        }
-
-        while (
-            getShow() &&
-            currentCount < requiredCount &&
-            state.hasMoreRemote &&
-            state.nextUntil !== null
-        ) {
-            const fetchUntil: number = state.nextUntil;
-            cancelCurrentSync();
-            state.syncStatus = "older-syncing";
-            let didMateriallyChange = false;
-
-            const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
-                pubkeyHex,
-                relayConfig: getRelayConfig(),
-                limit: POST_HISTORY_RELAY_FETCH_LIMIT,
-                until: fetchUntil,
-            });
-            currentFetchTask = task;
-
-            const result = await task.promise;
-            await postHistorySyncCoverageRepository.saveAttempt({
-                pubkeyHex,
-                requestKind: "older",
-                kinds: [...POST_HISTORY_FETCH_KINDS],
-                until: fetchUntil,
-                limit: POST_HISTORY_RELAY_FETCH_LIMIT,
-                result,
-            });
-            if (currentFetchTask !== task) {
-                return false;
-            }
-
-            currentFetchTask = null;
-            if (!getShow() || result.status === "cancelled") {
-                return false;
-            }
-
-            updateRelayHistoryCursor(result);
-
-            if (result.events.length > 0) {
-                const upsertSummary =
-                    await postHistoryRepository.upsertFetchedEvents({
-                        events: result.events,
-                        fetchedAt: result.fetchedAt,
-                    });
-                didMateriallyChange =
-                    upsertSummary.insertedCount + upsertSummary.updatedCount >
-                    0;
-            }
-
-            const previousVisibleCount = currentCount;
-            const previousVisibleUntil = currentVisibleUntil;
-            currentVisibleUntil = await updateVisibleUntilFromFetch(
-                pubkeyHex,
-                result,
-            );
-            currentCount = await countVisiblePosts(
-                pubkeyHex,
-                currentVisibleUntil,
-            );
-            const didVisibleCountIncrease = currentCount > previousVisibleCount;
-
-            if (
-                result.status === "success" &&
-                !didVisibleCountIncrease &&
-                !didMateriallyChange &&
-                typeof fetchUntil === "number" &&
-                result.nextUntil === fetchUntil
-            ) {
-                state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
-                state.hasMoreRemote = state.nextUntil !== null;
-            }
-
-            if (currentCount >= requiredCount) {
-                state.syncStatus = resolveSyncStatusAfterFetch(
-                    result,
-                    didMateriallyChange || didVisibleCountIncrease,
-                );
-                return true;
-            }
-
-            if (result.status !== "success") {
-                state.syncStatus = "failed";
-                return false;
-            }
-        }
-
-        if (currentCount >= requiredCount) {
-            if (state.syncStatus === "older-syncing") {
-                state.syncStatus = "idle";
-            }
-            return true;
-        }
-
-        state.syncStatus = "no-more";
-        return false;
-    }
-
     function goPreviousPage(): boolean {
-        if (!canGoPrevious) {
+        if (!isSearchMode || !canGoPrevious) {
             return false;
         }
 
-        if (isSearchMode) {
-            state.searchPage -= 1;
-            return true;
-        }
-
-        state.currentPage -= 1;
+        state.searchPage -= 1;
         return true;
     }
 
     function goFirstPage(): boolean {
-        if (!canGoFirst) {
+        if (!isSearchMode || !canGoFirst) {
             return false;
         }
 
-        if (isSearchMode) {
-            state.searchPage = 1;
-            return true;
-        }
-
-        state.currentPage = 1;
+        state.searchPage = 1;
         return true;
     }
 
     async function goToNextPage(): Promise<boolean> {
-        if (!canGoNext) {
+        if (!isSearchMode || !canGoNext) {
             return false;
         }
 
-        const targetPage = displayPage + 1;
-        if (isSearchMode) {
-            state.searchPage = targetPage;
-            return true;
-        }
-
-        if (targetPage <= totalPages) {
-            state.currentPage = targetPage;
-            return true;
-        }
-
-        const pageReady = await ensurePageAvailable(targetPage);
-        if (pageReady) {
-            state.currentPage = targetPage;
-            return true;
-        }
-
-        await loadPage(state.currentPage);
-        return false;
+        state.searchPage += 1;
+        return true;
     }
 
     async function goToLastPage(): Promise<boolean> {
-        if (!canGoLast) {
+        if (!isSearchMode || !canGoLast) {
             return false;
         }
 
-        if (isSearchMode) {
-            state.searchPage = totalPages;
-            return true;
-        }
-
-        if (state.currentPage < totalPages) {
-            state.currentPage = totalPages;
-            return true;
-        }
-
-        const pageReady = await ensurePageAvailable(state.currentPage + 1);
-        if (!pageReady) {
-            await loadPage(state.currentPage);
-            return false;
-        }
-
-        const pubkeyHex = getPubkeyHex();
-        if (!pubkeyHex) {
-            return false;
-        }
-
-        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const count = await countVisiblePosts(pubkeyHex, visibleUntil);
-        if (!getShow()) {
-            return false;
-        }
-
-        state.totalCount = count;
-        state.currentPage = resolveSafePage(
-            Math.ceil(count / pageSize),
-            count,
-            pageSize,
-        );
+        state.searchPage = totalPages;
         return true;
+    }
+
+    async function loadOlder(): Promise<boolean> {
+        if (isSearchMode) {
+            return goToNextPage();
+        }
+
+        return loadOlderVisiblePosts();
+    }
+
+    async function loadNewer(): Promise<boolean> {
+        if (isSearchMode) {
+            return Promise.resolve(goPreviousPage());
+        }
+
+        return loadNewerVisiblePosts();
+    }
+
+    async function returnToLatest(): Promise<boolean> {
+        if (isSearchMode) {
+            return Promise.resolve(goFirstPage());
+        }
+
+        await loadLatestVisiblePosts();
+        return true;
+    }
+
+    async function fetchOlderFromRelays(): Promise<boolean> {
+        const pubkeyHex = getPubkeyHex();
+        const rxNostr = getRxNostr();
+        if (!pubkeyHex || !rxNostr || !canFetchOlderFromRelays) {
+            return false;
+        }
+
+        const fetchUntil = state.nextUntil;
+        if (typeof fetchUntil !== "number") {
+            state.syncStatus = "no-more";
+            return false;
+        }
+
+        cancelCurrentSync();
+        state.syncStatus = "older-syncing";
+        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
+        let didMateriallyChange = false;
+
+        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
+            pubkeyHex,
+            relayConfig: getRelayConfig(),
+            limit: POST_HISTORY_RELAY_FETCH_LIMIT,
+            until: fetchUntil,
+        });
+        currentFetchTask = task;
+
+        const result = await task.promise;
+        await postHistorySyncCoverageRepository.saveAttempt({
+            pubkeyHex,
+            requestKind: "older",
+            kinds: [...POST_HISTORY_FETCH_KINDS],
+            until: fetchUntil,
+            limit: POST_HISTORY_RELAY_FETCH_LIMIT,
+            result,
+        });
+        if (currentFetchTask !== task) {
+            return false;
+        }
+
+        currentFetchTask = null;
+        if (!getShow() || result.status === "cancelled") {
+            return false;
+        }
+
+        updateRelayHistoryCursor(result);
+
+        if (result.events.length > 0) {
+            const upsertSummary = await postHistoryRepository.upsertFetchedEvents({
+                events: result.events,
+                fetchedAt: result.fetchedAt,
+            });
+            didMateriallyChange =
+                upsertSummary.insertedCount + upsertSummary.updatedCount > 0;
+        }
+
+        const nextVisibleUntil = await updateVisibleUntilFromFetch(
+            pubkeyHex,
+            result,
+        );
+        const nextCount = await countVisiblePosts(pubkeyHex, nextVisibleUntil);
+        const didVisibleCountIncrease = nextCount > previousCount;
+
+        if (
+            result.status === "success" &&
+            !didVisibleCountIncrease &&
+            !didMateriallyChange &&
+            result.nextUntil === fetchUntil
+        ) {
+            state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
+            state.hasMoreRemote = state.nextUntil !== null;
+        }
+
+        if (state.searchQuery) {
+            await loadSearchPage(state.searchPage, state.searchQuery);
+        } else {
+            state.totalCount = nextCount;
+            await refreshTimelineAvailability(pubkeyHex);
+        }
+
+        if (result.status !== "success") {
+            state.syncStatus = "failed";
+            return false;
+        }
+
+        state.syncStatus = didVisibleCountIncrease || didMateriallyChange
+            ? resolveSyncStatusAfterFetch(result, true)
+            : state.hasMoreRemote
+                ? "idle"
+                : "no-more";
+
+        return didVisibleCountIncrease || didMateriallyChange;
     }
 
     async function repairFromRelays(): Promise<void> {
@@ -905,8 +1120,10 @@ export function usePostHistoryListing({
 
             if (state.searchQuery) {
                 await loadSearchPage(state.searchPage, state.searchQuery);
+            } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
+                await loadLatestVisiblePosts();
             } else {
-                await loadPage(state.currentPage);
+                await reloadVisibleWindowFromCurrentNewest();
             }
 
             if (result.hadFailures) {
@@ -1022,9 +1239,12 @@ export function usePostHistoryListing({
             searchPosts: state.searchPosts,
             totalCount: state.totalCount,
             searchTotalCount: state.searchTotalCount,
+            searchHasNext: state.searchHasNext,
             hasMoreRemote: state.hasMoreRemote,
             nextUntil: state.nextUntil,
             visibleUntil: state.visibleUntil,
+            hasOlderLocal: state.hasOlderLocal,
+            hasNewerLocal: state.hasNewerLocal,
         });
     });
 
@@ -1072,11 +1292,11 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
-        if (!getShow() || isSearchMode) {
+        if (!getShow() || isSearchMode || state.loadedPosts.length > 0) {
             return;
         }
 
-        void loadPage(state.currentPage);
+        void loadLatestVisiblePosts();
     });
 
     $effect(() => {
@@ -1106,6 +1326,7 @@ export function usePostHistoryListing({
 
             state.searchPosts = [];
             state.searchTotalCount = 0;
+            state.searchHasNext = false;
             return;
         }
 
@@ -1127,6 +1348,9 @@ export function usePostHistoryListing({
         get posts() {
             return posts;
         },
+        get displayTotalCount() {
+            return displayTotalCount;
+        },
         get displayPage() {
             return displayPage;
         },
@@ -1147,6 +1371,30 @@ export function usePostHistoryListing({
         },
         get showPaging() {
             return showPaging;
+        },
+        get canLoadOlder() {
+            return canLoadOlder;
+        },
+        get canLoadNewer() {
+            return canLoadNewer;
+        },
+        get canReturnToLatest() {
+            return canReturnToLatest;
+        },
+        get canFetchOlderFromRelays() {
+            return canFetchOlderFromRelays;
+        },
+        get showLocalExhaustedState() {
+            return showLocalExhaustedState;
+        },
+        get visibleNewestCreatedAt() {
+            return visibleNewestCreatedAt;
+        },
+        get visibleOldestCreatedAt() {
+            return visibleOldestCreatedAt;
+        },
+        get visiblePostCount() {
+            return visiblePostCount;
         },
         get syncStatus() {
             return state.syncStatus;
@@ -1174,6 +1422,11 @@ export function usePostHistoryListing({
         },
         cancelCurrentSync,
         cancelCurrentRepair,
+        loadOlder,
+        loadNewer,
+        returnToLatest,
+        jumpToCreatedAt,
+        fetchOlderFromRelays,
         goFirstPage,
         goPreviousPage,
         goToNextPage,

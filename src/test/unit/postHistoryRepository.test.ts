@@ -238,6 +238,115 @@ describe("DexiePostHistoryRepository", () => {
         db.close();
     });
 
+    it("timeline chunk API は stable cursor で older/newer window を返す", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 1000 }),
+            postedAt: 5000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 1100 }),
+            postedAt: 5000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1100 }),
+            postedAt: 5000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "4".repeat(64), pubkey, created_at: 900 }),
+            postedAt: 4000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "5".repeat(64), pubkey, created_at: 800 }),
+            postedAt: 3000,
+        });
+
+        await expect(repository.getLatestVisibleChunk({
+            pubkeyHex: pubkey,
+            limit: 3,
+        })).resolves.toMatchObject([
+            { eventId: "3".repeat(64), postedAt: 5000, createdAt: 1100 },
+            { eventId: "2".repeat(64), postedAt: 5000, createdAt: 1100 },
+            { eventId: "1".repeat(64), postedAt: 5000, createdAt: 1000 },
+        ]);
+
+        await expect(repository.getOlderVisibleChunk({
+            pubkeyHex: pubkey,
+            limit: 2,
+            cursor: {
+                eventId: "2".repeat(64),
+                postedAt: 5000,
+                createdAt: 1100,
+            },
+        })).resolves.toMatchObject([
+            { eventId: "1".repeat(64), postedAt: 5000, createdAt: 1000 },
+            { eventId: "4".repeat(64), postedAt: 4000, createdAt: 900 },
+        ]);
+
+        await expect(repository.getNewerVisibleChunk({
+            pubkeyHex: pubkey,
+            limit: 2,
+            cursor: {
+                eventId: "1".repeat(64),
+                postedAt: 5000,
+                createdAt: 1000,
+            },
+        })).resolves.toMatchObject([
+            { eventId: "3".repeat(64), postedAt: 5000, createdAt: 1100 },
+            { eventId: "2".repeat(64), postedAt: 5000, createdAt: 1100 },
+        ]);
+
+        db.close();
+    });
+
+    it("date chunk API は visibleUntil を守って指定日時以前の local chunk を返す", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistoryRepository(db, () => 1000);
+        const pubkey = "b".repeat(64);
+
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "1".repeat(64), pubkey, created_at: 900 }),
+            postedAt: 9000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "2".repeat(64), pubkey, created_at: 1000 }),
+            postedAt: 10000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "3".repeat(64), pubkey, created_at: 1100 }),
+            postedAt: 11000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "4".repeat(64), pubkey, created_at: 1200 }),
+            postedAt: 12000,
+        });
+
+        await expect(repository.getVisibleChunkFromCreatedAt({
+            pubkeyHex: pubkey,
+            visibleUntil: 1000,
+            createdAt: 1150,
+            limit: 2,
+        })).resolves.toMatchObject([
+            { eventId: "3".repeat(64), createdAt: 1100 },
+            { eventId: "2".repeat(64), createdAt: 1000 },
+        ]);
+
+        await expect(repository.getVisibleChunkFromCreatedAt({
+            pubkeyHex: pubkey,
+            visibleUntil: 1000,
+            createdAt: 950,
+            limit: 2,
+        })).resolves.toMatchObject([
+            { eventId: "3".repeat(64), createdAt: 1100 },
+            { eventId: "2".repeat(64), createdAt: 1000 },
+        ]);
+
+        db.close();
+    });
+
     it("relay 取得イベントを upsert しても既存 local record の主要フィールドを壊さない", async () => {
         const db = createTestDb();
         const repository = new DexiePostHistoryRepository(db, () => 7000);

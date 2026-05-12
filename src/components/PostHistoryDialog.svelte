@@ -44,6 +44,8 @@
         "url" | "width" | "height" | "aspectRatio"
     >;
 
+    type PostHistoryUtilityPanel = "none" | "search" | "jump-date";
+
     interface Props {
         show: boolean;
         onClose: () => void;
@@ -84,7 +86,8 @@
     let deleteTargetPost = $state<PostHistoryRecord | null>(null);
     let localHistoryDeleteConfirmOpen = $state(false);
     let isDeletingLocalHistory = $state(false);
-    let showSearchBar = $state(false);
+    let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
+    let jumpDateInput = $state("");
     let headingMenuOpen = $state(false);
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
@@ -99,10 +102,6 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
-    let pendingHistoryScrollReset = $state<{
-        page: number;
-        previousFirstEventId: string | null;
-    } | null>(null);
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
@@ -156,14 +155,14 @@
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
         isDeletingLocalHistory = false;
-        showSearchBar = false;
+        activeUtilityPanel = "none";
+        jumpDateInput = "";
         headingMenuOpen = false;
         deleteRequestState = {};
         emojiLoadStateByUrl = {};
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
         showImageFullscreen = false;
-        pendingHistoryScrollReset = null;
         loadingEmojiUrls.clear();
     }
 
@@ -250,65 +249,123 @@
         }
     }
 
-    function queueHistoryScrollReset(): void {
-        pendingHistoryScrollReset = {
-            page: history.displayPage,
-            previousFirstEventId: history.posts[0]?.eventId ?? null,
-        };
+    function formatDateRangeValue(createdAt: number | null): string | null {
+        if (typeof createdAt !== "number") {
+            return null;
+        }
+
+        const date = new Date(createdAt * 1000);
+        const year = date.getFullYear();
+        const month = `${date.getMonth() + 1}`.padStart(2, "0");
+        const day = `${date.getDate()}`.padStart(2, "0");
+        return `${year}/${month}/${day}`;
     }
 
-    function handlePreviousPage(): void {
-        if (history.goPreviousPage()) {
-            queueHistoryScrollReset();
+    function buildVisibleRangeLabel(): string | null {
+        const from = formatDateRangeValue(history.visibleOldestCreatedAt);
+        const to = formatDateRangeValue(history.visibleNewestCreatedAt);
+        if (!from || !to) {
+            return null;
         }
+
+        return $_("postHistory.visibleRange", {
+            values: { from, to },
+        });
     }
 
-    function handleFirstPage(): void {
-        if (history.goFirstPage()) {
-            queueHistoryScrollReset();
+    function buildVisibleCountLabel(): string | null {
+        if (history.displayTotalCount <= 0 || history.visiblePostCount <= 0) {
+            return null;
         }
+
+        return $_(
+            history.isSearchMode
+                ? "postHistory.searchCountSummary"
+                : "postHistory.visibleCountSummary",
+            {
+                values: {
+                    visible: history.visiblePostCount,
+                    total: history.displayTotalCount,
+                },
+            },
+        );
     }
 
-    async function handleNextPage(): Promise<void> {
-        if (await history.goToNextPage()) {
-            queueHistoryScrollReset();
-        }
-    }
-
-    async function handleLastPage(): Promise<void> {
-        if (await history.goToLastPage()) {
-            queueHistoryScrollReset();
-        }
-    }
-
-    $effect(() => {
-        if (!show || !pendingHistoryScrollReset) {
-            return;
-        }
-
-        const currentPage = history.displayPage;
-        const currentFirstEventId = history.posts[0]?.eventId ?? null;
-        if (currentPage !== pendingHistoryScrollReset.page) {
-            return;
-        }
+    function parseDateInputToCreatedAt(value: string): number | null {
+        const [yearText, monthText, dayText] = value.split("-");
+        const year = Number(yearText);
+        const month = Number(monthText);
+        const day = Number(dayText);
 
         if (
-            currentFirstEventId ===
-            pendingHistoryScrollReset.previousFirstEventId
+            !Number.isFinite(year) ||
+            !Number.isFinite(month) ||
+            !Number.isFinite(day)
         ) {
-            return;
+            return null;
         }
 
-        const targetPage = pendingHistoryScrollReset.page;
+        const date = new Date(year, month - 1, day, 23, 59, 59, 999);
+        const time = date.getTime();
+        return Number.isFinite(time) ? Math.floor(time / 1000) : null;
+    }
+
+    function resetHistoryScrollSoon(): void {
         void tick().then(() => {
-            if (!show || pendingHistoryScrollReset?.page !== targetPage) {
+            if (!show) {
                 return;
             }
 
             resetHistoryScrollPosition();
-            pendingHistoryScrollReset = null;
         });
-    });
+    }
+
+    function getLoadOlderLabel(): string {
+        return $_(
+            history.isSearchMode
+                ? "postHistory.loadOlderSearchResults"
+                : "postHistory.loadOlder",
+        );
+    }
+
+    function getLoadNewerLabel(): string {
+        return $_(
+            history.isSearchMode
+                ? "postHistory.loadNewerSearchResults"
+                : "postHistory.loadNewer",
+        );
+    }
+
+    async function handleLoadOlder(): Promise<void> {
+        await history.loadOlder();
+    }
+
+    async function handleLoadNewer(): Promise<void> {
+        const changed = await history.loadNewer();
+        if (changed) {
+            resetHistoryScrollSoon();
+        }
+    }
+
+    async function handleReturnToLatest(): Promise<void> {
+        const changed = await history.returnToLatest();
+        if (changed) {
+            resetHistoryScrollSoon();
+        }
+    }
+
+    async function handleJumpToDateSubmit(): Promise<void> {
+        const createdAt = parseDateInputToCreatedAt(jumpDateInput);
+        if (createdAt === null) {
+            return;
+        }
+
+        const changed = await history.jumpToCreatedAt(createdAt);
+        if (changed) {
+            activeUtilityPanel = "none";
+            resetHistoryScrollSoon();
+        }
+    }
 
     function getPreviewContent(
         post: PostHistoryRecord,
@@ -568,13 +625,18 @@
     }
 
     function showSearch(): void {
-        showSearchBar = true;
+        activeUtilityPanel = "search";
         headingMenuOpen = false;
     }
 
     function hideSearch(): void {
-        showSearchBar = false;
+        activeUtilityPanel = "none";
         history.resetSearchState();
+    }
+
+    function showJumpDate(): void {
+        activeUtilityPanel = "jump-date";
+        headingMenuOpen = false;
     }
 
     function openLocalHistoryDeleteConfirm(): void {
@@ -585,6 +647,16 @@
     function handleRepairFromMenu(): void {
         headingMenuOpen = false;
         void history.repairFromRelays();
+    }
+
+    function handleFetchOlderFromRelaysFromMenu(): void {
+        headingMenuOpen = false;
+        void history.fetchOlderFromRelays();
+    }
+
+    function handleReturnToLatestFromMenu(): void {
+        headingMenuOpen = false;
+        void handleReturnToLatest();
     }
 
     function handleLocalHistoryDeleteCancel(): void {
@@ -660,7 +732,7 @@
             const deleted = await history.deleteLocalHistory();
             if (deleted) {
                 localHistoryDeleteConfirmOpen = false;
-                showSearchBar = false;
+                activeUtilityPanel = "none";
                 resetHistoryScrollPosition();
             }
         } finally {
@@ -678,24 +750,7 @@
     description={$_("postHistory.description")}
     contentClass="post-history-dialog"
     footerVariant="close-button"
-    showPagination={history.showPaging}
-    paginationLabel={$_("postHistory.page", {
-        values: { page: history.displayPage, total: history.totalPages },
-    })}
-    firstPageLabel={$_("postHistory.firstPage")}
-    previousPageLabel={$_("postHistory.previousPage")}
-    nextPageLabel={$_("postHistory.nextPage")}
-    lastPageLabel={$_("postHistory.lastPage")}
-    canGoFirst={history.canGoFirst}
-    canGoPrevious={history.canGoPrevious}
-    canGoNext={history.canGoNext}
-    canGoLast={history.canGoLast}
-    nextPageLoading={!history.isSearchMode &&
-        history.syncStatus === "older-syncing"}
-    onFirstPage={handleFirstPage}
-    onPreviousPage={handlePreviousPage}
-    onNextPage={handleNextPage}
-    onLastPage={handleLastPage}
+    showPagination={false}
     initialFocus="content"
 >
     <div class="post-history-heading">
@@ -732,6 +787,43 @@
                                         aria-hidden="true"
                                     ></div>
                                     <span>{$_("postHistory.showSearch")}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="menu-action-button"
+                                    onclick={showJumpDate}
+                                >
+                                    <div
+                                        class="calendar-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span>{$_("postHistory.jumpToDate")}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="menu-action-button"
+                                    disabled={!history.canReturnToLatest}
+                                    onclick={handleReturnToLatestFromMenu}
+                                >
+                                    <div
+                                        class="latest-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span>{$_("postHistory.returnToLatest")}</span>
+                                </button>
+                                <button
+                                    type="button"
+                                    class="menu-action-button"
+                                    disabled={!history.canFetchOlderFromRelays}
+                                    onclick={handleFetchOlderFromRelaysFromMenu}
+                                >
+                                    <div
+                                        class="download-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span>
+                                        {$_("postHistory.fetchOlderFromRelays")}
+                                    </span>
                                 </button>
                                 <button
                                     type="button"
@@ -774,6 +866,20 @@
                 </Popover.Root>
             </div>
         </div>
+        {#if history.posts.length > 0}
+            <div class="post-history-heading-summary">
+                {#if buildVisibleRangeLabel()}
+                    <div class="post-history-summary-line">
+                        {buildVisibleRangeLabel()}
+                    </div>
+                {/if}
+                {#if buildVisibleCountLabel()}
+                    <div class="post-history-summary-line">
+                        {buildVisibleCountLabel()}
+                    </div>
+                {/if}
+            </div>
+        {/if}
         {#if headingStatusMessageKey}
             <div
                 class="status-message"
@@ -796,32 +902,62 @@
         {/if}
     </div>
 
-    {#if showSearchBar}
-    <div class="post-history-search-row" class:post-history-search-active={history.isSearchMode}>
-        <input
-            bind:value={history.state.searchInput}
-            class="post-history-search-input"
-            type="search"
-            placeholder={$_("postHistory.searchPlaceholder")}
-            aria-label={$_("postHistory.search")}
-        />
-        <Button
-            type="button"
-            class="post-history-search-close"
-            contentLayout="icon"
-            shape="circle"
-            ariaLabel={$_("postHistory.hideSearch")}
-            onClick={hideSearch}
+    {#if activeUtilityPanel === "search"}
+        <div
+            class="post-history-search-row"
+            class:post-history-search-active={history.isSearchMode}
         >
-            <div class="xmark-icon svg-icon" aria-hidden="true"></div>
-        </Button>
-    </div>
+            <input
+                bind:value={history.state.searchInput}
+                class="post-history-search-input"
+                type="search"
+                placeholder={$_("postHistory.searchPlaceholder")}
+                aria-label={$_("postHistory.search")}
+            />
+            <Button
+                type="button"
+                class="post-history-search-close"
+                contentLayout="icon"
+                shape="circle"
+                ariaLabel={$_("postHistory.hideSearch")}
+                onClick={hideSearch}
+            >
+                <div class="xmark-icon svg-icon" aria-hidden="true"></div>
+            </Button>
+        </div>
     {/if}
 
-    {#if history.isSearchMode && history.state.searchTotalCount > 0}
-        <div class="post-history-search-summary">
-            <span>{$_("postHistory.searchResults")}</span>
-            <span>{history.state.searchTotalCount}</span>
+    {#if activeUtilityPanel === "jump-date"}
+        <div class="post-history-utility-panel">
+            <label
+                class="post-history-utility-label"
+                for="post-history-jump-date"
+            >
+                {$_("postHistory.jumpToDateLabel")}
+            </label>
+            <div class="post-history-utility-controls">
+                <input
+                    id="post-history-jump-date"
+                    bind:value={jumpDateInput}
+                    class="post-history-date-input"
+                    type="date"
+                    aria-label={$_("postHistory.jumpToDateLabel")}
+                />
+                <Button
+                    type="button"
+                    className="post-history-utility-button"
+                    onClick={() => void handleJumpToDateSubmit()}
+                >
+                    {$_("postHistory.jumpToDateSubmit")}
+                </Button>
+                <Button
+                    type="button"
+                    className="post-history-utility-button"
+                    onClick={() => (activeUtilityPanel = "none")}
+                >
+                    {$_("common.cancel")}
+                </Button>
+            </div>
         </div>
     {/if}
 
@@ -835,6 +971,17 @@
                 </div>
             </div>
         {:else}
+            {#if history.canLoadNewer}
+                <div class="post-history-nav-row post-history-nav-row-top">
+                    <Button
+                        type="button"
+                        className="post-history-nav-button"
+                        onClick={() => void handleLoadNewer()}
+                    >
+                        {getLoadNewerLabel()}
+                    </Button>
+                </div>
+            {/if}
             <ul class="post-history-list">
                 {#each history.posts as post (post.eventId)}
                     <li
@@ -1202,8 +1349,60 @@
                     </li>
                 {/each}
             </ul>
+
+            {#if history.canLoadOlder}
+                <div class="post-history-nav-row post-history-nav-row-bottom">
+                    <Button
+                        type="button"
+                        className="post-history-nav-button"
+                        onClick={() => void handleLoadOlder()}
+                    >
+                        {getLoadOlderLabel()}
+                    </Button>
+                </div>
+            {:else if history.showLocalExhaustedState}
+                <div class="post-history-exhausted-state">
+                    <p class="post-history-exhausted-message">
+                        {$_("postHistory.localHistoryExhausted")}
+                    </p>
+                    <div class="post-history-exhausted-actions">
+                        {#if history.canFetchOlderFromRelays}
+                            <Button
+                                type="button"
+                                className="post-history-nav-button"
+                                onClick={() => void history.fetchOlderFromRelays()}
+                            >
+                                {$_("postHistory.fetchOlderFromRelays")}
+                            </Button>
+                        {/if}
+                        {#if history.canRepair}
+                            <Button
+                                type="button"
+                                className="post-history-nav-button"
+                                onClick={() => void history.repairFromRelays()}
+                            >
+                                {history.isRepairing
+                                    ? $_("postHistory.repairing")
+                                    : $_("postHistory.repair")}
+                            </Button>
+                        {/if}
+                    </div>
+                </div>
+            {/if}
         {/if}
     </div>
+
+    {#if history.canReturnToLatest}
+        <div class="post-history-latest-row">
+            <Button
+                type="button"
+                className="post-history-latest-button"
+                onClick={() => void handleReturnToLatest()}
+            >
+                {$_("postHistory.returnToLatest")}
+            </Button>
+        </div>
+    {/if}
 
     {#snippet footer()}
         <Dialog.Close>
@@ -1342,6 +1541,20 @@
         flex: 0 0 auto;
     }
 
+    .post-history-heading-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 100%;
+        color: var(--text-muted);
+        font-size: 0.82rem;
+        line-height: 1.35;
+    }
+
+    .post-history-summary-line {
+        overflow-wrap: anywhere;
+    }
+
     :global(.post-history-heading-menu-trigger) {
         min-height: 40px;
         aspect-ratio: 1;
@@ -1414,14 +1627,91 @@
         color: var(--text-muted);
     }
 
-    .post-history-search-summary {
+    .post-history-utility-panel {
         display: flex;
-        align-items: center;
-        justify-content: space-between;
+        flex-direction: column;
         gap: 8px;
-        padding: 8px 16px 0;
+        padding: 10px 16px 0;
+        border-bottom: 1px solid var(--border-hr);
+    }
+
+    .post-history-utility-label {
         color: var(--text-muted);
         font-size: 0.82rem;
+    }
+
+    .post-history-utility-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .post-history-date-input {
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid var(--border-soft);
+        background: var(--background);
+        color: var(--text);
+        font: inherit;
+    }
+
+    :global(.post-history-utility-button) {
+        min-height: 40px;
+        white-space: nowrap;
+    }
+
+    .post-history-nav-row {
+        display: flex;
+        justify-content: center;
+        width: 100%;
+        padding: 12px 16px;
+    }
+
+    .post-history-nav-row-top {
+        padding-bottom: 4px;
+    }
+
+    .post-history-nav-row-bottom {
+        padding-top: 4px;
+    }
+
+    :global(.post-history-nav-button) {
+        min-height: 40px;
+        white-space: nowrap;
+    }
+
+    .post-history-exhausted-state {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        align-items: center;
+        padding: 12px 16px 16px;
+    }
+
+    .post-history-exhausted-message {
+        margin: 0;
+        color: var(--text-muted);
+        font-size: 0.92rem;
+        text-align: center;
+    }
+
+    .post-history-exhausted-actions {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .post-history-latest-row {
+        display: flex;
+        justify-content: flex-end;
+        width: 100%;
+        padding: 0 16px 12px;
+    }
+
+    :global(.post-history-latest-button) {
+        min-height: 40px;
     }
 
     .post-history-container {
@@ -1609,6 +1899,21 @@
         min-height: 18px;
     }
 
+    .menu-action-button .calendar-icon {
+        mask-image: url("/icons/list-solid-full.svg");
+        background-color: currentColor;
+    }
+
+    .menu-action-button .latest-icon {
+        mask-image: url("/icons/clock-rotate-left-solid-full.svg");
+        background-color: currentColor;
+    }
+
+    .menu-action-button .download-icon {
+        mask-image: url("/icons/arrow-down-solid-full.svg");
+        background-color: currentColor;
+    }
+
     @keyframes popover-in {
         from {
             opacity: 0;
@@ -1639,6 +1944,27 @@
         font-size: 1rem;
         line-height: 1.5;
         gap: 4px;
+    }
+
+    @media (max-width: 600px) {
+        .post-history-utility-controls,
+        .post-history-exhausted-actions {
+            align-items: stretch;
+        }
+
+        .post-history-date-input,
+        :global(.post-history-utility-button),
+        :global(.post-history-nav-button) {
+            width: 100%;
+        }
+
+        .post-history-latest-row {
+            justify-content: stretch;
+        }
+
+        :global(.post-history-latest-button) {
+            width: 100%;
+        }
     }
 
     .post-history-channel-row {
