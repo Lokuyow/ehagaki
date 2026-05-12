@@ -473,7 +473,7 @@ describe("PostHistoryRepairService", () => {
         expect(result.hasRemainingRanges).toBe(false);
     });
 
-    it("未完了 coverage が無い場合は local oldestCreatedAt まで月単位 range を最大 5 件だけ再取得し、残りは cursor で次回へ持ち越す", async () => {
+    it("未完了 coverage が無い場合は now から local oldestCreatedAt に向かって新しい月から古い月へ最大 5 range を再取得し、cursor は次の古い月を指す", async () => {
         const debug = vi.fn();
         const setTimeoutFn = vi.fn((callback: () => void) => {
             callback();
@@ -541,8 +541,44 @@ describe("PostHistoryRepairService", () => {
                 until: Math.floor(Date.UTC(2026, 4, 12, 12, 0, 0) / 1000),
             }),
         );
+        expect(fetchLatest).toHaveBeenNthCalledWith(
+            2,
+            {} as any,
+            expect.objectContaining({
+                since: Math.floor(Date.UTC(2026, 3, 1) / 1000),
+                until: Math.floor(Date.UTC(2026, 4, 1) / 1000) - 1,
+            }),
+        );
+        expect(fetchLatest).toHaveBeenNthCalledWith(
+            3,
+            {} as any,
+            expect.objectContaining({
+                since: Math.floor(Date.UTC(2026, 2, 1) / 1000),
+                until: Math.floor(Date.UTC(2026, 3, 1) / 1000) - 1,
+            }),
+        );
+        expect(fetchLatest).toHaveBeenNthCalledWith(
+            4,
+            {} as any,
+            expect.objectContaining({
+                since: Math.floor(Date.UTC(2026, 1, 1) / 1000),
+                until: Math.floor(Date.UTC(2026, 2, 1) / 1000) - 1,
+            }),
+        );
+        expect(fetchLatest).toHaveBeenNthCalledWith(
+            5,
+            {} as any,
+            expect.objectContaining({
+                since: Math.floor(Date.UTC(2026, 0, 1) / 1000),
+                until: Math.floor(Date.UTC(2026, 1, 1) / 1000) - 1,
+            }),
+        );
         expect(setTimeoutFn).toHaveBeenCalledTimes(POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN - 1);
         expect(cursorSave).toHaveBeenCalled();
+        expect(currentCursor).toEqual(expect.objectContaining({
+            targetOldestCreatedAt: Math.floor(Date.UTC(2025, 10, 15) / 1000),
+            nextUntil: Math.floor(Date.UTC(2026, 0, 1) / 1000) - 1,
+        }));
         expect(result.attemptedRangeCount).toBe(POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN);
         expect(result.processedRangeCount).toBe(POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN);
         expect(result.hasRemainingRanges).toBe(true);
