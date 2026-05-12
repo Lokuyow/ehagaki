@@ -23,6 +23,15 @@ export type PostHistoryPageOptions = PostHistoryRepositoryOptions & {
     pageSize: number;
 };
 
+export type PostHistoryVisibleQueryOptions = PostHistoryRepositoryOptions & {
+    visibleUntil?: number | null;
+};
+
+export type PostHistoryVisiblePageOptions = PostHistoryVisibleQueryOptions & {
+    page: number;
+    pageSize: number;
+};
+
 export type PostHistoryFetchedEventItem = {
     event: NostrEvent;
     relayUrls?: string[];
@@ -45,8 +54,11 @@ export type PostHistoryRepositoryOptions = {
 
 export interface PostHistoryRepository {
     getAll(options: PostHistoryRepositoryOptions): Promise<PostHistoryRecord[]>;
+    getVisibleAll(options: PostHistoryVisibleQueryOptions): Promise<PostHistoryRecord[]>;
     getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]>;
+    getVisiblePage(options: PostHistoryVisiblePageOptions): Promise<PostHistoryRecord[]>;
     countForPubkey(pubkeyHex: string | null | undefined): Promise<number>;
+    countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number>;
     putPostedEvent(input: PostHistorySaveInput): Promise<void>;
     upsertFetchedEvents(input: PostHistoryUpsertFetchedEventsInput): Promise<PostHistoryUpsertFetchedEventsResult>;
     getOldestCreatedAt(pubkeyHex: string | null | undefined): Promise<number | null>;
@@ -143,6 +155,16 @@ function normalizePageNumber(page: number): number {
 
 function normalizePageSize(pageSize: number): number {
     return Number.isFinite(pageSize) ? Math.max(1, Math.trunc(pageSize)) : 50;
+}
+
+function normalizeVisibleUntil(visibleUntil: number | null | undefined): number | null {
+    return Number.isFinite(visibleUntil)
+        ? Math.trunc(visibleUntil ?? 0)
+        : null;
+}
+
+function sortPostHistoryRecords(records: PostHistoryRecord[]): PostHistoryRecord[] {
+    return records.sort((a, b) => b.postedAt - a.postedAt || b.createdAt - a.createdAt);
 }
 
 function toPostedAtFromCreatedAt(createdAt: number): number {
@@ -285,7 +307,23 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .reverse()
             .toArray();
 
-        return records.sort((a, b) => b.postedAt - a.postedAt || b.createdAt - a.createdAt);
+        return sortPostHistoryRecords(records);
+    }
+
+    async getVisibleAll(options: PostHistoryVisibleQueryOptions): Promise<PostHistoryRecord[]> {
+        if (!options.pubkeyHex) return [];
+
+        const visibleUntil = normalizeVisibleUntil(options.visibleUntil);
+        if (visibleUntil === null) {
+            return this.getAll(options);
+        }
+
+        const records = await this.db.postHistory
+            .where("[pubkeyHex+createdAt]")
+            .between([options.pubkeyHex, visibleUntil], [options.pubkeyHex, Dexie.maxKey])
+            .toArray();
+
+        return sortPostHistoryRecords(records);
     }
 
     async getPage(options: PostHistoryPageOptions): Promise<PostHistoryRecord[]> {
@@ -303,12 +341,34 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
             .toArray();
     }
 
+    async getVisiblePage(options: PostHistoryVisiblePageOptions): Promise<PostHistoryRecord[]> {
+        const page = normalizePageNumber(options.page);
+        const pageSize = normalizePageSize(options.pageSize);
+        const records = await this.getVisibleAll(options);
+
+        return records.slice((page - 1) * pageSize, page * pageSize);
+    }
+
     async countForPubkey(pubkeyHex: string | null | undefined): Promise<number> {
         if (!pubkeyHex) return 0;
 
         return this.db.postHistory
             .where("pubkeyHex")
             .equals(pubkeyHex)
+            .count();
+    }
+
+    async countVisibleForPubkey(pubkeyHex: string | null | undefined, visibleUntil?: number | null): Promise<number> {
+        if (!pubkeyHex) return 0;
+
+        const normalizedVisibleUntil = normalizeVisibleUntil(visibleUntil);
+        if (normalizedVisibleUntil === null) {
+            return this.countForPubkey(pubkeyHex);
+        }
+
+        return this.db.postHistory
+            .where("[pubkeyHex+createdAt]")
+            .between([pubkeyHex, normalizedVisibleUntil], [pubkeyHex, Dexie.maxKey])
             .count();
     }
 

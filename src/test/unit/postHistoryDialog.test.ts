@@ -63,8 +63,16 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
 
 const repositoryMock = vi.hoisted(() => ({
     getPage: vi.fn(),
+    getVisiblePage: vi.fn(),
     countForPubkey: vi.fn(),
+    countVisibleForPubkey: vi.fn(),
     upsertFetchedEvents: vi.fn(),
+}));
+
+const visibleRangeRepositoryMock = vi.hoisted(() => ({
+    get: vi.fn(),
+    save: vi.fn(),
+    clear: vi.fn(),
 }));
 
 const syncCoverageRepositoryMock = vi.hoisted(() => ({
@@ -195,6 +203,14 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: repositoryMock,
 }));
 
+vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
+    const actual = await vi.importActual<typeof import('../../lib/storage/postHistoryVisibleRangeRepository')>('../../lib/storage/postHistoryVisibleRangeRepository');
+    return {
+        ...actual,
+        postHistoryVisibleRangeRepository: visibleRangeRepositoryMock,
+    };
+});
+
 vi.mock('../../lib/storage/postHistorySyncCoverageRepository', () => ({
     postHistorySyncCoverageRepository: syncCoverageRepositoryMock,
 }));
@@ -307,12 +323,21 @@ describe('PostHistoryDialog', () => {
         clearPersistedPostHistoryViewState();
         vi.clearAllMocks();
         repositoryMock.getPage.mockResolvedValue([]);
+        repositoryMock.getVisiblePage.mockImplementation(async ({ pubkeyHex, page, pageSize }: Record<string, any>) =>
+            repositoryMock.getPage({ pubkeyHex, page, pageSize }),
+        );
         repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
+            repositoryMock.countForPubkey(pubkeyHex),
+        );
         repositoryMock.upsertFetchedEvents.mockResolvedValue({
             insertedCount: 0,
             updatedCount: 0,
             unchangedCount: 0,
         });
+        visibleRangeRepositoryMock.get.mockResolvedValue(null);
+        visibleRangeRepositoryMock.save.mockResolvedValue(null);
+        visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
         repairServiceMock.repairFromRelays.mockReturnValue({
             promise: Promise.resolve({
@@ -2391,6 +2416,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+            expect(screen.getByText('2ページ目')).toBeTruthy();
         });
 
         view.unmount();
@@ -3036,6 +3062,10 @@ describe('PostHistoryDialog', () => {
                 pubkeyHex: 'a'.repeat(64),
                 rxNostr: {} as any,
             },
+        });
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledOnce();
         });
 
         view.unmount();

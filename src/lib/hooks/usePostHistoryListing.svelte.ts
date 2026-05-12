@@ -23,6 +23,10 @@ import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService"
 import { postHistoryRepairService, type PostHistoryRepairTask } from "../postHistoryRepairService";
 import { postHistoryRepository } from "../storage/postHistoryRepository";
 import { postHistorySyncCoverageRepository } from "../storage/postHistorySyncCoverageRepository";
+import {
+    buildPostHistoryVisibleKindsKey,
+    postHistoryVisibleRangeRepository,
+} from "../storage/postHistoryVisibleRangeRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
 
@@ -55,6 +59,7 @@ interface PersistedPostHistoryListingSnapshot {
     searchTotalCount: number;
     hasMoreRemote: boolean;
     nextUntil: number | null;
+    visibleUntil: number | null;
 }
 
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
@@ -64,7 +69,12 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
     searchTotalCount: 0,
     hasMoreRemote: false,
     nextUntil: null,
+    visibleUntil: null,
 };
+
+const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
+    ...POST_HISTORY_FETCH_KINDS,
+]);
 
 const persistedListingSnapshotByPubkey = new Map<
     string,
@@ -92,6 +102,7 @@ function cloneListingSnapshot(
         searchTotalCount: snapshot.searchTotalCount,
         hasMoreRemote: snapshot.hasMoreRemote,
         nextUntil: snapshot.nextUntil,
+        visibleUntil: snapshot.visibleUntil,
     };
 }
 
@@ -156,6 +167,7 @@ export function usePostHistoryListing({
         repairMessageValues: null as PostHistoryRepairMessageValues | null,
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
+        visibleUntil: persistedListingSnapshot.visibleUntil,
     });
 
     let loadRequestId = 0;
@@ -271,6 +283,76 @@ export function usePostHistoryListing({
         state.nextUntil = canContinue ? result.nextUntil : null;
     }
 
+    async function readVisibleUntil(pubkeyHex: string): Promise<number | null> {
+        const visibleRange = await postHistoryVisibleRangeRepository.get(
+            pubkeyHex,
+            POST_HISTORY_VISIBLE_KINDS_KEY,
+        );
+
+        return visibleRange?.visibleUntil ?? null;
+    }
+
+    async function refreshVisibleUntil(pubkeyHex: string): Promise<number | null> {
+        const visibleUntil = await readVisibleUntil(pubkeyHex);
+
+        if (getShow() && getPubkeyHex() === pubkeyHex) {
+            state.visibleUntil = visibleUntil;
+        }
+
+        return visibleUntil;
+    }
+
+    async function updateVisibleUntilFromFetch(
+        pubkeyHex: string,
+        result: PostHistoryRelayFetchResult,
+    ): Promise<number | null> {
+        const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
+        const candidateVisibleUntil = result.events.length > 0
+            && typeof result.nextUntil === "number"
+            ? result.nextUntil
+            : null;
+        const nextVisibleUntil = typeof candidateVisibleUntil === "number"
+            ? typeof currentVisibleUntil === "number"
+                ? Math.min(currentVisibleUntil, candidateVisibleUntil)
+                : candidateVisibleUntil
+            : currentVisibleUntil;
+
+        if (nextVisibleUntil !== currentVisibleUntil) {
+            await postHistoryVisibleRangeRepository.save({
+                pubkeyHex,
+                kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
+                visibleUntil: nextVisibleUntil,
+            });
+        }
+
+        state.visibleUntil = nextVisibleUntil;
+        return nextVisibleUntil;
+    }
+
+    async function countVisiblePosts(
+        pubkeyHex: string,
+        visibleUntil: number | null,
+    ): Promise<number> {
+        return typeof visibleUntil === "number"
+            ? postHistoryRepository.countVisibleForPubkey(pubkeyHex, visibleUntil)
+            : postHistoryRepository.countForPubkey(pubkeyHex);
+    }
+
+    async function getVisiblePagePosts(params: {
+        pubkeyHex: string;
+        page: number;
+        pageSize: number;
+        visibleUntil: number | null;
+    }): Promise<PostHistoryRecord[]> {
+        return typeof params.visibleUntil === "number"
+            ? postHistoryRepository.getVisiblePage(params)
+            : postHistoryRepository.getPage({
+                pubkeyHex: params.pubkeyHex,
+                page: params.page,
+                pageSize: params.pageSize,
+            });
+    }
+
     async function prefetchCurrentPageMedia(
         posts: PostHistoryRecord[],
     ): Promise<void> {
@@ -295,17 +377,20 @@ export function usePostHistoryListing({
         if (!pubkeyHex) {
             state.loadedPosts = [];
             state.totalCount = 0;
+            state.visibleUntil = null;
             return;
         }
 
         const requestId = ++loadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
         const [count, pagePosts] = await Promise.all([
-            postHistoryRepository.countForPubkey(pubkeyHex),
-            postHistoryRepository.getPage({
+            countVisiblePosts(pubkeyHex, visibleUntil),
+            getVisiblePagePosts({
                 pubkeyHex,
                 page: normalizedPage,
                 pageSize,
+                visibleUntil,
             }),
         ]);
 
@@ -334,7 +419,8 @@ export function usePostHistoryListing({
             return;
         }
 
-        const count = await postHistoryRepository.countForPubkey(pubkeyHex);
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const count = await countVisiblePosts(pubkeyHex, visibleUntil);
         if (!getShow()) {
             return;
         }
@@ -352,11 +438,13 @@ export function usePostHistoryListing({
 
         const requestId = ++searchLoadRequestId;
         const normalizedPage = Math.max(1, Math.trunc(page));
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
         const result = await postHistoryLocalSearchService.searchLocalPosts({
             pubkeyHex,
             query,
             page: normalizedPage,
             pageSize,
+            ...(typeof visibleUntil === "number" ? { visibleUntil } : {}),
         });
 
         if (
@@ -398,6 +486,7 @@ export function usePostHistoryListing({
         }
 
         cancelCurrentSync();
+        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
@@ -435,6 +524,13 @@ export function usePostHistoryListing({
             });
         }
 
+        const nextVisibleUntil = await updateVisibleUntilFromFetch(
+            pubkeyHex,
+            result,
+        );
+        const didVisibleMateriallyChange =
+            nextVisibleUntil !== previousVisibleUntil;
+
         updateRelayHistoryCursor(result);
 
         if (state.searchQuery) {
@@ -445,7 +541,8 @@ export function usePostHistoryListing({
 
         state.syncStatus = resolveSyncStatusAfterFetch(
             result,
-            upsertSummary.insertedCount + upsertSummary.updatedCount > 0,
+            upsertSummary.insertedCount + upsertSummary.updatedCount > 0
+            || didVisibleMateriallyChange,
         );
     }
 
@@ -456,7 +553,8 @@ export function usePostHistoryListing({
         }
 
         const requiredCount = (targetPage - 1) * pageSize + 1;
-        let currentCount = await postHistoryRepository.countForPubkey(pubkeyHex);
+        let currentVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        let currentCount = await countVisiblePosts(pubkeyHex, currentVisibleUntil);
 
         if (currentCount >= requiredCount) {
             return true;
@@ -518,8 +616,21 @@ export function usePostHistoryListing({
                     0;
             }
 
+            const previousVisibleCount = currentCount;
+            const previousVisibleUntil = currentVisibleUntil;
+            currentVisibleUntil = await updateVisibleUntilFromFetch(
+                pubkeyHex,
+                result,
+            );
+            currentCount = await countVisiblePosts(
+                pubkeyHex,
+                currentVisibleUntil,
+            );
+            const didVisibleCountIncrease = currentCount > previousVisibleCount;
+
             if (
                 result.status === "success" &&
+                !didVisibleCountIncrease &&
                 !didMateriallyChange &&
                 typeof fetchUntil === "number" &&
                 result.nextUntil === fetchUntil
@@ -528,12 +639,10 @@ export function usePostHistoryListing({
                 state.hasMoreRemote = state.nextUntil !== null;
             }
 
-            currentCount = await postHistoryRepository.countForPubkey(pubkeyHex);
-
             if (currentCount >= requiredCount) {
                 state.syncStatus = resolveSyncStatusAfterFetch(
                     result,
-                    didMateriallyChange,
+                    didMateriallyChange || didVisibleCountIncrease,
                 );
                 return true;
             }
@@ -635,7 +744,8 @@ export function usePostHistoryListing({
             return false;
         }
 
-        const count = await postHistoryRepository.countForPubkey(pubkeyHex);
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const count = await countVisiblePosts(pubkeyHex, visibleUntil);
         if (!getShow()) {
             return false;
         }
@@ -761,6 +871,7 @@ export function usePostHistoryListing({
             searchTotalCount: state.searchTotalCount,
             hasMoreRemote: state.hasMoreRemote,
             nextUntil: state.nextUntil,
+            visibleUntil: state.visibleUntil,
         });
     });
 
