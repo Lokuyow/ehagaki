@@ -16,6 +16,11 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
         'postHistory.syncFailed': 'リレーとの同期に失敗しました',
+        'postHistory.repair': '履歴を修復',
+        'postHistory.repairing': '修復中...',
+        'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
+        'postHistory.repairNoChanges': '新しい投稿はありません',
+        'postHistory.repairPartialFailure': '一部のリレーで取得に失敗しました',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -59,8 +64,16 @@ const repositoryMock = vi.hoisted(() => ({
     upsertFetchedEvents: vi.fn(),
 }));
 
+const syncCoverageRepositoryMock = vi.hoisted(() => ({
+    saveAttempt: vi.fn(),
+}));
+
 const relayFetchServiceMock = vi.hoisted(() => ({
     fetchLatest: vi.fn(),
+}));
+
+const repairServiceMock = vi.hoisted(() => ({
+    repairFromRelays: vi.fn(),
 }));
 
 const clipboardMock = vi.hoisted(() => ({
@@ -179,11 +192,20 @@ vi.mock('../../lib/storage/postHistoryRepository', () => ({
     postHistoryRepository: repositoryMock,
 }));
 
+vi.mock('../../lib/storage/postHistorySyncCoverageRepository', () => ({
+    postHistorySyncCoverageRepository: syncCoverageRepositoryMock,
+}));
+
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
+    POST_HISTORY_FETCH_KINDS: [1, 42],
     POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
     POST_HISTORY_PAGE_SIZE: 50,
     POST_HISTORY_RELAY_FETCH_LIMIT: 200,
     postHistoryRelayFetchService: relayFetchServiceMock,
+}));
+
+vi.mock('../../lib/postHistoryRepairService', () => ({
+    postHistoryRepairService: repairServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
@@ -288,6 +310,19 @@ describe('PostHistoryDialog', () => {
             updatedCount: 0,
             unchangedCount: 0,
         });
+        syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
+        repairServiceMock.repairFromRelays.mockReturnValue({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                attemptedRangeCount: 0,
+                totalRangeCount: 0,
+                hadFailures: false,
+            }),
+            cancel: vi.fn(),
+        });
         relayFetchServiceMock.fetchLatest.mockReturnValue({
             promise: Promise.resolve({
                 status: 'cancelled',
@@ -296,6 +331,13 @@ describe('PostHistoryDialog', () => {
                 nextUntil: null,
                 hasMore: false,
                 relayUrls: [],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
             }),
             cancel: vi.fn(),
         });
@@ -388,6 +430,173 @@ describe('PostHistoryDialog', () => {
             });
             expect(screen.getByRole('searchbox', { name: '検索' })).toBeTruthy();
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+    });
+
+    it('post-history-heading の行に repair button を表示する', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const repairButton = await screen.findByRole('button', { name: '履歴を修復' });
+        const heading = document.body.querySelector('.post-history-heading');
+        const headingActions = document.body.querySelector('.post-history-heading-actions');
+
+        expect(heading).toBeTruthy();
+        expect(headingActions?.textContent).toContain('履歴を修復');
+        expect(repairButton).toBeTruthy();
+    });
+
+    it('同期中・修復中は repair button を disabled にする', async () => {
+        const initialSync = createDeferred<any>();
+        const repairTask = createDeferred<{
+            status: 'success';
+            addedCount: 1;
+            updatedCount: 0;
+            unchangedCount: 0;
+            attemptedRangeCount: 1;
+            totalRangeCount: 1;
+            hadFailures: false;
+        }>();
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: initialSync.promise,
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: repairTask.promise,
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const repairButton = await screen.findByRole('button', { name: '履歴を修復' });
+
+        await waitFor(() => {
+            expect(repairButton).toHaveProperty('disabled', true);
+        });
+
+        initialSync.resolve({
+            status: 'success',
+            events: [],
+            fetchedAt: 1000,
+            nextUntil: null,
+            hasMore: false,
+            relayUrls: ['wss://relay.example.com/'],
+            observedRelayUrls: [],
+            rawCount: 0,
+            uniqueCount: 0,
+            duplicateCount: 0,
+            perRelayCounts: [],
+            oldestCreatedAt: null,
+            newestCreatedAt: null,
+        });
+
+        await waitFor(() => {
+            expect(repairButton).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(repairButton);
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '修復中...' })).toHaveProperty('disabled', true);
+        });
+
+        repairTask.resolve({
+            status: 'success',
+            addedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+            attemptedRangeCount: 1,
+            totalRangeCount: 1,
+            hadFailures: false,
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+        });
+    });
+
+    it('検索中でも repair button を押せて検索結果を再読み込みする', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'page-1', content: '一覧の投稿' }),
+        ]);
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        localSearchServiceMock.searchLocalPosts.mockResolvedValue({
+            items: [createRecord({ eventId: 'search-hit', content: '検索一致' })],
+            total: 1,
+            hasNext: false,
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                attemptedRangeCount: 1,
+                totalRangeCount: 1,
+                hadFailures: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const searchInput = await screen.findByRole('searchbox', { name: '検索' });
+        await fireEvent.input(searchInput, { target: { value: '一致' } });
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: '一致',
+                page: 1,
+                pageSize: 50,
+            });
+            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+
+        await waitFor(() => {
+            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(2);
         });
     });
 
@@ -1548,7 +1757,7 @@ describe('PostHistoryDialog', () => {
                         },
                     ],
                     fetchedAt: 1000,
-                    nextUntil: 149,
+                    nextUntil: 150,
                     hasMore: false,
                     relayUrls: ['wss://relay.example.com/'],
                 }),
@@ -1604,10 +1813,139 @@ describe('PostHistoryDialog', () => {
                 expect.objectContaining({
                     pubkeyHex: 'a'.repeat(64),
                     limit: 200,
-                    until: 149,
+                    until: 150,
                 }),
             );
             expect(screen.getByText('2 / 2 ページ')).toBeTruthy();
+        });
+    });
+
+    it('inclusive nextUntil で進展が無いときは 1 回だけ olderCreatedAt - 1 に逃がす', async () => {
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(50)
+            .mockResolvedValueOnce(51);
+        repositoryMock.getPage
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-1', content: '1ページ目' })])
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-1', content: '1ページ目' })])
+            .mockResolvedValueOnce([createRecord({ eventId: 'page-2', content: '2ページ目' })]);
+        repositoryMock.upsertFetchedEvents
+            .mockResolvedValueOnce({
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+            })
+            .mockResolvedValueOnce({
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 1,
+            })
+            .mockResolvedValueOnce({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [],
+                    fetchedAt: 1000,
+                    nextUntil: 150,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [
+                        {
+                            event: {
+                                id: 'same-second-event'.repeat(4),
+                                pubkey: 'a'.repeat(64),
+                                kind: 1,
+                                content: '同じ秒の既知投稿',
+                                tags: [],
+                                created_at: 150,
+                                sig: 'c'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    fetchedAt: 2000,
+                    nextUntil: 150,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve({
+                    status: 'success',
+                    events: [
+                        {
+                            event: {
+                                id: 'older-event-after-stall'.repeat(4),
+                                pubkey: 'a'.repeat(64),
+                                kind: 1,
+                                content: '2ページ目',
+                                tags: [],
+                                created_at: 149,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    fetchedAt: 3000,
+                    nextUntil: null,
+                    hasMore: false,
+                    relayUrls: ['wss://relay.example.com/'],
+                }),
+                cancel: vi.fn(),
+            });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
+        });
+
+        const nextButton = await screen.findByRole('button', { name: '次へ' });
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
+        });
+
+        await fireEvent.click(nextButton);
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: 'a'.repeat(64),
+                    limit: 200,
+                    until: 150,
+                }),
+            );
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                3,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: 'a'.repeat(64),
+                    limit: 200,
+                    until: 149,
+                }),
+            );
+            expect(screen.getByText('2ページ目')).toBeTruthy();
         });
     });
 

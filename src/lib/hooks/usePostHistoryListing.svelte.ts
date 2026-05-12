@@ -1,5 +1,6 @@
 import type { RxNostr } from "rx-nostr";
 import {
+    POST_HISTORY_FETCH_KINDS,
     POST_HISTORY_INITIAL_FETCH_LIMIT,
     POST_HISTORY_PAGE_SIZE,
     POST_HISTORY_RELAY_FETCH_LIMIT,
@@ -19,7 +20,9 @@ import {
     writePersistedPostHistoryViewState,
 } from "../postHistoryDialogViewState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
+import { postHistoryRepairService, type PostHistoryRepairTask } from "../postHistoryRepairService";
 import { postHistoryRepository } from "../storage/postHistoryRepository";
+import { postHistorySyncCoverageRepository } from "../storage/postHistorySyncCoverageRepository";
 import type { PostHistoryRecord } from "../storage/ehagakiDb";
 import type { RelayConfig } from "../types";
 
@@ -30,6 +33,11 @@ export type PostHistorySyncStatus =
     | "synced"
     | "failed"
     | "no-more";
+
+type PostHistoryRepairMessageValues = Record<
+    string,
+    string | number | boolean | Date | null | undefined
+>;
 
 interface UsePostHistoryListingParams {
     getShow: () => boolean;
@@ -143,6 +151,9 @@ export function usePostHistoryListing({
         totalCount: persistedListingSnapshot.totalCount,
         searchTotalCount: persistedListingSnapshot.searchTotalCount,
         syncStatus: "idle" as PostHistorySyncStatus,
+        repairStatus: "idle" as "idle" | "repairing",
+        repairMessageKey: null as string | null,
+        repairMessageValues: null as PostHistoryRepairMessageValues | null,
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
     });
@@ -151,9 +162,11 @@ export function usePostHistoryListing({
     let searchLoadRequestId = 0;
     let hasStartedInitialSync = false;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
+    let currentRepairTask: PostHistoryRepairTask | null = null;
     let appliedSearchQuery = "";
 
     const isSearchMode = $derived(state.searchQuery.length > 0);
+    const isRepairing = $derived(state.repairStatus === "repairing");
     const posts = $derived(
         isSearchMode ? state.searchPosts : state.loadedPosts,
     );
@@ -166,13 +179,20 @@ export function usePostHistoryListing({
     const totalPages = $derived(
         Math.max(1, Math.ceil(displayTotalCount / pageSize)),
     );
-    const canGoPrevious = $derived(displayPage > 1);
+    const canGoPrevious = $derived(!isRepairing && displayPage > 1);
     const canGoNext = $derived(
-        isSearchMode
+        !isRepairing && (isSearchMode
             ? displayPage < totalPages
-            : state.currentPage < totalPages || state.hasMoreRemote,
+            : state.currentPage < totalPages || state.hasMoreRemote),
     );
     const showPaging = $derived(displayTotalCount > 0);
+    const canRepair = $derived(
+        !!getPubkeyHex() &&
+        !!getRxNostr() &&
+        !isRepairing &&
+        state.syncStatus !== "syncing" &&
+        state.syncStatus !== "older-syncing",
+    );
     const syncStatusMessageKey = $derived(
         isSearchMode || state.syncStatus === "idle"
             ? null
@@ -190,10 +210,25 @@ export function usePostHistoryListing({
         (state.syncStatus === "syncing" ||
             state.syncStatus === "older-syncing"),
     );
+    const repairStatusMessageKey = $derived(state.repairMessageKey);
+    const repairStatusMessageValues = $derived(state.repairMessageValues);
 
     function cancelCurrentSync(): void {
         currentFetchTask?.cancel();
         currentFetchTask = null;
+    }
+
+    function cancelCurrentRepair(): void {
+        currentRepairTask?.cancel();
+        currentRepairTask = null;
+        if (state.repairStatus === "repairing") {
+            state.repairStatus = "idle";
+        }
+    }
+
+    function clearRepairFeedback(): void {
+        state.repairMessageKey = null;
+        state.repairMessageValues = null;
     }
 
     function resetSearchState(): void {
@@ -207,7 +242,9 @@ export function usePostHistoryListing({
 
     function resetState(): void {
         cancelCurrentSync();
+        cancelCurrentRepair();
         state.syncStatus = "idle";
+        clearRepairFeedback();
         hasStartedInitialSync = false;
     }
 
@@ -340,6 +377,13 @@ export function usePostHistoryListing({
         currentFetchTask = task;
 
         const result = await task.promise;
+        await postHistorySyncCoverageRepository.saveAttempt({
+            pubkeyHex,
+            requestKind: "initial",
+            kinds: [...POST_HISTORY_FETCH_KINDS],
+            limit: POST_HISTORY_INITIAL_FETCH_LIMIT,
+            result,
+        });
         let upsertSummary = {
             insertedCount: 0,
             updatedCount: 0,
@@ -401,6 +445,7 @@ export function usePostHistoryListing({
             state.hasMoreRemote &&
             state.nextUntil !== null
         ) {
+            const fetchUntil: number = state.nextUntil;
             cancelCurrentSync();
             state.syncStatus = "older-syncing";
             let didMateriallyChange = false;
@@ -409,11 +454,19 @@ export function usePostHistoryListing({
                 pubkeyHex,
                 relayConfig: getRelayConfig(),
                 limit: POST_HISTORY_RELAY_FETCH_LIMIT,
-                until: state.nextUntil,
+                until: fetchUntil,
             });
             currentFetchTask = task;
 
             const result = await task.promise;
+            await postHistorySyncCoverageRepository.saveAttempt({
+                pubkeyHex,
+                requestKind: "older",
+                kinds: [...POST_HISTORY_FETCH_KINDS],
+                until: fetchUntil,
+                limit: POST_HISTORY_RELAY_FETCH_LIMIT,
+                result,
+            });
             if (currentFetchTask !== task) {
                 return false;
             }
@@ -434,6 +487,16 @@ export function usePostHistoryListing({
                 didMateriallyChange =
                     upsertSummary.insertedCount + upsertSummary.updatedCount >
                     0;
+            }
+
+            if (
+                result.status === "success" &&
+                !didMateriallyChange &&
+                typeof fetchUntil === "number" &&
+                result.nextUntil === fetchUntil
+            ) {
+                state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
+                state.hasMoreRemote = state.nextUntil !== null;
             }
 
             currentCount = await postHistoryRepository.countForPubkey(pubkeyHex);
@@ -501,6 +564,62 @@ export function usePostHistoryListing({
 
         await loadPage(state.currentPage);
         return false;
+    }
+
+    async function repairFromRelays(): Promise<void> {
+        const pubkeyHex = getPubkeyHex();
+        const rxNostr = getRxNostr();
+        if (!pubkeyHex || !rxNostr || !canRepair) {
+            return;
+        }
+
+        clearRepairFeedback();
+        state.repairStatus = "repairing";
+        const task = postHistoryRepairService.repairFromRelays(rxNostr, {
+            pubkeyHex,
+            relayConfig: getRelayConfig(),
+        });
+        currentRepairTask = task;
+
+        try {
+            const result = await task.promise;
+            if (currentRepairTask !== task) {
+                return;
+            }
+
+            currentRepairTask = null;
+            state.repairStatus = "idle";
+
+            if (!getShow() || result.status === "cancelled") {
+                return;
+            }
+
+            if (state.searchQuery) {
+                await loadSearchPage(state.searchPage, state.searchQuery);
+            } else {
+                await loadPage(state.currentPage);
+            }
+
+            if (result.hadFailures) {
+                state.repairMessageKey = "postHistory.repairPartialFailure";
+                state.repairMessageValues = null;
+            } else if (result.addedCount > 0) {
+                state.repairMessageKey = "postHistory.repairAdded";
+                state.repairMessageValues = { count: result.addedCount };
+            } else {
+                state.repairMessageKey = "postHistory.repairNoChanges";
+                state.repairMessageValues = null;
+            }
+        } catch {
+            if (currentRepairTask !== task) {
+                return;
+            }
+
+            currentRepairTask = null;
+            state.repairStatus = "idle";
+            state.repairMessageKey = "postHistory.repairPartialFailure";
+            state.repairMessageValues = null;
+        }
     }
 
     function patchDeletedPost(
@@ -666,9 +785,23 @@ export function usePostHistoryListing({
         get showSyncLoader() {
             return showSyncLoader;
         },
+        get isRepairing() {
+            return isRepairing;
+        },
+        get canRepair() {
+            return canRepair;
+        },
+        get repairStatusMessageKey() {
+            return repairStatusMessageKey;
+        },
+        get repairStatusMessageValues() {
+            return repairStatusMessageValues;
+        },
         cancelCurrentSync,
+        cancelCurrentRepair,
         goPreviousPage,
         goToNextPage,
+        repairFromRelays,
         patchDeletedPost,
     };
 }

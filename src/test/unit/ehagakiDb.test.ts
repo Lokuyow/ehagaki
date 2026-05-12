@@ -39,6 +39,7 @@ describe("EHagakiDB", () => {
             "hashtagHistory",
             "meta",
             "postHistory",
+            "postHistorySyncCoverage",
             "postMediaCache",
             "profiles",
             "relayConfigs",
@@ -153,5 +154,56 @@ describe("EHagakiDB", () => {
         await Dexie.delete(db.name);
 
         await expect(repository.get("pubkey")).resolves.toBeNull();
+    });
+
+    it("v9 の postHistory を保持したまま v10 へ migration して coverage store を追加する", async () => {
+        const name = `${EHAGAKI_DB_NAME}-migration-test-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        testDbNames.add(name);
+
+        const legacyDb = new Dexie(name);
+        legacyDb.version(9).stores({
+            meta: "key, updatedAt",
+            emojiItems: "id, pubkeyHex, identityKey, shortcodeLower, sortIndex, sourceType, sourceAddress, fetchedAt, updatedAt, [pubkeyHex+sortIndex], [pubkeyHex+identityKey]",
+            emojiCacheMeta: "pubkeyHex, fetchedAt, updatedAt, schemaVersion",
+            drafts: "id, scopeKey, pubkeyHex, updatedAt, timestamp, [scopeKey+updatedAt]",
+            profiles: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
+            relayConfigs: "pubkeyHex, fetchedAt, updatedAt, updatedAtFromEvent, schemaVersion",
+            sharedMedia: "id, createdAt, updatedAt, schemaVersion",
+            hashtagHistory: "tagLower, useCount, lastUsed, updatedAt, schemaVersion",
+            customEmojiUsage: "id, pubkeyHex, shortcodeLower, src, lastUsedAt, count, updatedAt, schemaVersion, [pubkeyHex+lastUsedAt], [pubkeyHex+shortcodeLower+src]",
+            customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
+            uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
+            postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
+            postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
+            channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
+        });
+        await legacyDb.open();
+        await legacyDb.table("postHistory").put({
+            id: "event-id",
+            eventId: "event-id",
+            pubkeyHex: "pubkey",
+            kind: 1,
+            content: "hello",
+            tags: [],
+            createdAt: 100,
+            postedAt: 1000,
+            relayHints: [],
+            acceptedRelays: [],
+            media: [],
+            rawEvent: {},
+            updatedAt: 1000,
+            schemaVersion: 2,
+        });
+        legacyDb.close();
+
+        const db = new EHagakiDB(name);
+        await db.open();
+
+        const postHistoryRecord = await db.postHistory.get("event-id");
+
+        expect(postHistoryRecord?.eventId).toBe("event-id");
+        expect(db.tables.map((table) => table.name)).toContain("postHistorySyncCoverage");
+
+        db.close();
     });
 });

@@ -3,7 +3,7 @@ import type { CustomEmojiSourceType } from "../customEmoji";
 import type { DraftChannelData, DraftReplyQuoteData, MediaGalleryItem, UploadDestination } from "../types";
 
 export const EHAGAKI_DB_NAME = "eHagakiDB";
-export const EHAGAKI_DB_VERSION = 9;
+export const EHAGAKI_DB_VERSION = 10;
 export const SHARED_MEDIA_RECORD_ID = "latest";
 
 export interface MetaRecord {
@@ -170,6 +170,41 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
+export type PostHistorySyncCoverageStatus = 'complete' | 'partial' | 'timeout' | 'error' | 'cancelled';
+
+export type PostHistorySyncCoverageRequestKind = 'initial' | 'older' | 'repair';
+
+export interface PostHistorySyncCoverageRelayCountRecord {
+    relayUrl: string;
+    rawCount: number;
+    uniqueCount: number;
+}
+
+export interface PostHistorySyncCoverageRecord {
+    id: string;
+    pubkeyHex: string;
+    requestKind: PostHistorySyncCoverageRequestKind;
+    requestedRelayUrls: string[];
+    observedRelayUrls: string[];
+    relayKey: string;
+    kinds: number[];
+    kindsKey: string;
+    since?: number;
+    until?: number;
+    limit: number;
+    status: PostHistorySyncCoverageStatus;
+    rawCount: number;
+    uniqueCount: number;
+    duplicateCount: number;
+    perRelayCounts: PostHistorySyncCoverageRelayCountRecord[];
+    oldestCreatedAt?: number;
+    newestCreatedAt?: number;
+    nextUntil?: number | null;
+    fetchedAt: number;
+    updatedAt: number;
+    schemaVersion: number;
+}
+
 export interface PostMediaCacheEntryRecord {
     cacheKey: string;
     url: string;
@@ -214,6 +249,7 @@ export class EHagakiDB extends Dexie {
     customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
+    postHistorySyncCoverage!: Table<PostHistorySyncCoverageRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
 
@@ -233,6 +269,7 @@ export class EHagakiDB extends Dexie {
             customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
+            postHistorySyncCoverage: "id, pubkeyHex, requestKind, status, since, until, fetchedAt, updatedAt, schemaVersion, [pubkeyHex+fetchedAt], [pubkeyHex+status], [pubkeyHex+requestKind+fetchedAt]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
             channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
         });

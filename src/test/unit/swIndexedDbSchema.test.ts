@@ -42,7 +42,7 @@ describe('swIndexedDbSchema', () => {
 
         ensureCurrentEHagakiDbSchema(db, 'sharedMedia');
 
-        expect(db.createObjectStore).toHaveBeenCalledTimes(14);
+        expect(db.createObjectStore).toHaveBeenCalledTimes(15);
         expect(createdStores.get('meta')?.keyPath).toBe('key');
         expect(createdStores.get('emojiItems')?.createIndex).toHaveBeenCalledWith(
             '[pubkeyHex+identityKey]',
@@ -75,6 +75,10 @@ describe('swIndexedDbSchema', () => {
         expect(createdStores.get('postHistory')?.createIndex).toHaveBeenCalledWith(
             '[pubkeyHex+postedAt]',
             ['pubkeyHex', 'postedAt'],
+        );
+        expect(createdStores.get('postHistorySyncCoverage')?.createIndex).toHaveBeenCalledWith(
+            '[pubkeyHex+requestKind+fetchedAt]',
+            ['pubkeyHex', 'requestKind', 'fetchedAt'],
         );
         expect(createdStores.get('postMediaCache')?.createIndex).toHaveBeenCalledWith(
             'schemaVersion',

@@ -117,6 +117,17 @@
     let deleteTargetPreviewContent = $derived.by(() =>
         deleteTargetPost ? buildPreviewContent(deleteTargetPost) : null,
     );
+    let headingStatusMessageKey = $derived(
+        history.syncStatusMessageKey ?? history.repairStatusMessageKey,
+    );
+    let headingStatusMessageValues = $derived(
+        history.syncStatusMessageKey ? null : history.repairStatusMessageValues,
+    );
+    let headingStatusError = $derived(
+        history.syncStatus === "failed" ||
+            history.repairStatusMessageKey ===
+                "postHistory.repairPartialFailure",
+    );
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set<string>();
 
@@ -148,6 +159,7 @@
 
     function handleClose() {
         history.cancelCurrentSync();
+        history.cancelCurrentRepair();
         channelDisplay.cancelCurrentChannelResolution();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
@@ -615,21 +627,39 @@
     initialFocus="content"
 >
     <div class="post-history-heading">
-        <h3>{$_("postHistory.title")}</h3>
-        {#if history.syncStatusMessageKey}
-            <div
-                class="status-message"
-                class:status-error={history.syncStatus === "failed"}
+        <div class="post-history-heading-main">
+            <h3>{$_("postHistory.title")}</h3>
+            {#if headingStatusMessageKey}
+                <div
+                    class="status-message"
+                    class:status-error={headingStatusError}
+                >
+                    <LoadingPlaceholder
+                        text={headingStatusMessageValues
+                            ? $_(headingStatusMessageKey, {
+                                  values: headingStatusMessageValues,
+                              })
+                            : $_(headingStatusMessageKey)}
+                        showLoader={history.showSyncLoader}
+                        loaderSize={25}
+                        state={history.showSyncLoader ? "loading" : "complete"}
+                        customClass="status-loading-placeholder"
+                    />
+                </div>
+            {/if}
+        </div>
+        <div class="post-history-heading-actions">
+            <Button
+                type="button"
+                class="post-history-repair-button"
+                disabled={!history.canRepair}
+                onClick={() => void history.repairFromRelays()}
             >
-                <LoadingPlaceholder
-                    text={$_(history.syncStatusMessageKey)}
-                    showLoader={history.showSyncLoader}
-                    loaderSize={25}
-                    state={history.showSyncLoader ? "loading" : "complete"}
-                    customClass="status-loading-placeholder"
-                />
-            </div>
-        {/if}
+                {history.isRepairing
+                    ? $_("postHistory.repairing")
+                    : $_("postHistory.repair")}
+            </Button>
+        </div>
     </div>
 
     <div class="post-history-search-row">
@@ -1116,17 +1146,39 @@
     .post-history-heading {
         display: flex;
         align-items: center;
+        justify-content: space-between;
         gap: 12px;
+        flex-wrap: wrap;
         width: 100%;
         min-height: 50px;
         padding: 0 16px;
         border-bottom: 1px solid var(--border-hr);
     }
 
+    .post-history-heading-main {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .post-history-heading-actions {
+        display: flex;
+        align-items: center;
+        flex: 0 0 auto;
+    }
+
     .post-history-heading h3 {
         min-width: 0;
         margin: 0;
         font-size: 1.25rem;
+    }
+
+    :global(.post-history-repair-button) {
+        white-space: nowrap;
+        padding: 6px 10px;
+        font-size: 0.82rem;
     }
 
     .post-history-search-row {

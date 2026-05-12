@@ -11,7 +11,10 @@ vi.mock("rx-nostr", () => ({
 }));
 
 import type { RxNostr } from "rx-nostr";
-import { PostHistoryRelayFetchService } from "../../lib/postHistoryRelayFetchService";
+import {
+    POST_HISTORY_FETCH_TIMEOUT_MS,
+    PostHistoryRelayFetchService,
+} from "../../lib/postHistoryRelayFetchService";
 
 function createEvent(overrides: Record<string, any> = {}) {
     return {
@@ -89,7 +92,7 @@ describe("PostHistoryRelayFetchService", () => {
             "wss://relay-a.example.com/",
             "wss://relay-b.example.com/",
         ]);
-        expect(result.nextUntil).toBe(99);
+        expect(result.nextUntil).toBe(100);
         expect(result.hasMore).toBe(false);
     });
 
@@ -130,5 +133,25 @@ describe("PostHistoryRelayFetchService", () => {
 
         expect(result.status).toBe("cancelled");
         expect(unsubscribe).toHaveBeenCalledOnce();
+    });
+
+    it("default の hard timeout は 60000ms を使う", async () => {
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+        }).promise;
+
+        expect(service["setTimeoutFn"]).toHaveBeenCalledWith(
+            expect.any(Function),
+            POST_HISTORY_FETCH_TIMEOUT_MS,
+        );
     });
 });
