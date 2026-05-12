@@ -29,6 +29,7 @@ const SECONDS_PER_DAY = 24 * 60 * 60;
 export interface PostHistoryRepairParams {
     pubkeyHex: string;
     relayConfig?: RelayConfig | null;
+    preferredRanges?: PostHistoryRepairRange[];
     onProgress?: (progress: PostHistoryRepairProgress) => void | Promise<void>;
 }
 
@@ -60,7 +61,7 @@ export interface PostHistoryRepairResult {
 }
 
 export interface PostHistoryRepairProcessedRangeSummary {
-    source: "coverage" | "fallback";
+    source: "preferred" | "coverage" | "fallback";
     rangeUnit: PostHistoryRepairRangeUnit;
     since?: number;
     until?: number;
@@ -80,7 +81,7 @@ export interface PostHistoryRepairTask {
     cancel: () => void;
 }
 
-interface PostHistoryRepairRange {
+export interface PostHistoryRepairRange {
     kinds: number[];
     rangeUnit: PostHistoryRepairRangeUnit;
     since?: number;
@@ -89,6 +90,10 @@ interface PostHistoryRepairRange {
 }
 
 type PostHistoryRepairWork =
+    | {
+        source: "preferred";
+        range: PostHistoryRepairRange;
+    }
     | {
         source: "coverage";
         record: PostHistorySyncCoverageRecord;
@@ -522,6 +527,14 @@ export class PostHistoryRepairService {
         let cancelled = false;
         let currentFetchTask: PostHistoryRelayFetchTask | null = null;
         let currentDelayCancel: (() => void) | null = null;
+        const preferredQueue = (params.preferredRanges ?? []).map((range) => ({
+            kinds: [...range.kinds],
+            rangeUnit: range.rangeUnit,
+            ...(typeof range.since === "number" ? { since: range.since } : {}),
+            ...(typeof range.until === "number" ? { until: range.until } : {}),
+            limit: range.limit,
+        }));
+        const hasPreferredWork = preferredQueue.length > 0;
 
         const promise = (async (): Promise<PostHistoryRepairResult> => {
             let addedCount = 0;
@@ -568,7 +581,14 @@ export class PostHistoryRepairService {
             };
 
             while (!cancelled && attemptedRangeCount < POST_HISTORY_REPAIR_MAX_RANGES_PER_RUN) {
-                const work = await this.getNextWork(params.pubkeyHex);
+                const work = preferredQueue.length > 0
+                    ? {
+                        source: "preferred" as const,
+                        range: preferredQueue.shift()!,
+                    }
+                    : hasPreferredWork
+                        ? null
+                    : await this.getNextWork(params.pubkeyHex);
                 if (!work) {
                     break;
                 }
@@ -659,7 +679,9 @@ export class PostHistoryRepairService {
                 if (work.source === "coverage") {
                     await this.postHistorySyncCoverageRepository.markResolved(work.record.id);
                 } else {
-                    await this.advanceFallbackCursor(work.cursor, work.range);
+                    if (work.source === "fallback") {
+                        await this.advanceFallbackCursor(work.cursor, work.range);
+                    }
                 }
 
                 if (cancelled || result.status === "cancelled") {

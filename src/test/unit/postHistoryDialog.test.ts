@@ -634,6 +634,121 @@ describe('PostHistoryDialog', () => {
         });
     });
 
+    it('通常モードの repair は current page 由来 preferred range を渡して再読み込みする', async () => {
+        const pubkeyHex = 'a'.repeat(64);
+        const pagePost = createRecord({
+            eventId: 'page-1',
+            content: '一覧の投稿',
+            createdAt: 1_700_000_100,
+        });
+        const expectedSince = pagePost.createdAt - 24 * 60 * 60;
+        const expectedUntil = pagePost.createdAt + 24 * 60 * 60;
+        let currentVisibleUntil = 1_700_000_050;
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([pagePost]);
+        visibleRangeRepositoryMock.get.mockImplementation(async () => ({
+            pubkeyHex,
+            kindsKey: '1,42',
+            visibleUntil: currentVisibleUntil,
+            updatedAt: 1000,
+        }));
+        visibleRangeRepositoryMock.save.mockImplementation(async (input: Record<string, any>) => {
+            currentVisibleUntil = input.visibleUntil;
+            return {
+                ...input,
+                updatedAt: 2000,
+            };
+        });
+        relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'success',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                hasRemainingRanges: false,
+                remainingRangeCount: 0,
+                nextCursorUntil: null,
+                processedRanges: [{
+                    source: 'preferred',
+                    status: 'complete',
+                    rangeUnit: 'custom',
+                    since: expectedSince,
+                    until: expectedUntil,
+                }],
+                attemptedRangeCount: 1,
+                totalRangeCount: 1,
+                hadFailures: false,
+                hasRemainingWork: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: '履歴を修復' })).toHaveProperty('disabled', false);
+            expect(screen.getByText('一覧の投稿')).toBeTruthy();
+        });
+
+        const getPageCallCountBeforeRepair = repositoryMock.getPage.mock.calls.length;
+
+        await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+
+        await waitFor(() => {
+            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+        });
+
+        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        expect(repairParams).toEqual(expect.objectContaining({
+            pubkeyHex,
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: 'custom',
+                since: expectedSince,
+                until: expectedUntil,
+                limit: 200,
+            }],
+            onProgress: expect.any(Function),
+        }));
+
+        await waitFor(() => {
+            expect(visibleRangeRepositoryMock.save).toHaveBeenCalledWith({
+                pubkeyHex,
+                kindsKey: '1,42',
+                visibleUntil: expectedSince,
+            });
+            expect(repositoryMock.getPage.mock.calls.length).toBeGreaterThan(getPageCallCountBeforeRepair);
+        });
+    });
+
     it('検索中でも repair button を押せて検索結果を再読み込みする', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
@@ -709,6 +824,9 @@ describe('PostHistoryDialog', () => {
             expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
             expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(2);
         });
+
+        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        expect(repairParams?.preferredRanges).toBeUndefined();
     });
 
     it('repair 完了前でも progress で総件数を再取得してページ数を即時更新する', async () => {
@@ -780,6 +898,9 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getPage.mockReturnValue(pageReload.promise);
 
         await fireEvent.click(screen.getByRole('button', { name: '履歴を修復' }));
+        await waitFor(() => {
+            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+        });
         const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
         const getPageCallCountBeforeProgress = repositoryMock.getPage.mock.calls.length;
         await repairParams.onProgress({

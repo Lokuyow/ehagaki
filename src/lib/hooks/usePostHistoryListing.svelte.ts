@@ -75,6 +75,7 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
 const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
     ...POST_HISTORY_FETCH_KINDS,
 ]);
+const POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS = 24 * 60 * 60;
 
 const persistedListingSnapshotByPubkey = new Map<
     string,
@@ -283,6 +284,35 @@ export function usePostHistoryListing({
         state.nextUntil = canContinue ? result.nextUntil : null;
     }
 
+    function buildCurrentPagePreferredRanges() {
+        if (state.searchQuery) {
+            return [];
+        }
+
+        const createdAtValues = state.loadedPosts
+            .map((post) => post.createdAt)
+            .filter((createdAt) => Number.isFinite(createdAt))
+            .map((createdAt) => Math.trunc(createdAt));
+
+        if (createdAtValues.length === 0) {
+            return [];
+        }
+
+        const minCreatedAt = Math.min(...createdAtValues);
+        const maxCreatedAt = Math.max(...createdAtValues);
+
+        return [{
+            kinds: [...POST_HISTORY_FETCH_KINDS],
+            rangeUnit: "custom" as const,
+            since: Math.max(
+                0,
+                minCreatedAt - POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS,
+            ),
+            until: maxCreatedAt + POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS,
+            limit: POST_HISTORY_RELAY_FETCH_LIMIT,
+        }];
+    }
+
     async function readVisibleUntil(pubkeyHex: string): Promise<number | null> {
         const visibleRange = await postHistoryVisibleRangeRepository.get(
             pubkeyHex,
@@ -325,6 +355,51 @@ export function usePostHistoryListing({
             });
         }
 
+        state.visibleUntil = nextVisibleUntil;
+        return nextVisibleUntil;
+    }
+
+    async function maybeExtendVisibleUntilFromRepairResult(
+        pubkeyHex: string,
+        previousVisibleUntil: number | null,
+        processedRanges: Array<{
+            source: string;
+            status: string;
+            since?: number;
+            until?: number;
+        }>,
+    ): Promise<number | null> {
+        if (typeof previousVisibleUntil !== "number") {
+            return previousVisibleUntil;
+        }
+
+        const candidateVisibleUntils = processedRanges
+            .filter((range) =>
+                range.source === "preferred"
+                && range.status === "complete"
+                && typeof range.since === "number"
+                && typeof range.until === "number"
+                && range.until >= previousVisibleUntil - 1,
+            )
+            .map((range) => range.since as number);
+
+        if (candidateVisibleUntils.length === 0) {
+            return previousVisibleUntil;
+        }
+
+        const nextVisibleUntil = Math.min(
+            previousVisibleUntil,
+            ...candidateVisibleUntils,
+        );
+        if (nextVisibleUntil === previousVisibleUntil) {
+            return previousVisibleUntil;
+        }
+
+        await postHistoryVisibleRangeRepository.save({
+            pubkeyHex,
+            kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
+            visibleUntil: nextVisibleUntil,
+        });
         state.visibleUntil = nextVisibleUntil;
         return nextVisibleUntil;
     }
@@ -768,9 +843,12 @@ export function usePostHistoryListing({
 
         clearRepairFeedback();
         state.repairStatus = "repairing";
+        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const preferredRanges = buildCurrentPagePreferredRanges();
         const task = postHistoryRepairService.repairFromRelays(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
+            ...(preferredRanges.length > 0 ? { preferredRanges } : {}),
             onProgress: async () => {
                 await refreshTotalCountFromRepository();
             },
@@ -789,6 +867,12 @@ export function usePostHistoryListing({
             if (!getShow() || result.status === "cancelled") {
                 return;
             }
+
+            await maybeExtendVisibleUntilFromRepairResult(
+                pubkeyHex,
+                previousVisibleUntil,
+                result.processedRanges,
+            );
 
             if (state.searchQuery) {
                 await loadSearchPage(state.searchPage, state.searchQuery);
