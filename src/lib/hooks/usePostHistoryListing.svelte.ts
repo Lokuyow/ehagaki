@@ -22,6 +22,7 @@ import {
 } from "../postHistoryDialogViewState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
 import { postHistoryRepairService, type PostHistoryRepairTask } from "../postHistoryRepairService";
+import { postHistoryRepairCursorRepository } from "../storage/postHistoryRepairCursorRepository";
 import { postHistoryRepository } from "../storage/postHistoryRepository";
 import { postHistorySyncCoverageRepository } from "../storage/postHistorySyncCoverageRepository";
 import {
@@ -960,6 +961,7 @@ export function usePostHistoryListing({
                 postHistoryRepository.deleteForPubkey(pubkeyHex),
                 postHistorySyncCoverageRepository.deleteForPubkey(pubkeyHex),
                 postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
+                postHistoryRepairCursorRepository.clearForPubkey(pubkeyHex),
             ]);
         } catch {
             clearRepairFeedback();

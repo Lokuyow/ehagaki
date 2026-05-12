@@ -87,6 +87,10 @@ const visibleRangeRepositoryMock = vi.hoisted(() => ({
     clearForPubkey: vi.fn(),
 }));
 
+const repairCursorRepositoryMock = vi.hoisted(() => ({
+    clearForPubkey: vi.fn(),
+}));
+
 const syncCoverageRepositoryMock = vi.hoisted(() => ({
     saveAttempt: vi.fn(),
     deleteForPubkey: vi.fn(),
@@ -223,6 +227,10 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
         postHistoryVisibleRangeRepository: visibleRangeRepositoryMock,
     };
 });
+
+vi.mock('../../lib/storage/postHistoryRepairCursorRepository', () => ({
+    postHistoryRepairCursorRepository: repairCursorRepositoryMock,
+}));
 
 vi.mock('../../lib/storage/postHistorySyncCoverageRepository', () => ({
     postHistorySyncCoverageRepository: syncCoverageRepositoryMock,
@@ -374,6 +382,7 @@ describe('PostHistoryDialog', () => {
         visibleRangeRepositoryMock.save.mockResolvedValue(null);
         visibleRangeRepositoryMock.clear.mockResolvedValue(undefined);
         visibleRangeRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
+        repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
         syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
         repairServiceMock.repairFromRelays.mockReturnValue({
@@ -596,6 +605,7 @@ describe('PostHistoryDialog', () => {
             expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
+            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(screen.queryByText('削除対象')).toBeNull();
         });

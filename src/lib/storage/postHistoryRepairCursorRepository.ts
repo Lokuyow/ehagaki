@@ -13,6 +13,7 @@ export interface PostHistoryRepairCursor {
 export interface PostHistoryRepairCursorRepository {
     get(pubkeyHex: string): Promise<PostHistoryRepairCursor | null>;
     save(cursor: Omit<PostHistoryRepairCursor, "updatedAt">): Promise<PostHistoryRepairCursor>;
+    clearForPubkey(pubkeyHex: string | null | undefined): Promise<void>;
 }
 
 function buildCursorKey(pubkeyHex: string): string {
@@ -66,6 +67,12 @@ export class DexiePostHistoryRepairCursorRepository implements PostHistoryRepair
         });
 
         return nextCursor;
+    }
+
+    async clearForPubkey(pubkeyHex: string | null | undefined): Promise<void> {
+        if (!pubkeyHex) return;
+
+        await this.db.meta.delete(buildCursorKey(pubkeyHex));
     }
 }
 
