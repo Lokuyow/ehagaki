@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
+    import { tick } from "svelte";
     import { _ } from "svelte-i18n";
     import { Dialog, Popover } from "bits-ui";
     import Button from "./Button.svelte";
@@ -94,6 +95,10 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    let pendingHistoryScrollReset = $state<{
+        page: number;
+        previousFirstEventId: string | null;
+    } | null>(null);
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
@@ -137,6 +142,7 @@
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
         showImageFullscreen = false;
+        pendingHistoryScrollReset = null;
         loadingEmojiUrls.clear();
     }
 
@@ -220,17 +226,53 @@
         }
     }
 
+    function queueHistoryScrollReset(): void {
+        pendingHistoryScrollReset = {
+            page: history.displayPage,
+            previousFirstEventId: history.posts[0]?.eventId ?? null,
+        };
+    }
+
     function handlePreviousPage(): void {
         if (history.goPreviousPage()) {
-            resetHistoryScrollPosition();
+            queueHistoryScrollReset();
         }
     }
 
     async function handleNextPage(): Promise<void> {
         if (await history.goToNextPage()) {
-            resetHistoryScrollPosition();
+            queueHistoryScrollReset();
         }
     }
+
+    $effect(() => {
+        if (!show || !pendingHistoryScrollReset) {
+            return;
+        }
+
+        const currentPage = history.displayPage;
+        const currentFirstEventId = history.posts[0]?.eventId ?? null;
+        if (currentPage !== pendingHistoryScrollReset.page) {
+            return;
+        }
+
+        if (
+            currentFirstEventId ===
+            pendingHistoryScrollReset.previousFirstEventId
+        ) {
+            return;
+        }
+
+        const targetPage = pendingHistoryScrollReset.page;
+        void tick().then(() => {
+            if (!show || pendingHistoryScrollReset?.page !== targetPage) {
+                return;
+            }
+
+            resetHistoryScrollPosition();
+            pendingHistoryScrollReset = null;
+        });
+    });
 
     function getPreviewContent(
         post: PostHistoryRecord,

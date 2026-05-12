@@ -371,7 +371,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('空の投稿履歴を表示する', async () => {
-        render(PostHistoryDialog, {
+        const { container } = render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -413,7 +413,7 @@ describe('PostHistoryDialog', () => {
             }),
         ]);
 
-        render(PostHistoryDialog, {
+        const { container } = render(PostHistoryDialog, {
             props: {
                 show: true,
                 onClose: vi.fn(),
@@ -520,6 +520,59 @@ describe('PostHistoryDialog', () => {
                 .toHaveBeenLastCalledWith(['https://example.com/page-2.jpg']);
             expect(screen.getByText('2ページ目')).toBeTruthy();
         });
+    });
+
+    it('次ページの描画完了まで現在ページの scrollTop を維持する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(60);
+        const secondPageDeferred = createDeferred<ReturnType<typeof createRecord>[]>();
+        repositoryMock.getPage.mockImplementation(({ page }: { page: number }) => (
+            page === 1
+                ? Promise.resolve([
+                    createRecord({
+                        eventId: 'scroll-page-1',
+                        content: '1ページ目',
+                    }),
+                ])
+                : secondPageDeferred.promise
+        ));
+
+        const { container } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('1ページ目')).toBeTruthy();
+        });
+
+        const historyContainer = document.querySelector('.post-history-container');
+        expect(historyContainer).toBeTruthy();
+        if (!(historyContainer instanceof HTMLDivElement)) {
+            throw new Error('post-history-container が見つかりません');
+        }
+
+        historyContainer.scrollTop = 240;
+
+        await fireEvent.click(await screen.findByRole('button', { name: '次へ' }));
+
+        expect(screen.getByText('1ページ目')).toBeTruthy();
+        expect(historyContainer.scrollTop).toBe(240);
+
+        secondPageDeferred.resolve([
+            createRecord({
+                eventId: 'scroll-page-2',
+                content: '2ページ目',
+            }),
+        ]);
+
+        await waitFor(() => {
+            expect(screen.getByText('2ページ目')).toBeTruthy();
+        });
+
+        expect(historyContainer.scrollTop).toBe(0);
     });
 
     it('fullscreen viewer 内の操作では投稿履歴ダイアログを閉じない', async () => {
