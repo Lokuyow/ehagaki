@@ -229,4 +229,83 @@ describe("DexiePostHistorySyncCoverageRepository", () => {
 
         db.close();
     });
+
+    it("perRelay rawCount が limit 未満なら total rawCount だけでは partial にしない", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistorySyncCoverageRepository(
+            db,
+            () => 9500,
+            ((index) => () => `coverage-${index += 1}`)(0),
+        );
+
+        await repository.saveAttempt({
+            pubkeyHex: "a".repeat(64),
+            requestKind: "older",
+            kinds: [1, 42],
+            until: 100,
+            limit: 200,
+            result: createFetchResult({
+                rawCount: 200,
+                uniqueCount: 80,
+                duplicateCount: 120,
+                hasMore: false,
+                perRelayCounts: [
+                    {
+                        relayUrl: "wss://relay-a.example.com/",
+                        rawCount: 100,
+                        uniqueCount: 80,
+                    },
+                    {
+                        relayUrl: "wss://relay-b.example.com/",
+                        rawCount: 100,
+                        uniqueCount: 80,
+                    },
+                ],
+            }),
+        });
+
+        const records = await db.postHistorySyncCoverage.toArray();
+
+        expect(records).toHaveLength(1);
+        expect(records[0].status).toBe("complete");
+
+        db.close();
+    });
+
+    it("perRelay rawCount が limit 到達なら hasMore=false でも partial を残す", async () => {
+        const db = createTestDb();
+        const repository = new DexiePostHistorySyncCoverageRepository(
+            db,
+            () => 9600,
+            ((index) => () => `coverage-${index += 1}`)(0),
+        );
+
+        await repository.saveAttempt({
+            pubkeyHex: "a".repeat(64),
+            requestKind: "older",
+            kinds: [1, 42],
+            until: 100,
+            limit: 200,
+            result: createFetchResult({
+                rawCount: 200,
+                uniqueCount: 80,
+                duplicateCount: 120,
+                hasMore: false,
+                perRelayCounts: [
+                    {
+                        relayUrl: "wss://relay-a.example.com/",
+                        rawCount: 200,
+                        uniqueCount: 80,
+                    },
+                ],
+            }),
+        });
+
+        const records = await db.postHistorySyncCoverage.toArray();
+
+        expect(records).toHaveLength(1);
+        expect(records[0].status).toBe("partial");
+
+        db.close();
+    });
 });

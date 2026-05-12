@@ -69,6 +69,8 @@ type EventAccumulator = {
 type RelayPacketAccumulator = {
     rawCount: number;
     eventIds: Set<string>;
+    oldestCreatedAt: number | null;
+    newestCreatedAt: number | null;
 };
 
 function toResultEvents(eventsById: Map<string, EventAccumulator>): PostHistoryRelayFetchedEvent[] {
@@ -144,13 +146,23 @@ export class PostHistoryRelayFetchService {
                     uniqueCount: accumulator.eventIds.size,
                 }))
                 .sort((left, right) => left.relayUrl.localeCompare(right.relayUrl));
+            const nextUntilCandidates = Array.from(relayPackets.values())
+                .map((accumulator) => accumulator.oldestCreatedAt)
+                .filter((createdAt): createdAt is number => typeof createdAt === "number");
+            const nextUntil = nextUntilCandidates.reduce<number | null>((cursor, createdAt) => (
+                cursor === null || createdAt > cursor
+                    ? createdAt
+                    : cursor
+            ), null);
+            const hasMore = events.length >= limit
+                || perRelayCounts.some((item) => item.rawCount >= limit);
 
             return {
                 status,
                 events,
                 fetchedAt: this.now(),
-                nextUntil: oldestCreatedAt,
-                hasMore: events.length >= limit,
+                nextUntil,
+                hasMore,
                 relayUrls,
                 observedRelayUrls: perRelayCounts.map((item) => item.relayUrl),
                 rawCount,
@@ -229,12 +241,15 @@ export class PostHistoryRelayFetchService {
     }
 
     private resolveRelayUrls(relayConfig?: RelayConfig | null): string[] {
-        const readRelays = relayConfig
-            ? RelayConfigUtils.extractReadRelays(relayConfig)
+        const historyRelays = relayConfig
+            ? RelayConfigUtils.sanitizeExternalRelayUrls([
+                ...RelayConfigUtils.extractWriteRelays(relayConfig),
+                ...RelayConfigUtils.extractReadRelays(relayConfig),
+            ])
             : [];
 
-        if (readRelays.length > 0) {
-            return RelayConfigUtils.sanitizeExternalRelayUrls(readRelays);
+        if (historyRelays.length > 0) {
+            return historyRelays;
         }
 
         return RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS);
@@ -258,9 +273,17 @@ export class PostHistoryRelayFetchService {
             const relayAccumulator = relayPackets.get(relayUrl) ?? {
                 rawCount: 0,
                 eventIds: new Set<string>(),
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
             };
             relayAccumulator.rawCount += 1;
             relayAccumulator.eventIds.add(event.id);
+            relayAccumulator.oldestCreatedAt = relayAccumulator.oldestCreatedAt === null
+                ? event.created_at
+                : Math.min(relayAccumulator.oldestCreatedAt, event.created_at);
+            relayAccumulator.newestCreatedAt = relayAccumulator.newestCreatedAt === null
+                ? event.created_at
+                : Math.max(relayAccumulator.newestCreatedAt, event.created_at);
             relayPackets.set(relayUrl, relayAccumulator);
         }
 

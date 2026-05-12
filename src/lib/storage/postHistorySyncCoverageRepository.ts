@@ -93,7 +93,7 @@ function resolveCoverageStatus(input: PostHistorySyncCoverageSaveInput): PostHis
         return input.result.status;
     }
 
-    if (input.result.hasMore || input.result.rawCount >= input.limit) {
+    if (input.result.hasMore) {
         return "partial";
     }
 

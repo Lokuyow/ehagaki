@@ -48,7 +48,7 @@ describe("PostHistoryRelayFetchService", () => {
         });
     });
 
-    it("read relay を優先して購読し、同一 eventId を relay ごとに集約する", async () => {
+    it("write relay と read relay を購読し、同一 eventId を relay ごとに集約する", async () => {
         const unsubscribe = vi.fn();
         const mockRxNostr: RxNostr = {
             use: vi.fn().mockReturnValue({
@@ -78,7 +78,7 @@ describe("PostHistoryRelayFetchService", () => {
         const rxReq = createRxBackwardReqMock.mock.results[0]?.value;
 
         expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
-            on: { relays: ["wss://read.example.com/"] },
+            on: { relays: ["wss://write.example.com/", "wss://read.example.com/"] },
         });
         expect(rxReq.emit).toHaveBeenCalledWith({
             authors: ["b".repeat(64)],
@@ -94,6 +94,28 @@ describe("PostHistoryRelayFetchService", () => {
         ]);
         expect(result.nextUntil).toBe(100);
         expect(result.hasMore).toBe(false);
+    });
+
+    it("write-only relay でも fallback せず購読する", async () => {
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            relayConfig: {
+                "wss://write-only.example.com/": { read: false, write: true },
+            },
+        }).promise;
+
+        expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
+            on: { relays: ["wss://write-only.example.com/"] },
+        });
     });
 
     it("read relay が無い場合は fallback relays を使う", async () => {
@@ -114,6 +136,101 @@ describe("PostHistoryRelayFetchService", () => {
         expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
             on: { relays: FALLBACK_RELAYS },
         });
+    });
+
+    it("nextUntil はイベントを返した relay ごとの oldestCreatedAt の最大値を使う", async () => {
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.next?.({
+                        event: createEvent({ id: "1".repeat(64), created_at: 1200 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    observer.next?.({
+                        event: createEvent({ id: "2".repeat(64), created_at: 1100 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    observer.next?.({
+                        event: createEvent({ id: "3".repeat(64), created_at: 1000 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    observer.next?.({
+                        event: createEvent({ id: "4".repeat(64), created_at: 500 }),
+                        from: "wss://relay-b.example.com",
+                    });
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        const result = await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            relayConfig: {
+                "wss://relay-a.example.com/": { read: true, write: true },
+                "wss://relay-b.example.com/": { read: true, write: true },
+                "wss://relay-silent.example.com/": { read: true, write: true },
+            },
+            limit: 3,
+        }).promise;
+
+        expect(result.nextUntil).toBe(1000);
+        expect(result.hasMore).toBe(true);
+        expect(result.observedRelayUrls).toEqual([
+            "wss://relay-a.example.com/",
+            "wss://relay-b.example.com/",
+        ]);
+        expect(result.perRelayCounts).toEqual([
+            {
+                relayUrl: "wss://relay-a.example.com/",
+                rawCount: 3,
+                uniqueCount: 3,
+            },
+            {
+                relayUrl: "wss://relay-b.example.com/",
+                rawCount: 1,
+                uniqueCount: 1,
+            },
+        ]);
+    });
+
+    it("perRelay rawCount が limit に達したら uniqueCount が足りなくても hasMore を維持する", async () => {
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.next?.({
+                        event: createEvent({ id: "1".repeat(64), created_at: 1200 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    observer.next?.({
+                        event: createEvent({ id: "1".repeat(64), created_at: 1200 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    observer.next?.({
+                        event: createEvent({ id: "1".repeat(64), created_at: 1200 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        const result = await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            limit: 3,
+        }).promise;
+
+        expect(result.uniqueCount).toBe(1);
+        expect(result.perRelayCounts).toEqual([
+            {
+                relayUrl: "wss://relay-a.example.com/",
+                rawCount: 3,
+                uniqueCount: 1,
+            },
+        ]);
+        expect(result.hasMore).toBe(true);
+        expect(result.nextUntil).toBe(1200);
     });
 
     it("cancel 時に購読を解除して cancelled を返す", async () => {
