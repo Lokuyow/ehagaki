@@ -186,7 +186,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: var(--dialog-overlay);
+        background-color: var(--dialog-bg-overlay);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -198,7 +198,7 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: var(--dialog);
+        background: var(--dialog-bg-2);
         color: var(--text);
         width: 100%;
         max-width: 500px;

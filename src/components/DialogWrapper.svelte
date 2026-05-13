@@ -241,7 +241,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background-color: var(--dialog-overlay);
+        background-color: var(--dialog-bg-overlay);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -253,7 +253,7 @@
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
-        background: var(--dialog);
+        background: var(--dialog-bg);
         color: var(--text);
         width: 100%;
         max-width: 600px;
@@ -373,7 +373,7 @@
         border-top: 1px solid var(--border-hr);
 
         :global(.modal-close) {
-            --btn-bg: var(--dialog);
+            --btn-bg: var(--dialog-bg);
             border: none;
             border-radius: 0;
             width: 100%;

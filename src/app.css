@@ -56,8 +56,9 @@
   --link: #1a0dab;
   --link-visited: #681da8;
 
-  --dialog: white;
-  --dialog-overlay: rgba(0, 0, 0, 0.6);
+  --dialog-bg: white;
+  --dialog-bg-2: hsl(0, 0%, 94%);
+  --dialog-bg-overlay: rgba(0, 0, 0, 0.6);
 
   --window: hsl(0, 0%, 95%);
 
@@ -68,7 +69,7 @@
   --hashtag-text: #106BC7;
   --hashtag-bg: #106BC71a;
   --toggle-bg: var(--svg);
-  --toggle-circle: var(--dialog);
+  --toggle-circle: var(--dialog-bg);
 
   font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", Meiryo, sans-serif;
   font-weight: 400;
@@ -227,8 +228,9 @@ select {
   --link: #99c3ff;
   --link-visited: #c58af9;
 
-  --dialog: hsl(0, 0%, 14%);
-  --dialog-overlay: rgba(0, 0, 0, 0.8);
+  --dialog-bg: hsl(0, 0%, 14%);
+  --dialog-bg-2: hsl(0, 0%, 20%);
+  --dialog-bg-overlay: rgba(0, 0, 0, 0.8);
 
   --window: hsl(0, 0%, 14%);
 
@@ -240,7 +242,7 @@ select {
   --hashtag-text: #65B1FC;
   --hashtag-bg: #65B1FC1a;
   --toggle-bg: var(--svg);
-  --toggle-circle: var(--dialog);
+  --toggle-circle: var(--dialog-bg);
 }
 
 @media (min-width: 601px) {

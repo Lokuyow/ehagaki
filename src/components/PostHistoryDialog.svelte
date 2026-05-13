@@ -1895,7 +1895,7 @@
     }
 
     :global(.post-history-menu-content) {
-        background: var(--dialog, #fff);
+        background: var(--dialog-bg, #fff);
         color: var(--text, #000);
         border: 1px solid var(--border, #ccc);
         border-radius: 10px;
@@ -1954,7 +1954,7 @@
     }
 
     .menu-action-button:hover:not(:disabled) {
-        background: color-mix(in srgb, var(--dialog), var(--border) 12%);
+        background: color-mix(in srgb, var(--dialog-bg), var(--border) 12%);
     }
 
     .menu-action-button:disabled {

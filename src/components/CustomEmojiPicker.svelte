@@ -86,7 +86,9 @@
     let recentDisplayLimit = $derived(
         getCustomEmojiUsageDisplayLimit(columnCount),
     );
-    let visibleRecentItems = $derived(customEmojiUsageItems.slice(0, recentDisplayLimit));
+    let visibleRecentItems = $derived(
+        customEmojiUsageItems.slice(0, recentDisplayLimit),
+    );
     let visibleFrequentItems = $derived(
         [...customEmojiUsageItems]
             .sort(sortCustomEmojiUsageByFrequency)
@@ -384,7 +386,8 @@
                                                 value={`recent:${emoji.identityKey}`}
                                                 keywords={[emoji.shortcode]}
                                                 class="emoji-item custom-emoji-usage-item"
-                                                onSelect={() => selectEmoji(emoji)}
+                                                onSelect={() =>
+                                                    selectEmoji(emoji)}
                                                 onmousedown={preventKeyboardFocusChange}
                                                 ontouchstart={preserveKeyboardForScrollableTouch}
                                             >
@@ -417,7 +420,8 @@
                                                 value={`frequent:${emoji.identityKey}`}
                                                 keywords={[emoji.shortcode]}
                                                 class="emoji-item custom-emoji-usage-item"
-                                                onSelect={() => selectEmoji(emoji)}
+                                                onSelect={() =>
+                                                    selectEmoji(emoji)}
                                                 onmousedown={preventKeyboardFocusChange}
                                                 ontouchstart={preserveKeyboardForScrollableTouch}
                                             >
@@ -537,7 +541,7 @@
     .custom-emoji-picker {
         width: 100%;
         max-width: 800px;
-        background: var(--dialog);
+        background: var(--dialog-bg);
         color: var(--text);
         overflow: hidden;
         position: relative;
@@ -590,7 +594,7 @@
         width: 100%;
         min-height: var(--custom-emoji-picker-search-row-height);
         border-top: 1px solid var(--border);
-        background: var(--input-bg, var(--dialog));
+        background: var(--input-bg, var(--dialog-bg));
     }
 
     :global(.custom-emoji-search) {

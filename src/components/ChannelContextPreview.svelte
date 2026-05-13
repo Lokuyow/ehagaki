@@ -153,7 +153,7 @@
         width: 42px;
         height: 42px;
         object-fit: cover;
-        background: var(--dialog);
+        background: var(--dialog-bg);
         flex-shrink: 0;
     }
 

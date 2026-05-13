@@ -629,7 +629,7 @@
     }
 
     :global(.tooltip-content) {
-        background: var(--dialog);
+        background: var(--dialog-bg);
         color: var(--text);
         border: 1px solid var(--border);
         border-radius: 6px;

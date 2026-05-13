@@ -1875,7 +1875,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: var(--dialog-overlay);
+    background-color: var(--dialog-bg-overlay);
     z-index: 100;
     pointer-events: none;
   }

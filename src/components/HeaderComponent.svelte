@@ -283,7 +283,7 @@
         max-width: min(100%, 280px);
         margin: 0 6px;
         padding: 8px 10px;
-        background: color-mix(in srgb, var(--dialog) 82%, var(--base) 18%);
+        background: color-mix(in srgb, var(--dialog-bg) 82%, var(--base) 18%);
         color: var(--text);
         font-size: 1rem;
         line-height: 1.2;
@@ -361,7 +361,7 @@
     }
 
     :global(.tooltip-content) {
-        background: var(--dialog);
+        background: var(--dialog-bg);
         color: var(--text);
         border: 1px solid var(--border);
         border-radius: 6px;

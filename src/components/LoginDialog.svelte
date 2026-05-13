@@ -513,7 +513,7 @@
         display: flex;
         width: 100%;
         max-width: 500px;
-        background: var(--dialog);
+        background: var(--dialog-bg);
         color: var(--text);
         border-radius: 0 0 10px 10px;
         z-index: 101;

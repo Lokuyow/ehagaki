@@ -148,7 +148,7 @@
 
 <style>
     .popup-modal {
-        background: var(--dialog, #fff);
+        background: var(--dialog-bg, #fff);
         color: var(--text, #000);
         border: 1px solid var(--border, #ccc);
         border-radius: 8px;

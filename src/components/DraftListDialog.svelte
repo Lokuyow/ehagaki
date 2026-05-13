@@ -299,7 +299,7 @@
         :global(.delete-button) {
             width: 50px;
             height: auto;
-            --btn-bg: var(--dialog);
+            --btn-bg: var(--dialog-bg);
 
             .trash-icon {
                 width: 24px;
@@ -310,7 +310,7 @@
         :global(.pin-button) {
             width: 44px;
             height: auto;
-            --btn-bg: var(--dialog);
+            --btn-bg: var(--dialog-bg);
 
             .thumbtack-icon {
                 width: 20px;
@@ -331,7 +331,7 @@
             align-items: flex-start;
             gap: 8px;
             padding: 10px;
-            --btn-bg: var(--dialog);
+            --btn-bg: var(--dialog-bg);
             border: none;
             cursor: pointer;
             text-align: left;

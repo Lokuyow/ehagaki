@@ -20,10 +20,7 @@
     } from "../stores/relayStore.svelte";
     import { themeModeStore } from "../stores/themeStore.svelte";
     import { settingsStore } from "../stores/settingsStore.svelte";
-    import {
-        getCompressionLevels,
-        SW_UPDATE_TIMEOUT,
-    } from "../lib/constants";
+    import { getCompressionLevels, SW_UPDATE_TIMEOUT } from "../lib/constants";
     import {
         handleServiceWorkerRefresh,
         chunkArray,
@@ -577,7 +574,7 @@
     :global(.github-link-btn.circle) {
         width: 38px;
         height: 38px;
-        --btn-bg: var(--dialog);
+        --btn-bg: var(--dialog-bg);
 
         .github-icon {
             mask-image: url("/icons/github-mark.svg");
@@ -588,7 +585,7 @@
     :global(.help-btn.circle) {
         width: 38px;
         height: 38px;
-        --btn-bg: var(--dialog);
+        --btn-bg: var(--dialog-bg);
         :global(.help-icon) {
             mask-image: url("/icons/circle-question-solid-full.svg");
             width: 30px;
