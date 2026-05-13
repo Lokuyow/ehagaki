@@ -1147,8 +1147,14 @@ export function usePostHistoryListing({
             !didVisibleCountIncrease &&
             !didMateriallyChange
         ) {
-            state.nextUntil = null;
-            state.hasMoreRemote = false;
+            if (state.hasMoreRemote && result.nextUntil === fetchUntil) {
+                state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
+                state.hasMoreRemote = state.nextUntil !== null;
+            }
+
+            if (!state.hasMoreRemote) {
+                state.nextUntil = null;
+            }
         }
 
         if (state.searchQuery) {
