@@ -117,9 +117,6 @@
 
         return nextContent;
     });
-    let deleteTargetPreviewContent = $derived.by(() =>
-        deleteTargetPost ? buildPreviewContent(deleteTargetPost) : null,
-    );
     let headingStatusMessageKey = $derived(
         history.currentViewRefetchStatusMessageKey ??
             history.syncStatusMessageKey,
@@ -141,10 +138,6 @@
             for (const url of previewContent.emojiUrls) {
                 urls.add(url);
             }
-        }
-
-        for (const url of deleteTargetPreviewContent?.emojiUrls ?? []) {
-            urls.add(url);
         }
 
         return [...urls];
@@ -1481,16 +1474,6 @@
             <p class="delete-confirm-warning">
                 {$_("postHistory.deleteRequestWarning")}
             </p>
-            {#if deleteTargetPost}
-                <div class="delete-confirm-preview">
-                    <PostHistoryPreviewContent
-                        previewContent={deleteTargetPreviewContent ??
-                            buildPreviewContent(deleteTargetPost)}
-                        {emojiLoadStateByUrl}
-                        {emojiImageMetaByUrl}
-                    />
-                </div>
-            {/if}
         </div>
     {/snippet}
 </ConfirmDialog>
@@ -2197,29 +2180,17 @@
 
     .delete-confirm-body {
         display: grid;
-        gap: 12px;
         text-align: left;
     }
 
     .delete-confirm-description,
     .delete-confirm-warning {
-        margin: 0;
         line-height: 1.5;
     }
 
     .delete-confirm-warning {
         color: var(--text-muted);
         font-size: 0.94rem;
-    }
-
-    .delete-confirm-preview {
-        padding: 10px 12px;
-        border: 1px solid var(--border-soft);
-        background: var(--background);
-        color: var(--text);
-        line-height: 1.5;
-        white-space: pre-wrap;
-        overflow-wrap: anywhere;
     }
 
     .copy-icon {
