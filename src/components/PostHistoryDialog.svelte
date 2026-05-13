@@ -759,6 +759,23 @@
                 <h3>{$_("postHistory.title")}</h3>
             </div>
             <div class="post-history-heading-actions">
+                {#if headingStatusMessageKey}
+                    <LoadingPlaceholder
+                        text={headingStatusMessageValues
+                            ? $_(headingStatusMessageKey, {
+                                  values: headingStatusMessageValues,
+                              })
+                            : $_(headingStatusMessageKey)}
+                        showLoader={history.showStatusLoader}
+                        loaderSize={25}
+                        state={history.showStatusLoader
+                            ? "loading"
+                            : "complete"}
+                        customClass={`status-loading-placeholder${
+                            headingStatusError ? " status-error" : ""
+                        }`}
+                    />
+                {/if}
                 <Popover.Root bind:open={headingMenuOpen}>
                     <Popover.Trigger
                         class="menu-trigger post-history-heading-menu-trigger"
@@ -888,21 +905,6 @@
                         </span>
                     {/if}
                 </div>
-            </div>
-        {/if}
-        {#if headingStatusMessageKey}
-            <div class="status-message" class:status-error={headingStatusError}>
-                <LoadingPlaceholder
-                    text={headingStatusMessageValues
-                        ? $_(headingStatusMessageKey, {
-                              values: headingStatusMessageValues,
-                          })
-                        : $_(headingStatusMessageKey)}
-                    showLoader={history.showStatusLoader}
-                    loaderSize={25}
-                    state={history.showStatusLoader ? "loading" : "complete"}
-                    customClass="status-loading-placeholder"
-                />
             </div>
         {/if}
     </div>
@@ -1545,6 +1547,7 @@
     .post-history-heading-actions {
         display: flex;
         align-items: center;
+        gap: 8px;
         flex: 0 0 auto;
     }
 
@@ -1765,20 +1768,13 @@
         font-size: 1rem;
     }
 
-    .status-message {
-        width: 100%;
-        min-width: 0;
+    :global(.status-loading-placeholder) {
+        justify-content: flex-end;
+        width: auto;
+        column-gap: 0;
         color: var(--text-muted);
         font-size: 0.8rem;
         line-height: 1.3;
-        text-align: right;
-        overflow-wrap: anywhere;
-
-        :global(.status-loading-placeholder) {
-            justify-content: flex-end;
-            width: auto;
-            column-gap: 0;
-        }
     }
 
     :global(.status-loading-placeholder .loader-container) {
@@ -1792,11 +1788,11 @@
         font-size: inherit;
     }
 
-    .status-error {
+    :global(.status-error) {
         color: var(--danger);
     }
 
-    .status-error :global(.status-loading-placeholder .square) {
+    :global(.status-loading-placeholder.status-error .square) {
         background-color: var(--danger);
     }
 
