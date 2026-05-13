@@ -132,7 +132,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
-        await clickMenuAction('履歴を修復');
+        await clickMenuAction('表示範囲を再取得');
 
         await waitFor(() => {
             expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);

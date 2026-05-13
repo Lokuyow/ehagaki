@@ -33,12 +33,12 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
         'postHistory.syncFailed': 'リレーとの同期に失敗しました',
-        'postHistory.repair': '履歴を修復',
-        'postHistory.repairing': '修復中...',
+        'postHistory.repair': '表示範囲を再取得',
+        'postHistory.repairing': '再取得中...',
         'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
-        'postHistory.repairNoChanges': '新しい投稿はありません',
-        'postHistory.repairContinueLater': '一部を確認しました。残りは次回続きから確認します。',
-        'postHistory.repairPartialFailure': '一部のリレーで取得に失敗しました',
+        'postHistory.repairNoChanges': '表示範囲に追加できる投稿はありません',
+        'postHistory.repairContinueLater': '表示範囲を確認しました。未確認の履歴範囲が残っています。',
+        'postHistory.repairPartialFailure': '表示範囲の一部を取得できませんでした。時間をおいて再実行してください。',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -368,13 +368,13 @@ async function openSearchBar(): Promise<HTMLInputElement> {
 }
 
 async function findRepairButton(): Promise<HTMLButtonElement> {
-    const existing = screen.queryByRole('button', { name: /履歴を修復|修復中\.\.\./ });
+    const existing = screen.queryByRole('button', { name: /表示範囲を再取得|再取得中\.\.\./ });
     if (existing) {
         return existing as HTMLButtonElement;
     }
 
     await openPostHistoryMenu();
-    return screen.findByRole('button', { name: /履歴を修復|修復中\.\.\./ }) as Promise<HTMLButtonElement>;
+    return screen.findByRole('button', { name: /表示範囲を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -567,7 +567,7 @@ describe('PostHistoryDialog', () => {
         const headingActions = document.body.querySelector('.post-history-heading-actions');
 
         expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('履歴を修復');
+        expect(headingActions?.textContent).not.toContain('表示範囲を再取得');
         expect(repairButton).toBeTruthy();
     });
 
