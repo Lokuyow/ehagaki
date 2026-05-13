@@ -1535,6 +1535,7 @@
     }
 
     :global(.post-history-dialog .dialog-content) {
+        position: relative;
         flex: 1 1 auto;
         min-height: 0;
         max-height: none;
@@ -1756,10 +1757,15 @@
     }
 
     .post-history-latest-row {
+        position: absolute;
+        bottom: 16px;
+        right: 16px;
         display: flex;
         justify-content: flex-end;
-        width: 100%;
-        padding: 0 16px 12px;
+        width: auto;
+        margin: 0;
+        padding: 0;
+        z-index: 1;
     }
 
     :global(.post-history-latest-button) {
