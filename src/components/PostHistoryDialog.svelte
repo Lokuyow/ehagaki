@@ -1217,7 +1217,14 @@
                                 </div>
                                 {#if onReplyPost || onQuotePost || previewCollapse.shouldCollapsePost(post)}
                                     <div class="post-preview-footer">
-                                        <div class="post-preview-action-left">
+                                        <div class="post-preview-footer-left">
+                                            <span class="post-preview-date">
+                                                {formatPostedAt(post.postedAt)}
+                                            </span>
+                                        </div>
+                                        <div
+                                            class="post-preview-footer-actions"
+                                        >
                                             {#if onReplyPost}
                                                 <Button
                                                     type="button"
@@ -1255,12 +1262,7 @@
                                                 </Button>
                                             {/if}
                                         </div>
-                                        <div class="post-preview-action-right">
-                                            <span
-                                                >{formatPostedAt(
-                                                    post.postedAt,
-                                                )}</span
-                                            >
+                                        <div class="post-preview-footer-right">
                                             <Popover.Root>
                                                 <Popover.Trigger
                                                     class="menu-trigger"
@@ -2078,25 +2080,33 @@
         align-items: stretch;
         justify-content: space-between;
         height: 36px;
-        gap: 8px;
         padding-left: 1rem;
         color: var(--text-muted);
         font-size: 0.875rem;
 
-        .post-preview-action-left {
+        .post-preview-footer-left {
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            min-width: 80px;
+        }
+
+        .post-preview-footer-actions {
             display: flex;
             align-items: center;
             justify-content: space-around;
-            gap: 8px;
             flex: 1 0 auto;
         }
 
-        .post-preview-action-right {
+        .post-preview-date {
+            white-space: nowrap;
+        }
+
+        .post-preview-footer-right {
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            gap: 8px;
-            width: 130px;
+            min-width: 80px;
 
             :global(.menu-trigger) {
                 min-height: auto;
