@@ -209,11 +209,18 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
         });
 
+        const historyContainer = getHistoryContainer();
+        Object.defineProperty(historyContainer, 'scrollHeight', {
+            configurable: true,
+            value: 720,
+        });
+
         await openPostHistoryMenu();
         await fireEvent.click(await screen.findByRole('button', { name: '最古へ移動' }));
 
         await waitFor(() => {
             expect(screen.getByText('最古投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(720);
             expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
                 expect.objectContaining({
                     pubkeyHex: PUBKEY_HEX,

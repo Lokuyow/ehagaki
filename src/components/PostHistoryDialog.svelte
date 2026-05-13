@@ -250,6 +250,12 @@
         }
     }
 
+    function resetHistoryScrollToBottomPosition(): void {
+        if (historyContainer) {
+            historyContainer.scrollTop = historyContainer.scrollHeight;
+        }
+    }
+
     function formatDateRangeValue(createdAt: number | null): string | null {
         if (typeof createdAt !== "number") {
             return null;
@@ -318,6 +324,16 @@
             }
 
             resetHistoryScrollPosition();
+        });
+    }
+
+    function resetHistoryScrollToBottomSoon(): void {
+        void tick().then(() => {
+            if (!show) {
+                return;
+            }
+
+            resetHistoryScrollToBottomPosition();
         });
     }
 
@@ -654,7 +670,7 @@
         headingMenuOpen = false;
         void history.jumpToOldest().then((changed) => {
             if (changed) {
-                resetHistoryScrollSoon();
+                resetHistoryScrollToBottomSoon();
             }
         });
     }
