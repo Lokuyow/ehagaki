@@ -262,8 +262,8 @@
     }
 
     function buildVisibleRangeLabel(): string | null {
-        const from = formatDateRangeValue(history.visibleOldestCreatedAt);
-        const to = formatDateRangeValue(history.visibleNewestCreatedAt);
+        const from = formatDateRangeValue(history.visibleNewestCreatedAt);
+        const to = formatDateRangeValue(history.visibleOldestCreatedAt);
         if (!from || !to) {
             return null;
         }
