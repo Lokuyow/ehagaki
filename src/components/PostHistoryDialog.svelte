@@ -1888,6 +1888,22 @@
         min-width: 180px;
         z-index: 102;
         outline: none;
+
+        .post-history-menu-body {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            align-items: stretch;
+
+            .menu-action-button-danger,
+            .menu-action-button-danger:hover:not(:disabled) {
+                color: var(--danger);
+
+                :global(.svg-icon) {
+                    --svg: var(--danger);
+                }
+            }
+        }
     }
 
     :global(.post-history-menu-content[data-state="open"]) {
@@ -1896,13 +1912,6 @@
 
     :global(.post-history-menu-content[data-state="closed"]) {
         animation: popover-out 100ms ease-in;
-    }
-
-    .post-history-menu-body {
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        align-items: stretch;
     }
 
     .post-history-menu-separator {
@@ -1935,10 +1944,6 @@
     .menu-action-button:disabled {
         opacity: 0.55;
         cursor: not-allowed;
-    }
-
-    .menu-action-button-danger {
-        color: var(--danger);
     }
 
     .menu-action-button .svg-icon {
