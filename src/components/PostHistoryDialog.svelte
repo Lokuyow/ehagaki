@@ -1404,18 +1404,6 @@
                                 {$_("postHistory.fetchOlderFromRelays")}
                             </Button>
                         {/if}
-                        {#if history.canRefetchAroundCurrentView}
-                            <Button
-                                type="button"
-                                className="post-history-nav-button"
-                                onClick={() =>
-                                    void history.refetchAroundCurrentView()}
-                            >
-                                {history.isRefetchingAroundCurrentView
-                                    ? $_("postHistory.repairing")
-                                    : $_("postHistory.repair")}
-                            </Button>
-                        {/if}
                     </div>
                 </div>
             {/if}
