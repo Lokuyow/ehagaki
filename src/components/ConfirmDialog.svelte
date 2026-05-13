@@ -216,6 +216,9 @@
         box-sizing: border-box;
         overflow-y: auto;
         text-align: center;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
     }
 
     :global(.confirm-dialog-message) {
@@ -229,6 +232,7 @@
     .confirm-dialog-buttons {
         display: flex;
         justify-content: center;
+        width: auto;
         height: 60px;
         gap: 8px;
 

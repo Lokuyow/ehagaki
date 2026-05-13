@@ -2215,8 +2215,9 @@
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 1rem;
-        padding: 16px;
+        gap: 0.5rem;
+        margin: 10px 0 30px 0;
+        margin-inline: auto;
         text-align: left;
     }
 
@@ -2227,8 +2228,8 @@
     }
 
     .delete-confirm-warning {
-        color: var(--text-muted);
-        font-size: 0.94rem;
+        color: var(--text-light);
+        font-size: 0.875rem;
     }
 
     .copy-icon {
