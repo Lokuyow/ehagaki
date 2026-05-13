@@ -386,6 +386,20 @@
         );
     }
 
+    function hasRenderablePreviewContent(
+        previewContent: PostHistoryPreviewContentData,
+    ): boolean {
+        return previewContent.segments.some(
+            (segment) =>
+                segment.type === "emoji" ||
+                (segment.type === "text" && segment.text.trim().length > 0),
+        );
+    }
+
+    function hasRenderablePostPreviewContent(post: PostHistoryRecord): boolean {
+        return hasRenderablePreviewContent(getPreviewContent(post));
+    }
+
     function syncEmojiLoadState(urls: string[]): string[] {
         const nextState: Record<
             string,
@@ -1180,26 +1194,28 @@
                                     </div>
                                 {/if}
                                 <div class="post-preview-body">
-                                    <div class="post-preview-content">
-                                        <PostHistoryPreviewContent
-                                            previewContent={getPreviewContent(
-                                                post,
-                                            )}
-                                            {emojiLoadStateByUrl}
-                                            {emojiImageMetaByUrl}
-                                            previewCollapseAction={previewCollapse.previewRef}
-                                            previewCollapseEventId={post.eventId}
-                                            previewContentId={"post-preview-content-" +
-                                                post.eventId}
-                                            isCollapsed={!previewCollapse.isPostExpanded(
-                                                post,
-                                            ) &&
-                                                previewCollapse.shouldCollapsePost(
+                                    {#if hasRenderablePostPreviewContent(post)}
+                                        <div class="post-preview-content">
+                                            <PostHistoryPreviewContent
+                                                previewContent={getPreviewContent(
                                                     post,
                                                 )}
-                                        />
-                                    </div>
-                                    {#if previewCollapse.shouldCollapsePost(post)}
+                                                {emojiLoadStateByUrl}
+                                                {emojiImageMetaByUrl}
+                                                previewCollapseAction={previewCollapse.previewRef}
+                                                previewCollapseEventId={post.eventId}
+                                                previewContentId={"post-preview-content-" +
+                                                    post.eventId}
+                                                isCollapsed={!previewCollapse.isPostExpanded(
+                                                    post,
+                                                ) &&
+                                                    previewCollapse.shouldCollapsePost(
+                                                        post,
+                                                    )}
+                                            />
+                                        </div>
+                                    {/if}
+                                    {#if hasRenderablePostPreviewContent(post) && previewCollapse.shouldCollapsePost(post)}
                                         <div class="post-preview-toggle-row">
                                             <Button
                                                 type="button"
