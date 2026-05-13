@@ -89,6 +89,7 @@
     let activeUtilityPanel = $state<PostHistoryUtilityPanel>("none");
     let jumpDateInput = $state("");
     let headingMenuOpen = $state(false);
+    let postMenuOpenState = $state<Record<string, boolean>>({});
     let deleteRequestState = $state<
         Record<string, "sending" | "failed" | undefined>
     >({});
@@ -607,8 +608,22 @@
             return;
         }
 
+        closeAllPostItemMenus();
         deleteTargetPost = post;
         deleteConfirmOpen = true;
+    }
+
+    function setPostMenuOpen(postEventId: string, open: boolean): void {
+        postMenuOpenState = {
+            ...postMenuOpenState,
+            [postEventId]: open,
+        };
+    }
+
+    function closeAllPostItemMenus(): void {
+        if (Object.keys(postMenuOpenState).length > 0) {
+            postMenuOpenState = {};
+        }
     }
 
     function handleReplyPost(post: PostHistoryRecord): void {
@@ -1061,7 +1076,16 @@
                                                         post.postedAt,
                                                     )}</span
                                                 >
-                                                <Popover.Root>
+                                                <Popover.Root
+                                                    open={postMenuOpenState[
+                                                        post.eventId
+                                                    ] ?? false}
+                                                    onOpenChange={(open) =>
+                                                        setPostMenuOpen(
+                                                            post.eventId,
+                                                            open,
+                                                        )}
+                                                >
                                                     <Popover.Trigger
                                                         class="menu-trigger"
                                                         aria-label="アクションを表示"
@@ -1256,7 +1280,16 @@
                                             {/if}
                                         </div>
                                         <div class="post-preview-footer-right">
-                                            <Popover.Root>
+                                            <Popover.Root
+                                                open={postMenuOpenState[
+                                                    post.eventId
+                                                ] ?? false}
+                                                onOpenChange={(open) =>
+                                                    setPostMenuOpen(
+                                                        post.eventId,
+                                                        open,
+                                                    )}
+                                            >
                                                 <Popover.Trigger
                                                     class="menu-trigger"
                                                     aria-label="アクションを表示"
