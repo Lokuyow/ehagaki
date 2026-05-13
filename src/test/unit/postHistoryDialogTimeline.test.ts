@@ -12,6 +12,7 @@ import {
     postMediaCacheServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
+    relayFetchServiceMock,
 } from './postHistoryDialogTestHarness';
 
 describe('PostHistoryDialog timeline navigation', () => {
@@ -154,6 +155,72 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
             expect(screen.getByText('中間投稿')).toBeTruthy();
             expect(screen.queryByText('最古投稿')).toBeNull();
+        });
+
+        view.unmount();
+    });
+
+    it('メニューの最古へ移動はリレー同期せずローカル最古ページへ移動する', async () => {
+        const newest = createRecord({
+            eventId: 'oldest-menu-newest',
+            content: '最新投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const middle = createRecord({
+            eventId: 'oldest-menu-middle',
+            content: '中間投稿',
+            createdAt: 1_704_240_000,
+            postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+        });
+        const older = createRecord({
+            eventId: 'oldest-menu-older',
+            content: '古い投稿',
+            createdAt: 1_704_153_600,
+            postedAt: Date.UTC(2024, 0, 1, 0, 0, 0),
+        });
+        const oldest = createRecord({
+            eventId: 'oldest-menu-oldest',
+            content: '最古投稿',
+            createdAt: 1_704_067_200,
+            postedAt: Date.UTC(2023, 11, 31, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(4);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([newest, middle]);
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce([older, oldest]);
+        repositoryMock.getNewerVisibleChunk
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([middle]);
+        repositoryMock.getOlderVisibleChunk
+            .mockResolvedValueOnce([older])
+            .mockResolvedValueOnce([]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('最新投稿')).toBeTruthy();
+        });
+
+        await openPostHistoryMenu();
+        await fireEvent.click(await screen.findByRole('button', { name: '最古へ移動' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('最古投稿')).toBeTruthy();
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    createdAt: 0,
+                }),
+            );
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
         });
 
         view.unmount();

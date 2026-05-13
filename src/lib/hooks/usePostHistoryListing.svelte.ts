@@ -248,6 +248,9 @@ export function usePostHistoryListing({
     const canReturnToLatest = $derived(
         !isSearchMode && !isRefetchingAroundCurrentView && state.hasNewerLocal,
     );
+    const canJumpToOldest = $derived(
+        !isSearchMode && !isRefetchingAroundCurrentView && state.hasOlderLocal,
+    );
     const canFetchOlderFromRelays = $derived(
         !isSearchMode &&
         !!getPubkeyHex() &&
@@ -1021,6 +1024,14 @@ export function usePostHistoryListing({
         return true;
     }
 
+    async function jumpToOldest(): Promise<boolean> {
+        if (isSearchMode || !canJumpToOldest) {
+            return false;
+        }
+
+        return jumpToCreatedAt(0);
+    }
+
     async function fetchOlderFromRelays(): Promise<boolean> {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
@@ -1421,6 +1432,9 @@ export function usePostHistoryListing({
         get canReturnToLatest() {
             return canReturnToLatest;
         },
+        get canJumpToOldest() {
+            return canJumpToOldest;
+        },
         get canFetchOlderFromRelays() {
             return canFetchOlderFromRelays;
         },
@@ -1465,6 +1479,7 @@ export function usePostHistoryListing({
         loadOlder,
         loadNewer,
         returnToLatest,
+        jumpToOldest,
         jumpToCreatedAt,
         fetchOlderFromRelays,
         goFirstPage,

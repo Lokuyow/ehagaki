@@ -103,6 +103,7 @@
     "loadOlderSearchResults": "Show older search results",
     "loadNewerSearchResults": "Show newer search results",
     "returnToLatest": "Back to latest",
+    "jumpToOldest": "Jump to oldest",
     "jumpToDate": "Jump to date",
     "jumpToDateLabel": "Date",
     "jumpToDateSubmit": "Show near this date",

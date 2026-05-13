@@ -650,9 +650,13 @@
         void history.refetchAroundCurrentView();
     }
 
-    function handleFetchOlderFromRelaysFromMenu(): void {
+    function handleJumpToOldestFromMenu(): void {
         headingMenuOpen = false;
-        void history.fetchOlderFromRelays();
+        void history.jumpToOldest().then((changed) => {
+            if (changed) {
+                resetHistoryScrollSoon();
+            }
+        });
     }
 
     function handleReturnToLatestFromMenu(): void {
@@ -836,15 +840,15 @@
                                 <button
                                     type="button"
                                     class="menu-action-button"
-                                    disabled={!history.canFetchOlderFromRelays}
-                                    onclick={handleFetchOlderFromRelaysFromMenu}
+                                    disabled={!history.canJumpToOldest}
+                                    onclick={handleJumpToOldestFromMenu}
                                 >
                                     <div
-                                        class="download-icon svg-icon"
+                                        class="latest-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
                                     <span>
-                                        {$_("postHistory.fetchOlderFromRelays")}
+                                        {$_("postHistory.jumpToOldest")}
                                     </span>
                                 </button>
                                 <button
@@ -1931,11 +1935,6 @@
 
     .menu-action-button .latest-icon {
         mask-image: url("/icons/clock-rotate-left-solid-full.svg");
-        background-color: currentColor;
-    }
-
-    .menu-action-button .download-icon {
-        mask-image: url("/icons/arrow-down-solid-full.svg");
         background-color: currentColor;
     }
 

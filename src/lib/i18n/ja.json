@@ -103,6 +103,7 @@
     "loadOlderSearchResults": "さらに古い検索結果を表示",
     "loadNewerSearchResults": "新しい検索結果を表示",
     "returnToLatest": "最新へ戻る",
+    "jumpToOldest": "最古へ移動",
     "jumpToDate": "日付へ移動",
     "jumpToDateLabel": "日付",
     "jumpToDateSubmit": "この日付付近を表示",
