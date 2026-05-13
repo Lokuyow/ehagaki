@@ -129,7 +129,7 @@
     "deleteFailed": "Failed to send deletion request",
     "deleteLocalHistory": "Delete all local post history",
     "deleteLocalHistoryTitle": "Delete all local post history",
-    "deleteLocalHistoryDescription": "Only locally saved post history will be deleted. Posts on Nostr relays will not be deleted. This removes post history, sync records, and visible range information. This cannot be undone.",
+    "deleteLocalHistoryDescription": "Only locally saved post history for the currently displayed account will be deleted. Posts on Nostr relays will not be deleted. This removes post history, sync records, and visible range information. This cannot be undone.",
     "deleteLocalHistoryConfirm": "Delete all",
     "deleteLocalHistoryCancel": "Cancel",
     "deleteLocalHistorySuccess": "Local post history deleted",

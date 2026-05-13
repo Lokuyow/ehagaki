@@ -24,7 +24,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.loadOlderSearchResults': 'さらに古い検索結果を表示',
         'postHistory.loadNewerSearchResults': '新しい検索結果を表示',
         'postHistory.returnToLatest': '最新へ戻る',
-            'postHistory.jumpToOldest': '最古へ移動',
+        'postHistory.jumpToOldest': '最古へ移動',
         'postHistory.jumpToDate': '日付へ移動',
         'postHistory.jumpToDateLabel': '日付',
         'postHistory.jumpToDateSubmit': 'この日付付近を表示',
@@ -55,7 +55,7 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.deleteFailed': '削除リクエストの送信に失敗しました',
         'postHistory.deleteLocalHistory': 'ローカル投稿履歴を全削除',
         'postHistory.deleteLocalHistoryTitle': 'ローカル投稿履歴を全削除',
-        'postHistory.deleteLocalHistoryDescription': 'ローカル履歴だけを削除します',
+        'postHistory.deleteLocalHistoryDescription': 'このアカウントのローカル履歴だけを削除します',
         'postHistory.deleteLocalHistoryConfirm': '全削除',
         'postHistory.deleteLocalHistoryCancel': 'キャンセル',
         'postHistory.deleteLocalHistorySuccess': 'ローカル投稿履歴を削除しました',
@@ -619,7 +619,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await screen.findByRole('button', { name: 'ローカル投稿履歴を全削除' }));
 
         expect(repositoryMock.deleteForPubkey).not.toHaveBeenCalled();
-        expect(await screen.findAllByText('ローカル履歴だけを削除します')).toHaveLength(2);
+        expect(await screen.findAllByText('このアカウントのローカル履歴だけを削除します')).toHaveLength(2);
 
         repositoryMock.countForPubkey.mockResolvedValue(0);
         repositoryMock.getPage.mockResolvedValue([]);

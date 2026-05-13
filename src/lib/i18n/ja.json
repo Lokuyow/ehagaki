@@ -129,7 +129,7 @@
     "deleteFailed": "削除リクエストの送信に失敗しました",
     "deleteLocalHistory": "ローカル投稿履歴を全削除",
     "deleteLocalHistoryTitle": "ローカル投稿履歴を全削除",
-    "deleteLocalHistoryDescription": "ローカルに保存された投稿履歴だけを削除します。Nostrリレー上の投稿は削除されません。投稿履歴、同期記録、表示範囲情報を削除します。この操作は元に戻せません。",
+    "deleteLocalHistoryDescription": "このアカウントのローカルに保存された投稿履歴だけを削除します。Nostrリレー上の投稿は削除されません。投稿履歴、同期記録、表示範囲情報を削除します。この操作は元に戻せません。",
     "deleteLocalHistoryConfirm": "全削除",
     "deleteLocalHistoryCancel": "キャンセル",
     "deleteLocalHistorySuccess": "ローカル投稿履歴を削除しました",
