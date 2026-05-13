@@ -33,12 +33,11 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
         'postHistory.syncFailed': 'リレーとの同期に失敗しました',
-        'postHistory.repair': '表示範囲を再取得',
+        'postHistory.repair': '表示中の投稿付近を再取得',
         'postHistory.repairing': '再取得中...',
         'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
-        'postHistory.repairNoChanges': '表示範囲に追加できる投稿はありません',
-        'postHistory.repairContinueLater': '表示範囲を確認しました。未確認の履歴範囲が残っています。',
-        'postHistory.repairPartialFailure': '表示範囲の一部を取得できませんでした。時間をおいて再実行してください。',
+        'postHistory.repairNoChanges': '追加できる投稿はありません',
+        'postHistory.repairPartialFailure': '一部の取得に失敗しました。時間をおいて再実行してください。',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -119,7 +118,7 @@ const relayFetchServiceMock = vi.hoisted(() => ({
 }));
 
 const repairServiceMock = vi.hoisted(() => ({
-    repairFromRelays: vi.fn(),
+    refetchAroundCurrentView: vi.fn(),
 }));
 
 const clipboardMock = vi.hoisted(() => ({
@@ -246,14 +245,6 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
     };
 });
 
-vi.mock('../../lib/storage/postHistoryRepairCursorRepository', () => ({
-    postHistoryRepairCursorRepository: repairCursorRepositoryMock,
-}));
-
-vi.mock('../../lib/storage/postHistorySyncCoverageRepository', () => ({
-    postHistorySyncCoverageRepository: syncCoverageRepositoryMock,
-}));
-
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_FETCH_KINDS: [1, 42],
     POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
@@ -262,8 +253,8 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 
-vi.mock('../../lib/postHistoryRepairService', () => ({
-    postHistoryRepairService: repairServiceMock,
+vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
+    postHistoryCurrentViewRefetchService: repairServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
@@ -368,13 +359,13 @@ async function openSearchBar(): Promise<HTMLInputElement> {
 }
 
 async function findRepairButton(): Promise<HTMLButtonElement> {
-    const existing = screen.queryByRole('button', { name: /表示範囲を再取得|再取得中\.\.\./ });
+    const existing = screen.queryByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
     if (existing) {
         return existing as HTMLButtonElement;
     }
 
     await openPostHistoryMenu();
-    return screen.findByRole('button', { name: /表示範囲を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
+    return screen.findByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -424,21 +415,16 @@ describe('PostHistoryDialog', () => {
         repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
         syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
-        repairServiceMock.repairFromRelays.mockReturnValue({
+        repairServiceMock.refetchAroundCurrentView.mockReturnValue({
             promise: Promise.resolve({
                 status: 'success',
                 addedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
                 processedRangeCount: 0,
-                hasRemainingRanges: false,
-                remainingRangeCount: 0,
-                nextCursorUntil: null,
                 processedRanges: [],
                 attemptedRangeCount: 0,
-                totalRangeCount: 0,
                 hadFailures: false,
-                hasRemainingWork: false,
             }),
             cancel: vi.fn(),
         });
@@ -532,6 +518,10 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[repair-disabled] 同期中・修復中は repair button を disabled にする', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'repair-disabled-page', content: '一覧の投稿' }),
+        ]);
         const initialSync = createDeferred<any>();
         const repairTask = createDeferred<{
             status: 'success';
@@ -539,20 +529,15 @@ describe('PostHistoryDialog', () => {
             updatedCount: 0;
             unchangedCount: 0;
             processedRangeCount: 1;
-            hasRemainingRanges: false;
-            remainingRangeCount: 0;
-            nextCursorUntil: null;
             processedRanges: [];
             attemptedRangeCount: 1;
-            totalRangeCount: 1;
             hadFailures: false;
-            hasRemainingWork: false;
         }>();
         relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
             promise: initialSync.promise,
             cancel: vi.fn(),
         });
-        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
             promise: repairTask.promise,
             cancel: vi.fn(),
         });
@@ -604,14 +589,9 @@ describe('PostHistoryDialog', () => {
             updatedCount: 0,
             unchangedCount: 0,
             processedRangeCount: 1,
-            hasRemainingRanges: false,
-            remainingRangeCount: 0,
-            nextCursorUntil: null,
             processedRanges: [],
             attemptedRangeCount: 1,
-            totalRangeCount: 1,
             hadFailures: false,
-            hasRemainingWork: false,
         });
 
         await waitFor(async () => {
@@ -620,7 +600,11 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('[repair-continue-later] repair が未完了なら次回継続メッセージを表示する', async () => {
+    it('[repair-partial-failure] 再取得が部分失敗なら failure 文言を表示する', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({ eventId: 'repair-partial-page', content: '一覧の投稿' }),
+        ]);
         relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
             promise: Promise.resolve({
                 status: 'success',
@@ -639,21 +623,16 @@ describe('PostHistoryDialog', () => {
             }),
             cancel: vi.fn(),
         });
-        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
             promise: Promise.resolve({
                 status: 'partial',
                 addedCount: 2,
                 updatedCount: 0,
                 unchangedCount: 0,
-                processedRangeCount: 5,
-                hasRemainingRanges: true,
-                remainingRangeCount: 3,
-                nextCursorUntil: 1715515200,
+                processedRangeCount: 1,
                 processedRanges: [],
-                attemptedRangeCount: 5,
-                totalRangeCount: 6,
-                hadFailures: false,
-                hasRemainingWork: true,
+                attemptedRangeCount: 1,
+                hadFailures: true,
             }),
             cancel: vi.fn(),
         });
@@ -674,7 +653,7 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await findRepairButton());
 
         await waitFor(() => {
-            expect(screen.getByText('表示範囲を確認しました。未確認の履歴範囲が残っています。')).toBeTruthy();
+            expect(screen.getByText('一部の取得に失敗しました。時間をおいて再実行してください。')).toBeTruthy();
             expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
         });
     });
@@ -723,16 +702,13 @@ describe('PostHistoryDialog', () => {
             }),
             cancel: vi.fn(),
         });
-        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
             promise: Promise.resolve({
                 status: 'success',
                 addedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
                 processedRangeCount: 1,
-                hasRemainingRanges: false,
-                remainingRangeCount: 0,
-                nextCursorUntil: null,
                 processedRanges: [{
                     source: 'preferred',
                     status: 'complete',
@@ -741,9 +717,7 @@ describe('PostHistoryDialog', () => {
                     until: expectedUntil,
                 }],
                 attemptedRangeCount: 1,
-                totalRangeCount: 1,
                 hadFailures: false,
-                hasRemainingWork: false,
             }),
             cancel: vi.fn(),
         });
@@ -767,10 +741,10 @@ describe('PostHistoryDialog', () => {
         await fireEvent.click(await findRepairButton());
 
         await waitFor(() => {
-            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+            expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
         });
 
-        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        const repairParams = repairServiceMock.refetchAroundCurrentView.mock.calls.at(-1)?.[1];
         expect(repairParams).toEqual(expect.objectContaining({
             pubkeyHex,
             relayConfig: null,
@@ -785,16 +759,11 @@ describe('PostHistoryDialog', () => {
         }));
 
         await waitFor(() => {
-            expect(visibleRangeRepositoryMock.save).toHaveBeenCalledWith({
-                pubkeyHex,
-                kindsKey: '1,42',
-                visibleUntil: expectedSince,
-            });
             expect(repositoryMock.getPage.mock.calls.length).toBeGreaterThan(getPageCallCountBeforeRepair);
         });
     });
 
-    it('[repair-search-mode] 検索中でも repair button を押せて検索結果を再読み込みする', async () => {
+    it('[repair-search-mode-disabled] 検索中は repair button を disabled にする', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'page-1', content: '一覧の投稿' }),
@@ -822,24 +791,6 @@ describe('PostHistoryDialog', () => {
             total: 1,
             hasNext: false,
         });
-        repairServiceMock.repairFromRelays.mockReturnValueOnce({
-            promise: Promise.resolve({
-                status: 'success',
-                addedCount: 0,
-                updatedCount: 0,
-                unchangedCount: 0,
-                processedRangeCount: 1,
-                hasRemainingRanges: false,
-                remainingRangeCount: 0,
-                nextCursorUntil: null,
-                processedRanges: [],
-                attemptedRangeCount: 1,
-                totalRangeCount: 1,
-                hadFailures: false,
-                hasRemainingWork: false,
-            }),
-            cancel: vi.fn(),
-        });
 
         render(PostHistoryDialog, {
             props: {
@@ -863,17 +814,22 @@ describe('PostHistoryDialog', () => {
             page: 1,
             pageSize: 50,
         });
-        expect(await findRepairButton()).toHaveProperty('disabled', false);
+        expect(await findRepairButton()).toHaveProperty('disabled', true);
+        expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
+    });
 
-        await fireEvent.click(await findRepairButton());
-
-        await waitFor(() => {
-            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
-            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledTimes(2);
+    it('[repair-empty-history-disabled] 表示中投稿がないと repair button を disabled にする', async () => {
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+                rxNostr: {} as any,
+            },
         });
 
-        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
-        expect(repairParams?.preferredRanges).toBeUndefined();
+        expect(await findRepairButton()).toHaveProperty('disabled', true);
+        expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
     });
 
 

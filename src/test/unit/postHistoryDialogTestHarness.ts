@@ -27,13 +27,15 @@ const hoisted = vi.hoisted(() => {
             'postHistory.jumpToDateSubmit': 'この日付付近を表示',
             'postHistory.fetchOlderFromRelays': 'リレーから古い投稿を取得',
             'postHistory.localHistoryExhausted': 'ローカル履歴はここまでです',
-            'postHistory.repair': '表示範囲を再取得',
+            'postHistory.repair': '表示中の投稿付近を再取得',
             'postHistory.repairing': '再取得中...',
             'postHistory.empty': '投稿履歴はありません',
             'postHistory.syncing': 'リレーと同期中...',
             'postHistory.synced': 'リレーとの同期が完了しました',
             'postHistory.noMorePosts': 'これ以上古い投稿はありません',
             'postHistory.repairAdded': `${options?.values?.count ?? 0}件の投稿を追加しました`,
+            'postHistory.repairNoChanges': '追加できる投稿はありません',
+            'postHistory.repairPartialFailure': '一部の取得に失敗しました。時間をおいて再実行してください。',
             'common.cancel': 'キャンセル',
             'global.close': '閉じる',
         };
@@ -69,7 +71,7 @@ const hoisted = vi.hoisted(() => {
             fetchLatest: vi.fn(),
         },
         repairServiceMock: {
-            repairFromRelays: vi.fn(),
+            refetchAroundCurrentView: vi.fn(),
         },
         localSearchServiceMock: {
             searchLocalPosts: vi.fn(),
@@ -167,14 +169,6 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
     };
 });
 
-vi.mock('../../lib/storage/postHistoryRepairCursorRepository', () => ({
-    postHistoryRepairCursorRepository: hoisted.repairCursorRepositoryMock,
-}));
-
-vi.mock('../../lib/storage/postHistorySyncCoverageRepository', () => ({
-    postHistorySyncCoverageRepository: hoisted.syncCoverageRepositoryMock,
-}));
-
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_FETCH_KINDS: [1, 42],
     POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
@@ -183,8 +177,8 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     postHistoryRelayFetchService: hoisted.relayFetchServiceMock,
 }));
 
-vi.mock('../../lib/postHistoryRepairService', () => ({
-    postHistoryRepairService: hoisted.repairServiceMock,
+vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
+    postHistoryCurrentViewRefetchService: hoisted.repairServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
@@ -342,21 +336,16 @@ export function resetPostHistoryDialogHarness(): void {
     syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
     syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
 
-    repairServiceMock.repairFromRelays.mockReturnValue({
+    repairServiceMock.refetchAroundCurrentView.mockReturnValue({
         promise: Promise.resolve({
             status: 'success',
             addedCount: 0,
             updatedCount: 0,
             unchangedCount: 0,
             processedRangeCount: 0,
-            hasRemainingRanges: false,
-            remainingRangeCount: 0,
-            nextCursorUntil: null,
             processedRanges: [],
             attemptedRangeCount: 0,
-            totalRangeCount: 0,
             hadFailures: false,
-            hasRemainingWork: false,
         }),
         cancel: vi.fn(),
     });

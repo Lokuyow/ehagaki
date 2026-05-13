@@ -121,16 +121,17 @@
         deleteTargetPost ? buildPreviewContent(deleteTargetPost) : null,
     );
     let headingStatusMessageKey = $derived(
-        history.repairStatusMessageKey ?? history.syncStatusMessageKey,
+        history.currentViewRefetchStatusMessageKey ??
+            history.syncStatusMessageKey,
     );
     let headingStatusMessageValues = $derived(
-        history.repairStatusMessageKey
-            ? history.repairStatusMessageValues
+        history.currentViewRefetchStatusMessageKey
+            ? history.currentViewRefetchStatusMessageValues
             : null,
     );
     let headingStatusError = $derived(
         history.syncStatus === "failed" ||
-            history.repairStatusMessageKey ===
+            history.currentViewRefetchStatusMessageKey ===
                 "postHistory.repairPartialFailure",
     );
     let dialogEmojiUrls = $derived.by(() => {
@@ -168,7 +169,7 @@
 
     function handleClose() {
         history.cancelCurrentSync();
-        history.cancelCurrentRepair();
+        history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
@@ -644,9 +645,9 @@
         headingMenuOpen = false;
     }
 
-    function handleRepairFromMenu(): void {
+    function handleRefetchAroundCurrentViewFromMenu(): void {
         headingMenuOpen = false;
-        void history.repairFromRelays();
+        void history.refetchAroundCurrentView();
     }
 
     function handleFetchOlderFromRelaysFromMenu(): void {
@@ -849,15 +850,15 @@
                                 <button
                                     type="button"
                                     class="menu-action-button"
-                                    disabled={!history.canRepair}
-                                    onclick={handleRepairFromMenu}
+                                    disabled={!history.canRefetchAroundCurrentView}
+                                    onclick={handleRefetchAroundCurrentViewFromMenu}
                                 >
                                     <div
                                         class="repair-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
                                     <span>
-                                        {history.isRepairing
+                                        {history.isRefetchingAroundCurrentView
                                             ? $_("postHistory.repairing")
                                             : $_("postHistory.repair")}
                                     </span>
@@ -1383,13 +1384,14 @@
                                 {$_("postHistory.fetchOlderFromRelays")}
                             </Button>
                         {/if}
-                        {#if history.canRepair}
+                        {#if history.canRefetchAroundCurrentView}
                             <Button
                                 type="button"
                                 className="post-history-nav-button"
-                                onClick={() => void history.repairFromRelays()}
+                                onClick={() =>
+                                    void history.refetchAroundCurrentView()}
                             >
-                                {history.isRepairing
+                                {history.isRefetchingAroundCurrentView
                                     ? $_("postHistory.repairing")
                                     : $_("postHistory.repair")}
                             </Button>

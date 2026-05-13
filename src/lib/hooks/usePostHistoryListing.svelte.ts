@@ -21,13 +21,14 @@ import {
     writePersistedPostHistoryViewState,
 } from "../postHistoryDialogViewState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
-import { postHistoryRepairService, type PostHistoryRepairTask } from "../postHistoryRepairService";
-import { postHistoryRepairCursorRepository } from "../storage/postHistoryRepairCursorRepository";
+import {
+    postHistoryCurrentViewRefetchService,
+    type PostHistoryCurrentViewRefetchTask,
+} from "../postHistoryCurrentViewRefetchService";
 import {
     postHistoryRepository,
     type PostHistoryTimelineCursor,
 } from "../storage/postHistoryRepository";
-import { postHistorySyncCoverageRepository } from "../storage/postHistorySyncCoverageRepository";
 import {
     buildPostHistoryVisibleKindsKey,
     postHistoryVisibleRangeRepository,
@@ -43,7 +44,7 @@ export type PostHistorySyncStatus =
     | "failed"
     | "no-more";
 
-type PostHistoryRepairMessageValues = Record<
+type PostHistoryCurrentViewRefetchMessageValues = Record<
     string,
     string | number | boolean | Date | null | undefined
 >;
@@ -189,9 +190,10 @@ export function usePostHistoryListing({
         searchTotalCount: persistedListingSnapshot.searchTotalCount,
         searchHasNext: persistedListingSnapshot.searchHasNext,
         syncStatus: "idle" as PostHistorySyncStatus,
-        repairStatus: "idle" as "idle" | "repairing",
-        repairMessageKey: null as string | null,
-        repairMessageValues: null as PostHistoryRepairMessageValues | null,
+        currentViewRefetchStatus: "idle" as "idle" | "refetching",
+        currentViewRefetchMessageKey: null as string | null,
+        currentViewRefetchMessageValues:
+            null as PostHistoryCurrentViewRefetchMessageValues | null,
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
         visibleUntil: persistedListingSnapshot.visibleUntil,
@@ -205,12 +207,14 @@ export function usePostHistoryListing({
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
-    let currentRepairTask: PostHistoryRepairTask | null = null;
+    let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let appliedSearchQuery = "";
     const maxVisiblePosts = Math.max(pageSize * 3, pageSize);
 
     const isSearchMode = $derived(state.searchQuery.length > 0);
-    const isRepairing = $derived(state.repairStatus === "repairing");
+    const isRefetchingAroundCurrentView = $derived(
+        state.currentViewRefetchStatus === "refetching",
+    );
     const posts = $derived(
         isSearchMode ? state.searchPosts : state.loadedPosts,
     );
@@ -226,28 +230,28 @@ export function usePostHistoryListing({
             : 1,
     );
     const canGoPrevious = $derived(
-        !isRepairing && isSearchMode && state.searchPage > 1,
+        !isRefetchingAroundCurrentView && isSearchMode && state.searchPage > 1,
     );
     const canGoFirst = $derived(canGoPrevious);
     const canGoNext = $derived(
-        !isRepairing && isSearchMode && state.searchHasNext,
+        !isRefetchingAroundCurrentView && isSearchMode && state.searchHasNext,
     );
     const canGoLast = $derived(canGoNext);
     const showPaging = $derived(false);
     const canLoadOlder = $derived(
-        !isRepairing && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
+        !isRefetchingAroundCurrentView && (isSearchMode ? state.searchHasNext : state.hasOlderLocal),
     );
     const canLoadNewer = $derived(
-        !isRepairing && (isSearchMode ? state.searchPage > 1 : state.hasNewerLocal),
+        !isRefetchingAroundCurrentView && (isSearchMode ? state.searchPage > 1 : state.hasNewerLocal),
     );
     const canReturnToLatest = $derived(
-        !isSearchMode && !isRepairing && state.hasNewerLocal,
+        !isSearchMode && !isRefetchingAroundCurrentView && state.hasNewerLocal,
     );
     const canFetchOlderFromRelays = $derived(
         !isSearchMode &&
         !!getPubkeyHex() &&
         !!getRxNostr() &&
-        !isRepairing &&
+        !isRefetchingAroundCurrentView &&
         state.syncStatus !== "syncing" &&
         state.syncStatus !== "older-syncing" &&
         state.hasMoreRemote &&
@@ -261,10 +265,12 @@ export function usePostHistoryListing({
         posts.length > 0 ? posts[posts.length - 1]?.createdAt ?? null : null,
     );
     const visiblePostCount = $derived(posts.length);
-    const canRepair = $derived(
+    const canRefetchAroundCurrentView = $derived(
         !!getPubkeyHex() &&
         !!getRxNostr() &&
-        !isRepairing &&
+        !isSearchMode &&
+        state.loadedPosts.length > 0 &&
+        !isRefetchingAroundCurrentView &&
         state.syncStatus !== "syncing" &&
         state.syncStatus !== "older-syncing",
     );
@@ -285,16 +291,18 @@ export function usePostHistoryListing({
         (state.syncStatus === "syncing" ||
             state.syncStatus === "older-syncing"),
     );
-    const showStatusLoader = $derived(showSyncLoader || isRepairing);
-    const repairStatusMessageKey = $derived(
-        state.repairStatus === "repairing"
-            ? "postHistory.repairing"
-            : state.repairMessageKey,
+    const showStatusLoader = $derived(
+        showSyncLoader || isRefetchingAroundCurrentView,
     );
-    const repairStatusMessageValues = $derived(
-        state.repairStatus === "repairing"
+    const currentViewRefetchStatusMessageKey = $derived(
+        state.currentViewRefetchStatus === "refetching"
+            ? "postHistory.repairing"
+            : state.currentViewRefetchMessageKey,
+    );
+    const currentViewRefetchStatusMessageValues = $derived(
+        state.currentViewRefetchStatus === "refetching"
             ? null
-            : state.repairMessageValues,
+            : state.currentViewRefetchMessageValues,
     );
 
     function cancelCurrentSync(): void {
@@ -302,17 +310,17 @@ export function usePostHistoryListing({
         currentFetchTask = null;
     }
 
-    function cancelCurrentRepair(): void {
-        currentRepairTask?.cancel();
-        currentRepairTask = null;
-        if (state.repairStatus === "repairing") {
-            state.repairStatus = "idle";
+    function cancelCurrentViewRefetch(): void {
+        currentViewRefetchTask?.cancel();
+        currentViewRefetchTask = null;
+        if (state.currentViewRefetchStatus === "refetching") {
+            state.currentViewRefetchStatus = "idle";
         }
     }
 
-    function clearRepairFeedback(): void {
-        state.repairMessageKey = null;
-        state.repairMessageValues = null;
+    function clearCurrentViewRefetchFeedback(): void {
+        state.currentViewRefetchMessageKey = null;
+        state.currentViewRefetchMessageValues = null;
     }
 
     function resetSearchState(): void {
@@ -339,16 +347,16 @@ export function usePostHistoryListing({
         state.hasOlderLocal = false;
         state.hasNewerLocal = false;
         state.syncStatus = "idle";
-        clearRepairFeedback();
+        clearCurrentViewRefetchFeedback();
         resetSearchState();
         hasStartedInitialSync = true;
     }
 
     function resetState(): void {
         cancelCurrentSync();
-        cancelCurrentRepair();
+        cancelCurrentViewRefetch();
         state.syncStatus = "idle";
-        clearRepairFeedback();
+        clearCurrentViewRefetchFeedback();
         hasStartedInitialSync = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
@@ -437,7 +445,7 @@ export function usePostHistoryListing({
         return nextVisibleUntil;
     }
 
-    async function maybeExtendVisibleUntilFromRepairResult(
+    async function maybeExtendVisibleUntilFromCurrentViewRefetchResult(
         pubkeyHex: string,
         previousVisibleUntil: number | null,
         processedRanges: Array<{
@@ -873,13 +881,6 @@ export function usePostHistoryListing({
         currentFetchTask = task;
 
         const result = await task.promise;
-        await postHistorySyncCoverageRepository.saveAttempt({
-            pubkeyHex,
-            requestKind: "initial",
-            kinds: [...POST_HISTORY_FETCH_KINDS],
-            limit: POST_HISTORY_INITIAL_FETCH_LIMIT,
-            result,
-        });
         let upsertSummary = {
             insertedCount: 0,
             updatedCount: 0,
@@ -1016,14 +1017,6 @@ export function usePostHistoryListing({
         currentFetchTask = task;
 
         const result = await task.promise;
-        await postHistorySyncCoverageRepository.saveAttempt({
-            pubkeyHex,
-            requestKind: "older",
-            kinds: [...POST_HISTORY_FETCH_KINDS],
-            until: fetchUntil,
-            limit: POST_HISTORY_RELAY_FETCH_LIMIT,
-            result,
-        });
         if (currentFetchTask !== task) {
             return false;
         }
@@ -1082,41 +1075,45 @@ export function usePostHistoryListing({
         return didVisibleCountIncrease || didMateriallyChange;
     }
 
-    async function repairFromRelays(): Promise<void> {
+    async function refetchAroundCurrentView(): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
-        if (!pubkeyHex || !rxNostr || !canRepair) {
+        if (!pubkeyHex || !rxNostr || !canRefetchAroundCurrentView) {
             return;
         }
 
-        clearRepairFeedback();
-        state.repairStatus = "repairing";
-        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
         const preferredRanges = buildCurrentPagePreferredRanges();
-        const task = postHistoryRepairService.repairFromRelays(rxNostr, {
+        if (preferredRanges.length === 0) {
+            return;
+        }
+
+        clearCurrentViewRefetchFeedback();
+        state.currentViewRefetchStatus = "refetching";
+        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const task = postHistoryCurrentViewRefetchService.refetchAroundCurrentView(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
-            ...(preferredRanges.length > 0 ? { preferredRanges } : {}),
+            preferredRanges,
             onProgress: async () => {
                 await refreshTotalCountFromRepository();
             },
         });
-        currentRepairTask = task;
+        currentViewRefetchTask = task;
 
         try {
             const result = await task.promise;
-            if (currentRepairTask !== task) {
+            if (currentViewRefetchTask !== task) {
                 return;
             }
 
-            currentRepairTask = null;
-            state.repairStatus = "idle";
+            currentViewRefetchTask = null;
+            state.currentViewRefetchStatus = "idle";
 
             if (!getShow() || result.status === "cancelled") {
                 return;
             }
 
-            await maybeExtendVisibleUntilFromRepairResult(
+            await maybeExtendVisibleUntilFromCurrentViewRefetchResult(
                 pubkeyHex,
                 previousVisibleUntil,
                 result.processedRanges,
@@ -1131,40 +1128,31 @@ export function usePostHistoryListing({
             }
 
             if (result.hadFailures) {
-                state.repairMessageKey = "postHistory.repairPartialFailure";
-                state.repairMessageValues = null;
-            } else if (result.hasRemainingRanges) {
-                state.repairMessageKey = "postHistory.repairContinueLater";
-                state.repairMessageValues = {
-                    processedRangeCount: result.processedRangeCount,
-                    remainingRangeCount: result.remainingRangeCount,
-                    addedCount: result.addedCount,
-                    updatedCount: result.updatedCount,
-                    nextCursorUntil: result.nextCursorUntil,
-                };
+                state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
+                state.currentViewRefetchMessageValues = null;
             } else if (result.addedCount > 0) {
-                state.repairMessageKey = "postHistory.repairAdded";
-                state.repairMessageValues = {
+                state.currentViewRefetchMessageKey = "postHistory.repairAdded";
+                state.currentViewRefetchMessageValues = {
                     count: result.addedCount,
                     processedRangeCount: result.processedRangeCount,
                     updatedCount: result.updatedCount,
                 };
             } else {
-                state.repairMessageKey = "postHistory.repairNoChanges";
-                state.repairMessageValues = {
+                state.currentViewRefetchMessageKey = "postHistory.repairNoChanges";
+                state.currentViewRefetchMessageValues = {
                     processedRangeCount: result.processedRangeCount,
                     updatedCount: result.updatedCount,
                 };
             }
         } catch {
-            if (currentRepairTask !== task) {
+            if (currentViewRefetchTask !== task) {
                 return;
             }
 
-            currentRepairTask = null;
-            state.repairStatus = "idle";
-            state.repairMessageKey = "postHistory.repairPartialFailure";
-            state.repairMessageValues = null;
+            currentViewRefetchTask = null;
+            state.currentViewRefetchStatus = "idle";
+            state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
+            state.currentViewRefetchMessageValues = null;
         }
     }
 
@@ -1175,27 +1163,25 @@ export function usePostHistoryListing({
         }
 
         cancelCurrentSync();
-        cancelCurrentRepair();
+        cancelCurrentViewRefetch();
 
         try {
             await Promise.all([
                 postHistoryRepository.deleteForPubkey(pubkeyHex),
-                postHistorySyncCoverageRepository.deleteForPubkey(pubkeyHex),
                 postHistoryVisibleRangeRepository.clearForPubkey(pubkeyHex),
-                postHistoryRepairCursorRepository.clearForPubkey(pubkeyHex),
             ]);
         } catch {
-            clearRepairFeedback();
-            state.repairMessageKey = "postHistory.deleteLocalHistoryFailed";
-            state.repairMessageValues = null;
+            clearCurrentViewRefetchFeedback();
+            state.currentViewRefetchMessageKey = "postHistory.deleteLocalHistoryFailed";
+            state.currentViewRefetchMessageValues = null;
             return false;
         }
 
         clearPersistedPostHistoryViewStateForPubkey(pubkeyHex);
         clearPersistedPostHistoryListingSnapshotForPubkey(pubkeyHex);
         resetListingStateAfterLocalDelete();
-        state.repairMessageKey = "postHistory.deleteLocalHistorySuccess";
-        state.repairMessageValues = null;
+        state.currentViewRefetchMessageKey = "postHistory.deleteLocalHistorySuccess";
+        state.currentViewRefetchMessageValues = null;
         writePersistedPostHistoryViewState(pubkeyHex, {
             currentPage: 1,
             searchPage: 1,
@@ -1427,20 +1413,20 @@ export function usePostHistoryListing({
         get showStatusLoader() {
             return showStatusLoader;
         },
-        get isRepairing() {
-            return isRepairing;
+        get isRefetchingAroundCurrentView() {
+            return isRefetchingAroundCurrentView;
         },
-        get canRepair() {
-            return canRepair;
+        get canRefetchAroundCurrentView() {
+            return canRefetchAroundCurrentView;
         },
-        get repairStatusMessageKey() {
-            return repairStatusMessageKey;
+        get currentViewRefetchStatusMessageKey() {
+            return currentViewRefetchStatusMessageKey;
         },
-        get repairStatusMessageValues() {
-            return repairStatusMessageValues;
+        get currentViewRefetchStatusMessageValues() {
+            return currentViewRefetchStatusMessageValues;
         },
         cancelCurrentSync,
-        cancelCurrentRepair,
+        cancelCurrentViewRefetch,
         loadOlder,
         loadNewer,
         returnToLatest,
@@ -1450,7 +1436,7 @@ export function usePostHistoryListing({
         goPreviousPage,
         goToNextPage,
         goToLastPage,
-        repairFromRelays,
+        refetchAroundCurrentView,
         resetSearchState,
         deleteLocalHistory,
         patchDeletedPost,

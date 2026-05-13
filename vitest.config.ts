@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config';
+import { configDefaults, defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { svelteTesting } from '@testing-library/svelte/vite';
 
@@ -9,6 +9,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ['src/test/setup.ts'],
     testTimeout: 20000,
+    exclude: [...configDefaults.exclude, 'src/test/e2e/**'],
     pool: 'forks',
     poolOptions: {
       forks: {

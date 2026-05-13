@@ -170,46 +170,6 @@ export interface PostHistoryRecord {
     schemaVersion: number;
 }
 
-export type PostHistorySyncCoverageStatus = 'pending' | 'complete' | 'partial' | 'timeout' | 'error' | 'cancelled';
-
-export type PostHistorySyncCoverageRequestKind = 'initial' | 'older' | 'repair';
-
-export type PostHistoryRepairRangeUnit = 'month' | 'week' | 'day' | 'custom';
-
-export interface PostHistorySyncCoverageRelayCountRecord {
-    relayUrl: string;
-    rawCount: number;
-    uniqueCount: number;
-}
-
-export interface PostHistorySyncCoverageRecord {
-    id: string;
-    pubkeyHex: string;
-    requestKind: PostHistorySyncCoverageRequestKind;
-    requestedRelayUrls: string[];
-    observedRelayUrls: string[];
-    relayKey: string;
-    kinds: number[];
-    kindsKey: string;
-    rangeKey: string;
-    rangeUnit?: PostHistoryRepairRangeUnit;
-    since?: number;
-    until?: number;
-    limit: number;
-    status: PostHistorySyncCoverageStatus;
-    rawCount: number;
-    uniqueCount: number;
-    duplicateCount: number;
-    perRelayCounts: PostHistorySyncCoverageRelayCountRecord[];
-    oldestCreatedAt?: number;
-    newestCreatedAt?: number;
-    nextUntil?: number | null;
-    fetchedAt: number;
-    updatedAt: number;
-    resolvedAt?: number;
-    schemaVersion: number;
-}
-
 export interface PostMediaCacheEntryRecord {
     cacheKey: string;
     url: string;
@@ -254,7 +214,6 @@ export class EHagakiDB extends Dexie {
     customEmojiImageMeta!: Table<CustomEmojiImageMetaRecord, string>;
     uploadDestinations!: Table<UploadDestinationRecord, string>;
     postHistory!: Table<PostHistoryRecord, string>;
-    postHistorySyncCoverage!: Table<PostHistorySyncCoverageRecord, string>;
     postMediaCache!: Table<PostMediaCacheEntryRecord, string>;
     channelMetadata!: Table<ChannelMetadataRecord, string>;
 
@@ -274,7 +233,6 @@ export class EHagakiDB extends Dexie {
             customEmojiImageMeta: "url, width, height, aspectRatio, fetchedAt, lastAccessedAt, updatedAt, schemaVersion",
             uploadDestinations: "id, scopeKey, pubkeyHex, protocol, presetId, isDefault, enabled, updatedAt, [scopeKey+isDefault], [scopeKey+enabled]",
             postHistory: "id, eventId, pubkeyHex, kind, createdAt, postedAt, updatedAt, deletedAt, fetchedAt, lastSeenAt, schemaVersion, [pubkeyHex+postedAt], [pubkeyHex+createdAt]",
-            postHistorySyncCoverage: "id, pubkeyHex, requestKind, status, since, until, fetchedAt, updatedAt, schemaVersion, [pubkeyHex+fetchedAt], [pubkeyHex+status], [pubkeyHex+requestKind+fetchedAt]",
             postMediaCache: "cacheKey, url, normalizedUrl, size, createdAt, lastAccessedAt, updatedAt, source, schemaVersion",
             channelMetadata: "channelEventId, fetchedAt, metadataCreatedAt, creatorPubkey, updatedAt, schemaVersion",
         });

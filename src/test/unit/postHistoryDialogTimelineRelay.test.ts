@@ -63,7 +63,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledOnce();
     });
 
-    it('repair progress 中に総件数 summary を更新し、完了後に最新 window を再読込する', async () => {
+    it('再取得 progress 中に総件数 summary を更新し、完了後に最新 window を再読込する', async () => {
         const initialPosts = Array.from({ length: 50 }, (_, index) => createRecord({
             eventId: `repair-initial-${index}`,
             content: `既存投稿 ${index + 1}`,
@@ -82,14 +82,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
             updatedCount: number;
             unchangedCount: number;
             processedRangeCount: number;
-            hasRemainingRanges: boolean;
-            remainingRangeCount: number;
-            nextCursorUntil: null;
             processedRanges: any[];
             attemptedRangeCount: number;
-            totalRangeCount: number;
             hadFailures: boolean;
-            hasRemainingWork: boolean;
         }>();
 
         repositoryMock.countForPubkey
@@ -110,7 +105,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             promise: Promise.resolve(createRelayFetchResult({ fetchedAt: 500 })),
             cancel: vi.fn(),
         });
-        repairServiceMock.repairFromRelays.mockReturnValueOnce({
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
             promise: repairComplete.promise,
             cancel: vi.fn(),
         });
@@ -132,13 +127,13 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(screen.queryByText('リレーと同期中...')).toBeNull();
         });
 
-        await clickMenuAction('表示範囲を再取得');
+        await clickMenuAction('表示中の投稿付近を再取得');
 
         await waitFor(() => {
-            expect(repairServiceMock.repairFromRelays).toHaveBeenCalledTimes(1);
+            expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
         });
 
-        const repairParams = repairServiceMock.repairFromRelays.mock.calls.at(-1)?.[1];
+        const repairParams = repairServiceMock.refetchAroundCurrentView.mock.calls.at(-1)?.[1];
         await repairParams.onProgress({
             insertedCount: 1,
             updatedCount: 0,
@@ -160,14 +155,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
             updatedCount: 0,
             unchangedCount: 0,
             processedRangeCount: 1,
-            hasRemainingRanges: false,
-            remainingRangeCount: 0,
-            nextCursorUntil: null,
             processedRanges: [],
             attemptedRangeCount: 1,
-            totalRangeCount: 1,
             hadFailures: false,
-            hasRemainingWork: false,
         });
 
         await waitFor(() => {

@@ -33,12 +33,11 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
         'postHistory.syncFailed': 'リレーとの同期に失敗しました',
-        'postHistory.repair': '表示範囲を再取得',
+        'postHistory.repair': '表示中の投稿付近を再取得',
         'postHistory.repairing': '再取得中...',
         'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
-        'postHistory.repairNoChanges': '表示範囲に追加できる投稿はありません',
-        'postHistory.repairContinueLater': '表示範囲を確認しました。未確認の履歴範囲が残っています。',
-        'postHistory.repairPartialFailure': '表示範囲の一部を取得できませんでした。時間をおいて再実行してください。',
+        'postHistory.repairNoChanges': '追加できる投稿はありません',
+        'postHistory.repairPartialFailure': '一部の取得に失敗しました。時間をおいて再実行してください。',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -119,7 +118,7 @@ const relayFetchServiceMock = vi.hoisted(() => ({
 }));
 
 const repairServiceMock = vi.hoisted(() => ({
-    repairFromRelays: vi.fn(),
+    refetchAroundCurrentView: vi.fn(),
 }));
 
 const clipboardMock = vi.hoisted(() => ({
@@ -246,14 +245,6 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
     };
 });
 
-vi.mock('../../lib/storage/postHistoryRepairCursorRepository', () => ({
-    postHistoryRepairCursorRepository: repairCursorRepositoryMock,
-}));
-
-vi.mock('../../lib/storage/postHistorySyncCoverageRepository', () => ({
-    postHistorySyncCoverageRepository: syncCoverageRepositoryMock,
-}));
-
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_FETCH_KINDS: [1, 42],
     POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
@@ -262,8 +253,8 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 
-vi.mock('../../lib/postHistoryRepairService', () => ({
-    postHistoryRepairService: repairServiceMock,
+vi.mock('../../lib/postHistoryCurrentViewRefetchService', () => ({
+    postHistoryCurrentViewRefetchService: repairServiceMock,
 }));
 
 vi.mock('../../lib/postHistoryLocalSearchService', () => ({
@@ -368,13 +359,13 @@ async function openSearchBar(): Promise<HTMLInputElement> {
 }
 
 async function findRepairButton(): Promise<HTMLButtonElement> {
-    const existing = screen.queryByRole('button', { name: /表示範囲を再取得|再取得中\.\.\./ });
+    const existing = screen.queryByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
     if (existing) {
         return existing as HTMLButtonElement;
     }
 
     await openPostHistoryMenu();
-    return screen.findByRole('button', { name: /表示範囲を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
+    return screen.findByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -424,21 +415,16 @@ describe('PostHistoryDialog', () => {
         repairCursorRepositoryMock.clearForPubkey.mockResolvedValue(undefined);
         syncCoverageRepositoryMock.saveAttempt.mockResolvedValue(null);
         syncCoverageRepositoryMock.deleteForPubkey.mockResolvedValue(undefined);
-        repairServiceMock.repairFromRelays.mockReturnValue({
+        repairServiceMock.refetchAroundCurrentView.mockReturnValue({
             promise: Promise.resolve({
                 status: 'success',
                 addedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
                 processedRangeCount: 0,
-                hasRemainingRanges: false,
-                remainingRangeCount: 0,
-                nextCursorUntil: null,
                 processedRanges: [],
                 attemptedRangeCount: 0,
-                totalRangeCount: 0,
                 hadFailures: false,
-                hasRemainingWork: false,
             }),
             cancel: vi.fn(),
         });
@@ -567,7 +553,7 @@ describe('PostHistoryDialog', () => {
         const headingActions = document.body.querySelector('.post-history-heading-actions');
 
         expect(heading).toBeTruthy();
-        expect(headingActions?.textContent).not.toContain('表示範囲を再取得');
+        expect(headingActions?.textContent).not.toContain('表示中の投稿付近を再取得');
         expect(repairButton).toBeTruthy();
     });
 
@@ -642,9 +628,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(repositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(syncCoverageRepositoryMock.deleteForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(visibleRangeRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
-            expect(repairCursorRepositoryMock.clearForPubkey).toHaveBeenCalledWith('a'.repeat(64));
             expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
             expect(screen.queryByText('削除対象')).toBeNull();
         });
