@@ -1390,9 +1390,6 @@
                 </div>
             {:else if history.showLocalExhaustedState}
                 <div class="post-history-exhausted-state">
-                    <p class="post-history-exhausted-message">
-                        {$_("postHistory.localHistoryExhausted")}
-                    </p>
                     <div class="post-history-exhausted-actions">
                         {#if history.canFetchOlderFromRelays}
                             <Button
@@ -1403,6 +1400,10 @@
                             >
                                 {$_("postHistory.fetchOlderFromRelays")}
                             </Button>
+                        {:else}
+                            <p class="post-history-exhausted-message">
+                                {$_("postHistory.noMorePosts")}
+                            </p>
                         {/if}
                     </div>
                 </div>
@@ -1728,13 +1729,6 @@
         gap: 10px;
         align-items: center;
         padding: 12px 16px 16px;
-    }
-
-    .post-history-exhausted-message {
-        margin: 0;
-        color: var(--text-muted);
-        font-size: 0.92rem;
-        text-align: center;
     }
 
     .post-history-exhausted-actions {
