@@ -208,6 +208,7 @@ export function usePostHistoryListing({
     let initialLocalLoadKey: string | null = null;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
+    let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let appliedSearchQuery = "";
     const maxVisiblePosts = Math.max(pageSize * 3, pageSize);
 
@@ -316,11 +317,42 @@ export function usePostHistoryListing({
         if (state.currentViewRefetchStatus === "refetching") {
             state.currentViewRefetchStatus = "idle";
         }
+        clearCurrentViewRefetchMessageClearTimeout();
+    }
+
+    function clearCurrentViewRefetchMessageClearTimeout(): void {
+        if (currentViewRefetchMessageClearTimeout !== null) {
+            clearTimeout(currentViewRefetchMessageClearTimeout);
+            currentViewRefetchMessageClearTimeout = null;
+        }
     }
 
     function clearCurrentViewRefetchFeedback(): void {
         state.currentViewRefetchMessageKey = null;
         state.currentViewRefetchMessageValues = null;
+        clearCurrentViewRefetchMessageClearTimeout();
+    }
+
+    function scheduleCurrentViewRefetchMessageClearIfNeeded(): void {
+        clearCurrentViewRefetchMessageClearTimeout();
+
+        const autoHideMessageKeys = new Set([
+            "postHistory.repairNoChanges",
+            "postHistory.repairAdded",
+            "postHistory.repairPartialFailure",
+        ]);
+
+        if (!autoHideMessageKeys.has(state.currentViewRefetchMessageKey ?? "")) {
+            return;
+        }
+
+        currentViewRefetchMessageClearTimeout = setTimeout(() => {
+            if (state.currentViewRefetchMessageKey !== null && autoHideMessageKeys.has(state.currentViewRefetchMessageKey)) {
+                state.currentViewRefetchMessageKey = null;
+                state.currentViewRefetchMessageValues = null;
+            }
+            currentViewRefetchMessageClearTimeout = null;
+        }, 3500);
     }
 
     function resetSearchState(): void {
@@ -1144,6 +1176,8 @@ export function usePostHistoryListing({
                     updatedCount: result.updatedCount,
                 };
             }
+
+            scheduleCurrentViewRefetchMessageClearIfNeeded();
         } catch {
             if (currentViewRefetchTask !== task) {
                 return;
@@ -1153,6 +1187,7 @@ export function usePostHistoryListing({
             state.currentViewRefetchStatus = "idle";
             state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
             state.currentViewRefetchMessageValues = null;
+            scheduleCurrentViewRefetchMessageClearIfNeeded();
         }
     }
 
