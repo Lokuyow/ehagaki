@@ -1583,7 +1583,7 @@
     }
 
     :global(.post-history-heading-menu-trigger) {
-        min-height: 40px;
+        min-height: 36px;
         aspect-ratio: 1;
         padding: 0;
         background: transparent;
@@ -1606,7 +1606,6 @@
     .post-history-heading h3 {
         min-width: 0;
         margin: 0;
-        font-size: 1.25rem;
     }
 
     :global(.post-history-repair-button) {
