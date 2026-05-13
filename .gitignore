@@ -31,4 +31,7 @@ internalDocs
 .github
 AGENTS.md
 
-test-results
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
