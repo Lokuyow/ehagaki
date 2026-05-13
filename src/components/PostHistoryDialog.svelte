@@ -1945,10 +1945,8 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 18px;
-        height: 18px;
-        min-width: 18px;
-        min-height: 18px;
+        width: 20px;
+        height: 20px;
     }
 
     .menu-action-button .calendar-icon {
@@ -2228,7 +2226,7 @@
     }
 
     .repair-icon {
-        mask-image: url("/icons/rotate-right-solid-full.svg");
+        mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .reply-icon {
@@ -2240,7 +2238,7 @@
     }
 
     .trash-icon {
-        mask-image: url("/icons/trash-can-solid-full.svg");
+        mask-image: url("/icons/delete_forever_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .xmark-icon {
