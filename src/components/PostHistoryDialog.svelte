@@ -872,16 +872,22 @@
         </div>
         {#if history.posts.length > 0}
             <div class="post-history-heading-summary">
-                {#if buildVisibleRangeLabel()}
-                    <div class="post-history-summary-line">
-                        {buildVisibleRangeLabel()}
-                    </div>
-                {/if}
-                {#if buildVisibleCountLabel()}
-                    <div class="post-history-summary-line">
-                        {buildVisibleCountLabel()}
-                    </div>
-                {/if}
+                <div class="post-history-summary-row">
+                    {#if buildVisibleRangeLabel()}
+                        <span
+                            class="post-history-summary-line post-history-summary-range"
+                        >
+                            {buildVisibleRangeLabel()}
+                        </span>
+                    {/if}
+                    {#if buildVisibleCountLabel()}
+                        <span
+                            class="post-history-summary-line post-history-summary-count"
+                        >
+                            {buildVisibleCountLabel()}
+                        </span>
+                    {/if}
+                </div>
             </div>
         {/if}
         {#if headingStatusMessageKey}
@@ -1495,6 +1501,15 @@
 />
 
 <style>
+    :global(.post-history-dialog.dialog) {
+        top: 0;
+        transform: translateX(-50%);
+        height: 100svh;
+        max-height: 100svh;
+
+        --btn-post-preview-action-hover: var(--svg);
+    }
+
     :global(.post-history-dialog .dialog-content) {
         flex: 1 1 auto;
         min-height: 0;
@@ -1503,21 +1518,13 @@
         padding: 0;
     }
 
-    :global(.post-history-dialog.dialog) {
-        top: 0;
-        transform: translateX(-50%);
-        height: 100svh;
-        max-height: 100svh;
-    }
-
     .post-history-heading {
         display: flex;
         align-items: flex-start;
         justify-content: space-between;
-        gap: 8px;
         flex-wrap: wrap;
         width: 100%;
-        padding: 0 16px 10px;
+        padding: 0 10px 10px;
         border-bottom: 1px solid var(--border-hr);
     }
 
@@ -1543,16 +1550,33 @@
 
     .post-history-heading-summary {
         display: flex;
-        flex-direction: column;
-        gap: 4px;
         width: 100%;
         color: var(--text-muted);
         font-size: 0.82rem;
         line-height: 1.35;
     }
 
+    .post-history-summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
     .post-history-summary-line {
         overflow-wrap: anywhere;
+    }
+
+    .post-history-summary-range {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .post-history-summary-count {
+        flex: 0 0 auto;
+        white-space: nowrap;
     }
 
     :global(.post-history-heading-menu-trigger) {
@@ -1572,7 +1596,7 @@
 
     @media (min-width: 601px) {
         :global(.post-history-heading-menu-trigger:hover .more-icon) {
-            --svg: var(--theme);
+            --svg: var(--btn-post-preview-action-hover);
         }
     }
 
@@ -2057,7 +2081,6 @@
             flex: 1 0 auto;
         }
 
-        --btn-post-preview-action-hover: var(--svg);
         .post-preview-action-right {
             display: flex;
             align-items: center;
