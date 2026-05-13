@@ -433,13 +433,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     until: 150,
                 }),
             );
-            expect(screen.getByText('1件表示 / 全 2件')).toBeTruthy();
-            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
-
-        await waitFor(() => {
+            expect(screen.getByText('2件表示 / 全 2件')).toBeTruthy();
             expect(screen.getByText('追加取得した古い投稿')).toBeTruthy();
         });
 
@@ -470,13 +464,16 @@ describe('PostHistoryDialog timeline relay flows', () => {
             .mockResolvedValueOnce([latest])
             .mockResolvedValueOnce([latest]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
-        repositoryMock.getOlderVisibleChunk
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([fetchedOlder])
-            .mockResolvedValueOnce([fetchedOlder])
-            .mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (_options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (_options.cursor?.eventId === 'stall-latest' && _options.limit === 50) {
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
         repositoryMock.upsertFetchedEvents
             .mockResolvedValueOnce({
                 insertedCount: 0,
@@ -582,12 +579,6 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     until: 149,
                 }),
             );
-            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' })).toBeTruthy();
-        });
-
-        await fireEvent.click(screen.getByRole('button', { name: 'さらに古い投稿を表示' }));
-
-        await waitFor(() => {
             expect(screen.getByText('逃がし後に取得した投稿')).toBeTruthy();
         });
 
@@ -605,10 +596,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             .mockResolvedValueOnce([createRecord({ eventId: 'loader-latest', content: '現在の投稿' })])
             .mockResolvedValueOnce([createRecord({ eventId: 'loader-latest', content: '現在の投稿' })]);
         repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
-        repositoryMock.getOlderVisibleChunk
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([])
-            .mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
         relayFetchServiceMock.fetchLatest
             .mockReturnValueOnce({
                 promise: Promise.resolve(createRelayFetchResult({
@@ -640,6 +628,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await fireEvent.click(screen.getByRole('button', { name: 'リレーから古い投稿を取得' }));
 
         await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから取得中...' }).hasAttribute('disabled')).toBe(true);
+            expect(document.querySelector('.post-history-nav-loading-placeholder .loader-container')).toBeTruthy();
             expect(screen.getByText('リレーと同期中...')).toBeTruthy();
             expect(document.querySelector('.status-loading-placeholder .loader-container')).toBeTruthy();
             expect(screen.queryByText('これ以上古い投稿はありません')).toBeNull();

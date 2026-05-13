@@ -27,6 +27,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.jumpToDateLabel': '日付',
             'postHistory.jumpToDateSubmit': 'この日付付近を表示',
             'postHistory.fetchOlderFromRelays': 'リレーから古い投稿を取得',
+            'postHistory.fetchOlderFromRelaysLoading': 'リレーから取得中...',
             'postHistory.repair': '表示中の投稿付近を再取得',
             'postHistory.repairing': '再取得中...',
             'postHistory.empty': '投稿履歴はありません',

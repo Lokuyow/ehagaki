@@ -108,6 +108,7 @@
     "jumpToDateLabel": "Date",
     "jumpToDateSubmit": "Show near this date",
     "fetchOlderFromRelays": "Fetch older posts from relays",
+    "fetchOlderFromRelaysLoading": "Fetching from relays...",
     "empty": "No post history",
     "syncing": "Syncing with relays...",
     "synced": "Relay sync completed",

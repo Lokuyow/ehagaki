@@ -1393,14 +1393,26 @@
             {:else if history.showLocalExhaustedState}
                 <div class="post-history-exhausted-state">
                     <div class="post-history-exhausted-actions">
-                        {#if history.canFetchOlderFromRelays}
+                        {#if history.canFetchOlderFromRelays || history.isFetchingOlderFromRelays}
                             <Button
                                 type="button"
                                 className="post-history-nav-button"
+                                disabled={history.isFetchingOlderFromRelays}
                                 onClick={() =>
                                     void history.fetchOlderFromRelays()}
                             >
-                                {$_("postHistory.fetchOlderFromRelays")}
+                                {#if history.isFetchingOlderFromRelays}
+                                    <LoadingPlaceholder
+                                        text={$_(
+                                            "postHistory.fetchOlderFromRelaysLoading",
+                                        )}
+                                        showLoader={true}
+                                        loaderSize={20}
+                                        customClass="post-history-nav-loading-placeholder"
+                                    />
+                                {:else}
+                                    {$_("postHistory.fetchOlderFromRelays")}
+                                {/if}
                             </Button>
                         {:else}
                             <p class="post-history-exhausted-message">

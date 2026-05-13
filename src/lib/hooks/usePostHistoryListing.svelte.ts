@@ -263,12 +263,14 @@ export function usePostHistoryListing({
         state.hasMoreRemote &&
         state.nextUntil !== null,
     );
+    const isFetchingOlderFromRelays = $derived(
+        !isSearchMode && state.syncStatus === "older-syncing",
+    );
     const showLocalExhaustedState = $derived(
         !isSearchMode &&
         state.loadedPosts.length > 0 &&
         !state.hasOlderLocal &&
-        state.syncStatus !== "syncing" &&
-        state.syncStatus !== "older-syncing",
+        state.syncStatus !== "syncing",
     );
     const visibleNewestCreatedAt = $derived(posts[0]?.createdAt ?? null);
     const visibleOldestCreatedAt = $derived(
@@ -1157,11 +1159,17 @@ export function usePostHistoryListing({
             }
         }
 
+        let didLoadFetchedOlderPosts = false;
+
         if (state.searchQuery) {
             await loadSearchPage(state.searchPage, state.searchQuery);
         } else {
             state.totalCount = nextCount;
-            await refreshTimelineAvailability(pubkeyHex);
+            if (didVisibleCountIncrease || didMateriallyChange) {
+                didLoadFetchedOlderPosts = await loadOlderVisiblePosts();
+            } else {
+                await refreshTimelineAvailability(pubkeyHex);
+            }
         }
 
         if (result.status !== "success") {
@@ -1175,7 +1183,9 @@ export function usePostHistoryListing({
                 ? "idle"
                 : "no-more";
 
-        return didVisibleCountIncrease || didMateriallyChange;
+        return didLoadFetchedOlderPosts ||
+            didVisibleCountIncrease ||
+            didMateriallyChange;
     }
 
     async function refetchAroundCurrentView(): Promise<void> {
@@ -1497,6 +1507,9 @@ export function usePostHistoryListing({
         },
         get canFetchOlderFromRelays() {
             return canFetchOlderFromRelays;
+        },
+        get isFetchingOlderFromRelays() {
+            return isFetchingOlderFromRelays;
         },
         get showLocalExhaustedState() {
             return showLocalExhaustedState;
