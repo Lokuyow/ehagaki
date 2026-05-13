@@ -818,6 +818,22 @@
                                 <button
                                     type="button"
                                     class="menu-action-button"
+                                    disabled={!history.canReturnToLatest}
+                                    onclick={handleReturnToLatestFromMenu}
+                                >
+                                    <div
+                                        class="return-to-latest-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span
+                                        >{$_(
+                                            "postHistory.returnToLatest",
+                                        )}</span
+                                    >
+                                </button>
+                                <button
+                                    type="button"
+                                    class="menu-action-button"
                                     onclick={showSearch}
                                 >
                                     <div
@@ -840,18 +856,18 @@
                                 <button
                                     type="button"
                                     class="menu-action-button"
-                                    disabled={!history.canReturnToLatest}
-                                    onclick={handleReturnToLatestFromMenu}
+                                    disabled={!history.canRefetchAroundCurrentView}
+                                    onclick={handleRefetchAroundCurrentViewFromMenu}
                                 >
                                     <div
-                                        class="return-to-latest-icon svg-icon"
+                                        class="repair-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
-                                    <span
-                                        >{$_(
-                                            "postHistory.returnToLatest",
-                                        )}</span
-                                    >
+                                    <span>
+                                        {history.isRefetchingAroundCurrentView
+                                            ? $_("postHistory.repairing")
+                                            : $_("postHistory.repair")}
+                                    </span>
                                 </button>
                                 <button
                                     type="button"
@@ -865,22 +881,6 @@
                                     ></div>
                                     <span>
                                         {$_("postHistory.jumpToOldest")}
-                                    </span>
-                                </button>
-                                <button
-                                    type="button"
-                                    class="menu-action-button"
-                                    disabled={!history.canRefetchAroundCurrentView}
-                                    onclick={handleRefetchAroundCurrentViewFromMenu}
-                                >
-                                    <div
-                                        class="repair-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span>
-                                        {history.isRefetchingAroundCurrentView
-                                            ? $_("postHistory.repairing")
-                                            : $_("postHistory.repair")}
                                     </span>
                                 </button>
                                 <div
@@ -1952,7 +1952,7 @@
     }
 
     .menu-action-button .calendar-icon {
-        mask-image: url("/icons/list-solid-full.svg");
+        mask-image: url("/icons/calendar_month_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
@@ -2224,7 +2224,7 @@
     }
 
     .search-icon {
-        mask-image: url("/icons/list-solid-full.svg");
+        mask-image: url("/icons/search_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .repair-icon {
