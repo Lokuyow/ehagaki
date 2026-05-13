@@ -28,7 +28,8 @@ public/ffmpeg-core
 
 references
 internalDocs
-.github
+.github/copilot-instructions.md
+.github/instructions/
 AGENTS.md
 
 /test-results/
