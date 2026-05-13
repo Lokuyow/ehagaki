@@ -1748,10 +1748,15 @@
         margin: 0;
         padding: 0;
         z-index: 1;
-    }
 
-    :global(.post-history-latest-button) {
-        min-height: 40px;
+        :global(.post-history-latest-button) {
+            min-height: 40px;
+            background-color: color-mix(
+                in srgb,
+                var(--btn-bg) 60%,
+                transparent
+            );
+        }
     }
 
     .post-history-container {
