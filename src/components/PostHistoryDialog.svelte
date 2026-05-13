@@ -844,7 +844,7 @@
                                     onclick={handleReturnToLatestFromMenu}
                                 >
                                     <div
-                                        class="latest-icon svg-icon"
+                                        class="return-to-latest-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
                                     <span
@@ -860,7 +860,7 @@
                                     onclick={handleJumpToOldestFromMenu}
                                 >
                                     <div
-                                        class="latest-icon svg-icon"
+                                        class="jump-to-oldest-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
                                     <span>
@@ -1949,8 +1949,13 @@
         background-color: currentColor;
     }
 
-    .menu-action-button .latest-icon {
-        mask-image: url("/icons/clock-rotate-left-solid-full.svg");
+    .menu-action-button .return-to-latest-icon {
+        mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        background-color: currentColor;
+    }
+
+    .menu-action-button .jump-to-oldest-icon {
+        mask-image: url("/icons/vertical_align_bottom_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
