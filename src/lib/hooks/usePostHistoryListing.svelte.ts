@@ -207,6 +207,7 @@ export function usePostHistoryListing({
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
+    let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let appliedSearchQuery = "";
@@ -258,11 +259,16 @@ export function usePostHistoryListing({
         !isRefetchingAroundCurrentView &&
         state.syncStatus !== "syncing" &&
         state.syncStatus !== "older-syncing" &&
+        state.syncStatus !== "no-more" &&
         state.hasMoreRemote &&
         state.nextUntil !== null,
     );
     const showLocalExhaustedState = $derived(
-        !isSearchMode && state.loadedPosts.length > 0 && !state.hasOlderLocal,
+        !isSearchMode &&
+        state.loadedPosts.length > 0 &&
+        !state.hasOlderLocal &&
+        state.syncStatus !== "syncing" &&
+        state.syncStatus !== "older-syncing",
     );
     const visibleNewestCreatedAt = $derived(posts[0]?.createdAt ?? null);
     const visibleOldestCreatedAt = $derived(
@@ -287,7 +293,7 @@ export function usePostHistoryListing({
                 : state.syncStatus === "synced"
                     ? "postHistory.synced"
                     : state.syncStatus === "no-more"
-                        ? "postHistory.noMorePosts"
+                        ? null
                         : "postHistory.syncFailed",
     );
     const showSyncLoader = $derived(
@@ -310,8 +316,13 @@ export function usePostHistoryListing({
     );
 
     function cancelCurrentSync(): void {
+        fetchRequestId += 1;
         currentFetchTask?.cancel();
         currentFetchTask = null;
+    }
+
+    function isCurrentFetchRequest(requestId: number): boolean {
+        return requestId === fetchRequestId;
     }
 
     function cancelCurrentViewRefetch(): void {
@@ -907,7 +918,16 @@ export function usePostHistoryListing({
         }
 
         cancelCurrentSync();
+        const requestId = ++fetchRequestId;
         const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        if (
+            !isCurrentFetchRequest(requestId) ||
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex
+        ) {
+            return;
+        }
+
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
@@ -922,7 +942,7 @@ export function usePostHistoryListing({
             unchangedCount: 0,
         };
 
-        if (currentFetchTask !== task) {
+        if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
             return;
         }
 
@@ -937,11 +957,18 @@ export function usePostHistoryListing({
                 fetchedAt: result.fetchedAt,
             });
         }
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return;
+        }
 
         const nextVisibleUntil = await updateVisibleUntilFromFetch(
             pubkeyHex,
             result,
         );
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return;
+        }
+
         const didVisibleMateriallyChange =
             nextVisibleUntil !== previousVisibleUntil;
 
@@ -1046,9 +1073,26 @@ export function usePostHistoryListing({
         }
 
         cancelCurrentSync();
+        const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
         const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        if (
+            !isCurrentFetchRequest(requestId) ||
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex
+        ) {
+            return false;
+        }
+
         const previousCount = await countVisiblePosts(pubkeyHex, previousVisibleUntil);
+        if (
+            !isCurrentFetchRequest(requestId) ||
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex
+        ) {
+            return false;
+        }
+
         let didMateriallyChange = false;
 
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
@@ -1060,7 +1104,7 @@ export function usePostHistoryListing({
         currentFetchTask = task;
 
         const result = await task.promise;
-        if (currentFetchTask !== task) {
+        if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
             return false;
         }
 
@@ -1079,22 +1123,32 @@ export function usePostHistoryListing({
             didMateriallyChange =
                 upsertSummary.insertedCount + upsertSummary.updatedCount > 0;
         }
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return false;
+        }
 
         const nextVisibleUntil = await updateVisibleUntilFromFetch(
             pubkeyHex,
             result,
         );
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return false;
+        }
+
         const nextCount = await countVisiblePosts(pubkeyHex, nextVisibleUntil);
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return false;
+        }
+
         const didVisibleCountIncrease = nextCount > previousCount;
 
         if (
             result.status === "success" &&
             !didVisibleCountIncrease &&
-            !didMateriallyChange &&
-            result.nextUntil === fetchUntil
+            !didMateriallyChange
         ) {
-            state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
-            state.hasMoreRemote = state.nextUntil !== null;
+            state.nextUntil = null;
+            state.hasMoreRemote = false;
         }
 
         if (state.searchQuery) {

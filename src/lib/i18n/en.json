@@ -108,7 +108,6 @@
     "jumpToDateLabel": "Date",
     "jumpToDateSubmit": "Show near this date",
     "fetchOlderFromRelays": "Fetch older posts from relays",
-    "localHistoryExhausted": "Local history ends here",
     "empty": "No post history",
     "syncing": "Syncing with relays...",
     "synced": "Relay sync completed",

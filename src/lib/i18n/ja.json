@@ -108,7 +108,6 @@
     "jumpToDateLabel": "日付",
     "jumpToDateSubmit": "この日付付近を表示",
     "fetchOlderFromRelays": "リレーから古い投稿を取得",
-    "localHistoryExhausted": "ローカル履歴はここまでです",
     "empty": "投稿履歴はありません",
     "syncing": "リレーと同期中...",
     "synced": "リレーとの同期が完了しました",

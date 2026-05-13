@@ -233,7 +233,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
-    it('ローカル履歴が尽きたら exhausted state を表示する', async () => {
+    it('古い投稿が尽きたら noMorePosts を表示する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'exhausted-newest', content: '最新投稿' }),
@@ -251,7 +251,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('ローカル履歴はここまでです')).toBeTruthy();
+            expect(screen.getByText('これ以上古い投稿はありません')).toBeTruthy();
         });
 
         view.unmount();
