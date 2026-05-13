@@ -2179,13 +2179,18 @@
     }
 
     .delete-confirm-body {
-        display: grid;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 1rem;
+        padding: 16px;
         text-align: left;
     }
 
     .delete-confirm-description,
     .delete-confirm-warning {
         line-height: 1.5;
+        margin: 0;
     }
 
     .delete-confirm-warning {
