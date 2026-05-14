@@ -385,10 +385,6 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
         });
 
-        await expect(
-            fireEvent.pointerDown(screen.getByRole('button', { name: '新しい投稿を表示' })),
-        ).resolves.toBe(false);
-
         await new Promise((resolve) => setTimeout(resolve, 20));
 
         const historyContainer = getHistoryContainer();

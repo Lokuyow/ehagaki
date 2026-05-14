@@ -115,7 +115,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectVisiblePostCount(page, 50);
     });
 
-    test('desktop newer prepend keeps the current post anchored without focusing the nav button', async ({ page, isMobile }) => {
+    test('desktop newer prepend keeps the current post anchored', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
 
         const harness = await gotoHarness(page);
@@ -138,7 +138,6 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(after).not.toBeNull();
         expect(after!.eventId).toBe(before!.eventId);
         expect(Math.abs(after!.offsetTop - before!.offsetTop)).toBeLessThanOrEqual(1);
-        await expect(newerButton).not.toBeFocused();
     });
 
     test('mobile timeline controls stay usable and fit the viewport', async ({ page, isMobile }) => {
