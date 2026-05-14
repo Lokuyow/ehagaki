@@ -2088,6 +2088,44 @@
         min-width: 180px;
         z-index: 102;
         outline: none;
+
+        --post-history-menu-action-hover-bg: color-mix(
+            in srgb,
+            var(--dialog-bg),
+            var(--border) 12%
+        );
+        --post-history-menu-action-hover-color: var(--text);
+        --post-history-menu-action-danger-hover-bg: color-mix(
+            in srgb,
+            var(--dialog-bg),
+            var(--danger) 12%
+        );
+    }
+
+    :global(:root.light .post-history-menu-content) {
+        --post-history-menu-action-hover-bg: color-mix(
+            in srgb,
+            var(--dialog-bg),
+            black 6%
+        );
+        --post-history-menu-action-hover-color: color-mix(
+            in srgb,
+            var(--text),
+            black 6%
+        );
+    }
+
+    :global(:root.dark .post-history-menu-content) {
+        --post-history-menu-action-hover-bg: color-mix(
+            in srgb,
+            var(--dialog-bg),
+            white 10%
+        );
+        --post-history-menu-action-hover-color: color-mix(
+            in srgb,
+            var(--text),
+            white 10%
+        );
     }
 
     .post-history-menu-body {
@@ -2120,7 +2158,7 @@
         min-height: 40px;
         border: none;
         border-radius: 6px;
-        background: transparent;
+        background-color: transparent;
         color: inherit;
         text-align: left;
         padding: 10px 12px;
@@ -2128,38 +2166,44 @@
         cursor: pointer;
     }
 
-    :global(
-            .post-history-menu-content
-                .menu-action-button:hover:not([data-disabled])
-        ),
-    :global(
-            .post-history-menu-content
-                .menu-action-button[data-highlighted]:not([data-disabled])
-        ) {
-        background: color-mix(in srgb, var(--dialog-bg), var(--border) 12%);
+    :global(.post-history-menu-content .menu-action-button-danger) {
+        color: var(--danger);
+        --svg: currentColor;
+    }
+
+    @media (min-width: 601px) {
+        :global(
+                .post-history-menu-content
+                    .menu-action-button:hover:not([data-disabled])
+            ),
+        :global(
+                .post-history-menu-content
+                    .menu-action-button[data-highlighted]:not([data-disabled])
+            ) {
+            background-color: var(--post-history-menu-action-hover-bg);
+            color: var(--post-history-menu-action-hover-color);
+            --svg: currentColor;
+        }
+
+        :global(
+                .post-history-menu-content
+                    .menu-action-button-danger:hover:not([data-disabled])
+            ),
+        :global(
+                .post-history-menu-content
+                    .menu-action-button-danger[data-highlighted]:not(
+                        [data-disabled]
+                    )
+            ) {
+            background-color: var(--post-history-menu-action-danger-hover-bg);
+            color: var(--danger);
+            --svg: currentColor;
+        }
     }
 
     :global(.post-history-menu-content .menu-action-button[data-disabled]) {
         opacity: 0.55;
         cursor: not-allowed;
-    }
-
-    :global(.post-history-menu-content .menu-action-button-danger),
-    :global(
-            .post-history-menu-content
-                .menu-action-button-danger:hover:not([data-disabled])
-        ),
-    :global(
-            .post-history-menu-content
-                .menu-action-button-danger[data-highlighted]:not(
-                    [data-disabled]
-                )
-        ) {
-        color: var(--danger);
-    }
-
-    :global(.post-history-menu-content .menu-action-button-danger .svg-icon) {
-        --svg: var(--danger);
     }
 
     :global(.post-history-menu-content .menu-action-button .svg-icon) {
