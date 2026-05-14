@@ -1922,7 +1922,7 @@
         display: flex;
         justify-content: center;
         width: 100%;
-        padding: 12px 16px;
+        padding: 8px 16px;
     }
 
     .post-history-nav-row-top {
@@ -1930,11 +1930,11 @@
     }
 
     .post-history-nav-row-bottom {
-        padding-top: 4px;
+        padding-top: 0;
     }
 
     :global(.post-history-nav-button) {
-        min-height: 40px;
+        min-height: 50px;
         white-space: nowrap;
     }
 
