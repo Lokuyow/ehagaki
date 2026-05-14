@@ -263,6 +263,14 @@ describe("DexiePostHistoryRepository", () => {
             event: createSignedEvent({ id: "5".repeat(64), pubkey, created_at: 800 }),
             postedAt: 3000,
         });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "6".repeat(64), pubkey, created_at: 700 }),
+            postedAt: 2000,
+        });
+        await repository.putPostedEvent({
+            event: createSignedEvent({ id: "7".repeat(64), pubkey, created_at: 600 }),
+            postedAt: 1000,
+        });
 
         await expect(repository.getLatestVisibleChunk({
             pubkeyHex: pubkey,
@@ -290,13 +298,13 @@ describe("DexiePostHistoryRepository", () => {
             pubkeyHex: pubkey,
             limit: 2,
             cursor: {
-                eventId: "1".repeat(64),
-                postedAt: 5000,
-                createdAt: 1000,
+                eventId: "7".repeat(64),
+                postedAt: 1000,
+                createdAt: 600,
             },
         })).resolves.toMatchObject([
-            { eventId: "3".repeat(64), postedAt: 5000, createdAt: 1100 },
-            { eventId: "2".repeat(64), postedAt: 5000, createdAt: 1100 },
+            { eventId: "5".repeat(64), postedAt: 3000, createdAt: 800 },
+            { eventId: "6".repeat(64), postedAt: 2000, createdAt: 700 },
         ]);
 
         db.close();

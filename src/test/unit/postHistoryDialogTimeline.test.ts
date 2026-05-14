@@ -321,7 +321,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
-    it('新しい投稿の描画が完了するまでは scrollTop を維持し、完了後に先頭へ戻す', async () => {
+    it('新しい投稿を追加表示しても現在見ている投稿のスクロール位置を維持する', async () => {
         const newest = createRecord({
             eventId: 'scroll-newest',
             content: '最新投稿',
@@ -388,6 +388,41 @@ describe('PostHistoryDialog timeline navigation', () => {
 
         const historyContainer = getHistoryContainer();
         historyContainer.scrollTop = 240;
+        const rect = (top: number, height: number) => ({
+            x: 0,
+            y: top,
+            top,
+            left: 0,
+            right: 320,
+            bottom: top + height,
+            width: 320,
+            height,
+            toJSON: () => ({}),
+        });
+        const getBoundingClientRectSpy = vi
+            .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+            .mockImplementation(function (this: HTMLElement) {
+                if (this.classList.contains('post-history-container')) {
+                    return rect(0, 600) as DOMRect;
+                }
+
+                const eventId = this.dataset.postHistoryEventId;
+                const hasNewerPosts = screen.queryByText('最新投稿') !== null;
+                if (eventId === 'scroll-older') {
+                    return rect(hasNewerPosts ? 320 : 120, 80) as DOMRect;
+                }
+                if (eventId === 'scroll-oldest') {
+                    return rect(hasNewerPosts ? 420 : 220, 80) as DOMRect;
+                }
+                if (eventId === 'scroll-newest') {
+                    return rect(120, 80) as DOMRect;
+                }
+                if (eventId === 'scroll-middle') {
+                    return rect(220, 80) as DOMRect;
+                }
+
+                return rect(0, 0) as DOMRect;
+            });
 
         await fireEvent.click(screen.getByRole('button', { name: '新しい投稿を表示' }));
 
@@ -401,7 +436,75 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
         await new Promise((resolve) => setTimeout(resolve, 20));
 
-        expect(historyContainer.scrollTop).toBe(0);
+        expect(historyContainer.scrollTop).toBe(440);
+        getBoundingClientRectSpy.mockRestore();
+        view.unmount();
+    });
+
+    it('150件表示中に新しい投稿を追加すると古い投稿だけを50件捨てる', async () => {
+        const createTimelinePost = (index: number) =>
+            createRecord({
+                eventId: `window-post-${index}`,
+                content: `投稿 ${index}`,
+                createdAt: 2_000 - index,
+                postedAt: Date.UTC(2024, 0, 1, 0, 0, 0) - index,
+            });
+        const latestPosts = Array.from({ length: 50 }, (_, index) =>
+            createTimelinePost(index),
+        );
+        const currentWindowPosts = Array.from({ length: 150 }, (_, index) =>
+            createTimelinePost(index + 50),
+        );
+        const newerPosts = Array.from({ length: 50 }, (_, index) =>
+            createTimelinePost(index),
+        );
+
+        repositoryMock.countForPubkey.mockResolvedValue(200);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce(latestPosts);
+        repositoryMock.getVisibleChunkFromCreatedAt.mockResolvedValueOnce(currentWindowPosts);
+        repositoryMock.getNewerVisibleChunk
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([createTimelinePost(49)])
+            .mockResolvedValueOnce(newerPosts)
+            .mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk
+            .mockResolvedValueOnce([createTimelinePost(100)])
+            .mockResolvedValueOnce([createTimelinePost(200)])
+            .mockResolvedValueOnce([createTimelinePost(200)]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿 0')).toBeTruthy();
+        });
+
+        await clickMenuAction('日付へ移動');
+        await fireEvent.input(screen.getByLabelText('日付'), {
+            target: { value: '2024-01-01' },
+        });
+        await fireEvent.click(screen.getByRole('button', { name: 'この日付付近を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿 50')).toBeTruthy();
+            expect(screen.getByText('投稿 199')).toBeTruthy();
+            expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: '新しい投稿を表示' }));
+
+        await waitFor(() => {
+            expect(screen.getByText('投稿 0')).toBeTruthy();
+            expect(screen.getByText('投稿 149')).toBeTruthy();
+        });
+
+        expect(screen.queryByText('投稿 150')).toBeNull();
+        expect(screen.queryByText('投稿 199')).toBeNull();
         view.unmount();
     });
 

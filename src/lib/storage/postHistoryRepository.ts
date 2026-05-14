@@ -436,9 +436,11 @@ export class DexiePostHistoryRepository implements PostHistoryRepository {
         const limit = normalizeChunkLimit(options.limit);
         const records = await this.getVisibleAll(options);
 
-        return records.filter((record) =>
+        const newerRecords = records.filter((record) =>
             isNewerThanTimelineCursor(record, options.cursor)
-        ).slice(0, limit);
+        );
+
+        return newerRecords.slice(Math.max(0, newerRecords.length - limit));
     }
 
     async getVisibleChunkFromCreatedAt(

@@ -103,6 +103,10 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    type HistoryScrollAnchor = {
+        eventId: string;
+        offsetTop: number;
+    };
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
@@ -331,6 +335,69 @@
         });
     }
 
+    function captureHistoryScrollAnchor(): HistoryScrollAnchor | null {
+        if (!historyContainer) {
+            return null;
+        }
+
+        const containerRect = historyContainer.getBoundingClientRect();
+        const items = Array.from(
+            historyContainer.querySelectorAll<HTMLElement>(
+                "[data-post-history-event-id]",
+            ),
+        );
+
+        for (const item of items) {
+            const eventId = item.dataset.postHistoryEventId;
+            if (!eventId) {
+                continue;
+            }
+
+            const itemRect = item.getBoundingClientRect();
+            if (
+                itemRect.bottom >= containerRect.top &&
+                itemRect.top <= containerRect.bottom
+            ) {
+                return {
+                    eventId,
+                    offsetTop: itemRect.top - containerRect.top,
+                };
+            }
+        }
+
+        return null;
+    }
+
+    function restoreHistoryScrollAnchorSoon(
+        anchor: HistoryScrollAnchor | null,
+    ): void {
+        if (!anchor) {
+            return;
+        }
+
+        void tick().then(() => {
+            if (!show || !historyContainer) {
+                return;
+            }
+
+            const anchoredItem = Array.from(
+                historyContainer.querySelectorAll<HTMLElement>(
+                    "[data-post-history-event-id]",
+                ),
+            ).find(
+                (item) => item.dataset.postHistoryEventId === anchor.eventId,
+            );
+            if (!anchoredItem) {
+                return;
+            }
+
+            const containerRect = historyContainer.getBoundingClientRect();
+            const itemRect = anchoredItem.getBoundingClientRect();
+            const nextOffsetTop = itemRect.top - containerRect.top;
+            historyContainer.scrollTop += nextOffsetTop - anchor.offsetTop;
+        });
+    }
+
     function getLoadOlderLabel(): string {
         return $_(
             history.isSearchMode
@@ -352,9 +419,16 @@
     }
 
     async function handleLoadNewer(): Promise<void> {
+        const scrollAnchor = history.isSearchMode
+            ? null
+            : captureHistoryScrollAnchor();
         const changed = await history.loadNewer();
         if (changed) {
-            resetHistoryScrollSoon();
+            if (history.isSearchMode) {
+                resetHistoryScrollSoon();
+            } else {
+                restoreHistoryScrollAnchorSoon(scrollAnchor);
+            }
         }
     }
 
@@ -1036,6 +1110,7 @@
                 {#each history.posts as post (post.eventId)}
                     <li
                         class="post-history-item"
+                        data-post-history-event-id={post.eventId}
                         class:post-history-item-deleted={!!post.deletedAt}
                     >
                         <div class="post-history-main">
