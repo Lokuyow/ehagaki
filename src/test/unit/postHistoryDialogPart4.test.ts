@@ -728,8 +728,10 @@ describe('PostHistoryDialog', () => {
             navigator,
             window,
         );
+        expect(await screen.findByText('コピーしました')).toBeTruthy();
         await fireEvent.click(actionTrigger);
-        expect(await screen.findByRole('menuitem', { name: 'コピーしました' })).toBeTruthy();
+        expect(await screen.findByRole('menuitem', { name: 'neventをコピー' })).toBeTruthy();
+        expect(screen.queryByRole('menuitem', { name: 'コピーしました' })).toBeNull();
     });
 
     it('自分の投稿にだけ削除ボタンを表示する', async () => {

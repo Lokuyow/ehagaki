@@ -664,8 +664,10 @@ describe('PostHistoryDialog', () => {
             kind: 42,
         }));
 
+        expect(await screen.findByText('コピーしました')).toBeTruthy();
         await fireEvent.click(actionTrigger);
-        expect(await screen.findByRole('menuitem', { name: 'コピーしました' })).toBeTruthy();
+        expect(await screen.findByRole('menuitem', { name: 'neventをコピー' })).toBeTruthy();
+        expect(screen.queryByRole('menuitem', { name: 'コピーしました' })).toBeNull();
     });
 
     it('[sync-upsert] 同期成功後に upsert して一覧を更新する', async () => {

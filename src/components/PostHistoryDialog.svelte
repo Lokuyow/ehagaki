@@ -6,6 +6,7 @@
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import ImageFullscreen from "./ImageFullscreen.svelte";
     import LoadingPlaceholder from "./LoadingPlaceholder.svelte";
     import PostHistoryMediaList from "./PostHistoryMediaList.svelte";
@@ -38,6 +39,7 @@
     import { toNevent } from "../lib/utils/nostrUtils";
 
     import { writeRelaysStore } from "../stores/relayStore.svelte";
+    import { calculateContextMenuPosition } from "../lib/utils/appUtils";
 
     type EmojiImageMetaSnapshot = Pick<
         CustomEmojiImageMetaRecord,
@@ -81,7 +83,14 @@
         getIsSearchMode: () => history.isSearchMode,
     });
 
-    let copyState = $state<Record<string, "copied" | "failed" | undefined>>({});
+    let copyState = $state<Record<string, "failed" | undefined>>({});
+    let showCopyFloatingMessage = $state(false);
+    let copyFloatingMessageX = $state(0);
+    let copyFloatingMessageY = $state(0);
+    let copyFloatingMessageTimeout: ReturnType<typeof setTimeout> | undefined;
+    let lastCopyPointerPosition:
+        | { eventId: string; x: number; y: number }
+        | undefined;
     let deleteConfirmOpen = $state(false);
     let deleteTargetPost = $state<PostHistoryRecord | null>(null);
     let localHistoryDeleteConfirmOpen = $state(false);
@@ -151,6 +160,7 @@
 
     function resetDialogState(): void {
         copyState = {};
+        hideCopyFloatingMessage();
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
@@ -174,6 +184,7 @@
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
         headingMenuOpen = false;
+        hideCopyFloatingMessage();
         showImageFullscreen = false;
         fullscreenMediaItems = [];
         fullscreenIndex = -1;
@@ -671,15 +682,81 @@
         });
     }
 
-    async function handleCopyNevent(post: PostHistoryRecord) {
+    function hideCopyFloatingMessage(): void {
+        if (copyFloatingMessageTimeout) {
+            clearTimeout(copyFloatingMessageTimeout);
+            copyFloatingMessageTimeout = undefined;
+        }
+        showCopyFloatingMessage = false;
+        lastCopyPointerPosition = undefined;
+    }
+
+    function captureCopyPointerPosition(
+        post: PostHistoryRecord,
+        event: PointerEvent,
+    ): void {
+        lastCopyPointerPosition = {
+            eventId: post.eventId,
+            ...calculateContextMenuPosition(event.clientX, event.clientY),
+        };
+    }
+
+    function getFloatingMessagePosition(
+        post: PostHistoryRecord,
+        event: Event,
+    ): { x: number; y: number } {
+        if (lastCopyPointerPosition?.eventId === post.eventId) {
+            return {
+                x: lastCopyPointerPosition.x,
+                y: lastCopyPointerPosition.y,
+            };
+        }
+
+        const target = event.currentTarget;
+        const rect =
+            target instanceof HTMLElement
+                ? target.getBoundingClientRect()
+                : null;
+
+        return calculateContextMenuPosition(
+            rect ? rect.left + rect.width / 2 : 0,
+            rect ? rect.bottom + 8 : 0,
+        );
+    }
+
+    function showCopySuccessMessage(x: number, y: number): void {
+        if (copyFloatingMessageTimeout) {
+            clearTimeout(copyFloatingMessageTimeout);
+        }
+
+        copyFloatingMessageX = x;
+        copyFloatingMessageY = y;
+        showCopyFloatingMessage = true;
+        copyFloatingMessageTimeout = setTimeout(() => {
+            showCopyFloatingMessage = false;
+            copyFloatingMessageTimeout = undefined;
+        }, 1800);
+    }
+
+    async function handleCopyNevent(post: PostHistoryRecord, event: Event) {
+        const messagePosition = getFloatingMessagePosition(post, event);
         const nevent = buildNevent(post);
         const copied = nevent
             ? await tryCopyToClipboard(nevent, "nevent", navigator, window)
             : false;
 
+        if (copied) {
+            copyState = {
+                ...copyState,
+                [post.eventId]: undefined,
+            };
+            showCopySuccessMessage(messagePosition.x, messagePosition.y);
+            return;
+        }
+
         copyState = {
             ...copyState,
-            [post.eventId]: copied ? "copied" : "failed",
+            [post.eventId]: "failed",
         };
 
         setTimeout(() => {
@@ -1208,9 +1285,17 @@
                                                             >
                                                                 <DropdownMenu.Item
                                                                     class="menu-action-button"
-                                                                    onSelect={() =>
+                                                                    onpointerdown={(
+                                                                        event,
+                                                                    ) =>
+                                                                        captureCopyPointerPosition(
+                                                                            post,
+                                                                            event,
+                                                                        )}
+                                                                    onSelect={(event) =>
                                                                         void handleCopyNevent(
                                                                             post,
+                                                                            event,
                                                                         )}
                                                                 >
                                                                     <div
@@ -1222,21 +1307,13 @@
                                                                             post
                                                                                 .eventId
                                                                         ] ===
-                                                                        "copied"
+                                                                        "failed"
                                                                             ? $_(
-                                                                                  "postHistory.copied",
+                                                                                  "postHistory.copyFailed",
                                                                               )
-                                                                            : copyState[
-                                                                                    post
-                                                                                        .eventId
-                                                                                ] ===
-                                                                                "failed"
-                                                                              ? $_(
-                                                                                    "postHistory.copyFailed",
-                                                                                )
-                                                                              : $_(
-                                                                                    "postHistory.copyNevent",
-                                                                                )}
+                                                                            : $_(
+                                                                                  "postHistory.copyNevent",
+                                                                              )}
                                                                     </span>
                                                                 </DropdownMenu.Item>
                                                                 {#if canDeletePost(post)}
@@ -1414,9 +1491,17 @@
                                                         >
                                                             <DropdownMenu.Item
                                                                 class="menu-action-button"
-                                                                onSelect={() =>
+                                                                onpointerdown={(
+                                                                    event,
+                                                                ) =>
+                                                                    captureCopyPointerPosition(
+                                                                        post,
+                                                                        event,
+                                                                    )}
+                                                                onSelect={(event) =>
                                                                     void handleCopyNevent(
                                                                         post,
+                                                                        event,
                                                                     )}
                                                             >
                                                                 <div
@@ -1428,21 +1513,13 @@
                                                                         post
                                                                             .eventId
                                                                     ] ===
-                                                                    "copied"
+                                                                    "failed"
                                                                         ? $_(
-                                                                              "postHistory.copied",
+                                                                              "postHistory.copyFailed",
                                                                           )
-                                                                        : copyState[
-                                                                                post
-                                                                                    .eventId
-                                                                            ] ===
-                                                                            "failed"
-                                                                          ? $_(
-                                                                                "postHistory.copyFailed",
-                                                                            )
-                                                                          : $_(
-                                                                                "postHistory.copyNevent",
-                                                                            )}
+                                                                        : $_(
+                                                                              "postHistory.copyNevent",
+                                                                          )}
                                                                 </span>
                                                             </DropdownMenu.Item>
                                                             {#if canDeletePost(post)}
@@ -1640,6 +1717,14 @@
     currentIndex={fullscreenIndex}
     onNavigate={handleFullscreenNavigate}
 />
+
+<FloatingMessage
+    show={showCopyFloatingMessage}
+    x={copyFloatingMessageX}
+    y={copyFloatingMessageY}
+>
+    <div>{$_("postHistory.copied")}</div>
+</FloatingMessage>
 
 <style>
     :global(.post-history-dialog.dialog) {
