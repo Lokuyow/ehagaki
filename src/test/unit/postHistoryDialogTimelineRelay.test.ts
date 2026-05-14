@@ -265,6 +265,92 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('同期完了メッセージは自動で消える', async () => {
+        vi.useFakeTimers();
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 1,
+            updatedCount: 0,
+            unchangedCount: 0,
+        });
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({
+                status: 'success',
+                events: [createRecord({ eventId: 'sync-success', content: '同期成功' })],
+                fetchedAt: 1000,
+            })),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期が完了しました')).toBeTruthy();
+        });
+
+        await vi.advanceTimersByTimeAsync(3500);
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
+        });
+
+        view.unmount();
+    });
+
+    it('同期失敗メッセージは自動で消える', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(0);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({
+                status: 'error',
+                events: [],
+                fetchedAt: 1000,
+            })),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, 4000));
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+        });
+
+        view.unmount();
+    });
+
     it('一部の取得に失敗しました。時間をおいて再実行してください。 のメッセージが自動で消える', async () => {
         const initialPosts = [createRecord({ eventId: 'repair-failure', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 

@@ -33,6 +33,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.empty': '投稿履歴はありません',
             'postHistory.syncing': 'リレーと同期中...',
             'postHistory.synced': 'リレーとの同期が完了しました',
+            'postHistory.syncFailed': 'リレーとの同期に失敗しました',
             'postHistory.noMorePosts': 'これ以上古い投稿はありません',
             'postHistory.repairAdded': `${options?.values?.count ?? 0}件の投稿を追加しました`,
             'postHistory.repairNoChanges': '追加できる投稿はありません',

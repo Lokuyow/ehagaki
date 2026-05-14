@@ -210,6 +210,7 @@ export function usePostHistoryListing({
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
+    let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let appliedSearchQuery = "";
     const maxVisiblePosts = Math.max(pageSize * 3, pageSize);
 
@@ -343,6 +344,13 @@ export function usePostHistoryListing({
         }
     }
 
+    function clearSyncStatusMessageClearTimeout(): void {
+        if (syncStatusMessageClearTimeout !== null) {
+            clearTimeout(syncStatusMessageClearTimeout);
+            syncStatusMessageClearTimeout = null;
+        }
+    }
+
     function clearCurrentViewRefetchFeedback(): void {
         state.currentViewRefetchMessageKey = null;
         state.currentViewRefetchMessageValues = null;
@@ -371,6 +379,21 @@ export function usePostHistoryListing({
         }, 3500);
     }
 
+    function scheduleSyncStatusMessageClearIfNeeded(): void {
+        clearSyncStatusMessageClearTimeout();
+
+        if (state.syncStatus !== "synced" && state.syncStatus !== "failed") {
+            return;
+        }
+
+        syncStatusMessageClearTimeout = setTimeout(() => {
+            if (state.syncStatus === "synced" || state.syncStatus === "failed") {
+                state.syncStatus = "idle";
+            }
+            syncStatusMessageClearTimeout = null;
+        }, 3500);
+    }
+
     function resetSearchState(): void {
         state.searchInput = "";
         state.searchQuery = "";
@@ -396,6 +419,7 @@ export function usePostHistoryListing({
         state.hasNewerLocal = false;
         state.syncStatus = "idle";
         clearCurrentViewRefetchFeedback();
+        clearSyncStatusMessageClearTimeout();
         resetSearchState();
         hasStartedInitialSync = true;
     }
@@ -405,6 +429,7 @@ export function usePostHistoryListing({
         cancelCurrentViewRefetch();
         state.syncStatus = "idle";
         clearCurrentViewRefetchFeedback();
+        clearSyncStatusMessageClearTimeout();
         hasStartedInitialSync = false;
         hasAttemptedInitialLocalLoad = false;
         initialLocalLoadKey = null;
@@ -1373,6 +1398,18 @@ export function usePostHistoryListing({
 
         return () => {
             cancelCurrentSync();
+        };
+    });
+
+    $effect(() => {
+        if (!getShow()) {
+            clearSyncStatusMessageClearTimeout();
+            return;
+        }
+
+        scheduleSyncStatusMessageClearIfNeeded();
+        return () => {
+            clearSyncStatusMessageClearTimeout();
         };
     });
 
