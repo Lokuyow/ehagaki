@@ -1926,7 +1926,7 @@
     }
 
     .post-history-nav-row-top {
-        padding-bottom: 4px;
+        padding-bottom: 0;
     }
 
     .post-history-nav-row-bottom {
@@ -1943,7 +1943,7 @@
         flex-direction: column;
         gap: 10px;
         align-items: center;
-        padding: 12px 16px 16px;
+        padding: 0 16px 8px 16px;
     }
 
     .post-history-exhausted-actions {

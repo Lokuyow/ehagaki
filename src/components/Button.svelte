@@ -102,7 +102,6 @@
         padding: 8px 12px 8px 12px;
         gap: 8px;
         border: none;
-        z-index: 10;
 
         :global(.svg-icon) {
             --svg: white;
