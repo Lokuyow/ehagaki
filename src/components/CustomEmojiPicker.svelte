@@ -671,19 +671,19 @@
     }
 
     .caret-left-icon {
-        mask-image: url("/icons/caret-left-solid-full.svg");
+        mask-image: url("/icons/arrow_left_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .caret-right-icon {
-        mask-image: url("/icons/caret-right-solid-full.svg");
+        mask-image: url("/icons/arrow_right_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .delete-left-icon {
-        mask-image: url("/icons/delete-left-solid-full.svg");
+        mask-image: url("/icons/backspace_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .enter-key-icon {
-        mask-image: url("/icons/enter-key-arrow.svg");
+        mask-image: url("/icons/keyboard_return_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.custom-emoji-scroll-root),

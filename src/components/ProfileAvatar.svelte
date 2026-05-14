@@ -141,7 +141,7 @@
         opacity: 1;
 
         .profile-avatar-fallback-icon {
-            mask-image: url("/icons/circle-user-solid-full.svg");
+            mask-image: url("/icons/account_circle_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 100%;
             height: 100%;
         }

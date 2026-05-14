@@ -623,7 +623,7 @@
     }
 
     .server-cog-icon {
-        mask-image: url("/icons/server-solid-full.svg");
+        mask-image: url("/icons/cloud_upload_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .upload-summary,
@@ -709,11 +709,11 @@
     }
 
     .arrow-up-icon {
-        mask-image: url("/icons/arrow-up-solid-full.svg");
+        mask-image: url("/icons/arrow_upward_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .arrow-down-icon {
-        mask-image: url("/icons/arrow-down-solid-full.svg");
+        mask-image: url("/icons/arrow_downward_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .badge {

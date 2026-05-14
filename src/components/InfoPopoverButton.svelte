@@ -50,7 +50,7 @@
     }
 
     .info-icon {
-        mask-image: url("/icons/circle-info-solid-full.svg");
+        mask-image: url("/icons/info_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 28px;
         height: 28px;
     }

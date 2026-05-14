@@ -528,7 +528,7 @@
     }
 
     .xmark-icon {
-        mask-image: url("/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .settings-header {
@@ -587,7 +587,7 @@
         height: 38px;
         --btn-bg: var(--dialog-bg);
         :global(.help-icon) {
-            mask-image: url("/icons/circle-question-solid-full.svg");
+            mask-image: url("/icons/help_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
             width: 30px;
             height: 30px;
         }
@@ -642,7 +642,7 @@
         overflow-y: auto;
     }
     .lang-icon-btn {
-        mask-image: url("/icons/language-solid-full.svg");
+        mask-image: url("/icons/translate_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .setting-row-with-note {
         align-items: flex-start;
@@ -663,7 +663,7 @@
     }
 
     .rotate-right-icon {
-        mask-image: url("/icons/rotate-right-solid-full.svg");
+        mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.bui-switch) {

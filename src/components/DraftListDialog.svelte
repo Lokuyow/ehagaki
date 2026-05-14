@@ -385,15 +385,15 @@
     }
 
     .channel-context .preview-mode-icon {
-        mask-image: url("/icons/comments-solid-full.svg");
+        mask-image: url("/icons/forum_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     .reply-context .preview-mode-icon {
-        mask-image: url("/icons/message-solid-full.svg");
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     .quote-context .preview-mode-icon {
-        mask-image: url("/icons/quote-right-solid-full.svg");
+        mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     .context-name,
@@ -422,15 +422,15 @@
     }
 
     .trash-icon {
-        mask-image: url("/icons/trash-solid-full.svg");
+        mask-image: url("/icons/delete_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .thumbtack-icon {
-        mask-image: url("/icons/thumbtack-solid-full.svg");
+        mask-image: url("/icons/keep_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .xmark-icon {
-        mask-image: url("/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 20px;
         height: 20px;
     }

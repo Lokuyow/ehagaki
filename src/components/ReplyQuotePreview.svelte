@@ -237,11 +237,11 @@
     }
 
     :global(.reply-quote-preview .reply-icon) {
-        mask-image: url("/icons/message-solid-full.svg");
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     :global(.reply-quote-preview .quote-icon) {
-        mask-image: url("/icons/quote-right-solid-full.svg");
+        mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     .quote-notification-icon {
@@ -250,11 +250,11 @@
     }
 
     .bell-regular-icon {
-        mask-image: url("/icons/bell-regular-full.svg");
+        mask-image: url("/icons/notifications_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .bell-solid-icon {
-        mask-image: url("/icons/bell-solid-full.svg");
+        mask-image: url("/icons/notifications_active_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .author-name {

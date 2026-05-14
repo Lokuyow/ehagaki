@@ -493,7 +493,7 @@
 
 <style>
     .xmark-icon {
-        mask-image: url("/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     form {
@@ -590,13 +590,13 @@
     }
 
     .svg-icon.parent-client-icon {
-        mask-image: url("/icons/circle-user-solid-full.svg");
+        mask-image: url("/icons/account_circle_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 32px;
         height: 32px;
     }
 
     .svg-icon.extension-icon {
-        mask-image: url("/icons/puzzle-piece-solid-full.svg");
+        mask-image: url("/icons/extension_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 32px;
         height: 32px;
     }
@@ -643,7 +643,7 @@
     }
 
     .secret-icon {
-        mask-image: url("/icons/key-solid-full.svg");
+        mask-image: url("/icons/key_vertical_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 28px;
         height: 28px;
         flex: 0 0 28px;
@@ -652,7 +652,7 @@
     }
 
     .vault-icon {
-        mask-image: url("/icons/vault-solid-full.svg");
+        mask-image: url("/icons/shield_locked_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 30px;
         height: 30px;
         padding: 12px 18px 12px 16px;

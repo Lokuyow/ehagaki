@@ -194,10 +194,10 @@
     }
 
     .settings-icon {
-        mask-image: url("/icons/gear-solid-full.svg");
+        mask-image: url("/icons/settings_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .post-history-icon {
-        mask-image: url("/icons/clock-rotate-left-solid-full.svg");
+        mask-image: url("/icons/history_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     :global(.post-history-btn.default) {
         background-color: var(--btn-bg);

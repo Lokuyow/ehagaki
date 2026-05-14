@@ -214,7 +214,7 @@
         :global(.svg-icon) {
             width: 32px;
             height: 32px;
-            mask-image: url("/icons/xmark-solid-full.svg");
+            mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
         @media (min-width: 601px) {
@@ -238,7 +238,7 @@
         :global(.svg-icon) {
             width: 28px;
             height: 28px;
-            mask-image: url("/icons/copy-solid-full.svg");
+            mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
         @media (min-width: 601px) {

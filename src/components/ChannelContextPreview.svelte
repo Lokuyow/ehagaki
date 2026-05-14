@@ -133,7 +133,7 @@
     }
 
     :global(.channel-context-preview .channel-icon) {
-        mask-image: url("/icons/comments-solid-full.svg");
+        mask-image: url("/icons/forum_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     .channel-name {

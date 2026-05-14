@@ -333,7 +333,7 @@
 
 <style>
     .xmark-icon {
-        mask-image: url("/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .profile-container {
@@ -575,7 +575,7 @@
         }
 
         .xmark-small-icon {
-            mask-image: url("/icons/xmark-solid-full.svg");
+            mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 26px;
             height: 26px;
         }
@@ -613,11 +613,11 @@
     }
 
     .copy-icon {
-        mask-image: url("/icons/copy-solid-full.svg");
+        mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .plus-icon.svg-icon {
-        mask-image: url("/icons/plus-solid-full.svg");
+        mask-image: url("/icons/add_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 26px;
         height: 26px;
         flex-shrink: 0;

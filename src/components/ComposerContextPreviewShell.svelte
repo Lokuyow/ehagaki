@@ -142,7 +142,7 @@
     .preview-header :global(.cancel-button .close-icon) {
         width: 30px;
         height: 30px;
-        mask-image: url("/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .preview-content {

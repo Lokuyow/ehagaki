@@ -355,19 +355,19 @@
     }
 
     .trash-icon {
-        mask-image: url("/icons/trash-solid-full.svg");
+        mask-image: url("/icons/delete_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 30px;
         height: 30px;
     }
 
     .list-icon {
-        mask-image: url("/icons/list-solid-full.svg");
+        mask-image: url("/icons/edit_note_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 30px;
         height: 30px;
     }
 
     .floppy-disk-icon {
-        mask-image: url("/icons/floppy-disk-solid-full.svg");
+        mask-image: url("/icons/save_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 30px;
         height: 30px;
     }

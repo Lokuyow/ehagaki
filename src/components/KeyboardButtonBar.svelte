@@ -460,13 +460,13 @@
         transition: bottom 0.2s ease;
 
         .image-icon {
-            mask-image: url("/icons/image-solid-full.svg");
+            mask-image: url("/icons/image_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 36px;
             height: 36px;
         }
 
         .custom-emoji-icon {
-            mask-image: url("/icons/face-smile-solid-full.svg");
+            mask-image: url("/icons/sentiment_satisfied_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
             width: 32px;
             height: 32px;
         }
@@ -503,7 +503,7 @@
         }
 
         .content-warning-icon {
-            mask-image: url("/icons/eye-slash-solid-full.svg");
+            mask-image: url("/icons/visibility_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 
         :global(.selected .content-warning-icon) {
@@ -515,20 +515,20 @@
             align-items: center;
 
             .hashtag-icon {
-                mask-image: url("/icons/hashtag-solid-full.svg");
+                mask-image: url("/icons/tag_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
                 width: 26px;
                 height: 26px;
                 margin-right: -4px;
             }
 
             .thumbtack-icon {
-                mask-image: url("/icons/thumbtack-solid-full.svg");
+                mask-image: url("/icons/keep_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
                 width: 26px;
                 height: 26px;
             }
 
             .thumbtack-slash-icon {
-                mask-image: url("/icons/thumbtack-slash-solid-full.svg");
+                mask-image: url("/icons/keep_off_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
                 width: 26px;
                 height: 26px;
             }

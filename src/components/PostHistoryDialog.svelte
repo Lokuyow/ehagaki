@@ -1785,7 +1785,7 @@
         }
 
         :global(.post-history-heading-menu-trigger .more-icon) {
-            mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+            mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 22px;
             height: 22px;
             --svg: var(--text-muted);
@@ -2302,7 +2302,7 @@
         width: 18px;
         height: 18px;
         flex-shrink: 0;
-        mask-image: url("/icons/comments-solid-full.svg");
+        mask-image: url("/icons/forum_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
@@ -2426,7 +2426,7 @@
         background-color: var(--btn-bg);
 
         .more-icon {
-            mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+            mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 22px;
             height: 22px;
             --svg: var(--btn-post-preview-action);
@@ -2484,7 +2484,7 @@
     }
 
     .copy-icon {
-        mask-image: url("/icons/copy-solid-full.svg");
+        mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .search-icon {
@@ -2496,11 +2496,11 @@
     }
 
     .reply-icon {
-        mask-image: url("/icons/message-regular-full.svg");
+        mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .quote-icon {
-        mask-image: url("/icons/quote-right-solid-full.svg");
+        mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
     .trash-icon {
@@ -2508,7 +2508,7 @@
     }
 
     .xmark-icon {
-        mask-image: url("/icons/xmark-solid-full.svg");
+        mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 20px;
         height: 20px;
     }

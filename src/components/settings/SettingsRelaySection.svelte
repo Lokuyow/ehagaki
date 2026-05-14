@@ -160,7 +160,7 @@
         }
     }
     .rotate-right-icon {
-        mask-image: url("/icons/rotate-right-solid-full.svg");
+        mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
     .relay-list {
         margin-left: 10px;

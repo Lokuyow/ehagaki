@@ -114,7 +114,7 @@
     }
 
     .footer-progress-stop-icon {
-        mask-image: url("/icons/stop-solid-full.svg");
+        mask-image: url("/icons/stop_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         width: 22px;
         height: 22px;
         background-color: #f0f0f0;
