@@ -256,7 +256,10 @@
                 }}
                 ariaLabel={$_("keyboardButtonBar.custom_emoji")}
             >
-                <div class="custom-emoji-icon svg-icon"></div>
+                <div
+                    class="custom-emoji-icon svg-icon"
+                    class:active={customEmojiPickerOpen}
+                ></div>
             </Button>
         </div>
         <div class="button-group-center">
@@ -466,9 +469,13 @@
         }
 
         .custom-emoji-icon {
-            mask-image: url("/icons/sentiment_satisfied_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
+            mask-image: url("/icons/sentiment_satisfied_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
             width: 32px;
             height: 32px;
+        }
+
+        .custom-emoji-icon.active {
+            mask-image: url("/icons/sentiment_satisfied_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
         }
 
         /* postボタンは他より大きく見えるよう成長比と最小幅を優先 */
