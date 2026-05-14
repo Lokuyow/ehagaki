@@ -1292,7 +1292,9 @@
                                                                             post,
                                                                             event,
                                                                         )}
-                                                                    onSelect={(event) =>
+                                                                    onSelect={(
+                                                                        event,
+                                                                    ) =>
                                                                         void handleCopyNevent(
                                                                             post,
                                                                             event,
@@ -1498,7 +1500,9 @@
                                                                         post,
                                                                         event,
                                                                     )}
-                                                                onSelect={(event) =>
+                                                                onSelect={(
+                                                                    event,
+                                                                ) =>
                                                                     void handleCopyNevent(
                                                                         post,
                                                                         event,
@@ -1774,6 +1778,24 @@
         align-items: center;
         gap: 8px;
         flex: 0 0 auto;
+
+        :global(.post-history-heading-menu-trigger) {
+            min-height: 36px;
+            padding: 0;
+        }
+
+        :global(.post-history-heading-menu-trigger .more-icon) {
+            mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+            width: 22px;
+            height: 22px;
+            --svg: var(--text-muted);
+        }
+
+        @media (min-width: 601px) {
+            :global(.post-history-heading-menu-trigger:hover .more-icon) {
+                --svg: var(--btn-post-preview-action-hover);
+            }
+        }
     }
 
     .post-history-heading-summary {
@@ -1805,27 +1827,6 @@
     .post-history-summary-count {
         flex: 0 0 auto;
         white-space: nowrap;
-    }
-
-    :global(.post-history-heading-menu-trigger) {
-        min-height: 36px;
-        aspect-ratio: 1;
-        padding: 0;
-        background: transparent;
-        border-radius: 50%;
-    }
-
-    :global(.post-history-heading-menu-trigger .more-icon) {
-        mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
-        width: 22px;
-        height: 22px;
-        --svg: var(--text-muted);
-    }
-
-    @media (min-width: 601px) {
-        :global(.post-history-heading-menu-trigger:hover .more-icon) {
-            --svg: var(--btn-post-preview-action-hover);
-        }
     }
 
     .post-history-heading h3 {
@@ -2344,20 +2345,6 @@
             justify-content: flex-end;
             min-width: 80px;
 
-            :global(.menu-trigger) {
-                min-height: auto;
-                aspect-ratio: 1;
-                background: transparent;
-                border-radius: 50%;
-
-                .more-icon {
-                    mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
-                    width: 22px;
-                    height: 22px;
-                    --svg: var(--btn-post-preview-action);
-                }
-            }
-
             @media (min-width: 601px) {
                 :global(.menu-trigger:hover) :global(.more-icon) {
                     --svg: var(--btn-post-preview-action-hover);
@@ -2384,6 +2371,21 @@
                     --svg: var(--theme);
                 }
             }
+        }
+    }
+
+    :global(.menu-trigger) {
+        min-height: auto;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        --btn-bg: var(--dialog-bg);
+        background-color: var(--btn-bg);
+
+        .more-icon {
+            mask-image: url("/icons/ellipsis-vertical-solid-full.svg");
+            width: 22px;
+            height: 22px;
+            --svg: var(--btn-post-preview-action);
         }
     }
 

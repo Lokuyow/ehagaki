@@ -602,6 +602,7 @@
         }
 
         .zap-btn {
+            background: var(--btn-bg);
             border-radius: 6px 0 0 6px;
             border-right-color: transparent;
             padding: 0 10px 0 13px;
@@ -613,6 +614,7 @@
         }
 
         .view-btn {
+            background: var(--btn-bg);
             border-radius: 0 6px 6px 0;
             border-left-color: transparent;
             padding: 0 14px 0 12px;
@@ -670,6 +672,7 @@
         width: 90px;
         height: 44px;
         --btn-bg: var(--toggle-bg);
+        background-color: var(--btn-bg);
         opacity: 0.2;
         border-radius: 50px;
         border: none;

@@ -477,7 +477,6 @@
             width: clamp(40px, 22vw, 100px);
             height: var(--keyboard-button-bar-height);
             padding: 0 6px;
-            /* border-radius: 4px; */
 
             &:active {
                 transform: scale(0.9);

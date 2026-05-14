@@ -64,9 +64,11 @@
 </button>
 
 <style>
+    button {
+        background-color: var(--btn-bg);
+    }
     /* --- Variant Styles --- */
     .default {
-        background-color: var(--btn-bg);
         padding: 8px 12px 8px 12px;
 
         :global(.svg-icon) {
@@ -130,6 +132,17 @@
         --btn-bg: white;
         --text: var(--text-black);
         --border: var(--light-gray);
+
+        @media (min-width: 601px) {
+            &:hover:not(:disabled) {
+                :global(:root.light) & {
+                    background: color-mix(in srgb, var(--btn-bg), black 3%);
+                }
+                :global(:root.dark) & {
+                    background: color-mix(in srgb, var(--btn-bg), black 8%);
+                }
+            }
+        }
     }
 
     .header {

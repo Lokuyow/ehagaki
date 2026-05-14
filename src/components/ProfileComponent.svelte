@@ -327,11 +327,7 @@
     {/snippet}
 </DialogWrapper>
 
-<FloatingMessage
-    show={showCopyMessage}
-    x={copyMessageX}
-    y={copyMessageY}
->
+<FloatingMessage show={showCopyMessage} x={copyMessageX} y={copyMessageY}>
     <div>{$_("profileDialog.copy_success")}</div>
 </FloatingMessage>
 
@@ -482,24 +478,6 @@
             }
         }
 
-        .account-info-button {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex: 1;
-            min-width: 0;
-            height: 50px;
-            padding-left: 8px;
-            border-radius: 8px 0 0 8px;
-            cursor: pointer;
-            color: inherit;
-            font: inherit;
-
-            &:disabled {
-                cursor: default;
-            }
-        }
-
         :global(.account-avatar) {
             width: 38px;
             height: 38px;
@@ -574,6 +552,7 @@
             justify-content: center;
             width: 50px;
             height: 50px;
+            background-color: var(--btn-bg);
             border: solid 1px var(--btn-bg);
             border-left: none;
             border-radius: 0 8px 8px 0;
@@ -611,6 +590,25 @@
 
         .add-account-label {
             font-size: 1rem;
+        }
+    }
+
+    .account-info-button {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex: 1;
+        min-width: 0;
+        height: 50px;
+        padding-left: 8px;
+        background-color: var(--btn-bg);
+        border-radius: 8px 0 0 8px;
+        cursor: pointer;
+        color: inherit;
+        font: inherit;
+
+        &:disabled {
+            cursor: default;
         }
     }
 

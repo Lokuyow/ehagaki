@@ -151,8 +151,8 @@ select {
   font-size: 1rem;
   font-weight: 500;
   color: var(--text);
+  background-color: inherit;
   border: none;
-  background-color: var(--btn-bg);
   cursor: pointer;
   text-decoration: none;
   user-select: none;
@@ -247,36 +247,30 @@ select {
 
 @media (min-width: 601px) {
 
-  :root.light button:hover:not(:disabled):not(.post-history-media-surface),
-  :root.light select:hover {
-    background: color-mix(in srgb, var(--btn-bg), black 6%);
+  :root.light button:where(:hover:not(:disabled)),
+  :root.light [role="button"]:where(:hover:not([aria-disabled="true"])),
+  :root.light select:where(:hover:not(:disabled)) {
+    background-color: color-mix(in srgb, var(--btn-bg), black 6%);
     color: color-mix(in srgb, var(--text), black 6%);
-  }
-
-  :root.light button:hover:not(:disabled):not(.draft-content),
-  :root.light select:hover {
     --svg: currentColor;
   }
 
-  :root.dark button:hover:not(:disabled):not(.post-history-media-surface),
-  :root.dark select:hover {
-    background: color-mix(in srgb, var(--btn-bg), white 10%);
+  :root.dark button:where(:hover:not(:disabled)),
+  :root.dark [role="button"]:where(:hover:not([aria-disabled="true"])),
+  :root.dark select:where(:hover:not(:disabled)) {
+    background-color: color-mix(in srgb, var(--btn-bg), white 10%);
     color: color-mix(in srgb, var(--text), white 10%);
-  }
-
-  :root.dark button:hover:not(:disabled):not(.draft-content),
-  :root.dark select:hover {
     --svg: currentColor;
   }
 
-  :root.light button.selected:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--btn-bg), black 20%);
+  :root.light button.selected:where(:hover:not(:disabled)) {
+    background-color: color-mix(in srgb, var(--btn-bg), black 20%);
     color: color-mix(in srgb, var(--text), black 20%);
     --svg: currentColor;
   }
 
-  :root.dark button.selected:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--btn-bg), white 30%);
+  :root.dark button.selected:where(:hover:not(:disabled)) {
+    background-color: color-mix(in srgb, var(--btn-bg), white 30%);
     color: color-mix(in srgb, var(--text), white 30%);
     --svg: currentColor;
   }

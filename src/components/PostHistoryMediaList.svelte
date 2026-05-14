@@ -823,22 +823,6 @@
         gap: 10px;
     }
 
-    .post-history-media-surface {
-        font-size: 0;
-        display: block;
-        width: 100%;
-        padding: 0;
-        border: 0;
-        background: transparent;
-        text-align: left;
-        cursor: pointer;
-        margin-inline: auto;
-
-        &:active:not(:disabled) {
-            transform: scale(1);
-        }
-    }
-
     .post-history-image-grid {
         display: flex;
         flex-direction: column;
@@ -868,6 +852,22 @@
     .post-history-image-surface-frame {
         position: relative;
         width: 100%;
+
+        .post-history-media-surface {
+            font-size: 0;
+            display: block;
+            width: 100%;
+            padding: 0;
+            border: 0;
+            background-color: transparent;
+            text-align: left;
+            cursor: pointer;
+            margin-inline: auto;
+
+            &:active:not(:disabled) {
+                transform: scale(1);
+            }
+        }
     }
 
     /* 単体画像のときグリッド側のボーダーを無効化 */
