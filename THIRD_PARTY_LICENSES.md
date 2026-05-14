@@ -44,6 +44,14 @@ This project uses SVG icons from Font Awesome Free.
 The SVG files include embedded attribution and license comments where applicable.
 Some icons may be modified. Modified SVG files include their own modification notes where applicable.
 
+## Google Fonts / Material Icons
+
+This project uses Google Fonts Icons via Material Icons-style SVG assets.
+
+- Icons: Google Fonts Icons / Material Icons
+- Source: https://fonts.google.com/icons
+- License: Apache License 2.0
+
 ## Mediabunny
 
 This project uses Mediabunny for browser-based media processing.
