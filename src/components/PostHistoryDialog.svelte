@@ -1151,6 +1151,7 @@
                 />
                 <Button
                     type="button"
+                    variant="primary"
                     className="post-history-utility-button"
                     onClick={() => void handleJumpToDateSubmit()}
                 >
@@ -1158,6 +1159,7 @@
                 </Button>
                 <Button
                     type="button"
+                    variant="default"
                     className="post-history-utility-button"
                     onClick={() => (activeUtilityPanel = "none")}
                 >
@@ -1603,7 +1605,7 @@
                         {#if history.canFetchOlderFromRelays || history.isFetchingOlderFromRelays}
                             <Button
                                 type="button"
-                                variant="default"
+                                variant="primary"
                                 className="post-history-nav-button"
                                 disabled={history.isFetchingOlderFromRelays}
                                 onClick={() =>
@@ -1890,7 +1892,7 @@
         display: flex;
         flex-direction: column;
         gap: 8px;
-        padding: 10px 16px 0;
+        padding: 6px 10px 0;
         border-bottom: 1px solid var(--border-hr);
     }
 
@@ -1916,6 +1918,7 @@
     }
 
     :global(.post-history-utility-button) {
+        height: auto;
         min-height: 40px;
         white-space: nowrap;
     }
