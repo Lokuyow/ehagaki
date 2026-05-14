@@ -418,11 +418,12 @@
     }
 
     async function handleFetchOlderFromRelays(): Promise<void> {
+        const scrollAnchor = captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
         const changed = await history.fetchOlderFromRelays();
         if (changed && previousScrollTop !== null) {
-            await tick();
-            if (show && historyContainer) {
+            restoreHistoryScrollAnchor(scrollAnchor);
+            if (scrollAnchor === null && show && historyContainer) {
                 historyContainer.scrollTop = previousScrollTop;
             }
         }
