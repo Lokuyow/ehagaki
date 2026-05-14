@@ -354,18 +354,18 @@ async function openPostHistoryMenu(): Promise<void> {
 
 async function openSearchBar(): Promise<HTMLInputElement> {
     await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
-async function findRepairButton(): Promise<HTMLButtonElement> {
-    const existing = screen.queryByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
+async function findRepairButton(): Promise<HTMLElement> {
+    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
     if (existing) {
-        return existing as HTMLButtonElement;
+        return existing as HTMLElement;
     }
 
     await openPostHistoryMenu();
-    return screen.findByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
+    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -653,13 +653,19 @@ describe('PostHistoryDialog', () => {
 
         const actionTrigger = screen.getAllByRole('button', { name: 'アクションを表示' })[0];
         await fireEvent.click(actionTrigger);
-        await fireEvent.click(await screen.findByRole('button', { name: 'neventをコピー' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: 'neventをコピー' }));
+
+        await waitFor(() => {
+            expect(screen.queryByRole('menuitem', { name: 'neventをコピー' })).toBeNull();
+        });
 
         expect(nostrUtilsMock.toNevent).toHaveBeenCalledWith(expect.objectContaining({
             eventId: 'channel-search',
             kind: 42,
         }));
-        expect(screen.getByText('コピーしました')).toBeTruthy();
+
+        await fireEvent.click(actionTrigger);
+        expect(await screen.findByRole('menuitem', { name: 'コピーしました' })).toBeTruthy();
     });
 
     it('[sync-upsert] 同期成功後に upsert して一覧を更新する', async () => {

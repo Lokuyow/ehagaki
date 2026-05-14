@@ -101,7 +101,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expectVisiblePostCount(page, harness.totalPosts);
 
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('button', { name: '検索' }).click();
+        await page.getByRole('menuitem', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
         await expectSummary(page, { shown: 50, matching: harness.matchingPosts });
         await expectVisiblePostCount(page, 50);
@@ -121,7 +121,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const harness = await gotoHarness(page);
 
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('button', { name: '日付へ移動' }).click();
+        await page.getByRole('menuitem', { name: '日付へ移動' }).click();
         await page.getByLabel('日付').fill(harness.jumpDate);
         await page.getByRole('button', { name: 'この日付付近を表示' }).click();
 
@@ -162,7 +162,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(containerMetrics.scrollWidth).toBeLessThanOrEqual(containerMetrics.clientWidth + 1);
 
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('button', { name: '日付へ移動' }).click();
+        await page.getByRole('menuitem', { name: '日付へ移動' }).click();
         await page.getByLabel('日付').fill(harness.jumpDate);
         await page.getByRole('button', { name: 'この日付付近を表示' }).click();
 
@@ -172,5 +172,22 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.getByRole('button', { name: '最新へ戻る' }).click();
         await expectSummary(page, { shown: 50, total: harness.totalPosts });
         await expectVisiblePostCount(page, 50);
+    });
+
+    test('per-post delete action opens the confirm dialog and closes the menu', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        await gotoHarness(page);
+
+        const postActionTrigger = page.getByRole('button', { name: 'アクションを表示' }).first();
+        await postActionTrigger.click();
+        await page.getByRole('menuitem', { name: '削除' }).click();
+
+        await expect(
+            page.locator('.delete-confirm-description').filter({
+                hasText: 'この投稿の削除リクエストをリレーへ送信します。',
+            }),
+        ).toBeVisible();
+        await expect(page.getByRole('menuitem', { name: '削除' })).toHaveCount(0);
     });
 });

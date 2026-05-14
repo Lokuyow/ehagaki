@@ -137,7 +137,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: '日付へ移動' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '日付へ移動' }));
         await fireEvent.input(screen.getByLabelText('日付'), {
             target: { value: '2024-01-01' },
         });
@@ -216,7 +216,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await openPostHistoryMenu();
-        await fireEvent.click(await screen.findByRole('button', { name: '最古へ移動' }));
+        await fireEvent.click(await screen.findByRole('menuitem', { name: '最古へ移動' }));
 
         await waitFor(() => {
             expect(screen.getByText('最古投稿')).toBeTruthy();

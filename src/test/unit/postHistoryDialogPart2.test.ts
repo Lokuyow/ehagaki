@@ -354,18 +354,18 @@ async function openPostHistoryMenu(): Promise<void> {
 
 async function openSearchBar(): Promise<HTMLInputElement> {
     await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
-async function findRepairButton(): Promise<HTMLButtonElement> {
-    const existing = screen.queryByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
+async function findRepairButton(): Promise<HTMLElement> {
+    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
     if (existing) {
-        return existing as HTMLButtonElement;
+        return existing as HTMLElement;
     }
 
     await openPostHistoryMenu();
-    return screen.findByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
+    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
 }
 
 describe('PostHistoryDialog', () => {

@@ -354,18 +354,18 @@ async function openPostHistoryMenu(): Promise<void> {
 
 async function openSearchBar(): Promise<HTMLInputElement> {
     await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
-async function findRepairButton(): Promise<HTMLButtonElement> {
-    const existing = screen.queryByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
+async function findRepairButton(): Promise<HTMLElement> {
+    const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
     if (existing) {
-        return existing as HTMLButtonElement;
+        return existing as HTMLElement;
     }
 
     await openPostHistoryMenu();
-    return screen.findByRole('button', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLButtonElement>;
+    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
 }
 
 describe('PostHistoryDialog', () => {
@@ -554,7 +554,7 @@ describe('PostHistoryDialog', () => {
         const repairButton = await findRepairButton();
 
         await waitFor(() => {
-            expect(repairButton).toHaveProperty('disabled', true);
+            expect(repairButton.hasAttribute('data-disabled')).toBe(true);
         });
 
         initialSync.resolve({
@@ -574,7 +574,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(repairButton).toHaveProperty('disabled', false);
+            expect(repairButton.hasAttribute('data-disabled')).toBe(false);
         });
 
         await fireEvent.click(repairButton);
@@ -595,7 +595,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(async () => {
-            expect(await findRepairButton()).toHaveProperty('disabled', false);
+            expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
             expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
         });
     });
@@ -647,7 +647,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(async () => {
-            expect(await findRepairButton()).toHaveProperty('disabled', false);
+            expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
         });
 
         await fireEvent.click(await findRepairButton());
@@ -732,7 +732,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(async () => {
-            expect(await findRepairButton()).toHaveProperty('disabled', false);
+            expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
             expect(screen.getByText('一覧の投稿')).toBeTruthy();
         });
 
@@ -814,7 +814,7 @@ describe('PostHistoryDialog', () => {
             page: 1,
             pageSize: 50,
         });
-        expect(await findRepairButton()).toHaveProperty('disabled', true);
+        expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
         expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
     });
 
@@ -828,7 +828,7 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        expect(await findRepairButton()).toHaveProperty('disabled', true);
+        expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(true);
         expect(repairServiceMock.refetchAroundCurrentView).not.toHaveBeenCalled();
     });
 

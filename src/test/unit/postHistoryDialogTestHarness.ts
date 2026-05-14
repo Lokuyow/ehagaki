@@ -289,13 +289,13 @@ export async function openPostHistoryMenu(): Promise<void> {
 
 export async function openSearchBar(): Promise<HTMLInputElement> {
     await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('button', { name: '検索' }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
 export async function clickMenuAction(name: string): Promise<void> {
     await openPostHistoryMenu();
-    await fireEvent.click(await screen.findByRole('button', { name }));
+    await fireEvent.click(await screen.findByRole('menuitem', { name }));
 }
 
 export function getHistoryContainer(): HTMLDivElement {

@@ -2,7 +2,7 @@
     import type { RxNostr } from "rx-nostr";
     import { flushSync, tick } from "svelte";
     import { _ } from "svelte-i18n";
-    import { Dialog, Popover } from "bits-ui";
+    import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
@@ -904,29 +904,29 @@
                         }`}
                     />
                 {/if}
-                <Popover.Root bind:open={headingMenuOpen}>
-                    <Popover.Trigger
+                <DropdownMenu.Root bind:open={headingMenuOpen}>
+                    <DropdownMenu.Trigger
                         class="menu-trigger post-history-heading-menu-trigger"
                         aria-label={$_("postHistory.openMenu")}
                     >
                         <div class="more-icon svg-icon"></div>
-                    </Popover.Trigger>
-                    <Popover.Portal>
-                        <Popover.Content
+                    </DropdownMenu.Trigger>
+                    <DropdownMenu.Portal>
+                        <DropdownMenu.Content
                             side="bottom"
                             align="end"
                             sideOffset={8}
                             class="post-history-menu-content"
                             trapFocus={false}
+                            preventScroll={false}
                             onCloseAutoFocus={(event: Event) =>
                                 event.preventDefault()}
                         >
                             <div class="post-history-menu-body">
-                                <button
-                                    type="button"
+                                <DropdownMenu.Item
                                     class="menu-action-button"
                                     disabled={!history.canReturnToLatest}
-                                    onclick={handleReturnToLatestFromMenu}
+                                    onSelect={handleReturnToLatestFromMenu}
                                 >
                                     <div
                                         class="return-to-latest-icon svg-icon"
@@ -937,34 +937,47 @@
                                             "postHistory.returnToLatest",
                                         )}</span
                                     >
-                                </button>
-                                <button
-                                    type="button"
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
                                     class="menu-action-button"
-                                    onclick={showSearch}
+                                    onSelect={showSearch}
                                 >
                                     <div
                                         class="search-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
                                     <span>{$_("postHistory.showSearch")}</span>
-                                </button>
-                                <button
-                                    type="button"
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
                                     class="menu-action-button"
-                                    onclick={showJumpDate}
+                                    onSelect={showJumpDate}
                                 >
                                     <div
                                         class="calendar-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
                                     <span>{$_("postHistory.jumpToDate")}</span>
-                                </button>
-                                <button
-                                    type="button"
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
+                                    class="menu-action-button"
+                                    disabled={!history.canJumpToOldest}
+                                    onSelect={handleJumpToOldestFromMenu}
+                                >
+                                    <div
+                                        class="jump-to-oldest-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
+                                    <span>
+                                        {$_("postHistory.jumpToOldest")}
+                                    </span>
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Separator
+                                    class="post-history-menu-separator"
+                                />
+                                <DropdownMenu.Item
                                     class="menu-action-button"
                                     disabled={!history.canRefetchAroundCurrentView}
-                                    onclick={handleRefetchAroundCurrentViewFromMenu}
+                                    onSelect={handleRefetchAroundCurrentViewFromMenu}
                                 >
                                     <div
                                         class="repair-icon svg-icon"
@@ -975,29 +988,10 @@
                                             ? $_("postHistory.repairing")
                                             : $_("postHistory.repair")}
                                     </span>
-                                </button>
-                                <button
-                                    type="button"
-                                    class="menu-action-button"
-                                    disabled={!history.canJumpToOldest}
-                                    onclick={handleJumpToOldestFromMenu}
-                                >
-                                    <div
-                                        class="jump-to-oldest-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span>
-                                        {$_("postHistory.jumpToOldest")}
-                                    </span>
-                                </button>
-                                <div
-                                    class="post-history-menu-separator"
-                                    role="separator"
-                                ></div>
-                                <button
-                                    type="button"
+                                </DropdownMenu.Item>
+                                <DropdownMenu.Item
                                     class="menu-action-button menu-action-button-danger"
-                                    onclick={openLocalHistoryDeleteConfirm}
+                                    onSelect={openLocalHistoryDeleteConfirm}
                                 >
                                     <div
                                         class="trash-icon svg-icon"
@@ -1008,11 +1002,11 @@
                                             "postHistory.deleteLocalHistory",
                                         )}</span
                                     >
-                                </button>
+                                </DropdownMenu.Item>
                             </div>
-                        </Popover.Content>
-                    </Popover.Portal>
-                </Popover.Root>
+                        </DropdownMenu.Content>
+                    </DropdownMenu.Portal>
+                </DropdownMenu.Root>
             </div>
         </div>
         {#if history.posts.length > 0}
@@ -1176,30 +1170,34 @@
                                                         post.postedAt,
                                                     )}</span
                                                 >
-                                                <Popover.Root
+                                                <DropdownMenu.Root
                                                     open={postMenuOpenState[
                                                         post.eventId
                                                     ] ?? false}
-                                                    onOpenChange={(open) =>
+                                                    onOpenChange={(
+                                                        open: boolean,
+                                                    ) =>
                                                         setPostMenuOpen(
                                                             post.eventId,
                                                             open,
                                                         )}
                                                 >
-                                                    <Popover.Trigger
+                                                    <DropdownMenu.Trigger
                                                         class="menu-trigger"
                                                         aria-label="アクションを表示"
                                                     >
                                                         <div
                                                             class="more-icon svg-icon"
                                                         ></div>
-                                                    </Popover.Trigger>
-                                                    <Popover.Portal>
-                                                        <Popover.Content
+                                                    </DropdownMenu.Trigger>
+                                                    <DropdownMenu.Portal>
+                                                        <DropdownMenu.Content
                                                             side="bottom"
+                                                            align="start"
                                                             sideOffset={8}
                                                             class="post-history-menu-content"
                                                             trapFocus={false}
+                                                            preventScroll={false}
                                                             onCloseAutoFocus={(
                                                                 event: Event,
                                                             ) =>
@@ -1208,10 +1206,9 @@
                                                             <div
                                                                 class="post-history-menu-body"
                                                             >
-                                                                <button
-                                                                    type="button"
+                                                                <DropdownMenu.Item
                                                                     class="menu-action-button"
-                                                                    onclick={() =>
+                                                                    onSelect={() =>
                                                                         void handleCopyNevent(
                                                                             post,
                                                                         )}
@@ -1241,15 +1238,14 @@
                                                                                     "postHistory.copyNevent",
                                                                                 )}
                                                                     </span>
-                                                                </button>
+                                                                </DropdownMenu.Item>
                                                                 {#if canDeletePost(post)}
-                                                                    <button
-                                                                        type="button"
+                                                                    <DropdownMenu.Item
                                                                         class="menu-action-button menu-action-button-danger"
                                                                         disabled={isDeletionSending(
                                                                             post,
                                                                         )}
-                                                                        onclick={() =>
+                                                                        onSelect={() =>
                                                                             openDeleteConfirm(
                                                                                 post,
                                                                             )}
@@ -1269,12 +1265,12 @@
                                                                                       "postHistory.delete",
                                                                                   )}
                                                                         </span>
-                                                                    </button>
+                                                                    </DropdownMenu.Item>
                                                                 {/if}
                                                             </div>
-                                                        </Popover.Content>
-                                                    </Popover.Portal>
-                                                </Popover.Root>
+                                                        </DropdownMenu.Content>
+                                                    </DropdownMenu.Portal>
+                                                </DropdownMenu.Root>
                                             {/if}
                                         </div>
                                     </div>
@@ -1382,30 +1378,32 @@
                                             {/if}
                                         </div>
                                         <div class="post-preview-footer-right">
-                                            <Popover.Root
+                                            <DropdownMenu.Root
                                                 open={postMenuOpenState[
                                                     post.eventId
                                                 ] ?? false}
-                                                onOpenChange={(open) =>
+                                                onOpenChange={(open: boolean) =>
                                                     setPostMenuOpen(
                                                         post.eventId,
                                                         open,
                                                     )}
                                             >
-                                                <Popover.Trigger
+                                                <DropdownMenu.Trigger
                                                     class="menu-trigger"
                                                     aria-label="アクションを表示"
                                                 >
                                                     <div
                                                         class="more-icon svg-icon"
                                                     ></div>
-                                                </Popover.Trigger>
-                                                <Popover.Portal>
-                                                    <Popover.Content
+                                                </DropdownMenu.Trigger>
+                                                <DropdownMenu.Portal>
+                                                    <DropdownMenu.Content
                                                         side="bottom"
+                                                        align="start"
                                                         sideOffset={8}
                                                         class="post-history-menu-content"
                                                         trapFocus={false}
+                                                        preventScroll={false}
                                                         onCloseAutoFocus={(
                                                             event: Event,
                                                         ) =>
@@ -1414,10 +1412,9 @@
                                                         <div
                                                             class="post-history-menu-body"
                                                         >
-                                                            <button
-                                                                type="button"
+                                                            <DropdownMenu.Item
                                                                 class="menu-action-button"
-                                                                onclick={() =>
+                                                                onSelect={() =>
                                                                     void handleCopyNevent(
                                                                         post,
                                                                     )}
@@ -1447,15 +1444,14 @@
                                                                                 "postHistory.copyNevent",
                                                                             )}
                                                                 </span>
-                                                            </button>
+                                                            </DropdownMenu.Item>
                                                             {#if canDeletePost(post)}
-                                                                <button
-                                                                    type="button"
+                                                                <DropdownMenu.Item
                                                                     class="menu-action-button menu-action-button-danger"
                                                                     disabled={isDeletionSending(
                                                                         post,
                                                                     )}
-                                                                    onclick={() =>
+                                                                    onSelect={() =>
                                                                         openDeleteConfirm(
                                                                             post,
                                                                         )}
@@ -1475,12 +1471,12 @@
                                                                                   "postHistory.delete",
                                                                               )}
                                                                     </span>
-                                                                </button>
+                                                                </DropdownMenu.Item>
                                                             {/if}
                                                         </div>
-                                                    </Popover.Content>
-                                                </Popover.Portal>
-                                            </Popover.Root>
+                                                    </DropdownMenu.Content>
+                                                </DropdownMenu.Portal>
+                                            </DropdownMenu.Root>
                                         </div>
                                     </div>
                                 {/if}
@@ -2006,22 +2002,13 @@
         min-width: 180px;
         z-index: 102;
         outline: none;
+    }
 
-        .post-history-menu-body {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            align-items: stretch;
-
-            .menu-action-button-danger,
-            .menu-action-button-danger:hover:not(:disabled) {
-                color: var(--danger);
-
-                :global(.svg-icon) {
-                    --svg: var(--danger);
-                }
-            }
-        }
+    .post-history-menu-body {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        align-items: stretch;
     }
 
     :global(.post-history-menu-content[data-state="open"]) {
@@ -2032,13 +2019,13 @@
         animation: popover-out 100ms ease-in;
     }
 
-    .post-history-menu-separator {
+    :global(.post-history-menu-content .post-history-menu-separator) {
         height: 1px;
         margin: 4px 0;
         background: var(--border-hr);
     }
 
-    .menu-action-button {
+    :global(.post-history-menu-content .menu-action-button) {
         display: flex;
         align-items: center;
         justify-content: flex-start;
@@ -2055,16 +2042,41 @@
         cursor: pointer;
     }
 
-    .menu-action-button:hover:not(:disabled) {
+    :global(
+            .post-history-menu-content
+                .menu-action-button:hover:not([data-disabled])
+        ),
+    :global(
+            .post-history-menu-content
+                .menu-action-button[data-highlighted]:not([data-disabled])
+        ) {
         background: color-mix(in srgb, var(--dialog-bg), var(--border) 12%);
     }
 
-    .menu-action-button:disabled {
+    :global(.post-history-menu-content .menu-action-button[data-disabled]) {
         opacity: 0.55;
         cursor: not-allowed;
     }
 
-    .menu-action-button .svg-icon {
+    :global(.post-history-menu-content .menu-action-button-danger),
+    :global(
+            .post-history-menu-content
+                .menu-action-button-danger:hover:not([data-disabled])
+        ),
+    :global(
+            .post-history-menu-content
+                .menu-action-button-danger[data-highlighted]:not(
+                    [data-disabled]
+                )
+        ) {
+        color: var(--danger);
+    }
+
+    :global(.post-history-menu-content .menu-action-button-danger .svg-icon) {
+        --svg: var(--danger);
+    }
+
+    :global(.post-history-menu-content .menu-action-button .svg-icon) {
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -2072,17 +2084,23 @@
         height: 20px;
     }
 
-    .menu-action-button .calendar-icon {
+    :global(.post-history-menu-content .menu-action-button .calendar-icon) {
         mask-image: url("/icons/calendar_month_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
-    .menu-action-button .return-to-latest-icon {
+    :global(
+            .post-history-menu-content
+                .menu-action-button
+                .return-to-latest-icon
+        ) {
         mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
 
-    .menu-action-button .jump-to-oldest-icon {
+    :global(
+            .post-history-menu-content .menu-action-button .jump-to-oldest-icon
+        ) {
         mask-image: url("/icons/vertical_align_bottom_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
     }
