@@ -828,7 +828,6 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        border: 1px solid var(--border-hr);
         border-radius: 12px;
         overflow: hidden;
         gap: 2px;
@@ -880,7 +879,6 @@
     .post-history-image-surface-frame-single {
         max-width: 100%;
         margin-inline: 0;
-        border: 1px solid var(--border-hr);
         border-radius: 12px;
         overflow: hidden;
     }
