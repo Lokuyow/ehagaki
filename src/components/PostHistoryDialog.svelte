@@ -1849,7 +1849,6 @@
         display: flex;
         align-items: center;
         width: 100%;
-        gap: 8px;
         border-bottom: 1px solid var(--border-hr);
     }
 
