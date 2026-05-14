@@ -165,21 +165,22 @@
                                 <span class="profile-info-text"
                                     >{displayedProfile.npub}</span
                                 >
-                                <button
-                                    class="copy-button"
-                                    onclick={(event) =>
+                                <Button
+                                    variant="copy"
+                                    className="copy-button"
+                                    onClick={(event) =>
                                         handleCopy(
                                             displayedProfile.npub!,
                                             "npub",
                                             event,
                                         )}
-                                    aria-label={$_("profileDialog.copy_npub")}
+                                    ariaLabel={$_("profileDialog.copy_npub")}
                                 >
                                     <div
                                         class="copy-icon svg-icon"
-                                        aria-label="Copy npub"
+                                        aria-hidden="true"
                                     ></div>
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     {/if}
@@ -191,23 +192,24 @@
                                 <span class="profile-info-text"
                                     >{displayedProfile.nprofile}</span
                                 >
-                                <button
-                                    class="copy-button"
-                                    onclick={(event) =>
+                                <Button
+                                    variant="copy"
+                                    className="copy-button"
+                                    onClick={(event) =>
                                         handleCopy(
                                             displayedProfile.nprofile!,
                                             "nprofile",
                                             event,
                                         )}
-                                    aria-label={$_(
+                                    ariaLabel={$_(
                                         "profileDialog.copy_nprofile",
                                     )}
                                 >
                                     <div
                                         class="copy-icon svg-icon"
-                                        aria-label="Copy nprofile"
+                                        aria-hidden="true"
                                     ></div>
-                                </button>
+                                </Button>
                             </div>
                         </div>
                     {/if}
@@ -424,7 +426,7 @@
                         margin: 6px 0 6px 8px;
                     }
 
-                    .copy-button {
+                    :global(.copy-button) {
                         height: 40px;
                         width: 40px;
                         border-radius: 50%;
@@ -610,10 +612,6 @@
         &:disabled {
             cursor: default;
         }
-    }
-
-    .copy-icon {
-        mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .plus-icon.svg-icon {

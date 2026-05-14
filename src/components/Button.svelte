@@ -236,8 +236,8 @@
         transition: background 0.2s ease;
 
         :global(.svg-icon) {
-            width: 28px;
-            height: 28px;
+            width: 20px;
+            height: 20px;
             mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
 

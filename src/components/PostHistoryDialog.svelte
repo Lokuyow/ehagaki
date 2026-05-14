@@ -2401,8 +2401,6 @@
             background: transparent;
 
             :global(.svg-icon) {
-                width: 24px;
-                height: 24px;
                 --svg: var(--btn-post-preview-action);
             }
         }
@@ -2495,11 +2493,15 @@
         mask-image: url("/icons/refresh_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
-    .reply-icon {
+    .reply-icon.svg-icon {
+        width: 22px;
+        height: 22px;
         mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
-    .quote-icon {
+    .quote-icon.svg-icon {
+        width: 28px;
+        height: 28px;
         mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 

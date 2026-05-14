@@ -125,9 +125,9 @@
         flex-shrink: 0;
     }
 
-    .preview-mode-icon {
-        width: 28px;
-        height: 28px;
+    .preview-mode-icon.reply-icon {
+        width: 24px;
+        height: 24px;
         flex-shrink: 0;
     }
 
