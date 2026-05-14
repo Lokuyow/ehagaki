@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
-    import { tick } from "svelte";
+    import { flushSync, tick } from "svelte";
     import { _ } from "svelte-i18n";
     import { Dialog, Popover } from "bits-ui";
     import Button from "./Button.svelte";
@@ -107,7 +107,11 @@
         eventId: string;
         offsetTop: number;
     };
+    const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
+    const HISTORY_SCROLL_ANCHOR_STABILIZATION_FRAMES = 8;
     const loadingEmojiUrls = new Set<string>();
+    let historyScrollAnchorRestoreRequestId = 0;
+    let historyScrollAnchorRestoreFrame: number | null = null;
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
         getPosts: () => history.posts,
@@ -149,6 +153,7 @@
     });
 
     function resetDialogState(): void {
+        cancelHistoryScrollAnchorRestore();
         copyState = {};
         deleteConfirmOpen = false;
         deleteTargetPost = null;
@@ -166,6 +171,7 @@
     }
 
     function handleClose() {
+        cancelHistoryScrollAnchorRestore();
         history.cancelCurrentSync();
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
@@ -355,8 +361,12 @@
 
             const itemRect = item.getBoundingClientRect();
             if (
-                itemRect.bottom >= containerRect.top &&
-                itemRect.top <= containerRect.bottom
+                itemRect.bottom >
+                    containerRect.top +
+                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX &&
+                itemRect.top <
+                    containerRect.bottom -
+                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX
             ) {
                 return {
                     eventId,
@@ -368,34 +378,106 @@
         return null;
     }
 
-    function restoreHistoryScrollAnchorSoon(
+    function scheduleHistoryScrollAnchorRestore(
+        callback: FrameRequestCallback,
+    ): number {
+        if (typeof requestAnimationFrame === "function") {
+            return requestAnimationFrame(callback);
+        }
+
+        return window.setTimeout(() => callback(performance.now()), 16);
+    }
+
+    function cancelHistoryScrollAnchorRestoreFrame(frame: number): void {
+        if (typeof cancelAnimationFrame === "function") {
+            cancelAnimationFrame(frame);
+            return;
+        }
+
+        window.clearTimeout(frame);
+    }
+
+    function cancelHistoryScrollAnchorRestore(): void {
+        historyScrollAnchorRestoreRequestId += 1;
+        if (historyScrollAnchorRestoreFrame === null) {
+            return;
+        }
+
+        cancelHistoryScrollAnchorRestoreFrame(historyScrollAnchorRestoreFrame);
+        historyScrollAnchorRestoreFrame = null;
+    }
+
+    function restoreHistoryScrollAnchorNow(
+        anchor: HistoryScrollAnchor | null,
+    ): boolean {
+        if (!anchor || !show || !historyContainer) {
+            return false;
+        }
+
+        const anchoredItem = Array.from(
+            historyContainer.querySelectorAll<HTMLElement>(
+                "[data-post-history-event-id]",
+            ),
+        ).find(
+            (item) => item.dataset.postHistoryEventId === anchor.eventId,
+        );
+        if (!anchoredItem) {
+            return false;
+        }
+
+        const containerRect = historyContainer.getBoundingClientRect();
+        const itemRect = anchoredItem.getBoundingClientRect();
+        const nextOffsetTop = itemRect.top - containerRect.top;
+        const scrollDelta = nextOffsetTop - anchor.offsetTop;
+
+        if (Math.abs(scrollDelta) > 0.5) {
+            historyContainer.scrollTop += scrollDelta;
+        }
+
+        return true;
+    }
+
+    function restoreHistoryScrollAnchor(
+        anchor: HistoryScrollAnchor | null,
+    ): boolean {
+        if (!anchor || !show || !historyContainer) {
+            return false;
+        }
+
+        flushSync();
+        return restoreHistoryScrollAnchorNow(anchor);
+    }
+
+    function stabilizeHistoryScrollAnchor(
         anchor: HistoryScrollAnchor | null,
     ): void {
+        cancelHistoryScrollAnchorRestore();
         if (!anchor) {
             return;
         }
 
-        void tick().then(() => {
-            if (!show || !historyContainer) {
+        const requestId = historyScrollAnchorRestoreRequestId;
+        let remainingFrames = HISTORY_SCROLL_ANCHOR_STABILIZATION_FRAMES;
+        restoreHistoryScrollAnchor(anchor);
+
+        const restoreOnNextFrame: FrameRequestCallback = () => {
+            if (requestId !== historyScrollAnchorRestoreRequestId) {
                 return;
             }
 
-            const anchoredItem = Array.from(
-                historyContainer.querySelectorAll<HTMLElement>(
-                    "[data-post-history-event-id]",
-                ),
-            ).find(
-                (item) => item.dataset.postHistoryEventId === anchor.eventId,
-            );
-            if (!anchoredItem) {
+            const restored = restoreHistoryScrollAnchorNow(anchor);
+            remainingFrames -= 1;
+            if (!restored || remainingFrames <= 0) {
+                historyScrollAnchorRestoreFrame = null;
                 return;
             }
 
-            const containerRect = historyContainer.getBoundingClientRect();
-            const itemRect = anchoredItem.getBoundingClientRect();
-            const nextOffsetTop = itemRect.top - containerRect.top;
-            historyContainer.scrollTop += nextOffsetTop - anchor.offsetTop;
-        });
+            historyScrollAnchorRestoreFrame =
+                scheduleHistoryScrollAnchorRestore(restoreOnNextFrame);
+        };
+
+        historyScrollAnchorRestoreFrame =
+            scheduleHistoryScrollAnchorRestore(restoreOnNextFrame);
     }
 
     function getLoadOlderLabel(): string {
@@ -415,24 +497,32 @@
     }
 
     async function handleLoadOlder(): Promise<void> {
+        cancelHistoryScrollAnchorRestore();
         await history.loadOlder();
     }
 
+    function preventHistoryNavPointerFocus(event: PointerEvent): void {
+        event.preventDefault();
+    }
+
     async function handleLoadNewer(): Promise<void> {
+        cancelHistoryScrollAnchorRestore();
         const scrollAnchor = history.isSearchMode
             ? null
             : captureHistoryScrollAnchor();
         const changed = await history.loadNewer();
         if (changed) {
             if (history.isSearchMode) {
+                cancelHistoryScrollAnchorRestore();
                 resetHistoryScrollSoon();
             } else {
-                restoreHistoryScrollAnchorSoon(scrollAnchor);
+                stabilizeHistoryScrollAnchor(scrollAnchor);
             }
         }
     }
 
     async function handleReturnToLatest(): Promise<void> {
+        cancelHistoryScrollAnchorRestore();
         const changed = await history.returnToLatest();
         if (changed) {
             resetHistoryScrollSoon();
@@ -445,6 +535,7 @@
             return;
         }
 
+        cancelHistoryScrollAnchorRestore();
         const changed = await history.jumpToCreatedAt(createdAt);
         if (changed) {
             activeUtilityPanel = "none";
@@ -1100,6 +1191,7 @@
                     <Button
                         type="button"
                         className="post-history-nav-button"
+                        onpointerdown={preventHistoryNavPointerFocus}
                         onClick={() => void handleLoadNewer()}
                     >
                         {getLoadNewerLabel()}
@@ -1885,6 +1977,7 @@
         min-height: 0;
         width: 100%;
         overflow-y: auto;
+        overflow-anchor: none;
     }
 
     .empty-state {

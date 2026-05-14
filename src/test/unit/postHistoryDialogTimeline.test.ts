@@ -384,6 +384,10 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByRole('button', { name: '新しい投稿を表示' })).toBeTruthy();
         });
 
+        await expect(
+            fireEvent.pointerDown(screen.getByRole('button', { name: '新しい投稿を表示' })),
+        ).resolves.toBe(false);
+
         await new Promise((resolve) => setTimeout(resolve, 20));
 
         const historyContainer = getHistoryContainer();
@@ -408,17 +412,24 @@ describe('PostHistoryDialog timeline navigation', () => {
 
                 const eventId = this.dataset.postHistoryEventId;
                 const hasNewerPosts = screen.queryByText('最新投稿') !== null;
+                const scrollOffset = historyContainer.scrollTop - 240;
                 if (eventId === 'scroll-older') {
-                    return rect(hasNewerPosts ? 320 : 120, 80) as DOMRect;
+                    return rect(
+                        (hasNewerPosts ? 320 : 120) - scrollOffset,
+                        80,
+                    ) as DOMRect;
                 }
                 if (eventId === 'scroll-oldest') {
-                    return rect(hasNewerPosts ? 420 : 220, 80) as DOMRect;
+                    return rect(
+                        (hasNewerPosts ? 420 : 220) - scrollOffset,
+                        80,
+                    ) as DOMRect;
                 }
                 if (eventId === 'scroll-newest') {
-                    return rect(120, 80) as DOMRect;
+                    return rect(120 - scrollOffset, 80) as DOMRect;
                 }
                 if (eventId === 'scroll-middle') {
-                    return rect(220, 80) as DOMRect;
+                    return rect(220 - scrollOffset, 80) as DOMRect;
                 }
 
                 return rect(0, 0) as DOMRect;

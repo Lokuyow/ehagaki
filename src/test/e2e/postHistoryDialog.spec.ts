@@ -33,6 +33,54 @@ async function expectVisiblePostCount(page: Page, count: number) {
     await expect(page.locator('.post-history-list li')).toHaveCount(count);
 }
 
+async function getFirstVisiblePostSnapshot(page: Page) {
+    return page.locator('.post-history-container').evaluate((containerElement) => {
+        const container = containerElement as HTMLDivElement;
+        const containerRect = container.getBoundingClientRect();
+        const items = Array.from(
+            container.querySelectorAll<HTMLElement>('.post-history-item'),
+        );
+        const visibleEdgeTolerancePx = 1;
+        const item = items.find((candidate) => {
+            const rect = candidate.getBoundingClientRect();
+            return (
+                rect.bottom > containerRect.top + visibleEdgeTolerancePx &&
+                rect.top < containerRect.bottom - visibleEdgeTolerancePx
+            );
+        });
+
+        if (!item) {
+            return null;
+        }
+
+        const rect = item.getBoundingClientRect();
+        return {
+            eventId: item.dataset.postHistoryEventId ?? '',
+            offsetTop: rect.top - containerRect.top,
+        };
+    });
+}
+
+async function getPostSnapshotByEventId(page: Page, eventId: string) {
+    return page.locator('.post-history-container').evaluate((containerElement, targetEventId) => {
+        const container = containerElement as HTMLDivElement;
+        const item = container.querySelector<HTMLElement>(
+            `.post-history-item[data-post-history-event-id="${targetEventId}"]`,
+        );
+
+        if (!item) {
+            return null;
+        }
+
+        const containerRect = container.getBoundingClientRect();
+        const rect = item.getBoundingClientRect();
+        return {
+            eventId: item.dataset.postHistoryEventId ?? '',
+            offsetTop: rect.top - containerRect.top,
+        };
+    }, eventId);
+}
+
 test.describe('PostHistoryDialog Playwright', () => {
     test('desktop timeline browsing flow works in a real browser', async ({ page, isMobile }) => {
         test.skip(isMobile, 'desktop only');
@@ -65,6 +113,32 @@ test.describe('PostHistoryDialog Playwright', () => {
         await page.getByRole('button', { name: '新しい検索結果を表示' }).click();
         await expectSummary(page, { shown: 50, matching: harness.matchingPosts });
         await expectVisiblePostCount(page, 50);
+    });
+
+    test('desktop newer prepend keeps the current post anchored without focusing the nav button', async ({ page, isMobile }) => {
+        test.skip(isMobile, 'desktop only');
+
+        const harness = await gotoHarness(page);
+
+        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+        await page.getByRole('button', { name: '日付へ移動' }).click();
+        await page.getByLabel('日付').fill(harness.jumpDate);
+        await page.getByRole('button', { name: 'この日付付近を表示' }).click();
+
+        const newerButton = page.getByRole('button', { name: '新しい投稿を表示' });
+        await expect(newerButton).toBeVisible();
+        const before = await getFirstVisiblePostSnapshot(page);
+        expect(before).not.toBeNull();
+
+        await newerButton.click();
+
+        await expectSummary(page, { shown: 64, total: harness.totalPosts });
+        await expectVisiblePostCount(page, 64);
+        const after = await getPostSnapshotByEventId(page, before!.eventId);
+        expect(after).not.toBeNull();
+        expect(after!.eventId).toBe(before!.eventId);
+        expect(Math.abs(after!.offsetTop - before!.offsetTop)).toBeLessThanOrEqual(1);
+        await expect(newerButton).not.toBeFocused();
     });
 
     test('mobile timeline controls stay usable and fit the viewport', async ({ page, isMobile }) => {
