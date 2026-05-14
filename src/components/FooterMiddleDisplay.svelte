@@ -144,7 +144,11 @@
         justify-content: center;
         align-items: center;
         height: 100%;
-        background: transparent;
+        background-color: inherit;
+
+        &[role="button"] {
+            --btn-bg: var(--dialog-bg);
+        }
     }
 
     .footer-center.clickable {

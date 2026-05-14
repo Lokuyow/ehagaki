@@ -242,7 +242,6 @@
     .gallery-item-media {
         border-radius: 6px;
         overflow: hidden;
-        background-color: transparent;
         position: relative;
         display: flex;
         align-items: center;
@@ -252,6 +251,7 @@
 
     .gallery-item-media[role="button"] {
         cursor: pointer;
+        background-color: transparent;
     }
 
     .gallery-image {

@@ -200,6 +200,7 @@
         mask-image: url("/icons/clock-rotate-left-solid-full.svg");
     }
     :global(.post-history-btn.default) {
+        background-color: var(--btn-bg);
         max-width: 200px;
         height: 50px;
         flex: 1 1 auto;
