@@ -166,7 +166,7 @@
                                     >{displayedProfile.npub}</span
                                 >
                                 <Button
-                                    variant="copy"
+                                    shape="square"
                                     className="copy-button"
                                     onClick={(event) =>
                                         handleCopy(
@@ -193,7 +193,6 @@
                                     >{displayedProfile.nprofile}</span
                                 >
                                 <Button
-                                    variant="copy"
                                     className="copy-button"
                                     onClick={(event) =>
                                         handleCopy(
@@ -412,9 +411,10 @@
 
                 .profile-info-content {
                     display: flex;
-                    align-items: center;
+                    align-items: stretch;
                     background-color: var(--btn-bg);
                     border-radius: 8px;
+                    overflow: hidden;
 
                     .profile-info-text {
                         flex: 1;
@@ -424,14 +424,20 @@
                         color: var(--text);
                         margin: 6px 0 6px 8px;
                     }
-
-                    :global(.copy-button) {
-                        height: 40px;
-                        width: 40px;
-                        border-radius: 50%;
-                    }
                 }
             }
+        }
+    }
+
+    :global(.copy-button) {
+        height: auto;
+        width: 40px;
+        background-color: var(--btn-bg);
+
+        .copy-icon {
+            width: 20px;
+            height: 20px;
+            mask-image: url("/icons/file_copy_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         }
     }
 
