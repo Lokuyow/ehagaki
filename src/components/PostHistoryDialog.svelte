@@ -1124,7 +1124,7 @@
                 type="button"
                 class="post-history-search-close"
                 contentLayout="icon"
-                shape="circle"
+                shape="square"
                 ariaLabel={$_("postHistory.hideSearch")}
                 onClick={hideSearch}
             >
@@ -1848,7 +1848,6 @@
         align-items: center;
         width: 100%;
         gap: 8px;
-        padding: 10px 16px 0;
         border-bottom: 1px solid var(--border-hr);
     }
 
@@ -1870,16 +1869,17 @@
         font: inherit;
     }
 
-    :global(.post-history-search-close) {
+    :global(.post-history-search-close.square) {
         flex: 0 0 auto;
         min-height: 40px;
         aspect-ratio: 1;
         padding: 0;
-        background: transparent;
-    }
+        background: var(--btn-bg);
 
-    :global(.post-history-search-close .svg-icon) {
-        --svg: var(--text-muted);
+        :global(.svg-icon) {
+            width: 28px;
+            height: 28px;
+        }
     }
 
     .post-history-search-input::placeholder {
