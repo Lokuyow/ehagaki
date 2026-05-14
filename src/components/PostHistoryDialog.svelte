@@ -386,9 +386,7 @@
             historyContainer.querySelectorAll<HTMLElement>(
                 "[data-post-history-event-id]",
             ),
-        ).find(
-            (item) => item.dataset.postHistoryEventId === anchor.eventId,
-        );
+        ).find((item) => item.dataset.postHistoryEventId === anchor.eventId);
         if (!anchoredItem) {
             return;
         }
@@ -1689,7 +1687,7 @@
         display: flex;
         width: 100%;
         color: var(--text-muted);
-        font-size: 0.82rem;
+        font-size: 0.875rem;
         line-height: 1.35;
     }
 
