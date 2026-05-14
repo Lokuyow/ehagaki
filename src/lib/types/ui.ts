@@ -46,10 +46,10 @@ export interface PostComponentUIState {
     fullscreenMediaId: string;
     fullscreenImageSrc: string;
     fullscreenImageAlt: string;
-    showPopupModal: boolean;
-    popupX: number;
-    popupY: number;
-    popupMessage: string;
+    showFloatingMessage: boolean;
+    floatingMessageX: number;
+    floatingMessageY: number;
+    floatingMessageText: string;
 }
 
 // Service Worker types

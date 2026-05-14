@@ -7,10 +7,10 @@ let postComponentUI = $state<{
     fullscreenMediaId: string;
     fullscreenImageSrc: string;
     fullscreenImageAlt: string;
-    showPopupModal: boolean;
-    popupX: number;
-    popupY: number;
-    popupMessage: string;
+    showFloatingMessage: boolean;
+    floatingMessageX: number;
+    floatingMessageY: number;
+    floatingMessageText: string;
 }>({
     showSecretKeyDialog: false,
     pendingPost: '',
@@ -19,11 +19,20 @@ let postComponentUI = $state<{
     fullscreenMediaId: '',
     fullscreenImageSrc: '',
     fullscreenImageAlt: '',
-    showPopupModal: false,
-    popupX: 0,
-    popupY: 0,
-    popupMessage: ''
+    showFloatingMessage: false,
+    floatingMessageX: 0,
+    floatingMessageY: 0,
+    floatingMessageText: ''
 });
+
+let floatingMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
+
+function clearFloatingMessageTimeout() {
+    if (floatingMessageTimeoutId !== undefined) {
+        clearTimeout(floatingMessageTimeoutId);
+        floatingMessageTimeoutId = undefined;
+    }
+}
 
 export const postComponentUIStore = {
     get value() { return postComponentUI; },
@@ -53,17 +62,20 @@ export const postComponentUIStore = {
         postComponentUI.fullscreenImageSrc = '';
         postComponentUI.fullscreenImageAlt = '';
     },
-    // ポップアップメッセージ
-    showPopupMessage: (x: number, y: number, message: string, duration: number = 1800) => {
-        postComponentUI.popupX = x;
-        postComponentUI.popupY = y;
-        postComponentUI.popupMessage = message;
-        postComponentUI.showPopupModal = true;
-        setTimeout(() => {
-            postComponentUI.showPopupModal = false;
+    // フローティングメッセージ
+    showFloatingMessage: (x: number, y: number, message: string, duration: number = 1800) => {
+        clearFloatingMessageTimeout();
+        postComponentUI.floatingMessageX = x;
+        postComponentUI.floatingMessageY = y;
+        postComponentUI.floatingMessageText = message;
+        postComponentUI.showFloatingMessage = true;
+        floatingMessageTimeoutId = setTimeout(() => {
+            postComponentUI.showFloatingMessage = false;
+            floatingMessageTimeoutId = undefined;
         }, duration);
     },
-    hidePopupMessage: () => {
-        postComponentUI.showPopupModal = false;
+    hideFloatingMessage: () => {
+        clearFloatingMessageTimeout();
+        postComponentUI.showFloatingMessage = false;
     }
 };

@@ -1,10 +1,11 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { onDestroy } from "svelte";
     import { Tooltip } from "bits-ui";
     import { editorState } from "../stores/editorStore.svelte";
     import Button from "./Button.svelte";
     import BalloonMessage from "./BalloonMessage.svelte";
-    import PopupModal from "./PopupModal.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import { type BalloonMessage as BalloonMessageType } from "../lib/types";
     import { resolveCompactMessageText } from "../lib/utils/headerComponentUtils";
     import { preventKeyboardFocusChange } from "../lib/utils/keyboardFocusUtils";
@@ -33,11 +34,21 @@
         showFlavorText = true,
     }: Props = $props();
 
-    // 下書き保存ポップアップの状態
-    let showDraftSavedPopup = $state(false);
-    let draftPopupX = $state(0);
-    let draftPopupY = $state(0);
+    // 下書き保存メッセージの状態
+    let showDraftSavedMessage = $state(false);
+    let draftMessageX = $state(0);
+    let draftMessageY = $state(0);
     let isSavingDraft = $state(false);
+    let draftSavedMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    function clearDraftSavedMessageTimeout() {
+        if (draftSavedMessageTimeoutId !== undefined) {
+            clearTimeout(draftSavedMessageTimeoutId);
+            draftSavedMessageTimeoutId = undefined;
+        }
+    }
+
+    onDestroy(clearDraftSavedMessageTimeout);
 
     async function handleSaveDraft(e: MouseEvent) {
         if (isSavingDraft) return;
@@ -54,14 +65,16 @@
         }
 
         if (success && rect) {
-            // ボタンの位置を基準にポップアップを表示
-            draftPopupX = rect.left + rect.width / 2;
-            draftPopupY = rect.bottom + 8;
-            showDraftSavedPopup = true;
+            clearDraftSavedMessageTimeout();
+            // ボタンの位置を基準にメッセージを表示
+            draftMessageX = rect.left + rect.width / 2;
+            draftMessageY = rect.bottom + 8;
+            showDraftSavedMessage = true;
 
             // 2秒後に自動で閉じる
-            setTimeout(() => {
-                showDraftSavedPopup = false;
+            draftSavedMessageTimeoutId = setTimeout(() => {
+                showDraftSavedMessage = false;
+                draftSavedMessageTimeoutId = undefined;
             }, 2000);
         }
     }
@@ -231,15 +244,14 @@
     <input type="checkbox" checked bind:this={vibrateSwitchInput} />
 </label>
 
-<!-- 下書き保存成功ポップアップ -->
-<PopupModal
-    show={showDraftSavedPopup}
-    x={draftPopupX}
-    y={draftPopupY}
-    onClose={() => (showDraftSavedPopup = false)}
+<!-- 下書き保存成功メッセージ -->
+<FloatingMessage
+    show={showDraftSavedMessage}
+    x={draftMessageX}
+    y={draftMessageY}
 >
-    <div class="copy-success-message">{$_("draft.saved")}</div>
-</PopupModal>
+    <div>{$_("draft.saved")}</div>
+</FloatingMessage>
 
 <style>
     .header-container {

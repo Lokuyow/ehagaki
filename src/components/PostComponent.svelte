@@ -17,7 +17,7 @@
     createPostUploadHandlers,
     updateEditorUploadState,
   } from "../lib/postUploadUtils";
-  import PopupModal from "./PopupModal.svelte";
+  import FloatingMessage from "./FloatingMessage.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import MediaGallery from "./MediaGallery.svelte";
   import { mediaGalleryStore } from "../stores/mediaGalleryStore.svelte";
@@ -175,10 +175,10 @@
   let fullscreenMediaId = $derived(postComponentUI.fullscreenMediaId);
   let fullscreenImageSrc = $derived(postComponentUI.fullscreenImageSrc);
   let fullscreenImageAlt = $derived(postComponentUI.fullscreenImageAlt);
-  let showPopupModal = $derived(postComponentUI.showPopupModal);
-  let popupX = $derived(postComponentUI.popupX);
-  let popupY = $derived(postComponentUI.popupY);
-  let popupMessage = $derived(postComponentUI.popupMessage);
+  let showFloatingMessage = $derived(postComponentUI.showFloatingMessage);
+  let floatingMessageX = $derived(postComponentUI.floatingMessageX);
+  let floatingMessageY = $derived(postComponentUI.floatingMessageY);
+  let floatingMessageText = $derived(postComponentUI.floatingMessageText);
 
   // --- PostManager初期化 ---
   $effect(() => {
@@ -728,15 +728,14 @@
   onNavigate={handleFullscreenNavigate}
 />
 
-{#if showPopupModal}
-  <PopupModal
-    show={showPopupModal}
-    x={popupX}
-    y={popupY}
-    onClose={postComponentUIStore.hidePopupMessage}
+{#if showFloatingMessage}
+  <FloatingMessage
+    show={showFloatingMessage}
+    x={floatingMessageX}
+    y={floatingMessageY}
   >
-    <div class="copy-success-message">{popupMessage}</div>
-  </PopupModal>
+    <div>{floatingMessageText}</div>
+  </FloatingMessage>
 {/if}
 
 <style>

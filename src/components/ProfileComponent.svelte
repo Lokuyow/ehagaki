@@ -1,10 +1,11 @@
 <script lang="ts">
     import { _ } from "svelte-i18n";
+    import { onDestroy } from "svelte";
     import { Dialog } from "bits-ui";
     import Button from "./Button.svelte";
     import DialogWrapper from "./DialogWrapper.svelte";
     import ProfileAvatar from "./ProfileAvatar.svelte";
-    import PopupModal from "./PopupModal.svelte";
+    import FloatingMessage from "./FloatingMessage.svelte";
     import { profileDataStore } from "../stores/profileStore.svelte";
     import { authState } from "../stores/authStore.svelte";
     import { copyToClipboard } from "../lib/utils/clipboardUtils";
@@ -66,10 +67,20 @@
     // ログアウト中の場合、プロフィールデータを保持して表示を維持
     let displayedProfile = $state(profileDataStore.value);
 
-    // コピー成功ポップアップの状態
-    let showPopup = $state(false);
-    let popupX = $state(0);
-    let popupY = $state(0);
+    // コピー成功メッセージの状態
+    let showCopyMessage = $state(false);
+    let copyMessageX = $state(0);
+    let copyMessageY = $state(0);
+    let copyMessageTimeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    function clearCopyMessageTimeout() {
+        if (copyMessageTimeoutId !== undefined) {
+            clearTimeout(copyMessageTimeoutId);
+            copyMessageTimeoutId = undefined;
+        }
+    }
+
+    onDestroy(clearCopyMessageTimeout);
 
     $effect(() => {
         // ログアウト中でない場合のみ、プロフィールデータを更新
@@ -91,17 +102,19 @@
     async function handleCopy(text: string, type: string, event: MouseEvent) {
         try {
             await copyToClipboard(text, type, navigator, window);
-            // コピー成功時にポップアップを表示
+            clearCopyMessageTimeout();
+            // コピー成功時にメッセージを表示
             const pos = calculateContextMenuPosition(
                 event.clientX,
                 event.clientY,
             );
-            popupX = pos.x;
-            popupY = pos.y;
-            showPopup = true;
+            copyMessageX = pos.x;
+            copyMessageY = pos.y;
+            showCopyMessage = true;
             // 1.8秒後に自動で消す
-            setTimeout(() => {
-                showPopup = false;
+            copyMessageTimeoutId = setTimeout(() => {
+                showCopyMessage = false;
+                copyMessageTimeoutId = undefined;
             }, 1800);
         } catch (error) {
             console.warn("Copy failed:", error);
@@ -314,14 +327,13 @@
     {/snippet}
 </DialogWrapper>
 
-<PopupModal
-    show={showPopup}
-    x={popupX}
-    y={popupY}
-    onClose={() => (showPopup = false)}
+<FloatingMessage
+    show={showCopyMessage}
+    x={copyMessageX}
+    y={copyMessageY}
 >
-    <div class="copy-success-message">{$_("profileDialog.copy_success")}</div>
-</PopupModal>
+    <div>{$_("profileDialog.copy_success")}</div>
+</FloatingMessage>
 
 <style>
     .xmark-icon {

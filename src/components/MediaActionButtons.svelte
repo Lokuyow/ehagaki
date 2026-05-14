@@ -30,7 +30,7 @@
     function handleCopy(event: MouseEvent) {
         event.stopPropagation();
         copyToClipboard(src, "URL");
-        postComponentUIStore.showPopupMessage(
+        postComponentUIStore.showFloatingMessage(
             event.clientX,
             event.clientY,
             copySuccessMessage,
