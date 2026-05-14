@@ -1973,9 +1973,10 @@
             min-height: 40px;
             background-color: color-mix(
                 in srgb,
-                var(--btn-bg) 60%,
+                var(--btn-bg) 20%,
                 transparent
             );
+            backdrop-filter: blur(1px);
         }
     }
 
