@@ -12,6 +12,7 @@ import {
     repairServiceMock,
     repositoryMock,
     resetPostHistoryDialogHarness,
+    visibleRangeRepositoryMock,
 } from './postHistoryDialogTestHarness';
 
 describe('PostHistoryDialog timeline relay flows', () => {
@@ -521,6 +522,166 @@ describe('PostHistoryDialog timeline relay flows', () => {
             );
             expect(screen.getByText('2件表示 / 全 2件')).toBeTruthy();
             expect(screen.getByText('追加取得した古い投稿')).toBeTruthy();
+        });
+
+        view.unmount();
+    });
+
+    it('古い投稿取得で nextUntil が進まない場合も保存済みの最古投稿まで visibleUntil を広げて表示する', async () => {
+        let visibleUntil: number | null = null;
+        const latest = createRecord({
+            eventId: 'visible-latest',
+            content: '現在の投稿',
+            createdAt: 150,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const fetchedOlder = createRecord({
+            eventId: 'visible-older',
+            content: 'nextUntil より古い投稿',
+            createdAt: 100,
+            postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+        });
+
+        visibleRangeRepositoryMock.get.mockImplementation(async () =>
+            visibleUntil === null
+                ? null
+                : {
+                    pubkeyHex: PUBKEY_HEX,
+                    kindsKey: '1,42',
+                    visibleUntil,
+                    updatedAt: 1000,
+                },
+        );
+        visibleRangeRepositoryMock.save.mockImplementation(async (range: {
+            pubkeyHex: string;
+            kindsKey: string;
+            visibleUntil: number | null;
+        }) => {
+            visibleUntil = range.visibleUntil;
+            return {
+                ...range,
+                updatedAt: 1000,
+            };
+        });
+        repositoryMock.countVisibleForPubkey.mockImplementation(async (_pubkeyHex: string, rangeUntil?: number | null) =>
+            rangeUntil === 100 ? 2 : 1,
+        );
+        repositoryMock.getLatestVisibleChunk
+            .mockResolvedValueOnce([latest])
+            .mockResolvedValueOnce([latest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            visibleUntil?: number | null;
+            cursor?: { eventId: string };
+        }) => {
+            if (
+                options.visibleUntil === 100 &&
+                options.cursor?.eventId === 'visible-latest'
+            ) {
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+        repositoryMock.upsertFetchedEvents
+            .mockResolvedValueOnce({
+                insertedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 1,
+            })
+            .mockResolvedValueOnce({
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 1,
+            });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    nextUntil: 150,
+                    oldestCreatedAt: 150,
+                    hasMore: true,
+                    events: [
+                        {
+                            event: {
+                                id: 'visible-boundary'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: '現在の投稿',
+                                tags: [],
+                                created_at: 150,
+                                sig: 'c'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay-a.example.com/'],
+                        },
+                    ],
+                    relayUrls: ['wss://relay-a.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    nextUntil: 150,
+                    oldestCreatedAt: 100,
+                    hasMore: true,
+                    events: [
+                        {
+                            event: {
+                                id: 'visible-boundary'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: '現在の投稿',
+                                tags: [],
+                                created_at: 150,
+                                sig: 'c'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay-a.example.com/'],
+                        },
+                        {
+                            event: {
+                                id: 'visible-older'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: 'nextUntil より古い投稿',
+                                tags: [],
+                                created_at: 100,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay-b.example.com/'],
+                        },
+                    ],
+                    relayUrls: [
+                        'wss://relay-a.example.com/',
+                        'wss://relay-b.example.com/',
+                    ],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから古い投稿を取得' })).toBeTruthy();
+        });
+
+        await fireEvent.click(screen.getByRole('button', { name: 'リレーから古い投稿を取得' }));
+
+        await waitFor(() => {
+            expect(visibleRangeRepositoryMock.save).toHaveBeenLastCalledWith({
+                pubkeyHex: PUBKEY_HEX,
+                kindsKey: '1,42',
+                visibleUntil: 100,
+            });
+            expect(screen.getByText('2件表示 / 全 2件')).toBeTruthy();
+            expect(screen.getByText('nextUntil より古い投稿')).toBeTruthy();
         });
 
         view.unmount();

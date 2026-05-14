@@ -497,8 +497,8 @@ export function usePostHistoryListing({
     ): Promise<number | null> {
         const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
         const candidateVisibleUntil = result.events.length > 0
-            && typeof result.nextUntil === "number"
-            ? result.nextUntil
+            && typeof result.oldestCreatedAt === "number"
+            ? result.oldestCreatedAt
             : null;
         const nextVisibleUntil = typeof candidateVisibleUntil === "number"
             ? typeof currentVisibleUntil === "number"
