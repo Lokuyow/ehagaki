@@ -51,8 +51,8 @@
 
     .info-icon {
         mask-image: url("/icons/info_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
     }
 
     :global(.popover-content) {
