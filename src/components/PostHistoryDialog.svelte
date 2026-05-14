@@ -417,6 +417,17 @@
         await history.loadOlder();
     }
 
+    async function handleFetchOlderFromRelays(): Promise<void> {
+        const previousScrollTop = historyContainer?.scrollTop ?? null;
+        const changed = await history.fetchOlderFromRelays();
+        if (changed && previousScrollTop !== null) {
+            await tick();
+            if (show && historyContainer) {
+                historyContainer.scrollTop = previousScrollTop;
+            }
+        }
+    }
+
     async function handleLoadNewer(): Promise<void> {
         const scrollAnchor = history.isSearchMode
             ? null
@@ -1515,7 +1526,7 @@
                                 className="post-history-nav-button"
                                 disabled={history.isFetchingOlderFromRelays}
                                 onClick={() =>
-                                    void history.fetchOlderFromRelays()}
+                                    void handleFetchOlderFromRelays()}
                             >
                                 {#if history.isFetchingOlderFromRelays}
                                     <LoadingPlaceholder

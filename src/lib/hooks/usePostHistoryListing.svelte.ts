@@ -496,10 +496,19 @@ export function usePostHistoryListing({
         result: PostHistoryRelayFetchResult,
     ): Promise<number | null> {
         const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
-        const candidateVisibleUntil = result.events.length > 0
-            && typeof result.oldestCreatedAt === "number"
-            ? result.oldestCreatedAt
-            : null;
+        const candidateVisibleUntil = (() => {
+            if (result.events.length === 0) {
+                return null;
+            }
+
+            if (canContinueRelayHistory(result)) {
+                return result.nextUntil;
+            }
+
+            return typeof result.oldestCreatedAt === "number"
+                ? result.oldestCreatedAt
+                : null;
+        })();
         const nextVisibleUntil = typeof candidateVisibleUntil === "number"
             ? typeof currentVisibleUntil === "number"
                 ? Math.min(currentVisibleUntil, candidateVisibleUntil)
@@ -1173,11 +1182,7 @@ export function usePostHistoryListing({
 
         const didVisibleCountIncrease = nextCount > previousCount;
 
-        if (
-            result.status === "success" &&
-            !didVisibleCountIncrease &&
-            !didMateriallyChange
-        ) {
+        if (result.status === "success" && !didVisibleCountIncrease) {
             if (state.hasMoreRemote && result.nextUntil === fetchUntil) {
                 state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
                 state.hasMoreRemote = state.nextUntil !== null;
