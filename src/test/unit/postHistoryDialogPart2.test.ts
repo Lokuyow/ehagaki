@@ -803,7 +803,7 @@ describe('PostHistoryDialog', () => {
         expect(onClose).toHaveBeenCalledOnce();
     });
 
-    it('投稿日時が 24 時間以内なら時刻のみを表示する', async () => {
+    it('投稿日時が今日なら時刻のみを表示する', async () => {
         vi.useFakeTimers();
         const now = Date.UTC(2025, 0, 1, 12, 0, 0);
         vi.setSystemTime(now);
@@ -833,6 +833,42 @@ describe('PostHistoryDialog', () => {
         await waitFor(() => {
             expect(screen.getByText(expected)).toBeTruthy();
             expect(screen.getByText('最近の投稿')).toBeTruthy();
+        });
+    });
+
+    it('投稿日時が昨日なら月日時刻を表示する', async () => {
+        vi.useFakeTimers();
+        const now = new Date(2025, 0, 2, 0, 30, 0).getTime();
+        const postedAt = new Date(2025, 0, 1, 23, 30, 0).getTime();
+        vi.setSystemTime(now);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'recent-cross-date',
+                postedAt,
+                content: '日付を跨いだ投稿',
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const expected = new Intl.DateTimeFormat(undefined, {
+            month: 'numeric',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+        }).format(new Date(postedAt));
+
+        await waitFor(() => {
+            expect(screen.getByText(expected)).toBeTruthy();
+            expect(screen.getByText('日付を跨いだ投稿')).toBeTruthy();
         });
     });
 

@@ -517,16 +517,16 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[recent-date-format] 投稿日時が 1 年以内なら月日時刻を表示する', async () => {
+    it('[recent-date-format] 投稿日時が今年なら月日時刻を表示する', async () => {
         vi.useFakeTimers();
-        const now = Date.UTC(2025, 0, 1, 12, 0, 0);
+        const now = Date.UTC(2025, 5, 1, 12, 0, 0);
         vi.setSystemTime(now);
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({
                 eventId: 'within-year',
                 postedAt: now - 100 * 24 * 60 * 60 * 1000,
-                content: '1 年以内の投稿',
+                content: '今年の投稿',
                 media: [],
             }),
         ]);
@@ -548,7 +548,42 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(screen.getByText(expected)).toBeTruthy();
-            expect(screen.getByText('1 年以内の投稿')).toBeTruthy();
+            expect(screen.getByText('今年の投稿')).toBeTruthy();
+        });
+    });
+
+    it('[recent-date-format] 投稿日時が去年なら年月日を表示する', async () => {
+        vi.useFakeTimers();
+        const now = new Date(2025, 0, 1, 12, 0, 0).getTime();
+        const postedAt = new Date(2024, 11, 31, 12, 0, 0).getTime();
+        vi.setSystemTime(now);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getPage.mockResolvedValue([
+            createRecord({
+                eventId: 'within-year-cross-year',
+                postedAt,
+                content: '年を跨いだ投稿',
+                media: [],
+            }),
+        ]);
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        const expected = new Intl.DateTimeFormat(undefined, {
+            year: 'numeric',
+            month: 'numeric',
+            day: 'numeric',
+        }).format(new Date(postedAt));
+
+        await waitFor(() => {
+            expect(screen.getByText(expected)).toBeTruthy();
+            expect(screen.getByText('年を跨いだ投稿')).toBeTruthy();
         });
     });
 

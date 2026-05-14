@@ -171,13 +171,13 @@ export function formatPostedAt(
     now: number = Date.now(),
 ): string {
     const postedDate = new Date(postedAt);
-    const diffMs = Math.abs(now - postedAt);
+    const nowDate = new Date(now);
     const minuteTimeFormat: Intl.DateTimeFormatOptions = {
         hour: "numeric",
         minute: "2-digit",
     };
 
-    if (diffMs < 24 * 60 * 60 * 1000) {
+    if (isSameLocalDate(postedDate, nowDate)) {
         return new Intl.DateTimeFormat(undefined, minuteTimeFormat).format(
             postedDate,
         );
@@ -189,7 +189,7 @@ export function formatPostedAt(
         ...minuteTimeFormat,
     };
 
-    if (diffMs < 365 * 24 * 60 * 60 * 1000) {
+    if (postedDate.getFullYear() === nowDate.getFullYear()) {
         return new Intl.DateTimeFormat(
             undefined,
             monthDayTimeFormat,
@@ -201,6 +201,12 @@ export function formatPostedAt(
         month: "numeric",
         day: "numeric",
     }).format(postedDate);
+}
+
+function isSameLocalDate(date: Date, otherDate: Date): boolean {
+    return date.getFullYear() === otherDate.getFullYear() &&
+        date.getMonth() === otherDate.getMonth() &&
+        date.getDate() === otherDate.getDate();
 }
 
 export function buildPreview(content: string): string {
