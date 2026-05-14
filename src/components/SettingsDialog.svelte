@@ -510,7 +510,6 @@
                 <Button
                     {...props}
                     className="modal-close"
-                    variant="default"
                     shape="square"
                     ariaLabel="閉じる"
                 >

@@ -62,7 +62,7 @@
 
   --window: hsl(0, 0%, 95%);
 
-  --svg: hsl(0, 0%, 32%);
+  --svg: hsl(0, 0%, 36%);
   --svg-light: var(--text-light);
   --shadow: rgba(0, 0, 0, 0.1);
   --hagaki: hsl(0, 77%, 56%);
@@ -234,7 +234,7 @@ select {
 
   --window: hsl(0, 0%, 14%);
 
-  --svg: hsl(0, 0%, 94%);
+  --svg: hsl(0, 0%, 90%);
   --svg-light: var(--text-light);
 
   --shadow: rgba(255, 255, 255, 0.1);

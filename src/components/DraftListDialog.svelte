@@ -223,7 +223,6 @@
                 <Button
                     {...props}
                     className="modal-close"
-                    variant="default"
                     shape="square"
                     ariaLabel={$_("global.close") || "閉じる"}
                 >

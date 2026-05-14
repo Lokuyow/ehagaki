@@ -31,7 +31,7 @@
         type = "button",
         ariaLabel = "",
         style = "",
-        variant = "default",
+        variant = undefined,
         shape = undefined,
         contentLayout = undefined,
         children,
@@ -40,6 +40,7 @@
         ...restProps
     }: Props = $props();
 
+    let variantClass = $derived(variant ?? "");
     let contentLayoutClass = $derived(
         contentLayout ? `content-${contentLayout}` : "",
     );
@@ -53,7 +54,7 @@
 
 <button
     {type}
-    class={`${computedClassName} ${variant} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
+    class={`${computedClassName} ${variantClass} ${shapeClass} ${contentLayoutClass} ${selected ? "selected" : ""}`}
     {disabled}
     aria-label={ariaLabel}
     {style}

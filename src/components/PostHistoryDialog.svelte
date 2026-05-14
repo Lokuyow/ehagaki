@@ -1181,6 +1181,7 @@
                 <div class="post-history-nav-row post-history-nav-row-top">
                     <Button
                         type="button"
+                        variant="default"
                         className="post-history-nav-button"
                         onClick={() => void handleLoadNewer()}
                     >
@@ -1589,6 +1590,7 @@
                 <div class="post-history-nav-row post-history-nav-row-bottom">
                     <Button
                         type="button"
+                        variant="default"
                         className="post-history-nav-button"
                         onClick={() => void handleLoadOlder()}
                     >
@@ -1601,6 +1603,7 @@
                         {#if history.canFetchOlderFromRelays || history.isFetchingOlderFromRelays}
                             <Button
                                 type="button"
+                                variant="default"
                                 className="post-history-nav-button"
                                 disabled={history.isFetchingOlderFromRelays}
                                 onClick={() =>
@@ -1634,6 +1637,7 @@
         <div class="post-history-latest-row">
             <Button
                 type="button"
+                variant="default"
                 className="post-history-latest-button"
                 onClick={() => void handleReturnToLatest()}
             >
@@ -1648,7 +1652,6 @@
                 <Button
                     {...props}
                     className="modal-close"
-                    variant="default"
                     shape="square"
                     ariaLabel={$_("global.close")}
                 >
