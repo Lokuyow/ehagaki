@@ -814,8 +814,12 @@ export function usePostHistoryListing({
             return false;
         }
 
-        state.loadedPosts = nextPosts;
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
+        if (!getShow() || requestId !== loadRequestId) {
+            return false;
+        }
+
+        state.loadedPosts = nextPosts;
         return true;
     }
 

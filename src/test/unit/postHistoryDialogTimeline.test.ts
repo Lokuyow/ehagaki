@@ -347,6 +347,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             postedAt: Date.UTC(2023, 11, 31, 0, 0, 0),
         });
         const newerChunk = createDeferred<ReturnType<typeof createRecord>[]>();
+        const newerAvailability = createDeferred<ReturnType<typeof createRecord>[]>();
 
         repositoryMock.countForPubkey.mockResolvedValue(4);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([newest, middle]);
@@ -355,7 +356,7 @@ describe('PostHistoryDialog timeline navigation', () => {
             .mockResolvedValueOnce([])
             .mockResolvedValueOnce([middle])
             .mockReturnValueOnce(newerChunk.promise)
-            .mockResolvedValueOnce([]);
+            .mockReturnValueOnce(newerAvailability.promise);
         repositoryMock.getOlderVisibleChunk
             .mockResolvedValueOnce([older])
             .mockResolvedValueOnce([])
@@ -441,6 +442,12 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(historyContainer.scrollTop).toBe(240);
 
         newerChunk.resolve([newest, middle]);
+        await Promise.resolve();
+
+        expect(screen.queryByText('最新投稿')).toBeNull();
+        expect(historyContainer.scrollTop).toBe(240);
+
+        newerAvailability.resolve([]);
 
         await waitFor(() => {
             expect(screen.getByText('最新投稿')).toBeTruthy();
