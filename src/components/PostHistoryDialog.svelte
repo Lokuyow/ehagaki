@@ -1181,8 +1181,13 @@
                         type="button"
                         variant="default"
                         className="post-history-nav-button"
+                        contentLayout="iconText"
                         onClick={() => void handleLoadNewer()}
                     >
+                        <div
+                            class="keyboard-arrow-up-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
                         {getLoadNewerLabel()}
                     </Button>
                 </div>
@@ -1590,8 +1595,13 @@
                         type="button"
                         variant="default"
                         className="post-history-nav-button"
+                        contentLayout="iconText"
                         onClick={() => void handleLoadOlder()}
                     >
+                        <div
+                            class="keyboard-arrow-down-icon svg-icon"
+                            aria-hidden="true"
+                        ></div>
                         {getLoadOlderLabel()}
                     </Button>
                 </div>
@@ -1603,6 +1613,7 @@
                                 type="button"
                                 variant="primary"
                                 className="post-history-nav-button"
+                                contentLayout="iconText"
                                 disabled={history.isFetchingOlderFromRelays}
                                 onClick={() =>
                                     void handleFetchOlderFromRelays()}
@@ -1617,6 +1628,10 @@
                                         customClass="post-history-nav-loading-placeholder"
                                     />
                                 {:else}
+                                    <div
+                                        class="cloud-download-icon svg-icon"
+                                        aria-hidden="true"
+                                    ></div>
                                     {$_("postHistory.fetchOlderFromRelays")}
                                 {/if}
                             </Button>
@@ -1637,9 +1652,14 @@
                 type="button"
                 variant="default"
                 className="post-history-latest-button"
+                contentLayout="icon"
+                ariaLabel={$_("postHistory.returnToLatest")}
                 onClick={() => void handleReturnToLatest()}
             >
-                {$_("postHistory.returnToLatest")}
+                <div
+                    class="vertical-align-top-icon svg-icon"
+                    aria-hidden="true"
+                ></div>
             </Button>
         </div>
     {/if}
@@ -1965,6 +1985,7 @@
         z-index: 3;
 
         :global(.post-history-latest-button) {
+            min-width: 50px;
             min-height: 40px;
             background-color: color-mix(
                 in srgb,
@@ -2235,6 +2256,30 @@
         ) {
         mask-image: url("/icons/vertical_align_bottom_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         background-color: currentColor;
+    }
+
+    :global(.post-history-nav-button .keyboard-arrow-up-icon) {
+        mask-image: url("/icons/keyboard_arrow_up_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 28px;
+        height: 28px;
+    }
+
+    :global(.post-history-nav-button .keyboard-arrow-down-icon) {
+        mask-image: url("/icons/keyboard_arrow_down_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 28px;
+        height: 28px;
+    }
+
+    :global(.post-history-nav-button .cloud-download-icon) {
+        mask-image: url("/icons/cloud_download_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 28px;
+        height: 28px;
+    }
+
+    :global(.post-history-latest-button .vertical-align-top-icon) {
+        mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 28px;
+        height: 28px;
     }
 
     @keyframes popover-in {

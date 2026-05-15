@@ -69,10 +69,10 @@
         background-color: var(--btn-bg);
     }
     /* --- Variant Styles --- */
-    .default {
+    :global(html body :where(.default)) {
         padding: 8px 12px 8px 12px;
 
-        :global(.svg-icon) {
+        :global(:where(.svg-icon)) {
             width: 24px;
             height: 24px;
         }
@@ -95,7 +95,7 @@
         --svg: hsl(0, 0%, 99%);
     }
 
-    .primary {
+    :global(html body :where(.primary)) {
         --btn-bg: var(--theme);
         --text: white;
         font-weight: 500;
@@ -284,9 +284,13 @@
     }
 
     /* --- Content Layout Styles --- */
-    .content-iconText {
+    :global(html body :where(.content-iconText)) {
         gap: 8px;
-        padding: 12px 18px 12px 16px;
+        padding: 12px 18px 12px 14px;
+
+        :global(.svg-icon) {
+            background-color: currentColor;
+        }
     }
 
     .content-icon {
