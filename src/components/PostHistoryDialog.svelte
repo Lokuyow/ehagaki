@@ -1953,9 +1953,10 @@
         padding-top: 0;
     }
 
-    :global(.post-history-nav-button) {
+    :global(.post-history-nav-button:not(.primary)) {
         min-height: 50px;
         white-space: nowrap;
+        gap: 4px;
     }
 
     .post-history-exhausted-state {
