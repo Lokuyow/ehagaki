@@ -12,7 +12,8 @@
     const HARNESS_PUBKEY = "f".repeat(64);
     const TOTAL_POSTS = 70;
     const SEARCH_MATCHING_POSTS = 55;
-    const STARTED_AT_MS = Date.UTC(2024, 2, 10, 12, 0, 0);
+    const HARNESS_YEAR = new Date().getFullYear();
+    const STARTED_AT_MS = Date.UTC(HARNESS_YEAR, 0, 20, 12, 0, 0);
 
     let ready = $state(false);
 
@@ -22,6 +23,9 @@
         totalPosts: number;
         matchingPosts: number;
         jumpDate: string;
+        initialMonthLabel: string;
+        scrollTargetContent: string;
+        scrollTargetMonthLabel: string;
     };
 
     type HarnessWindow = Window &
@@ -71,6 +75,14 @@
         buildPost(index),
     );
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
+    const scrollTargetPost = posts[60];
+    const initialMonthLabel = new Intl.DateTimeFormat("ja", {
+        month: "long",
+    }).format(new Date(posts[0].postedAt));
+    const scrollTargetMonthLabel = new Intl.DateTimeFormat("ja", {
+        year: "numeric",
+        month: "long",
+    }).format(new Date(scrollTargetPost.postedAt));
 
     (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {
         ready: false,
@@ -78,6 +90,9 @@
         totalPosts: TOTAL_POSTS,
         matchingPosts: SEARCH_MATCHING_POSTS,
         jumpDate,
+        initialMonthLabel,
+        scrollTargetContent: scrollTargetPost.content,
+        scrollTargetMonthLabel,
     };
 
     onMount(async () => {
@@ -97,6 +112,9 @@
             totalPosts: TOTAL_POSTS,
             matchingPosts: SEARCH_MATCHING_POSTS,
             jumpDate,
+            initialMonthLabel,
+            scrollTargetContent: scrollTargetPost.content,
+            scrollTargetMonthLabel,
         };
     });
 </script>

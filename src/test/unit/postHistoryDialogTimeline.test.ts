@@ -15,12 +15,44 @@ import {
     relayFetchServiceMock,
 } from './postHistoryDialogTestHarness';
 
+function createMockRect(top: number, height: number) {
+    return {
+        top,
+        bottom: top + height,
+        left: 0,
+        right: 320,
+        width: 320,
+        height,
+        x: 0,
+        y: top,
+        toJSON: () => ({ top, height }),
+    };
+}
+
+function mockHistoryItemLayout(container: HTMLDivElement): void {
+    Object.defineProperty(container, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => createMockRect(0, 320),
+    });
+
+    const items = Array.from(
+        container.querySelectorAll<HTMLElement>('.post-history-item'),
+    );
+    for (const [index, item] of items.entries()) {
+        Object.defineProperty(item, 'getBoundingClientRect', {
+            configurable: true,
+            value: () => createMockRect(index * 84 - container.scrollTop, 72),
+        });
+    }
+}
+
 describe('PostHistoryDialog timeline navigation', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
     });
 
     afterEach(() => {
+        vi.unstubAllGlobals();
         cleanupPostHistoryDialogHarness();
     });
 
@@ -78,7 +110,71 @@ describe('PostHistoryDialog timeline navigation', () => {
         await waitFor(() => {
             expect(screen.getByText('古い投稿')).toBeTruthy();
             expect(screen.getByText('最古投稿')).toBeTruthy();
-            expect(screen.getByText('4件表示 / 全 4件')).toBeTruthy();
+            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('4件');
+            expect(document.querySelector('.post-history-summary-range')).toBeNull();
+        });
+
+        view.unmount();
+    });
+
+    it('先頭付近の投稿に応じて月ラベルを更新し、件数は総件数だけを表示する', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(Date.UTC(2024, 4, 15, 12, 0, 0));
+        vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+            callback(0);
+            return 1;
+        });
+        vi.stubGlobal('cancelAnimationFrame', vi.fn());
+
+        const mayPostedAt = Date.UTC(2024, 4, 3, 0, 0, 0);
+        const decemberPostedAt = Date.UTC(2023, 11, 20, 0, 0, 0);
+
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({
+                eventId: 'month-current-year',
+                content: '今年の5月投稿',
+                createdAt: Math.floor(mayPostedAt / 1000),
+                postedAt: mayPostedAt,
+            }),
+            createRecord({
+                eventId: 'month-previous-year',
+                content: '前年の12月投稿',
+                createdAt: Math.floor(decemberPostedAt / 1000),
+                postedAt: decemberPostedAt,
+            }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('今年の5月投稿')).toBeTruthy();
+        });
+
+        const historyContainer = getHistoryContainer();
+        mockHistoryItemLayout(historyContainer);
+
+        await fireEvent.scroll(historyContainer);
+
+        await waitFor(() => {
+            expect(screen.getByRole('heading', { level: 3, name: '5月' })).toBeTruthy();
+            expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
+            expect(document.querySelector('.post-history-summary-range')).toBeNull();
+        });
+
+        historyContainer.scrollTop = 84;
+        await fireEvent.scroll(historyContainer);
+
+        await waitFor(() => {
+            expect(screen.getByRole('heading', { level: 3, name: '2023年12月' })).toBeTruthy();
         });
 
         view.unmount();

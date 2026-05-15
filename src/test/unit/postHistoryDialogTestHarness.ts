@@ -15,8 +15,8 @@ const hoisted = vi.hoisted(() => {
             'postHistory.hideSearch': '検索を閉じる',
             'postHistory.searchPlaceholder': '投稿履歴を検索',
             'postHistory.visibleRange': `表示中: ${options?.values?.from}〜${options?.values?.to}`,
-            'postHistory.visibleCountSummary': `${options?.values?.visible}件表示 / 全 ${options?.values?.total}件`,
-            'postHistory.searchCountSummary': `${options?.values?.visible}件表示 / ${options?.values?.total}件一致`,
+            'postHistory.visibleCountSummary': `${options?.values?.total}件`,
+            'postHistory.searchCountSummary': `${options?.values?.total}件`,
             'postHistory.loadOlder': 'さらに古い投稿を表示',
             'postHistory.loadNewer': '新しい投稿を表示',
             'postHistory.loadOlderSearchResults': 'さらに古い検索結果を表示',
@@ -138,6 +138,7 @@ export const customEmojiMock = hoisted.customEmojiMock;
 
 vi.mock('svelte-i18n', () => ({
     _: readable(hoisted.mockTranslate),
+    locale: readable('ja'),
 }));
 
 vi.mock('photoswipe', () => ({

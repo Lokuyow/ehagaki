@@ -17,8 +17,8 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.searchNoResults': '一致する投稿はありません',
         'postHistory.searchResults': '検索結果',
         'postHistory.visibleRange': `表示中: ${options?.values?.from}〜${options?.values?.to}`,
-        'postHistory.visibleCountSummary': `${options?.values?.visible}件表示 / 全 ${options?.values?.total}件`,
-        'postHistory.searchCountSummary': `${options?.values?.visible}件表示 / ${options?.values?.total}件一致`,
+        'postHistory.visibleCountSummary': `${options?.values?.total}件`,
+        'postHistory.searchCountSummary': `${options?.values?.total}件`,
         'postHistory.loadOlder': 'さらに古い投稿を表示',
         'postHistory.loadNewer': '新しい投稿を表示',
         'postHistory.loadOlderSearchResults': 'さらに古い検索結果を表示',
@@ -219,6 +219,7 @@ const photoSwipeMock = vi.hoisted(() => {
 
 vi.mock('svelte-i18n', () => ({
     _: readable(mockTranslate),
+    locale: readable('ja'),
 }));
 
 vi.mock('photoswipe', () => ({

@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { RxNostr } from "rx-nostr";
     import { flushSync, tick } from "svelte";
-    import { _ } from "svelte-i18n";
+    import { _, locale } from "svelte-i18n";
     import { Dialog, DropdownMenu } from "bits-ui";
     import Button from "./Button.svelte";
     import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -88,6 +88,7 @@
     let copyFloatingMessageX = $state(0);
     let copyFloatingMessageY = $state(0);
     let copyFloatingMessageTimeout: ReturnType<typeof setTimeout> | undefined;
+    let currentMonthLabel = $state<string | null>(null);
     let lastCopyPointerPosition:
         | { eventId: string; x: number; y: number }
         | undefined;
@@ -112,11 +113,13 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    let historyMonthLabelFrameId: number | null = null;
     type HistoryScrollAnchor = {
         eventId: string;
         offsetTop: number;
     };
     const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
+    const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
         getShow: () => show,
@@ -161,6 +164,8 @@
     function resetDialogState(): void {
         copyState = {};
         hideCopyFloatingMessage();
+        cancelCurrentMonthLabelFrame();
+        currentMonthLabel = null;
         deleteConfirmOpen = false;
         deleteTargetPost = null;
         localHistoryDeleteConfirmOpen = false;
@@ -217,6 +222,29 @@
 
     $effect(() => {
         if (!show) {
+            currentMonthLabel = null;
+            return;
+        }
+
+        historyContainer;
+        history.posts;
+        $locale;
+
+        void tick().then(() => {
+            if (!show) {
+                return;
+            }
+
+            updateCurrentMonthLabel();
+        });
+
+        return () => {
+            cancelCurrentMonthLabelFrame();
+        };
+    });
+
+    $effect(() => {
+        if (!show) {
             return;
         }
 
@@ -257,37 +285,19 @@
     function resetHistoryScrollPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = 0;
+            scheduleCurrentMonthLabelUpdate();
         }
     }
 
     function resetHistoryScrollToBottomPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = historyContainer.scrollHeight;
+            scheduleCurrentMonthLabelUpdate();
         }
-    }
-
-    function formatDateRangeValue(createdAt: number | null): string | null {
-        if (typeof createdAt !== "number") {
-            return null;
-        }
-
-        return formatPostedAt(createdAt * 1000);
-    }
-
-    function buildVisibleRangeLabel(): string | null {
-        const from = formatDateRangeValue(history.visibleNewestCreatedAt);
-        const to = formatDateRangeValue(history.visibleOldestCreatedAt);
-        if (!from || !to) {
-            return null;
-        }
-
-        return $_("postHistory.visibleRange", {
-            values: { from, to },
-        });
     }
 
     function buildVisibleCountLabel(): string | null {
-        if (history.displayTotalCount <= 0 || history.visiblePostCount <= 0) {
+        if (history.displayTotalCount <= 0) {
             return null;
         }
 
@@ -297,11 +307,108 @@
                 : "postHistory.visibleCountSummary",
             {
                 values: {
-                    visible: history.visiblePostCount,
                     total: history.displayTotalCount,
                 },
             },
         );
+    }
+
+    function formatCurrentMonthLabel(
+        postedAt: number,
+        localeValue: string | null | undefined,
+        now: number = Date.now(),
+    ): string {
+        const postedDate = new Date(postedAt);
+        const nowDate = new Date(now);
+
+        return new Intl.DateTimeFormat(localeValue ?? undefined, {
+            ...(postedDate.getFullYear() === nowDate.getFullYear()
+                ? { month: "long" }
+                : { year: "numeric", month: "long" }),
+        }).format(postedDate);
+    }
+
+    function findTopVisiblePostPostedAt(): number | null {
+        if (!historyContainer) {
+            return null;
+        }
+
+        const containerRect = historyContainer.getBoundingClientRect();
+        const targetTop = containerRect.top + HISTORY_MONTH_LABEL_OFFSET_PX;
+        const items = Array.from(
+            historyContainer.querySelectorAll<HTMLElement>(
+                "[data-post-history-event-id]",
+            ),
+        );
+        let firstVisiblePostedAt: number | null = null;
+
+        for (const item of items) {
+            const postedAt = Number(item.dataset.postHistoryPostedAt);
+            if (!Number.isFinite(postedAt)) {
+                continue;
+            }
+
+            const itemRect = item.getBoundingClientRect();
+            const isVisible =
+                itemRect.bottom >
+                    containerRect.top +
+                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX &&
+                itemRect.top <
+                    containerRect.bottom -
+                        HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
+
+            if (!isVisible) {
+                continue;
+            }
+
+            if (itemRect.top <= targetTop && itemRect.bottom > targetTop) {
+                return postedAt;
+            }
+
+            if (firstVisiblePostedAt === null) {
+                firstVisiblePostedAt = postedAt;
+            }
+        }
+
+        return firstVisiblePostedAt;
+    }
+
+    function updateCurrentMonthLabel(): void {
+        if (!show || history.posts.length === 0) {
+            currentMonthLabel = null;
+            return;
+        }
+
+        const postedAt = findTopVisiblePostPostedAt();
+        currentMonthLabel =
+            postedAt === null
+                ? null
+                : formatCurrentMonthLabel(postedAt, $locale);
+    }
+
+    function cancelCurrentMonthLabelFrame(): void {
+        if (historyMonthLabelFrameId === null) {
+            return;
+        }
+
+        cancelAnimationFrame(historyMonthLabelFrameId);
+        historyMonthLabelFrameId = null;
+    }
+
+    function scheduleCurrentMonthLabelUpdate(): void {
+        if (!show) {
+            return;
+        }
+
+        cancelCurrentMonthLabelFrame();
+        historyMonthLabelFrameId = requestAnimationFrame(() => {
+            historyMonthLabelFrameId = null;
+            updateCurrentMonthLabel();
+        });
+    }
+
+    function handleHistoryScroll(): void {
+        scheduleCurrentMonthLabelUpdate();
     }
 
     function parseDateInputToCreatedAt(value: string): number | null {
@@ -402,6 +509,7 @@
         const itemRect = anchoredItem.getBoundingClientRect();
         const nextOffsetTop = itemRect.top - containerRect.top;
         historyContainer.scrollTop += nextOffsetTop - anchor.offsetTop;
+        scheduleCurrentMonthLabelUpdate();
     }
 
     function getLoadOlderLabel(): string {
@@ -955,150 +1063,131 @@
     initialFocus="content"
 >
     <div class="post-history-heading">
-        <div class="post-history-heading-top">
-            <div class="post-history-heading-main">
-                <h3>{$_("postHistory.title")}</h3>
-            </div>
-            <div class="post-history-heading-actions">
-                {#if headingStatusMessageKey}
-                    <LoadingPlaceholder
-                        text={headingStatusMessageValues
-                            ? $_(headingStatusMessageKey, {
-                                  values: headingStatusMessageValues,
-                              })
-                            : $_(headingStatusMessageKey)}
-                        showLoader={history.showStatusLoader}
-                        loaderSize={25}
-                        state={history.showStatusLoader
-                            ? "loading"
-                            : "complete"}
-                        customClass={`status-loading-placeholder${
-                            headingStatusError ? " status-error" : ""
-                        }`}
-                    />
-                {/if}
-                <DropdownMenu.Root bind:open={headingMenuOpen}>
-                    <DropdownMenu.Trigger
-                        class="menu-trigger post-history-heading-menu-trigger"
-                        aria-label={$_("postHistory.openMenu")}
-                    >
-                        <div class="more-icon svg-icon"></div>
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Portal>
-                        <DropdownMenu.Content
-                            side="bottom"
-                            align="end"
-                            sideOffset={8}
-                            class="post-history-menu-content"
-                            trapFocus={false}
-                            preventScroll={false}
-                            onCloseAutoFocus={(event: Event) =>
-                                event.preventDefault()}
-                        >
-                            <div class="post-history-menu-body">
-                                <DropdownMenu.Item
-                                    class="menu-action-button"
-                                    disabled={!history.canReturnToLatest}
-                                    onSelect={handleReturnToLatestFromMenu}
-                                >
-                                    <div
-                                        class="return-to-latest-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span
-                                        >{$_(
-                                            "postHistory.returnToLatest",
-                                        )}</span
-                                    >
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Item
-                                    class="menu-action-button"
-                                    onSelect={showSearch}
-                                >
-                                    <div
-                                        class="search-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span>{$_("postHistory.showSearch")}</span>
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Item
-                                    class="menu-action-button"
-                                    onSelect={showJumpDate}
-                                >
-                                    <div
-                                        class="calendar-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span>{$_("postHistory.jumpToDate")}</span>
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Item
-                                    class="menu-action-button"
-                                    disabled={!history.canJumpToOldest}
-                                    onSelect={handleJumpToOldestFromMenu}
-                                >
-                                    <div
-                                        class="jump-to-oldest-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span>
-                                        {$_("postHistory.jumpToOldest")}
-                                    </span>
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Separator
-                                    class="post-history-menu-separator"
-                                />
-                                <DropdownMenu.Item
-                                    class="menu-action-button"
-                                    disabled={!history.canRefetchAroundCurrentView}
-                                    onSelect={handleRefetchAroundCurrentViewFromMenu}
-                                >
-                                    <div
-                                        class="repair-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span>
-                                        {history.isRefetchingAroundCurrentView
-                                            ? $_("postHistory.repairing")
-                                            : $_("postHistory.repair")}
-                                    </span>
-                                </DropdownMenu.Item>
-                                <DropdownMenu.Item
-                                    class="menu-action-button menu-action-button-danger"
-                                    onSelect={openLocalHistoryDeleteConfirm}
-                                >
-                                    <div
-                                        class="trash-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    <span
-                                        >{$_(
-                                            "postHistory.deleteLocalHistory",
-                                        )}</span
-                                    >
-                                </DropdownMenu.Item>
-                            </div>
-                        </DropdownMenu.Content>
-                    </DropdownMenu.Portal>
-                </DropdownMenu.Root>
-            </div>
+        <div class="post-history-heading-main">
+            {#if currentMonthLabel}
+                <h3 class="post-history-current-month">{currentMonthLabel}</h3>
+            {/if}
         </div>
-        {#if history.posts.length > 0}
+        <div class="post-history-heading-actions">
+            {#if headingStatusMessageKey}
+                <LoadingPlaceholder
+                    text={headingStatusMessageValues
+                        ? $_(headingStatusMessageKey, {
+                              values: headingStatusMessageValues,
+                          })
+                        : $_(headingStatusMessageKey)}
+                    showLoader={history.showStatusLoader}
+                    loaderSize={25}
+                    state={history.showStatusLoader ? "loading" : "complete"}
+                    customClass={`status-loading-placeholder${
+                        headingStatusError ? " status-error" : ""
+                    }`}
+                />
+            {/if}
+            <DropdownMenu.Root bind:open={headingMenuOpen}>
+                <DropdownMenu.Trigger
+                    class="menu-trigger post-history-heading-menu-trigger"
+                    aria-label={$_("postHistory.openMenu")}
+                >
+                    <div class="more-icon svg-icon"></div>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                    <DropdownMenu.Content
+                        side="bottom"
+                        align="end"
+                        sideOffset={8}
+                        class="post-history-menu-content"
+                        trapFocus={false}
+                        preventScroll={false}
+                        onCloseAutoFocus={(event: Event) =>
+                            event.preventDefault()}
+                    >
+                        <div class="post-history-menu-body">
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                disabled={!history.canReturnToLatest}
+                                onSelect={handleReturnToLatestFromMenu}
+                            >
+                                <div
+                                    class="return-to-latest-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.returnToLatest")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                onSelect={showSearch}
+                            >
+                                <div
+                                    class="search-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.showSearch")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                onSelect={showJumpDate}
+                            >
+                                <div
+                                    class="calendar-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.jumpToDate")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                disabled={!history.canJumpToOldest}
+                                onSelect={handleJumpToOldestFromMenu}
+                            >
+                                <div
+                                    class="jump-to-oldest-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.jumpToOldest")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Separator
+                                class="post-history-menu-separator"
+                            />
+                            <DropdownMenu.Item
+                                class="menu-action-button"
+                                disabled={!history.canRefetchAroundCurrentView}
+                                onSelect={handleRefetchAroundCurrentViewFromMenu}
+                            >
+                                <div
+                                    class="repair-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>
+                                    {history.isRefetchingAroundCurrentView
+                                        ? $_("postHistory.repairing")
+                                        : $_("postHistory.repair")}
+                                </span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Item
+                                class="menu-action-button menu-action-button-danger"
+                                onSelect={openLocalHistoryDeleteConfirm}
+                            >
+                                <div
+                                    class="trash-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>
+                                    {$_("postHistory.deleteLocalHistory")}
+                                </span>
+                            </DropdownMenu.Item>
+                        </div>
+                    </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+        </div>
+        {#if history.posts.length > 0 && buildVisibleCountLabel()}
             <div class="post-history-heading-summary">
                 <div class="post-history-summary-row">
-                    {#if buildVisibleRangeLabel()}
-                        <span
-                            class="post-history-summary-line post-history-summary-range"
-                        >
-                            {buildVisibleRangeLabel()}
-                        </span>
-                    {/if}
-                    {#if buildVisibleCountLabel()}
-                        <span
-                            class="post-history-summary-line post-history-summary-count"
-                        >
-                            {buildVisibleCountLabel()}
-                        </span>
-                    {/if}
+                    <span
+                        class="post-history-summary-line post-history-summary-count"
+                    >
+                        {buildVisibleCountLabel()}
+                    </span>
                 </div>
             </div>
         {/if}
@@ -1165,7 +1254,11 @@
         </div>
     {/if}
 
-    <div class="post-history-container" bind:this={historyContainer}>
+    <div
+        class="post-history-container"
+        bind:this={historyContainer}
+        onscroll={handleHistoryScroll}
+    >
         {#if history.posts.length === 0}
             <div class="empty-state">
                 <div class="empty-message">
@@ -1197,6 +1290,7 @@
                     <li
                         class="post-history-item"
                         data-post-history-event-id={post.eventId}
+                        data-post-history-posted-at={post.postedAt}
                         class:post-history-item-deleted={!!post.deletedAt}
                     >
                         <div class="post-history-main">
@@ -1777,34 +1871,44 @@
     }
 
     .post-history-heading {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-rows: auto auto;
+        align-items: start;
+        column-gap: 12px;
+        row-gap: 6px;
         width: 100%;
         padding: 0 10px 10px;
         border-bottom: 1px solid var(--border-hr);
     }
 
-    .post-history-heading-top {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        width: 100%;
+    .post-history-heading-main {
+        grid-column: 1;
+        grid-row: 1 / span 2;
         min-width: 0;
+        align-self: stretch;
     }
 
-    .post-history-heading-main {
-        min-width: 0;
-        flex: 1 1 auto;
+    .post-history-current-month {
+        display: flex;
+        align-items: flex-start;
+        min-height: calc(2 * 1.05em);
+        margin: 0;
+        font-size: clamp(1.85rem, 6vw, 2.7rem);
+        line-height: 1.05;
+        font-weight: 600;
+        letter-spacing: -0.04em;
+        overflow-wrap: anywhere;
     }
 
     .post-history-heading-actions {
+        grid-column: 2;
+        grid-row: 1;
         display: flex;
-        align-items: center;
+        align-items: flex-start;
+        justify-self: end;
         gap: 8px;
-        flex: 0 0 auto;
+        min-width: 0;
 
         :global(.post-history-heading-menu-trigger) {
             min-height: 36px;
@@ -1826,8 +1930,11 @@
     }
 
     .post-history-heading-summary {
+        grid-column: 2;
+        grid-row: 2;
         display: flex;
-        width: 100%;
+        justify-self: end;
+        align-self: end;
         color: var(--text-muted);
         font-size: 0.875rem;
         line-height: 1.35;
@@ -1836,29 +1943,19 @@
     .post-history-summary-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
+        justify-content: flex-end;
         gap: 8px;
-        width: 100%;
-        flex-wrap: wrap;
+        min-width: 0;
     }
 
     .post-history-summary-line {
         overflow-wrap: anywhere;
     }
 
-    .post-history-summary-range {
-        min-width: 0;
-        flex: 1 1 auto;
-    }
-
     .post-history-summary-count {
         flex: 0 0 auto;
         white-space: nowrap;
-    }
-
-    .post-history-heading h3 {
-        min-width: 0;
-        margin: 0;
+        text-align: right;
     }
 
     :global(.post-history-repair-button) {

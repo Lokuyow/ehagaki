@@ -5,6 +5,9 @@ type HarnessState = {
     totalPosts: number;
     matchingPosts: number;
     jumpDate: string;
+    initialMonthLabel: string;
+    scrollTargetContent: string;
+    scrollTargetMonthLabel: string;
 };
 
 type HarnessWindow = Window & typeof globalThis & {
@@ -17,16 +20,20 @@ async function gotoHarness(page: Page) {
     return page.evaluate<HarnessState>(() => (window as HarnessWindow).__POST_HISTORY_HARNESS__ as HarnessState);
 }
 
-async function expectSummary(page: Page, options: { shown: number; total?: number; matching?: number }) {
-    const summary = page.locator('.post-history-heading-summary');
+async function expectSummary(page: Page, total: number) {
+    const summary = page.locator('.post-history-summary-count');
     await expect(summary).toBeVisible();
-    await expect(summary).toContainText(`${options.shown}`);
-    if (options.total !== undefined) {
-        await expect(summary).toContainText(`${options.total} 件`);
-    }
-    if (options.matching !== undefined) {
-        await expect(summary).toContainText(`${options.matching} 件`);
-    }
+    await expect(summary).toHaveText(`${total}件`);
+}
+
+async function expectCurrentMonthLabel(page: Page, label: string) {
+    await expect(page.locator('.post-history-current-month')).toHaveText(label);
+}
+
+async function scrollPostIntoView(page: Page, content: string) {
+    await page.getByText(content, { exact: true }).evaluate((element) => {
+        element.closest('.post-history-item')?.scrollIntoView({ block: 'start' });
+    });
 }
 
 async function expectVisiblePostCount(page: Page, count: number) {
@@ -88,7 +95,9 @@ test.describe('PostHistoryDialog Playwright', () => {
         const harness = await gotoHarness(page);
         const dialog = page.locator('.post-history-dialog');
         await expect(dialog).toBeVisible();
-        await expectSummary(page, { shown: 50, total: harness.totalPosts });
+        await expectSummary(page, harness.totalPosts);
+        await expectCurrentMonthLabel(page, harness.initialMonthLabel);
+        await expect(page.locator('.post-history-summary-range')).toHaveCount(0);
         await expectVisiblePostCount(page, 50);
 
         const viewport = page.viewportSize();
@@ -97,21 +106,23 @@ test.describe('PostHistoryDialog Playwright', () => {
         expect(dialogBox!.width).toBeLessThanOrEqual((viewport?.width ?? 0) - 16);
 
         await page.getByRole('button', { name: 'さらに古い投稿を表示' }).click();
-        await expectSummary(page, { shown: harness.totalPosts, total: harness.totalPosts });
+        await expectSummary(page, harness.totalPosts);
         await expectVisiblePostCount(page, harness.totalPosts);
+        await scrollPostIntoView(page, harness.scrollTargetContent);
+        await expectCurrentMonthLabel(page, harness.scrollTargetMonthLabel);
 
         await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
         await page.getByRole('menuitem', { name: '検索' }).click();
         await page.getByRole('searchbox', { name: '検索' }).fill('alpha');
-        await expectSummary(page, { shown: 50, matching: harness.matchingPosts });
+        await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, 50);
 
         await page.getByRole('button', { name: 'さらに古い検索結果を表示' }).click();
-        await expectSummary(page, { shown: harness.matchingPosts - 50, matching: harness.matchingPosts });
+        await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, harness.matchingPosts - 50);
 
         await page.getByRole('button', { name: '新しい検索結果を表示' }).click();
-        await expectSummary(page, { shown: 50, matching: harness.matchingPosts });
+        await expectSummary(page, harness.matchingPosts);
         await expectVisiblePostCount(page, 50);
     });
 
@@ -132,7 +143,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         await newerButton.click();
 
-        await expectSummary(page, { shown: 64, total: harness.totalPosts });
+        await expectSummary(page, harness.totalPosts);
         await expectVisiblePostCount(page, 64);
         const after = await getPostSnapshotByEventId(page, before!.eventId);
         expect(after).not.toBeNull();
@@ -146,7 +157,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         const harness = await gotoHarness(page);
         const dialog = page.locator('.post-history-dialog');
         await expect(dialog).toBeVisible();
-        await expectSummary(page, { shown: 50, total: harness.totalPosts });
+        await expectSummary(page, harness.totalPosts);
         await expectVisiblePostCount(page, 50);
 
         const viewport = page.viewportSize();
@@ -170,7 +181,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         await expect(page.getByRole('button', { name: '新しい投稿を表示' })).toBeVisible();
 
         await page.getByRole('button', { name: '最新へ戻る' }).click();
-        await expectSummary(page, { shown: 50, total: harness.totalPosts });
+        await expectSummary(page, harness.totalPosts);
         await expectVisiblePostCount(page, 50);
     });
 

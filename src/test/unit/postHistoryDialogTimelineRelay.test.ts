@@ -446,7 +446,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             });
             expect(screen.getByText('初回表示できる投稿')).toBeTruthy();
             expect(screen.queryByText('初回ではまだ表示しない投稿')).toBeNull();
-            expect(screen.getByText('1件表示 / 全 1件')).toBeTruthy();
+            expect(screen.getByText('1件')).toBeTruthy();
         });
 
         view.unmount();
@@ -507,7 +507,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('50件表示 / 全 50件')).toBeTruthy();
+            expect(screen.getByText('50件')).toBeTruthy();
         });
 
         await waitFor(() => {
@@ -533,7 +533,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('50件表示 / 全 51件')).toBeTruthy();
+            expect(screen.getByText('51件')).toBeTruthy();
         });
 
         repairComplete.resolve({
@@ -906,7 +906,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     until: 150,
                 }),
             );
-            expect(screen.getByText('2件表示 / 全 2件')).toBeTruthy();
+            expect(screen.getByText('2件')).toBeTruthy();
             expect(screen.getByText('追加取得した古い投稿')).toBeTruthy();
         });
 
