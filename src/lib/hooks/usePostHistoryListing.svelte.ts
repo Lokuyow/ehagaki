@@ -102,6 +102,38 @@ const persistedListingSnapshotByPubkey = new Map<
     PersistedPostHistoryListingSnapshot
 >();
 
+interface ResolvePostHistoryOlderRelayFetchUntilParams {
+    nextUntil: number | null;
+    visibleOldestCreatedAt: number | null;
+    pubkeyHex: string;
+    getOldestCreatedAt: (pubkeyHex: string) => Promise<number | null>;
+    getNowSeconds?: () => number;
+}
+
+export async function resolvePostHistoryOlderRelayFetchUntil({
+    nextUntil,
+    visibleOldestCreatedAt,
+    pubkeyHex,
+    getOldestCreatedAt,
+    getNowSeconds = () => Math.floor(Date.now() / 1000),
+}: ResolvePostHistoryOlderRelayFetchUntilParams): Promise<number | null> {
+    if (typeof nextUntil === "number") {
+        return nextUntil;
+    }
+
+    if (typeof visibleOldestCreatedAt === "number") {
+        return visibleOldestCreatedAt;
+    }
+
+    const dbOldestCreatedAt = await getOldestCreatedAt(pubkeyHex);
+    if (typeof dbOldestCreatedAt === "number") {
+        return dbOldestCreatedAt;
+    }
+
+    const nowSeconds = getNowSeconds();
+    return Number.isFinite(nowSeconds) ? nowSeconds : null;
+}
+
 function resolveListingSnapshotKey(
     pubkeyHex: string | null | undefined,
 ): string | null {
@@ -271,16 +303,17 @@ export function usePostHistoryListing({
         !!getRxNostr() &&
         !isRefetchingAroundCurrentView &&
         state.syncStatus !== "syncing" &&
-        state.syncStatus !== "older-syncing" &&
-        state.syncStatus !== "no-more" &&
-        state.hasMoreRemote &&
-        state.nextUntil !== null,
+        state.syncStatus !== "older-syncing",
     );
     const hasRemoteContinuationNotice = $derived(
         !isSearchMode && state.hasConservativeRemoteContinuationNotice,
     );
     const isFetchingOlderFromRelays = $derived(
         !isSearchMode && state.syncStatus === "older-syncing",
+    );
+    const isFetchingFromRelays = $derived(
+        !isSearchMode &&
+        (state.syncStatus === "syncing" || state.syncStatus === "older-syncing"),
     );
     const showLocalExhaustedState = $derived(
         !isSearchMode &&
@@ -481,6 +514,43 @@ export function usePostHistoryListing({
         }
 
         state.hasConservativeRemoteContinuationNotice = true;
+    }
+
+    async function resolveOlderRelayFetchUntil(
+        pubkeyHex: string,
+    ): Promise<number | null> {
+        return resolvePostHistoryOlderRelayFetchUntil({
+            nextUntil: state.nextUntil,
+            visibleOldestCreatedAt,
+            pubkeyHex,
+            getOldestCreatedAt: (targetPubkeyHex) =>
+                postHistoryRepository.getOldestCreatedAt(targetPubkeyHex),
+        });
+    }
+
+    function updateOlderRelayCursorHint(
+        result: PostHistoryRelayFetchResult,
+        fetchUntil: number,
+        didVisibleCountIncrease: boolean,
+    ): void {
+        state.hasMoreRemote = result.hasMore;
+
+        if (typeof result.nextUntil !== "number") {
+            state.nextUntil = null;
+            return;
+        }
+
+        if (
+            result.status === "success" &&
+            !didVisibleCountIncrease &&
+            result.nextUntil === fetchUntil
+        ) {
+            state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
+            state.hasMoreRemote = state.nextUntil !== null;
+            return;
+        }
+
+        state.nextUntil = result.nextUntil;
     }
 
     function buildCurrentPagePreferredRanges() {
@@ -1241,9 +1311,9 @@ export function usePostHistoryListing({
             return false;
         }
 
-        const fetchUntil = state.nextUntil;
+        const fetchUntil = await resolveOlderRelayFetchUntil(pubkeyHex);
         if (typeof fetchUntil !== "number") {
-            state.syncStatus = "no-more";
+            state.syncStatus = "idle";
             return false;
         }
 
@@ -1291,8 +1361,6 @@ export function usePostHistoryListing({
             return false;
         }
 
-        updateRelayHistoryCursor(result);
-
         if (result.events.length > 0) {
             const upsertSummary = await postHistoryRepository.upsertFetchedEvents({
                 events: result.events,
@@ -1319,17 +1387,7 @@ export function usePostHistoryListing({
         }
 
         const didVisibleCountIncrease = nextCount > previousCount;
-
-        if (result.status === "success" && !didVisibleCountIncrease) {
-            if (state.hasMoreRemote && result.nextUntil === fetchUntil) {
-                state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
-                state.hasMoreRemote = state.nextUntil !== null;
-            }
-
-            if (!state.hasMoreRemote) {
-                state.nextUntil = null;
-            }
-        }
+        updateOlderRelayCursorHint(result, fetchUntil, didVisibleCountIncrease);
 
         let didLoadFetchedOlderPosts = false;
 
@@ -1346,14 +1404,14 @@ export function usePostHistoryListing({
 
         if (result.status !== "success") {
             state.syncStatus = "failed";
+            scheduleSyncStatusMessageClearIfNeeded();
             return false;
         }
 
         state.syncStatus = didVisibleCountIncrease || didMateriallyChange
             ? resolveSyncStatusAfterFetch(result, true)
-            : state.hasMoreRemote
-                ? "idle"
-                : "no-more";
+            : "idle";
+        scheduleSyncStatusMessageClearIfNeeded();
 
         return didLoadFetchedOlderPosts ||
             didVisibleCountIncrease ||
@@ -1696,6 +1754,12 @@ export function usePostHistoryListing({
         get isFetchingOlderFromRelays() {
             return isFetchingOlderFromRelays;
         },
+        get isFetchingFromRelays() {
+            return isFetchingFromRelays;
+        },
+        get isRefetchingAroundCurrentView() {
+            return isRefetchingAroundCurrentView;
+        },
         get showLocalExhaustedState() {
             return showLocalExhaustedState;
         },
@@ -1719,9 +1783,6 @@ export function usePostHistoryListing({
         },
         get showStatusLoader() {
             return showStatusLoader;
-        },
-        get isRefetchingAroundCurrentView() {
-            return isRefetchingAroundCurrentView;
         },
         get canRefetchAroundCurrentView() {
             return canRefetchAroundCurrentView;

@@ -29,6 +29,18 @@ async function clickEnabledMenuAction(name: string): Promise<void> {
     await fireEvent.click(item);
 }
 
+async function clickRelayFetchButton(): Promise<void> {
+    await waitFor(() => {
+        expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalled();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const button = await screen.findByRole('button', { name: 'リレーから続きを取得' });
+    await waitFor(() => {
+        expect(button.hasAttribute('disabled')).toBe(false);
+    });
+    await fireEvent.click(button);
+}
+
 describe('PostHistoryDialog timeline relay flows', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
@@ -273,8 +285,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 },
             });
 
+            const relayFetchButton = await screen.findByRole('button', { name: 'リレーから続きを取得' });
             await waitFor(() => {
-                expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+                expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(1);
+                expect(relayFetchButton.hasAttribute('disabled')).toBe(false);
                 expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
 
@@ -295,7 +309,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
             await waitFor(() => {
                 expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
-                expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+                expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
                 expect(screen.getByText('未取得の投稿がまだある可能性があります。')).toBeTruthy();
             });
 
@@ -316,11 +330,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
             await waitFor(() => {
                 expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
-                expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+                expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
                 expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
 
-            await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+            await clickRelayFetchButton();
 
             await waitFor(() => {
                 expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
@@ -726,13 +740,13 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+            expect(screen.getByText('リレーから取得できませんでした')).toBeTruthy();
         });
 
         await new Promise((resolve) => setTimeout(resolve, 4000));
 
         await waitFor(() => {
-            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+            expect(screen.queryByText('リレーから取得できませんでした')).toBeNull();
         });
 
         view.unmount();
@@ -891,10 +905,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
@@ -1062,10 +1076,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(visibleRangeRepositoryMock.save).toHaveBeenLastCalledWith({
@@ -1074,10 +1088,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 visibleUntil: 150,
             });
             expect(screen.queryByText('nextUntil より古い未確定範囲の投稿')).toBeNull();
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
@@ -1182,12 +1196,12 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
 
         const historyContainer = getHistoryContainer();
         historyContainer.scrollTop = 120;
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(screen.getByText('スクロール後に見える投稿')).toBeTruthy();
@@ -1307,10 +1321,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
@@ -1321,11 +1335,11 @@ describe('PostHistoryDialog timeline relay flows', () => {
                     until: 150,
                 }),
             );
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
             expect(screen.queryByText('これ以上古い投稿はありません')).toBeNull();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
@@ -1342,7 +1356,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('古い投稿取得中は heading loader を表示し、取得しても増えなければ noMorePosts を出す', async () => {
+    it('古い投稿取得中は heading loader を表示し、0件でもリレー取得ボタンを残す', async () => {
         const olderFetch = createDeferred<Record<string, unknown>>();
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -1379,10 +1393,10 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
         });
 
-        await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
+        await clickRelayFetchButton();
 
         await waitFor(() => {
             expect(screen.getByRole('button', { name: 'リレーから取得中...' }).hasAttribute('disabled')).toBe(true);
@@ -1398,7 +1412,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
         }));
 
         await waitFor(() => {
-            expect(screen.getByText('これ以上古い投稿はありません')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+            expect(screen.queryByText('これ以上古い投稿はありません')).toBeNull();
         });
 
         view.unmount();

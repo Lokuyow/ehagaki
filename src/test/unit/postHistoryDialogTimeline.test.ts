@@ -329,7 +329,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
-    it('古い投稿が尽きたら noMorePosts を表示する', async () => {
+    it('古い投稿が尽きても terminal noMorePosts は表示しない', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
             createRecord({ eventId: 'exhausted-newest', content: '最新投稿' }),
@@ -347,7 +347,8 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('これ以上古い投稿はありません')).toBeTruthy();
+            expect(screen.getByText('少し古い投稿')).toBeTruthy();
+            expect(screen.queryByText('これ以上古い投稿はありません')).toBeNull();
         });
 
         view.unmount();

@@ -28,13 +28,13 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.jumpToDate': '日付へ移動',
         'postHistory.jumpToDateLabel': '日付',
         'postHistory.jumpToDateSubmit': 'この日付付近を表示',
-        'postHistory.fetchOlderFromRelays': 'リレーから古い投稿を取得',
+        'postHistory.fetchOlderFromRelays': 'リレーから続きを取得',
         'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
         'postHistory.remoteContinuationNotice': '未取得の投稿がまだある可能性があります。',
         'postHistory.empty': '投稿履歴はありません',
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
-        'postHistory.syncFailed': 'リレーとの同期に失敗しました',
+        'postHistory.syncFailed': 'リレーから取得できませんでした',
         'postHistory.repair': '表示中の投稿付近を再取得',
         'postHistory.repairing': '再取得中...',
         'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
@@ -95,6 +95,7 @@ const repositoryMock = vi.hoisted(() => ({
     getVisibleChunkFromCreatedAt: vi.fn(),
     countForPubkey: vi.fn(),
     countVisibleForPubkey: vi.fn(),
+    getOldestCreatedAt: vi.fn(),
     upsertFetchedEvents: vi.fn(),
     deleteForPubkey: vi.fn(),
 }));
@@ -599,7 +600,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+            expect(screen.queryByText('リレーから取得できませんでした')).toBeNull();
             expectDefaultMediaReplacement();
         });
 
@@ -632,7 +633,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expectDefaultMediaReplacement();
-            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+            expect(screen.queryByText('リレーから取得できませんでした')).toBeNull();
         });
 
         expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
@@ -676,7 +677,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+            expect(screen.getByText('リレーから取得できませんでした')).toBeTruthy();
         });
 
         await rerender({
@@ -695,7 +696,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
-            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
+            expect(screen.queryByText('リレーから取得できませんでした')).toBeNull();
         });
     });
 

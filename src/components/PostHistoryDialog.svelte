@@ -1708,13 +1708,14 @@
             {:else if history.showLocalExhaustedState}
                 <div class="post-history-exhausted-state">
                     <div class="post-history-exhausted-actions">
-                        {#if history.canFetchOlderFromRelays || history.isFetchingOlderFromRelays}
+                        {#if history.canFetchOlderFromRelays || history.isFetchingFromRelays || history.isRefetchingAroundCurrentView}
                             <Button
                                 type="button"
                                 variant="primary"
                                 className="post-history-nav-button"
                                 contentLayout="iconText"
-                                disabled={history.isFetchingOlderFromRelays}
+                                disabled={history.isFetchingFromRelays ||
+                                    history.isRefetchingAroundCurrentView}
                                 onClick={() =>
                                     void handleFetchOlderFromRelays()}
                             >
@@ -1732,13 +1733,9 @@
                                         class="cloud-download-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
-                                    {$_("postHistory.fetchUnfetchedFromRelays")}
+                                    {$_("postHistory.fetchOlderFromRelays")}
                                 {/if}
                             </Button>
-                        {:else}
-                            <p class="post-history-exhausted-message">
-                                {$_("postHistory.noMorePosts")}
-                            </p>
                         {/if}
                     </div>
                 </div>

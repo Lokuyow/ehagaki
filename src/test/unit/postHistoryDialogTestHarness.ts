@@ -26,7 +26,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.jumpToDate': '日付へ移動',
             'postHistory.jumpToDateLabel': '日付',
             'postHistory.jumpToDateSubmit': 'この日付付近を表示',
-            'postHistory.fetchOlderFromRelays': 'リレーから古い投稿を取得',
+            'postHistory.fetchOlderFromRelays': 'リレーから続きを取得',
             'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
             'postHistory.fetchOlderFromRelaysLoading': 'リレーから取得中...',
             'postHistory.remoteContinuationNotice': '未取得の投稿がまだある可能性があります。',
@@ -35,7 +35,7 @@ const hoisted = vi.hoisted(() => {
             'postHistory.empty': '投稿履歴はありません',
             'postHistory.syncing': 'リレーと同期中...',
             'postHistory.synced': 'リレーとの同期が完了しました',
-            'postHistory.syncFailed': 'リレーとの同期に失敗しました',
+            'postHistory.syncFailed': 'リレーから取得できませんでした',
             'postHistory.noMorePosts': 'これ以上古い投稿はありません',
             'postHistory.repairAdded': `${options?.values?.count ?? 0}件の投稿を追加しました`,
             'postHistory.repairNoChanges': '追加できる投稿はありません',
@@ -56,6 +56,7 @@ const hoisted = vi.hoisted(() => {
             getVisibleChunkFromCreatedAt: vi.fn(),
             countForPubkey: vi.fn(),
             countVisibleForPubkey: vi.fn(),
+            getOldestCreatedAt: vi.fn(),
             upsertFetchedEvents: vi.fn(),
             deleteForPubkey: vi.fn(),
         },
@@ -333,6 +334,7 @@ export function resetPostHistoryDialogHarness(): void {
     repositoryMock.countVisibleForPubkey.mockImplementation(async (pubkeyHex: string) =>
         repositoryMock.countForPubkey(pubkeyHex),
     );
+    repositoryMock.getOldestCreatedAt.mockResolvedValue(null);
     repositoryMock.upsertFetchedEvents.mockResolvedValue({
         insertedCount: 0,
         updatedCount: 0,
