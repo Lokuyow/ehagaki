@@ -65,6 +65,64 @@ describe('PostHistoryDialog timeline relay flows', () => {
         expect(cancel).toHaveBeenCalledOnce();
     });
 
+    it('前回表示 snapshot があっても open 時にローカル履歴を読み直して送信済み投稿を即表示する', async () => {
+        const oldPost = createRecord({
+            eventId: 'snapshot-old',
+            content: '前回表示済みの投稿',
+            createdAt: 100,
+            postedAt: 100_000,
+        });
+        const newPost = createRecord({
+            eventId: 'local-new',
+            content: '送信直後の投稿',
+            createdAt: 200,
+            postedAt: 200_000,
+        });
+
+        repositoryMock.countForPubkey
+            .mockResolvedValueOnce(1)
+            .mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk
+            .mockResolvedValueOnce([oldPost])
+            .mockResolvedValue([newPost, oldPost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: new Promise(() => undefined),
+            cancel: vi.fn(),
+        });
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('前回表示済みの投稿')).toBeTruthy();
+        });
+        firstView.unmount();
+
+        const secondView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('送信直後の投稿')).toBeTruthy();
+        });
+        expect(repositoryMock.getLatestVisibleChunk).toHaveBeenCalledTimes(2);
+
+        secondView.unmount();
+    });
+
     it('初回リレー同期は relay ごとの進行差が残る範囲を表示対象にしない', async () => {
         let visibleUntil: number | null = null;
         const latest = createRecord({

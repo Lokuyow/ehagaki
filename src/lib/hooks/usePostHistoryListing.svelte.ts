@@ -1444,11 +1444,7 @@ export function usePostHistoryListing({
     });
 
     $effect(() => {
-        if (!getShow() || isSearchMode || state.loadedPosts.length > 0) {
-            if (state.loadedPosts.length > 0) {
-                hasAttemptedInitialLocalLoad = true;
-                initialLocalLoadKey = resolveListingSnapshotKey(getPubkeyHex()) ?? "";
-            }
+        if (!getShow() || isSearchMode) {
             return;
         }
 
