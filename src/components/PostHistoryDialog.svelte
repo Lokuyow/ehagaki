@@ -2280,6 +2280,7 @@
         mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 28px;
         height: 28px;
+        opacity: 0.6;
     }
 
     @keyframes popover-in {
