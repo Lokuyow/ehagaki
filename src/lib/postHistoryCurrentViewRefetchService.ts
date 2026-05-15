@@ -1,5 +1,7 @@
 import type { RxNostr } from "rx-nostr";
 import {
+    POST_HISTORY_REPAIR_FETCH_LIMIT,
+    POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS,
     postHistoryRelayFetchService,
     type PostHistoryRelayFetchResult,
     type PostHistoryRelayFetchTask,
@@ -191,8 +193,10 @@ export class PostHistoryCurrentViewRefetchService {
                 const fetchTask = this.postHistoryRelayFetchService.fetchLatest(rxNostr, {
                     pubkeyHex: params.pubkeyHex,
                     relayConfig: params.relayConfig,
+                    reason: "repair-visible-range",
                     kinds: range.kinds,
-                    limit: range.limit,
+                    limit: range.limit || POST_HISTORY_REPAIR_FETCH_LIMIT,
+                    timeoutMs: POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS,
                     ...(typeof range.since === "number" ? { since: range.since } : {}),
                     ...(typeof range.until === "number" ? { until: range.until } : {}),
                 });

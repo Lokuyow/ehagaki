@@ -29,6 +29,8 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.jumpToDateLabel': '日付',
         'postHistory.jumpToDateSubmit': 'この日付付近を表示',
         'postHistory.fetchOlderFromRelays': 'リレーから古い投稿を取得',
+        'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
+        'postHistory.remoteContinuationNotice': '未取得の投稿がまだある可能性があります。',
         'postHistory.empty': '投稿履歴はありません',
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
@@ -247,9 +249,15 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
 
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_FETCH_KINDS: [1, 42],
-    POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
+    POST_HISTORY_BOOTSTRAP_FETCH_LIMIT: 150,
+    POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS: 20_000,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT: 30,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS: 6_000,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TTL_MS: 60_000,
+    POST_HISTORY_OLDER_FETCH_LIMIT: 150,
+    POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
-    POST_HISTORY_RELAY_FETCH_LIMIT: 200,
+    POST_HISTORY_REPAIR_FETCH_LIMIT: 200,
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 
@@ -517,12 +525,11 @@ describe('PostHistoryDialog', () => {
         vi.useRealTimers();
     });
 
-    it('[repair-disabled] 同期中・修復中は repair button を disabled にする', async () => {
+    it('[repair-disabled] 修復中は repair button を disabled にする', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-disabled-page', content: '一覧の投稿' }),
         ]);
-        const initialSync = createDeferred<any>();
         const repairTask = createDeferred<{
             status: 'success';
             addedCount: 1;
@@ -534,7 +541,21 @@ describe('PostHistoryDialog', () => {
             hadFailures: false;
         }>();
         relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
-            promise: initialSync.promise,
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
             cancel: vi.fn(),
         });
         repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
@@ -552,26 +573,6 @@ describe('PostHistoryDialog', () => {
         });
 
         const repairButton = await findRepairButton();
-
-        await waitFor(() => {
-            expect(repairButton.hasAttribute('data-disabled')).toBe(true);
-        });
-
-        initialSync.resolve({
-            status: 'success',
-            events: [],
-            fetchedAt: 1000,
-            nextUntil: null,
-            hasMore: false,
-            relayUrls: ['wss://relay.example.com/'],
-            observedRelayUrls: [],
-            rawCount: 0,
-            uniqueCount: 0,
-            duplicateCount: 0,
-            perRelayCounts: [],
-            oldestCreatedAt: null,
-            newestCreatedAt: null,
-        });
 
         await waitFor(() => {
             expect(repairButton.hasAttribute('data-disabled')).toBe(false);
@@ -605,22 +606,9 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-partial-page', content: '一覧の投稿' }),
         ]);
+        const dialogRefresh = createDeferred<any>();
         relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
-            promise: Promise.resolve({
-                status: 'success',
-                events: [],
-                fetchedAt: 1000,
-                nextUntil: null,
-                hasMore: false,
-                relayUrls: ['wss://relay.example.com/'],
-                observedRelayUrls: [],
-                rawCount: 0,
-                uniqueCount: 0,
-                duplicateCount: 0,
-                perRelayCounts: [],
-                oldestCreatedAt: null,
-                newestCreatedAt: null,
-            }),
+            promise: dialogRefresh.promise,
             cancel: vi.fn(),
         });
         repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
@@ -651,6 +639,10 @@ describe('PostHistoryDialog', () => {
         });
 
         await fireEvent.click(await findRepairButton());
+
+        await waitFor(() => {
+            expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
+        });
 
         await waitFor(() => {
             expect(screen.getByText('一部の取得に失敗しました。時間をおいて再実行してください。')).toBeTruthy();

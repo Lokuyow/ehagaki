@@ -6,15 +6,32 @@ import type { NostrEvent, RelayConfig } from "./types";
 
 export const POST_HISTORY_FETCH_KINDS = [1, 42] as const;
 export const POST_HISTORY_PAGE_SIZE = 50;
-export const POST_HISTORY_RELAY_FETCH_LIMIT = 200;
-export const POST_HISTORY_INITIAL_FETCH_LIMIT = POST_HISTORY_RELAY_FETCH_LIMIT;
-export const POST_HISTORY_FETCH_TIMEOUT_MS = 60000;
+export const POST_HISTORY_BOOTSTRAP_FETCH_LIMIT = 150;
+export const POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT = 30;
+export const POST_HISTORY_OLDER_FETCH_LIMIT = 150;
+export const POST_HISTORY_REPAIR_FETCH_LIMIT = 200;
+export const POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS = 20_000;
+export const POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS = 6_000;
+export const POST_HISTORY_OLDER_FETCH_TIMEOUT_MS = 25_000;
+export const POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS = 20_000;
+export const POST_HISTORY_DIALOG_OPEN_REFRESH_TTL_MS = 60_000;
+export const POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT = 4;
+export const POST_HISTORY_RELAY_FETCH_LIMIT = POST_HISTORY_OLDER_FETCH_LIMIT;
+export const POST_HISTORY_INITIAL_FETCH_LIMIT = POST_HISTORY_BOOTSTRAP_FETCH_LIMIT;
+export const POST_HISTORY_FETCH_TIMEOUT_MS = POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS;
+
+export type PostHistoryFetchReason =
+    | "bootstrap"
+    | "dialog-open-refresh"
+    | "older-backfill"
+    | "repair-visible-range";
 
 export type PostHistoryRelayFetchStatus = "success" | "timeout" | "error" | "cancelled";
 
 export interface PostHistoryRelayFetchRequest {
     pubkeyHex: string;
     relayConfig?: RelayConfig | null;
+    reason?: PostHistoryFetchReason;
     kinds?: number[];
     limit?: number;
     since?: number;
@@ -73,6 +90,50 @@ type RelayPacketAccumulator = {
     newestCreatedAt: number | null;
 };
 
+function resolveFetchLimit(
+    reason: PostHistoryFetchReason | undefined,
+    limit: number | undefined,
+): number {
+    const fallback = (() => {
+        switch (reason) {
+            case "dialog-open-refresh":
+                return POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT;
+            case "older-backfill":
+                return POST_HISTORY_OLDER_FETCH_LIMIT;
+            case "repair-visible-range":
+                return POST_HISTORY_REPAIR_FETCH_LIMIT;
+            case "bootstrap":
+            default:
+                return POST_HISTORY_BOOTSTRAP_FETCH_LIMIT;
+        }
+    })();
+
+    return Number.isFinite(limit)
+        ? Math.max(1, Math.trunc(limit ?? fallback))
+        : fallback;
+}
+
+function resolveFetchTimeoutMs(
+    reason: PostHistoryFetchReason | undefined,
+    timeoutMs: number | undefined,
+): number {
+    if (Number.isFinite(timeoutMs)) {
+        return Math.max(1, Math.trunc(timeoutMs ?? 1));
+    }
+
+    switch (reason) {
+        case "dialog-open-refresh":
+            return POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS;
+        case "older-backfill":
+            return POST_HISTORY_OLDER_FETCH_TIMEOUT_MS;
+        case "repair-visible-range":
+            return POST_HISTORY_REPAIR_FETCH_TIMEOUT_MS;
+        case "bootstrap":
+        default:
+            return POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS;
+    }
+}
+
 function toResultEvents(eventsById: Map<string, EventAccumulator>): PostHistoryRelayFetchedEvent[] {
     return Array.from(eventsById.values())
         .map((item) => ({
@@ -101,12 +162,10 @@ export class PostHistoryRelayFetchService {
         rxNostr: RxNostr,
         params: PostHistoryRelayFetchRequest,
     ): PostHistoryRelayFetchTask {
-        const timeoutMs = params.timeoutMs ?? POST_HISTORY_FETCH_TIMEOUT_MS;
+        const timeoutMs = resolveFetchTimeoutMs(params.reason, params.timeoutMs);
         const kinds = params.kinds ?? [...POST_HISTORY_FETCH_KINDS];
-        const limit = Number.isFinite(params.limit)
-            ? Math.max(1, Math.trunc(params.limit ?? POST_HISTORY_INITIAL_FETCH_LIMIT))
-            : POST_HISTORY_INITIAL_FETCH_LIMIT;
-        const relayUrls = this.resolveRelayUrls(params.relayConfig);
+        const limit = resolveFetchLimit(params.reason, params.limit);
+        const relayUrls = this.resolveRelayUrls(params.relayConfig, params.reason);
 
         const rxReq = createRxBackwardReq();
         const eventsById = new Map<string, EventAccumulator>();
@@ -240,7 +299,10 @@ export class PostHistoryRelayFetchService {
         };
     }
 
-    private resolveRelayUrls(relayConfig?: RelayConfig | null): string[] {
+    private resolveRelayUrls(
+        relayConfig?: RelayConfig | null,
+        reason?: PostHistoryFetchReason,
+    ): string[] {
         const historyRelays = relayConfig
             ? RelayConfigUtils.sanitizeExternalRelayUrls([
                 ...RelayConfigUtils.extractWriteRelays(relayConfig),
@@ -248,11 +310,13 @@ export class PostHistoryRelayFetchService {
             ])
             : [];
 
-        if (historyRelays.length > 0) {
-            return historyRelays;
-        }
+        const relayUrls = historyRelays.length > 0
+            ? historyRelays
+            : RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS);
 
-        return RelayConfigUtils.sanitizeExternalRelayUrls(FALLBACK_RELAYS);
+        return reason === "dialog-open-refresh"
+            ? relayUrls.slice(0, POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT)
+            : relayUrls;
     }
 
     private handlePacket(

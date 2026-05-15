@@ -12,6 +12,10 @@ vi.mock("rx-nostr", () => ({
 
 import type { RxNostr } from "rx-nostr";
 import {
+    POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
     POST_HISTORY_FETCH_TIMEOUT_MS,
     PostHistoryRelayFetchService,
 } from "../../lib/postHistoryRelayFetchService";
@@ -83,7 +87,7 @@ describe("PostHistoryRelayFetchService", () => {
         expect(rxReq.emit).toHaveBeenCalledWith({
             authors: ["b".repeat(64)],
             kinds: [1, 42],
-            limit: 200,
+            limit: 150,
         });
         expect(rxReq.over).toHaveBeenCalledOnce();
         expect(result.status).toBe("success");
@@ -252,7 +256,7 @@ describe("PostHistoryRelayFetchService", () => {
         expect(unsubscribe).toHaveBeenCalledOnce();
     });
 
-    it("default の hard timeout は 60000ms を使う", async () => {
+    it("default の hard timeout は bootstrap timeout を使う", async () => {
         const mockRxNostr: RxNostr = {
             use: vi.fn().mockReturnValue({
                 subscribe: vi.fn((observer: any) => {
@@ -268,7 +272,53 @@ describe("PostHistoryRelayFetchService", () => {
 
         expect(service["setTimeoutFn"]).toHaveBeenCalledWith(
             expect.any(Function),
-            POST_HISTORY_FETCH_TIMEOUT_MS,
+            POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS,
+        );
+        expect(POST_HISTORY_FETCH_TIMEOUT_MS).toBe(POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS);
+    });
+
+    it("dialog-open-refresh は小さい limit と短い timeout と relay 上限を使う", async () => {
+        const relayConfig = Object.fromEntries(
+            Array.from({ length: POST_HISTORY_DIALOG_OPEN_REFRESH_MAX_RELAY_COUNT + 2 }, (_, index) => [
+                `wss://relay-${index}.example.com/`,
+                { read: true, write: true },
+            ]),
+        );
+        const mockRxNostr: RxNostr = {
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            relayConfig,
+            reason: "dialog-open-refresh",
+        }).promise;
+
+        const rxReq = createRxBackwardReqMock.mock.results[0]?.value;
+
+        expect(rxReq.emit).toHaveBeenCalledWith({
+            authors: ["b".repeat(64)],
+            kinds: [1, 42],
+            limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
+        });
+        expect(mockRxNostr.use).toHaveBeenCalledWith(expect.anything(), {
+            on: {
+                relays: [
+                    "wss://relay-0.example.com/",
+                    "wss://relay-1.example.com/",
+                    "wss://relay-2.example.com/",
+                    "wss://relay-3.example.com/",
+                ],
+            },
+        });
+        expect(service["setTimeoutFn"]).toHaveBeenCalledWith(
+            expect.any(Function),
+            POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
         );
     });
 });

@@ -1,9 +1,15 @@
 import type { RxNostr } from "rx-nostr";
 import {
+    POST_HISTORY_BOOTSTRAP_FETCH_LIMIT,
+    POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TTL_MS,
+    POST_HISTORY_OLDER_FETCH_LIMIT,
+    POST_HISTORY_OLDER_FETCH_TIMEOUT_MS,
     POST_HISTORY_FETCH_KINDS,
-    POST_HISTORY_INITIAL_FETCH_LIMIT,
     POST_HISTORY_PAGE_SIZE,
-    POST_HISTORY_RELAY_FETCH_LIMIT,
+    POST_HISTORY_REPAIR_FETCH_LIMIT,
     postHistoryRelayFetchService,
     type PostHistoryRelayFetchResult,
     type PostHistoryRelayFetchTask,
@@ -66,6 +72,8 @@ interface PersistedPostHistoryListingSnapshot {
     searchHasNext: boolean;
     hasMoreRemote: boolean;
     nextUntil: number | null;
+    hasConservativeRemoteContinuationNotice: boolean;
+    lastDialogOpenRefreshAt: number | null;
     visibleUntil: number | null;
     hasOlderLocal: boolean;
     hasNewerLocal: boolean;
@@ -79,6 +87,8 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
     searchHasNext: false,
     hasMoreRemote: false,
     nextUntil: null,
+    hasConservativeRemoteContinuationNotice: false,
+    lastDialogOpenRefreshAt: null,
     visibleUntil: null,
     hasOlderLocal: false,
     hasNewerLocal: false,
@@ -116,6 +126,9 @@ function cloneListingSnapshot(
         searchHasNext: snapshot.searchHasNext,
         hasMoreRemote: snapshot.hasMoreRemote,
         nextUntil: snapshot.nextUntil,
+        hasConservativeRemoteContinuationNotice:
+            snapshot.hasConservativeRemoteContinuationNotice,
+        lastDialogOpenRefreshAt: snapshot.lastDialogOpenRefreshAt,
         visibleUntil: snapshot.visibleUntil,
         hasOlderLocal: snapshot.hasOlderLocal,
         hasNewerLocal: snapshot.hasNewerLocal,
@@ -196,6 +209,9 @@ export function usePostHistoryListing({
             null as PostHistoryCurrentViewRefetchMessageValues | null,
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
+        hasConservativeRemoteContinuationNotice:
+            persistedListingSnapshot.hasConservativeRemoteContinuationNotice,
+        lastDialogOpenRefreshAt: persistedListingSnapshot.lastDialogOpenRefreshAt,
         visibleUntil: persistedListingSnapshot.visibleUntil,
         hasOlderLocal: persistedListingSnapshot.hasOlderLocal,
         hasNewerLocal: persistedListingSnapshot.hasNewerLocal,
@@ -206,6 +222,7 @@ export function usePostHistoryListing({
     let hasStartedInitialSync = false;
     let hasAttemptedInitialLocalLoad = false;
     let initialLocalLoadKey: string | null = null;
+    let activePubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
     let currentFetchTask: PostHistoryRelayFetchTask | null = null;
     let fetchRequestId = 0;
     let currentViewRefetchTask: PostHistoryCurrentViewRefetchTask | null = null;
@@ -263,6 +280,13 @@ export function usePostHistoryListing({
         state.syncStatus !== "no-more" &&
         state.hasMoreRemote &&
         state.nextUntil !== null,
+    );
+    const hasRemoteContinuationNotice = $derived(
+        !isSearchMode &&
+        (
+            (state.hasMoreRemote && state.nextUntil !== null) ||
+            state.hasConservativeRemoteContinuationNotice
+        ),
     );
     const isFetchingOlderFromRelays = $derived(
         !isSearchMode && state.syncStatus === "older-syncing",
@@ -414,6 +438,8 @@ export function usePostHistoryListing({
         state.searchPage = 1;
         state.hasMoreRemote = false;
         state.nextUntil = null;
+        state.hasConservativeRemoteContinuationNotice = false;
+        state.lastDialogOpenRefreshAt = null;
         state.visibleUntil = null;
         state.hasOlderLocal = false;
         state.hasNewerLocal = false;
@@ -441,6 +467,28 @@ export function usePostHistoryListing({
         const canContinue = canContinueRelayHistory(result);
         state.hasMoreRemote = canContinue;
         state.nextUntil = canContinue ? result.nextUntil : null;
+        state.hasConservativeRemoteContinuationNotice = false;
+    }
+
+    function updateRelayHistoryCursorAfterDialogRefresh(
+        result: PostHistoryRelayFetchResult,
+    ): void {
+        const canContinue = canContinueRelayHistory(result);
+        if (!canContinue) {
+            if (state.nextUntil === null) {
+                state.hasConservativeRemoteContinuationNotice = false;
+            }
+            return;
+        }
+
+        if (state.nextUntil === null) {
+            state.hasMoreRemote = true;
+            state.nextUntil = result.nextUntil;
+            state.hasConservativeRemoteContinuationNotice = false;
+            return;
+        }
+
+        state.hasConservativeRemoteContinuationNotice = true;
     }
 
     function buildCurrentPagePreferredRanges() {
@@ -468,7 +516,7 @@ export function usePostHistoryListing({
                 minCreatedAt - POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS,
             ),
             until: maxCreatedAt + POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS,
-            limit: POST_HISTORY_RELAY_FETCH_LIMIT,
+            limit: POST_HISTORY_REPAIR_FETCH_LIMIT,
         }];
     }
 
@@ -704,14 +752,11 @@ export function usePostHistoryListing({
             return;
         }
 
-        await prefetchCurrentPageMedia(latestPosts);
-        if (!getShow() || requestId !== loadRequestId) {
-            return;
-        }
-
         state.totalCount = count;
         state.loadedPosts = latestPosts;
+        void prefetchCurrentPageMedia(latestPosts);
         await refreshTimelineAvailability(pubkeyHex, latestPosts, requestId);
+        void startOpenRelayFetchAfterLocalLoad(pubkeyHex, latestPosts);
     }
 
     async function reloadVisibleWindowFromCurrentNewest(): Promise<void> {
@@ -747,13 +792,9 @@ export function usePostHistoryListing({
         }
 
         const nextPosts = [newestPost, ...olderPosts];
-        await prefetchCurrentPageMedia(nextPosts);
-        if (!getShow() || requestId !== loadRequestId) {
-            return;
-        }
-
         state.totalCount = count;
         state.loadedPosts = nextPosts;
+        void prefetchCurrentPageMedia(nextPosts);
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
     }
 
@@ -804,12 +845,8 @@ export function usePostHistoryListing({
             [...state.loadedPosts, ...olderPosts],
             "older",
         );
-        await prefetchCurrentPageMedia(nextPosts);
-        if (!getShow() || requestId !== loadRequestId) {
-            return false;
-        }
-
         state.loadedPosts = nextPosts;
+        void prefetchCurrentPageMedia(nextPosts);
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
         return true;
     }
@@ -843,17 +880,13 @@ export function usePostHistoryListing({
             [...newerPosts, ...state.loadedPosts],
             "newer",
         );
-        await prefetchCurrentPageMedia(nextPosts);
-        if (!getShow() || requestId !== loadRequestId) {
-            return false;
-        }
-
         await refreshTimelineAvailability(pubkeyHex, nextPosts, requestId);
         if (!getShow() || requestId !== loadRequestId) {
             return false;
         }
 
         state.loadedPosts = nextPosts;
+        void prefetchCurrentPageMedia(nextPosts);
         return true;
     }
 
@@ -887,13 +920,9 @@ export function usePostHistoryListing({
             return false;
         }
 
-        await prefetchCurrentPageMedia(datePosts);
-        if (!getShow() || requestId !== loadRequestId) {
-            return false;
-        }
-
         state.totalCount = count;
         state.loadedPosts = datePosts;
+        void prefetchCurrentPageMedia(datePosts);
         await refreshTimelineAvailability(pubkeyHex, datePosts, requestId);
         return true;
     }
@@ -936,21 +965,13 @@ export function usePostHistoryListing({
             return;
         }
 
-        await prefetchCurrentPageMedia(result.items);
-        if (
-            !getShow() ||
-            requestId !== searchLoadRequestId ||
-            query !== state.searchQuery
-        ) {
-            return;
-        }
-
         state.searchTotalCount = result.total;
         state.searchPosts = result.items;
         state.searchHasNext = result.hasNext;
+        void prefetchCurrentPageMedia(result.items);
     }
 
-    async function syncFromRelays(): Promise<void> {
+    async function bootstrapFromRelays(): Promise<void> {
         const pubkeyHex = getPubkeyHex();
         const rxNostr = getRxNostr();
         if (!pubkeyHex || !rxNostr) {
@@ -959,6 +980,7 @@ export function usePostHistoryListing({
 
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
+        state.syncStatus = "syncing";
         const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
         if (
             !isCurrentFetchRequest(requestId) ||
@@ -971,7 +993,9 @@ export function usePostHistoryListing({
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
-            limit: POST_HISTORY_INITIAL_FETCH_LIMIT,
+            reason: "bootstrap",
+            limit: POST_HISTORY_BOOTSTRAP_FETCH_LIMIT,
+            timeoutMs: POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS,
         });
         currentFetchTask = task;
 
@@ -1028,6 +1052,125 @@ export function usePostHistoryListing({
             upsertSummary.insertedCount + upsertSummary.updatedCount > 0
             || didVisibleMateriallyChange,
         );
+    }
+
+    async function refreshRecentFromRelaysOnDialogOpen(): Promise<void> {
+        const pubkeyHex = getPubkeyHex();
+        const rxNostr = getRxNostr();
+        if (!pubkeyHex || !rxNostr) {
+            return;
+        }
+
+        cancelCurrentSync();
+        const requestId = ++fetchRequestId;
+        state.syncStatus = "syncing";
+        state.lastDialogOpenRefreshAt = Date.now();
+        const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
+        if (
+            !isCurrentFetchRequest(requestId) ||
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex
+        ) {
+            return;
+        }
+
+        const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
+            pubkeyHex,
+            relayConfig: getRelayConfig(),
+            reason: "dialog-open-refresh",
+            limit: POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT,
+            timeoutMs: POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
+        });
+        currentFetchTask = task;
+
+        const result = await task.promise;
+        let upsertSummary = {
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 0,
+        };
+
+        if (!isCurrentFetchRequest(requestId) || currentFetchTask !== task) {
+            return;
+        }
+
+        currentFetchTask = null;
+        if (!getShow() || result.status === "cancelled") {
+            return;
+        }
+
+        if (result.events.length > 0) {
+            upsertSummary = await postHistoryRepository.upsertFetchedEvents({
+                events: result.events,
+                fetchedAt: result.fetchedAt,
+            });
+        }
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return;
+        }
+
+        const nextVisibleUntil = await updateVisibleUntilFromFetch(
+            pubkeyHex,
+            result,
+        );
+        if (!isCurrentFetchRequest(requestId) || !getShow()) {
+            return;
+        }
+
+        const didVisibleMateriallyChange =
+            nextVisibleUntil !== previousVisibleUntil;
+        const didMateriallyChange =
+            upsertSummary.insertedCount + upsertSummary.updatedCount > 0
+            || didVisibleMateriallyChange;
+
+        updateRelayHistoryCursorAfterDialogRefresh(result);
+
+        state.syncStatus = resolveSyncStatusAfterFetch(result, didMateriallyChange);
+        scheduleSyncStatusMessageClearIfNeeded();
+
+        if (didMateriallyChange) {
+            if (state.searchQuery) {
+                await loadSearchPage(state.searchPage, state.searchQuery);
+            } else if (state.loadedPosts.length === 0 || !state.hasNewerLocal) {
+                await loadLatestVisiblePosts();
+            } else {
+                await refreshTotalCountFromRepository();
+                await refreshTimelineAvailability(pubkeyHex);
+            }
+        }
+    }
+
+    function shouldRunDialogOpenRefresh(): boolean {
+        if (typeof state.lastDialogOpenRefreshAt !== "number") {
+            return true;
+        }
+
+        return Date.now() - state.lastDialogOpenRefreshAt >=
+            POST_HISTORY_DIALOG_OPEN_REFRESH_TTL_MS;
+    }
+
+    function startOpenRelayFetchAfterLocalLoad(
+        pubkeyHex: string,
+        localPosts: PostHistoryRecord[],
+    ): void {
+        if (
+            hasStartedInitialSync ||
+            !getShow() ||
+            getPubkeyHex() !== pubkeyHex ||
+            !getRxNostr()
+        ) {
+            return;
+        }
+
+        hasStartedInitialSync = true;
+        if (localPosts.length === 0) {
+            void bootstrapFromRelays();
+            return;
+        }
+
+        if (shouldRunDialogOpenRefresh()) {
+            void refreshRecentFromRelaysOnDialogOpen();
+        }
     }
 
     function goPreviousPage(): boolean {
@@ -1138,7 +1281,9 @@ export function usePostHistoryListing({
         const task = postHistoryRelayFetchService.fetchLatest(rxNostr, {
             pubkeyHex,
             relayConfig: getRelayConfig(),
-            limit: POST_HISTORY_RELAY_FETCH_LIMIT,
+            reason: "older-backfill",
+            limit: POST_HISTORY_OLDER_FETCH_LIMIT,
+            timeoutMs: POST_HISTORY_OLDER_FETCH_TIMEOUT_MS,
             until: fetchUntil,
         });
         currentFetchTask = task;
@@ -1365,6 +1510,17 @@ export function usePostHistoryListing({
     }
 
     $effect(() => {
+        const nextPubkeyKey = resolveListingSnapshotKey(getPubkeyHex());
+        if (nextPubkeyKey === activePubkeyKey) {
+            return;
+        }
+
+        activePubkeyKey = nextPubkeyKey;
+        state.hasConservativeRemoteContinuationNotice = false;
+        state.lastDialogOpenRefreshAt = null;
+    });
+
+    $effect(() => {
         writePersistedPostHistoryViewState(getPubkeyHex(), {
             searchInput: state.searchInput,
             searchQuery: state.searchQuery,
@@ -1382,6 +1538,9 @@ export function usePostHistoryListing({
             searchHasNext: state.searchHasNext,
             hasMoreRemote: state.hasMoreRemote,
             nextUntil: state.nextUntil,
+            hasConservativeRemoteContinuationNotice:
+                state.hasConservativeRemoteContinuationNotice,
+            lastDialogOpenRefreshAt: state.lastDialogOpenRefreshAt,
             visibleUntil: state.visibleUntil,
             hasOlderLocal: state.hasOlderLocal,
             hasNewerLocal: state.hasNewerLocal,
@@ -1416,16 +1575,6 @@ export function usePostHistoryListing({
         return () => {
             clearSyncStatusMessageClearTimeout();
         };
-    });
-
-    $effect(() => {
-        if (!getShow() || !getPubkeyHex() || !getRxNostr() || hasStartedInitialSync) {
-            return;
-        }
-
-        hasStartedInitialSync = true;
-        state.syncStatus = "syncing";
-        void syncFromRelays();
     });
 
     $effect(() => {
@@ -1549,6 +1698,9 @@ export function usePostHistoryListing({
         },
         get canFetchOlderFromRelays() {
             return canFetchOlderFromRelays;
+        },
+        get hasRemoteContinuationNotice() {
+            return hasRemoteContinuationNotice;
         },
         get isFetchingOlderFromRelays() {
             return isFetchingOlderFromRelays;

@@ -29,6 +29,8 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.jumpToDateLabel': '日付',
         'postHistory.jumpToDateSubmit': 'この日付付近を表示',
         'postHistory.fetchOlderFromRelays': 'リレーから古い投稿を取得',
+        'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
+        'postHistory.remoteContinuationNotice': '未取得の投稿がまだある可能性があります。',
         'postHistory.empty': '投稿履歴はありません',
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',
@@ -247,9 +249,15 @@ vi.mock('../../lib/storage/postHistoryVisibleRangeRepository', async () => {
 
 vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_FETCH_KINDS: [1, 42],
-    POST_HISTORY_INITIAL_FETCH_LIMIT: 200,
+    POST_HISTORY_BOOTSTRAP_FETCH_LIMIT: 150,
+    POST_HISTORY_BOOTSTRAP_FETCH_TIMEOUT_MS: 20_000,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_LIMIT: 30,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS: 6_000,
+    POST_HISTORY_DIALOG_OPEN_REFRESH_TTL_MS: 60_000,
+    POST_HISTORY_OLDER_FETCH_LIMIT: 150,
+    POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
-    POST_HISTORY_RELAY_FETCH_LIMIT: 200,
+    POST_HISTORY_REPAIR_FETCH_LIMIT: 200,
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 
@@ -565,7 +573,7 @@ describe('PostHistoryDialog', () => {
         });
     });
 
-    it('同期失敗でも既存一覧を維持する', async () => {
+    it('dialog-open-refresh 失敗でも既存一覧を維持し失敗表示を出さない', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getPage.mockResolvedValue([createRecord()]);
         relayFetchServiceMock.fetchLatest.mockReturnValue({
@@ -590,7 +598,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('リレーとの同期に失敗しました')).toBeTruthy();
+            expect(screen.queryByText('リレーとの同期に失敗しました')).toBeNull();
             expectDefaultMediaReplacement();
         });
 
