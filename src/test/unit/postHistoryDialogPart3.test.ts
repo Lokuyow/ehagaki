@@ -30,7 +30,6 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.jumpToDateSubmit': 'この日付付近を表示',
         'postHistory.fetchOlderFromRelays': 'リレーから続きを取得',
         'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
-        'postHistory.remoteContinuationNotice': '未取得の投稿がまだある可能性があります。',
         'postHistory.empty': '投稿履歴はありません',
         'postHistory.syncing': 'リレーと同期中...',
         'postHistory.synced': 'リレーとの同期が完了しました',

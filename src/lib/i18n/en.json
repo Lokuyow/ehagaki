@@ -110,7 +110,6 @@
     "fetchOlderFromRelays": "Fetch more from relays",
     "fetchUnfetchedFromRelays": "Fetch unfetched posts",
     "fetchOlderFromRelaysLoading": "Fetching from relays...",
-    "remoteContinuationNotice": "There may still be unfetched posts.",
     "empty": "No post history",
     "syncing": "Syncing with relays...",
     "synced": "Relay sync completed",

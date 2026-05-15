@@ -310,7 +310,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             await waitFor(() => {
                 expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
                 expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
-                expect(screen.getByText('未取得の投稿がまだある可能性があります。')).toBeTruthy();
+                expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
 
             await rerender({

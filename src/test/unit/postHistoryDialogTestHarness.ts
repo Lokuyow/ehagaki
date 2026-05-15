@@ -29,7 +29,6 @@ const hoisted = vi.hoisted(() => {
             'postHistory.fetchOlderFromRelays': 'リレーから続きを取得',
             'postHistory.fetchUnfetchedFromRelays': '未取得の投稿を取得',
             'postHistory.fetchOlderFromRelaysLoading': 'リレーから取得中...',
-            'postHistory.remoteContinuationNotice': '未取得の投稿がまだある可能性があります。',
             'postHistory.repair': '表示中の投稿付近を再取得',
             'postHistory.repairing': '再取得中...',
             'postHistory.empty': '投稿履歴はありません',

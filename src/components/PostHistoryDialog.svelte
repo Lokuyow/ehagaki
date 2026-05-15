@@ -1683,12 +1683,6 @@
                 {/each}
             </ul>
 
-            {#if history.hasRemoteContinuationNotice}
-                <div class="post-history-remote-continuation-notice">
-                    {$_("postHistory.remoteContinuationNotice")}
-                </div>
-            {/if}
-
             {#if history.canLoadOlder}
                 <div class="post-history-nav-row post-history-nav-row-bottom">
                     <Button
@@ -2050,13 +2044,6 @@
 
     .post-history-nav-row-bottom {
         padding-top: 0;
-    }
-
-    .post-history-remote-continuation-notice {
-        margin: 0 16px 8px;
-        color: var(--text-secondary);
-        font-size: 0.86rem;
-        text-align: center;
     }
 
     :global(.post-history-nav-button:not(.primary)) {

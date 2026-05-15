@@ -237,7 +237,6 @@ export function usePostHistoryListing({
             null as PostHistoryCurrentViewRefetchMessageValues | null,
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
-        hasConservativeRemoteContinuationNotice: false,
         lastDialogOpenRefreshAt: persistedListingSnapshot.lastDialogOpenRefreshAt,
         visibleUntil: persistedListingSnapshot.visibleUntil,
         hasOlderLocal: persistedListingSnapshot.hasOlderLocal,
@@ -304,9 +303,6 @@ export function usePostHistoryListing({
         !isRefetchingAroundCurrentView &&
         state.syncStatus !== "syncing" &&
         state.syncStatus !== "older-syncing",
-    );
-    const hasRemoteContinuationNotice = $derived(
-        !isSearchMode && state.hasConservativeRemoteContinuationNotice,
     );
     const isFetchingOlderFromRelays = $derived(
         !isSearchMode && state.syncStatus === "older-syncing",
@@ -462,7 +458,6 @@ export function usePostHistoryListing({
         state.searchPage = 1;
         state.hasMoreRemote = false;
         state.nextUntil = null;
-        state.hasConservativeRemoteContinuationNotice = false;
         state.lastDialogOpenRefreshAt = null;
         state.visibleUntil = null;
         state.hasOlderLocal = false;
@@ -478,7 +473,6 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         state.syncStatus = "idle";
-        state.hasConservativeRemoteContinuationNotice = false;
         clearCurrentViewRefetchFeedback();
         clearSyncStatusMessageClearTimeout();
         hasStartedInitialSync = false;
@@ -492,7 +486,6 @@ export function usePostHistoryListing({
         const canContinue = canContinueRelayHistory(result);
         state.hasMoreRemote = canContinue;
         state.nextUntil = canContinue ? result.nextUntil : null;
-        state.hasConservativeRemoteContinuationNotice = false;
     }
 
     function updateRelayHistoryCursorAfterDialogRefresh(
@@ -500,20 +493,13 @@ export function usePostHistoryListing({
     ): void {
         const canContinue = canContinueRelayHistory(result);
         if (!canContinue) {
-            if (state.nextUntil === null) {
-                state.hasConservativeRemoteContinuationNotice = false;
-            }
             return;
         }
 
         if (state.nextUntil === null) {
             state.hasMoreRemote = true;
             state.nextUntil = result.nextUntil;
-            state.hasConservativeRemoteContinuationNotice = false;
-            return;
         }
-
-        state.hasConservativeRemoteContinuationNotice = true;
     }
 
     async function resolveOlderRelayFetchUntil(
@@ -1320,7 +1306,6 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
-        state.hasConservativeRemoteContinuationNotice = false;
         const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
         if (
             !isCurrentFetchRequest(requestId) ||
@@ -1567,7 +1552,6 @@ export function usePostHistoryListing({
         }
 
         activePubkeyKey = nextPubkeyKey;
-        state.hasConservativeRemoteContinuationNotice = false;
         state.lastDialogOpenRefreshAt = null;
     });
 
@@ -1747,9 +1731,6 @@ export function usePostHistoryListing({
         },
         get canFetchOlderFromRelays() {
             return canFetchOlderFromRelays;
-        },
-        get hasRemoteContinuationNotice() {
-            return hasRemoteContinuationNotice;
         },
         get isFetchingOlderFromRelays() {
             return isFetchingOlderFromRelays;
