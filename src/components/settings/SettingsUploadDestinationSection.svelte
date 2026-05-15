@@ -703,17 +703,12 @@
         }
     }
 
-    :global(.destination-order-button .svg-icon) {
-        width: 16px;
-        height: 16px;
-    }
-
     .arrow-up-icon {
-        mask-image: url("/icons/arrow_upward_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/arrow_drop_up_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .arrow-down-icon {
-        mask-image: url("/icons/arrow_downward_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        mask-image: url("/icons/arrow_drop_down_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .badge {
