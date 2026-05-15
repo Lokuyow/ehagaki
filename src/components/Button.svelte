@@ -118,10 +118,12 @@
         @media (min-width: 601px) {
             &:hover:not(:disabled) {
                 :global(:root.light) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 8%);
+                    color: color-mix(in srgb, whitesmoke, black 4%);
+                    background: color-mix(in srgb, var(--btn-bg), black 4%);
                 }
                 :global(:root.dark) & {
-                    background: color-mix(in srgb, var(--btn-bg), black 12%);
+                    color: color-mix(in srgb, whitesmoke, black 7%);
+                    background: color-mix(in srgb, var(--btn-bg), black 7%);
                 }
             }
         }
@@ -299,6 +301,7 @@
         :global(.svg-icon) {
             width: 30px;
             height: 30px;
+            background-color: currentColor;
         }
     }
 </style>
