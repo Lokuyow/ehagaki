@@ -2668,7 +2668,10 @@
         :global(.post-preview-action-button) {
             min-height: auto;
             background: transparent;
-            color: var(--btn-post-preview-action);
+
+            :global(.svg-icon) {
+                --svg: var(--btn-post-preview-action);
+            }
         }
 
         @media (min-width: 601px) {
