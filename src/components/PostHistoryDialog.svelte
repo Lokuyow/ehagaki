@@ -126,9 +126,8 @@
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let historyMonthLabelFrameId: number | null = null;
-    let pendingSessionScrollRestore = $state<PostHistoryDialogScrollState | null>(
-        null,
-    );
+    let pendingSessionScrollRestore =
+        $state<PostHistoryDialogScrollState | null>(null);
     let wasOpenForScrollRestore = false;
     let restoredSessionScrollKey: string | null = null;
     type HistoryScrollAnchor = {
@@ -223,8 +222,9 @@
     function hasPostForScrollAnchor(
         state: PostHistoryDialogScrollState | null,
     ): state is PostHistoryDialogScrollState {
-        return !!state && history.posts.some(
-            (post) => post.eventId === state.anchor.eventId,
+        return (
+            !!state &&
+            history.posts.some((post) => post.eventId === state.anchor.eventId)
         );
     }
 
@@ -2631,6 +2631,7 @@
         justify-content: space-between;
         height: 36px;
         padding-left: 1rem;
+        color: var(--btn-post-preview-action);
 
         .post-preview-footer-left {
             display: flex;
@@ -2640,7 +2641,6 @@
 
             .post-preview-date {
                 font-size: 1rem;
-                color: var(--btn-post-preview-action);
                 white-space: nowrap;
             }
         }
@@ -2668,10 +2668,7 @@
         :global(.post-preview-action-button) {
             min-height: auto;
             background: transparent;
-
-            :global(.svg-icon) {
-                --svg: var(--btn-post-preview-action);
-            }
+            color: var(--btn-post-preview-action);
         }
 
         @media (min-width: 601px) {
