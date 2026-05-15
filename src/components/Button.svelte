@@ -108,10 +108,18 @@
                 :global(:root.light) & {
                     color: color-mix(in srgb, whitesmoke, black 4%);
                     background: color-mix(in srgb, var(--btn-bg), black 4%);
+
+                    :global(.svg-icon) {
+                        --svg: currentColor;
+                    }
                 }
                 :global(:root.dark) & {
                     color: color-mix(in srgb, whitesmoke, black 7%);
                     background: color-mix(in srgb, var(--btn-bg), black 7%);
+
+                    :global(.svg-icon) {
+                        --svg: currentColor;
+                    }
                 }
             }
         }
