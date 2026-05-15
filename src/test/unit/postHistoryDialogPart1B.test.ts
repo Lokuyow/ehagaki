@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { readable } from 'svelte/store';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
@@ -376,6 +376,22 @@ async function findRepairButton(): Promise<HTMLElement> {
     return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
 }
 
+async function openFreshRepairButton(): Promise<HTMLElement> {
+    const trigger = await screen.findByRole('button', { name: '投稿履歴メニューを開く' });
+    if (trigger.getAttribute('aria-expanded') === 'true') {
+        await fireEvent.click(trigger);
+    }
+
+    await openPostHistoryMenu();
+    return screen.findByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ }) as Promise<HTMLElement>;
+}
+
+async function activateMenuItem(item: HTMLElement): Promise<void> {
+    item.focus();
+    await fireEvent.keyDown(item, { key: 'Enter', code: 'Enter' });
+    await fireEvent.click(item);
+}
+
 describe('PostHistoryDialog', () => {
     beforeEach(() => {
         clearPersistedPostHistoryListingSnapshots();
@@ -520,6 +536,7 @@ describe('PostHistoryDialog', () => {
     });
 
     afterEach(() => {
+        cleanup();
         clearPersistedPostHistoryListingSnapshots();
         clearPersistedPostHistoryViewState();
         vi.useRealTimers();
@@ -572,13 +589,17 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        const repairButton = await findRepairButton();
+        await waitFor(() => {
+            expect(screen.getByText('一覧の投稿')).toBeTruthy();
+        });
+
+        const repairButton = await openFreshRepairButton();
 
         await waitFor(() => {
             expect(repairButton.hasAttribute('data-disabled')).toBe(false);
         });
 
-        await fireEvent.click(repairButton);
+        await activateMenuItem(repairButton);
 
         await waitFor(() => {
             expect(screen.getByText('再取得中...')).toBeTruthy();
@@ -606,9 +627,22 @@ describe('PostHistoryDialog', () => {
         repositoryMock.getPage.mockResolvedValue([
             createRecord({ eventId: 'repair-partial-page', content: '一覧の投稿' }),
         ]);
-        const dialogRefresh = createDeferred<any>();
         relayFetchServiceMock.fetchLatest.mockReturnValueOnce({
-            promise: dialogRefresh.promise,
+            promise: Promise.resolve({
+                status: 'success',
+                events: [],
+                fetchedAt: 1000,
+                nextUntil: null,
+                hasMore: false,
+                relayUrls: ['wss://relay.example.com/'],
+                observedRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                duplicateCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+            }),
             cancel: vi.fn(),
         });
         repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
@@ -634,19 +668,30 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await waitFor(async () => {
-            expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
+        await waitFor(() => {
+            expect(screen.getByText('一覧の投稿')).toBeTruthy();
         });
 
-        await fireEvent.click(await findRepairButton());
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        const repairButton = await openFreshRepairButton();
+
+        await waitFor(() => {
+            expect(repairButton.hasAttribute('data-disabled')).toBe(false);
+        });
+
+        await activateMenuItem(repairButton);
 
         await waitFor(() => {
             expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
         });
 
         await waitFor(() => {
+            const activeDialog = screen.getAllByRole('dialog').at(-1);
             expect(screen.getByText('一部の取得に失敗しました。時間をおいて再実行してください。')).toBeTruthy();
-            expect(screen.queryByText('リレーとの同期が完了しました')).toBeNull();
+            expect(activeDialog ? within(activeDialog).queryByText('リレーとの同期が完了しました') : null).toBeNull();
         });
     });
 
@@ -723,14 +768,19 @@ describe('PostHistoryDialog', () => {
             },
         });
 
-        await waitFor(async () => {
-            expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
+        await waitFor(() => {
             expect(screen.getByText('一覧の投稿')).toBeTruthy();
+        });
+
+        const repairButton = await openFreshRepairButton();
+
+        await waitFor(() => {
+            expect(repairButton.hasAttribute('data-disabled')).toBe(false);
         });
 
         const getPageCallCountBeforeRepair = repositoryMock.getPage.mock.calls.length;
 
-        await fireEvent.click(await findRepairButton());
+        await activateMenuItem(repairButton);
 
         await waitFor(() => {
             expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
