@@ -1975,7 +1975,7 @@
 
     .post-history-latest-row {
         position: absolute;
-        bottom: 16px;
+        bottom: 12px;
         right: 16px;
         display: flex;
         justify-content: flex-end;
