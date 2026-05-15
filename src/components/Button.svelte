@@ -83,18 +83,6 @@
         }
     }
 
-    /* .default: ライトモード */
-    :global(:root.light) .default {
-        --text: hsl(0, 0%, 24%);
-        --svg: hsl(0, 0%, 30%);
-    }
-
-    /* .default: ダークモード */
-    :global(:root.dark) .default {
-        --text: hsl(0, 0%, 92%);
-        --svg: hsl(0, 0%, 99%);
-    }
-
     :global(html body :where(.primary)) {
         --btn-bg: var(--theme);
         --text: white;

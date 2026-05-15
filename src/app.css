@@ -245,21 +245,30 @@ select {
   --toggle-circle: var(--dialog-bg);
 }
 
+
+:root.light button.selected:where(:not(:disabled)) {
+  background-color: color-mix(in srgb, var(--btn-bg), black 15%);
+}
+
+:root.dark button.selected:where(:not(:disabled)) {
+  background-color: color-mix(in srgb, var(--btn-bg), white 22%);
+}
+
 @media (min-width: 601px) {
 
   :root.light button:where(:hover:not(:disabled)),
   :root.light [role="button"]:where(:hover:not([aria-disabled="true"])),
   :root.light select:where(:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), black 6%);
-    color: color-mix(in srgb, var(--text), black 6%);
+    background-color: color-mix(in srgb, var(--btn-bg), black 3%);
+    color: color-mix(in srgb, var(--text), black 3%);
     --svg: currentColor;
   }
 
   :root.dark button:where(:hover:not(:disabled)),
   :root.dark [role="button"]:where(:hover:not([aria-disabled="true"])),
   :root.dark select:where(:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), white 10%);
-    color: color-mix(in srgb, var(--text), white 10%);
+    background-color: color-mix(in srgb, var(--btn-bg), white 5%);
+    color: color-mix(in srgb, var(--text), white 5%);
     --svg: currentColor;
   }
 
@@ -282,14 +291,6 @@ select {
   :root.dark a:hover {
     color: color-mix(in srgb, currentColor, white 30%);
   }
-}
-
-:root.light button.selected:not(:disabled) {
-  background: color-mix(in srgb, var(--btn-bg), black 15%);
-}
-
-:root.dark button.selected:not(:disabled) {
-  background: color-mix(in srgb, var(--btn-bg), white 22%);
 }
 
 
