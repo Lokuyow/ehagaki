@@ -1875,10 +1875,8 @@
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-rows: auto auto;
         align-items: start;
-        column-gap: 12px;
-        row-gap: 6px;
         width: 100%;
-        padding: 0 10px 10px;
+        padding: 0 10px 4px;
         border-bottom: 1px solid var(--border-hr);
     }
 
@@ -1890,11 +1888,12 @@
     }
 
     .post-history-current-month {
+        color: var(--text-light);
         display: flex;
-        align-items: flex-start;
-        min-height: calc(2 * 1.05em);
+        align-items: center;
+        height: 100%;
         margin: 0;
-        font-size: clamp(1.85rem, 6vw, 2.7rem);
+        font-size: 2rem;
         line-height: 1.05;
         font-weight: 600;
         letter-spacing: -0.04em;
@@ -1905,7 +1904,7 @@
         grid-column: 2;
         grid-row: 1;
         display: flex;
-        align-items: flex-start;
+        align-items: stretch;
         justify-self: end;
         gap: 8px;
         min-width: 0;
@@ -2137,6 +2136,7 @@
         color: var(--text-muted);
         font-size: 0.8rem;
         line-height: 1.3;
+        height: auto;
     }
 
     :global(.status-loading-placeholder .loader-container) {
@@ -2521,14 +2521,18 @@
         justify-content: space-between;
         height: 36px;
         padding-left: 1rem;
-        color: var(--text-muted);
-        font-size: 0.875rem;
 
         .post-preview-footer-left {
             display: flex;
             align-items: center;
             justify-content: flex-start;
-            min-width: 80px;
+            min-width: 85px;
+
+            .post-preview-date {
+                font-size: 1rem;
+                color: var(--btn-post-preview-action);
+                white-space: nowrap;
+            }
         }
 
         .post-preview-footer-actions {
@@ -2538,15 +2542,11 @@
             flex: 1 0 auto;
         }
 
-        .post-preview-date {
-            white-space: nowrap;
-        }
-
         .post-preview-footer-right {
             display: flex;
             align-items: center;
             justify-content: flex-end;
-            min-width: 80px;
+            min-width: 85px;
 
             @media (min-width: 601px) {
                 :global(.menu-trigger:hover) :global(.more-icon) {
