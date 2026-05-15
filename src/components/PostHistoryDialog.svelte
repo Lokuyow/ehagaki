@@ -1719,7 +1719,7 @@
                                             "postHistory.fetchOlderFromRelaysLoading",
                                         )}
                                         showLoader={true}
-                                        loaderSize={20}
+                                        loaderSize={28}
                                         customClass="post-history-nav-loading-placeholder"
                                     />
                                 {:else}
@@ -2376,6 +2376,10 @@
         width: 28px;
         height: 28px;
         opacity: 0.6;
+    }
+
+    :global(.post-history-nav-loading-placeholder .loader-container .square) {
+        background-color: currentColor;
     }
 
     @keyframes popover-in {
