@@ -26,6 +26,7 @@ import {
     readPersistedPostHistoryViewState,
     writePersistedPostHistoryViewState,
 } from "../postHistoryDialogViewState";
+import type { PostHistoryDialogScrollState } from "../postHistoryDialogScrollState";
 import { postHistoryLocalSearchService } from "../postHistoryLocalSearchService";
 import {
     postHistoryCurrentViewRefetchService,
@@ -60,6 +61,7 @@ interface UsePostHistoryListingParams {
     getPubkeyHex: () => string | null | undefined;
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
+    getSessionScrollState?: () => PostHistoryDialogScrollState | null;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -211,6 +213,7 @@ export function usePostHistoryListing({
     getPubkeyHex,
     getRxNostr,
     getRelayConfig,
+    getSessionScrollState = () => null,
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -859,6 +862,48 @@ export function usePostHistoryListing({
         }
 
         state.totalCount = count;
+    }
+
+    async function refreshPreservedVisibleWindow(): Promise<void> {
+        const pubkeyHex = getPubkeyHex();
+        if (!pubkeyHex || !getShow()) {
+            return;
+        }
+
+        const requestId = ++loadRequestId;
+        const visibleUntil = await refreshVisibleUntil(pubkeyHex);
+        const count = await countVisiblePosts(pubkeyHex, visibleUntil);
+        if (!getShow() || requestId !== loadRequestId) {
+            return;
+        }
+
+        state.totalCount = count;
+        void prefetchCurrentPageMedia(state.loadedPosts);
+        await refreshTimelineAvailability(
+            pubkeyHex,
+            state.loadedPosts,
+            requestId,
+        );
+        startOpenRelayFetchAfterLocalLoad(pubkeyHex, state.loadedPosts);
+    }
+
+    function canPreserveSessionVisibleWindow(): boolean {
+        if (isSearchMode || state.loadedPosts.length === 0) {
+            return false;
+        }
+
+        const scrollState = getSessionScrollState();
+        if (
+            !scrollState ||
+            scrollState.mode !== "normal" ||
+            scrollState.pubkeyHex !== getPubkeyHex()
+        ) {
+            return false;
+        }
+
+        return state.loadedPosts.some(
+            (post) => post.eventId === scrollState.anchor.eventId,
+        );
     }
 
     async function loadOlderVisiblePosts(): Promise<boolean> {
@@ -1640,6 +1685,11 @@ export function usePostHistoryListing({
 
         hasAttemptedInitialLocalLoad = true;
         initialLocalLoadKey = nextInitialLoadKey;
+
+        if (canPreserveSessionVisibleWindow()) {
+            void refreshPreservedVisibleWindow();
+            return;
+        }
 
         void loadLatestVisiblePosts();
     });

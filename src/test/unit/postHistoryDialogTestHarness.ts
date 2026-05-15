@@ -3,6 +3,7 @@ import { readable } from 'svelte/store';
 import { vi } from 'vitest';
 import { clearPersistedPostHistoryListingSnapshots } from '../../lib/hooks/usePostHistoryListing.svelte';
 import { clearPersistedPostHistoryViewState } from '../../lib/postHistoryDialogViewState';
+import { clearPostHistoryDialogScrollStates } from '../../lib/postHistoryDialogScrollState';
 
 const hoisted = vi.hoisted(() => {
     const mockTranslate = (key: string, options?: { values?: Record<string, unknown> }) => {
@@ -323,6 +324,7 @@ export async function waitForSearchDebounce(): Promise<void> {
 export function resetPostHistoryDialogHarness(): void {
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();
+    clearPostHistoryDialogScrollStates();
     vi.clearAllMocks();
 
     repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
@@ -378,6 +380,7 @@ export function cleanupPostHistoryDialogHarness(): void {
     cleanup();
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();
+    clearPostHistoryDialogScrollStates();
     vi.useRealTimers();
 }
 

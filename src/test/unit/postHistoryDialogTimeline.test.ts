@@ -14,6 +14,7 @@ import {
     resetPostHistoryDialogHarness,
     relayFetchServiceMock,
 } from './postHistoryDialogTestHarness';
+import { writePostHistoryDialogScrollState } from '../../lib/postHistoryDialogScrollState';
 
 function createMockRect(top: number, height: number) {
     return {
@@ -679,6 +680,16 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(screen.getByText('最古投稿')).toBeTruthy();
         });
 
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: 'restore-older',
+                offsetTop: 96,
+            },
+            savedAt: 1234,
+        });
+
         firstView.unmount();
         repositoryMock.getLatestVisibleChunk.mockClear();
 
@@ -694,6 +705,99 @@ describe('PostHistoryDialog timeline navigation', () => {
         expect(screen.getByText('最古投稿')).toBeTruthy();
         expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
 
+        secondView.unmount();
+    });
+
+    it('close 後に reopen すると保存したアンカー位置へ戻る', async () => {
+        const newest = createRecord({
+            eventId: 'anchor-newest',
+            content: 'アンカー最新投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const middle = createRecord({
+            eventId: 'anchor-middle',
+            content: 'アンカー中間投稿',
+            createdAt: 1_704_240_000,
+            postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+        });
+        const older = createRecord({
+            eventId: 'anchor-older',
+            content: 'アンカー対象投稿',
+            createdAt: 1_704_153_600,
+            postedAt: Date.UTC(2024, 0, 1, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([newest, middle, older]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('アンカー対象投稿')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: 'anchor-older',
+                offsetTop: 48,
+            },
+            savedAt: 5678,
+        });
+        firstView.unmount();
+        repositoryMock.getLatestVisibleChunk.mockClear();
+
+        const secondView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        const historyContainer = getHistoryContainer();
+        historyContainer.scrollTop = 0;
+        const rect = (top: number, height: number) => ({
+            x: 0,
+            y: top,
+            top,
+            left: 0,
+            right: 320,
+            bottom: top + height,
+            width: 320,
+            height,
+            toJSON: () => ({}),
+        });
+        const getBoundingClientRectSpy = vi
+            .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+            .mockImplementation(function (this: HTMLElement) {
+                if (this.classList.contains('post-history-container')) {
+                    return rect(0, 320) as DOMRect;
+                }
+
+                if (this.dataset.postHistoryEventId === 'anchor-older') {
+                    return rect(168 - historyContainer.scrollTop, 72) as DOMRect;
+                }
+
+                return rect(0, 72) as DOMRect;
+            });
+
+        await waitFor(() => {
+            expect(historyContainer.scrollTop).toBe(120);
+        });
+        expect(repositoryMock.getLatestVisibleChunk).not.toHaveBeenCalled();
+
+        getBoundingClientRectSpy.mockRestore();
         secondView.unmount();
     });
 });

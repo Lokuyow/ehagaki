@@ -28,6 +28,13 @@
         formatPostedAt,
         type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
+    import {
+        clearPostHistoryDialogScrollState,
+        readPostHistoryDialogScrollState,
+        writePostHistoryDialogScrollState,
+        type PostHistoryDialogScrollMode,
+        type PostHistoryDialogScrollState,
+    } from "../lib/postHistoryDialogScrollState";
     import { POST_HISTORY_PAGE_SIZE } from "../lib/postHistoryRelayFetchService";
     import { customEmojiImageMetaRepository } from "../lib/storage/customEmojiImageMetaRepository";
     import type {
@@ -73,6 +80,11 @@
         getPubkeyHex: () => pubkeyHex,
         getRxNostr: () => rxNostr,
         getRelayConfig: () => relayConfig,
+        getSessionScrollState: () =>
+            readPostHistoryDialogScrollState({
+                pubkeyHex,
+                mode: "normal",
+            }),
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
     const channelDisplay = usePostHistoryChannelDisplay({
@@ -114,6 +126,11 @@
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
     let historyMonthLabelFrameId: number | null = null;
+    let pendingSessionScrollRestore = $state<PostHistoryDialogScrollState | null>(
+        null,
+    );
+    let wasOpenForScrollRestore = false;
+    let restoredSessionScrollKey: string | null = null;
     type HistoryScrollAnchor = {
         eventId: string;
         offsetTop: number;
@@ -181,7 +198,68 @@
         loadingEmojiUrls.clear();
     }
 
+    function getCurrentScrollMode(): PostHistoryDialogScrollMode {
+        return history.isSearchMode ? "search" : "normal";
+    }
+
+    function getCurrentScrollSearchQuery(): string {
+        return history.isSearchMode ? history.state.searchQuery : "";
+    }
+
+    function readCurrentSessionScrollState(): PostHistoryDialogScrollState | null {
+        return readPostHistoryDialogScrollState({
+            pubkeyHex,
+            mode: getCurrentScrollMode(),
+            searchQuery: getCurrentScrollSearchQuery(),
+        });
+    }
+
+    function buildSessionScrollRestoreKey(
+        state: PostHistoryDialogScrollState,
+    ): string {
+        return `${state.pubkeyHex}:${state.mode}:${state.searchQuery}:${state.anchor.eventId}:${state.savedAt}`;
+    }
+
+    function hasPostForScrollAnchor(
+        state: PostHistoryDialogScrollState | null,
+    ): state is PostHistoryDialogScrollState {
+        return !!state && history.posts.some(
+            (post) => post.eventId === state.anchor.eventId,
+        );
+    }
+
+    function saveCurrentSessionScrollAnchor(): void {
+        const anchor = captureHistoryScrollAnchor();
+        if (!anchor) {
+            return;
+        }
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex,
+            mode: getCurrentScrollMode(),
+            searchQuery: getCurrentScrollSearchQuery(),
+            anchor,
+        });
+    }
+
+    function clearCurrentSessionScrollAnchor(): void {
+        clearPostHistoryDialogScrollState({
+            pubkeyHex,
+            mode: getCurrentScrollMode(),
+            searchQuery: getCurrentScrollSearchQuery(),
+        });
+        pendingSessionScrollRestore = null;
+        restoredSessionScrollKey = null;
+    }
+
+    function clearAllSessionScrollAnchorsForCurrentPubkey(): void {
+        clearPostHistoryDialogScrollState({ pubkeyHex });
+        pendingSessionScrollRestore = null;
+        restoredSessionScrollKey = null;
+    }
+
     function handleClose() {
+        saveCurrentSessionScrollAnchor();
         history.cancelCurrentSync();
         history.cancelCurrentViewRefetch();
         channelDisplay.cancelCurrentChannelResolution();
@@ -218,6 +296,45 @@
         }
 
         resetDialogState();
+    });
+
+    $effect(() => {
+        if (!show) {
+            wasOpenForScrollRestore = false;
+            pendingSessionScrollRestore = null;
+            restoredSessionScrollKey = null;
+            return;
+        }
+
+        if (wasOpenForScrollRestore) {
+            return;
+        }
+
+        wasOpenForScrollRestore = true;
+        pendingSessionScrollRestore = readCurrentSessionScrollState();
+        restoredSessionScrollKey = null;
+    });
+
+    $effect(() => {
+        if (!show || !hasPostForScrollAnchor(pendingSessionScrollRestore)) {
+            return;
+        }
+
+        const scrollState = pendingSessionScrollRestore;
+        const restoreKey = buildSessionScrollRestoreKey(scrollState);
+        if (restoredSessionScrollKey === restoreKey) {
+            return;
+        }
+
+        void tick().then(() => {
+            if (!show || pendingSessionScrollRestore !== scrollState) {
+                return;
+            }
+
+            restoreHistoryScrollAnchor(scrollState.anchor);
+            restoredSessionScrollKey = restoreKey;
+            pendingSessionScrollRestore = null;
+        });
     });
 
     $effect(() => {
@@ -559,6 +676,7 @@
     }
 
     async function handleReturnToLatest(): Promise<void> {
+        clearAllSessionScrollAnchorsForCurrentPubkey();
         const changed = await history.returnToLatest();
         if (changed) {
             resetHistoryScrollSoon();
@@ -571,6 +689,7 @@
             return;
         }
 
+        clearAllSessionScrollAnchorsForCurrentPubkey();
         const changed = await history.jumpToCreatedAt(createdAt);
         if (changed) {
             activeUtilityPanel = "none";
@@ -935,6 +1054,7 @@
     }
 
     function hideSearch(): void {
+        clearCurrentSessionScrollAnchor();
         activeUtilityPanel = "none";
         history.resetSearchState();
     }
@@ -955,6 +1075,7 @@
     }
 
     function handleJumpToOldestFromMenu(): void {
+        clearAllSessionScrollAnchorsForCurrentPubkey();
         headingMenuOpen = false;
         void history.jumpToOldest().then((changed) => {
             if (changed) {
@@ -1040,6 +1161,7 @@
         try {
             const deleted = await history.deleteLocalHistory();
             if (deleted) {
+                clearAllSessionScrollAnchorsForCurrentPubkey();
                 localHistoryDeleteConfirmOpen = false;
                 activeUtilityPanel = "none";
                 resetHistoryScrollPosition();
