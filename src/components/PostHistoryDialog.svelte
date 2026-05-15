@@ -1638,11 +1638,7 @@
                                         class="cloud-download-icon svg-icon"
                                         aria-hidden="true"
                                     ></div>
-                                    {$_(
-                                        history.hasRemoteContinuationNotice
-                                            ? "postHistory.fetchUnfetchedFromRelays"
-                                            : "postHistory.fetchOlderFromRelays",
-                                    )}
+                                    {$_("postHistory.fetchUnfetchedFromRelays")}
                                 {/if}
                             </Button>
                         {:else}

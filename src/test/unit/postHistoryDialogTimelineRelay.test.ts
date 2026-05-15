@@ -219,7 +219,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         secondView.unmount();
     });
 
-    it('dialog-open-refresh は既存 nextUntil を保守的に保持し、取得ボタンは既存 cursor から続ける', async () => {
+    it('dialog-open-refresh は保守的継続時だけ notice を出し、close 後も既存 cursor から続ける', async () => {
         const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1000);
         const post = createRecord({
             eventId: 'cursor-local',
@@ -263,34 +263,61 @@ describe('PostHistoryDialog timeline relay flows', () => {
             });
 
         try {
-            const firstView = render(PostHistoryDialog, {
+            const onClose = vi.fn();
+            const { rerender } = render(PostHistoryDialog, {
                 props: {
                     show: true,
-                    onClose: vi.fn(),
+                    onClose,
                     pubkeyHex: PUBKEY_HEX,
                     rxNostr: {} as any,
                 },
             });
 
             await waitFor(() => {
-                expect(screen.getByText('未取得の投稿がまだある可能性があります。')).toBeTruthy();
                 expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+                expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
-            firstView.unmount();
+
+            await rerender({
+                show: false,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            });
 
             nowSpy.mockReturnValue(200_000);
-            const secondView = render(PostHistoryDialog, {
-                props: {
-                    show: true,
-                    onClose: vi.fn(),
-                    pubkeyHex: PUBKEY_HEX,
-                    rxNostr: {} as any,
-                },
+            await rerender({
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
             });
 
             await waitFor(() => {
                 expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
                 expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+                expect(screen.getByText('未取得の投稿がまだある可能性があります。')).toBeTruthy();
+            });
+
+            await rerender({
+                show: false,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            });
+
+            nowSpy.mockReturnValue(200_001);
+            await rerender({
+                show: true,
+                onClose,
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            });
+
+            await waitFor(() => {
+                expect(relayFetchServiceMock.fetchLatest).toHaveBeenCalledTimes(2);
+                expect(screen.getByRole('button', { name: '未取得の投稿を取得' })).toBeTruthy();
+                expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
 
             await fireEvent.click(screen.getByRole('button', { name: '未取得の投稿を取得' }));
@@ -305,9 +332,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
                         until: 150,
                     }),
                 );
+                expect(screen.queryByText('未取得の投稿がまだある可能性があります。')).toBeNull();
             });
-
-            secondView.unmount();
         } finally {
             nowSpy.mockRestore();
         }

@@ -72,7 +72,6 @@ interface PersistedPostHistoryListingSnapshot {
     searchHasNext: boolean;
     hasMoreRemote: boolean;
     nextUntil: number | null;
-    hasConservativeRemoteContinuationNotice: boolean;
     lastDialogOpenRefreshAt: number | null;
     visibleUntil: number | null;
     hasOlderLocal: boolean;
@@ -87,7 +86,6 @@ const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListi
     searchHasNext: false,
     hasMoreRemote: false,
     nextUntil: null,
-    hasConservativeRemoteContinuationNotice: false,
     lastDialogOpenRefreshAt: null,
     visibleUntil: null,
     hasOlderLocal: false,
@@ -126,8 +124,6 @@ function cloneListingSnapshot(
         searchHasNext: snapshot.searchHasNext,
         hasMoreRemote: snapshot.hasMoreRemote,
         nextUntil: snapshot.nextUntil,
-        hasConservativeRemoteContinuationNotice:
-            snapshot.hasConservativeRemoteContinuationNotice,
         lastDialogOpenRefreshAt: snapshot.lastDialogOpenRefreshAt,
         visibleUntil: snapshot.visibleUntil,
         hasOlderLocal: snapshot.hasOlderLocal,
@@ -209,8 +205,7 @@ export function usePostHistoryListing({
             null as PostHistoryCurrentViewRefetchMessageValues | null,
         hasMoreRemote: persistedListingSnapshot.hasMoreRemote,
         nextUntil: persistedListingSnapshot.nextUntil,
-        hasConservativeRemoteContinuationNotice:
-            persistedListingSnapshot.hasConservativeRemoteContinuationNotice,
+        hasConservativeRemoteContinuationNotice: false,
         lastDialogOpenRefreshAt: persistedListingSnapshot.lastDialogOpenRefreshAt,
         visibleUntil: persistedListingSnapshot.visibleUntil,
         hasOlderLocal: persistedListingSnapshot.hasOlderLocal,
@@ -282,11 +277,7 @@ export function usePostHistoryListing({
         state.nextUntil !== null,
     );
     const hasRemoteContinuationNotice = $derived(
-        !isSearchMode &&
-        (
-            (state.hasMoreRemote && state.nextUntil !== null) ||
-            state.hasConservativeRemoteContinuationNotice
-        ),
+        !isSearchMode && state.hasConservativeRemoteContinuationNotice,
     );
     const isFetchingOlderFromRelays = $derived(
         !isSearchMode && state.syncStatus === "older-syncing",
@@ -454,6 +445,7 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         state.syncStatus = "idle";
+        state.hasConservativeRemoteContinuationNotice = false;
         clearCurrentViewRefetchFeedback();
         clearSyncStatusMessageClearTimeout();
         hasStartedInitialSync = false;
@@ -1258,6 +1250,7 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
+        state.hasConservativeRemoteContinuationNotice = false;
         const previousVisibleUntil = await refreshVisibleUntil(pubkeyHex);
         if (
             !isCurrentFetchRequest(requestId) ||
@@ -1538,8 +1531,6 @@ export function usePostHistoryListing({
             searchHasNext: state.searchHasNext,
             hasMoreRemote: state.hasMoreRemote,
             nextUntil: state.nextUntil,
-            hasConservativeRemoteContinuationNotice:
-                state.hasConservativeRemoteContinuationNotice,
             lastDialogOpenRefreshAt: state.lastDialogOpenRefreshAt,
             visibleUntil: state.visibleUntil,
             hasOlderLocal: state.hasOlderLocal,
