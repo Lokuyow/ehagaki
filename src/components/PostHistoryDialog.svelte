@@ -128,6 +128,7 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    let searchInputElement = $state<HTMLInputElement | null>(null);
     let historyMonthLabelFrameId: number | null = null;
     let pendingSessionScrollRestore =
         $state<PostHistoryDialogScrollState | null>(null);
@@ -1046,9 +1047,19 @@
         deleteTargetPost = null;
     }
 
+    async function focusSearchInputSoon(): Promise<void> {
+        await tick();
+        if (activeUtilityPanel !== "search") {
+            return;
+        }
+
+        searchInputElement?.focus({ preventScroll: true });
+    }
+
     function showSearch(): void {
         activeUtilityPanel = "search";
         headingMenuOpen = false;
+        void focusSearchInputSoon();
     }
 
     function hideSearch(): void {
@@ -1320,6 +1331,7 @@
         >
             <input
                 bind:value={history.state.searchInput}
+                bind:this={searchInputElement}
                 class="post-history-search-input"
                 type="search"
                 placeholder={$_("postHistory.searchPlaceholder")}

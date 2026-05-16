@@ -23,6 +23,31 @@ describe('PostHistoryDialog timeline search', () => {
         cleanupPostHistoryDialogHarness();
     });
 
+    it('メニューから検索バーを開くと検索入力欄へフォーカスする', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'search-focus-normal', content: '通常一覧' }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        const searchInput = await openSearchBar();
+
+        await waitFor(() => {
+            expect(document.activeElement).toBe(searchInput);
+        });
+
+        view.unmount();
+    });
+
     it('検索結果は古い側と新しい側へローカル移動する', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(1);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
