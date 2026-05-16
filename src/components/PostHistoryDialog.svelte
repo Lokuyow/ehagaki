@@ -1835,37 +1835,34 @@
                 </div>
             {:else if history.showLocalExhaustedState}
                 <div class="post-history-exhausted-state">
-                    <div class="post-history-exhausted-actions">
-                        {#if history.canFetchOlderFromRelays || history.isFetchingFromRelays || history.isRefetchingAroundCurrentView}
-                            <Button
-                                type="button"
-                                variant="primary"
-                                className="post-history-nav-button"
-                                contentLayout="iconText"
-                                disabled={history.isFetchingFromRelays ||
-                                    history.isRefetchingAroundCurrentView}
-                                onClick={() =>
-                                    void handleFetchOlderFromRelays()}
-                            >
-                                {#if history.isFetchingOlderFromRelays}
-                                    <LoadingPlaceholder
-                                        text={$_(
-                                            "postHistory.fetchOlderFromRelaysLoading",
-                                        )}
-                                        showLoader={true}
-                                        loaderSize={28}
-                                        customClass="post-history-nav-loading-placeholder"
-                                    />
-                                {:else}
-                                    <div
-                                        class="cloud-download-icon svg-icon"
-                                        aria-hidden="true"
-                                    ></div>
-                                    {$_("postHistory.fetchOlderFromRelays")}
-                                {/if}
-                            </Button>
-                        {/if}
-                    </div>
+                    {#if history.canFetchOlderFromRelays || history.isFetchingFromRelays || history.isRefetchingAroundCurrentView}
+                        <Button
+                            type="button"
+                            variant="primary"
+                            className="post-history-nav-button"
+                            contentLayout="iconText"
+                            disabled={history.isFetchingFromRelays ||
+                                history.isRefetchingAroundCurrentView}
+                            onClick={() => void handleFetchOlderFromRelays()}
+                        >
+                            {#if history.isFetchingOlderFromRelays}
+                                <LoadingPlaceholder
+                                    text={$_(
+                                        "postHistory.fetchOlderFromRelaysLoading",
+                                    )}
+                                    showLoader={true}
+                                    loaderSize={28}
+                                    customClass="post-history-nav-loading-placeholder"
+                                />
+                            {:else}
+                                <div
+                                    class="cloud-download-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                {$_("postHistory.fetchOlderFromRelays")}
+                            {/if}
+                        </Button>
+                    {/if}
                 </div>
             {/if}
         {/if}
@@ -2187,13 +2184,6 @@
         gap: 10px;
         align-items: center;
         padding: 0 16px 8px 16px;
-    }
-
-    .post-history-exhausted-actions {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
     }
 
     .post-history-latest-row {
@@ -2544,8 +2534,7 @@
     }
 
     @media (max-width: 600px) {
-        .post-history-utility-controls,
-        .post-history-exhausted-actions {
+        .post-history-utility-controls {
             align-items: stretch;
         }
 
