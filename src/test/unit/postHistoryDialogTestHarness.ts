@@ -291,6 +291,16 @@ export function createRelayFetchResult(overrides: Record<string, unknown> = {}) 
         perRelayCounts: [],
         oldestCreatedAt: null,
         newestCreatedAt: null,
+        requestedRelayUrls: [],
+        eventRelayUrls: [],
+        eoseRelayUrls: [],
+        closedRelayUrls: [],
+        errorRelayUrls: [],
+        downRelayUrls: [],
+        completedByRxNostr: true,
+        completedByLocalTimeout: false,
+        hasAnyRelayResponse: true,
+        allRelaysFailed: false,
         ...overrides,
     };
 }

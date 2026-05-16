@@ -81,6 +81,25 @@ interface PersistedPostHistoryListingSnapshot {
     hasNewerLocal: boolean;
 }
 
+interface OlderBackfillSearchRange {
+    since: number;
+    until: number;
+    windowSeconds: number;
+}
+
+interface OlderBackfillLastRange extends OlderBackfillSearchRange {
+    hitLimit: boolean;
+}
+
+interface OlderBackfillSearchState {
+    windowSeconds: number;
+    nextUntil: number | null;
+    consecutiveEmptyCount: number;
+    lastRange: OlderBackfillLastRange | null;
+    continuationSince: number | null;
+    exhausted: boolean;
+}
+
 const DEFAULT_PERSISTED_POST_HISTORY_LISTING_SNAPSHOT: PersistedPostHistoryListingSnapshot = {
     loadedPosts: [],
     searchPosts: [],
@@ -99,6 +118,9 @@ const POST_HISTORY_VISIBLE_KINDS_KEY = buildPostHistoryVisibleKindsKey([
     ...POST_HISTORY_FETCH_KINDS,
 ]);
 const POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS = 24 * 60 * 60;
+export const POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS = 12 * 60 * 60;
+// Keep expanded scans bounded so older-backfill stays a windowed author query instead of drifting back to a wide until-only search.
+const POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS = 30 * 24 * 60 * 60;
 
 const persistedListingSnapshotByPubkey = new Map<
     string,
@@ -260,6 +282,14 @@ export function usePostHistoryListing({
     let currentViewRefetchMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let syncStatusMessageClearTimeout: ReturnType<typeof setTimeout> | null = null;
     let appliedSearchQuery = "";
+    const olderBackfillSearch = $state<OlderBackfillSearchState>({
+        windowSeconds: POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS,
+        nextUntil: null,
+        consecutiveEmptyCount: 0,
+        lastRange: null,
+        continuationSince: null,
+        exhausted: false,
+    });
     const maxVisiblePosts = Math.max(pageSize * 3, pageSize);
 
     const isSearchMode = $derived(state.searchQuery.length > 0);
@@ -306,6 +336,7 @@ export function usePostHistoryListing({
         !!getPubkeyHex() &&
         !!getRxNostr() &&
         !isRefetchingAroundCurrentView &&
+        !olderBackfillSearch.exhausted &&
         state.syncStatus !== "syncing" &&
         state.syncStatus !== "older-syncing",
     );
@@ -400,6 +431,16 @@ export function usePostHistoryListing({
         }
     }
 
+    function resetOlderBackfillSearchState(): void {
+        olderBackfillSearch.windowSeconds =
+            POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS;
+        olderBackfillSearch.nextUntil = null;
+        olderBackfillSearch.consecutiveEmptyCount = 0;
+        olderBackfillSearch.lastRange = null;
+        olderBackfillSearch.continuationSince = null;
+        olderBackfillSearch.exhausted = false;
+    }
+
     function clearCurrentViewRefetchFeedback(): void {
         state.currentViewRefetchMessageKey = null;
         state.currentViewRefetchMessageValues = null;
@@ -469,6 +510,7 @@ export function usePostHistoryListing({
         state.hasOlderLocal = false;
         state.hasNewerLocal = false;
         state.syncStatus = "idle";
+        resetOlderBackfillSearchState();
         clearCurrentViewRefetchFeedback();
         clearSyncStatusMessageClearTimeout();
         resetSearchState();
@@ -479,6 +521,7 @@ export function usePostHistoryListing({
         cancelCurrentSync();
         cancelCurrentViewRefetch();
         state.syncStatus = "idle";
+        resetOlderBackfillSearchState();
         clearCurrentViewRefetchFeedback();
         clearSyncStatusMessageClearTimeout();
         hasStartedInitialSync = false;
@@ -511,6 +554,10 @@ export function usePostHistoryListing({
     async function resolveOlderRelayFetchUntil(
         pubkeyHex: string,
     ): Promise<number | null> {
+        if (typeof olderBackfillSearch.nextUntil === "number") {
+            return olderBackfillSearch.nextUntil;
+        }
+
         return resolvePostHistoryOlderRelayFetchUntil({
             nextUntil: state.nextUntil,
             visibleOldestCreatedAt,
@@ -520,29 +567,154 @@ export function usePostHistoryListing({
         });
     }
 
-    function updateOlderRelayCursorHint(
-        result: PostHistoryRelayFetchResult,
+    function buildOlderBackfillSearchRange(
         fetchUntil: number,
-        didVisibleCountIncrease: boolean,
+    ): OlderBackfillSearchRange | null {
+        if (!Number.isFinite(fetchUntil)) {
+            return null;
+        }
+
+        const until = Math.trunc(fetchUntil) - 1;
+        if (until < 0) {
+            return null;
+        }
+
+        const continuationSince =
+            typeof olderBackfillSearch.continuationSince === "number" &&
+                olderBackfillSearch.continuationSince <= until
+                ? olderBackfillSearch.continuationSince
+                : null;
+
+        return {
+            since: continuationSince ?? Math.max(
+                0,
+                until - olderBackfillSearch.windowSeconds,
+            ),
+            until,
+            windowSeconds: olderBackfillSearch.windowSeconds,
+        };
+    }
+
+    function didOlderBackfillHitLimit(
+        result: PostHistoryRelayFetchResult,
+        limit: number,
+    ): boolean {
+        return result.hasMore ||
+            result.rawCount >= limit ||
+            result.perRelayCounts.some((item) => item.rawCount >= limit);
+    }
+
+    function resolveOldestCreatedAtFromFetchResult(
+        result: PostHistoryRelayFetchResult,
+    ): number | null {
+        if (typeof result.oldestCreatedAt === "number") {
+            return result.oldestCreatedAt;
+        }
+
+        return result.events.reduce<number | null>((oldest, item) => {
+            const createdAt = item.event.created_at;
+            if (!Number.isFinite(createdAt)) {
+                return oldest;
+            }
+
+            return oldest === null || createdAt < oldest
+                ? Math.trunc(createdAt)
+                : oldest;
+        }, null);
+    }
+
+    function setOlderBackfillNextCursor(
+        nextUntil: number | null,
+        continuationSince: number | null,
     ): void {
-        state.hasMoreRemote = result.hasMore;
+        olderBackfillSearch.nextUntil = nextUntil;
+        olderBackfillSearch.continuationSince = continuationSince;
+        olderBackfillSearch.exhausted = nextUntil === null;
+        state.nextUntil = nextUntil;
+        state.hasMoreRemote = nextUntil !== null;
+    }
 
-        if (typeof result.nextUntil !== "number") {
-            state.nextUntil = null;
+    function updateOlderBackfillSearchState(
+        result: PostHistoryRelayFetchResult,
+        range: OlderBackfillSearchRange,
+        limit: number,
+    ): void {
+        const hitLimit = didOlderBackfillHitLimit(result, limit);
+        const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
+        const defaultOlderCursor = range.since > 0 ? range.since : null;
+        let nextUntil = defaultOlderCursor;
+        let continuationSince: number | null = null;
+
+        olderBackfillSearch.lastRange = {
+            ...range,
+            hitLimit,
+        };
+
+        if (result.status === "success" && result.events.length === 0) {
+            olderBackfillSearch.consecutiveEmptyCount += 1;
+            olderBackfillSearch.windowSeconds = Math.min(
+                olderBackfillSearch.windowSeconds * 2,
+                POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS,
+            );
+            setOlderBackfillNextCursor(nextUntil, null);
             return;
         }
 
-        if (
-            result.status === "success" &&
-            !didVisibleCountIncrease &&
-            result.nextUntil === fetchUntil
-        ) {
-            state.nextUntil = fetchUntil > 0 ? fetchUntil - 1 : null;
-            state.hasMoreRemote = state.nextUntil !== null;
+        if (result.events.length > 0) {
+            olderBackfillSearch.consecutiveEmptyCount = 0;
+            olderBackfillSearch.windowSeconds =
+                POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS;
+
+            if (
+                (hitLimit || result.status !== "success") &&
+                typeof oldestCreatedAt === "number" &&
+                oldestCreatedAt > range.since
+            ) {
+                nextUntil = oldestCreatedAt;
+                continuationSince = range.since;
+            }
+
+            setOlderBackfillNextCursor(nextUntil, continuationSince);
             return;
         }
 
-        state.nextUntil = result.nextUntil;
+        const retryUntil = range.until + 1;
+        setOlderBackfillNextCursor(retryUntil, olderBackfillSearch.continuationSince);
+    }
+
+    function logOlderBackfillResult(
+        range: OlderBackfillSearchRange,
+        result: PostHistoryRelayFetchResult,
+        limit: number,
+    ): void {
+        const nextRange = typeof olderBackfillSearch.nextUntil === "number"
+            ? buildOlderBackfillSearchRange(olderBackfillSearch.nextUntil)
+            : null;
+
+        globalThis.console?.debug?.("post_history_older_backfill", {
+            reason: "older-backfill",
+            since: range.since,
+            until: range.until,
+            limit,
+            resultStatus: result.status,
+            eventsLength: result.events.length,
+            rawCount: result.rawCount ?? result.events.length,
+            uniqueCount: result.uniqueCount ?? result.events.length,
+            hasMore: result.hasMore,
+            nextUntil: result.nextUntil,
+            oldestCreatedAt: resolveOldestCreatedAtFromFetchResult(result),
+            newestCreatedAt: result.newestCreatedAt,
+            requestedRelayUrls: result.requestedRelayUrls ?? result.relayUrls ?? [],
+            observedRelayUrls: result.observedRelayUrls ?? [],
+            eoseRelayUrls: result.eoseRelayUrls ?? [],
+            closedRelayUrls: result.closedRelayUrls ?? [],
+            errorRelayUrls: result.errorRelayUrls ?? [],
+            nextPlannedSince: nextRange?.since ?? null,
+            nextPlannedUntil: nextRange?.until ?? null,
+            nextWindowSeconds: olderBackfillSearch.windowSeconds,
+            consecutiveEmptyCount: olderBackfillSearch.consecutiveEmptyCount,
+            exhausted: olderBackfillSearch.exhausted,
+        });
     }
 
     function buildCurrentPagePreferredRanges() {
@@ -615,6 +787,30 @@ export function usePostHistoryListing({
             ? typeof currentVisibleUntil === "number"
                 ? Math.min(currentVisibleUntil, candidateVisibleUntil)
                 : candidateVisibleUntil
+            : currentVisibleUntil;
+
+        if (nextVisibleUntil !== currentVisibleUntil) {
+            await postHistoryVisibleRangeRepository.save({
+                pubkeyHex,
+                kindsKey: POST_HISTORY_VISIBLE_KINDS_KEY,
+                visibleUntil: nextVisibleUntil,
+            });
+        }
+
+        state.visibleUntil = nextVisibleUntil;
+        return nextVisibleUntil;
+    }
+
+    async function updateVisibleUntilFromOlderBackfillFetch(
+        pubkeyHex: string,
+        result: PostHistoryRelayFetchResult,
+    ): Promise<number | null> {
+        const currentVisibleUntil = await readVisibleUntil(pubkeyHex);
+        const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
+        const nextVisibleUntil = typeof oldestCreatedAt === "number"
+            ? typeof currentVisibleUntil === "number"
+                ? Math.min(currentVisibleUntil, oldestCreatedAt)
+                : oldestCreatedAt
             : currentVisibleUntil;
 
         if (nextVisibleUntil !== currentVisibleUntil) {
@@ -1377,6 +1573,13 @@ export function usePostHistoryListing({
             return false;
         }
 
+        const fetchRange = buildOlderBackfillSearchRange(fetchUntil);
+        if (!fetchRange) {
+            setOlderBackfillNextCursor(null, null);
+            state.syncStatus = "idle";
+            return false;
+        }
+
         cancelCurrentSync();
         const requestId = ++fetchRequestId;
         state.syncStatus = "older-syncing";
@@ -1406,7 +1609,8 @@ export function usePostHistoryListing({
             reason: "older-backfill",
             limit: POST_HISTORY_OLDER_FETCH_LIMIT,
             timeoutMs: POST_HISTORY_OLDER_FETCH_TIMEOUT_MS,
-            until: fetchUntil,
+            since: fetchRange.since,
+            until: fetchRange.until,
         });
         currentFetchTask = task;
 
@@ -1432,7 +1636,7 @@ export function usePostHistoryListing({
             return false;
         }
 
-        const nextVisibleUntil = await updateVisibleUntilFromFetch(
+        const nextVisibleUntil = await updateVisibleUntilFromOlderBackfillFetch(
             pubkeyHex,
             result,
         );
@@ -1446,7 +1650,16 @@ export function usePostHistoryListing({
         }
 
         const didVisibleCountIncrease = nextCount > previousCount;
-        updateOlderRelayCursorHint(result, fetchUntil, didVisibleCountIncrease);
+        updateOlderBackfillSearchState(
+            result,
+            fetchRange,
+            POST_HISTORY_OLDER_FETCH_LIMIT,
+        );
+        logOlderBackfillResult(
+            fetchRange,
+            result,
+            POST_HISTORY_OLDER_FETCH_LIMIT,
+        );
 
         let didLoadFetchedOlderPosts = false;
 
@@ -1630,6 +1843,7 @@ export function usePostHistoryListing({
 
         activePubkeyKey = nextPubkeyKey;
         state.lastDialogOpenRefreshAt = null;
+        resetOlderBackfillSearchState();
     });
 
     $effect(() => {
