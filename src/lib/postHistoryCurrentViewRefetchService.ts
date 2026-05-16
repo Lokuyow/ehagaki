@@ -65,6 +65,15 @@ export interface PostHistoryCurrentViewProcessedRangeSummary {
     until?: number;
     requestedRelayUrls: string[];
     observedRelayUrls: string[];
+    eventRelayUrls: string[];
+    eoseRelayUrls: string[];
+    closedRelayUrls: string[];
+    errorRelayUrls: string[];
+    downRelayUrls: string[];
+    completedByRxNostr: boolean;
+    completedByLocalTimeout: boolean;
+    hasAnyRelayResponse: boolean;
+    allRelaysFailed: boolean;
     status: PostHistoryCurrentViewProcessedRangeStatus;
     rawCount: number;
     uniqueCount: number;
@@ -125,7 +134,7 @@ function resolveProcessedRangeStatus(
 function didCurrentViewRefetchFail(
     status: PostHistoryCurrentViewProcessedRangeStatus,
 ): boolean {
-    return status === "partial" || status === "error";
+    return status === "partial";
 }
 
 function didResultHitLimit(
@@ -234,7 +243,7 @@ export class PostHistoryCurrentViewRefetchService {
             let hadUnfinishedRanges = false;
             let splitRetryCount = 0;
             let receivedEventCount = 0;
-            let observedRelayResponseCount = 0;
+            let allAttemptedRangesClearlyFailed = true;
             const processedRanges: PostHistoryCurrentViewProcessedRangeSummary[] = [];
 
             while (preferredQueue.length > 0) {
@@ -269,9 +278,12 @@ export class PostHistoryCurrentViewRefetchService {
                 currentFetchTask = null;
                 attemptedRangeCount += 1;
                 receivedEventCount += result.events.length;
-                observedRelayResponseCount += result.observedRelayUrls.length;
                 hadFetchError = hadFetchError || result.status === "error";
                 hadTimeout = hadTimeout || result.status === "timeout";
+                const rangeClearlyFailed = result.events.length === 0
+                    && !result.hasAnyRelayResponse
+                    && (result.allRelaysFailed || result.status === "error");
+                allAttemptedRangesClearlyFailed = allAttemptedRangesClearlyFailed && rangeClearlyFailed;
 
                 let insertedCount = 0;
                 let rangeUpdatedCount = 0;
@@ -315,8 +327,17 @@ export class PostHistoryCurrentViewRefetchService {
                     rangeUnit: range.rangeUnit,
                     ...(typeof range.since === "number" ? { since: range.since } : {}),
                     ...(typeof range.until === "number" ? { until: range.until } : {}),
-                    requestedRelayUrls: [...result.relayUrls],
+                    requestedRelayUrls: [...result.requestedRelayUrls],
                     observedRelayUrls: [...result.observedRelayUrls],
+                    eventRelayUrls: [...result.eventRelayUrls],
+                    eoseRelayUrls: [...result.eoseRelayUrls],
+                    closedRelayUrls: [...result.closedRelayUrls],
+                    errorRelayUrls: [...result.errorRelayUrls],
+                    downRelayUrls: [...result.downRelayUrls],
+                    completedByRxNostr: result.completedByRxNostr,
+                    completedByLocalTimeout: result.completedByLocalTimeout,
+                    hasAnyRelayResponse: result.hasAnyRelayResponse,
+                    allRelaysFailed: result.allRelaysFailed,
                     status: processedStatus,
                     rawCount: result.rawCount,
                     uniqueCount: result.uniqueCount,
@@ -334,7 +355,7 @@ export class PostHistoryCurrentViewRefetchService {
                 }
 
                 const didRangeFail = didCurrentViewRefetchFail(processedStatus)
-                    || (result.status === "error" && result.events.length === 0)
+                    || rangeClearlyFailed
                     || (hitLimit && !canQueueSplit);
                 if (didRangeFail) {
                     hadFailures = true;
@@ -349,8 +370,7 @@ export class PostHistoryCurrentViewRefetchService {
             const fetchFailed = !cancelled
                 && attemptedRangeCount > 0
                 && receivedEventCount === 0
-                && observedRelayResponseCount === 0
-                && (hadFetchError || hadTimeout);
+                && allAttemptedRangesClearlyFailed;
             const finalHadFailures = hadFailures || hadUnfinishedRanges || fetchFailed;
             const status: PostHistoryCurrentViewRefetchResult["status"] = cancelled
                 ? "cancelled"

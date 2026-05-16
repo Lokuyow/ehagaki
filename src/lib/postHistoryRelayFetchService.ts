@@ -1,4 +1,10 @@
-import { createRxBackwardReq, type RxNostr } from "rx-nostr";
+import {
+    createRxBackwardReq,
+    type ConnectionStatePacket,
+    type ErrorPacket,
+    type MessagePacket,
+    type RxNostr,
+} from "rx-nostr";
 import { FALLBACK_RELAYS } from "./constants";
 import { isSameSignedNostrEvent } from "./postHistoryEventUtils";
 import { RelayConfigUtils } from "./relayConfigUtils";
@@ -64,6 +70,16 @@ export interface PostHistoryRelayFetchResult {
     perRelayCounts: PostHistoryRelayPerRelayCount[];
     oldestCreatedAt: number | null;
     newestCreatedAt: number | null;
+    requestedRelayUrls: string[];
+    eventRelayUrls: string[];
+    eoseRelayUrls: string[];
+    closedRelayUrls: string[];
+    errorRelayUrls: string[];
+    downRelayUrls: string[];
+    completedByRxNostr: boolean;
+    completedByLocalTimeout: boolean;
+    hasAnyRelayResponse: boolean;
+    allRelaysFailed: boolean;
 }
 
 export interface PostHistoryRelayFetchTask {
@@ -89,6 +105,19 @@ type RelayPacketAccumulator = {
     oldestCreatedAt: number | null;
     newestCreatedAt: number | null;
 };
+
+type SubscriptionLike = {
+    unsubscribe?: () => void;
+};
+
+function toSortedRelayUrls(relayUrls: Set<string>): string[] {
+    return Array.from(relayUrls).sort((left, right) => left.localeCompare(right));
+}
+
+function buildRepairFetchRxReqId(): string {
+    const randomValue = Math.random().toString(36).slice(2, 10);
+    return `post-history-repair-${Date.now().toString(36)}-${randomValue}`;
+}
 
 function resolveFetchLimit(
     reason: PostHistoryFetchReason | undefined,
@@ -167,12 +196,25 @@ export class PostHistoryRelayFetchService {
         const limit = resolveFetchLimit(params.reason, params.limit);
         const relayUrls = this.resolveRelayUrls(params.relayConfig, params.reason);
 
-        const rxReq = createRxBackwardReq();
+        const rxReqId = buildRepairFetchRxReqId();
+        const rxReq = createRxBackwardReq(rxReqId);
+        const targetSubId = `${rxReqId}:0`;
         const eventsById = new Map<string, EventAccumulator>();
         const relayPackets = new Map<string, RelayPacketAccumulator>();
+        const eventRelayUrls = new Set<string>();
+        const eoseRelayUrls = new Set<string>();
+        const closedRelayUrls = new Set<string>();
+        const noticeRelayUrls = new Set<string>();
+        const errorRelayUrls = new Set<string>();
+        const downRelayUrls = new Set<string>();
         let rawCount = 0;
         let resolved = false;
-        let subscription: { unsubscribe?: () => void } | undefined;
+        let completedByRxNostr = false;
+        let completedByLocalTimeout = false;
+        let subscription: SubscriptionLike | undefined;
+        let messageSubscription: SubscriptionLike | undefined;
+        let errorSubscription: SubscriptionLike | undefined;
+        let connectionStateSubscription: SubscriptionLike | undefined;
         let timeoutId: ReturnType<typeof setTimeout> | undefined;
         let resolveTask: ((status: PostHistoryRelayFetchStatus) => void) | undefined;
 
@@ -184,6 +226,12 @@ export class PostHistoryRelayFetchService {
 
             subscription?.unsubscribe?.();
             subscription = undefined;
+            messageSubscription?.unsubscribe?.();
+            messageSubscription = undefined;
+            errorSubscription?.unsubscribe?.();
+            errorSubscription = undefined;
+            connectionStateSubscription?.unsubscribe?.();
+            connectionStateSubscription = undefined;
         };
 
         const buildResult = (status: PostHistoryRelayFetchStatus): PostHistoryRelayFetchResult => {
@@ -215,6 +263,21 @@ export class PostHistoryRelayFetchService {
             ), null);
             const hasMore = events.length >= limit
                 || perRelayCounts.some((item) => item.rawCount >= limit);
+            const requestedRelayUrls = [...relayUrls];
+            const responseRelayUrls = new Set([
+                ...eventRelayUrls,
+                ...eoseRelayUrls,
+                ...noticeRelayUrls,
+            ]);
+            const failedRelayUrls = new Set([
+                ...closedRelayUrls,
+                ...errorRelayUrls,
+                ...downRelayUrls,
+            ]);
+            const hasAnyRelayResponse = responseRelayUrls.size > 0;
+            const allRelaysFailed = requestedRelayUrls.length > 0
+                && !hasAnyRelayResponse
+                && requestedRelayUrls.every((relayUrl) => failedRelayUrls.has(relayUrl));
 
             return {
                 status,
@@ -230,6 +293,16 @@ export class PostHistoryRelayFetchService {
                 perRelayCounts,
                 oldestCreatedAt,
                 newestCreatedAt,
+                requestedRelayUrls,
+                eventRelayUrls: toSortedRelayUrls(eventRelayUrls),
+                eoseRelayUrls: toSortedRelayUrls(eoseRelayUrls),
+                closedRelayUrls: toSortedRelayUrls(closedRelayUrls),
+                errorRelayUrls: toSortedRelayUrls(errorRelayUrls),
+                downRelayUrls: toSortedRelayUrls(downRelayUrls),
+                completedByRxNostr,
+                completedByLocalTimeout,
+                hasAnyRelayResponse,
+                allRelaysFailed,
             };
         };
 
@@ -250,12 +323,48 @@ export class PostHistoryRelayFetchService {
             resolveTask = safeResolve;
 
             try {
+                messageSubscription = rxNostr.createAllMessageObservable?.().subscribe({
+                    next: (packet: MessagePacket) => {
+                        this.handleMessagePacket({
+                            packet,
+                            targetSubId,
+                            requestedRelayUrls: relayUrls,
+                            eoseRelayUrls,
+                            closedRelayUrls,
+                            noticeRelayUrls,
+                        });
+                    },
+                });
+                errorSubscription = rxNostr.createAllErrorObservable?.().subscribe({
+                    next: (packet: ErrorPacket) => {
+                        const relayUrl = this.sanitizeRelayUrl(packet.from);
+                        if (relayUrl && relayUrls.includes(relayUrl)) {
+                            errorRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+                connectionStateSubscription = rxNostr.createConnectionStateObservable?.().subscribe({
+                    next: (packet: ConnectionStatePacket) => {
+                        const relayUrl = this.sanitizeRelayUrl(packet.from);
+                        if (
+                            relayUrl
+                            && relayUrls.includes(relayUrl)
+                            && (packet.state === "error" || packet.state === "rejected")
+                        ) {
+                            downRelayUrls.add(relayUrl);
+                        }
+                    },
+                });
+
                 subscription = relayUrls.length > 0
                     ? rxNostr.use(rxReq, { on: { relays: relayUrls } }).subscribe({
                         next: (packet: { event?: NostrEvent; from?: string }) => {
-                            rawCount = this.handlePacket(eventsById, relayPackets, rawCount, packet);
+                            rawCount = this.handlePacket(eventsById, relayPackets, eventRelayUrls, rawCount, packet);
                         },
-                        complete: () => safeResolve("success"),
+                        complete: () => {
+                            completedByRxNostr = true;
+                            safeResolve("success");
+                        },
                         error: (error: unknown) => {
                             this.console.error("post_history_fetch_error", error);
                             safeResolve("error");
@@ -263,9 +372,12 @@ export class PostHistoryRelayFetchService {
                     })
                     : rxNostr.use(rxReq).subscribe({
                         next: (packet: { event?: NostrEvent; from?: string }) => {
-                            rawCount = this.handlePacket(eventsById, relayPackets, rawCount, packet);
+                            rawCount = this.handlePacket(eventsById, relayPackets, eventRelayUrls, rawCount, packet);
                         },
-                        complete: () => safeResolve("success"),
+                        complete: () => {
+                            completedByRxNostr = true;
+                            safeResolve("success");
+                        },
                         error: (error: unknown) => {
                             this.console.error("post_history_fetch_error", error);
                             safeResolve("error");
@@ -283,6 +395,7 @@ export class PostHistoryRelayFetchService {
 
                 timeoutId = this.setTimeoutFn(() => {
                     this.console.warn("post_history_fetch_timeout", params.pubkeyHex);
+                    completedByLocalTimeout = true;
                     safeResolve("timeout");
                 }, timeoutMs);
             } catch (error) {
@@ -322,6 +435,7 @@ export class PostHistoryRelayFetchService {
     private handlePacket(
         eventsById: Map<string, EventAccumulator>,
         relayPackets: Map<string, RelayPacketAccumulator>,
+        eventRelayUrls: Set<string>,
         currentRawCount: number,
         packet: { event?: NostrEvent; from?: string },
     ): number {
@@ -334,6 +448,7 @@ export class PostHistoryRelayFetchService {
             typeof packet.from === "string" ? [packet.from] : [],
         )[0];
         if (relayUrl) {
+            eventRelayUrls.add(relayUrl);
             const relayAccumulator = relayPackets.get(relayUrl) ?? {
                 rawCount: 0,
                 eventIds: new Set<string>(),
@@ -372,6 +487,40 @@ export class PostHistoryRelayFetchService {
         }
 
         return nextRawCount;
+    }
+
+    private handleMessagePacket(params: {
+        packet: MessagePacket;
+        targetSubId: string;
+        requestedRelayUrls: string[];
+        eoseRelayUrls: Set<string>;
+        closedRelayUrls: Set<string>;
+        noticeRelayUrls: Set<string>;
+    }): void {
+        const relayUrl = this.sanitizeRelayUrl(params.packet.from);
+        if (!relayUrl || !params.requestedRelayUrls.includes(relayUrl)) {
+            return;
+        }
+
+        if (params.packet.type === "EOSE" && params.packet.subId === params.targetSubId) {
+            params.eoseRelayUrls.add(relayUrl);
+            return;
+        }
+
+        if (params.packet.type === "CLOSED" && params.packet.subId === params.targetSubId) {
+            params.closedRelayUrls.add(relayUrl);
+            return;
+        }
+
+        if (params.packet.type === "NOTICE") {
+            params.noticeRelayUrls.add(relayUrl);
+        }
+    }
+
+    private sanitizeRelayUrl(relayUrl: string | undefined): string | null {
+        return RelayConfigUtils.sanitizeExternalRelayUrls(
+            typeof relayUrl === "string" ? [relayUrl] : [],
+        )[0] ?? null;
     }
 }
 

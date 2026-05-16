@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FALLBACK_RELAYS } from "../../lib/constants";
 
-const createRxBackwardReqMock = vi.hoisted(() => vi.fn(() => ({
+const createRxBackwardReqMock = vi.hoisted(() => vi.fn((_rxReqId?: string) => ({
     emit: vi.fn(),
     over: vi.fn(),
 })));
@@ -320,5 +320,142 @@ describe("PostHistoryRelayFetchService", () => {
             expect.any(Function),
             POST_HISTORY_DIALOG_OPEN_REFRESH_TIMEOUT_MS,
         );
+    });
+
+    it("repair-visible-range は req 単位で relay 応答と失敗を集計する", async () => {
+        let messageObserver: any;
+        let errorObserver: any;
+        let connectionStateObserver: any;
+        const unsubscribe = vi.fn();
+        const mockRxNostr: RxNostr = {
+            createAllMessageObservable: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    messageObserver = observer;
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+            createAllErrorObservable: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    errorObserver = observer;
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+            createConnectionStateObservable: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    connectionStateObserver = observer;
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    const rxReqId = createRxBackwardReqMock.mock.calls[0]?.[0];
+                    expect(rxReqId).toMatch(/^post-history-repair-/);
+                    observer.next?.({
+                        event: createEvent({ id: "1".repeat(64), created_at: 1200 }),
+                        from: "wss://relay-a.example.com",
+                    });
+                    messageObserver.next?.({
+                        type: "EOSE",
+                        subId: `${rxReqId}:0`,
+                        from: "wss://relay-a.example.com",
+                        message: ["EOSE", `${rxReqId}:0`],
+                    });
+                    messageObserver.next?.({
+                        type: "CLOSED",
+                        subId: `${rxReqId}:0`,
+                        from: "wss://relay-b.example.com",
+                        notice: "blocked",
+                        message: ["CLOSED", `${rxReqId}:0`, "blocked"],
+                    });
+                    errorObserver.next?.({
+                        from: "wss://relay-b.example.com",
+                        reason: new Error("socket failed"),
+                    });
+                    connectionStateObserver.next?.({
+                        from: "wss://relay-b.example.com",
+                        state: "error",
+                    });
+                    observer.complete?.();
+                    return { unsubscribe };
+                }),
+            }),
+        } as any;
+
+        const result = await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            reason: "repair-visible-range",
+            relayConfig: {
+                "wss://relay-a.example.com/": { read: true, write: true },
+                "wss://relay-b.example.com/": { read: true, write: true },
+            },
+        }).promise;
+
+        expect(createRxBackwardReqMock).toHaveBeenCalledWith(expect.stringMatching(/^post-history-repair-/));
+        expect(result).toEqual(expect.objectContaining({
+            requestedRelayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+            eventRelayUrls: ["wss://relay-a.example.com/"],
+            eoseRelayUrls: ["wss://relay-a.example.com/"],
+            closedRelayUrls: ["wss://relay-b.example.com/"],
+            errorRelayUrls: ["wss://relay-b.example.com/"],
+            downRelayUrls: ["wss://relay-b.example.com/"],
+            completedByRxNostr: true,
+            completedByLocalTimeout: false,
+            hasAnyRelayResponse: true,
+            allRelaysFailed: false,
+        }));
+    });
+
+    it("全 relay が明確に失敗し EVENT/EOSE/NOTICE がなければ allRelaysFailed を返す", async () => {
+        let errorObserver: any;
+        let connectionStateObserver: any;
+        const mockRxNostr: RxNostr = {
+            createAllMessageObservable: vi.fn().mockReturnValue({
+                subscribe: vi.fn(() => ({ unsubscribe: vi.fn() })),
+            }),
+            createAllErrorObservable: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    errorObserver = observer;
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+            createConnectionStateObservable: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    connectionStateObserver = observer;
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+            use: vi.fn().mockReturnValue({
+                subscribe: vi.fn((observer: any) => {
+                    errorObserver.next?.({
+                        from: "wss://relay-a.example.com",
+                        reason: new Error("socket failed"),
+                    });
+                    connectionStateObserver.next?.({
+                        from: "wss://relay-b.example.com",
+                        state: "rejected",
+                    });
+                    observer.complete?.();
+                    return { unsubscribe: vi.fn() };
+                }),
+            }),
+        } as any;
+
+        const result = await service.fetchLatest(mockRxNostr, {
+            pubkeyHex: "b".repeat(64),
+            reason: "repair-visible-range",
+            relayConfig: {
+                "wss://relay-a.example.com/": { read: true, write: true },
+                "wss://relay-b.example.com/": { read: true, write: true },
+            },
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            eventRelayUrls: [],
+            eoseRelayUrls: [],
+            errorRelayUrls: ["wss://relay-a.example.com/"],
+            downRelayUrls: ["wss://relay-b.example.com/"],
+            hasAnyRelayResponse: false,
+            allRelaysFailed: true,
+        }));
     });
 });

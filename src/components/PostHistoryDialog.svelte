@@ -1386,13 +1386,14 @@
                 </div>
             </div>
         {:else}
-            {#if history.canLoadNewer}
+            {#if history.isSearchMode ? history.canLoadNewer : history.state.hasNewerLocal}
                 <div class="post-history-nav-row post-history-nav-row-top">
                     <Button
                         type="button"
                         variant="default"
                         className="post-history-nav-button"
                         contentLayout="iconText"
+                        disabled={!history.canLoadNewer}
                         onClick={() => void handleLoadNewer()}
                     >
                         <div
@@ -1801,13 +1802,14 @@
                 {/each}
             </ul>
 
-            {#if history.canLoadOlder}
+            {#if history.isSearchMode ? history.canLoadOlder : history.state.hasOlderLocal}
                 <div class="post-history-nav-row post-history-nav-row-bottom">
                     <Button
                         type="button"
                         variant="default"
                         className="post-history-nav-button"
                         contentLayout="iconText"
+                        disabled={!history.canLoadOlder}
                         onClick={() => void handleLoadOlder()}
                     >
                         <div

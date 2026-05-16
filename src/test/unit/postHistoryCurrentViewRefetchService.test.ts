@@ -11,7 +11,17 @@ function createFetchResult(overrides: Record<string, any> = {}) {
         nextUntil: null,
         hasMore: false,
         relayUrls: ["wss://read.example.com/"],
+        requestedRelayUrls: ["wss://read.example.com/"],
         observedRelayUrls: ["wss://relay-a.example.com/"],
+        eventRelayUrls: ["wss://relay-a.example.com/"],
+        eoseRelayUrls: [],
+        closedRelayUrls: [],
+        errorRelayUrls: [],
+        downRelayUrls: [],
+        completedByRxNostr: true,
+        completedByLocalTimeout: false,
+        hasAnyRelayResponse: true,
+        allRelaysFailed: false,
         rawCount: 1,
         uniqueCount: 1,
         duplicateCount: 0,
@@ -266,6 +276,9 @@ describe("PostHistoryCurrentViewRefetchService", () => {
                 status: "error",
                 events: [],
                 observedRelayUrls: [],
+                eventRelayUrls: [],
+                hasAnyRelayResponse: false,
+                allRelaysFailed: true,
                 rawCount: 0,
                 uniqueCount: 0,
                 perRelayCounts: [],
@@ -306,6 +319,9 @@ describe("PostHistoryCurrentViewRefetchService", () => {
                 status: "timeout",
                 events: [],
                 observedRelayUrls: ["wss://relay-a.example.com/"],
+                eventRelayUrls: [],
+                eoseRelayUrls: ["wss://relay-a.example.com/"],
+                hasAnyRelayResponse: true,
                 rawCount: 0,
                 uniqueCount: 0,
                 perRelayCounts: [
@@ -345,6 +361,289 @@ describe("PostHistoryCurrentViewRefetchService", () => {
             fetchFailed: false,
             hadUnfinishedRanges: false,
         }));
+    });
+
+    it("local timeout + 0件だけでは fetchFailed にしない", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                status: "timeout",
+                events: [],
+                observedRelayUrls: [],
+                eventRelayUrls: [],
+                eoseRelayUrls: [],
+                rawCount: 0,
+                uniqueCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+                completedByRxNostr: false,
+                completedByLocalTimeout: true,
+                hasAnyRelayResponse: false,
+                allRelaysFailed: false,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn(),
+            } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: "custom",
+                since: 100,
+                until: 200,
+                limit: 250,
+            }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "success",
+            hadTimeout: true,
+            fetchFailed: false,
+            hadUnfinishedRanges: false,
+        }));
+    });
+
+    it("EVENT 0件でも EOSE があれば repair no changes 相当の success にする", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                status: "success",
+                events: [],
+                observedRelayUrls: [],
+                eventRelayUrls: [],
+                eoseRelayUrls: ["wss://read.example.com/"],
+                rawCount: 0,
+                uniqueCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+                hasAnyRelayResponse: true,
+                allRelaysFailed: false,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn(),
+            } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: "custom",
+                since: 100,
+                until: 200,
+                limit: 250,
+            }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "success",
+            addedCount: 0,
+            fetchFailed: false,
+            hadUnfinishedRanges: false,
+        }));
+    });
+
+    it("全リレーが明確に失敗し有効応答がなければ fetchFailed にする", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                status: "success",
+                requestedRelayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+                relayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+                events: [],
+                observedRelayUrls: [],
+                eventRelayUrls: [],
+                eoseRelayUrls: [],
+                closedRelayUrls: ["wss://relay-a.example.com/"],
+                errorRelayUrls: ["wss://relay-b.example.com/"],
+                rawCount: 0,
+                uniqueCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+                hasAnyRelayResponse: false,
+                allRelaysFailed: true,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn(),
+            } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: "custom",
+                since: 100,
+                until: 200,
+                limit: 250,
+            }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "partial",
+            hadFailures: true,
+            fetchFailed: true,
+        }));
+    });
+
+    it("一部リレー失敗だけでは fetchFailed にしない", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                status: "success",
+                requestedRelayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+                relayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+                events: [],
+                observedRelayUrls: [],
+                eventRelayUrls: [],
+                eoseRelayUrls: ["wss://relay-a.example.com/"],
+                errorRelayUrls: ["wss://relay-b.example.com/"],
+                rawCount: 0,
+                uniqueCount: 0,
+                perRelayCounts: [],
+                oldestCreatedAt: null,
+                newestCreatedAt: null,
+                hasAnyRelayResponse: true,
+                allRelaysFailed: false,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn(),
+            } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: "custom",
+                since: 100,
+                until: 200,
+                limit: 250,
+            }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "success",
+            fetchFailed: false,
+            hadUnfinishedRanges: false,
+        }));
+    });
+
+    it("追加ありならリレー失敗情報があっても addedCount を保持する", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                requestedRelayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+                relayUrls: ["wss://relay-a.example.com/", "wss://relay-b.example.com/"],
+                events: [
+                    {
+                        event: {
+                            id: "d".repeat(64),
+                            pubkey: "a".repeat(64),
+                            kind: 1,
+                            content: "new",
+                            tags: [],
+                            created_at: 150,
+                            sig: "e".repeat(128),
+                        },
+                        relayUrls: ["wss://relay-a.example.com/"],
+                    },
+                ],
+                errorRelayUrls: ["wss://relay-b.example.com/"],
+                hasAnyRelayResponse: true,
+                allRelaysFailed: false,
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn().mockResolvedValue({
+                    insertedCount: 1,
+                    updatedCount: 0,
+                    unchangedCount: 0,
+                }),
+            } as any,
+        });
+
+        const result = await service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: "custom",
+                since: 100,
+                until: 200,
+                limit: 250,
+            }],
+        }).promise;
+
+        expect(result).toEqual(expect.objectContaining({
+            status: "success",
+            addedCount: 1,
+            fetchFailed: false,
+            hadUnfinishedRanges: false,
+        }));
+    });
+
+    it("保存処理例外は呼び出し側が repairFetchFailed として扱えるよう reject する", async () => {
+        const fetchLatest = vi.fn().mockReturnValue({
+            promise: Promise.resolve(createFetchResult({
+                events: [
+                    {
+                        event: {
+                            id: "f".repeat(64),
+                            pubkey: "a".repeat(64),
+                            kind: 1,
+                            content: "new",
+                            tags: [],
+                            created_at: 150,
+                            sig: "e".repeat(128),
+                        },
+                        relayUrls: ["wss://relay-a.example.com/"],
+                    },
+                ],
+            })),
+            cancel: vi.fn(),
+        });
+        const service = new PostHistoryCurrentViewRefetchService({
+            postHistoryRelayFetchService: { fetchLatest } as any,
+            postHistoryRepository: {
+                upsertFetchedEvents: vi.fn().mockRejectedValue(new Error("db failed")),
+            } as any,
+        });
+
+        await expect(service.refetchAroundCurrentView({} as any, {
+            pubkeyHex: "a".repeat(64),
+            relayConfig: null,
+            preferredRanges: [{
+                kinds: [1, 42],
+                rangeUnit: "custom",
+                since: 100,
+                until: 200,
+                limit: 250,
+            }],
+        }).promise).rejects.toThrow("db failed");
     });
 
     it("preferredRanges が空なら fetch せず no-op success を返す", async () => {

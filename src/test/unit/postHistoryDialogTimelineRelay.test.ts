@@ -569,6 +569,73 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
+    it('表示中付近の再取得中もローカル履歴ナビゲーション行を維持し、ボタンだけ無効化する', async () => {
+        const visiblePost = createRecord({
+            eventId: 'repair-visible',
+            content: '表示中の投稿',
+            createdAt: 200,
+            postedAt: Date.UTC(2024, 0, 2, 3, 4, 0),
+        });
+        const olderPost = createRecord({
+            eventId: 'repair-older',
+            content: 'さらに古い投稿',
+            createdAt: 100,
+            postedAt: Date.UTC(2024, 0, 1, 3, 4, 0),
+        });
+        const repairComplete = createDeferred<{
+            status: 'success';
+            addedCount: number;
+            updatedCount: number;
+            unchangedCount: number;
+            processedRangeCount: number;
+            processedRanges: any[];
+            attemptedRangeCount: number;
+            hadFailures: boolean;
+        }>();
+
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([visiblePost]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([olderPost]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: repairComplete.promise,
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        const loadOlderButton = await screen.findByRole('button', { name: 'さらに古い投稿を表示' });
+        await waitFor(() => {
+            expect(loadOlderButton.hasAttribute('disabled')).toBe(false);
+            expect(document.querySelector('.post-history-nav-row-bottom')).toBeTruthy();
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+
+        await waitFor(() => {
+            expect(repairServiceMock.refetchAroundCurrentView).toHaveBeenCalledTimes(1);
+            expect(document.querySelector('.post-history-nav-row-bottom')).toBeTruthy();
+            expect(screen.getByRole('button', { name: 'さらに古い投稿を表示' }).hasAttribute('disabled')).toBe(true);
+        });
+
+        view.unmount();
+    });
+
     it('追加なし のメッセージが自動で消える', async () => {
         const initialPosts = [createRecord({ eventId: 'repair-none', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
@@ -633,7 +700,9 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 processedRangeCount: 1,
                 processedRanges: [],
                 attemptedRangeCount: 1,
-                hadFailures: false,
+                hadFailures: true,
+                fetchFailed: true,
+                hadUnfinishedRanges: true,
             }),
             cancel: vi.fn(),
         });
@@ -831,6 +900,44 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 fetchFailed: true,
                 hadUnfinishedRanges: false,
             }),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+
+        await waitFor(() => {
+            expect(screen.getByText('取得失敗')).toBeTruthy();
+        });
+
+        view.unmount();
+    });
+
+    it('保存処理例外なら取得失敗を表示する', async () => {
+        const initialPosts = [createRecord({ eventId: 'repair-save-failed', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(initialPosts);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: Promise.reject(new Error('db failed')),
             cancel: vi.fn(),
         });
 
