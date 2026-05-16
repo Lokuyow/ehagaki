@@ -1410,18 +1410,22 @@
                 <Button
                     type="button"
                     variant="primary"
-                    className="post-history-utility-button"
+                    contentLayout="icon"
+                    shape="square"
+                    className="post-history-utility-button post-history-utility-submit-button"
                     onClick={() => void handleJumpToDateSubmit()}
                 >
-                    {$_("postHistory.jumpToDateSubmit")}
+                    <div class="jump-icon svg-icon" aria-hidden="true"></div>
                 </Button>
                 <Button
                     type="button"
                     variant="default"
-                    className="post-history-utility-button"
+                    contentLayout="icon"
+                    shape="square"
+                    className="post-history-utility-button post-history-utility-close-button"
                     onClick={() => (activeUtilityPanel = "none")}
                 >
-                    {$_("common.cancel")}
+                    <div class="xmark-icon svg-icon" aria-hidden="true"></div>
                 </Button>
             </div>
         </div>
@@ -2195,7 +2199,7 @@
     .post-history-utility-controls {
         display: flex;
         flex-wrap: wrap;
-        gap: 8px;
+        gap: 4px;
         align-items: center;
     }
 
@@ -2213,6 +2217,12 @@
         height: auto;
         min-height: 40px;
         white-space: nowrap;
+    }
+
+    :global(.post-history-utility-button.post-history-utility-submit-button),
+    :global(.post-history-utility-button.post-history-utility-close-button) {
+        min-width: 70px;
+        min-height: 40px;
     }
 
     .post-history-nav-row {
@@ -2590,30 +2600,6 @@
         line-height: 1.5;
     }
 
-    @media (max-width: 500px) {
-        .post-history-utility-panel {
-            width: 100%;
-        }
-
-        .post-history-utility-controls {
-            align-items: stretch;
-        }
-
-        .post-history-date-input,
-        :global(.post-history-utility-button),
-        :global(.post-history-nav-button) {
-            width: 100%;
-        }
-
-        .post-history-latest-row {
-            justify-content: stretch;
-        }
-
-        :global(.post-history-latest-button) {
-            width: 100%;
-        }
-    }
-
     .post-history-channel-row {
         display: flex;
         align-items: center;
@@ -2816,7 +2802,9 @@
 
     .xmark-icon {
         mask-image: url("/icons/close_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 20px;
-        height: 20px;
+    }
+
+    .jump-icon {
+        mask-image: url("/icons/keyboard_tab_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 </style>
