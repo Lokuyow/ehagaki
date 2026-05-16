@@ -2212,7 +2212,7 @@
             min-height: 40px;
             background-color: color-mix(
                 in srgb,
-                var(--btn-bg) 20%,
+                var(--btn-bg) 30%,
                 transparent
             );
             backdrop-filter: blur(1px);
@@ -2504,7 +2504,7 @@
         mask-image: url("/icons/vertical_align_top_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
         width: 28px;
         height: 28px;
-        opacity: 0.6;
+        opacity: 0.8;
     }
 
     :global(.post-history-nav-loading-placeholder .loader-container .square) {
