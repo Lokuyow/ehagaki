@@ -1196,7 +1196,15 @@
     <div class="post-history-heading">
         <div class="post-history-heading-main">
             {#if currentMonthLabel}
-                <h3 class="post-history-current-month">{currentMonthLabel}</h3>
+                <h3 class="post-history-current-month-heading">
+                    <button
+                        type="button"
+                        class="post-history-current-month"
+                        onclick={showJumpDate}
+                    >
+                        {currentMonthLabel}
+                    </button>
+                </h3>
             {/if}
         </div>
         <div class="post-history-heading-actions">
@@ -2008,20 +2016,23 @@
         flex: 1 1 auto;
         min-width: 0;
         align-self: stretch;
-        padding-left: 10px;
     }
 
-    .post-history-current-month {
-        color: var(--text-light);
+    .post-history-current-month-heading {
         display: flex;
         align-items: center;
         height: 100%;
         margin: 0;
+    }
+
+    .post-history-current-month {
+        color: var(--text-light);
         font-size: 1.75rem;
         line-height: 1.05;
         font-weight: 600;
         letter-spacing: -0.04em;
         overflow-wrap: anywhere;
+        padding: 0 12px;
     }
 
     .post-history-heading-actions {
@@ -2128,9 +2139,9 @@
     .post-history-utility-panel {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        padding: 6px 10px 0;
+        padding: 6px 16px 6px;
         border-bottom: 1px solid var(--border-hr);
+        gap: 2px;
     }
 
     .post-history-utility-label {
@@ -2147,8 +2158,9 @@
 
     .post-history-date-input {
         min-width: 0;
-        padding: 10px 12px;
-        border: 1px solid var(--border-soft);
+        padding: 0 12px;
+        height: 40px;
+        border: 1px solid var(--border-hr);
         background: var(--background);
         color: var(--text);
         font: inherit;

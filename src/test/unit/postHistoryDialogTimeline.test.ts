@@ -171,6 +171,12 @@ describe('PostHistoryDialog timeline navigation', () => {
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
 
+        await fireEvent.click(document.querySelector('.post-history-current-month') as HTMLElement);
+
+        await waitFor(() => {
+            expect(screen.getByLabelText('日付')).toBeTruthy();
+        });
+
         historyContainer.scrollTop = 84;
         await fireEvent.scroll(historyContainer);
 
