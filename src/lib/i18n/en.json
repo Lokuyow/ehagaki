@@ -112,7 +112,7 @@
     "fetchOlderFromRelaysLoading": "Fetching from relays...",
     "empty": "No post history",
     "syncing": "Syncing with relays...",
-    "synced": "Relay sync completed",
+    "synced": "Synced",
     "syncFailed": "Could not fetch from relays",
     "repair": "Refetch posts around the current view",
     "repairing": "Refetching...",

@@ -1208,7 +1208,7 @@
                           })
                         : $_(headingStatusMessageKey)}
                     showLoader={history.showStatusLoader}
-                    loaderSize={25}
+                    loaderSize={30}
                     state={history.showStatusLoader ? "loading" : "complete"}
                     customClass={`status-loading-placeholder${
                         headingStatusError ? " status-error" : ""
