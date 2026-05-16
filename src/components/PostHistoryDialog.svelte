@@ -2092,7 +2092,6 @@
         display: flex;
         align-items: center;
         width: 100%;
-        border-bottom: 1px solid var(--border-hr);
     }
 
     .post-history-search-active {
@@ -2111,6 +2110,7 @@
         background: var(--background);
         color: var(--text);
         font: inherit;
+        border-bottom: 1px solid var(--border-hr);
     }
 
     :global(.post-history-search-close.square) {
