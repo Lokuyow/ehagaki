@@ -328,7 +328,7 @@ export function resetPostHistoryDialogHarness(): void {
     clearPersistedPostHistoryListingSnapshots();
     clearPersistedPostHistoryViewState();
     clearPostHistoryDialogScrollStates();
-    vi.clearAllMocks();
+    vi.resetAllMocks();
 
     repositoryMock.getLatestVisibleChunk.mockResolvedValue([]);
     repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);

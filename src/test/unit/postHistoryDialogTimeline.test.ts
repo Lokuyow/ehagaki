@@ -47,6 +47,15 @@ function mockHistoryItemLayout(container: HTMLDivElement): void {
     }
 }
 
+function getJumpDateSubmitButton(): HTMLButtonElement {
+    const button = document.querySelector('.post-history-utility-submit-button');
+    if (!(button instanceof HTMLButtonElement)) {
+        throw new Error('日付ジャンプの送信ボタンが見つかりません');
+    }
+
+    return button;
+}
+
 describe('PostHistoryDialog timeline navigation', () => {
     beforeEach(() => {
         resetPostHistoryDialogHarness();
@@ -262,7 +271,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await fireEvent.input(screen.getByLabelText('日付'), {
             target: { value: '2024-01-01' },
         });
-        await fireEvent.click(screen.getByRole('button', { name: 'この日付付近を表示' }));
+        await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
             expect(screen.getByText('古い投稿')).toBeTruthy();
@@ -552,7 +561,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await fireEvent.input(screen.getByLabelText('日付'), {
             target: { value: '2024-01-01' },
         });
-        await fireEvent.click(screen.getByRole('button', { name: 'この日付付近を表示' }));
+        await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
             expect(screen.getByText('古い投稿')).toBeTruthy();
@@ -676,7 +685,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await fireEvent.input(screen.getByLabelText('日付'), {
             target: { value: '2024-01-01' },
         });
-        await fireEvent.click(screen.getByRole('button', { name: 'この日付付近を表示' }));
+        await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
             expect(screen.getByText('投稿 50')).toBeTruthy();
@@ -749,7 +758,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await fireEvent.input(screen.getByLabelText('日付'), {
             target: { value: '2024-01-01' },
         });
-        await fireEvent.click(screen.getByRole('button', { name: 'この日付付近を表示' }));
+        await fireEvent.click(getJumpDateSubmitButton());
 
         await waitFor(() => {
             expect(screen.getByText('古い投稿')).toBeTruthy();
@@ -818,7 +827,11 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('アンカー対象投稿')).toBeTruthy();
+            expect(
+                document.querySelector(
+                    '[data-post-history-event-id="anchor-older"]',
+                ),
+            ).toBeTruthy();
         });
 
         writePostHistoryDialogScrollState({
@@ -916,7 +929,11 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('前回アンカー投稿')).toBeTruthy();
+            expect(
+                document.querySelector(
+                    '[data-post-history-event-id="local-restore-older"]',
+                ),
+            ).toBeTruthy();
         });
 
         writePostHistoryDialogScrollState({
@@ -939,7 +956,11 @@ describe('PostHistoryDialog timeline navigation', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('ローカル保存済みの新規投稿')).toBeTruthy();
+            expect(
+                document.querySelector(
+                    '[data-post-history-event-id="local-new-post"]',
+                ),
+            ).toBeTruthy();
         });
         expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
 
