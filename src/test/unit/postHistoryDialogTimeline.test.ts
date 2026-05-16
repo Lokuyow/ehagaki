@@ -354,6 +354,58 @@ describe('PostHistoryDialog timeline navigation', () => {
         view.unmount();
     });
 
+    it('最後のページでも最下部でなければメニューの最古へ移動で最下部へスクロールする', async () => {
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([
+            createRecord({ eventId: 'last-page-newest', content: '最後ページの新しい投稿' }),
+            createRecord({
+                eventId: 'last-page-oldest',
+                content: '最後ページの古い投稿',
+                createdAt: 1_704_067_200,
+                postedAt: Date.UTC(2023, 11, 31, 0, 0, 0),
+            }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValueOnce([]);
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('最後ページの古い投稿')).toBeTruthy();
+        });
+
+        const historyContainer = getHistoryContainer();
+        Object.defineProperty(historyContainer, 'clientHeight', {
+            configurable: true,
+            value: 320,
+        });
+        Object.defineProperty(historyContainer, 'scrollHeight', {
+            configurable: true,
+            value: 720,
+        });
+        historyContainer.scrollTop = 120;
+        await fireEvent.scroll(historyContainer);
+
+        await openPostHistoryMenu();
+        const jumpToOldestItem = await screen.findByRole('menuitem', { name: '最古へ移動' });
+        expect(jumpToOldestItem.getAttribute('aria-disabled')).not.toBe('true');
+        await fireEvent.click(jumpToOldestItem);
+
+        await waitFor(() => {
+            expect(historyContainer.scrollTop).toBe(720);
+            expect(repositoryMock.getVisibleChunkFromCreatedAt).not.toHaveBeenCalled();
+        });
+
+        view.unmount();
+    });
+
     it('古い投稿が尽きても terminal noMorePosts は表示しない', async () => {
         repositoryMock.countForPubkey.mockResolvedValue(2);
         repositoryMock.getLatestVisibleChunk.mockResolvedValueOnce([

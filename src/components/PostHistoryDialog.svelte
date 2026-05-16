@@ -128,6 +128,7 @@
     let fullscreenIndex = $state(-1);
     let showImageFullscreen = $state(false);
     let historyContainer = $state<HTMLDivElement | null>(null);
+    let isHistoryScrolledToBottom = $state(true);
     let searchInputElement = $state<HTMLInputElement | null>(null);
     let historyMonthLabelFrameId: number | null = null;
     let pendingSessionScrollRestore =
@@ -139,6 +140,7 @@
         offsetTop: number;
     };
     const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
+    const HISTORY_SCROLL_BOTTOM_TOLERANCE_PX = 2;
     const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
@@ -170,6 +172,9 @@
                 "postHistory.repairPartialFailure" ||
             history.currentViewRefetchStatusMessageKey ===
                 "postHistory.repairFetchFailed",
+    );
+    let canUseJumpToOldest = $derived(
+        history.canJumpToOldest || !isHistoryScrolledToBottom,
     );
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set<string>();
@@ -359,6 +364,7 @@
             }
 
             updateCurrentMonthLabel();
+            updateHistoryScrolledToBottom();
         });
 
         return () => {
@@ -408,6 +414,7 @@
     function resetHistoryScrollPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = 0;
+            updateHistoryScrolledToBottom();
             scheduleCurrentMonthLabelUpdate();
         }
     }
@@ -415,8 +422,23 @@
     function resetHistoryScrollToBottomPosition(): void {
         if (historyContainer) {
             historyContainer.scrollTop = historyContainer.scrollHeight;
+            updateHistoryScrolledToBottom();
             scheduleCurrentMonthLabelUpdate();
         }
+    }
+
+    function updateHistoryScrolledToBottom(): void {
+        if (!historyContainer) {
+            isHistoryScrolledToBottom = true;
+            return;
+        }
+
+        const remainingScroll =
+            historyContainer.scrollHeight -
+            historyContainer.clientHeight -
+            historyContainer.scrollTop;
+        isHistoryScrolledToBottom =
+            remainingScroll <= HISTORY_SCROLL_BOTTOM_TOLERANCE_PX;
     }
 
     function buildVisibleCountLabel(): string | null {
@@ -524,6 +546,7 @@
     }
 
     function handleHistoryScroll(): void {
+        updateHistoryScrolledToBottom();
         scheduleCurrentMonthLabelUpdate();
     }
 
@@ -1094,7 +1117,7 @@
         clearAllSessionScrollAnchorsForCurrentPubkey();
         headingMenuOpen = false;
         void history.jumpToOldest().then((changed) => {
-            if (changed) {
+            if (changed || !isHistoryScrolledToBottom) {
                 resetHistoryScrollToBottomSoon();
             }
         });
@@ -1296,7 +1319,7 @@
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
-                                disabled={!history.canJumpToOldest}
+                                disabled={!canUseJumpToOldest}
                                 onSelect={handleJumpToOldestFromMenu}
                             >
                                 <div
