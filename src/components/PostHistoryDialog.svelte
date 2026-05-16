@@ -1068,8 +1068,9 @@
         history.resetSearchState();
     }
 
-    function showJumpDate(): void {
-        activeUtilityPanel = "jump-date";
+    function toggleJumpDate(): void {
+        activeUtilityPanel =
+            activeUtilityPanel === "jump-date" ? "none" : "jump-date";
         headingMenuOpen = false;
     }
 
@@ -1200,7 +1201,7 @@
                     <button
                         type="button"
                         class="post-history-current-month"
-                        onclick={showJumpDate}
+                        onclick={toggleJumpDate}
                     >
                         {currentMonthLabel}
                     </button>
@@ -1279,7 +1280,7 @@
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
-                                onSelect={showJumpDate}
+                                onSelect={toggleJumpDate}
                             >
                                 <div
                                     class="calendar-icon svg-icon"
