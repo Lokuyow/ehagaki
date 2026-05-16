@@ -203,10 +203,56 @@ export function formatPostedAt(
     }).format(postedDate);
 }
 
+export function formatPostHistoryMonthLabel(
+    postedAt: number,
+    localeValue: string | null | undefined,
+    now: number = Date.now(),
+): string {
+    const postedDate = new Date(postedAt);
+    const nowDate = new Date(now);
+
+    if (isSameLocalDate(postedDate, nowDate)) {
+        return formatRelativeDayLabel(0, localeValue);
+    }
+
+    if (isYesterdayLocal(postedDate, nowDate)) {
+        return formatRelativeDayLabel(-1, localeValue);
+    }
+
+    if (postedDate.getFullYear() === nowDate.getFullYear()) {
+        return new Intl.DateTimeFormat(localeValue ?? undefined, {
+            month: "numeric",
+            day: "numeric",
+            weekday: "short",
+        }).format(postedDate);
+    }
+
+    return new Intl.DateTimeFormat(localeValue ?? undefined, {
+        year: "numeric",
+        month: "numeric",
+    }).format(postedDate);
+}
+
 function isSameLocalDate(date: Date, otherDate: Date): boolean {
     return date.getFullYear() === otherDate.getFullYear() &&
         date.getMonth() === otherDate.getMonth() &&
         date.getDate() === otherDate.getDate();
+}
+
+function isYesterdayLocal(date: Date, nowDate: Date): boolean {
+    const yesterday = new Date(nowDate);
+    yesterday.setHours(0, 0, 0, 0);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return isSameLocalDate(date, yesterday);
+}
+
+function formatRelativeDayLabel(
+    value: 0 | -1,
+    localeValue: string | null | undefined,
+): string {
+    return new Intl.RelativeTimeFormat(localeValue ?? undefined, {
+        numeric: "auto",
+    }).format(value, "day");
 }
 
 export function buildPreview(content: string): string {

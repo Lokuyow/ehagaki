@@ -166,7 +166,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await fireEvent.scroll(historyContainer);
 
         await waitFor(() => {
-            expect(screen.getByRole('heading', { level: 3, name: '5月' })).toBeTruthy();
+            expect(screen.getByRole('heading', { level: 3, name: '5/3(金)' })).toBeTruthy();
             expect(document.querySelector('.post-history-summary-count')?.textContent).toBe('2件');
             expect(document.querySelector('.post-history-summary-range')).toBeNull();
         });
@@ -175,7 +175,7 @@ describe('PostHistoryDialog timeline navigation', () => {
         await fireEvent.scroll(historyContainer);
 
         await waitFor(() => {
-            expect(screen.getByRole('heading', { level: 3, name: '2023年12月' })).toBeTruthy();
+            expect(screen.getByRole('heading', { level: 3, name: '2023/12' })).toBeTruthy();
         });
 
         view.unmount();

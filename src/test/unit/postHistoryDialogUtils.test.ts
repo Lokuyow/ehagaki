@@ -6,6 +6,7 @@ import {
     buildPostHistoryFullscreenMediaItems,
     buildPreview,
     buildPreviewContent,
+    formatPostHistoryMonthLabel,
     resolvePostHistoryMediaDimensionHints,
     resolvePostHistoryMediaAspectRatio,
     resolvePostHistoryMediaRenderState,
@@ -356,5 +357,39 @@ describe("postHistoryDialogUtils", () => {
             hasFetchFailed: false,
             hasMetadataHint: false,
         })).toBe("unknown");
+    });
+
+    it("formatPostHistoryMonthLabel returns 今日 for today and 昨日 for yesterday in Japanese", () => {
+        const now = new Date(2025, 5, 10, 12, 0, 0).getTime();
+        const today = new Date(2025, 5, 10, 9, 0, 0).getTime();
+        const yesterday = new Date(2025, 5, 9, 23, 0, 0).getTime();
+
+        expect(formatPostHistoryMonthLabel(today, "ja", now)).toBe("今日");
+        expect(formatPostHistoryMonthLabel(yesterday, "ja", now)).toBe("昨日");
+    });
+
+    it("formatPostHistoryMonthLabel returns month/day/weekday for same-year dates", () => {
+        const now = new Date(2025, 5, 10, 12, 0, 0).getTime();
+        const postedAt = new Date(2025, 2, 15, 14, 0, 0).getTime();
+
+        expect(formatPostHistoryMonthLabel(postedAt, "ja", now)).toBe(
+            new Intl.DateTimeFormat("ja", {
+                month: "numeric",
+                day: "numeric",
+                weekday: "short",
+            }).format(new Date(postedAt)),
+        );
+    });
+
+    it("formatPostHistoryMonthLabel returns year/month for previous-year dates", () => {
+        const now = new Date(2025, 5, 10, 12, 0, 0).getTime();
+        const postedAt = new Date(2024, 11, 31, 12, 0, 0).getTime();
+
+        expect(formatPostHistoryMonthLabel(postedAt, "ja", now)).toBe(
+            new Intl.DateTimeFormat("ja", {
+                year: "numeric",
+                month: "numeric",
+            }).format(new Date(postedAt)),
+        );
     });
 });

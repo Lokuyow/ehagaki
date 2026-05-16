@@ -26,6 +26,7 @@
     import {
         buildPreviewContent,
         formatPostedAt,
+        formatPostHistoryMonthLabel,
         type PostHistoryPreviewContent as PostHistoryPreviewContentData,
     } from "../lib/postHistoryDialogUtils";
     import {
@@ -435,14 +436,7 @@
         localeValue: string | null | undefined,
         now: number = Date.now(),
     ): string {
-        const postedDate = new Date(postedAt);
-        const nowDate = new Date(now);
-
-        return new Intl.DateTimeFormat(localeValue ?? undefined, {
-            ...(postedDate.getFullYear() === nowDate.getFullYear()
-                ? { month: "long" }
-                : { year: "numeric", month: "long" }),
-        }).format(postedDate);
+        return formatPostHistoryMonthLabel(postedAt, localeValue, now);
     }
 
     function findTopVisiblePostPostedAt(): number | null {
