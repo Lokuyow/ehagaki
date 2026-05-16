@@ -1056,7 +1056,13 @@
         searchInputElement?.focus({ preventScroll: true });
     }
 
-    function showSearch(): void {
+    function toggleSearch(): void {
+        if (activeUtilityPanel === "search") {
+            hideSearch();
+            headingMenuOpen = false;
+            return;
+        }
+
         activeUtilityPanel = "search";
         headingMenuOpen = false;
         void focusSearchInputSoon();
@@ -1256,7 +1262,7 @@
                         <div class="post-history-menu-body">
                             <DropdownMenu.Item
                                 class="menu-action-button"
-                                onSelect={showSearch}
+                                onSelect={toggleSearch}
                             >
                                 <div
                                     class="search-icon svg-icon"

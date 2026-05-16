@@ -368,6 +368,11 @@ async function openSearchBar(): Promise<HTMLInputElement> {
     return screen.findByRole('searchbox', { name: '検索' }) as Promise<HTMLInputElement>;
 }
 
+async function toggleSearchFromMenu(): Promise<void> {
+    await openPostHistoryMenu();
+    await fireEvent.click(await screen.findByRole('menuitem', { name: '検索' }));
+}
+
 async function findRepairButton(): Promise<HTMLElement> {
     const existing = screen.queryByRole('menuitem', { name: /表示中の投稿付近を再取得|再取得中\.\.\./ });
     if (existing) {
@@ -591,6 +596,27 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             expect(localSearchServiceMock.searchLocalPosts).toHaveBeenCalledWith({
+                pubkeyHex: 'a'.repeat(64),
+                query: '一致',
+                page: 1,
+                pageSize: 50,
+            });
+        });
+
+        await toggleSearchFromMenu();
+
+        await waitFor(() => {
+            expect(screen.queryByRole('searchbox', { name: '検索' })).toBeNull();
+            expect(screen.queryByText('一致する投稿はありません')).toBeNull();
+            expect(screen.getByText('投稿履歴はありません')).toBeTruthy();
+        });
+
+        const reopenedSearchInput = await openSearchBar();
+        await fireEvent.input(reopenedSearchInput, { target: { value: '一致' } });
+        await vi.advanceTimersByTimeAsync(250);
+
+        await waitFor(() => {
+            expect(localSearchServiceMock.searchLocalPosts).toHaveBeenLastCalledWith({
                 pubkeyHex: 'a'.repeat(64),
                 query: '一致',
                 page: 1,
