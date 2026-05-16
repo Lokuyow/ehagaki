@@ -8,6 +8,7 @@
         type PostHistoryRecord,
     } from "../../lib/storage/ehagakiDb";
     import { postHistoryVisibleRangeRepository } from "../../lib/storage/postHistoryVisibleRangeRepository";
+    import { formatPostHistoryMonthLabel } from "../../lib/postHistoryDialogUtils";
 
     const HARNESS_PUBKEY = "f".repeat(64);
     const TOTAL_POSTS = 70;
@@ -76,13 +77,14 @@
     );
     const jumpDate = new Date(posts[56].postedAt).toISOString().slice(0, 10);
     const scrollTargetPost = posts[60];
-    const initialMonthLabel = new Intl.DateTimeFormat("ja", {
-        month: "long",
-    }).format(new Date(posts[0].postedAt));
-    const scrollTargetMonthLabel = new Intl.DateTimeFormat("ja", {
-        year: "numeric",
-        month: "long",
-    }).format(new Date(scrollTargetPost.postedAt));
+    const initialMonthLabel = formatPostHistoryMonthLabel(
+        posts[0].postedAt,
+        "ja",
+    );
+    const scrollTargetMonthLabel = formatPostHistoryMonthLabel(
+        scrollTargetPost.postedAt,
+        "ja",
+    );
 
     (window as HarnessWindow).__POST_HISTORY_HARNESS__ = {
         ready: false,
