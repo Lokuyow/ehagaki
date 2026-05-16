@@ -62,6 +62,7 @@ interface UsePostHistoryListingParams {
     getRxNostr: () => RxNostr | undefined;
     getRelayConfig: () => RelayConfig | null | undefined;
     getSessionScrollState?: () => PostHistoryDialogScrollState | null;
+    onSessionScrollStateInvalidated?: () => void;
     pageSize?: number;
     searchDebounceMs?: number;
 }
@@ -214,6 +215,7 @@ export function usePostHistoryListing({
     getRxNostr,
     getRelayConfig,
     getSessionScrollState = () => null,
+    onSessionScrollStateInvalidated = () => {},
     pageSize = POST_HISTORY_PAGE_SIZE,
     searchDebounceMs = 250,
 }: UsePostHistoryListingParams) {
@@ -867,24 +869,50 @@ export function usePostHistoryListing({
 
     async function refreshPreservedVisibleWindow(): Promise<void> {
         const pubkeyHex = getPubkeyHex();
-        if (!pubkeyHex || !getShow()) {
+        const currentPosts = state.loadedPosts;
+        const newestCursor = toTimelineCursor(currentPosts[0]);
+        const oldestCursor = toTimelineCursor(
+            currentPosts[currentPosts.length - 1],
+        );
+        if (!pubkeyHex || !getShow() || currentPosts.length === 0) {
             return;
         }
 
         const requestId = ++loadRequestId;
         const visibleUntil = await refreshVisibleUntil(pubkeyHex);
-        const count = await countVisiblePosts(pubkeyHex, visibleUntil);
+        const [count, newerPosts, olderPosts] = await Promise.all([
+            countVisiblePosts(pubkeyHex, visibleUntil),
+            newestCursor
+                ? postHistoryRepository.getNewerVisibleChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: newestCursor,
+                    limit: 1,
+                })
+                : Promise.resolve([]),
+            oldestCursor
+                ? postHistoryRepository.getOlderVisibleChunk({
+                    pubkeyHex,
+                    visibleUntil,
+                    cursor: oldestCursor,
+                    limit: 1,
+                })
+                : Promise.resolve([]),
+        ]);
         if (!getShow() || requestId !== loadRequestId) {
             return;
         }
 
+        if (newerPosts.length > 0) {
+            onSessionScrollStateInvalidated();
+            await loadLatestVisiblePosts();
+            return;
+        }
+
         state.totalCount = count;
-        void prefetchCurrentPageMedia(state.loadedPosts);
-        await refreshTimelineAvailability(
-            pubkeyHex,
-            state.loadedPosts,
-            requestId,
-        );
+        state.hasNewerLocal = false;
+        state.hasOlderLocal = olderPosts.length > 0;
+        void prefetchCurrentPageMedia(currentPosts);
         startOpenRelayFetchAfterLocalLoad(pubkeyHex, state.loadedPosts);
     }
 

@@ -800,4 +800,73 @@ describe('PostHistoryDialog timeline navigation', () => {
         getBoundingClientRectSpy.mockRestore();
         secondView.unmount();
     });
+
+    it('保存アンカーがあってもローカルに新しい投稿があれば reopen 時に最新表示へ更新する', async () => {
+        const localNewPost = createRecord({
+            eventId: 'local-new-post',
+            content: 'ローカル保存済みの新規投稿',
+            createdAt: 1_704_412_800,
+            postedAt: Date.UTC(2024, 0, 4, 0, 0, 0),
+        });
+        const newest = createRecord({
+            eventId: 'local-restore-newest',
+            content: '既存最新投稿',
+            createdAt: 1_704_326_400,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const older = createRecord({
+            eventId: 'local-restore-older',
+            content: '前回アンカー投稿',
+            createdAt: 1_704_153_600,
+            postedAt: Date.UTC(2024, 0, 1, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk
+            .mockResolvedValueOnce([newest, older])
+            .mockResolvedValueOnce([localNewPost, newest, older]);
+        repositoryMock.getNewerVisibleChunk
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([localNewPost])
+            .mockResolvedValueOnce([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+
+        const firstView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('前回アンカー投稿')).toBeTruthy();
+        });
+
+        writePostHistoryDialogScrollState({
+            pubkeyHex: PUBKEY_HEX,
+            mode: 'normal',
+            anchor: {
+                eventId: 'local-restore-older',
+                offsetTop: 80,
+            },
+            savedAt: 9012,
+        });
+        firstView.unmount();
+
+        const secondView = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByText('ローカル保存済みの新規投稿')).toBeTruthy();
+        });
+        expect(screen.queryByRole('button', { name: '新しい投稿を表示' })).toBeNull();
+
+        secondView.unmount();
+    });
 });

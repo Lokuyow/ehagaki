@@ -86,6 +86,8 @@
                 pubkeyHex,
                 mode: "normal",
             }),
+        onSessionScrollStateInvalidated: () =>
+            clearAllSessionScrollAnchorsForCurrentPubkey(),
         pageSize: POST_HISTORY_PAGE_SIZE,
     });
     const channelDisplay = usePostHistoryChannelDisplay({
