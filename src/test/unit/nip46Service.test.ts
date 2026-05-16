@@ -17,7 +17,9 @@ const mockPool = {
     destroy: vi.fn(),
 };
 vi.mock('nostr-tools/pool', () => ({
-    SimplePool: vi.fn(() => mockPool),
+    SimplePool: vi.fn(function () {
+        return mockPool;
+    }),
     useWebSocketImplementation: vi.fn(),
 }));
 

@@ -260,7 +260,7 @@ describe('generateBlurhash', () => {
             revokeObjectURL
         });
 
-        vi.spyOn(window, 'Image').mockImplementation(() => {
+        vi.spyOn(window, 'Image').mockImplementation(function () {
             const mockImage = {
                 width: 32,
                 height: 24,
@@ -299,7 +299,7 @@ describe('createImetaTag', () => {
                 naturalWidth: 800,
                 naturalHeight: 600
             };
-            vi.spyOn(window, 'Image').mockImplementation(() => {
+            vi.spyOn(window, 'Image').mockImplementation(function () {
                 setTimeout(() => {
                     if (mockImage.onload) mockImage.onload();
                 }, 0);
@@ -394,7 +394,7 @@ describe('createImetaTag', () => {
                 naturalWidth: 1024,
                 naturalHeight: 768
             };
-            vi.spyOn(window, 'Image').mockImplementation(() => {
+            vi.spyOn(window, 'Image').mockImplementation(function () {
                 setTimeout(() => {
                     if (mockImage.onload) mockImage.onload();
                 }, 0);
@@ -415,7 +415,7 @@ describe('createImetaTag', () => {
                 onerror: null as any,
                 src: ''
             };
-            vi.spyOn(window, 'Image').mockImplementation(() => {
+            vi.spyOn(window, 'Image').mockImplementation(function () {
                 setTimeout(() => {
                     if (mockImage.onerror) mockImage.onerror();
                 }, 0);

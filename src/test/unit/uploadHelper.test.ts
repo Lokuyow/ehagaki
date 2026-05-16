@@ -55,12 +55,14 @@ vi.mock("../../stores/tagsStore.svelte", () => ({
 
 // その他の依存関係をモック
 vi.mock("../../lib/fileUploadManager", () => ({
-    FileUploadManager: vi.fn().mockImplementation(() => ({
-        validateImageFile: vi.fn(),
-        generateBlurhashForFile: vi.fn(),
-        uploadFileWithCallbacks: vi.fn(),
-        uploadMultipleFilesWithCallbacks: vi.fn()
-    }))
+    FileUploadManager: vi.fn().mockImplementation(function () {
+        return {
+            validateImageFile: vi.fn(),
+            generateBlurhashForFile: vi.fn(),
+            uploadFileWithCallbacks: vi.fn(),
+            uploadMultipleFilesWithCallbacks: vi.fn()
+        };
+    })
 }));
 
 vi.mock("../../lib/utils/editorNodeActions", () => ({
@@ -172,13 +174,13 @@ const createMockDependencies = (): UploadHelperDependencies => {
             digest: vi.fn(async () => new Uint8Array([1, 2, 3]).buffer)
         } as unknown as SubtleCrypto,
         tick: vi.fn(async () => { }),
-        FileUploadManager: vi.fn((
+        FileUploadManager: vi.fn(function (
             deps?: FileUploadDependencies,
             auth?: AuthService,
             imageCompression?: CompressionService,
             videoCompression?: CompressionService,
             mime?: MimeTypeSupportInterface
-        ) => {
+        ) {
             // 依存関係注入パターンに対応
             return mockFileUploadManager;
         }) as new (
@@ -312,19 +314,21 @@ describe("uploadHelper", () => {
             // 依存関係を直接作成してモック設定
             const customDependencies = {
                 ...mockDependencies,
-                FileUploadManager: vi.fn(() => ({
-                    validateImageFile: vi.fn(() => ({
-                        isValid: false,
-                        errorMessage: "only_images_allowed"
-                    })),
-                    validateMediaFile: vi.fn(() => ({
-                        isValid: false,
-                        errorMessage: "only_images_or_videos_allowed"
-                    })),
-                    generateBlurhashForFile: vi.fn(async () => "blurhash123"),
-                    uploadFileWithCallbacks: vi.fn(),
-                    uploadMultipleFilesWithCallbacks: vi.fn()
-                })) as new () => FileUploadManagerInterface
+                FileUploadManager: vi.fn(function () {
+                    return {
+                        validateImageFile: vi.fn(() => ({
+                            isValid: false,
+                            errorMessage: "only_images_allowed"
+                        })),
+                        validateMediaFile: vi.fn(() => ({
+                            isValid: false,
+                            errorMessage: "only_images_or_videos_allowed"
+                        })),
+                        generateBlurhashForFile: vi.fn(async () => "blurhash123"),
+                        uploadFileWithCallbacks: vi.fn(),
+                        uploadMultipleFilesWithCallbacks: vi.fn()
+                    };
+                }) as unknown as new () => FileUploadManagerInterface
             };
 
             const placeholderMap = insertPlaceholdersIntoEditor(
@@ -541,7 +545,7 @@ describe("uploadHelper", () => {
 
             const customDependencies = {
                 ...mockDependencies,
-                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface,
+                FileUploadManager: vi.fn(function () { return mockFileUploadManager; }) as new () => FileUploadManagerInterface,
             };
 
             await performFileUpload({
@@ -644,7 +648,7 @@ describe("uploadHelper", () => {
                     ...mockDependencies.localStorage,
                     getItem: vi.fn(() => "https://nostr.build/api/v2/nip96/upload"),
                 } as Storage,
-                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface,
+                FileUploadManager: vi.fn(function () { return mockFileUploadManager; }) as new () => FileUploadManagerInterface,
                 resolveUploadDestination: vi.fn(async () => destination),
             };
 
@@ -727,7 +731,7 @@ describe("uploadHelper", () => {
 
             const customDependencies = {
                 ...mockDependencies,
-                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface
+                FileUploadManager: vi.fn(function () { return mockFileUploadManager; }) as new () => FileUploadManagerInterface
             };
 
             const result = await uploadHelper({
@@ -783,7 +787,7 @@ describe("uploadHelper", () => {
 
             const customDependencies = {
                 ...mockDependencies,
-                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface
+                FileUploadManager: vi.fn(function () { return mockFileUploadManager; }) as new () => FileUploadManagerInterface
             };
 
             const result = await uploadHelper({
@@ -857,7 +861,7 @@ describe("uploadHelper", () => {
 
             const customDependencies = {
                 ...mockDependencies,
-                FileUploadManager: vi.fn(() => mockFileUploadManager) as new () => FileUploadManagerInterface
+                FileUploadManager: vi.fn(function () { return mockFileUploadManager; }) as new () => FileUploadManagerInterface
             };
 
             const result = await uploadHelper({

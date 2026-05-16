@@ -9,13 +9,16 @@ export default defineConfig({
     globals: true,
     setupFiles: ['src/test/setup.ts'],
     testTimeout: 20000,
-    exclude: [...configDefaults.exclude, 'src/test/e2e/**'],
+    include: ['src/**/*.{test,spec}.{js,ts}'],
+    exclude: [
+      ...configDefaults.exclude,
+      'src/test/e2e/**',
+      '**/dist/**',
+      '**/coverage/**',
+      '**/playwright-report/**',
+      '**/test-results/**'
+    ],
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: false,
-      }
-    },
     env: {
       NODE_ENV: 'test',
       NODE_OPTIONS: '--max-old-space-size=2048'

@@ -10,7 +10,8 @@ const mockKeyManager = {
         getFromStore: vi.fn(),
         hasStoredKey: vi.fn().mockReturnValue(false)
     },
-    KeyManager: vi.fn().mockImplementation(() => ({
+    KeyManager: vi.fn().mockImplementation(function () {
+        return {
         isValidNsec: vi.fn(),
         saveToStorage: vi.fn(),
         derivePublicKey: vi.fn(),
@@ -20,18 +21,21 @@ const mockKeyManager = {
         hasStoredKey: vi.fn().mockReturnValue(false),
         isWindowNostrAvailable: vi.fn().mockReturnValue(false),
         getPublicKeyFromWindowNostr: vi.fn()
-    })),
-    ExternalAuthChecker: vi.fn().mockImplementation((win?: Window) => ({
-        isWindowNostrAvailable: vi.fn().mockImplementation(() => {
-            if (!win) return false;
-            return 'nostr' in (win as any) &&
-                typeof (win as any).nostr === 'object' &&
-                (win as any).nostr !== null &&
-                typeof (win as any).nostr.getPublicKey === 'function';
-        }),
-        getPublicKeyFromWindowNostr: vi.fn()
-    })),
-    PublicKeyState: vi.fn().mockImplementation(() => {
+        };
+    }),
+    ExternalAuthChecker: vi.fn().mockImplementation(function (win?: Window) {
+        return {
+            isWindowNostrAvailable: vi.fn().mockImplementation(() => {
+                if (!win) return false;
+                return 'nostr' in (win as any) &&
+                    typeof (win as any).nostr === 'object' &&
+                    (win as any).nostr !== null &&
+                    typeof (win as any).nostr.getPublicKey === 'function';
+            }),
+            getPublicKeyFromWindowNostr: vi.fn()
+        };
+    }),
+    PublicKeyState: vi.fn().mockImplementation(function () {
         let _currentIsValid = false;
         let _currentHex = '';
 

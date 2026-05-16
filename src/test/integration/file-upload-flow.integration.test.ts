@@ -1,4 +1,4 @@
-﻿import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ImageCompressionService } from '../../lib/imageCompressionService';
 import { MimeTypeSupport } from '../../lib/mimeTypeSupport';
 import { NostrAuthService } from '../../lib/nostrAuthService';
@@ -316,6 +316,30 @@ describe('ファイルアップロードフロー統合テスト', () => {
     });
 
     describe('エンドツーエンドアップロードフロー', () => {
+        beforeEach(() => {
+            vi.spyOn(window, 'Image').mockImplementation(function () {
+                const image = {
+                    naturalWidth: 800,
+                    naturalHeight: 600,
+                    width: 800,
+                    height: 600,
+                    onload: null as (() => void) | null,
+                    onerror: null as (() => void) | null,
+                    set src(_value: string) {
+                        setTimeout(() => {
+                            this.onload?.();
+                        }, 0);
+                    },
+                };
+
+                return image as unknown as HTMLImageElement;
+            });
+        });
+
+        afterEach(() => {
+            vi.restoreAllMocks();
+        });
+
         it('ファイル選択→バリデーション→圧縮→認証ヘッダー生成の流れが動作すること', async () => {
             // 1. ファイル選択
             const file = new File(

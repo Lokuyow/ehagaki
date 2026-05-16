@@ -41,7 +41,7 @@ describe("Nip96UploadAdapter", () => {
 
         const adapter = new Nip96UploadAdapter();
         const imageLoadStates = [false, true];
-        const imageSpy = vi.spyOn(window, "Image").mockImplementation(() => {
+        const imageSpy = vi.spyOn(window, "Image").mockImplementation(function () {
             const image = {
                 onload: null as (() => void) | null,
                 onerror: null as (() => void) | null,

@@ -289,7 +289,7 @@ vi.mock('../../lib/storage/customEmojiImageMetaRepository', () => ({
 }));
 
 vi.mock('../../lib/channelContextService', () => ({
-    ChannelContextService: vi.fn(() => channelContextServiceMock),
+    ChannelContextService: vi.fn(function () { return channelContextServiceMock; }),
 }));
 
 vi.mock('../../lib/customEmoji', async () => {

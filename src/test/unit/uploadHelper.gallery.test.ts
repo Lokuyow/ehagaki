@@ -114,13 +114,15 @@ function createDeps(
         } as unknown as SubtleCrypto,
         tick: vi.fn(),
         FileUploadManager: vi.fn(
-            (
+            function (
                 _deps?: FileUploadDependencies,
                 _auth?: AuthService,
                 _imageCompression?: CompressionService,
                 _videoCompression?: CompressionService,
                 _mime?: MimeTypeSupportInterface
-            ) => mockFUM
+            ) {
+                return mockFUM;
+            }
         ) as unknown as new (
             deps?: FileUploadDependencies,
             auth?: AuthService,

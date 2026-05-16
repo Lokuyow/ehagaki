@@ -39,7 +39,7 @@ afterEach(() => {
 });
 
 function mockImageLoads(loadStates: boolean[]) {
-    return vi.spyOn(window, "Image").mockImplementation(() => {
+    return vi.spyOn(window, "Image").mockImplementation(function () {
         const image = {
             onload: null as (() => void) | null,
             onerror: null as (() => void) | null,

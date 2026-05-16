@@ -57,16 +57,20 @@ vi.mock('../../lib/urlQueryHandler', () => ({
 }));
 
 vi.mock('../../lib/replyQuoteService', () => ({
-    ReplyQuoteService: vi.fn(() => ({
-        fetchReferencedEvent: mockState.fetchReferencedEvent,
-        extractThreadInfo: mockState.extractThreadInfo,
-    })),
+    ReplyQuoteService: vi.fn(function () {
+        return {
+            fetchReferencedEvent: mockState.fetchReferencedEvent,
+            extractThreadInfo: mockState.extractThreadInfo,
+        };
+    }),
 }));
 
 vi.mock('../../lib/channelContextService', () => ({
-    ChannelContextService: vi.fn(() => ({
-        resolveChannelContext: mockState.resolveChannelContext,
-    })),
+    ChannelContextService: vi.fn(function () {
+        return {
+            resolveChannelContext: mockState.resolveChannelContext,
+        };
+    }),
 }));
 
 vi.mock('../../lib/shareHandler', () => ({

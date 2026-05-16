@@ -278,11 +278,11 @@ describe('ExternalAuthChecker', () => {
 
 describe('PublicKeyState', () => {
     let publicKeyState: PublicKeyState;
-    let mockClearAuthState: ReturnType<typeof vi.fn>;
+    let mockClearAuthState: ReturnType<typeof vi.fn<() => void>>;
 
     beforeEach(() => {
         vi.useFakeTimers();
-        mockClearAuthState = vi.fn();
+        mockClearAuthState = vi.fn<() => void>();
         publicKeyState = new PublicKeyState({
             clearAuthStateFn: mockClearAuthState
         });

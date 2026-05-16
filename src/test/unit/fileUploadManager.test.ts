@@ -259,13 +259,13 @@ describe('MimeTypeSupport', () => {
 describe('FileUploadManager', () => {
     let uploadManager: FileUploadManager;
     let mockDependencies: FileUploadDependencies;
-    let mockFetch: ReturnType<typeof vi.fn>;
+    let mockFetch: ReturnType<typeof vi.fn<typeof fetch>>;
 
     beforeEach(() => {
         mockDependencies = createMockDependencies();
-        mockFetch = vi.fn();
+        mockFetch = vi.fn<typeof fetch>();
         mockDependencies.fetch = mockFetch;
-        vi.spyOn(window, 'Image').mockImplementation(() => {
+        vi.spyOn(window, 'Image').mockImplementation(function () {
             const image = {
                 onload: null as (() => void) | null,
                 onerror: null as (() => void) | null,
@@ -865,7 +865,9 @@ describe('FileUploadManager', () => {
             };
 
             Object.defineProperty(window, 'MessageChannel', {
-                value: vi.fn().mockImplementation(() => mockMessageChannel),
+                value: vi.fn().mockImplementation(function () {
+                    return mockMessageChannel;
+                }),
                 writable: true
             });
 

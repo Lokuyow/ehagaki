@@ -73,14 +73,14 @@ describe('swListenerUtils', () => {
     });
 
     it('registerServiceWorkerEventListeners は 4 種類の listener を登録する', () => {
-        const addEventListener = vi.fn();
+        const addEventListener = vi.fn<(type: string, listener: EventListenerOrEventListenerObject) => void>();
 
         registerServiceWorkerEventListeners({
             serviceWorkerGlobal: { addEventListener },
-            installListener: vi.fn(),
-            activateListener: vi.fn(),
-            fetchListener: vi.fn(),
-            messageListener: vi.fn(),
+            installListener: vi.fn<EventListener>(),
+            activateListener: vi.fn<EventListener>(),
+            fetchListener: vi.fn<EventListener>(),
+            messageListener: vi.fn<EventListener>(),
         });
 
         expect(addEventListener).toHaveBeenCalledTimes(4);

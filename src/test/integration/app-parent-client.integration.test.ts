@@ -208,7 +208,9 @@ vi.mock('../../lib/authService', () => ({
 }));
 
 vi.mock('../../lib/accountManager', () => ({
-    AccountManager: vi.fn(() => mockState.accountManager),
+    AccountManager: vi.fn(function () {
+        return mockState.accountManager;
+    }),
 }));
 
 vi.mock('../../lib/parentClientAuthService', () => ({

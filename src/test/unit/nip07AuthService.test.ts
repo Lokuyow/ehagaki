@@ -229,11 +229,11 @@ import { AuthService } from '../../lib/authService';
 import { MockStorage, MockKeyManager } from '../helpers';
 
 describe('AuthService NIP-07認証', () => {
-    let mockSetNip07Auth: ReturnType<typeof vi.fn>;
+    let mockSetNip07Auth: ReturnType<typeof vi.fn<(pubkey: string, npub: string, nprofile: string) => void>>;
     let mockConsole: Console;
 
     beforeEach(() => {
-        mockSetNip07Auth = vi.fn();
+        mockSetNip07Auth = vi.fn<(pubkey: string, npub: string, nprofile: string) => void>();
         mockConsole = createMockConsole();
     });
 
