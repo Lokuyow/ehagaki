@@ -2058,8 +2058,7 @@
         aspect-ratio: 1;
         border-radius: 50%;
         --btn-bg: var(--dialog-bg);
-        background-color: var(--btn-bg);
-        --text: var(--text-muted);
+        --text: var(--btn-post-preview-action);
 
         .more-icon {
             mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
@@ -2074,12 +2073,13 @@
         padding: 0;
         background-color: var(--dialog-bg);
         --text: var(--text-muted);
+        border-radius: 0;
     }
 
     :global(.menu-trigger.post-history-heading-menu-trigger .more-icon) {
         mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-        width: 26px;
-        height: 26px;
+        width: 28px;
+        height: 28px;
         --svg: CurrentColor;
     }
 
@@ -2307,7 +2307,7 @@
         display: flex;
         align-items: center;
         border-bottom: 1px solid var(--border-hr-light);
-        padding: 10px;
+        padding: 6px 6px 0;
     }
 
     .post-history-item:last-child {
@@ -2565,7 +2565,6 @@
         color: var(--text);
         font-size: 1rem;
         line-height: 1.5;
-        gap: 4px;
     }
 
     @media (max-width: 500px) {
@@ -2777,14 +2776,14 @@
     }
 
     .reply-icon.svg-icon {
-        width: 22px;
-        height: 22px;
+        width: 20px;
+        height: 20px;
         mask-image: url("/icons/chat_bubble_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
     }
 
     .quote-icon.svg-icon {
-        width: 28px;
-        height: 28px;
+        width: 24px;
+        height: 24px;
         mask-image: url("/icons/format_quote_24dp_000000_FILL1_wght400_GRAD0_opsz24.svg");
     }
 
