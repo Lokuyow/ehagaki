@@ -2040,6 +2040,8 @@
         letter-spacing: -0.04em;
         overflow-wrap: anywhere;
         padding: 0 12px;
+        --btn-bg: var(--dialog-bg);
+        --text: var(--text-light);
     }
 
     .post-history-heading-actions {
@@ -2050,24 +2052,35 @@
         flex: 0 0 auto;
         min-width: 0;
         gap: 4px;
+    }
 
-        :global(.post-history-heading-menu-trigger) {
-            min-height: 50px;
-            padding: 0;
-        }
+    :global(.menu-trigger) {
+        aspect-ratio: 1;
+        border-radius: 50%;
+        --btn-bg: var(--dialog-bg);
+        background-color: var(--btn-bg);
+        --text: var(--text-muted);
 
-        :global(.post-history-heading-menu-trigger .more-icon) {
+        .more-icon {
             mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-            width: 26px;
-            height: 26px;
-            --svg: var(--text-muted);
+            width: 22px;
+            height: 22px;
+            --svg: CurrentColor;
         }
+    }
 
-        @media (min-width: 601px) {
-            :global(.post-history-heading-menu-trigger:hover .more-icon) {
-                --svg: var(--btn-post-preview-action-hover);
-            }
-        }
+    :global(.menu-trigger.post-history-heading-menu-trigger) {
+        min-height: 50px;
+        padding: 0;
+        background-color: var(--dialog-bg);
+        --text: var(--text-muted);
+    }
+
+    :global(.menu-trigger.post-history-heading-menu-trigger .more-icon) {
+        mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
+        width: 26px;
+        height: 26px;
+        --svg: CurrentColor;
     }
 
     .post-history-heading-summary {
@@ -2679,12 +2692,6 @@
             align-items: center;
             justify-content: flex-end;
             min-width: 85px;
-
-            @media (min-width: 601px) {
-                :global(.menu-trigger:hover) :global(.more-icon) {
-                    --svg: var(--btn-post-preview-action-hover);
-                }
-            }
         }
 
         :global(.post-preview-action-button) {
@@ -2704,21 +2711,6 @@
                     --svg: var(--theme);
                 }
             }
-        }
-    }
-
-    :global(.menu-trigger) {
-        min-height: auto;
-        aspect-ratio: 1;
-        border-radius: 50%;
-        --btn-bg: var(--dialog-bg);
-        background-color: var(--btn-bg);
-
-        .more-icon {
-            mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-            width: 22px;
-            height: 22px;
-            --svg: var(--btn-post-preview-action);
         }
     }
 

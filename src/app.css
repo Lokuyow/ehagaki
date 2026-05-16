@@ -38,7 +38,7 @@
   --bg-translucent: #EDEDEDcc;
   --bg-buttonbar: hsl(0, 0%, 91%);
 
-  --btn-bg: hsl(0, 0%, 94%);
+  --btn-bg: hsl(0, 0%, 92%);
   --btn-border: hsl(0, 0%, 75%);
   --btn-hover-bg: rgba(50, 50, 50, 0.12);
   --btn-post-preview-action: hsl(0, 0%, 74%);
@@ -247,7 +247,7 @@ select {
 
 
 :root.light button.selected:where(:not(:disabled)) {
-  background-color: color-mix(in srgb, var(--btn-bg), black 15%);
+  background-color: color-mix(in srgb, var(--btn-bg), black 16%);
 }
 
 :root.dark button.selected:where(:not(:disabled)) {
@@ -259,8 +259,8 @@ select {
   :root.light button:where(:hover:not(:disabled)),
   :root.light [role="button"]:where(:hover:not([aria-disabled="true"])),
   :root.light select:where(:hover:not(:disabled)) {
-    background-color: color-mix(in srgb, var(--btn-bg), black 3%);
-    color: color-mix(in srgb, var(--text), black 3%);
+    background-color: color-mix(in srgb, var(--btn-bg), black 4%);
+    color: color-mix(in srgb, var(--text), black 40%);
     --svg: currentColor;
   }
 
@@ -268,7 +268,7 @@ select {
   :root.dark [role="button"]:where(:hover:not([aria-disabled="true"])),
   :root.dark select:where(:hover:not(:disabled)) {
     background-color: color-mix(in srgb, var(--btn-bg), white 5%);
-    color: color-mix(in srgb, var(--text), white 5%);
+    color: color-mix(in srgb, var(--text), white 50%);
     --svg: currentColor;
   }
 

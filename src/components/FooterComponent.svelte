@@ -164,6 +164,9 @@
 </div>
 
 <style>
+    :global(:root.light :where(.footer-bar button)) {
+        --btn-bg: white;
+    }
     .footer-bar {
         display: flex;
         align-items: center;

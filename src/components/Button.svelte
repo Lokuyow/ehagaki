@@ -285,10 +285,6 @@
     :global(html body :where(.content-iconText)) {
         gap: 8px;
         padding: 12px 18px 12px 14px;
-
-        :global(.svg-icon) {
-            background-color: currentColor;
-        }
     }
 
     .content-icon {
