@@ -1247,6 +1247,19 @@
                         <div class="post-history-menu-body">
                             <DropdownMenu.Item
                                 class="menu-action-button"
+                                onSelect={showSearch}
+                            >
+                                <div
+                                    class="search-icon svg-icon"
+                                    aria-hidden="true"
+                                ></div>
+                                <span>{$_("postHistory.showSearch")}</span>
+                            </DropdownMenu.Item>
+                            <DropdownMenu.Separator
+                                class="post-history-menu-separator"
+                            />
+                            <DropdownMenu.Item
+                                class="menu-action-button"
                                 disabled={!history.canReturnToLatest}
                                 onSelect={handleReturnToLatestFromMenu}
                             >
@@ -1255,16 +1268,6 @@
                                     aria-hidden="true"
                                 ></div>
                                 <span>{$_("postHistory.returnToLatest")}</span>
-                            </DropdownMenu.Item>
-                            <DropdownMenu.Item
-                                class="menu-action-button"
-                                onSelect={showSearch}
-                            >
-                                <div
-                                    class="search-icon svg-icon"
-                                    aria-hidden="true"
-                                ></div>
-                                <span>{$_("postHistory.showSearch")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button"
@@ -2368,7 +2371,7 @@
     .post-history-menu-body {
         display: flex;
         flex-direction: column;
-        gap: 4px;
+        gap: 2px;
         align-items: stretch;
     }
 
@@ -2533,7 +2536,11 @@
         gap: 4px;
     }
 
-    @media (max-width: 600px) {
+    @media (max-width: 500px) {
+        .post-history-utility-panel {
+            width: 100%;
+        }
+
         .post-history-utility-controls {
             align-items: stretch;
         }
