@@ -1215,6 +1215,17 @@
                     }`}
                 />
             {/if}
+            {#if history.posts.length > 0 && buildVisibleCountLabel()}
+                <div class="post-history-heading-summary">
+                    <div class="post-history-summary-row">
+                        <span
+                            class="post-history-summary-line post-history-summary-count"
+                        >
+                            {buildVisibleCountLabel()}
+                        </span>
+                    </div>
+                </div>
+            {/if}
             <DropdownMenu.Root bind:open={headingMenuOpen}>
                 <DropdownMenu.Trigger
                     class="menu-trigger post-history-heading-menu-trigger"
@@ -1311,17 +1322,6 @@
                 </DropdownMenu.Portal>
             </DropdownMenu.Root>
         </div>
-        {#if history.posts.length > 0 && buildVisibleCountLabel()}
-            <div class="post-history-heading-summary">
-                <div class="post-history-summary-row">
-                    <span
-                        class="post-history-summary-line post-history-summary-count"
-                    >
-                        {buildVisibleCountLabel()}
-                    </span>
-                </div>
-            </div>
-        {/if}
     </div>
 
     {#if activeUtilityPanel === "search"}
@@ -1996,20 +1996,19 @@
     }
 
     .post-history-heading {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-rows: auto auto;
-        align-items: start;
+        display: flex;
+        align-items: stretch;
+        justify-content: space-between;
         width: 100%;
-        padding: 0 10px 4px;
+        padding: 0;
         border-bottom: 1px solid var(--border-hr);
     }
 
     .post-history-heading-main {
-        grid-column: 1;
-        grid-row: 1 / span 2;
+        flex: 1 1 auto;
         min-width: 0;
         align-self: stretch;
+        padding-left: 10px;
     }
 
     .post-history-current-month {
@@ -2018,7 +2017,7 @@
         align-items: center;
         height: 100%;
         margin: 0;
-        font-size: 2rem;
+        font-size: 1.75rem;
         line-height: 1.05;
         font-weight: 600;
         letter-spacing: -0.04em;
@@ -2026,23 +2025,23 @@
     }
 
     .post-history-heading-actions {
-        grid-column: 2;
-        grid-row: 1;
         display: flex;
-        align-items: stretch;
-        justify-self: end;
-        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+        align-self: stretch;
+        flex: 0 0 auto;
         min-width: 0;
+        gap: 4px;
 
         :global(.post-history-heading-menu-trigger) {
-            min-height: 36px;
+            min-height: 50px;
             padding: 0;
         }
 
         :global(.post-history-heading-menu-trigger .more-icon) {
             mask-image: url("/icons/more_vert_24dp_000000_FILL0_wght400_GRAD0_opsz24.svg");
-            width: 22px;
-            height: 22px;
+            width: 26px;
+            height: 26px;
             --svg: var(--text-muted);
         }
 
@@ -2054,14 +2053,10 @@
     }
 
     .post-history-heading-summary {
-        grid-column: 2;
-        grid-row: 2;
         display: flex;
-        justify-self: end;
-        align-self: end;
+        align-items: center;
         color: var(--text-muted);
         font-size: 0.875rem;
-        line-height: 1.35;
     }
 
     .post-history-summary-row {

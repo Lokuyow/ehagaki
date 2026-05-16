@@ -96,7 +96,7 @@
     "searchNoResults": "No matching posts",
     "searchResults": "Search results",
     "visibleRange": "{from} → {to}",
-    "visibleCountSummary": "{total} posts",
+    "visibleCountSummary": "{total} saved",
     "searchCountSummary": "{total} posts",
     "loadOlder": "Show older posts",
     "loadNewer": "Show newer posts",

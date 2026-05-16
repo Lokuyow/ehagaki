@@ -96,7 +96,7 @@
     "searchNoResults": "一致する投稿はありません",
     "searchResults": "検索結果",
     "visibleRange": "{from} → {to}",
-    "visibleCountSummary": "{total}件",
+    "visibleCountSummary": "{total}件保存",
     "searchCountSummary": "{total}件",
     "loadOlder": "さらに古い投稿を表示",
     "loadNewer": "新しい投稿を表示",

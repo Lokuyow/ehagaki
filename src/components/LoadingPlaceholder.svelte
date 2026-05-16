@@ -72,7 +72,6 @@
     }
     .loading-text {
         animation: pulse-text 1.5s ease-in-out infinite;
-        line-height: 1.5;
     }
 
     @keyframes pulse-text {
