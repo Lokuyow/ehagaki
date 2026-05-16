@@ -164,7 +164,9 @@
     let headingStatusError = $derived(
         history.syncStatus === "failed" ||
             history.currentViewRefetchStatusMessageKey ===
-                "postHistory.repairPartialFailure",
+                "postHistory.repairPartialFailure" ||
+            history.currentViewRefetchStatusMessageKey ===
+                "postHistory.repairFetchFailed",
     );
     let dialogEmojiUrls = $derived.by(() => {
         const urls = new Set<string>();

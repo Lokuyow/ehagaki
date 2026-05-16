@@ -37,9 +37,10 @@ const hoisted = vi.hoisted(() => {
             'postHistory.synced': 'リレーとの同期が完了しました',
             'postHistory.syncFailed': 'リレーから取得できませんでした',
             'postHistory.noMorePosts': 'これ以上古い投稿はありません',
-            'postHistory.repairAdded': `${options?.values?.count ?? 0}件の投稿を追加しました`,
-            'postHistory.repairNoChanges': '追加できる投稿はありません',
-            'postHistory.repairPartialFailure': '一部の取得に失敗しました。時間をおいて再実行してください。',
+            'postHistory.repairAdded': `${options?.values?.count ?? 0}件追加`,
+            'postHistory.repairNoChanges': '追加なし',
+            'postHistory.repairPartialFailure': '一部未確認',
+            'postHistory.repairFetchFailed': '取得失敗',
             'common.cancel': 'キャンセル',
             'global.close': '閉じる',
         };
@@ -185,7 +186,7 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_OLDER_FETCH_LIMIT: 150,
     POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
-    POST_HISTORY_REPAIR_FETCH_LIMIT: 200,
+    POST_HISTORY_REPAIR_FETCH_LIMIT: 250,
     postHistoryRelayFetchService: hoisted.relayFetchServiceMock,
 }));
 
@@ -360,6 +361,12 @@ export function resetPostHistoryDialogHarness(): void {
             processedRanges: [],
             attemptedRangeCount: 0,
             hadFailures: false,
+            limitReached: false,
+            hadFetchError: false,
+            fetchFailed: false,
+            hadTimeout: false,
+            hadUnfinishedRanges: false,
+            splitRetryCount: 0,
         }),
         cancel: vi.fn(),
     });

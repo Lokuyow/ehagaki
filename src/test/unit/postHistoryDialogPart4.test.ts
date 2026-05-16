@@ -36,9 +36,10 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncFailed': 'リレーから取得できませんでした',
         'postHistory.repair': '表示中の投稿付近を再取得',
         'postHistory.repairing': '再取得中...',
-        'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
-        'postHistory.repairNoChanges': '追加できる投稿はありません',
-        'postHistory.repairPartialFailure': '一部の取得に失敗しました。時間をおいて再実行してください。',
+        'postHistory.repairAdded': `${options?.values?.count}件追加`,
+        'postHistory.repairNoChanges': '追加なし',
+        'postHistory.repairPartialFailure': '一部未確認',
+            'postHistory.repairFetchFailed': '取得失敗',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -258,7 +259,7 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_OLDER_FETCH_LIMIT: 150,
     POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
-    POST_HISTORY_REPAIR_FETCH_LIMIT: 200,
+    POST_HISTORY_REPAIR_FETCH_LIMIT: 250,
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 

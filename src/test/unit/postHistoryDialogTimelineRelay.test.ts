@@ -562,14 +562,14 @@ describe('PostHistoryDialog timeline relay flows', () => {
         });
 
         await waitFor(() => {
-            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+            expect(screen.getByText('1件追加')).toBeTruthy();
             expect(screen.getByText('修復された投稿')).toBeTruthy();
         });
 
         view.unmount();
     });
 
-    it('追加できる投稿はありません のメッセージが自動で消える', async () => {
+    it('追加なし のメッセージが自動で消える', async () => {
         const initialPosts = [createRecord({ eventId: 'repair-none', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -601,19 +601,19 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await waitFor(() => {
-            expect(screen.getByText('追加できる投稿はありません')).toBeTruthy();
+            expect(screen.getByText('追加なし')).toBeTruthy();
         });
 
         await new Promise((resolve) => setTimeout(resolve, 4000));
 
         await waitFor(() => {
-            expect(screen.queryByText('追加できる投稿はありません')).toBeNull();
+            expect(screen.queryByText('追加なし')).toBeNull();
         });
 
         view.unmount();
     });
 
-    it('1件の投稿を追加しました のメッセージが自動で消える', async () => {
+    it('1件追加 のメッセージが自動で消える', async () => {
         const initialPosts = [createRecord({ eventId: 'repair-added', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -654,13 +654,13 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await waitFor(() => {
-            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+            expect(screen.getByText('1件追加')).toBeTruthy();
         });
 
         await new Promise((resolve) => setTimeout(resolve, 4000));
 
         await waitFor(() => {
-            expect(screen.queryByText('1件の投稿を追加しました')).toBeNull();
+            expect(screen.queryByText('1件追加')).toBeNull();
         });
 
         view.unmount();
@@ -752,7 +752,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('一部の取得に失敗しました。時間をおいて再実行してください。 のメッセージが自動で消える', async () => {
+    it('一部未確認 のメッセージが自動で消える', async () => {
         const initialPosts = [createRecord({ eventId: 'repair-failure', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
 
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -773,6 +773,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 processedRanges: [],
                 attemptedRangeCount: 1,
                 hadFailures: true,
+                hadUnfinishedRanges: true,
             }),
             cancel: vi.fn(),
         });
@@ -793,13 +794,63 @@ describe('PostHistoryDialog timeline relay flows', () => {
         await clickEnabledMenuAction('表示中の投稿付近を再取得');
 
         await waitFor(() => {
-            expect(screen.getByText('一部の取得に失敗しました。時間をおいて再実行してください。')).toBeTruthy();
+            expect(screen.getByText('一部未確認')).toBeTruthy();
         });
 
         await new Promise((resolve) => setTimeout(resolve, 4000));
 
         await waitFor(() => {
-            expect(screen.queryByText('一部の取得に失敗しました。時間をおいて再実行してください。')).toBeNull();
+            expect(screen.queryByText('一部未確認')).toBeNull();
+        });
+
+        view.unmount();
+    });
+
+    it('全体取得失敗なら取得失敗を表示する', async () => {
+        const initialPosts = [createRecord({ eventId: 'repair-fetch-failed', content: '既存投稿', createdAt: 1_704_326_400, postedAt: Date.UTC(2024, 0, 2, 3, 4, 0) })];
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue(initialPosts);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        relayFetchServiceMock.fetchLatest.mockReturnValue({
+            promise: Promise.resolve(createRelayFetchResult({ status: 'success', fetchedAt: 1000 })),
+            cancel: vi.fn(),
+        });
+        repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
+            promise: Promise.resolve({
+                status: 'partial',
+                addedCount: 0,
+                updatedCount: 0,
+                unchangedCount: 0,
+                processedRangeCount: 1,
+                processedRanges: [],
+                attemptedRangeCount: 1,
+                hadFailures: true,
+                hadFetchError: true,
+                fetchFailed: true,
+                hadUnfinishedRanges: false,
+            }),
+            cancel: vi.fn(),
+        });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.queryByText('リレーと同期中...')).toBeNull();
+        });
+
+        await clickEnabledMenuAction('表示中の投稿付近を再取得');
+
+        await waitFor(() => {
+            expect(screen.getByText('取得失敗')).toBeTruthy();
         });
 
         view.unmount();

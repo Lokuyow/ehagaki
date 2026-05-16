@@ -411,6 +411,7 @@ export function usePostHistoryListing({
             "postHistory.repairNoChanges",
             "postHistory.repairAdded",
             "postHistory.repairPartialFailure",
+            "postHistory.repairFetchFailed",
         ]);
 
         if (!autoHideMessageKeys.has(state.currentViewRefetchMessageKey ?? "")) {
@@ -1500,16 +1501,19 @@ export function usePostHistoryListing({
                 await reloadVisibleWindowFromCurrentNewest();
             }
 
-            if (result.hadFailures) {
-                state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
-                state.currentViewRefetchMessageValues = null;
-            } else if (result.addedCount > 0) {
+            if (result.addedCount > 0) {
                 state.currentViewRefetchMessageKey = "postHistory.repairAdded";
                 state.currentViewRefetchMessageValues = {
                     count: result.addedCount,
                     processedRangeCount: result.processedRangeCount,
                     updatedCount: result.updatedCount,
                 };
+            } else if (result.fetchFailed) {
+                state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
+                state.currentViewRefetchMessageValues = null;
+            } else if (result.hadUnfinishedRanges) {
+                state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
+                state.currentViewRefetchMessageValues = null;
             } else {
                 state.currentViewRefetchMessageKey = "postHistory.repairNoChanges";
                 state.currentViewRefetchMessageValues = {
@@ -1526,7 +1530,7 @@ export function usePostHistoryListing({
 
             currentViewRefetchTask = null;
             state.currentViewRefetchStatus = "idle";
-            state.currentViewRefetchMessageKey = "postHistory.repairPartialFailure";
+            state.currentViewRefetchMessageKey = "postHistory.repairFetchFailed";
             state.currentViewRefetchMessageValues = null;
             scheduleCurrentViewRefetchMessageClearIfNeeded();
         }

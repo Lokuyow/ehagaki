@@ -10,6 +10,8 @@ import { postHistoryRepository, type PostHistoryRepository } from "./storage/pos
 import type { RelayConfig } from "./types";
 
 export const POST_HISTORY_CURRENT_VIEW_REFETCH_DELAY_MS = 500;
+const POST_HISTORY_CURRENT_VIEW_REFETCH_MAX_RANGE_COUNT = 12;
+const POST_HISTORY_CURRENT_VIEW_REFETCH_MIN_RANGE_SECONDS = 60 * 60;
 
 export interface PostHistoryCurrentViewRefetchParams {
     pubkeyHex: string;
@@ -39,12 +41,19 @@ export interface PostHistoryCurrentViewRefetchResult {
     processedRangeCount: number;
     attemptedRangeCount: number;
     hadFailures: boolean;
+    limitReached: boolean;
+    hadFetchError: boolean;
+    fetchFailed: boolean;
+    hadTimeout: boolean;
+    hadUnfinishedRanges: boolean;
+    splitRetryCount: number;
     processedRanges: PostHistoryCurrentViewProcessedRangeSummary[];
 }
 
 export type PostHistoryCurrentViewProcessedRangeStatus =
     | "complete"
     | "partial"
+    | "limit"
     | "timeout"
     | "error"
     | "cancelled";
@@ -76,6 +85,10 @@ export interface PostHistoryCurrentViewRefetchRange {
     since?: number;
     until?: number;
     limit: number;
+}
+
+interface QueuedCurrentViewRefetchRange extends PostHistoryCurrentViewRefetchRange {
+    splitDepth: number;
 }
 
 export interface PostHistoryCurrentViewRefetchServiceDeps {
@@ -112,7 +125,48 @@ function resolveProcessedRangeStatus(
 function didCurrentViewRefetchFail(
     status: PostHistoryCurrentViewProcessedRangeStatus,
 ): boolean {
-    return status !== "complete" && status !== "cancelled";
+    return status === "partial" || status === "error";
+}
+
+function didResultHitLimit(
+    result: PostHistoryRelayFetchResult,
+    limit: number,
+): boolean {
+    return result.hasMore || result.perRelayCounts.some((item) => item.rawCount >= limit);
+}
+
+function canSplitCurrentViewRange(
+    range: PostHistoryCurrentViewRefetchRange,
+): range is PostHistoryCurrentViewRefetchRange & { since: number; until: number } {
+    return typeof range.since === "number"
+        && typeof range.until === "number"
+        && range.until - range.since > POST_HISTORY_CURRENT_VIEW_REFETCH_MIN_RANGE_SECONDS;
+}
+
+function splitCurrentViewRange(
+    range: QueuedCurrentViewRefetchRange,
+): QueuedCurrentViewRefetchRange[] {
+    if (!canSplitCurrentViewRange(range)) {
+        return [];
+    }
+
+    const mid = Math.floor((range.since + range.until) / 2);
+    if (mid < range.since || mid + 1 > range.until) {
+        return [];
+    }
+
+    return [
+        {
+            ...range,
+            until: mid,
+            splitDepth: range.splitDepth + 1,
+        },
+        {
+            ...range,
+            since: mid + 1,
+            splitDepth: range.splitDepth + 1,
+        },
+    ];
 }
 
 export class PostHistoryCurrentViewRefetchService {
@@ -159,12 +213,13 @@ export class PostHistoryCurrentViewRefetchService {
         let cancelled = false;
         let currentFetchTask: PostHistoryRelayFetchTask | null = null;
         let currentDelayCancel: (() => void) | null = null;
-        const preferredQueue = params.preferredRanges.map((range) => ({
+        const preferredQueue: QueuedCurrentViewRefetchRange[] = params.preferredRanges.map((range) => ({
             kinds: [...range.kinds],
             rangeUnit: range.rangeUnit,
             ...(typeof range.since === "number" ? { since: range.since } : {}),
             ...(typeof range.until === "number" ? { until: range.until } : {}),
             limit: range.limit,
+            splitDepth: 0,
         }));
 
         const promise = (async (): Promise<PostHistoryCurrentViewRefetchResult> => {
@@ -173,9 +228,17 @@ export class PostHistoryCurrentViewRefetchService {
             let unchangedCount = 0;
             let attemptedRangeCount = 0;
             let hadFailures = false;
+            let limitReached = false;
+            let hadFetchError = false;
+            let hadTimeout = false;
+            let hadUnfinishedRanges = false;
+            let splitRetryCount = 0;
+            let receivedEventCount = 0;
+            let observedRelayResponseCount = 0;
             const processedRanges: PostHistoryCurrentViewProcessedRangeSummary[] = [];
 
-            for (const range of preferredQueue) {
+            while (preferredQueue.length > 0) {
+                const range = preferredQueue.shift() as QueuedCurrentViewRefetchRange;
                 if (cancelled) {
                     break;
                 }
@@ -205,6 +268,10 @@ export class PostHistoryCurrentViewRefetchService {
                 const result = await fetchTask.promise;
                 currentFetchTask = null;
                 attemptedRangeCount += 1;
+                receivedEventCount += result.events.length;
+                observedRelayResponseCount += result.observedRelayUrls.length;
+                hadFetchError = hadFetchError || result.status === "error";
+                hadTimeout = hadTimeout || result.status === "timeout";
 
                 let insertedCount = 0;
                 let rangeUpdatedCount = 0;
@@ -234,7 +301,15 @@ export class PostHistoryCurrentViewRefetchService {
                     });
                 }
 
-                const processedStatus = resolveProcessedRangeStatus(result, range.limit);
+                const hitLimit = didResultHitLimit(result, range.limit);
+                limitReached = limitReached || hitLimit;
+                const splitRanges = hitLimit ? splitCurrentViewRange(range) : [];
+                const canQueueSplit = splitRanges.length > 0
+                    && processedRanges.length + 1 + preferredQueue.length + splitRanges.length
+                        <= POST_HISTORY_CURRENT_VIEW_REFETCH_MAX_RANGE_COUNT;
+                const processedStatus: PostHistoryCurrentViewProcessedRangeStatus = hitLimit
+                    ? "limit"
+                    : resolveProcessedRangeStatus(result, range.limit);
                 processedRanges.push({
                     source: "preferred",
                     rangeUnit: range.rangeUnit,
@@ -251,7 +326,17 @@ export class PostHistoryCurrentViewRefetchService {
                     unchangedCount: rangeUnchangedCount,
                 });
 
-                if (didCurrentViewRefetchFail(processedStatus)) {
+                if (hitLimit && canQueueSplit) {
+                    splitRetryCount += splitRanges.length;
+                    preferredQueue.unshift(...splitRanges);
+                } else if (hitLimit) {
+                    hadUnfinishedRanges = true;
+                }
+
+                const didRangeFail = didCurrentViewRefetchFail(processedStatus)
+                    || (result.status === "error" && result.events.length === 0)
+                    || (hitLimit && !canQueueSplit);
+                if (didRangeFail) {
                     hadFailures = true;
                 }
 
@@ -261,9 +346,15 @@ export class PostHistoryCurrentViewRefetchService {
                 }
             }
 
+            const fetchFailed = !cancelled
+                && attemptedRangeCount > 0
+                && receivedEventCount === 0
+                && observedRelayResponseCount === 0
+                && (hadFetchError || hadTimeout);
+            const finalHadFailures = hadFailures || hadUnfinishedRanges || fetchFailed;
             const status: PostHistoryCurrentViewRefetchResult["status"] = cancelled
                 ? "cancelled"
-                : hadFailures
+                : finalHadFailures
                     ? "partial"
                     : "success";
 
@@ -274,7 +365,13 @@ export class PostHistoryCurrentViewRefetchService {
                 unchangedCount,
                 processedRangeCount: processedRanges.length,
                 attemptedRangeCount,
-                hadFailures,
+                hadFailures: finalHadFailures,
+                limitReached,
+                hadFetchError,
+                fetchFailed,
+                hadTimeout,
+                hadUnfinishedRanges,
+                splitRetryCount,
                 processedRanges,
             };
 
@@ -284,6 +381,12 @@ export class PostHistoryCurrentViewRefetchService {
                 addedCount: summary.addedCount,
                 updatedCount: summary.updatedCount,
                 hadFailures: summary.hadFailures,
+                limitReached: summary.limitReached,
+                hadFetchError: summary.hadFetchError,
+                fetchFailed: summary.fetchFailed,
+                hadTimeout: summary.hadTimeout,
+                hadUnfinishedRanges: summary.hadUnfinishedRanges,
+                splitRetryCount: summary.splitRetryCount,
                 processedRanges: summary.processedRanges,
             });
 

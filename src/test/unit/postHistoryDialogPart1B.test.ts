@@ -36,9 +36,10 @@ const mockTranslate = vi.hoisted(() => (key: string, options?: { values?: Record
         'postHistory.syncFailed': 'リレーから取得できませんでした',
         'postHistory.repair': '表示中の投稿付近を再取得',
         'postHistory.repairing': '再取得中...',
-        'postHistory.repairAdded': `${options?.values?.count}件の投稿を追加しました`,
-        'postHistory.repairNoChanges': '追加できる投稿はありません',
-        'postHistory.repairPartialFailure': '一部の取得に失敗しました。時間をおいて再実行してください。',
+        'postHistory.repairAdded': `${options?.values?.count}件追加`,
+        'postHistory.repairNoChanges': '追加なし',
+        'postHistory.repairPartialFailure': '一部未確認',
+            'postHistory.repairFetchFailed': '取得失敗',
         'postHistory.noMorePosts': 'これ以上古い投稿はありません',
         'postHistory.copyNevent': 'neventをコピー',
         'postHistory.copied': 'コピーしました',
@@ -258,7 +259,7 @@ vi.mock('../../lib/postHistoryRelayFetchService', () => ({
     POST_HISTORY_OLDER_FETCH_LIMIT: 150,
     POST_HISTORY_OLDER_FETCH_TIMEOUT_MS: 25_000,
     POST_HISTORY_PAGE_SIZE: 50,
-    POST_HISTORY_REPAIR_FETCH_LIMIT: 200,
+    POST_HISTORY_REPAIR_FETCH_LIMIT: 250,
     postHistoryRelayFetchService: relayFetchServiceMock,
 }));
 
@@ -619,7 +620,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(async () => {
             expect((await findRepairButton()).hasAttribute('data-disabled')).toBe(false);
-            expect(screen.getByText('1件の投稿を追加しました')).toBeTruthy();
+            expect(screen.getByText('1件追加')).toBeTruthy();
         });
     });
 
@@ -649,13 +650,14 @@ describe('PostHistoryDialog', () => {
         repairServiceMock.refetchAroundCurrentView.mockReturnValueOnce({
             promise: Promise.resolve({
                 status: 'partial',
-                addedCount: 2,
+                addedCount: 0,
                 updatedCount: 0,
                 unchangedCount: 0,
                 processedRangeCount: 1,
                 processedRanges: [],
                 attemptedRangeCount: 1,
                 hadFailures: true,
+                hadUnfinishedRanges: true,
             }),
             cancel: vi.fn(),
         });
@@ -691,7 +693,7 @@ describe('PostHistoryDialog', () => {
 
         await waitFor(() => {
             const activeDialog = screen.getAllByRole('dialog').at(-1);
-            expect(screen.getByText('一部の取得に失敗しました。時間をおいて再実行してください。')).toBeTruthy();
+            expect(screen.getByText('一部未確認')).toBeTruthy();
             expect(activeDialog ? within(activeDialog).queryByText('リレーとの同期が完了しました') : null).toBeNull();
         });
     });
@@ -796,7 +798,7 @@ describe('PostHistoryDialog', () => {
                 rangeUnit: 'custom',
                 since: expectedSince,
                 until: expectedUntil,
-                limit: 200,
+                limit: 250,
             }],
             onProgress: expect.any(Function),
         }));
