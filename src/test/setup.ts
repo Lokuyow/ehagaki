@@ -32,6 +32,7 @@ vi.mock('../lib/keyManager.svelte.ts', () => mockKeyManager);
 vi.mock('../lib/debug', () => ({
     debugLog: vi.fn(),
     shouldShowDevLog: vi.fn(() => false),
+    showCompressedImagePreview: vi.fn(),
 }));
 
 // テスト環境の識別子を設定

@@ -140,7 +140,7 @@ describe('fullscreenViewerUtils', () => {
     it('active な動画 content を停止する', () => {
         const element = document.createElement('div');
         const videoElement = document.createElement('video');
-        const pauseSpy = vi.spyOn(videoElement, 'pause');
+        const pauseSpy = vi.spyOn(videoElement, 'pause').mockImplementation(() => undefined);
         element.appendChild(videoElement);
 
         pauseFullscreenVideoContent({ element });

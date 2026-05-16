@@ -360,8 +360,9 @@ describe('ファイルアップロードフロー統合テスト', () => {
             const compressionService = new ImageCompressionService(mimeSupport, mockLocalStorage);
 
             const compressionResult = await compressionService.compress(file);
-            expect(compressionResult.wasCompressed).toBe(false);
-            expect(compressionResult.wasSkipped).toBe(true);
+            expect(compressionResult.wasCompressed).toBe(true);
+            expect(compressionResult.wasSkipped).toBeUndefined();
+            expect(compressionResult.file.size).toBeLessThan(file.size);
 
             // 4. 認証ヘッダー生成
             const { keyManager } = await import('../../lib/keyManager.svelte');
@@ -381,7 +382,7 @@ describe('ファイルアップロードフロー統合テスト', () => {
                 authHeader: authHeader
             }).toMatchObject({
                 file: expect.any(File),
-                wasCompressed: false,
+                wasCompressed: true,
                 authHeader: expect.stringContaining('Bearer')
             });
         });
@@ -431,7 +432,10 @@ describe('ファイルアップロードフロー統合テスト', () => {
             );
 
             expect(compressionResults).toHaveLength(3);
-            expect(compressionResults.every(r => !r.wasCompressed && r.wasSkipped)).toBe(true);
+            expect(compressionResults.every(r => r.wasCompressed && !r.wasSkipped)).toBe(true);
+            compressionResults.forEach((result, index) => {
+                expect(result.file.size).toBeLessThan(files[index].size);
+            });
         });
     });
 
