@@ -65,7 +65,7 @@ import { registerRoute } from "workbox-routing";
 import { CacheFirst } from "workbox-strategies";
 
 // 定数定義
-const SW_VERSION = '1.22.3';
+const SW_VERSION = '1.22.4';
 const LEGACY_PRECACHE_PREFIX = 'ehagaki-cache-';
 const PROFILE_CACHE_NAME = 'ehagaki-profile-images-v2';
 const LEGACY_PROFILE_CACHE_NAMES = ['ehagaki-profile-images'];
