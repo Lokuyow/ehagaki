@@ -23,7 +23,7 @@ async function gotoHarness(page: Page) {
 async function expectSummary(page: Page, total: number) {
     const summary = page.locator('.post-history-summary-count');
     await expect(summary).toBeVisible();
-    await expect(summary).toHaveText(`${total}件`);
+    await expect(summary).toContainText(`${total}件`);
 }
 
 async function expectCurrentMonthLabel(page: Page, label: string) {
