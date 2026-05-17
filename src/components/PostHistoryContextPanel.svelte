@@ -6,7 +6,6 @@
     import type {
         PostHistoryContextItemState,
         PostHistoryContextTargetKind,
-        PostHistoryContextTargetState,
     } from "../lib/hooks/usePostHistoryContext.svelte";
 
     interface Props {
@@ -22,7 +21,7 @@
 
 {#if reply}
     <div class="post-history-context-panel">
-        {#if reply.visible && reply.status === "loading"}
+        {#if reply.visible && reply.status === "loading" && reply.showLoadingIndicator}
             <LoadingPlaceholder
                 showLoader={true}
                 text={$_("postHistory.contextLoading")}
@@ -55,7 +54,6 @@
             <Button
                 type="button"
                 className="post-history-context-button"
-                disabled={reply.status === "loading"}
                 onClick={() => onToggle("reply")}
             >
                 {reply.visible

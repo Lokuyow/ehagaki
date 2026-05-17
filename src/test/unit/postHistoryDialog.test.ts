@@ -359,6 +359,51 @@ function createDeferred<T>() {
     return { promise, resolve };
 }
 
+function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createReplyContextRecords() {
+    const replyId = '2'.repeat(64);
+    const rootId = '3'.repeat(64);
+    const parentRecord = createRecord({
+        eventId: replyId,
+        pubkeyHex: 'd'.repeat(64),
+        content: '返信先の投稿',
+        rawEvent: {
+            id: replyId,
+            pubkey: 'd'.repeat(64),
+            kind: 1,
+            content: '返信先の投稿',
+            tags: [],
+            created_at: 1_699_999_000,
+            sig: 'e'.repeat(128),
+        },
+    });
+    const post = createRecord({
+        eventId: '1'.repeat(64),
+        rawEvent: {
+            id: '1'.repeat(64),
+            pubkey: 'a'.repeat(64),
+            kind: 1,
+            content: '自分の返信',
+            tags: [
+                ['e', rootId, 'wss://root.example.com/', 'root'],
+                ['e', replyId, 'wss://reply.example.com/', 'reply'],
+            ],
+            created_at: 1_700_000_000,
+            sig: 'c'.repeat(128),
+        },
+        content: '自分の返信',
+        tags: [
+            ['e', rootId, 'wss://root.example.com/', 'root'],
+            ['e', replyId, 'wss://reply.example.com/', 'reply'],
+        ],
+    });
+
+    return { parentRecord, post, replyId };
+}
+
 function expectDefaultMediaReplacement(): void {
     expect(screen.getByText('投稿本文')).toBeTruthy();
     expect(screen.getByTitle('image.jpg')).toBeTruthy();
@@ -582,42 +627,7 @@ describe('PostHistoryDialog', () => {
     });
 
     it('[reply-context] 履歴内の返信投稿の上に返信先を表示し、再表示時は取得済み event を再利用する', async () => {
-        const replyId = '2'.repeat(64);
-        const rootId = '3'.repeat(64);
-        const parentRecord = createRecord({
-            eventId: replyId,
-            pubkeyHex: 'd'.repeat(64),
-            content: '返信先の投稿',
-            rawEvent: {
-                id: replyId,
-                pubkey: 'd'.repeat(64),
-                kind: 1,
-                content: '返信先の投稿',
-                tags: [],
-                created_at: 1_699_999_000,
-                sig: 'e'.repeat(128),
-            },
-        });
-        const post = createRecord({
-            eventId: '1'.repeat(64),
-            rawEvent: {
-                id: '1'.repeat(64),
-                pubkey: 'a'.repeat(64),
-                kind: 1,
-                content: '自分の返信',
-                tags: [
-                    ['e', rootId, 'wss://root.example.com/', 'root'],
-                    ['e', replyId, 'wss://reply.example.com/', 'reply'],
-                ],
-                created_at: 1_700_000_000,
-                sig: 'c'.repeat(128),
-            },
-            content: '自分の返信',
-            tags: [
-                ['e', rootId, 'wss://root.example.com/', 'root'],
-                ['e', replyId, 'wss://reply.example.com/', 'reply'],
-            ],
-        });
+        const { parentRecord, post, replyId } = createReplyContextRecords();
 
         repositoryMock.getPage.mockResolvedValue([post]);
         repositoryMock.countForPubkey.mockResolvedValue(1);
@@ -634,6 +644,7 @@ describe('PostHistoryDialog', () => {
         });
 
         await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
 
         await waitFor(() => {
             expect(screen.getByText('返信先の投稿')).toBeTruthy();
@@ -656,11 +667,146 @@ describe('PostHistoryDialog', () => {
         });
 
         await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
 
         await waitFor(() => {
             expect(screen.getByText('返信先の投稿')).toBeTruthy();
         });
         expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+        expect(repositoryMock.upsertFetchedEvents).not.toHaveBeenCalled();
+    });
+
+    it('[reply-context-loading] 400ms以内に返信先を解決できた場合はローダーを表示しない', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deferredRecord = createDeferred<any>();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation((eventId: string) =>
+            eventId === replyId ? deferredRecord.promise : Promise.resolve(null),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+        await wait(350);
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+
+        deferredRecord.resolve(parentRecord);
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+        });
+
+        await wait(80);
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+    });
+
+    it('[reply-context-loading] 400msを超えても取得中の場合だけローダーを表示する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deferredRecord = createDeferred<any>();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation((eventId: string) =>
+            eventId === replyId ? deferredRecord.promise : Promise.resolve(null),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+
+        await wait(350);
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+
+        await wait(80);
+        expect(screen.getByText('関連投稿を読み込み中...')).toBeTruthy();
+
+        deferredRecord.resolve(parentRecord);
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+        });
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+    });
+
+    it('[reply-context-loading] loading中に閉じるとtimerを消し、完了後の再表示はローダーなしでeventを再利用する', async () => {
+        const { parentRecord, post, replyId } = createReplyContextRecords();
+        const deferredRecord = createDeferred<any>();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation((eventId: string) =>
+            eventId === replyId ? deferredRecord.promise : Promise.resolve(null),
+        );
+
+        render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await wait(350);
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を隠す' }));
+
+        await wait(120);
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+
+        deferredRecord.resolve(parentRecord);
+        await waitFor(() => {
+            expect(screen.queryByText('返信先の投稿')).toBeNull();
+        });
+        expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+        await waitFor(() => {
+            expect(screen.getByText('返信先の投稿')).toBeTruthy();
+        });
+        expect(repositoryMock.getByEventId).toHaveBeenCalledTimes(1);
+    });
+
+    it('[reply-context-loading] dialog close時にtimerとvisual loading stateをcleanupする', async () => {
+        const { post, replyId } = createReplyContextRecords();
+        const deferredRecord = createDeferred<any>();
+        repositoryMock.getPage.mockResolvedValue([post]);
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.getByEventId.mockImplementation((eventId: string) =>
+            eventId === replyId ? deferredRecord.promise : Promise.resolve(null),
+        );
+
+        const { rerender } = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: 'a'.repeat(64),
+            },
+        });
+
+        await fireEvent.click(await screen.findByRole('button', { name: '返信先を見る' }));
+        await wait(350);
+
+        await rerender({
+            show: false,
+            onClose: vi.fn(),
+            pubkeyHex: 'a'.repeat(64),
+        });
+        await wait(120);
+
+        expect(screen.queryByText('関連投稿を読み込み中...')).toBeNull();
+        expect(screen.queryByText('返信先の投稿')).toBeNull();
     });
 
     it('[search-toggle] メニューの検索ボタンで検索バーを表示し、閉じると検索状態をクリアする', async () => {

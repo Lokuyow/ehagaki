@@ -37,6 +37,7 @@ export interface PostHistoryContextTargetState {
     eventId: string;
     status: PostHistoryContextTargetStatus;
     visible: boolean;
+    showLoadingIndicator: boolean;
     event: NostrEvent | null;
     profile: ProfileData | null;
     relayUrl: string | null;
@@ -83,6 +84,7 @@ function buildInitialTargetState(eventId: string): PostHistoryContextTargetState
         eventId,
         status: "unloaded",
         visible: false,
+        showLoadingIndicator: false,
         event: null,
         profile: null,
         relayUrl: null,
@@ -131,14 +133,51 @@ export function usePostHistoryContext({
     let stateByPostId = $state.raw<Record<string, PostHistoryContextItemState>>({});
     let requestId = 0;
     const tasksByKey = new Map<string, PostHistoryContextFetchTask>();
+    const loadingDelayTimersByKey = new Map<string, ReturnType<typeof setTimeout>>();
+
+    function getTargetKey(
+        postEventId: string,
+        kind: PostHistoryContextTargetKind,
+    ): string {
+        return `${postEventId}:${kind}`;
+    }
+
+    function clearLoadingDelayTimer(key: string): void {
+        const timer = loadingDelayTimersByKey.get(key);
+        if (!timer) {
+            return;
+        }
+
+        clearTimeout(timer);
+        loadingDelayTimersByKey.delete(key);
+    }
+
+    function clearAllLoadingDelayTimers(): void {
+        loadingDelayTimersByKey.forEach((timer) => clearTimeout(timer));
+        loadingDelayTimersByKey.clear();
+    }
+
+    function getCurrentTargetState(
+        postEventId: string,
+        kind: PostHistoryContextTargetKind,
+    ): PostHistoryContextTargetState | null {
+        const context = stateByPostId[postEventId];
+        if (!context) {
+            return null;
+        }
+
+        return kind === "reply" ? context.reply : context.root;
+    }
 
     function cancelCurrentContextFetches(): void {
         tasksByKey.forEach((task) => task.cancel());
         tasksByKey.clear();
+        clearAllLoadingDelayTimers();
     }
 
     function resetState(): void {
         cancelCurrentContextFetches();
+        requestId += 1;
         stateByPostId = {};
     }
 
@@ -194,6 +233,29 @@ export function usePostHistoryContext({
         };
     }
 
+    function scheduleLoadingIndicator(
+        postEventId: string,
+        kind: PostHistoryContextTargetKind,
+    ): void {
+        const key = getTargetKey(postEventId, kind);
+        clearLoadingDelayTimer(key);
+
+        const timer = setTimeout(() => {
+            loadingDelayTimersByKey.delete(key);
+            const target = getCurrentTargetState(postEventId, kind);
+            if (!target || target.status !== "loading" || !target.visible) {
+                return;
+            }
+
+            updateTargetState(postEventId, kind, {
+                ...target,
+                showLoadingIndicator: true,
+            });
+        }, 400);
+
+        loadingDelayTimersByKey.set(key, timer);
+    }
+
     async function loadTarget(
         post: PostHistoryRecord,
         kind: PostHistoryContextTargetKind,
@@ -201,7 +263,7 @@ export function usePostHistoryContext({
     ): Promise<void> {
         const context = getContextState(post);
         const target = kind === "reply" ? context.reply : context.root;
-        if (!target || target.status === "loading") {
+        if (!target) {
             return;
         }
 
@@ -212,37 +274,60 @@ export function usePostHistoryContext({
             };
         }
 
-        if (!options.force && target.status !== "unloaded") {
+        if (target.status === "loading") {
             updateTargetState(post.eventId, kind, {
                 ...target,
                 visible: true,
+                showLoadingIndicator: false,
+            });
+            scheduleLoadingIndicator(post.eventId, kind);
+            return;
+        }
+
+        if (!options.force && target.status !== "unloaded") {
+            clearLoadingDelayTimer(getTargetKey(post.eventId, kind));
+            updateTargetState(post.eventId, kind, {
+                ...target,
+                visible: true,
+                showLoadingIndicator: false,
             });
             return;
         }
 
         const activeRequestId = ++requestId;
+        const targetKey = getTargetKey(post.eventId, kind);
         const loadingState: PostHistoryContextTargetState = {
             ...target,
             status: "loading",
             visible: true,
+            showLoadingIndicator: false,
             error: null,
         };
         updateTargetState(post.eventId, kind, loadingState);
+        scheduleLoadingIndicator(post.eventId, kind);
 
         const existingRecord = await postHistoryRepositoryImpl.getByEventId(target.eventId);
         if (activeRequestId !== requestId || !getShow()) {
+            clearLoadingDelayTimer(targetKey);
             return;
         }
 
         if (existingRecord) {
             const event = toEventFromRecord(existingRecord);
             const relayHints = buildRelayHintsForTarget(post, context.references, kind);
+            const profile = await resolveProfile(event, relayHints);
+            if (activeRequestId !== requestId || !getShow()) {
+                clearLoadingDelayTimer(targetKey);
+                return;
+            }
+            clearLoadingDelayTimer(targetKey);
+            const currentTarget = getCurrentTargetState(post.eventId, kind) ?? target;
             updateTargetState(post.eventId, kind, {
-                ...target,
+                ...currentTarget,
                 status: "loaded",
-                visible: true,
+                showLoadingIndicator: false,
                 event,
-                profile: await resolveProfile(event, relayHints),
+                profile,
                 relayUrl: null,
                 error: null,
             });
@@ -251,10 +336,12 @@ export function usePostHistoryContext({
 
         const rxNostr = getRxNostr();
         if (!rxNostr) {
+            clearLoadingDelayTimer(targetKey);
+            const currentTarget = getCurrentTargetState(post.eventId, kind) ?? target;
             updateTargetState(post.eventId, kind, {
-                ...target,
+                ...currentTarget,
                 status: "failed",
-                visible: true,
+                showLoadingIndicator: false,
                 event: null,
                 profile: null,
                 relayUrl: null,
@@ -263,7 +350,7 @@ export function usePostHistoryContext({
             return;
         }
 
-        const taskKey = `${post.eventId}:${kind}`;
+        const taskKey = getTargetKey(post.eventId, kind);
         tasksByKey.get(taskKey)?.cancel();
         const task = contextFetchService.fetchEventById(rxNostr, {
             eventId: target.eventId,
@@ -275,14 +362,17 @@ export function usePostHistoryContext({
         const result = await task.promise;
         tasksByKey.delete(taskKey);
         if (activeRequestId !== requestId || !getShow()) {
+            clearLoadingDelayTimer(targetKey);
             return;
         }
 
         if (!result.event) {
+            clearLoadingDelayTimer(targetKey);
+            const currentTarget = getCurrentTargetState(post.eventId, kind) ?? target;
             updateTargetState(post.eventId, kind, {
-                ...target,
+                ...currentTarget,
                 status: "missing",
-                visible: true,
+                showLoadingIndicator: false,
                 event: null,
                 profile: null,
                 relayUrl: null,
@@ -291,15 +381,22 @@ export function usePostHistoryContext({
             return;
         }
 
+        clearLoadingDelayTimer(targetKey);
+        const profile = await resolveProfile(
+            result.event,
+            buildRelayHintsForTarget(post, context.references, kind),
+        );
+        if (activeRequestId !== requestId || !getShow()) {
+            clearLoadingDelayTimer(targetKey);
+            return;
+        }
+        const currentTarget = getCurrentTargetState(post.eventId, kind) ?? target;
         updateTargetState(post.eventId, kind, {
-            ...target,
+            ...currentTarget,
             status: "loaded",
-            visible: true,
+            showLoadingIndicator: false,
             event: result.event,
-            profile: await resolveProfile(
-                result.event,
-                buildRelayHintsForTarget(post, context.references, kind),
-            ),
+            profile,
             relayUrl: result.relayUrl,
             error: null,
         });
@@ -322,9 +419,11 @@ export function usePostHistoryContext({
             };
         }
 
+        clearLoadingDelayTimer(getTargetKey(post.eventId, kind));
         updateTargetState(post.eventId, kind, {
             ...target,
             visible: false,
+            showLoadingIndicator: false,
         });
     }
 
