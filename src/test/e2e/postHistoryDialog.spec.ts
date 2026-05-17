@@ -36,6 +36,13 @@ async function scrollPostIntoView(page: Page, content: string) {
     });
 }
 
+async function jumpToDate(page: Page, date: string) {
+    await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
+    await page.getByRole('menuitem', { name: '日付へ移動' }).click();
+    await page.getByLabel('日付', { exact: true }).fill(date);
+    await page.getByRole('button', { name: 'この日付付近を表示' }).click();
+}
+
 async function expectVisiblePostCount(page: Page, count: number) {
     await expect(page.locator('.post-history-list li')).toHaveCount(count);
 }
@@ -131,10 +138,7 @@ test.describe('PostHistoryDialog Playwright', () => {
 
         const harness = await gotoHarness(page);
 
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '日付へ移動' }).click();
-        await page.getByLabel('日付').fill(harness.jumpDate);
-        await page.getByRole('button', { name: 'この日付付近を表示' }).click();
+        await jumpToDate(page, harness.jumpDate);
 
         const newerButton = page.getByRole('button', { name: '新しい投稿を表示' });
         await expect(newerButton).toBeVisible();
@@ -172,10 +176,7 @@ test.describe('PostHistoryDialog Playwright', () => {
         }));
         expect(containerMetrics.scrollWidth).toBeLessThanOrEqual(containerMetrics.clientWidth + 1);
 
-        await page.getByRole('button', { name: '投稿履歴メニューを開く' }).click();
-        await page.getByRole('menuitem', { name: '日付へ移動' }).click();
-        await page.getByLabel('日付').fill(harness.jumpDate);
-        await page.getByRole('button', { name: 'この日付付近を表示' }).click();
+        await jumpToDate(page, harness.jumpDate);
 
         await expect(page.getByRole('button', { name: '最新へ戻る' })).toBeVisible();
         await expect(page.getByRole('button', { name: '新しい投稿を表示' })).toBeVisible();

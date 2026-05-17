@@ -107,6 +107,7 @@
     "jumpToDate": "日付へ移動",
     "jumpToDateLabel": "日付",
     "jumpToDateSubmit": "この日付付近を表示",
+    "hideJumpToDate": "日付へ移動を閉じる",
     "fetchOlderFromRelays": "リレーから続きを取得",
     "fetchUnfetchedFromRelays": "未取得の投稿を取得",
     "fetchOlderFromRelaysLoading": "リレーから取得中...",

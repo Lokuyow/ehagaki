@@ -1451,6 +1451,7 @@
                     variant="primary"
                     contentLayout="icon"
                     shape="square"
+                    ariaLabel={$_("postHistory.jumpToDateSubmit")}
                     className="post-history-utility-button post-history-utility-submit-button"
                     onClick={() => void handleJumpToDateSubmit()}
                 >
@@ -1461,6 +1462,7 @@
                     variant="default"
                     contentLayout="icon"
                     shape="square"
+                    ariaLabel={$_("postHistory.hideJumpToDate")}
                     className="post-history-utility-button post-history-utility-close-button"
                     onClick={() => (activeUtilityPanel = "none")}
                 >

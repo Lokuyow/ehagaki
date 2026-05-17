@@ -107,6 +107,7 @@
     "jumpToDate": "Jump to date",
     "jumpToDateLabel": "Date",
     "jumpToDateSubmit": "Show near this date",
+    "hideJumpToDate": "Close jump to date",
     "fetchOlderFromRelays": "Fetch more from relays",
     "fetchUnfetchedFromRelays": "Fetch unfetched posts",
     "fetchOlderFromRelaysLoading": "Fetching from relays...",
