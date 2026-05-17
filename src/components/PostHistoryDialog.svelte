@@ -47,7 +47,11 @@
         CustomEmojiImageMetaRecord,
         PostHistoryRecord,
     } from "../lib/storage/ehagakiDb";
-    import type { FullscreenMediaItem, NostrEvent, RelayConfig } from "../lib/types";
+    import type {
+        FullscreenMediaItem,
+        NostrEvent,
+        RelayConfig,
+    } from "../lib/types";
     import { tryCopyToClipboard } from "../lib/utils/clipboardUtils";
     import { toNevent } from "../lib/utils/nostrUtils";
 
@@ -483,7 +487,8 @@
         }
 
         isHistoryScrolledToTop =
-            historyContainer.scrollTop <= HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
+            historyContainer.scrollTop <=
+            HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX;
     }
 
     function updateHistoryScrolledToBottom(): void {
@@ -1153,10 +1158,8 @@
         const state = postHistoryReplies.getRepliesState(post);
         if (
             state.status === "failed" ||
-            (state.status === "loaded" && (
-                state.replies.length === 0 ||
-                !state.visible
-            ))
+            (state.status === "loaded" &&
+                (state.replies.length === 0 || !state.visible))
         ) {
             postHistoryReplies.retryReplies(post);
             return;
@@ -2892,6 +2895,10 @@
             :global(.svg-icon) {
                 --svg: var(--theme);
             }
+
+            :global(.post-preview-replies-count) {
+                background-color: var(--theme);
+            }
         }
 
         @media (min-width: 601px) {
@@ -2900,6 +2907,10 @@
 
                 :global(.svg-icon) {
                     --svg: var(--theme);
+                }
+
+                :global(.post-preview-replies-count) {
+                    background-color: var(--theme);
                 }
             }
         }
