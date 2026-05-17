@@ -1359,16 +1359,21 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
     it('古い投稿取得で取得最古まで表示範囲を広げ、limit 到達時は同じ範囲内を続ける', async () => {
         let visibleUntil: number | null = null;
+        const initialWindowSeconds = 12 * 60 * 60;
+        const latestCreatedAt = 1_700_000_000;
+        const firstUntil = latestCreatedAt - 1;
+        const firstSince = firstUntil - initialWindowSeconds;
+        const fetchedCreatedAt = latestCreatedAt - (2 * 60 * 60);
         const latest = createRecord({
             eventId: 'visible-latest',
             content: '現在の投稿',
-            createdAt: 150,
+            createdAt: latestCreatedAt,
             postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
         });
         const fetchedOlder = createRecord({
             eventId: 'visible-older',
             content: 'limit 継続範囲で取得した古い投稿',
-            createdAt: 100,
+            createdAt: fetchedCreatedAt,
             postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
         });
 
@@ -1394,7 +1399,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             };
         });
         repositoryMock.countVisibleForPubkey.mockImplementation(async (_pubkeyHex: string, rangeUntil?: number | null) =>
-            rangeUntil === 150 ? 1 : 2,
+            rangeUntil === latestCreatedAt ? 1 : 2,
         );
         repositoryMock.getLatestVisibleChunk
             .mockResolvedValueOnce([latest])
@@ -1405,7 +1410,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             cursor?: { eventId: string };
         }) => {
             if (
-                options.visibleUntil === 100 &&
+                options.visibleUntil === fetchedCreatedAt &&
                 options.cursor?.eventId === 'visible-latest'
             ) {
                 return [fetchedOlder];
@@ -1428,8 +1433,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
             .mockReturnValueOnce({
                 promise: Promise.resolve(createRelayFetchResult({
                     fetchedAt: 1000,
-                    nextUntil: 150,
-                    oldestCreatedAt: 150,
+                    nextUntil: latestCreatedAt,
+                    oldestCreatedAt: latestCreatedAt,
                     hasMore: true,
                     events: [
                         {
@@ -1439,7 +1444,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                                 kind: 1,
                                 content: '現在の投稿',
                                 tags: [],
-                                created_at: 150,
+                                created_at: latestCreatedAt,
                                 sig: 'c'.repeat(128),
                             },
                             relayUrls: ['wss://relay-a.example.com/'],
@@ -1452,8 +1457,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
             .mockReturnValueOnce({
                 promise: Promise.resolve(createRelayFetchResult({
                     fetchedAt: 2000,
-                    nextUntil: 100,
-                    oldestCreatedAt: 100,
+                    nextUntil: fetchedCreatedAt,
+                    oldestCreatedAt: fetchedCreatedAt,
                     hasMore: true,
                     events: [
                         {
@@ -1463,7 +1468,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                                 kind: 1,
                                 content: 'limit 継続範囲で取得した古い投稿',
                                 tags: [],
-                                created_at: 100,
+                                created_at: fetchedCreatedAt,
                                 sig: 'd'.repeat(128),
                             },
                             relayUrls: ['wss://relay-b.example.com/'],
@@ -1503,16 +1508,16 @@ describe('PostHistoryDialog timeline relay flows', () => {
             expect(visibleRangeRepositoryMock.save).toHaveBeenLastCalledWith({
                 pubkeyHex: PUBKEY_HEX,
                 kindsKey: '1,42',
-                visibleUntil: 100,
+                visibleUntil: fetchedCreatedAt,
             });
             expect(repositoryMock.countVisibleForPubkey).toHaveBeenCalledWith(
                 PUBKEY_HEX,
-                100,
+                fetchedCreatedAt,
             );
             expect(repositoryMock.getOlderVisibleChunk).toHaveBeenCalledWith(
                 expect.objectContaining({
                     pubkeyHex: PUBKEY_HEX,
-                    visibleUntil: 100,
+                    visibleUntil: fetchedCreatedAt,
                     cursor: expect.objectContaining({
                         eventId: 'visible-latest',
                     }),
@@ -1530,8 +1535,122 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 {} as any,
                 expect.objectContaining({
                     pubkeyHex: PUBKEY_HEX,
-                    since: 0,
-                    until: 99,
+                    since: firstSince,
+                    until: fetchedCreatedAt - 1,
+                }),
+            );
+        });
+
+        view.unmount();
+    });
+
+    it('hitLimit でも残り window が小さい場合は同一 window continuation を行わない', async () => {
+        const initialWindowSeconds = 12 * 60 * 60;
+        const latestCreatedAt = 1_700_000_000;
+        const firstUntil = latestCreatedAt - 1;
+        const firstSince = firstUntil - initialWindowSeconds;
+        const secondUntil = firstSince - 1;
+        const secondSince = secondUntil - initialWindowSeconds;
+        const fetchedCreatedAt = firstSince + (5 * 60);
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.countVisibleForPubkey
+            .mockResolvedValueOnce(1)
+            .mockResolvedValueOnce(1);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([
+            createRecord({
+                eventId: 'small-window-latest',
+                content: '現在の投稿',
+                createdAt: latestCreatedAt,
+            }),
+        ]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockResolvedValue([]);
+        repositoryMock.upsertFetchedEvents.mockResolvedValue({
+            insertedCount: 0,
+            updatedCount: 0,
+            unchangedCount: 1,
+        });
+
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    hasMore: true,
+                    nextUntil: latestCreatedAt,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    hasMore: true,
+                    nextUntil: fetchedCreatedAt,
+                    oldestCreatedAt: fetchedCreatedAt,
+                    events: [
+                        {
+                            event: {
+                                id: 'small-window-known'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: '同一窓の既知投稿',
+                                tags: [],
+                                created_at: fetchedCreatedAt,
+                                sig: 'c'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 3000,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                2,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    since: firstSince,
+                    until: firstUntil,
+                }),
+            );
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(relayFetchServiceMock.fetchLatest).toHaveBeenNthCalledWith(
+                3,
+                {} as any,
+                expect.objectContaining({
+                    pubkeyHex: PUBKEY_HEX,
+                    since: secondSince,
+                    until: secondUntil,
                 }),
             );
         });
@@ -1772,16 +1891,22 @@ describe('PostHistoryDialog timeline relay flows', () => {
     });
 
     it('limit 到達で進展が無いときは oldestCreatedAt - 1 に逃がして再取得できる', async () => {
+        const initialWindowSeconds = 12 * 60 * 60;
+        const latestCreatedAt = 1_700_000_000;
+        const firstUntil = latestCreatedAt - 1;
+        const firstSince = firstUntil - initialWindowSeconds;
+        const sameSecondCreatedAt = latestCreatedAt - 100;
+        const escapedCreatedAt = sameSecondCreatedAt - 1;
         const latest = createRecord({
             eventId: 'stall-latest',
             content: '現在の投稿',
-            createdAt: 150,
+            createdAt: latestCreatedAt,
             postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
         });
         const fetchedOlder = createRecord({
             eventId: 'stall-older',
             content: '逃がし後に取得した投稿',
-            createdAt: 148,
+            createdAt: escapedCreatedAt,
             postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
         });
 
@@ -1820,7 +1945,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             .mockReturnValueOnce({
                 promise: Promise.resolve(createRelayFetchResult({
                     fetchedAt: 1000,
-                    nextUntil: 150,
+                    nextUntil: latestCreatedAt,
                     hasMore: true,
                     relayUrls: ['wss://relay.example.com/'],
                 })),
@@ -1829,7 +1954,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
             .mockReturnValueOnce({
                 promise: Promise.resolve(createRelayFetchResult({
                     fetchedAt: 2000,
-                    nextUntil: 149,
+                    nextUntil: sameSecondCreatedAt,
                     hasMore: true,
                     events: [
                         {
@@ -1839,7 +1964,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                                 kind: 1,
                                 content: '同じ秒の既知投稿',
                                 tags: [],
-                                created_at: 149,
+                                created_at: sameSecondCreatedAt,
                                 sig: 'c'.repeat(128),
                             },
                             relayUrls: ['wss://relay.example.com/'],
@@ -1860,7 +1985,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
                                 kind: 1,
                                 content: '逃がし後に取得した投稿',
                                 tags: [],
-                                created_at: 148,
+                                created_at: escapedCreatedAt,
                                 sig: 'd'.repeat(128),
                             },
                             relayUrls: ['wss://relay.example.com/'],
@@ -1892,8 +2017,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 {} as any,
                 expect.objectContaining({
                     pubkeyHex: PUBKEY_HEX,
-                    since: 0,
-                    until: 149,
+                    since: firstSince,
+                    until: firstUntil,
                 }),
             );
             expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
@@ -1908,8 +2033,8 @@ describe('PostHistoryDialog timeline relay flows', () => {
                 {} as any,
                 expect.objectContaining({
                     pubkeyHex: PUBKEY_HEX,
-                    since: 0,
-                    until: 148,
+                    since: firstSince,
+                    until: sameSecondCreatedAt - 1,
                 }),
             );
             expect(screen.getByText('逃がし後に取得した投稿')).toBeTruthy();

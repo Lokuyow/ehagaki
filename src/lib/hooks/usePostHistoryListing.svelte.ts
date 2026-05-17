@@ -129,6 +129,7 @@ const POST_HISTORY_REPAIR_PREFERRED_PADDING_SECONDS = 24 * 60 * 60;
 export const POST_HISTORY_OLDER_BACKFILL_INITIAL_WINDOW_SECONDS = 12 * 60 * 60;
 // Keep expanded scans bounded so older-backfill stays a windowed author query instead of drifting back to a wide until-only search.
 const POST_HISTORY_OLDER_BACKFILL_MAX_WINDOW_SECONDS = 30 * 24 * 60 * 60;
+const POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS = 60 * 60;
 
 const persistedListingSnapshotByPubkey = new Map<
     string,
@@ -603,13 +604,25 @@ export function usePostHistoryListing({
         };
     }
 
-    function didOlderBackfillHitLimit(
+    function resolveOlderBackfillLimitHitReasons(
         result: PostHistoryRelayFetchResult,
         limit: number,
-    ): boolean {
-        return result.hasMore ||
-            result.rawCount >= limit ||
-            result.perRelayCounts.some((item) => item.rawCount >= limit);
+    ): string[] {
+        const reasons: string[] = [];
+
+        if (result.hasMore) {
+            reasons.push("hasMore");
+        }
+
+        if (result.rawCount >= limit) {
+            reasons.push("rawCount");
+        }
+
+        if (result.perRelayCounts.some((item) => item.rawCount >= limit)) {
+            reasons.push("perRelayRawCount");
+        }
+
+        return reasons;
     }
 
     function resolveOldestCreatedAtFromFetchResult(
@@ -647,8 +660,13 @@ export function usePostHistoryListing({
         range: OlderBackfillSearchRange,
         limit: number,
     ): void {
-        const hitLimit = didOlderBackfillHitLimit(result, limit);
+        const hitLimitReasons = resolveOlderBackfillLimitHitReasons(result, limit);
+        const hitLimit = hitLimitReasons.length > 0;
         const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
+        const remainingWindowSeconds =
+            typeof oldestCreatedAt === "number" && oldestCreatedAt > range.since
+                ? oldestCreatedAt - range.since
+                : 0;
         const defaultOlderCursor = range.since > 0 ? range.since : null;
         let nextUntil = defaultOlderCursor;
         let continuationSince: number | null = null;
@@ -676,7 +694,8 @@ export function usePostHistoryListing({
             if (
                 (hitLimit || result.status !== "success") &&
                 typeof oldestCreatedAt === "number" &&
-                oldestCreatedAt > range.since
+                oldestCreatedAt > range.since &&
+                remainingWindowSeconds >= POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS
             ) {
                 nextUntil = oldestCreatedAt;
                 continuationSince = range.since;
@@ -695,6 +714,12 @@ export function usePostHistoryListing({
         result: PostHistoryRelayFetchResult,
         limit: number,
     ): void {
+        const hitLimitReasons = resolveOlderBackfillLimitHitReasons(result, limit);
+        const oldestCreatedAt = resolveOldestCreatedAtFromFetchResult(result);
+        const oldestSinceGapSeconds =
+            typeof oldestCreatedAt === "number" ? oldestCreatedAt - range.since : null;
+        const rawCount = result.rawCount ?? result.events.length;
+        const uniqueCount = result.uniqueCount ?? result.events.length;
         const nextRange = typeof olderBackfillSearch.nextUntil === "number"
             ? buildOlderBackfillSearchRange(olderBackfillSearch.nextUntil)
             : null;
@@ -706,12 +731,19 @@ export function usePostHistoryListing({
             limit,
             resultStatus: result.status,
             eventsLength: result.events.length,
-            rawCount: result.rawCount ?? result.events.length,
-            uniqueCount: result.uniqueCount ?? result.events.length,
+            rawCount,
+            uniqueCount,
+            rawUniqueGap: rawCount - uniqueCount,
             hasMore: result.hasMore,
             nextUntil: result.nextUntil,
-            oldestCreatedAt: resolveOldestCreatedAtFromFetchResult(result),
+            oldestCreatedAt,
             newestCreatedAt: result.newestCreatedAt,
+            hitLimit: hitLimitReasons.length > 0,
+            hitLimitReasons,
+            oldestSinceGapSeconds,
+            continuationThresholdSeconds:
+                POST_HISTORY_OLDER_BACKFILL_MIN_CONTINUATION_SECONDS,
+            continuedWithinWindow: olderBackfillSearch.continuationSince !== null,
             requestedRelayUrls: result.requestedRelayUrls ?? result.relayUrls ?? [],
             observedRelayUrls: result.observedRelayUrls ?? [],
             eoseRelayUrls: result.eoseRelayUrls ?? [],
