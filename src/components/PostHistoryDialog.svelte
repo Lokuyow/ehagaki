@@ -1379,11 +1379,7 @@
                                     class="repair-icon svg-icon"
                                     aria-hidden="true"
                                 ></div>
-                                <span>
-                                    {history.isRefetchingAroundCurrentView
-                                        ? $_("postHistory.repairing")
-                                        : $_("postHistory.repair")}
-                                </span>
+                                <span>{$_("postHistory.repair")}</span>
                             </DropdownMenu.Item>
                             <DropdownMenu.Item
                                 class="menu-action-button menu-action-button-danger"
