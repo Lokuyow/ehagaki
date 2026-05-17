@@ -141,7 +141,6 @@
     };
     const HISTORY_SCROLL_VISIBLE_EDGE_TOLERANCE_PX = 1;
     const HISTORY_SCROLL_BOTTOM_TOLERANCE_PX = 2;
-    const HISTORY_SCROLL_OLDER_BACKFILL_BOTTOM_TOLERANCE_PX = 24;
     const HISTORY_MONTH_LABEL_OFFSET_PX = 12;
     const loadingEmojiUrls = new Set<string>();
     const previewCollapse = usePostHistoryPreviewCollapse({
@@ -629,9 +628,9 @@
 
     function restoreHistoryScrollAnchor(
         anchor: HistoryScrollAnchor | null,
-    ): void {
+    ): boolean {
         if (!anchor || !show || !historyContainer) {
-            return;
+            return false;
         }
 
         flushSync();
@@ -642,7 +641,7 @@
             ),
         ).find((item) => item.dataset.postHistoryEventId === anchor.eventId);
         if (!anchoredItem) {
-            return;
+            return false;
         }
 
         const containerRect = historyContainer.getBoundingClientRect();
@@ -650,6 +649,7 @@
         const nextOffsetTop = itemRect.top - containerRect.top;
         historyContainer.scrollTop += nextOffsetTop - anchor.offsetTop;
         scheduleCurrentMonthLabelUpdate();
+        return true;
     }
 
     function getLoadOlderLabel(): string {
@@ -675,35 +675,25 @@
     async function handleFetchOlderFromRelays(): Promise<void> {
         const scrollAnchor = captureHistoryScrollAnchor();
         const previousScrollTop = historyContainer?.scrollTop ?? null;
+        const loadedPostsBeforeLength = history.state.loadedPosts.length;
         const scrollHeightBefore = historyContainer?.scrollHeight ?? null;
         const clientHeight = historyContainer?.clientHeight ?? null;
-        const hadMeasurableScrollArea =
-            typeof scrollHeightBefore === "number" &&
-            typeof clientHeight === "number" &&
-            scrollHeightBefore > clientHeight;
-        const wasNearBottom =
-            hadMeasurableScrollArea &&
-            previousScrollTop !== null &&
-            scrollHeightBefore - clientHeight - previousScrollTop <=
-                HISTORY_SCROLL_OLDER_BACKFILL_BOTTOM_TOLERANCE_PX;
+        const changed = await history.fetchOlderFromRelays({
+            anchorEventId: scrollAnchor?.eventId,
+        });
 
-        const changed = await history.fetchOlderFromRelays();
+        let didRestoreAnchor = false;
+        let didPreserveScrollTop = false;
+        const didFollowBottom = false;
         if (changed && previousScrollTop !== null && show && historyContainer) {
-            if (wasNearBottom) {
-                historyContainer.scrollTop = Math.max(
-                    0,
-                    historyContainer.scrollHeight -
-                        historyContainer.clientHeight,
-                );
-                scheduleCurrentMonthLabelUpdate();
-            } else {
-                restoreHistoryScrollAnchor(scrollAnchor);
-                if (scrollAnchor === null) {
-                    historyContainer.scrollTop = previousScrollTop;
-                }
+            didRestoreAnchor = restoreHistoryScrollAnchor(scrollAnchor);
+            if (!didRestoreAnchor) {
+                historyContainer.scrollTop = previousScrollTop;
+                didPreserveScrollTop = true;
             }
         }
 
+        const olderBackfillUiResult = history.latestOlderBackfillUiResult;
         const scrollTopAfter = historyContainer?.scrollTop ?? null;
         const scrollHeightAfter = historyContainer?.scrollHeight ?? null;
         globalThis.console?.debug?.("post_history_older_backfill_scroll", {
@@ -712,9 +702,21 @@
             scrollTopAfter,
             scrollHeightBefore,
             scrollHeightAfter,
+            didRestoreAnchor,
+            didPreserveScrollTop,
+            didFollowBottom,
+            didTrimForOlderAppend:
+                olderBackfillUiResult?.didTrimForOlderAppend ?? false,
+            didDeferOlderPosts:
+                olderBackfillUiResult?.didDeferOlderPosts ?? false,
             clientHeight,
             hadScrollAnchor: !!scrollAnchor,
             anchorEventId: scrollAnchor?.eventId,
+            loadedPostsBeforeLength,
+            loadedPostsAfterLength:
+                olderBackfillUiResult?.loadedPostsAfterLength ??
+                history.state.loadedPosts.length,
+            maxVisiblePosts: olderBackfillUiResult?.maxVisiblePosts ?? null,
         });
     }
 

@@ -1762,7 +1762,7 @@ describe('PostHistoryDialog timeline relay flows', () => {
         view.unmount();
     });
 
-    it('リレー取得前に下端付近なら、古い投稿追加後も下端付近を維持して追加分を見える位置にする', async () => {
+    it('リレー取得前に下端付近でも最下部へ自動追従しない', async () => {
         let allowOlderChunk = false;
         const latest = createRecord({
             eventId: 'scroll-bottom-latest',
@@ -1884,7 +1884,260 @@ describe('PostHistoryDialog timeline relay flows', () => {
 
         await waitFor(() => {
             expect(screen.getByText('下端追従で見える古い投稿')).toBeTruthy();
-            expect(historyContainer.scrollTop).toBe(1000);
+            expect(historyContainer.scrollTop).toBe(700);
+        });
+
+        view.unmount();
+    });
+
+    it('anchor が取れる場合は older-backfill 後に anchor 復元を優先する', async () => {
+        let allowOlderChunk = false;
+        const latest = createRecord({
+            eventId: 'anchor-restore-latest',
+            content: 'アンカー対象の投稿',
+            createdAt: 200,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const second = createRecord({
+            eventId: 'anchor-restore-second',
+            content: '2件目の投稿',
+            createdAt: 190,
+            postedAt: Date.UTC(2024, 0, 2, 23, 0, 0),
+        });
+        const fetchedOlder = createRecord({
+            eventId: 'anchor-restore-older',
+            content: '追加された古い投稿',
+            createdAt: 180,
+            postedAt: Date.UTC(2024, 0, 2, 22, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(2);
+        repositoryMock.countVisibleForPubkey
+            .mockResolvedValueOnce(2)
+            .mockResolvedValueOnce(2)
+            .mockResolvedValueOnce(3)
+            .mockResolvedValue(3);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest, second]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowOlderChunk &&
+                options.cursor?.eventId === 'anchor-restore-second' &&
+                options.limit === 50
+            ) {
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            allowOlderChunk = true;
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
+        });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    nextUntil: 200,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    events: [
+                        {
+                            event: {
+                                id: 'anchor-restore-older-event'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: '追加された古い投稿',
+                                tags: [],
+                                created_at: 180,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+            expect(screen.getByText('アンカー対象の投稿')).toBeTruthy();
+        });
+
+        const historyContainer = getHistoryContainer();
+        const containerRect = {
+            x: 0,
+            y: 0,
+            top: 0,
+            left: 0,
+            right: 320,
+            bottom: 320,
+            width: 320,
+            height: 320,
+            toJSON: () => ({}),
+        };
+        vi.spyOn(historyContainer, 'getBoundingClientRect').mockReturnValue(containerRect as DOMRect);
+        let anchorTop = 20;
+        const items = Array.from(
+            historyContainer.querySelectorAll<HTMLElement>('[data-post-history-event-id]'),
+        );
+        if (items.length > 0) {
+            vi.spyOn(items[0], 'getBoundingClientRect').mockImplementation(() => ({
+                ...containerRect,
+                top: anchorTop,
+                bottom: anchorTop + 60,
+                height: 60,
+            }) as DOMRect);
+        }
+        historyContainer.scrollTop = 300;
+
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowOlderChunk &&
+                options.cursor?.eventId === 'anchor-restore-second' &&
+                options.limit === 50
+            ) {
+                anchorTop = 60;
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(screen.getByText('追加された古い投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(340);
+        });
+
+        view.unmount();
+    });
+
+    it('anchor が取れない場合は previousScrollTop を維持する', async () => {
+        let allowOlderChunk = false;
+        const latest = createRecord({
+            eventId: 'preserve-scroll-latest',
+            content: '現在の投稿',
+            createdAt: 150,
+            postedAt: Date.UTC(2024, 0, 3, 0, 0, 0),
+        });
+        const fetchedOlder = createRecord({
+            eventId: 'preserve-scroll-older',
+            content: '追加取得した古い投稿',
+            createdAt: 140,
+            postedAt: Date.UTC(2024, 0, 2, 0, 0, 0),
+        });
+
+        repositoryMock.countForPubkey.mockResolvedValue(1);
+        repositoryMock.countVisibleForPubkey
+            .mockResolvedValueOnce(1)
+            .mockResolvedValueOnce(1)
+            .mockResolvedValueOnce(2)
+            .mockResolvedValue(2);
+        repositoryMock.getLatestVisibleChunk.mockResolvedValue([latest]);
+        repositoryMock.getNewerVisibleChunk.mockResolvedValue([]);
+        repositoryMock.getOlderVisibleChunk.mockImplementation(async (options: {
+            cursor?: { eventId: string };
+            limit?: number;
+        }) => {
+            if (
+                allowOlderChunk &&
+                options.cursor?.eventId === 'preserve-scroll-latest' &&
+                options.limit === 50
+            ) {
+                return [fetchedOlder];
+            }
+
+            return [];
+        });
+        repositoryMock.upsertFetchedEvents.mockImplementationOnce(async () => {
+            allowOlderChunk = true;
+            return {
+                insertedCount: 1,
+                updatedCount: 0,
+                unchangedCount: 0,
+            };
+        });
+        relayFetchServiceMock.fetchLatest
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 1000,
+                    nextUntil: 150,
+                    hasMore: true,
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            })
+            .mockReturnValueOnce({
+                promise: Promise.resolve(createRelayFetchResult({
+                    fetchedAt: 2000,
+                    events: [
+                        {
+                            event: {
+                                id: 'preserve-scroll-older-event'.repeat(4),
+                                pubkey: PUBKEY_HEX,
+                                kind: 1,
+                                content: '追加取得した古い投稿',
+                                tags: [],
+                                created_at: 140,
+                                sig: 'd'.repeat(128),
+                            },
+                            relayUrls: ['wss://relay.example.com/'],
+                        },
+                    ],
+                    relayUrls: ['wss://relay.example.com/'],
+                })),
+                cancel: vi.fn(),
+            });
+
+        const view = render(PostHistoryDialog, {
+            props: {
+                show: true,
+                onClose: vi.fn(),
+                pubkeyHex: PUBKEY_HEX,
+                rxNostr: {} as any,
+            },
+        });
+
+        await waitFor(() => {
+            expect(screen.getByRole('button', { name: 'リレーから続きを取得' })).toBeTruthy();
+        });
+
+        const historyContainer = getHistoryContainer();
+        historyContainer.scrollTop = 222;
+
+        await clickRelayFetchButton();
+
+        await waitFor(() => {
+            expect(screen.getByText('追加取得した古い投稿')).toBeTruthy();
+            expect(historyContainer.scrollTop).toBe(222);
         });
 
         view.unmount();
